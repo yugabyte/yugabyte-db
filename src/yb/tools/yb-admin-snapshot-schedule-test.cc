@@ -550,8 +550,6 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     opts->enable_ysql = true;
     opts->extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
-    opts->extra_tserver_flags.emplace_back(
-      "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=20000");
     opts->extra_master_flags.emplace_back("--log_ysql_catalog_versions=true");
     opts->extra_master_flags.emplace_back("--consensus_rpc_timeout_ms=5000");
     opts->extra_master_flags.emplace_back("--master_ysql_operation_lease_ttl_ms=10000");
@@ -6515,6 +6513,92 @@ TEST_F_EX(
       ASSERT_RESULT(clone_conn.FetchRow<int64_t>(
           "SELECT count(*) FROM pg_yb_tablegroup WHERE grpname LIKE 'colocation_%'")),
       2);
+}
+
+class YbAdminCloneVectorIndexRestartTest : public YbAdminSnapshotScheduleTestWithYsql {
+ protected:
+  static constexpr std::string_view kSourceDb = "source_db";
+  static constexpr std::string_view kCloneDb = "clone_db";
+  static constexpr int kNumRowsPerTable = 16;
+
+  Status PopulateSourceDbWithVectorIndexes(pgwrapper::PGConn&& conn) {
+    return PopulateSourceDbWithVectorIndexes(conn);
+  }
+
+  Status PopulateSourceDbWithVectorIndexes(pgwrapper::PGConn& conn) {
+    constexpr int kDim = 3;
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE t (id bigserial PRIMARY KEY, embedding vector($0))", kDim));
+    // Rows are filled with a length-`kDim` literal "[i,i,...,i]" so we do not need to plumb a
+    // multi-dimensional value through ExecuteFormat (which only takes scalar args).
+    for (int i = 0; i < kNumRowsPerTable; ++i) {
+      std::string vec = "[";
+      for (int k = 0; k < kDim; ++k) {
+        if (k) vec += ',';
+        vec += std::to_string(i);
+      }
+      vec += "]";
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "INSERT INTO t (embedding) VALUES ('$0')", vec));
+    }
+    RETURN_NOT_OK(conn.Execute(
+        "CREATE INDEX idx_dim100_cosine ON t USING ybhnsw (embedding vector_cosine_ops)"));
+    return Status::OK();
+  }
+
+  Status RollingRestartMasters() {
+    for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+      auto* m = cluster_->master(i);
+      LOG(INFO) << "Rolling restart: shutting down master " << i << " (" << m->id() << ")";
+      m->Shutdown();
+      RETURN_NOT_OK(m->Restart());
+      // Wait for a master leader to be re-elected (and committed) before moving on to the next
+      // master in the rolling sequence; otherwise the next Shutdown could land on the only
+      // remaining quorum member and stall the cluster.
+      RETURN_NOT_OK(WaitFor(
+          [this]() -> Result<bool> {
+            auto idx = cluster_->GetLeaderMasterIndex();
+            return idx.ok();
+          },
+          60s * kTimeMultiplier,
+          Format("Waiting for master leader after restart of master $0", i)));
+    }
+    return Status::OK();
+  }
+};
+
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, CloneVectorIndexThenRollingRestartMasters,
+    YbAdminCloneVectorIndexRestartTest) {
+  ASSERT_OK(PrepareCommon());
+
+  // 1. Create a plain (non-colocated) source database and populate it with vector indexes.
+  ASSERT_OK(ASSERT_RESULT(PgConnect()).ExecuteFormat("CREATE DATABASE $0", kSourceDb));
+  ASSERT_OK(PopulateSourceDbWithVectorIndexes(ASSERT_RESULT(PgConnect(std::string{kSourceDb}))));
+
+  // 2. Create a snapshot schedule on the source database and wait for the first snapshot.
+  //    `CREATE DATABASE ... TEMPLATE` clones from the schedule's latest complete snapshot.
+  ASSERT_OK(
+      CreateSnapshotScheduleAndWaitSnapshot(Format("ysql.$0", kSourceDb), kInterval, kRetention));
+
+  // 3. Clone via `CREATE DATABASE ... TEMPLATE`.
+  ASSERT_OK(ASSERT_RESULT(PgConnect())
+                .ExecuteFormat("CREATE DATABASE $0 TEMPLATE $1", kCloneDb, kSourceDb));
+
+  // 4. Rolling restart of all masters.
+  ASSERT_OK(RollingRestartMasters());
+
+  // 5. Confirm that both the source and the clone are still queryable.
+  {
+    auto src_conn = ASSERT_RESULT(PgConnect(std::string{kSourceDb}));
+    auto src_count = ASSERT_RESULT(src_conn.FetchRow<int64_t>("SELECT count(*) FROM t"));
+    ASSERT_EQ(src_count, kNumRowsPerTable);
+
+    auto clone_conn = ASSERT_RESULT(PgConnect(std::string{kCloneDb}));
+    auto clone_count = ASSERT_RESULT(clone_conn.FetchRow<int64_t>("SELECT count(*) FROM t"));
+    ASSERT_EQ(clone_count, kNumRowsPerTable);
+  }
 }
 
 }  // namespace yb::tools

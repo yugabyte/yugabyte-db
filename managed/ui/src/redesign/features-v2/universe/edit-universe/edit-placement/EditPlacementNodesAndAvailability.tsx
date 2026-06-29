@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { mui } from '@yugabyte-ui-library/core';
 import { useToggle } from 'react-use';
 import { useGetEditPlacementContext } from './EditPlacementUtils';
@@ -13,20 +13,26 @@ import {
   createUniverseFormProps,
   StepsRef
 } from '../../create-universe/CreateUniverseContext';
+import { NodeAvailabilityProps } from '../../create-universe/steps/nodes-availability/dtos';
+import { normalizeEditPlacementNodesAvailability } from './normalizeEditPlacementNodesAvailability';
 
 const { Box } = mui;
 
 export const EditPlacementNodesAndAvailability = () => {
   const nodesAndAvailabilityRef = useRef<StepsRef>(null);
-  const [addEditPlacementData, addEditPlacementMethods] = useGetEditPlacementContext();
+  const [addEditPlacementData, addEditPlacementMethods, extraMethods] = useGetEditPlacementContext();
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.steps' });
   const [showEditPlacementModal, setShowEditPlacementModal] = useToggle(false);
   const { setNodesAndAvailability } = addEditPlacementMethods;
 
-  const context = useGetEditPlacementContext();
+  const { setActiveStep } = addEditPlacementMethods;
+  const { hideModal, onSubmit, isSubmittingPlacementUpdate } = extraMethods;
 
-  const { setActiveStep } = context[1];
-  const { hideModal, onSubmit, isSubmittingPlacementUpdate } = context[2];
+  
+  const calculateNodesandAvailability = useMemo(
+    () => normalizeEditPlacementNodesAvailability(addEditPlacementData),
+    [addEditPlacementData]
+  );
 
   return (
     <CreateUniverseContext.Provider
@@ -35,7 +41,7 @@ export const EditPlacementNodesAndAvailability = () => {
           {
             activeStep: 1,
             resilienceAndRegionsSettings: addEditPlacementData.resilience,
-            nodesAvailabilitySettings: addEditPlacementData.nodesAndAvailability
+            nodesAvailabilitySettings: calculateNodesandAvailability
           },
           {
             saveNodesAvailabilitySettings: (

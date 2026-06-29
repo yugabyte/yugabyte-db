@@ -2133,11 +2133,24 @@ void YBCNotifyDeferredTriggersProcessingStarted() {
 YbcPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
     YbcPgOid table_relfilenode_oid, uint64_t ybctid, YbcPgOid database_oid,
     const YbcPgExplicitRowLockParams* params, YbcPgTableLocalityInfo locality_info,
-    const YbcIsExplicitlyLockedRowSkippedCheckHandle* handle) {
+    YbcIsExplicitlyLockedRowSkippedCheckHandleOptional* handle) {
+  std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> opt_handle;
+  auto* actual_handle = &opt_handle;
+  if (handle) {
+    if (handle->has_value) {
+      opt_handle.emplace(handle->value);
+    }
+  } else {
+    actual_handle = nullptr;
+  }
   auto result = MakePgExplicitRowLockStatus();
   result.ybc_status = ToYBCStatus(pgapi->AddExplicitRowLockIntent(
       PgObjectId(database_oid, table_relfilenode_oid), YbctidAsSlice(ybctid), *params,
-      locality_info, handle ? std::optional(*handle) : std::nullopt, result.error_info));
+      locality_info, actual_handle, result.error_info));
+  if (opt_handle.has_value() && !handle->has_value) {
+    handle->value = *opt_handle;
+    handle->has_value = true;
+  }
   return result;
 }
 
@@ -2153,10 +2166,6 @@ YbcPgExplicitRowLockStatus YBCIsExplicitlyLockedRowSkipped(
   result.ybc_status = ExtractValueFromResult(
       pgapi->IsRowSkipped(handle, result.error_info), is_skipped);
   return result;
-}
-
-YbcIsExplicitlyLockedRowSkippedCheckHandle YBCAcquireExplicitlyLockedRowSkippedCheckHandle() {
-  return pgapi->AcquireExplicitlyLockedRowSkippedCheckHandle();
 }
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
@@ -3152,7 +3161,12 @@ YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* cou
         .tablet_descriptor = MakeYbcPgTabletsDescriptor(tablet_metadata),
         .replicas = replicas_array,
         .replicas_count = static_cast<size_t>(tablet_metadata.replicas().size()),
-        .is_hash_partitioned = tablet_metadata.is_hash_partitioned()
+        .is_hash_partitioned = tablet_metadata.is_hash_partitioned(),
+        .tablet_state = tablet_metadata.has_tablet_state()
+            ? YBCPAllocStdString(tablet_metadata.tablet_state())
+            : nullptr,
+        .pg_table_oid = tablet_metadata.has_pg_table_oid() ? tablet_metadata.pg_table_oid()
+                                                           : kPgInvalidOid
       };
       ++dest;
     }
@@ -3371,6 +3385,11 @@ YbcStatus YBCAcquireObjectLock(
 
 YbcStatus YBCReleaseSessionObjectLock(YbcObjectLockId lock_id, bool release_all) {
   return ToYBCStatus(pgapi->ReleaseSessionObjectLock(lock_id, release_all));
+}
+
+YbcStatus YBCWaitForLockersMultiple(
+    YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks) {
+  return ToYBCStatus(pgapi->WaitForLockersMultiple(lock_ids, lock_mode, num_locks));
 }
 
 bool YBCPgYsqlMajorVersionUpgradeInProgress() {

@@ -39,6 +39,7 @@
 
 DECLARE_bool(cdc_enable_implicit_checkpointing);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_uint64(cdc_intent_retention_ms);
 
 using std::vector;
 using std::string;
@@ -210,6 +211,10 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
 
     std::unordered_set<std::string> tables_expected_in_stream_metadata;
     for (const auto& table_name : table_with_pk) {
+      tables_expected_in_stream_metadata.insert(
+          ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, table_name)));
+    }
+    for (const auto& table_name : table_without_pk) {
       tables_expected_in_stream_metadata.insert(
           ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, table_name)));
     }
@@ -501,7 +506,12 @@ TEST_F(CDCSDKStreamTest, TestPgReplicationSlotCreateWithDropTable) {
 
   ASSERT_OK(conn.Execute("DROP TABLE t1"));
 
-  // Drop table will trigger the background thread to start the stream metadata cleanup.
+  // Drop table will trigger the background thread to start the stream metadata cleanup. This will
+  // remove the dropped table from the stream metadata either when restart time crosses the hide
+  // time of the dropped table or when cdc_intent_retention_ms have passed since hiding the table.
+  // Here we test the latter case.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
+
   // Wait for the metadata cleanup to finish by the background thread.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {

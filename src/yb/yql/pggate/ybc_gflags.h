@@ -10,7 +10,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#pragma once
+// YB: include guard instead of pragma once: this header is installed into
+// the PostgreSQL server include directory, and pragma once does not
+// deduplicate identical copies of a header visible via two paths.
+#ifndef YB_YQL_PGGATE_YBC_GFLAGS_H
+#define YB_YQL_PGGATE_YBC_GFLAGS_H
 
 #include <stdint.h>
 
@@ -21,6 +25,7 @@ extern "C" {
 typedef struct {
   const bool*     log_ysql_catalog_versions;
   const bool*     ysql_catalog_preload_additional_tables;
+  const bool*     ysql_preload_pg_authid_for_auth;
   const bool*     ysql_disable_index_backfill;
   const bool*     ysql_disable_server_file_access;
   const bool*     ysql_enable_reindex;
@@ -72,7 +77,6 @@ typedef struct {
   const char *    placement_cloud;
   const char *    placement_region;
   const char *    placement_zone;
-  const bool*     TEST_ysql_bypass_auto_analyze_auth_check;
   const int64_t*  TEST_delay_after_table_analyze_ms;
   const bool*     TEST_enable_obj_tuple_locks;
   const bool*     TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization;
@@ -83,3 +87,5 @@ const YbcPgGFlagsAccessor* YBCGetGFlags();
 #ifdef __cplusplus
 }  // extern "C"
 #endif
+
+#endif  // YB_YQL_PGGATE_YBC_GFLAGS_H

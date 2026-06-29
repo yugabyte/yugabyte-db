@@ -30,10 +30,11 @@
 
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/iterator.h"
-#include "yb/util/slice.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/write_batch.h"
 #include "yb/rocksdb/write_batch_base.h"
+
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 

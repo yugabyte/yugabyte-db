@@ -345,16 +345,15 @@ ybcBindTupleExprCondIn(YbScanDesc ybScan,
 {
 	Assert(nvalues > 0);
 	YbcPgExpr	ybc_rhs_exprs[nvalues];
-
 	YbcPgExpr	ybc_elems_exprs[n_attnum_values];	/* VLA - scratch space */
-	Datum		datum_values[n_attnum_values];
-	bool		is_null[n_attnum_values];
-
 	Oid			tupType =
 		HeapTupleHeaderGetTypeId(DatumGetHeapTupleHeader(values[0]));
 	Oid			tupTypmod =
 		HeapTupleHeaderGetTypMod(DatumGetHeapTupleHeader(values[0]));
 	YbcPgTypeAttrs type_attrs = {tupTypmod};
+	TupleDesc	tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+	Datum		datum_values[tupdesc->natts];
+	bool		is_null[tupdesc->natts];
 
 	/* Form the lhs tuple. */
 	for (int i = 0; i < n_attnum_values; i++)
@@ -370,8 +369,6 @@ ybcBindTupleExprCondIn(YbScanDesc ybScan,
 
 	YbcPgExpr	lhs = YBCNewTupleExpr(ybScan->handle, &type_attrs,
 									  n_attnum_values, ybc_elems_exprs);
-
-	TupleDesc	tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
 
 	HeapTupleData tuple;
 
@@ -1506,9 +1503,8 @@ YbIsTupleInRange(Datum value, TupleDesc bind_desc,
 	Oid			tupType = HeapTupleHeaderGetTypeId(DatumGetHeapTupleHeader(value));
 	Oid			tupTypmod = HeapTupleHeaderGetTypMod(DatumGetHeapTupleHeader(value));
 	TupleDesc	val_tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
-
-	Datum		datum_values[key_length];
-	bool		datum_nulls[key_length];
+	Datum		datum_values[val_tupdesc->natts];
+	bool		datum_nulls[val_tupdesc->natts];
 
 	HeapTupleData tuple;
 
@@ -3955,11 +3951,17 @@ YbBeginScan(Relation table,
 	 *
 	 * Initdb and walsender don't have local catalog version, so ignore for
 	 * those cases as well.
+	 *
+	 * Also skip when the catalog cache version is uninitialized. This
+	 * happens in the logical replication pull model path where
+	 * assign_yb_read_time resets it to 0 for historical reads. Sending 0
+	 * would cause the tserver to reject the request with MISMATCHED_SCHEMA.
 	 */
 	if (!(is_internal_scan && IsSystemRelation(table)) &&
 		!IsBootstrapProcessingMode() &&
 		MyBackendType != B_WAL_SENDER &&
-		MyBackendType != YB_YSQL_CONN_MGR_WAL_SENDER)
+		MyBackendType != YB_YSQL_CONN_MGR_WAL_SENDER &&
+		YbGetCatalogCacheVersion() != YB_CATCACHE_VERSION_UNINITIALIZED)
 		YbSetCatalogCacheVersion(ybScan->handle,
 								 YbGetCatalogCacheVersion());
 
@@ -5109,7 +5111,7 @@ YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple *tuple)
 TM_Result
 YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 			 LockWaitPolicy pg_wait_policy, EState *estate,
-			 const YbcIsExplicitlyLockedRowSkippedCheckHandle *handle)
+			 YbcIsExplicitlyLockedRowSkippedCheckHandleOptional *handle)
 {
 	const YbcPgExplicitRowLockParams lock_params = {
 		.rowmark = mode,

@@ -15,7 +15,7 @@ properties:
     description: Per-region YugabyteDB image identifiers keyed by region code.
     type: object
     additionalProperties:
-      $ref: "./ImageBundleInfo.yaml"
+      $ref: "./ImageBundleRegionInfo.yaml"
   ssh_user:
     description: SSH username for nodes provisioned from this bundle.
     type: string

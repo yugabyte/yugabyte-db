@@ -284,9 +284,18 @@ class RequestSequencer {
     return Status::OK();
   }
 
-  void Shutdown() {
+  // Stops accepting new requests and wakes any cond_var waiters. Safe to call
+  // without holding mutex_. Must be paired with CompleteShutdown (which drains
+  // parked callbacks under the mutex) so that parked InboundCall references are
+  // released and the reactor can exit.
+  void StartShutdown() {
     is_active_.store(false, std::memory_order_release);
     cond_.notify_all();
+  }
+
+  void CompleteShutdown() {
+    DEBUG_ONLY(DCHECK(DEBUG_IsMutexLocked()));
+    impl_.RejectPendingRequests();
   }
 
  private:
@@ -451,7 +460,28 @@ class LockablePgClientSession {
   }
 
   void StartShutdown(bool pg_service_shutting_down) {
-    request_sequencer_.Shutdown();
+    request_sequencer_.StartShutdown();
+    if (pg_service_shutting_down) {
+      // Service is going down. Drain synchronously: the messenger thread pool
+      // is about to shut down, so a deferred drain may never run, leaving
+      // parked InboundCall references that prevent the reactor from exiting.
+      // mutex_ is normally uncontended on this path.
+      std::lock_guard lock(mutex_);
+      request_sequencer_.CompleteShutdown();
+    } else {
+      // Session expired (e.g., backend killed). An in-flight Perform RPC
+      // (e.g., slow BackfillIndex) may hold mutex_ for an unbounded time.
+      // Defer the drain to the messenger thread pool so session_.StartShutdown()
+      // which aborts the session's transactions is not gated on that RPC.
+      messenger_.ThreadPool().EnqueueFunctor([shared_this = shared_this_] {
+        auto obj = shared_this.lock();
+        if (!obj) {
+          return;
+        }
+        std::lock_guard lock(obj->mutex_);
+        obj->request_sequencer_.CompleteShutdown();
+      });
+    }
     if (exchange_runnable_) {
       exchange_runnable_->StartShutdown();
     }
@@ -686,6 +716,8 @@ class PgClientSessionLocker {
       : session_(std::move(session)), guard_(std::move(guard)) {}
 
   [[nodiscard]] PgClientSession* operator->() const { return session_.get(); }
+
+  [[nodiscard]] PgSessionGuard& guard() { return guard_; }
 
  private:
   std::shared_ptr<PgClientSession> session_;
@@ -3055,12 +3087,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       const YB_PG_CLIENT_METHOD_ARG(data, method, Request)& req, \
       YB_PG_CLIENT_METHOD_ARG(data, method, Response)* resp, \
       rpc::RpcContext context) { \
-    const auto session = GetSession(req); \
+    auto session = GetSession(req); \
     if (!session.ok()) { \
       Respond(session.status(), resp, &context); \
       return; \
     } \
-    (*session)->method(req, resp, std::move(context)); \
+    (*session)->method(req, resp, std::move(context), session->guard()); \
   }
 
   BOOST_PP_SEQ_FOR_EACH(
@@ -3075,6 +3107,10 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   size_t TEST_SessionsCount() {
     SharedLock lock(mutex_);
     return sessions_.size();
+  }
+
+  size_t TEST_ExchangeThreadPoolWorkersCreated() {
+    return exchange_thread_pool_ ? exchange_thread_pool_->TEST_NumWorkersCreated() : 0;
   }
 
  private:
@@ -3352,6 +3388,10 @@ Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }
+
+size_t PgClientServiceImpl::TEST_ExchangeThreadPoolWorkersCreated() {
+  return impl_->TEST_ExchangeThreadPoolWorkersCreated();
+}
 
 void PgClientServiceImpl::Shutdown() { impl_->Shutdown(); }
 

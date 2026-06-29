@@ -1,0 +1,21 @@
+title: KmsConfigurationInfo
+description: |
+  System-generated KMS configuration metadata.
+type: object
+properties:
+  uuid:
+    description: KMS configuration unique identifier.
+    type: string
+    format: uuid
+    example: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+    readOnly: true
+  in_use:
+    description: Whether this KMS config is attached to any universe.
+    type: boolean
+    readOnly: true
+  universe_details:
+    description: Universes using this KMS configuration (subset fields only).
+    type: array
+    items:
+      $ref: "./UniverseDetailSubset.yaml"
+    readOnly: true

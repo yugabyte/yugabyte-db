@@ -117,12 +117,16 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_consistent_replication_from_hash_
     "Enable consumption of consistent changes via replication slots from "
     "a hash range of a table.");
 
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_slot_exclusive_lock, false,
+    "Acquire a cluster-wide exclusive advisory lock while a replication slot is "
+    "in use so that only one consumer can use it at a time across the universe.");
+
 DEFINE_NON_RUNTIME_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication, true,
     "When set to true, modifications to publication will be reflected implicitly. "
     "This replaces the previous mechanism of periodic publication refresh with PG "
     "like semantics for dynamic tables");
 
-DEFINE_RUNTIME_PREVIEW_bool(enable_table_rewrite_for_cdcsdk_table, false,
+DEFINE_RUNTIME_bool(enable_table_rewrite_for_cdcsdk_table, true,
     "When set, CDC will not block DDLs causing table rewrites. Also records from the re-written "
     "tablets will be streamed by CDC after finishing the streaming of data from older tablets.");
 
@@ -280,7 +284,8 @@ DEFINE_validator(master_ts_rpc_timeout_ms,
             ::yb::flags_internal::compare_greater_equal(_value, FLAGS_refresh_waiter_timeout_ms),
         "Must be >= refresh_waiter_timeout_ms when enable_object_locking_for_table_locks is true"));
 
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_cdcsdk_stream_tables_without_primary_key, false,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_cdcsdk_stream_tables_without_primary_key,
+    kLocalPersisted, false, true,
     "When set to true, allows streaming of tables without primary keys for CDCSDK logical "
     "replication streams.");
 
@@ -367,6 +372,9 @@ DEFINE_RUNTIME_bool(ysql_enable_auto_analyze, false,
     "which have changed more than a configurable threshold.");
 
 DEFINE_NON_RUNTIME_bool(enable_qos, false, "Enable the QoS feature.");
+
+DEFINE_NON_RUNTIME_bool(is_yb_managed, false,
+  "If true instance is running in a YugabyteDB managed environment (YBM)");
 
 namespace yb {
 

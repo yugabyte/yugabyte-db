@@ -531,6 +531,20 @@ public class NodeAgentRpcPayload {
       ycqlAuditLogLevel = logLevel.name();
     }
     installOtelCollectorInputBuilder.setYcqlAuditLogLevel(ycqlAuditLogLevel);
+    if (config != null) {
+      if (config.getYsqlAuditConfig() != null
+          && config.getYsqlAuditConfig().getLogRetentionDays() != null
+          && config.getYsqlAuditConfig().getLogRetentionDays() > 0) {
+        installOtelCollectorInputBuilder.setYsqlAuditLogRetentionDays(
+            config.getYsqlAuditConfig().getLogRetentionDays());
+      }
+      if (config.getYcqlAuditConfig() != null
+          && config.getYcqlAuditConfig().getLogRetentionDays() != null
+          && config.getYcqlAuditConfig().getLogRetentionDays() > 0) {
+        installOtelCollectorInputBuilder.setYcqlAuditLogRetentionDays(
+            config.getYcqlAuditConfig().getLogRetentionDays());
+      }
+    }
     installOtelCollectorInputBuilder.addAllMountPoints(getMountPoints(taskParams));
 
     boolean auditLogsExportActive = OtelCollectorUtil.isAuditLogExportEnabledInUniverse(config);

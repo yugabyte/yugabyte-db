@@ -555,8 +555,8 @@ public class XClusterConfig extends Model {
     update();
   }
 
-  private void addNamespaceConfig(XClusterNamespaceConfig namespaceConfig) {
-    if (!this.getNamespaces().add(namespaceConfig)) {
+  public void addNamespaceConfig(XClusterNamespaceConfig namespaceConfig) {
+    if (!getNamespaces().add(namespaceConfig)) {
       log.debug(
           "Namespace with id {} already exists in xCluster config ({})",
           namespaceConfig.getSourceNamespaceId(),
@@ -1207,18 +1207,22 @@ public class XClusterConfig extends Model {
   }
 
   public static void checkXClusterConfigInCustomer(
-      XClusterConfig xClusterConfig, Customer customer) {
+      XClusterConfig xClusterConfig, Customer customer, int errorStatusCode, String errorMessage) {
     Set<UUID> customerUniverseUUIDs = customer.getUniverseUUIDs();
     if ((xClusterConfig.getSourceUniverseUUID() != null
             && !customerUniverseUUIDs.contains(xClusterConfig.getSourceUniverseUUID()))
         || (xClusterConfig.getTargetUniverseUUID() != null
             && !customerUniverseUUIDs.contains(xClusterConfig.getTargetUniverseUUID()))) {
       throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "XClusterConfig %s doesn't belong to Customer %s",
-              xClusterConfig.getUuid(), customer.getUuid()));
+          errorStatusCode,
+          String.format(errorMessage, xClusterConfig.getUuid(), customer.getUuid()));
     }
+  }
+
+  public static void checkXClusterConfigInCustomer(
+      XClusterConfig xClusterConfig, Customer customer) {
+    checkXClusterConfigInCustomer(
+        xClusterConfig, customer, BAD_REQUEST, "XClusterConfig %s doesn't belong to Customer %s");
   }
 
   public void addTableConfig(XClusterTableConfig tableConfig) {

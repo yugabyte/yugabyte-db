@@ -203,6 +203,7 @@ YbSplitType
 YbStatLabel
 YbStatLabelData
 YbStatementType
+YbSubstConstsContext
 YbSubstituteContext
 YbSysCatalogModificationAspect
 YbSysScanBase
@@ -256,6 +257,7 @@ YbcFlushDebugContext
 YbcGetTableKeyRangesCallback
 YbcHeapSnapshotSample
 YbcIsExplicitlyLockedRowSkippedCheckHandle
+YbcIsExplicitlyLockedRowSkippedCheckHandleOptional
 YbcLsnType
 YbcMetricsInfo
 YbcObjectLockId

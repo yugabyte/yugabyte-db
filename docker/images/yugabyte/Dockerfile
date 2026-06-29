@@ -53,6 +53,7 @@ WORKDIR $YB_HOME
 # Create some yum aliases for use in this Dockerfile
 ARG yum_install="yum install --disableplugin=subscription-manager -y"
 ARG yum_upgrade="yum upgrade --disableplugin=subscription-manager -y"
+ARG RF_HARDENED_BASE_PATTERN=ubi9-fips-rfcurated
 
 # Add the almalinux8 package repo if we are building for ubi.
 RUN <<EOF
@@ -75,19 +76,19 @@ EOR
   fi
 EOF
 
-# Install hostname for ubi8 images.
-RUN if [[ "$BASE_IMAGE" == "registry.access.redhat.com/ubi8/ubi"* ]]; then \
-  $yum_install hostname; \
-  fi
-
 # Ensure our base system is fully up to date
 RUN set -x; \
-  $yum_upgrade \
+  if [[ "$BASE_IMAGE" != *"$RF_HARDENED_BASE_PATTERN"* ]]; then \
+    $yum_upgrade; \
+  else \
+    echo "Skipping yum upgrade for hardened base image: $BASE_IMAGE"; \
+  fi \
   && rm -rf ~/.cache \
   && yum clean all && rm -rf /var/cache/yum
 
 # Install required packages that are universal across RHEL versions
-RUN $yum_install \
+RUN set -x; \
+    packages=( \
       bind-utils \
       diffutils \
       gettext \
@@ -104,18 +105,26 @@ RUN $yum_install \
       redhat-rpm-config \
       rsync \
       procps \
-      python3.11-devel \
-      python3.11-pip \
       sysstat \
       tcpdump \
       which \
-    && alternatives --set python3 /usr/bin/python3.11 \
-    && alternatives --set python /usr/bin/python3.11 \
-    && python3 -m pip install --upgrade pip \
+      hostname \
+    ); \
+    if [[ "$BASE_IMAGE" != *"$RF_HARDENED_BASE_PATTERN"* ]]; then \
+      packages+=(python3.11-devel python3.11-pip); \
+    fi; \
+    $yum_install "${packages[@]}" \
+    && if [[ "$BASE_IMAGE" != *"$RF_HARDENED_BASE_PATTERN"* ]]; then \
+         alternatives --set python3 /usr/bin/python3.11; \
+         alternatives --set python /usr/bin/python3.11; \
+    fi \
     && python3 -m pip install --upgrade lxml \
     && python3 -m pip install --upgrade s3cmd \
     && python3 -m pip install --upgrade psutil \
     && python3 -m pip install --upgrade watchdog \
+    && if [[ "$BASE_IMAGE" == *"$RF_HARDENED_BASE_PATTERN"* ]]; then \
+         yum remove --disableplugin=subscription-manager -y python3-pip; \
+       fi \
     && rm -rf /usr/share/python3-wheels/pip-9.0.3-py2.py3-none-any.whl \
     && rm -rf ~/.cache \
     && yum clean all && rm -rf /var/cache/yum
@@ -128,7 +137,8 @@ RUN set -x; \
     done
 
 RUN set -x; \
-    if [[ "$BASE_IMAGE" == "registry.access.redhat.com/ubi"* ]]; then \
+    if [[ "$BASE_IMAGE" == "registry.access.redhat.com/ubi"* || \
+          "$BASE_IMAGE" == *"$RF_HARDENED_BASE_PATTERN"* ]]; then \
       useradd --home-dir $YB_HOME \
               --uid 10001 \
               --shell /sbin/nologin \
@@ -143,6 +153,12 @@ RUN mkdir -p $YB_HOME/openssl-config \
     && chmod -R g=u $YB_HOME/openssl-config
 
 COPY --from=intermediate $YB_HOME $YB_HOME
+
+# Create with correct permissions the openssl-config directory which will be used for fips
+# credentials generated via post-install.sh
+RUN mkdir -p $YB_HOME/openssl-config \
+    && chown -R 10001:0 $YB_HOME/openssl-config \
+    && chmod -R g=u $YB_HOME/openssl-config
 
 RUN for a in ysqlsh ycqlsh yugabyted yb-admin yb-tsi-cli; do \
       ln -s /home/yugabyte/bin/$a /usr/local/bin/$a; \

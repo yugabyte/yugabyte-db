@@ -49,7 +49,12 @@
 
 // ------------------------------------------------------------------------------------------------
 
-#if (defined(__clang__) || (!defined(__clang__) && defined(__GNUC__) && __GNUC__ >= 12))
+// Under sanitizers, leave SimSIMD disabled so usearch uses its instrumented scalar/builtin metric
+// instead of the AVX-512/NEON kernels. Those kernels' wide intrinsic loads largely evade
+// AddressSanitizer instrumentation, so a use-after-free or overflow read inside them just faults
+// (or is missed) rather than being reported; the scalar path lets the sanitizer check every load.
+#if (defined(__clang__) || (!defined(__clang__) && defined(__GNUC__) && __GNUC__ >= 12)) && \
+    !defined(THREAD_SANITIZER) && !defined(ADDRESS_SANITIZER)
 // Do not enable SimSIMD if building with GCC 11, it has a lot of compilation issues compared to
 // Clang and GCC 12+.
 

@@ -762,7 +762,7 @@ class PgApiImpl {
   Status AddExplicitRowLockIntent(
       const PgObjectId& table_id, const Slice& ybctid,
       const YbcPgExplicitRowLockParams& params, const YbcPgTableLocalityInfo& locality_info,
-      std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> handle,
+      std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle>* handle,
       YbcPgExplicitRowLockErrorInfo& error_info);
   Status FlushExplicitRowLockIntents(YbcPgExplicitRowLockErrorInfo& error_info);
 
@@ -930,12 +930,13 @@ class PgApiImpl {
   Status AcquireObjectLock(
       const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock);
   Status ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all);
+  Status WaitForLockersMultiple(
+      const YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks);
 
   auto TemporaryDisableReadTimeHistoryCutoff() {
     return pg_txn_manager_->TemporaryDisableReadTimeHistoryCutoff();
   }
 
-  YbcIsExplicitlyLockedRowSkippedCheckHandle AcquireExplicitlyLockedRowSkippedCheckHandle();
   Result<bool> IsRowSkipped(
       YbcIsExplicitlyLockedRowSkippedCheckHandle handle, YbcPgExplicitRowLockErrorInfo& error_info);
 

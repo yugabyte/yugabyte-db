@@ -84,14 +84,14 @@ CREATE TABLESPACE regress_tblspace LOCATION '/data';
 CREATE TABLESPACE regress_tblspace_2 LOCATION '/data';
 
 -- try setting and resetting some properties for the new tablespace
-ALTER TABLESPACE regress_tblspace SET (random_page_cost = 1.0, seq_page_cost = 1.1);
-
--- Enable these tests after ALTER is supported.
-/*
+ALTER TABLESPACE regress_tblspace SET (random_page_cost = 1.0, seq_page_cost = 1.1); -- fail
+ALTER TABLESPACE regress_tblspace SET (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}'); -- ok
+SELECT spcoptions IS NOT NULL FROM pg_tablespace WHERE spcname = 'regress_tblspace';
 ALTER TABLESPACE regress_tblspace SET (some_nonexistent_parameter = true);  -- fail
 ALTER TABLESPACE regress_tblspace RESET (random_page_cost = 2.0); -- fail
 ALTER TABLESPACE regress_tblspace RESET (random_page_cost, effective_io_concurrency); -- ok
-*/
+ALTER TABLESPACE regress_tblspace RESET (replica_placement); -- ok
+SELECT spcoptions IS NULL FROM pg_tablespace WHERE spcname = 'regress_tblspace';
 
 -- create a schema we can use
 CREATE SCHEMA testschema;
@@ -374,6 +374,8 @@ CREATE TABLE tbl_other(x int, y int);
 SET SESSION ROLE yb_db_admin;
 -- Verify yb_db_admin role can CREATE tablespace
 CREATE TABLESPACE tblspace WITH (replica_placement='{"num_replicas": 1, "placement_blocks": [{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+-- Verify yb_db_admin role can ALTER tablespace
+ALTER TABLESPACE tblspace SET (replica_placement='{"num_replicas": 1, "placement_blocks": [{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 -- Verify yb_db_admin role can CREATE table with tablespace
 CREATE TABLE tbl (x int, y int) TABLESPACE tblspace;
 DROP TABLE tbl;
@@ -386,8 +388,6 @@ DROP TABLE tbl;
 CREATE TABLE tbl(x int, y int);
 CREATE INDEX idx ON tbl(x) TABLESPACE tblspace;
 CREATE INDEX idx2 ON tbl_other(x) TABLESPACE tblspace;
--- Verify yb_db_admin role cannot ALTER tablespace
-ALTER TABLESPACE tblspace SET (random_page_cost = 1.0, seq_page_cost = 1.1);
 -- Verify yb_db_admin role can DROP tablespace
 DROP TABLE tbl;
 DROP TABLE tbl_other;

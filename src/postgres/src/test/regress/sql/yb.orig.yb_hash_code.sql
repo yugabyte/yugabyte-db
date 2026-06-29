@@ -101,6 +101,43 @@ SELECT * FROM test_table_one_primary WHERE yb_hash_code(y,x) < 512 LIMIT 7;
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)  SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) BETWEEN 4 AND 512;
 SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) BETWEEN 4 AND 512 LIMIT 5;
+
+-- test ordering
+\set query ':P SELECT yb_hash_code(x), * FROM test_table_one_primary ORDER BY yb_hash_code(x), x LIMIT 10;'
+\i :iter_P2
+
+-- incomplete key
+\set query ':P SELECT yb_hash_code(x), * FROM test_table_one_primary ORDER BY yb_hash_code(x) LIMIT 10;'
+\i :iter_P2
+
+-- reverse order
+\set query ':P SELECT yb_hash_code(x), * FROM test_table_one_primary ORDER BY yb_hash_code(x) DESC, x DESC LIMIT 10;'
+\i :iter_P2
+
+-- yb_hash_code mismatch
+\set query ':P SELECT yb_hash_code(y), * FROM test_table_one_primary ORDER BY yb_hash_code(y), x LIMIT 10;'
+\i :iter_P2
+\set query ':P SELECT yb_hash_code(x, -y), * FROM test_table_one_primary ORDER BY yb_hash_code(x, -y), x LIMIT 10;'
+\i :iter_P2
+
+-- direction mismatch
+\set query ':P SELECT yb_hash_code(x), * FROM test_table_one_primary ORDER BY yb_hash_code(x) DESC, x ASC LIMIT 10;'
+\i :iter_P2
+\set query ':P SELECT yb_hash_code(x), * FROM test_table_one_primary ORDER BY yb_hash_code(x) ASC, x DESC LIMIT 10;'
+\i :iter_P2
+
+-- redundant key
+\set query ':P SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) = 11 ORDER BY x;'
+\i :iter_P2
+\set query ':P SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) = 11 ORDER BY x DESC;'
+\i :iter_P2
+
+-- non-redundant key
+\set query ':P SELECT * FROM test_table_one_primary WHERE yb_hash_code(y) = 11 ORDER BY x;'
+\i :iter_P2
+\set query ':P SELECT * FROM test_table_one_primary WHERE yb_hash_code(x + 1) = 11 ORDER BY x;'
+\i :iter_P2
+
 DROP TABLE test_table_one_primary;
 
 -- testing pushdown where the hash column is of type text
@@ -121,6 +158,25 @@ CREATE INDEX textidx ON text_table (tj);
 \i :iter_P2
 \set query ':P SELECT tj FROM text_table WHERE 63 >= yb_hash_code(tj);'
 \i :iter_P2
+
+-- test ordering
+\set query ':P SELECT yb_hash_code(tj), * FROM text_table ORDER BY yb_hash_code(tj), tj LIMIT 5;'
+\i :iter_P2
+\set query ':P SELECT yb_hash_code(tj), tj FROM text_table ORDER BY yb_hash_code(tj), tj LIMIT 5;'
+\i :iter_P2
+
+-- reverse order
+\set query ':P SELECT yb_hash_code(tj), * FROM text_table ORDER BY yb_hash_code(tj) DESC, tj DESC LIMIT 5;'
+\i :iter_P2
+\set query ':P SELECT yb_hash_code(tj), tj FROM text_table ORDER BY yb_hash_code(tj) DESC, tj DESC LIMIT 5;'
+\i :iter_P2
+
+-- redundant key
+\set query ':P SELECT * FROM text_table WHERE yb_hash_code(tj) = 63 ORDER BY tj;'
+\i :iter_P2
+\set query ':P SELECT * FROM text_table WHERE yb_hash_code(tj) = 63 ORDER BY tj DESC;'
+\i :iter_P2
+
 DROP TABLE text_table;
 
 -- testing on a table with multiple hash key columns on
@@ -137,12 +193,24 @@ INSERT INTO test_table_multi_col_key SELECT i::BIGINT, i::FLOAT, i::TEXT, '2018-
 \i :iter_P2
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 ORDER BY h1 LIMIT 3;'
 \i :iter_P2
+\set query ':P SELECT yb_hash_code(h1,h2,h3), * from test_table_multi_col_key ORDER BY yb_hash_code(h1,h2,h3), h1, h2, h3 LIMIT 3;'
+\i :iter_P2
+\set query ':P SELECT yb_hash_code(h1,h2,h3), * from test_table_multi_col_key ORDER BY yb_hash_code(h1,h2,h3), h1, h2 LIMIT 3;'
+\i :iter_P2
+\set query ':P SELECT yb_hash_code(h1,h2,h3), * from test_table_multi_col_key ORDER BY yb_hash_code(h1,h2,h3), h1 LIMIT 3;'
+\i :iter_P2
+\set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) = 7 ORDER BY h1, h2, h3;'
+\i :iter_P2
+\set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) = 7 ORDER BY h1 DESC;'
+\i :iter_P2
+\set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) = 7 ORDER BY h1, h3;'
+\i :iter_P2
 
 -- create an index with the same set of primary keys as
 -- the primary index
 CREATE INDEX multi_key_index_1 ON test_table_multi_col_key((h1,h2,h3) HASH, r1 ASC, r2 ASC);
 
--- create other indexes on other columsn that are not
+-- create other indexes on other columns that are not
 -- hashed in the primary index
 CREATE INDEX multi_key_index_2 ON test_table_multi_col_key((r1, r2, v1) HASH, v3, v2);
 CREATE INDEX multi_key_index_3 ON test_table_multi_col_key((r1, r2, v2, v3) HASH, v1);
@@ -184,6 +252,17 @@ CREATE INDEX multi_key_index_3 ON test_table_multi_col_key((r1, r2, v2, v3) HASH
 \i :iter_P2
 
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 60 LIMIT 10;'
+\i :iter_P2
+
+\set query ':P SELECT yb_hash_code(r1,r2,v1), * from test_table_multi_col_key ORDER BY yb_hash_code(r1,r2,v1), r1, r2, v1 LIMIT 3;'
+\i :iter_P2
+\set query ':P SELECT yb_hash_code(r1,r2,v2,v3), * from test_table_multi_col_key ORDER BY yb_hash_code(r1,r2,v2,v3), r1, r2, v2 LIMIT 3;'
+\i :iter_P2
+\set query ':P SELECT yb_hash_code(r1,r2,v1), * from test_table_multi_col_key ORDER BY yb_hash_code(r1,r2,v1), r1, r2, v2 LIMIT 3;'
+\i :iter_P2
+\set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v1) = 6 ORDER BY r1, r2, v1;'
+\i :iter_P2
+\set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) = 9 ORDER BY r1 DESC, r2 DESC;'
 \i :iter_P2
 
 -- cost model tests to make sure that pushdown occurs on the

@@ -31,6 +31,7 @@
 #include <sys/syscall.h>
 #endif
 
+#include "yb/util/cgroups.h"
 #include "yb/util/format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
@@ -74,6 +75,12 @@ void ThreadPool::LowerIOPriority() {
 }
 
 void ThreadPool::BGThread(size_t thread_id) {
+#ifdef __linux__
+  // Explicit assignment prevents inheriting @system-high from a reactor/consensus caller.
+  if (auto* cg = yb::DefaultThreadCgroup()) {
+    WARN_NOT_OK(cg->MoveCurrentThreadToGroup(), "Failed to move rocksdb bg thread to cgroup");
+  }
+#endif
   bool low_io_priority = false;
   while (true) {
     // Wait until there is an item that is ready to run

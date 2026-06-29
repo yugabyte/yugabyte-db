@@ -1,0 +1,22 @@
+title: KmsConfigurationSpec
+description: |
+  User-provided KMS configuration.
+  Credentials are returned masked in API responses.
+type: object
+required:
+  - credentials
+properties:
+  name:
+    description: User-defined name for the KMS configuration.
+    type: string
+    example: production-aws-kms
+  provider:
+    description: 'KMS provider implementation key (AWS, GCP, etc.).'
+    type: string
+    example: AWS
+  credentials:
+    description: |
+      Masked provider auth configuration (opaque structure). Empty when the row has no
+      auth configuration loaded (e.g. missing or unavailable credentials).
+    type: object
+    additionalProperties: true

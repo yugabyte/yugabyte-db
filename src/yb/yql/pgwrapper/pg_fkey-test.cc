@@ -364,7 +364,7 @@ TEST_F(PgFKeyTest,
 }
 
 // Test checks FK correctness in case of FK check requires type casting.
-// In this case RPC optimization can't be used.
+// RPC optimization is used in this case as well.
 TEST_F(PgFKeyTest, AddFKConstraintWithTypeCast) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(PrepareTables(&conn,
@@ -377,7 +377,7 @@ TEST_F(PgFKeyTest, AddFKConstraintWithTypeCast) {
   ASSERT_OK(InsertItems(&conn, kPKTable, 21, 21));
   const auto add_fk_rpc_count = ASSERT_RESULT(rpc_count_->Delta(
       [&conn] { return AddFKConstraint(&conn); })).read;
-  ASSERT_EQ(add_fk_rpc_count, 43);
+  ASSERT_EQ(add_fk_rpc_count, 2);
 }
 
 // Test checks FK check correctness with respect to internal buffering

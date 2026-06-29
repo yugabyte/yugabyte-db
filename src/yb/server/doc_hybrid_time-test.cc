@@ -92,6 +92,28 @@ TEST(DocHybridTimeTest, TestToString) {
             DocHybridTime(100200300400, 2222, 123).ToString());
 }
 
+TEST(DocHybridTimeTest, TestToPrettyString) {
+  const char* old_tz = getenv("TZ");
+  ASSERT_EQ(0, setenv("TZ", "America/Los_Angeles", /* overwrite */ 1));
+  tzset();
+  HybridTime::TEST_SetPrettyToString(true);
+  ASSERT_EQ("HT{ years: 31 days: 273 time: 23:10:04 }",
+    DocHybridTime(1002003004000000, 0, kMinWriteId).ToString());
+  ASSERT_EQ("HT{ days: 0 time: 19:50:00.300400 logical: 4095 }",
+    DocHybridTime(100200300400, 4095, 0).ToString());
+  ASSERT_EQ("HT{ days: 22 time: 19:36:40.300400 w: 123 }",
+    DocHybridTime(2000200300400, 0, 123).ToString());
+  ASSERT_EQ("HT{ years: 3 days: 61 time: 01:50:00.300400 logical: 2222 w: 123 }",
+    DocHybridTime(100000200300400, 2222, 123).ToString());
+  // Restore the original TZ.
+  if (old_tz) {
+    ASSERT_EQ(0, setenv("TZ", old_tz, 1));
+  } else {
+    ASSERT_EQ(0, unsetenv("TZ"));
+  }
+  tzset();
+}
+
 TEST(DocHybridTimeTest, TestExactByteRepresentation) {
   const auto kYugaEpoch = kYugaByteMicrosecondEpoch;
 

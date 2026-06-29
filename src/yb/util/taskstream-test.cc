@@ -47,7 +47,7 @@
 #include "yb/util/blocking_queue.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/taskstream.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/threadpool.h"

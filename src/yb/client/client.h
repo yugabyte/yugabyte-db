@@ -80,9 +80,11 @@ namespace yb {
 
 class CloudInfoPB;
 class JsonWriter;
+class Cgroup;
 class MemTracker;
 class MetricEntity;
 class ThreadPool;
+class ThreadPoolToken;
 
 namespace master {
 class TabletLocationsPB;
@@ -669,7 +671,8 @@ class YBClient {
           CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
       uint64_t* consistent_snapshot_time_out = nullptr,
       const std::optional<ReplicationSlotLsnType>& lsn_type = std::nullopt,
-      const std::optional<ReplicationSlotOrderingMode>& ordering_mode = std::nullopt);
+      const std::optional<ReplicationSlotOrderingMode>& ordering_mode = std::nullopt,
+      const std::vector<TableId>& bound_table_ids = {});
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(
@@ -736,6 +739,9 @@ class YBClient {
       CoarseTimePoint deadline, std::function<Status()>&& should_retry);
   void ReleaseObjectLocksGlobalAsync(
       const master::ReleaseObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
+      CoarseTimePoint deadline);
+  void WaitForLockersMultipleGlobalAsync(
+      const master::WaitForLockersMultipleGlobalRequestPB& request, StdStatusCallback callback,
       CoarseTimePoint deadline);
 
   // Update a CDC stream's options.
@@ -804,6 +810,11 @@ class YBClient {
       const TabletServerId& ts_uuid,
       const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
       const tserver::LocalTabletServer* local_tserver);
+
+  // Registers a provider that maps a thread pool tag (DB OID) to a per-DB cgroup.
+  // When set, Batcher callbacks are submitted via a per-tag token so each DB's
+  // callback work runs in its own cgroup rather than the shared @system-med pool.
+  void SetCallbackCgroupProvider(std::function<Cgroup*(uint64_t)> provider);
 
   const internal::RemoteTabletServer* GetLocalTabletServer() const;
 
@@ -1213,6 +1224,10 @@ class YBClient {
   YBClient();
 
   ThreadPool* callback_threadpool();
+  // Returns a per-tag token (creating one on first call) so that callbacks for
+  // a given DB OID are submitted with per-task cgroup switching. Returns nullptr
+  // when no cgroup provider is registered or the tag has no associated cgroup.
+  ThreadPoolToken* GetOrCreateCallbackToken(uint64_t tag);
 
   template <class PB>
   bool DoRefreshTabletInfoWithConsensusInfo(const PB& newly_received_info);

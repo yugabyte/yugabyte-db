@@ -35,6 +35,7 @@ DECLARE_bool(TEST_skip_remove_tserver_shared_memory_object);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(TEST_transactional_read_delay_ms);
+DECLARE_uint64(TEST_shared_exchange_big_response_delay_ms);
 DECLARE_uint64(big_shared_memory_segment_expiration_time_ms);
 DECLARE_uint64(big_shared_memory_segment_session_expiration_time_ms);
 
@@ -60,6 +61,18 @@ class PgSharedMemTest : public PgMiniTestBase {
 
   virtual int GetReadWriteTimeout() const {
     return RegularBuildVsSanitizers(2, 20) * 1000;
+  }
+
+  // Cumulative number of worker threads ever created across all tserver shared memory exchange
+  // thread pools. Scoped to the exchange pools, so it is not affected by unrelated background
+  // thread creation in the cluster.
+  size_t SumExchangeThreadPoolWorkersCreated() const {
+    size_t result = 0;
+    for (const auto& mini_server : cluster_->mini_tablet_servers()) {
+      result += mini_server->server()->TEST_GetPgClientService()
+          ->TEST_ExchangeThreadPoolWorkersCreated();
+    }
+    return result;
   }
 
   std::pair<size_t, size_t> SumBigSharedMemUsage() const {
@@ -184,6 +197,45 @@ TEST_F(PgSharedMemTest, BigData) {
   ASSERT_OK(WaitFor(no_allocated_segments_functor, 5s, "Big shared memory segment released"));
 }
 
+// Reproduces the scenario from GH #31711. PG times out waiting for a shared exchange response,
+// while the tserver completes the request successfully just after that. The late response does
+// not fit into the exchange buffer, so the tserver stores it in a big shared memory segment and
+// marks the segment as in use. PG never loads this response, so the in use flag is never cleared.
+// The next request is sent over the exchange (failed previous request path), and when its big
+// response reuses the same segment, the tserver hits the "Big shared mem segment still in use"
+// DFATAL.
+TEST_F(PgSharedMemTest, AbandonedBigResponse) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto value = RandomHumanReadableString(boost::interprocess::mapped_region::get_page_size());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, value) VALUES (1, '$0')", value));
+
+  // Delay sending the big response, so PG gives up on the request, while the tserver completes
+  // it successfully and stores the big response into a big shared memory segment.
+  const auto response_delay_ms = FLAGS_ysql_client_read_write_timeout_ms * 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_shared_exchange_big_response_delay_ms) =
+      response_delay_ms;
+  ASSERT_NOK(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_shared_exchange_big_response_delay_ms) = 0;
+
+  // Wait for the abandoned response to occupy a big shared memory segment attached to the
+  // session with the in use flag set.
+  ASSERT_OK(WaitFor([this] {
+    auto usage = SumBigSharedMemUsage();
+    LOG(INFO) << "Big shared mem bytes, allocated: " << usage.first
+              << ", available: " << usage.second;
+    return usage.first > 0 && usage.second == 0;
+  }, response_delay_ms * 1ms + 10s, "Abandoned big response written"));
+
+  // Fetch twice, since the first fetch could fall back to TCP in case the abandoned response was
+  // not sent yet at the time of the check.
+  for (int i = 0; i != 2; ++i) {
+    auto result = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+    ASSERT_EQ(result, value);
+  }
+}
+
 TEST_F(PgSharedMemTest, Crash) {
   auto conn = ASSERT_RESULT(Connect());
 
@@ -250,7 +302,7 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
   }
 
   auto threads_before = CountManagedThreads();
-  auto threads_started_before = CountStartedThreads();
+  auto workers_created_before = SumExchangeThreadPoolWorkersCreated();
   constexpr size_t kNumIterations = 16;
 
   for (int i = 0; i != kNumIterations; ++i) {
@@ -261,13 +313,16 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
   }
 
   auto threads_after = CountManagedThreads();
-  auto threads_started_after = CountStartedThreads();
+  auto workers_created_after = SumExchangeThreadPoolWorkersCreated();
 
   LOG(INFO) << "Running threads: " << threads_before << ", " << threads_after
-            << ", started threads: " << threads_started_before << ", " << threads_started_after;
+            << ", exchange pool workers created: " << workers_created_before << ", "
+            << workers_created_after;
 
-  // Expect that we reuse at least some threads;
-  ASSERT_LT(threads_started_after, threads_started_before + kNumIterations);
+  // Connections are created and destroyed sequentially, so a single reused exchange thread per
+  // tserver is enough to serve all of them. Expect far fewer new workers than connections, which
+  // confirms the exchange thread pool reuses threads instead of spawning one per connection.
+  ASSERT_LT(workers_created_after, workers_created_before + kNumIterations);
 
   ASSERT_OK(WaitFor([threads_before] {
     return CountManagedThreads() <= threads_before;

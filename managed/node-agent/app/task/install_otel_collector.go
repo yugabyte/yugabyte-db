@@ -104,6 +104,16 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		return nil, err
 	}
 
+	// 5b) Refresh the log-purge script on disk so that any updates to
+	// zip_purge_yb_logs.sh.j2 shipped with newer node-agent builds (e.g. new
+	// log_cleanup_env variables consumed by the script) are picked up on every
+	// audit-config change without requiring a separate ConfigureServer run.
+	err = h.refreshLogPurgeScript(ctx, h.param.GetYbHomeDir())
+	if err != nil {
+		util.FileLogger().Error(ctx, err.Error())
+		return nil, err
+	}
+
 	// 6) Start and enable the service only if config file exists
 	if h.param.GetOtelColConfigFile() != "" {
 		if err = module.StartSystemdService(ctx, h.username, OtelCollectorService, h.logOut); err != nil {
@@ -249,9 +259,16 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 		{
 			"write-otel-log-cleanup-env",
 			fmt.Sprintf(
-				`echo "preserve_audit_logs=true" > %s && echo "ycql_audit_log_level=%s" >> %s`,
+				`echo "preserve_audit_logs=true" > %s `+
+					`&& echo "ycql_audit_log_level=%s" >> %s `+
+					`&& echo "ysql_audit_log_retention_days=%d" >> %s `+
+					`&& echo "ycql_audit_log_retention_days=%d" >> %s`,
 				otelColLogCleanupEnv,
 				h.param.GetYcqlAuditLogLevel(),
+				otelColLogCleanupEnv,
+				h.param.GetYsqlAuditLogRetentionDays(),
+				otelColLogCleanupEnv,
+				h.param.GetYcqlAuditLogRetentionDays(),
 				otelColLogCleanupEnv,
 			),
 		},
@@ -309,4 +326,29 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 		return err
 	}
 	return nil
+}
+
+// refreshLogPurgeScript renders the bundled zip_purge_yb_logs.sh.j2 template
+// and copies it into <yb_home>/bin/zip_purge_yb_logs.sh so that nodes always
+// run the script version shipped with the current node-agent build. This is a
+// no-op-equivalent on unchanged versions and lets script changes roll out via
+// the existing ManageOtelCollector flow without requiring a separate
+// ConfigureServer / software-upgrade trigger.
+func (h *InstallOtelCollector) refreshLogPurgeScript(
+	ctx context.Context,
+	ybHome string,
+) error {
+	scriptContext := map[string]any{
+		"yb_home_dir": ybHome,
+		"user_name":   h.username,
+	}
+	_, err := module.CopyFile(
+		ctx,
+		scriptContext,
+		filepath.Join(module.ServerTemplateSubpath, "zip_purge_yb_logs.sh.j2"),
+		filepath.Join(ybHome, "bin", "zip_purge_yb_logs.sh"),
+		fs.FileMode(0755),
+		h.username,
+	)
+	return err
 }

@@ -29,7 +29,7 @@
 
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/memory/arena_list.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb::pggate {
 namespace pg_column::internal {

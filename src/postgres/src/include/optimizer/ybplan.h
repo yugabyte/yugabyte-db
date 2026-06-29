@@ -31,7 +31,7 @@
 
 bool		YBCIsSingleRowModify(PlannedStmt *pstmt);
 
-bool		YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable);
+extern bool YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable);
 
 bool		YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs);
 

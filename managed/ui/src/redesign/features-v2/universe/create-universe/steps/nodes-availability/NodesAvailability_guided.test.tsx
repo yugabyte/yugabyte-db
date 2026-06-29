@@ -332,6 +332,59 @@ describe('NodesAvailabilitySchema', () => {
       } as any)
     ).toThrow();
   });
+
+  const onPremContextLoaded = {
+    isOnPrem: true,
+    freeNodesByAzUuid: { 'u-0': 3 },
+    isOnPremNodesLoaded: true
+  };
+
+  const onPremNodeLevelResilience = {
+    ...minimalResilience,
+    [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL,
+    [RESILIENCE_FACTOR]: 1,
+    [REGIONS_FIELD]: [{ code: 'r0', name: 'R0', uuid: 'R0', latitude: 0, longitude: 0, zones: [] }] as any
+  };
+
+  it('accepts on-prem guided placement when free nodes are sufficient', () => {
+    const schema = NodesAvailabilitySchema(onPremNodeLevelResilience, onPremContextLoaded);
+    expect(() =>
+      schema.validateSync({
+        availabilityZones: {
+          r0: [{ name: 'Z0', uuid: 'u-0', nodeCount: 3, preffered: 0 }]
+        },
+        useDedicatedNodes: false
+      } as any)
+    ).not.toThrow();
+  });
+
+  it('rejects on-prem guided placement when requested nodes exceed free nodes in an AZ', () => {
+    const schema = NodesAvailabilitySchema(onPremNodeLevelResilience, onPremContextLoaded);
+    expect(() =>
+      schema.validateSync({
+        availabilityZones: {
+          r0: [{ name: 'Z0', uuid: 'u-0', nodeCount: 4, preffered: 0 }]
+        },
+        useDedicatedNodes: false
+      } as any)
+    ).toThrow();
+  });
+
+  it('blocks on-prem validation while node list is loading', () => {
+    const schema = NodesAvailabilitySchema(onPremNodeLevelResilience, {
+      isOnPrem: true,
+      freeNodesByAzUuid: {},
+      isOnPremNodesLoaded: false
+    });
+    expect(() =>
+      schema.validateSync({
+        availabilityZones: {
+          r0: [{ name: 'Z0', uuid: 'u-0', nodeCount: 3, preffered: 0 }]
+        },
+        useDedicatedNodes: false
+      } as any)
+    ).toThrow();
+  });
 });
 
 describe('assignRegionsAZNodeByReplicationFactor', () => {

@@ -11,7 +11,7 @@
 // under the License.
 #include "yb/yql/pggate/util/ybc-internal.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/status_format.h"
 
 using std::string;

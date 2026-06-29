@@ -1780,19 +1780,15 @@ public class KubernetesUtil {
         continue;
       }
       DeviceInfo oldDeviceInfo, newDeviceInfo;
-      oldDeviceInfo =
-          currCluster.userIntent.getDeviceInfoForAz(az.uuid, false /* isDedicatedMaster */);
-      newDeviceInfo =
-          newCluster.userIntent.getDeviceInfoForAz(az.uuid, false /* isDedicatedMaster */);
+      oldDeviceInfo = currCluster.userIntent.getDeviceInfoForAz(az.uuid, ServerType.TSERVER);
+      newDeviceInfo = newCluster.userIntent.getDeviceInfoForAz(az.uuid, ServerType.TSERVER);
       if (!(newDeviceInfo == null
           || oldDeviceInfo.equals(newDeviceInfo)
           || oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {
         return true;
       }
-      oldDeviceInfo =
-          currCluster.userIntent.getDeviceInfoForAz(az.uuid, true /* isDedicatedMaster */);
-      newDeviceInfo =
-          newCluster.userIntent.getDeviceInfoForAz(az.uuid, true /* isDedicatedMaster */);
+      oldDeviceInfo = currCluster.userIntent.getDeviceInfoForAz(az.uuid, ServerType.MASTER);
+      newDeviceInfo = newCluster.userIntent.getDeviceInfoForAz(az.uuid, ServerType.MASTER);
       if (!(newDeviceInfo == null
           || oldDeviceInfo.equals(newDeviceInfo)
           || oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {

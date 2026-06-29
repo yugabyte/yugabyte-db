@@ -1,0 +1,6 @@
+required: true
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/UniverseValidateKubernetesOverrides.yaml"
+x-yba-api-visibility: internal

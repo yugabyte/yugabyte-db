@@ -85,6 +85,7 @@ import java.util.Map;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -96,6 +97,7 @@ import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
 
+@Slf4j
 @RunWith(JUnitParamsRunner.class)
 public abstract class UniverseCreateControllerTestBase extends UniverseControllerTestBase {
 
@@ -554,7 +556,9 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     InstanceType i =
         InstanceType.upsert(p.getUuid(), "small", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
-    ModelFactory.createUniverse("K8sUniverse1", customer.getId(), Common.CloudType.kubernetes);
+    Universe universe = ModelFactory.createUniverse("K8sUniverse1", customer.getId(), kubernetes);
+    assertEquals(
+        p.getUuid(), Util.getSingleProviderUUID(universe.getUniverseDetails().getPrimaryCluster()));
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson =

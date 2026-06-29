@@ -1893,7 +1893,7 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
       req->tablet_id(), delete_type,
       tablet::ShouldAbortActiveTransactions(req->should_abort_active_txns()),
       cas_config_opid_index_less_or_equal, req->hide_only(), req->keep_data(), &error_code,
-      std::move(txn_id));
+      std::move(txn_id), resp);
   if (PREDICT_FALSE(!s.ok())) {
     HandleErrorResponse(resp, &context, s, error_code);
     return;
@@ -2516,6 +2516,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   // backfill, and this.  Creating the connection has a startup cost.
   auto res = pgwrapper::CreateInternalPGConnBuilder(
                  server_->pgsql_proxy_bind_address(), "template1",
+                 pgwrapper::PGConnSettings::kDefaultUser,
                  server_->GetSharedMemoryPostgresAuthKey(), modified_deadline)
                  .Connect();
   if (!res.ok()) {
@@ -2743,17 +2744,20 @@ void TabletServiceImpl::Write(const WriteRequestMsg* req,
 void TabletServiceImpl::WaitForAsyncWrite(
     const WaitForAsyncWriteRequestPB* req, WaitForAsyncWriteResponsePB* resp,
     rpc::RpcContext context) {
-  auto callback = [resp, context_ptr = std::make_shared<rpc::RpcContext>(std::move(context))](
+  auto callback = [op_id = OpId::FromPB(req->op_id()), resp,
+                   context_ptr = std::make_shared<rpc::RpcContext>(std::move(context))](
                       const Status& status) {
     if (!status.ok()) {
       SetupErrorAndRespond(resp->mutable_error(), status, context_ptr.get());
       return;
     }
+    TEST_SYNC_POINT_CALLBACK(
+        "TabletServiceImpl::WaitForAsyncWrite::Verified", const_cast<OpId*>(&op_id));
     context_ptr->RespondSuccess();
   };
 
-  // We dont need the leader check here because if the peer gracefully transitioned to a follower
-  // we still want to succeed previously committed async writes received by this peer.
+  // Don't need to do a leader check here: a follower or post-split parent can still verify writes
+  // from its log.
   auto tablet_result = LookupTabletPeer(server_->tablet_peer_lookup(), req->tablet_id());
   if (!tablet_result) {
     callback(tablet_result.status());
@@ -3568,7 +3572,9 @@ void TabletServiceImpl::PgRemoteExec(
 
   // TODO(#30396): Maintain a pool of connections instead of creating a new connection
   auto conn = server_->CreateInternalPGConn(
-      req->database_name(), /* simple_query_protocol */ false, context.GetClientDeadline());
+      req->database_name(), /* user */ "yb_global_views_user",
+      /* simple_query_protocol */ false, context.GetClientDeadline(),
+      pgwrapper::YbInternalConnKindWireName::kGlobalView);
   if (!conn.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), conn.status(), &context);
     return;
@@ -3962,6 +3968,42 @@ void TabletServiceImpl::ReleaseObjectLocks(
   }
 }
 
+void TabletServiceImpl::WaitForLockersMultiple(
+    const WaitForLockersMultipleRequestPB* req, WaitForLockersMultipleResponsePB* resp,
+    rpc::RpcContext context) {
+  TRACE("Start WaitForLockersMultiple");
+  VLOG(2) << "Received WaitForLockersMultiple RPC: " << req->DebugString();
+  if (!FLAGS_enable_object_locking_for_table_locks) {
+    LOG_WITH_FUNC(INFO)
+        << "Flag enable_object_locking_for_table_locks disabled. "
+        << "Ignoring wait_for_lockers request.";
+    return context.RespondSuccess();
+  }
+  if (auto s = CheckLocalLeaseEpoch(GetRecipientLeaseEpoch(*req)); !s.ok()) {
+    return SetupErrorAndRespond(
+        resp->mutable_error(), s, TabletServerErrorPB::INVALID_YSQL_LEASE, &context);
+  }
+  auto ts_local_lock_manager = server_->ts_local_lock_manager();
+  if (!ts_local_lock_manager) {
+    VLOG_WITH_FUNC(1) << "TSLocalLockManager not found...";
+    return SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
+  }
+  TransactionId background_txn_id = TransactionId::Nil();
+  if (!req->background_transaction_id().empty()) {
+    auto res = FullyDecodeTransactionId(req->background_transaction_id());
+    if (!res.ok()) {
+      return SetupErrorAndRespond(resp->mutable_error(), res.status(), &context);
+    }
+    background_txn_id = *res;
+  }
+  const auto deadline = context.GetClientDeadline();
+  ts_local_lock_manager->WaitForLockersAsync(
+      req->object_locks(), deadline,
+      MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()),
+      background_txn_id);
+}
+
 Result<GetYSQLLeaseInfoResponsePB> TabletServiceImpl::GetYSQLLeaseInfo(
     const GetYSQLLeaseInfoRequestPB& req, CoarseTimePoint deadline) {
   auto lease_info = VERIFY_RESULT(server_->GetYSQLLeaseInfo());
@@ -3979,7 +4021,8 @@ void TabletServiceImpl::AdminExecutePgsql(
   auto execute_pg_sql = [&req, &context, &server = server_]() -> Status {
     const auto& deadline = context.GetClientDeadline();
     auto pg_conn = VERIFY_RESULT(
-        server->CreateInternalPGConn(req->database_name(), false, deadline));
+        server->CreateInternalPGConn(req->database_name(), kDefaultInternalPgUser, false,
+                                     deadline));
     for (const auto& stmt : req->pgsql_statements()) {
       SCHECK_LT(
           CoarseMonoClock::Now(), deadline, TimedOut, "Timed out while executing Ysql statements");

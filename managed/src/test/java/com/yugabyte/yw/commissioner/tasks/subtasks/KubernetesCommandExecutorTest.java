@@ -57,6 +57,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -157,7 +158,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             new InstanceType.InstanceTypeDetails());
     defaultUserIntent = getTestUserIntent(defaultRegion, defaultProvider, instanceType, numNodes);
     defaultUserIntent.replicationFactor = 3;
-    defaultUserIntent.dedicatedNodes = true;
+    ApiUtils.configureDedicatedMasterFields(defaultUserIntent);
     defaultUserIntent.masterGFlags = new HashMap<>();
     defaultUserIntent.tserverGFlags = new HashMap<>();
     defaultUserIntent.universeName = "demo-universe";
@@ -1717,5 +1718,88 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             eq(defaultUniverse.getUniverseDetails().nodePrefix),
             eq(namespace),
             any(String.class));
+  }
+
+  @Test
+  public void testHelmInstallRendersOtelCollectorForAuditAndQueryLogs() throws IOException {
+    // Persist a TelemetryProvider so the AWS exporter UUID referenced by the configs resolves
+    // through TelemetryProviderService.getOrBadRequest at render time.
+    com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig awsConfig =
+        new com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig();
+    awsConfig.setType(com.yugabyte.yw.models.helpers.telemetry.ProviderType.AWS_CLOUDWATCH);
+    awsConfig.setAccessKey("ak");
+    awsConfig.setSecretKey("sk");
+    awsConfig.setLogGroup("lg");
+    awsConfig.setLogStream("ls");
+    awsConfig.setRegion("us-west-2");
+    com.yugabyte.yw.models.TelemetryProvider tp = new com.yugabyte.yw.models.TelemetryProvider();
+    tp.setUuid(UUID.randomUUID());
+    tp.setCustomerUUID(defaultCustomer.getUuid());
+    tp.setName("aws-tp");
+    tp.setConfig(awsConfig);
+    tp.setTags(ImmutableMap.of());
+    tp.save();
+
+    // ybSoftwareVersion must clear the config-passthrough threshold so the chart receives the full
+    // collector config (correct "receivers" spelling, full "filelog/<x>" receiver names).
+    defaultUserIntent.ybSoftwareVersion = "2026.1.2.0-b1";
+
+    com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig auditLogConfig =
+        new com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig();
+    com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig ysqlAudit =
+        new com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig();
+    ysqlAudit.setEnabled(true);
+    auditLogConfig.setYsqlAuditConfig(ysqlAudit);
+    com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig auditExporter =
+        new com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig();
+    auditExporter.setExporterUuid(tp.getUuid());
+    auditLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(auditExporter));
+    defaultUserIntent.auditLogConfig = auditLogConfig;
+
+    com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig queryLogConfig =
+        new com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig();
+    com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig ysqlQuery =
+        new com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig();
+    ysqlQuery.setEnabled(true);
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQuery);
+    com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig queryExporter =
+        new com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig();
+    queryExporter.setExporterUuid(tp.getUuid());
+    queryLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(queryExporter));
+    defaultUserIntent.queryLogConfig = queryLogConfig;
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+
+    KubernetesCommandExecutor executor =
+        createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL, true);
+    executor.run();
+
+    ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(
+            any(UUID.class),
+            any(String.class),
+            any(Map.class),
+            any(UUID.class),
+            any(String.class),
+            any(String.class),
+            overrideFile.capture());
+
+    // The override YAML uses snakeyaml java-type tags for exporter classes that the default Yaml
+    // ctor can't resolve, so assert on the raw text instead of parsing the document.
+    String overridesYaml =
+        FileUtils.readFileToString(new File(overrideFile.getValue()), Charset.defaultCharset());
+    assertTrue(
+        "otelCollector block must be rendered, yaml=" + overridesYaml,
+        overridesYaml.contains("otelCollector"));
+    assertTrue(
+        "audit receiver 'filelog/ysql' must be present, yaml=" + overridesYaml,
+        overridesYaml.contains("filelog/ysql"));
+    assertTrue(
+        "query receiver 'filelog/query_logs_ysql' must be present, yaml=" + overridesYaml,
+        overridesYaml.contains("filelog/query_logs_ysql"));
   }
 }

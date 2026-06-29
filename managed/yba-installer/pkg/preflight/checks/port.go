@@ -45,8 +45,11 @@ func (p portCheck) Execute() Result {
 	if viper.GetBool("postgres.install.enabled") {
 		ports = append(ports, viper.GetInt("postgres.install.port"))
 	}
-	if (viper.GetBool("perfAdvisor.enabled")) {
+	if viper.GetBool("perfAdvisor.enabled") {
 		ports = append(ports, viper.GetInt("perfAdvisor.port"))
+	}
+	if viper.GetBool("nodeExporter.enabled") {
+		ports = append(ports, viper.GetInt("nodeExporter.port"))
 	}
 
 	usedPorts := make([]int, 0, len(ports))

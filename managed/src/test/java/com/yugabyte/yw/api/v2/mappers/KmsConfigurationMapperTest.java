@@ -9,6 +9,8 @@ import static org.mockito.Mockito.mockStatic;
 
 import api.v2.mappers.KmsConfigurationMapper;
 import api.v2.models.KmsConfiguration;
+import api.v2.models.KmsConfigurationInfo;
+import api.v2.models.KmsConfigurationSpec;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.models.KmsConfig;
@@ -24,7 +26,7 @@ import play.libs.Json;
 public class KmsConfigurationMapperTest {
 
   @Test
-  public void toKmsConfiguration_mapsMetadataWhenCredentialsPresent() {
+  public void toKmsConfiguration_mapsSpecAndInfoWhenCredentialsPresent() {
     UUID configUuid = UUID.randomUUID();
     KmsConfig config = new KmsConfig();
     config.setConfigUUID(configUuid);
@@ -40,13 +42,19 @@ public class KmsConfigurationMapperTest {
 
       KmsConfiguration out = KmsConfigurationMapper.INSTANCE.toKmsConfiguration(config);
 
-      assertNotNull(out.getCredentials());
-      assertTrue(out.getCredentials().containsKey("ACCESS_KEY"));
-      assertEquals("kms-row", out.getMetadata().getName());
-      assertEquals(configUuid, out.getMetadata().getConfigUuid());
-      assertEquals("AWS", out.getMetadata().getProvider());
-      assertTrue(out.getMetadata().getInUse());
-      assertTrue(out.getMetadata().getUniverseDetails().isEmpty());
+      assertNotNull(out.getSpec());
+      assertNotNull(out.getInfo());
+      KmsConfigurationSpec spec = out.getSpec();
+      KmsConfigurationInfo info = out.getInfo();
+
+      assertNotNull(spec.getCredentials());
+      assertTrue(spec.getCredentials().containsKey("ACCESS_KEY"));
+      assertEquals("kms-row", spec.getName());
+      assertEquals("AWS", spec.getProvider());
+
+      assertEquals(configUuid, info.getUuid());
+      assertTrue(info.getInUse());
+      assertTrue(info.getUniverseDetails().isEmpty());
     }
   }
 
@@ -67,9 +75,10 @@ public class KmsConfigurationMapperTest {
 
       KmsConfiguration out = KmsConfigurationMapper.INSTANCE.toKmsConfiguration(config);
 
-      assertNotNull(out);
-      assertTrue(out.getCredentials().isEmpty());
-      assertEquals("x", out.getMetadata().getName());
+      assertNotNull(out.getSpec());
+      assertTrue(out.getSpec().getCredentials().isEmpty());
+      assertEquals("x", out.getSpec().getName());
+      assertEquals(false, out.getInfo().getInUse());
     }
   }
 }

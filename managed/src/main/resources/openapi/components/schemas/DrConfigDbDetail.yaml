@@ -1,0 +1,34 @@
+title: DrConfigDbDetail
+description: Per-database replication details for a DB-scoped DR config.
+type: object
+properties:
+  source_namespace_id:
+    description: Source namespace ID.
+    type: string
+    readOnly: true
+  status:
+    $ref: "./DrConfigReplicationDetailStatus.yaml"
+    readOnly: true
+  replication_setup_time:
+    description: Time when replication was set up for this database.
+    type: string
+    format: date-time
+    readOnly: true
+  backup_uuid:
+    description: UUID of the backup used for bootstrapping this database.
+    type: string
+    format: uuid
+    readOnly: true
+  restore_uuid:
+    description: UUID of the restore used for bootstrapping this database.
+    type: string
+    format: uuid
+    readOnly: true
+  source_namespace_info:
+    description: 'Namespace metadata from the primary universe, when available.'
+    $ref: "./NamespaceInfo.yaml"
+    readOnly: true
+  target_namespace_info:
+    description: 'Namespace metadata from the DR replica universe, when available.'
+    $ref: "./NamespaceInfo.yaml"
+    readOnly: true

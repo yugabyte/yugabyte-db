@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { withRouter } from 'react-router';
 import { Box } from '@material-ui/core';
 import { PerfAdvisorOverviewDashboard } from '../AttachUniverseToPerfAdvisor/PerfAdvisorOverviewDashboard';
+import { isPaDrilldownUrl } from '../AttachUniverseToPerfAdvisor/perfAdvisorUrlHelpers';
 import { YBTabsPanel } from '../../../components/panels';
 
 interface PerfAdvisorTabsProps {
@@ -17,9 +18,10 @@ interface PerfAdvisorTabsProps {
 
 export const ConfigTabKey = {
   CLUSTER_LOAD: 'clusterLoad',
-  METRICS: 'metricsNew'
+  METRICS: 'metricsNew',
+  ANOMALIES: 'anomalies'
 } as const;
-export type ConfigTabKey = typeof ConfigTabKey[keyof typeof ConfigTabKey];
+export type ConfigTabKey = (typeof ConfigTabKey)[keyof typeof ConfigTabKey];
 
 const PerfAdvisorTabsComponent = ({
   universeUuid,
@@ -88,6 +90,21 @@ const PerfAdvisorTabsComponent = ({
       title: t('clusterDetail.troubleshoot.perfAdvisorMetricsTab')
     }
   ];
+
+  // On a query/anomaly drilldown, hide the horizontal Cluster Load / Metrics
+  // tabs and render only the drilldown content.
+  if (isPaDrilldownUrl()) {
+    return (
+      <Box>
+        <PerfAdvisorOverviewDashboard
+          apiUrl={apiUrl}
+          timezone={timezone}
+          universeUuid={universeUuid}
+          registrationStatus={registrationStatus}
+        />
+      </Box>
+    );
+  }
 
   return (
     <Box>

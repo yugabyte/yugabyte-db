@@ -70,6 +70,7 @@ public class NodeScriptRunner {
     private String nodeAddress;
     private int exitCode;
     private String stdout;
+    private String stderr;
     private long executionTimeMs;
     private boolean success;
     private String errorMessage;
@@ -225,13 +226,21 @@ public class NodeScriptRunner {
 
       long executionTime = System.currentTimeMillis() - nodeStartTime;
 
+      // The node agent transmits only one stream per command: stdout on success, stderr on
+      // failure (the other is dropped on the node before it is ever sent). ShellResponse collapses
+      // that single transmitted stream into message, so we route it to the correct field by exit
+      // code. There is no second stream to recover here.
+      boolean succeeded = response.getCode() == 0;
+      String output = response.getMessage();
+
       return NodeResult.builder()
           .nodeName(node.nodeName)
           .nodeAddress(node.cloudInfo.private_ip)
           .exitCode(response.getCode())
-          .stdout(response.getMessage())
+          .stdout(succeeded ? output : "")
+          .stderr(succeeded ? "" : output)
           .executionTimeMs(executionTime)
-          .success(response.getCode() == 0)
+          .success(succeeded)
           .build();
 
     } catch (Exception e) {

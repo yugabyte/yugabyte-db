@@ -33,6 +33,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
@@ -256,9 +257,14 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     if (volumeThroughputChange) {
       targetIntent.deviceInfo.throughput = NEW_DISK_THROUGHPUT;
     }
+    UUID providerUUID = Util.getSingleProviderUUID(currentIntent);
 
-    createInstanceType(UUID.fromString(currentIntent.provider), curInstanceTypeCode);
-    createInstanceType(UUID.fromString(currentIntent.provider), targetInstanceTypeCode);
+    createInstanceType(providerUUID, curInstanceTypeCode);
+    createInstanceType(providerUUID, targetInstanceTypeCode);
+    for (UniverseDefinitionTaskParams.Cluster cluster :
+        defaultUniverse.getUniverseDetails().clusters) {
+      cluster.userIntent.provider = providerUUID.toString();
+    }
     assertEquals(
         expected,
         ResizeNodeParams.checkResizeIsPossible(
@@ -416,7 +422,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       default:
         throw new IllegalArgumentException("Unknown type " + instType);
     }
-    createInstanceType(UUID.fromString(intent.provider), instanceType);
+    createInstanceType(Util.getSingleProviderUUID(intent), instanceType);
     if (toMaster) {
       intent.masterInstanceType = instanceType;
     } else {
@@ -1664,12 +1670,12 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
                 defaultUniverse.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 region1.getCode()),
             Arrays.asList(nodesByAZ.get("1"), rrNodesByAZ.get("1")),
             DoCapacityReservation.getCapacityReservationGroupName(
                 defaultUniverse.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 region2.getCode()),
             Arrays.asList(nodesByAZ.get("2"), nodesByAZ.get("3"), rrNodesByAZ.get("4"))));
   }
@@ -1809,25 +1815,25 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         Map.of(
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 defaultUniverse.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-1",
                 NEW_INSTANCE_TYPE),
             Arrays.asList(nodesByAZ.get("az-1"), rrNodesByAZ.get("az-1")),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 defaultUniverse.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-4",
                 NEW_INSTANCE_TYPE),
             Arrays.asList(nodesByAZ.get("az-4")),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 defaultUniverse.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-5",
                 NEW_INSTANCE_TYPE),
             Arrays.asList(nodesByAZ.get("az-5")),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 defaultUniverse.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-6",
                 NEW_INSTANCE_TYPE),
             Arrays.asList(rrNodesByAZ.get("az-6"))));

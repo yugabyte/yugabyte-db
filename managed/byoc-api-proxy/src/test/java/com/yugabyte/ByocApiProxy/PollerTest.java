@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -29,6 +30,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -71,7 +73,8 @@ class PollerTest {
             });
     when(yba.uuid()).thenReturn(YBA_UUID);
     when(yba.baseUrl()).thenReturn("http://yba.test");
-    when(proxiedApp.pollBatchSize()).thenReturn(10);
+    lenient().when(proxiedApp.pollBatchSize()).thenReturn(10);
+    lenient().when(proxiedApp.readTimeout()).thenReturn(Duration.ofSeconds(30));
     when(defaultClient.getBasePath()).thenReturn("http://proxied.test/api");
 
     poller =
@@ -82,7 +85,7 @@ class PollerTest {
   @AfterEach
   void tearDown() throws Exception {
     poller.destroy();
-    executor.shutdown();
+    executor.shutdownNow();
     executor.awaitTermination(5, TimeUnit.SECONDS);
     while (Thread.interrupted()) {
       Thread.interrupted();
@@ -201,7 +204,7 @@ class PollerTest {
     verify(httpClient).send(reqCaptor.capture(), any());
     HttpRequest built = reqCaptor.getValue();
     assertEquals("POST", built.method());
-    assertEquals(URI.create(uri), built.uri());
+    assertEquals(URI.create("http://yba.test/post"), built.uri());
     assertTrue(built.headers().firstValue("Content-Type").orElse("").contains("application/json"));
   }
 
@@ -276,6 +279,18 @@ class PollerTest {
   }
 
   @Test
+  void run_authenticateThrowsApiExceptionWithConnectExceptionCause_logsWarn() throws Exception {
+    ApiException conn =
+        new ApiException("conn", new ConnectException("refused"), 500, Map.of(), "");
+    doThrow(conn).when(authenticator).authenticate(defaultClient);
+
+    poller.run();
+
+    verify(requestApi, never()).listPendingQueuedHttpRequests(any(), any());
+    verify(requestApi, never()).postQueuedHttpRequestResponse(any(), any());
+  }
+
+  @Test
   void run_listPendingThrowsApiExceptionWithSocketTimeoutCause_logsWarn() throws Exception {
     ApiException timeout =
         new ApiException("timeout", new SocketTimeoutException("timed out"), 500, Map.of(), "");
@@ -308,24 +323,34 @@ class PollerTest {
 
   @Test
   @SuppressWarnings("unchecked")
-  void run_postThrowsApiException_propagates() throws Exception {
-    QueuedHttpRequestData pendingItem =
-        new QueuedHttpRequestData().id(UUID.randomUUID()).method("GET").uri("http://localhost/ok");
-    stubPending(List.of(pendingItem));
-    HttpResponse<String> httpResponse = mock(HttpResponse.class);
-    when(httpResponse.statusCode()).thenReturn(200);
-    when(httpResponse.body()).thenReturn("x");
-    when(httpResponse.uri()).thenReturn(URI.create(pendingItem.getUri()));
-    when(httpResponse.headers()).thenReturn(mock(HttpHeaders.class));
-    when(httpClient.send(any(HttpRequest.class), any())).thenAnswer(invocation -> httpResponse);
+  void run_postFailsForOne_logsAndContinuesBatch() throws Exception {
+    UUID idA = UUID.fromString("77777777-7777-7777-7777-777777777777");
+    UUID idB = UUID.fromString("88888888-8888-8888-8888-888888888888");
+    QueuedHttpRequestData a =
+        new QueuedHttpRequestData().id(idA).method("GET").uri("http://localhost/a");
+    QueuedHttpRequestData b =
+        new QueuedHttpRequestData().id(idB).method("GET").uri("http://localhost/b");
+    stubPending(List.of(a, b));
+    when(httpClient.send(any(HttpRequest.class), any()))
+        .thenAnswer(
+            invocation -> {
+              HttpResponse<String> httpResponse = mock(HttpResponse.class);
+              when(httpResponse.statusCode()).thenReturn(200);
+              when(httpResponse.body()).thenReturn("ok");
+              when(httpResponse.uri()).thenReturn(URI.create("http://localhost/x"));
+              when(httpResponse.headers()).thenReturn(mock(HttpHeaders.class));
+              return httpResponse;
+            });
 
-    ApiException postFail = new ApiException("post failed", 400, Map.of(), "");
-    doThrow(postFail)
-        .when(requestApi)
-        .postQueuedHttpRequestResponse(
-            any(UUID.class), any(PostQueuedHttpRequestResponseRequestSpec.class));
+    // Posting the first response fails (e.g. 413); it must not abort the batch or crash run().
+    ApiException postFail = new ApiException("Payload Too Large", 413, Map.of(), "");
+    doThrow(postFail).when(requestApi).postQueuedHttpRequestResponse(eq(idA), any());
 
-    assertThrows(ApiException.class, poller::run);
+    poller.run();
+
+    // Both posts are attempted; the second still succeeds despite the first failing.
+    verify(requestApi).postQueuedHttpRequestResponse(eq(idA), any());
+    verify(requestApi).postQueuedHttpRequestResponse(eq(idB), any());
   }
 
   private void stubPending(List<QueuedHttpRequestData> data) throws ApiException {

@@ -1,0 +1,32 @@
+title: PitrConfigSpec
+description: |
+  User-provided PITR configuration on a universe.
+  These properties are set at create time and may be updated where supported.
+type: object
+properties:
+  name:
+    description: PITR config name
+    type: string
+  db_name:
+    description: Database or keyspace name
+    type: string
+  table_type:
+    description: Table type
+    type: string
+    enum:
+      - YQL_TABLE_TYPE
+      - REDIS_TABLE_TYPE
+      - PGSQL_TABLE_TYPE
+      - TRANSACTION_STATUS_TABLE_TYPE
+  schedule_interval:
+    description: Interval between snapshots in seconds
+    type: integer
+    format: int64
+  retention_period:
+    description: Retention period in seconds
+    type: integer
+    format: int64
+  intermittent_min_recover_time_in_millis:
+    description: 'Intermittent minimum recovery time in milliseconds, used when the retention period is increased.'
+    type: integer
+    format: int64

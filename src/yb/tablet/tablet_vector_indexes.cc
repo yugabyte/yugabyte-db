@@ -170,6 +170,10 @@ class IndexedTableReader {
 // A way to block backfilling vector index after the first vector index chunk is flushed.
 bool TEST_block_after_backfilling_first_vector_index_chunks = false;
 
+// When set, overrides whether vector index backfill writes reverse mappings. When unset, follows
+// the indexed table's owns_vector_reverse_mapping table property.
+std::optional<bool> TEST_vector_index_skip_reverse_mapping_backfill = std::nullopt;
+
 TabletVectorIndexes::TabletVectorIndexes(
     Tablet* tablet,
     const VectorIndexThreadPoolProvider& thread_pool_provider,
@@ -402,7 +406,9 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
       .frontiers = &frontiers,
       .chunk_size = chunk_size_,
     };
+    auto num_entries = entries().size();
     RETURN_NOT_OK_PREPEND(index.Insert(entries(), options), "Insert entries");
+    index.metrics().backfill_inserted_entries->IncrementBy(num_entries);
 
     if (!next_ybctid.empty()) {
       Reset();
@@ -465,7 +471,10 @@ Status TabletVectorIndexes::Backfill(
   RETURN_NOT_OK(reader.Init(backfill_ht, from_key));
 
   ReverseMappingBackfillerPtr reverse_mapping_backfiller;
-  if (!vector_index->options().skip_reverse_mapping_backfill()) {
+  const bool skip_reverse_mapping_backfill =
+      TEST_vector_index_skip_reverse_mapping_backfill.value_or(
+          indexed_table.schema().table_properties().owns_vector_reverse_mapping());
+  if (!skip_reverse_mapping_backfill) {
     reverse_mapping_backfiller = std::make_unique<ReverseMappingBackfiller>(op_id);
   }
 
@@ -670,9 +679,9 @@ docdb::DocVectorIndexPtr TabletVectorIndexes::IndexForTable(const TableId& table
   return IndexForTableUnlocked(table_id);
 }
 
-docdb::DocVectorIndexesPtr TabletVectorIndexes::Collect(const std::vector<TableId>& table_ids) {
+VectorIndexList TabletVectorIndexes::Collect(const std::vector<TableId>& table_ids) {
   if (!has_vector_indexes_.load(std::memory_order_acquire)) {
-    return nullptr;
+    return VectorIndexList();
   }
 
   if (table_ids.empty()) {
@@ -686,20 +695,20 @@ docdb::DocVectorIndexesPtr TabletVectorIndexes::Collect(const std::vector<TableI
     for (const auto& table_id : table_ids) {
       auto index = IndexForTableUnlocked(table_id);
       if (!index) {
-        return nullptr;
+        return VectorIndexList();
       }
       result->push_back(std::move(index));
     }
   }
-  return result;
+  return VectorIndexList(std::move(result));
 }
 
-docdb::DocVectorIndexesPtr TabletVectorIndexes::List() const {
+VectorIndexList TabletVectorIndexes::List() const {
   if (!has_vector_indexes_.load(std::memory_order_acquire)) {
-    return nullptr;
+    return VectorIndexList();
   }
   SharedLock lock(vector_indexes_mutex_);
-  return vector_indexes_list_;
+  return VectorIndexList(vector_indexes_list_);
 }
 
 auto TabletVectorIndexes::FinishedBackfills()
@@ -882,6 +891,19 @@ Status VectorIndexList::WaitForCompaction() {
   }
 
   return Status::OK();
+}
+
+uint64_t VectorIndexList::OnDiskSize() const {
+  if (!list_) {
+    return 0;
+  }
+
+  uint64_t result = 0;
+  for (const auto& index : *list_) {
+    result += index->OnDiskSize();
+  }
+
+  return result;
 }
 
 std::string VectorIndexList::ToString() const {

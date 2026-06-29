@@ -1325,8 +1325,7 @@ Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architec
 
 {{% tags/wrap %}}
 
-
-Default: `1 MB`
+Default: `4194304` (4MB)
 {{% /tags/wrap %}}
 
 Max size (in bytes) of changes sent from CDC Service to [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication/)(VWAL) for a particular tablet.
@@ -1356,6 +1355,7 @@ When true, the CDC service returns a null before-image if it is not able to find
 {{% tags/wrap %}}
 
 Default: `false`
+{{<tags/feature/ea idea="2470">}}
 {{% /tags/wrap %}}
 
 Available in v2024.2.9.1 and later, v2025.2.4.0 and later.

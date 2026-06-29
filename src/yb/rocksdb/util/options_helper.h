@@ -26,7 +26,7 @@
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/mutable_cf_options.h"
 

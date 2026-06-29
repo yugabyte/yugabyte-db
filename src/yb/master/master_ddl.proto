@@ -870,6 +870,19 @@ message ReleaseObjectLocksGlobalResponsePB {
   optional fixed64 propagated_hybrid_time = 2;
 }
 
+message WaitForLockersMultipleGlobalRequestPB {
+  optional bytes session_host_uuid = 1;
+  optional uint64 lease_epoch = 2;
+  repeated docdb.ObjectLockPB object_locks = 3;
+  optional fixed64 propagated_hybrid_time = 4;
+  optional bytes background_transaction_id = 5;
+}
+
+message WaitForLockersMultipleGlobalResponsePB {
+  optional MasterErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
 message GetObjectLockStatusRequestPB {
 }
 
@@ -984,6 +997,10 @@ service MasterDdl {
       returns (RefreshYsqlLeaseResponsePB);
   rpc RelinquishYsqlLease(RelinquishYsqlLeaseRequestPB)
       returns (RelinquishYsqlLeaseResponsePB);
+  rpc WaitForLockersMultipleGlobal(WaitForLockersMultipleGlobalRequestPB)
+      returns (WaitForLockersMultipleGlobalResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
   rpc GetObjectLockStatus(GetObjectLockStatusRequestPB)
       returns (GetObjectLockStatusResponsePB);
 }

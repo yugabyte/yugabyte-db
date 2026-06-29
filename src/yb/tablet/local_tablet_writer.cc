@@ -93,7 +93,7 @@ void LocalTabletWriter::Submit(std::unique_ptr<Operation> operation, int64_t ter
   // Create a "fake" OpId and set it in the Operation for anchoring.
   state->set_op_id(op_id);
 
-  CHECK_OK(tablet_->ApplyRowOperations(state));
+  CHECK_OK(tablet_->ApplyRowOperations(state, docdb::StorageSet::All()));
 
   tablet_->mvcc_manager()->Replicated(hybrid_time, op_id);
 

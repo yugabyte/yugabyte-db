@@ -134,6 +134,13 @@ YBCInitVirtualWal(List *yb_publication_names)
 												   "context",
 												   ALLOCSET_DEFAULT_SIZES);
 	/*
+	 * Reset cached state for a fresh start. Ensures we don't use stale data
+	 * from a previous session if Init is ever called without Destroy.
+	 */
+	cached_records = NULL;
+	cached_records_last_sent_row_idx = 0;
+
+	/*
 	 * A separate memory context for the unacked txn list as a child of the
 	 * virtual wal context.
 	 */
@@ -143,8 +150,17 @@ YBCInitVirtualWal(List *yb_publication_names)
 													 ALLOCSET_DEFAULT_SIZES);
 	caller_context = CurrentMemoryContext;
 
-	/* Start a transaction to be able to read the catalog tables. */
-	StartTransactionCommand();
+	/*
+	 * Start a transaction to be able to read the catalog tables.
+	 * Only needed when no transaction is already active, i.e. for the push
+	 * model (walsender) and the notifications poller background worker. In
+	 * the pull model (SQL function API), the caller's transaction is already
+	 * active and provides catalog access.
+	 */
+	bool		is_in_txn = IsTransactionOrTransactionBlock();
+
+	if (!is_in_txn)
+		StartTransactionCommand();
 
 	/*
 	 * Allocate any data within the virtual wal context i.e. outside of the
@@ -154,7 +170,18 @@ YBCInitVirtualWal(List *yb_publication_names)
 
 	InitVirtualWal(yb_publication_names, slot_hash_range);
 
-	AbortCurrentTransaction();
+	if (!is_in_txn)
+		AbortCurrentTransaction();
+	else
+	{
+		/*
+		 * In the pull model, InitVirtualWal sets yb_read_time for catalog
+		 * reads. Since we're sharing the caller's transaction, we must reset
+		 * it to avoid polluting subsequent operations in the same transaction.
+		 * In the push model, AbortCurrentTransaction handles this cleanup.
+		 */
+		YBCResetYbReadTimeAndInvalidateRelcache();
+	}
 	MemoryContextSwitchTo(caller_context);
 
 	unacked_transactions = NIL;
@@ -182,7 +209,17 @@ YBCDestroyVirtualWal()
 	if (virtual_wal_context)
 		MemoryContextDelete(virtual_wal_context);
 
+	/*
+	 * Reset cached_records to avoid dangling pointer. The memory it pointed
+	 * to was freed when cached_records_context was deleted above.
+	 */
+	cached_records = NULL;
+	cached_records_last_sent_row_idx = 0;
+
 	needs_publication_table_list_refresh = false;
+
+	/* YB: Reset yb_read_time set by InitVirtualWal. */
+	YBCResetYbReadTimeAndInvalidateRelcache();
 }
 
 static List *
@@ -400,6 +437,7 @@ YBXLogReadRecord(XLogReaderState *state, List *publication_names,
 	if (record)
 	{
 		state->ReadRecPtr = record->lsn;
+		state->EndRecPtr = record->lsn;
 		state->yb_virtual_wal_record = record;
 	}
 
@@ -548,25 +586,36 @@ PreProcessBeforeFetchingNextBatch()
 	if (cached_records)
 		MemoryContextReset(cached_records_context);
 
-	/* Don't track idle sleep time */
-	pgstat_report_wait_start(WAIT_EVENT_YB_IDLE_SLEEP);
-
-	if (last_getconsistentchanges_response_empty)
+	/*
+	 * Sleep between poll iterations to avoid busy-waiting. Needed for the
+	 * push model (walsender) and the notifications poller background worker
+	 * which continuously poll for new records. In the pull model (SQL
+	 * function API), the caller is inside its own SQL transaction, so we
+	 * skip the sleep and fetch without delay until no more records are
+	 * available.
+	 */
+	if (!IsTransactionOrTransactionBlock())
 	{
-		elog(DEBUG4, "YBCReadRecord: Sleeping for %d ms due to empty response.",
-			 yb_walsender_poll_sleep_duration_empty_ms);
-		pg_usleep(1000L * yb_walsender_poll_sleep_duration_empty_ms);
-	}
-	else
-	{
-		elog(DEBUG4,
-			 "YBCReadRecord: Sleeping for %d ms as the last "
-			 "response was non-empty.",
-			 yb_walsender_poll_sleep_duration_nonempty_ms);
-		pg_usleep(1000L * yb_walsender_poll_sleep_duration_nonempty_ms);
-	}
+		/* Don't track idle sleep time */
+		pgstat_report_wait_start(WAIT_EVENT_YB_IDLE_SLEEP);
 
-	pgstat_report_wait_end();
+		if (last_getconsistentchanges_response_empty)
+		{
+			elog(DEBUG4, "YBCReadRecord: Sleeping for %d ms due to empty response.",
+				 yb_walsender_poll_sleep_duration_empty_ms);
+			pg_usleep(1000L * yb_walsender_poll_sleep_duration_empty_ms);
+		}
+		else
+		{
+			elog(DEBUG4,
+				 "YBCReadRecord: Sleeping for %d ms as the last "
+				 "response was non-empty.",
+				 yb_walsender_poll_sleep_duration_nonempty_ms);
+			pg_usleep(1000L * yb_walsender_poll_sleep_duration_nonempty_ms);
+		}
+
+		pgstat_report_wait_end();
+	}
 
 	elog(DEBUG5, "YBCReadRecord: Fetching a fresh batch of changes.");
 }

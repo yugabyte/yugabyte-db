@@ -57,6 +57,7 @@
 #include "utils/varlena.h"
 
 /* YB includes */
+#include "yb_internal_conn.h"
 #include "yb_ysql_conn_mgr_helper.h"
 #include <pg_yb_utils.h>
 
@@ -255,6 +256,17 @@ GetBackendTypeDesc(BackendType backendType)
 {
 	const char *backendDesc = "unknown process type";
 
+	/*
+	 * YB-internal-connection BackendTypes are described by their registry
+	 * descriptor; adding a new kind in yb_internal_conn.c is sufficient and
+	 * does not require touching this switch.
+	 */
+	YbInternalConnKind kind = YbLookupInternalConnKindByBackendType(backendType);
+
+	if (kind != YB_INTERNAL_CONN_KIND_NONE &&
+		YbInternalConnKindDescriptors[kind].backend_desc != NULL)
+		return YbInternalConnKindDescriptors[kind].backend_desc;
+
 	switch (backendType)
 	{
 		case B_INVALID:
@@ -302,6 +314,9 @@ GetBackendTypeDesc(BackendType backendType)
 		case YB_YSQL_CONN_MGR_WAL_SENDER:
 			backendDesc = "yb-conn-mgr walsender";
 			break;
+		case YB_YSQL_CONN_MGR_CTRL:
+			backendDesc = "yb-conn-mgr control connection";
+			break;
 		case YB_AUTO_ANALYZE_BACKEND:
 			backendDesc = "yb auto analyze backend";
 			break;
@@ -310,6 +325,17 @@ GetBackendTypeDesc(BackendType backendType)
 			break;
 		case YB_MATVIEW_REFRESH_DDL:
 			backendDesc = "yb matview refresh";
+			break;
+		case YB_RELCACHE_INIT_BACKEND:
+		case YB_GLOBAL_VIEW_BACKEND:
+			/*
+			 * Handled by the registry lookup at the top of this function.
+			 * The case is here only so this switch stays enum-exhaustive.
+			 * Future YB internal-conn kinds need a similar one-line case
+			 * (or the switch could be restructured around a registry-aware
+			 * default).
+			 */
+			Assert(false);
 			break;
 	}
 

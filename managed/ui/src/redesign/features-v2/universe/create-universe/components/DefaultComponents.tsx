@@ -53,6 +53,7 @@ export const StyledInfoRow = styled(Box)(({ theme }) => ({
     display: 'flex',
     flexDirection: 'column',
     gap: '4px',
+    minWidth: '200px',
     '& > .header': {
       color: theme.palette.grey[600],
       textTransform: 'uppercase',

@@ -268,24 +268,28 @@ $$
   begin
     raise notice 'trigger = %, old table = %, new table = %',
                  TG_NAME,
-                 (select string_agg(old_table::text, ', ' ORDER BY a) FROM old_table),
-                 (select string_agg(new_table::text, ', ' ORDER BY a) FROM new_table);
+                 (select string_agg(old_table::text, ', ' ORDER BY old_table::text) FROM old_table), -- YB
+                 (select string_agg(new_table::text, ', ' ORDER BY new_table::text) FROM new_table);
     return null;
   end;
 $$;
--- Enable the following tests after REFERENCING clause (transition tables) is supported.
 CREATE TRIGGER trans_updatetrig
   AFTER UPDATE ON range_parted REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
   FOR EACH STATEMENT EXECUTE PROCEDURE trans_updatetrigfunc();
-ERROR:  REFERENCING clause (transition tables) not supported yet
-LINE 2:   AFTER UPDATE ON range_parted REFERENCING OLD TABLE AS old_...
-                                       ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
-/*
 UPDATE range_parted set c = (case when c = 96 then 110 else c + 1 end ) WHERE a = 'b' and b > 10 and c >= 96;
+NOTICE:  trigger = trans_updatetrig, old table = (b,12,96,1,), (b,13,97,2,), (b,15,105,16,), (b,17,105,19,), new table = (b,12,110,1,), (b,13,98,2,), (b,15,106,16,), (b,17,106,19,)
 :show_data;
-:init_range_parted;
+    partname    | a | b  |  c  | d  | e 
+----------------+---+----+-----+----+---
+ part_a_10_a_20 | a | 10 | 200 |  1 | 
+ part_a_1_a_10  | a |  1 |   1 |  1 | 
+ part_c_1_100   | b | 13 |  98 |  2 | 
+ part_d_15_20   | b | 15 | 106 | 16 | 
+ part_d_15_20   | b | 17 | 106 | 19 | 
+ part_d_1_15    | b | 12 | 110 |  1 | 
+(6 rows)
 
+:init_range_parted;
 -- Enabling OLD TABLE capture for both DELETE as well as UPDATE stmt triggers
 -- should not cause DELETEd rows to be captured twice. Similar thing for
 -- INSERT triggers and inserted rows.
@@ -296,11 +300,21 @@ CREATE TRIGGER trans_inserttrig
   AFTER INSERT ON range_parted REFERENCING NEW TABLE AS new_table
   FOR EACH STATEMENT EXECUTE PROCEDURE trans_updatetrigfunc();
 UPDATE range_parted set c = c + 50 WHERE a = 'b' and b > 10 and c >= 96;
+NOTICE:  trigger = trans_updatetrig, old table = (b,12,96,1,), (b,13,97,2,), (b,15,105,16,), (b,17,105,19,), new table = (b,12,146,1,), (b,13,147,2,), (b,15,155,16,), (b,17,155,19,)
 :show_data;
+    partname    | a | b  |  c  | d  | e 
+----------------+---+----+-----+----+---
+ part_a_10_a_20 | a | 10 | 200 |  1 | 
+ part_a_1_a_10  | a |  1 |   1 |  1 | 
+ part_d_15_20   | b | 15 | 155 | 16 | 
+ part_d_15_20   | b | 17 | 155 | 19 | 
+ part_d_1_15    | b | 12 | 146 |  1 | 
+ part_d_1_15    | b | 13 | 147 |  2 | 
+(6 rows)
+
 DROP TRIGGER trans_deletetrig ON range_parted;
 DROP TRIGGER trans_inserttrig ON range_parted;
 -- Don't drop trans_updatetrig yet. It is required below.
-
 -- Test with transition tuple conversion happening for rows moved into the
 -- new partition. This requires a trigger that references transition table
 -- (we already have trans_updatetrig). For inserted rows, the conversion
@@ -321,23 +335,54 @@ CREATE TRIGGER trig_d15_20 BEFORE UPDATE OR INSERT ON part_d_15_20
    FOR EACH ROW EXECUTE PROCEDURE func_parted_mod_b();
 :init_range_parted;
 UPDATE range_parted set c = (case when c = 96 then 110 else c + 1 end) WHERE a = 'b' and b > 10 and c >= 96;
+NOTICE:  trigger = trans_updatetrig, old table = (b,13,96,1,), (b,14,97,2,), (b,16,105,16,), (b,18,105,19,), new table = (b,15,110,1,), (b,15,98,2,), (b,17,106,16,), (b,19,106,19,)
 :show_data;
+    partname    | a | b  |  c  | d  | e 
+----------------+---+----+-----+----+---
+ part_a_10_a_20 | a | 10 | 200 |  1 | 
+ part_a_1_a_10  | a |  1 |   1 |  1 | 
+ part_c_1_100   | b | 15 |  98 |  2 | 
+ part_d_15_20   | b | 17 | 106 | 16 | 
+ part_d_15_20   | b | 19 | 106 | 19 | 
+ part_d_1_15    | b | 15 | 110 |  1 | 
+(6 rows)
+
 :init_range_parted;
 UPDATE range_parted set c = c + 50 WHERE a = 'b' and b > 10 and c >= 96;
+NOTICE:  trigger = trans_updatetrig, old table = (b,13,96,1,), (b,14,97,2,), (b,16,105,16,), (b,18,105,19,), new table = (b,15,146,1,), (b,16,147,2,), (b,17,155,16,), (b,19,155,19,)
 :show_data;
+    partname    | a | b  |  c  | d  | e 
+----------------+---+----+-----+----+---
+ part_a_10_a_20 | a | 10 | 200 |  1 | 
+ part_a_1_a_10  | a |  1 |   1 |  1 | 
+ part_d_15_20   | b | 17 | 155 | 16 | 
+ part_d_15_20   | b | 19 | 155 | 19 | 
+ part_d_1_15    | b | 15 | 146 |  1 | 
+ part_d_1_15    | b | 16 | 147 |  2 | 
+(6 rows)
 
 -- Case where per-partition tuple conversion map array is allocated, but the
 -- map is not required for the particular tuple that is routed, thanks to
 -- matching table attributes of the partition and the target table.
 :init_range_parted;
 UPDATE range_parted set b = 15 WHERE b = 1;
+NOTICE:  trigger = trans_updatetrig, old table = (a,1,1,1,), new table = (a,15,1,1,)
 :show_data;
+    partname    | a | b  |  c  | d  | e 
+----------------+---+----+-----+----+---
+ part_a_10_a_20 | a | 10 | 200 |  1 | 
+ part_a_10_a_20 | a | 15 |   1 |  1 | 
+ part_c_1_100   | b | 13 |  96 |  1 | 
+ part_c_1_100   | b | 14 |  97 |  2 | 
+ part_d_15_20   | b | 16 | 105 | 16 | 
+ part_d_15_20   | b | 18 | 105 | 19 | 
+(6 rows)
+
 DROP TRIGGER trans_updatetrig ON range_parted;
 DROP TRIGGER trig_c1_100 ON part_c_1_100;
 DROP TRIGGER trig_d1_15 ON part_d_1_15;
 DROP TRIGGER trig_d15_20 ON part_d_15_20;
 DROP FUNCTION func_parted_mod_b();
-*/
 -- RLS policies with update-row-movement
 -----------------------------------------
 ALTER TABLE range_parted ENABLE ROW LEVEL SECURITY;

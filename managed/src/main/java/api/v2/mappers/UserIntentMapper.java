@@ -138,6 +138,9 @@ public interface UserIntentMapper {
     @ValueMapping(target = "PREMIUM_LRS", source = "Premium_LRS"),
     @ValueMapping(target = "PREMIUMV2_LRS", source = "PremiumV2_LRS"),
     @ValueMapping(target = "ULTRASSD_LRS", source = "UltraSSD_LRS"),
+    @ValueMapping(target = "OCI_BALANCED", source = "OCI_Balanced"),
+    @ValueMapping(target = "OCI_HIGHERPERFORMANCE", source = "OCI_HigherPerformance"),
+    @ValueMapping(target = "OCI_LOWERCOST", source = "OCI_LowerCost"),
     @ValueMapping(target = "LOCAL", source = "Local"),
     @ValueMapping(target = "IO2", source = "IO2"),
   })
@@ -158,11 +161,9 @@ public interface UserIntentMapper {
         toV2EnableExposingServiceEnum(userIntent.enableExposingService));
     clusterNetworkingSpec.setProxyConfig(toV2ProxyConfig(userIntent.getProxyConfig()));
     // per az
-    if (userIntent.getUserIntentOverrides() != null
-        && userIntent.getUserIntentOverrides().getAZProxyConfigMap() != null) {
+    if (userIntent.getAZProxyConfigMap() != null) {
       Map<String, AvailabilityZoneNetworking> azNetworking = new HashMap<>();
       userIntent
-          .getUserIntentOverrides()
           .getAZProxyConfigMap()
           .forEach(
               (azUuid, azProxyConfig) -> {

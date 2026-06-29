@@ -111,6 +111,7 @@
 #include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/tablet_validator.h"
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 
 #include "yb/util/cgroups.h"
@@ -134,6 +135,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -695,8 +697,8 @@ Status TSTabletManager::Init() {
       admin_triggered_compaction_pool_->SetCgroup(sys_med);
     }
 
-    // These pools always go to system-med regardless of compaction mode flag,
-    // since they are not per-tablet in nature.
+    // Pool-level fallback: workers land in @system-med when no per-task cgroup is set.
+    // waiting_txn_pool tokens get per-task cgroup wired up per-tablet in MaybeAssignPerDbCgroups.
     open_tablet_pool_->SetCgroup(sys_med);
     flush_bootstrap_state_pool_->SetCgroup(sys_med);
     waiting_txn_pool_->SetCgroup(sys_med);
@@ -1463,6 +1465,7 @@ Status TSTabletManager::DoApplyCloneTablet(
       source_table->table_type,
       /* Fixed by restore, but we need it to get partition_schema so might as well set it. */
       target_schema,
+      // TODO(GH31935): this may not be fixed in the case of vector indexes.
       *source_table->index_map, /* fixed by restore */
       std::move(target_table_index_info),
       source_table->schema_version, /* fixed by restore */
@@ -1903,7 +1906,8 @@ Status TSTabletManager::DeleteTablet(
     tablet::ShouldAbortActiveTransactions should_abort_active_txns,
     const std::optional<int64_t>& cas_config_opid_index_less_or_equal, bool hide_only,
     bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code,
-    std::optional<TransactionId>&& exclude_aborting_txn_id) {
+    std::optional<TransactionId>&& exclude_aborting_txn_id,
+    DeleteTabletResponsePB* resp) {
   TEST_PAUSE_IF_FLAG(TEST_pause_delete_tablet);
 
   if (delete_type != TABLET_DATA_DELETED && delete_type != TABLET_DATA_TOMBSTONED) {
@@ -1983,8 +1987,18 @@ Status TSTabletManager::DeleteTablet(
   }
 
   RaftGroupMetadataPtr meta = tablet_peer->tablet_metadata();
+
+  // Add tablet metadata that is common to all delete paths.
+  if (resp != nullptr) {
+    resp->set_table_name(meta->table_name());
+    resp->set_prev_data_state(data_state);
+  }
+
   if (hide_only) {
     meta->SetHidden(true);
+    if (resp != nullptr) {
+      resp->set_final_data_state(meta->tablet_data_state());
+    }
     return meta->Flush();
   }
   RETURN_NOT_OK(tablet_peer->Shutdown(
@@ -1992,6 +2006,25 @@ Status TSTabletManager::DeleteTablet(
       std::move(exclude_aborting_txn_id)));
 
   auto last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
+
+  // Record the directories this delete is about to touch (before any removal)
+  // The set mirrors the directories handled by RaftGroupMetadata::DeleteTabletData
+  // and Log::DeleteOnDiskData (wal).
+
+  if (resp != nullptr) {
+    std::vector<std::string> tracked_dirs;
+    tracked_dirs.push_back(meta->rocksdb_dir());
+    tracked_dirs.push_back(meta->intents_rocksdb_dir());
+    tracked_dirs.push_back(meta->wal_dir());
+    tracked_dirs.push_back(meta->snapshots_dir());
+    for (const auto& info : meta->GetAllColocatedVectorIndexes()) {
+      tracked_dirs.push_back(
+          meta->vector_index_dir(info->index_info->vector_idx_options()));
+    }
+    for (const auto& path : tracked_dirs) {
+      resp->add_directories()->set_path(path);
+    }
+  }
 
   if (!keep_data) {
     Status s = DeleteTabletData(meta,
@@ -2009,6 +2042,15 @@ Status TSTabletManager::DeleteTablet(
     }
 
     tablet_peer->status_listener()->StatusMessage("Deleted tablet blocks from disk");
+  }
+
+  // Check that the directories were actually deleted.
+  if (resp != nullptr) {
+    auto* env = fs_manager_->env();
+    for (auto& dir : *resp->mutable_directories()) {
+      dir.set_still_present_after(!dir.path().empty() && env->FileExists(dir.path()));
+    }
+    resp->set_final_data_state(meta->tablet_data_state());
   }
 
   // We only remove DELETED tablets from the tablet map.
@@ -2078,33 +2120,33 @@ Status TSTabletManager::OpenTabletMeta(const string& tablet_id,
 #ifdef __linux__
 namespace {
 
+// Returns the per-DB Cgroup* for |meta|, or nullptr if QoS is off / not applicable.
+// Also registers the DB name for metrics on first call. Does NOT set any cgroup on tablet
+// components -- callers are responsible for that.
+Result<Cgroup*> GetPerDbCgroup(const RaftGroupMetadata& meta, TServerCgroupManager* cm) {
+  if (!cm) return nullptr;
+  if (meta.table_type() != PGSQL_TABLE_TYPE) return nullptr;
+  auto namespace_id = meta.namespace_id();
+  if (namespace_id.empty()) return nullptr;
+  auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+  if (FLAGS_qos_system_dbs_use_shared_pool && IsQosSystemDatabaseOid(db_oid)) {
+    return nullptr;
+  }
+  cm->RegisterDbName(db_oid, meta.namespace_name());
+  return &VERIFY_RESULT_REF(cm->CgroupForDb(db_oid));
+}
+
 Status MaybeAssignPerDbCgroups(
     TabletPeer* tablet_peer, tablet::Tablet* tablet,
     const RaftGroupMetadata& meta, TServerCgroupManager* cm) {
-  if (!cm) return Status::OK();
+  auto* cgroup = VERIFY_RESULT(GetPerDbCgroup(meta, cm));
+  if (!cgroup) return Status::OK();
 
-  if (meta.table_type() != PGSQL_TABLE_TYPE) return Status::OK();
-  auto namespace_id = meta.namespace_id();
-  if (namespace_id.empty()) return Status::OK();
-
-  auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
-  if (FLAGS_qos_system_dbs_use_shared_pool && IsQosSystemDatabaseOid(db_oid)) {
-    return Status::OK();
+  if (FLAGS_qos_consensus_per_db_cgroups) {
+    tablet_peer->SetPerDbCgroup(cgroup);
   }
-
-  // Register database name for metrics, regardless of per-DB cgroup flags.
-  cm->RegisterDbName(db_oid, meta.namespace_name());
-
-  bool consensus_per_db = FLAGS_qos_consensus_per_db_cgroups;
-  bool compaction_per_db = FLAGS_qos_compaction_per_db_cgroups;
-  if (!consensus_per_db && !compaction_per_db) return Status::OK();
-
-  auto& cgroup = VERIFY_RESULT_REF(cm->CgroupForDb(db_oid));
-  if (consensus_per_db) {
-    tablet_peer->SetPerDbCgroup(&cgroup);
-  }
-  if (compaction_per_db) {
-    tablet->SetRocksDbTaskCgroup(&cgroup);
+  if (FLAGS_qos_compaction_per_db_cgroups) {
+    tablet->SetRocksDbTaskCgroup(cgroup);
   }
   return Status::OK();
 }
@@ -2200,6 +2242,21 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
           allow_compaction_failures_for_tablet_ids_.contains(tablet_id));
     }
 
+    // Compute the per-DB cgroup before constructing the Tablet so the WaitQueue token can be
+    // assigned its cgroup at construction time rather than via a post-construction setter.
+    Cgroup* wait_queue_cgroup = nullptr;
+#ifdef __linux__
+    {
+      auto result = GetPerDbCgroup(*meta, server_->cgroup_manager());
+      if (result.ok()) {
+        wait_queue_cgroup = *result;
+      } else {
+        LOG(WARNING) << kLogPrefix << "Failed to get per-db cgroup for wait-queue: "
+                     << result.status();
+      }
+    }
+#endif
+
     tablet::TabletInitData tablet_init_data = {
         .metadata = meta,
         .client_future = server_->client_future(),
@@ -2231,6 +2288,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         },
         .waiting_txn_registry = waiting_txn_registry_.get(),
         .wait_queue_pool = waiting_txn_pool_.get(),
+        .wait_queue_cgroup = wait_queue_cgroup,
         .full_compaction_pool = full_compaction_pool(),
         .admin_triggered_compaction_pool = admin_triggered_compaction_pool(),
         .post_split_compaction_added = ts_post_split_compaction_added_,
@@ -3854,7 +3912,9 @@ rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool(tablet::VectorIndexThrea
         ? FLAGS_vector_index_concurrent_writes : 0,
   };
   if (options.max_workers == 0) {
-    options.max_workers = std::thread::hardware_concurrency();
+    // Auto: use all CPUs, but cap under sanitizers (see SanitizerCappedConcurrency) so the vector
+    // index thread pools do not saturate an instrumented machine.
+    options.max_workers = SanitizerCappedConcurrency();
   }
   LOG(INFO) << "Use " << options.max_workers << " for vector index " << type << " thread pool";
   thread_pool_ptr.reset(result = new rpc::ThreadPool(std::move(options)));
