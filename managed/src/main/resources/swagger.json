@@ -14456,6 +14456,14 @@
       },
       "type" : "object"
     },
+    "OCIRegionCloudInfo" : {
+      "properties" : {
+        "vnet" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "OTLPConfig" : {
       "allOf" : [
         {
@@ -17866,6 +17874,9 @@
         },
         "kubernetes" : {
           "$ref" : "#/definitions/KubernetesRegionInfo"
+        },
+        "oci" : {
+          "$ref" : "#/definitions/OCIRegionCloudInfo"
         }
       },
       "type" : "object"
