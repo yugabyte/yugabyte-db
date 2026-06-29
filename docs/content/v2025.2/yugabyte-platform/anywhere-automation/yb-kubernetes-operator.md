@@ -249,7 +249,7 @@ To install YugabyteDB Anywhere using the YugabyteDB Kubernetes Operator, do the 
 1. Apply the following CRD:
 
     ```sh
-    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="v2025.2" format="short">}}/crds/concatenated_crd.yaml
     ```
 
 1. Run the following `helm install` command to set the parameters from the preceding YAML file to install the YugabyteDB Anywhere (`yugaware`) Helm chart:
@@ -257,7 +257,7 @@ To install YugabyteDB Anywhere using the YugabyteDB Kubernetes Operator, do the 
     ```sh
     # Modify the fields kubernetesOperatorNamespace and defaultUser username, email and password fields as required
     helm install yba yugabytedb/yugaware \
-      --version {{< yb-version version="stable" format="short">}} \
+      --version {{< yb-version version="v2025.2" format="short">}} \
       --namespace yb-platform \
       --set yugaware.kubernetesOperatorEnabled=true \
       --set yugaware.kubernetesOperatorNamespace='yb-platform-test' \
@@ -284,7 +284,7 @@ To use the YugabyteDB Kubernetes Operator with an existing YugabyteDB Anywhere i
 1. Apply the following CRD:
 
     ```sh
-    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="v2025.2" format="short">}}/crds/concatenated_crd.yaml
     ```
 
 1. Get a list of Helm chart releases in namespace using the following command:
@@ -301,7 +301,7 @@ To use the YugabyteDB Kubernetes Operator with an existing YugabyteDB Anywhere i
 1. Run the following `helm upgrade` command to enable the YBA upgrade:
 
     ```sh
-    helm upgrade yba yugabytedb/yugaware --version {{< yb-version version="stable" format="short">}} \
+    helm upgrade yba yugabytedb/yugaware --version {{< yb-version version="v2025.2" format="short">}} \
       --set yugaware.kubernetesOperatorEnabled=true,yugaware.kubernetesOperatorNamespace=yb-platform-test
     ```
 
@@ -460,7 +460,7 @@ kubectl get ybuniverse  -n yb-operator
 
 ```output
 NAME                     STATE   SOFTWARE VERSION
-operator-universe-demo   Ready   {{< yb-version version="stable" format="build">}}
+operator-universe-demo   Ready   {{< yb-version version="v2025.2" format="build">}}
 ```
 
 To modify the universe, edit the CRD and use `kubectl apply/edit` operations.
@@ -679,7 +679,7 @@ Set up scheduled backups as follows:
 1. Apply latest CRDs with new scheduled backups CRD on the Kubernetes cluster.
 
     ```sh
-    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="v2025.2" format="short">}}/crds/concatenated_crd.yaml
     ```
 
 1. Verify scheduled backup fields in the BackupSchedule CRD specification using `kubectl explain` to understand the available configuration options.
@@ -820,7 +820,7 @@ Set up incremental backups as follows:
 1. Apply the latest CRD for backup:
 
     ```sh
-    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="v2025.2" format="short">}}/crds/concatenated_crd.yaml
     ```
 
 1. Verify incremental backup fields in the backup CRD specification using `kubectl explain` to understand the available configuration options.

@@ -56,10 +56,10 @@ If you want to use [YSQL Connection Manager](../../../additional-features/connec
 
 After installing YugabyteDB, if you want to use backup and restore, you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
 
-For example, if you installed v{{< yb-version version="stable">}}, extract the `ybc-2.2.0.3-b17-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
+For example, if you installed v{{< yb-version version="v2025.2">}}, extract the `ybc-2.2.0.3-b17-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
 
 ```sh
-cd yugabyte-{{< yb-version version="stable" >}}
+cd yugabyte-{{< yb-version version="v2025.2" >}}
 mkdir -p ybc && tar -xvf share/ybc-2.2.0.3-b17-linux-x86_64.tar.gz -C ybc --strip-components=1
 ```
 

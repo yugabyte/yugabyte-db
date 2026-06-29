@@ -47,7 +47,7 @@ You can obtain YugabyteDB from the following locations:
     Where architecture can be one of `linux-x86_64` or `el8-aarch64`. For example:
 
     ```text
-    https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+    https://software.yugabyte.com/releases/{{< yb-version version="v2025.2">}}/yugabyte-{{< yb-version version="v2025.2" format="build">}}-linux-x86_64.tar.gz
     ```
 
 ### YugabyteDB release file
@@ -61,7 +61,7 @@ yugabyte-<version-build>-<architecture>.tar.gz
 For example:
 
 ```text.nocopy
-yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+yugabyte-{{< yb-version version="v2025.2" format="build">}}-linux-x86_64.tar.gz
 ```
 
 When importing into YugabyteDB Anywhere, use the tar.gz file; do not untar the file before importing.
@@ -90,7 +90,7 @@ To import a YugabyteDB release, do the following:
 
     - If uploading a file, click **Upload** and select the release file. Upload the package in tar.gz format. For example:
 
-        `yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz`
+        `yugabyte-{{< yb-version version="v2025.2" format="build">}}-linux-x86_64.tar.gz`
 
     - If loading the release from a URL, enter the URL of the storage location.
 
@@ -114,7 +114,7 @@ If a the architecture for a YugabyteDB release that you want to install on a uni
 
     - If uploading a file, click **Upload** and select the release file. Upload the package in tar.gz format. For example:
 
-        `yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz`
+        `yugabyte-{{< yb-version version="v2025.2" format="build">}}-el8-aarch64.tar.gz`
 
     - If loading the release from a URL, enter the URL of the storage location.
 

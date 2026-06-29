@@ -60,21 +60,21 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
     title="Architecture"
     description="Learn how YugabyteDB achieves consistency and high availability."
     buttonText="Learn More"
-    buttonUrl="/stable/architecture/"
+    buttonUrl="architecture/"
   >}}
 
   {{< sections/3-box-card
     title="Secure"
     description="Secure YugabyteDB with authentication, authorization, and encryption."
     buttonText="Secure"
-    buttonUrl="/stable/secure/"
+    buttonUrl="secure/"
   >}}
 
   {{< sections/3-box-card
     title="Configure"
     description="Configure core database services."
     buttonText="Configure"
-    buttonUrl="/stable/reference/configuration/"
+    buttonUrl="reference/configuration/"
   >}}
 
 {{< /sections/3-boxes >}}
