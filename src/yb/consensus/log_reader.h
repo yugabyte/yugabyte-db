@@ -31,6 +31,7 @@
 //
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -78,10 +79,12 @@ class LogReader {
 
   // Returns the biggest prefix of segments, from the current sequence, guaranteed
   // not to include any replicate messages with indexes >= 'index'.
-  Status GetSegmentPrefixNotIncluding(int64_t index, SegmentSequence* segments) const;
+  Status GetSegmentPrefixNotIncluding(int64_t index, SegmentSequence* segments,
+                                      std::string* retention_details = nullptr) const;
 
-  Status GetSegmentPrefixNotIncluding(int64_t index, int64_t cdc_replicated_index,
-                                      SegmentSequence* segments) const;
+  Status GetSegmentPrefixNotIncluding(int64_t index, int64_t cdc_min_replicated_index,
+                                      SegmentSequence* segments,
+                                      std::string* retention_details = nullptr) const;
 
   // Return the minimum replicate index that is retained in the currently available
   // logs. May return -1 if no replicates have been logged.
@@ -90,6 +93,11 @@ class LogReader {
   // Return a readable segment with the given sequence number, or NotFound error if it
   // cannot be found (e.g. if it has already been GCed).
   Result<scoped_refptr<ReadableLogSegment>> GetSegmentBySequenceNumber(int64_t seq) const;
+
+  // Returns the age in seconds (based on the close timestamp) of the segment with the given
+  // sequence number, or std::nullopt if unknown (segment not found, no footer, or no close
+  // timestamp).
+  std::optional<int64_t> GetSegmentCloseAgeSecs(int64_t segment_seq_num) const;
 
   // Copies a snapshot of the current sequence of segments into 'segments'.
   // 'segments' will be cleared first.
