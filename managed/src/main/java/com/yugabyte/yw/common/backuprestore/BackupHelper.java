@@ -666,6 +666,9 @@ public class BackupHelper {
         && storageConfig.getName().equals(CustomerConfigConsts.NAME_AZURE)) {
       validateIfYbdbInbuiltYbcHasAzureIAM(universe);
     }
+    if (storageUtil.isImmutableStorageEnabled(storageConfig)) {
+      validateIfYbdbInbuiltYbcHasImmutableStorage(universe);
+    }
   }
 
   // For k8s universes: if useYbdbInbuiltYbc is true, need to check if Azure IAM feature is
@@ -683,6 +686,24 @@ public class BackupHelper {
           BAD_REQUEST,
           "Azure IAM is not supported in the YB-Controller version running on this Kubernetes"
               + " Universe.");
+    }
+  }
+
+  // For k8s universes: if useYbdbInbuiltYbc is true, need to check if immutable storage feature
+  // is supported
+  private void validateIfYbdbInbuiltYbcHasImmutableStorage(Universe universe) {
+    if (universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(Common.CloudType.kubernetes)
+        && universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
+        && !ybcManager.getEnabledBackupFeatures(universe.getUniverseUUID()).getImmutableStorage()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Immutable storage is not supported in the YB-Controller version running on this"
+              + " Kubernetes Universe.");
     }
   }
 
