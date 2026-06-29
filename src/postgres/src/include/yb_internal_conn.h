@@ -58,6 +58,7 @@ typedef enum YbInternalConnKind
 	 */
 	YB_INTERNAL_CONN_KIND_NONE = 0,
 	YB_INTERNAL_CONN_KIND_RELCACHE_INIT,
+	YB_INTERNAL_CONN_KIND_AUTO_ANALYZE,
 	/* Future kinds (xCluster DDL queue, etc.) go above this line. */
 	YB_INTERNAL_CONN_KIND_MAX
 } YbInternalConnKind;

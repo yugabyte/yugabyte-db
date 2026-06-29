@@ -1917,7 +1917,8 @@ TEST_F(PgConcurrentCreateIndexTest, ConcurrentCreateIndex) {
     auto conn2 = ASSERT_RESULT(
         pgwrapper::CreateInternalPGConnBuilder(
             HostPort(ts2->bind_host(), ts2->ysql_port()), "yugabyte", pg_auth_key,
-            /*deadline=*/std::nullopt, /*yb_auto_analyze=*/true)
+            /*deadline=*/std::nullopt,
+            pgwrapper::YbInternalConnKindWireName::kAutoAnalyze)
             .Connect());
 
     ASSERT_OK(conn1.Execute("CREATE TABLE test (k TEXT PRIMARY KEY)"));

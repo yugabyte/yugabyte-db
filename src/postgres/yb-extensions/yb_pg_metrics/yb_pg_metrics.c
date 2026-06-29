@@ -706,7 +706,6 @@ pullRpczEntries(void)
 			PGPROC	   *proc = NULL;
 
 			if (beentry->st_backendType == B_BACKEND ||
-				beentry->st_backendType == YB_AUTO_ANALYZE_BACKEND ||
 				YbIsInternalConnBackendType(beentry->st_backendType))
 				proc = BackendPidGetProc(rpcz[i].proc_id);
 			else if (beentry->st_backendType != YB_YSQL_CONN_MGR)
