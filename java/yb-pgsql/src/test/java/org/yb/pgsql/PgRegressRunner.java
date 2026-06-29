@@ -58,17 +58,17 @@ public class PgRegressRunner {
   }
 
   /**
-   * Failed test line example:
+   * Failed test line examples ('-' marks a test run alone, '+' one run in a parallel group):
    *
    * <pre>
-   * test yb.orig.tablegroup           ... FAILED
-   * test yb.orig.tablegroup_dml       ... FAILED (test process exited with exit code 2)
+   * not ok 1     - yb.orig.spi                  34656 ms
+   * not ok 5     + yb.orig.tablegroup_dml         812 ms
    * </pre>
    *
-   * (We don't care about the optional exit code suffix.)
+   * (We don't care about the timing suffix.)
    */
   private final Pattern failedTestLineRe =
-      Pattern.compile("^test\\s+(\\S+)\\s+[.]+\\s+FAILED");
+      Pattern.compile("^not ok\\s+\\d+\\s+[-+]\\s+(\\S+)");
 
   private LogErrorListener createLogErrorListener(int pid) {
     return new ExternalDaemonLogErrorListener("pg_regress with pid " + pid) {
