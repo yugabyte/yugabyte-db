@@ -856,6 +856,7 @@ Result<bool> CheckLDAPAuth(const ql::AuthResponseRequest::AuthQueryParameters& p
         case ')':
         case '\\':
         case '/':
+        case '\0':
           return STATUS(InvalidArgument, "invalid character in user name for LDAP authentication");
       }
     }
