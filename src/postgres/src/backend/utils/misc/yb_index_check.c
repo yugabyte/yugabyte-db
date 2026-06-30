@@ -571,10 +571,14 @@ static int64
 get_expected_index_rowcount(Relation baserel, Relation indexrel)
 {
 	StringInfoData querybuf;
+	const char *relname = RelationGetRelationName(baserel);
+	const char *nspname = get_namespace_name(RelationGetNamespace(baserel));
+	const char *qualified_relname = quote_qualified_identifier(nspname, relname);
+
 	initStringInfo(&querybuf);
 	appendStringInfo(&querybuf, "/*+SeqScan(%s)*/ SELECT count(*) from %s",
-					 RelationGetRelationName(baserel),
-					 RelationGetRelationName(baserel));
+					 quote_identifier(relname),
+					 qualified_relname);
 
 	bool indpred_isnull;
 	Datum indpred_datum = SysCacheGetAttr(INDEXRELID, indexrel->rd_indextuple,

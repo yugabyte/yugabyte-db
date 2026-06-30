@@ -186,6 +186,34 @@ SELECT yb_index_check('matview_b_idx'::regclass);
 -- See yb_dummy_baserel_index_open()/yb_free_dummy_baserel_index().
 SELECT yb_index_check('matview_b_idx'::regclass);
 
+-- Index and base table in a schema not on search_path. The base table must be
+-- resolved by its schema-qualified name in the internally-executed row-count
+-- query.
+DROP SCHEMA IF EXISTS idx_check_schema CASCADE;
+CREATE SCHEMA idx_check_schema;
+CREATE TABLE idx_check_schema.idx_check_tbl (
+  a int PRIMARY KEY,
+  b int,
+  c int
+);
+CREATE INDEX idx_check_b_idx
+  ON idx_check_schema.idx_check_tbl (b) INCLUDE (c);
+INSERT INTO idx_check_schema.idx_check_tbl
+  SELECT i, i, i FROM generate_series(1, 5) i;
+SET search_path = public;
+SELECT yb_index_check('idx_check_schema.idx_check_b_idx'::regclass::oid);
+-- A same-named table earlier on search_path must not be counted instead.
+CREATE TABLE idx_check_tbl (a int PRIMARY KEY, b int, c int);
+CREATE INDEX idx_check_b_idx ON idx_check_tbl (b) INCLUDE (c);
+INSERT INTO idx_check_tbl SELECT i, i, i FROM generate_series(1, 100) i;
+SELECT yb_index_check('idx_check_schema.idx_check_b_idx'::regclass::oid);
+-- Index on same-named table on search_path
+SELECT yb_index_check('idx_check_b_idx'::regclass::oid);
+DROP TABLE idx_check_tbl;
+RESET search_path;
+DROP TABLE idx_check_schema.idx_check_tbl;
+DROP SCHEMA idx_check_schema;
+
 -- Index of a colocated relation
 CREATE DATABASE colocateddb COLOCATION = TRUE;
 \c colocateddb
