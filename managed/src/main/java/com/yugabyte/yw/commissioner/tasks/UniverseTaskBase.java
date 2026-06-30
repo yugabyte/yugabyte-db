@@ -5165,6 +5165,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       createWaitForLeaderBlacklistCompletionTask(
               getOrCreateExecutionContext().leaderBacklistWaitTimeMs)
           .setSubTaskGroupType(subTaskGroupType);
+      // Optional, runtime-configurable wait after the leader-blacklist operation completes and
+      // before the tserver is stopped. This gives resident tablet leaders extra time to drain
+      // when WaitForLeaderBlacklistCompletion returns before leaders have fully moved off the
+      // node. Defaults to 0 (disabled).
+      Universe universe = getUniverse();
+      Duration waitAfterBlacklist =
+          confGetter.getConfForScope(
+              universe, UniverseConfKeys.ybUpgradeBlacklistLeaderWaitAfterCompletion);
+      if (waitAfterBlacklist.compareTo(Duration.ZERO) > 0) {
+        createWaitForDurationSubtask(
+                universe.getUniverseUUID(),
+                waitAfterBlacklist,
+                "Waiting after leader blacklist completion before stopping tserver")
+            .setSubTaskGroupType(subTaskGroupType);
+      }
       return true;
     }
     return false;
