@@ -556,7 +556,6 @@ struct PerformData : public PgClientData<tserver::LWPgPerformRequestPB,
       } else {
         operations[i]->set_response(&op_response);
       }
-      metrics.RecordRequestMetrics(op_response.metrics(), operations[i]->is_read());
       ++i;
     }
     return Status::OK();
@@ -606,6 +605,7 @@ Status DoProcessResponse(
     result.catalog_read_time = ReadHybridTime::FromPB(data.resp.catalog_read_time());
   }
   result.used_in_txn_limit = HybridTime::FromPB(data.resp.used_in_txn_limit_ht());
+  result.operations = std::move(data.operations);
   return Status::OK();
 }
 
