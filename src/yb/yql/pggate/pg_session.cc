@@ -481,6 +481,7 @@ class PgSession::RunHelper {
           << table.table_name().table_name()
           << ", txn_serial_no: " << rp.txn
           << ", read_time_serial_no: " << rp.read_time_serial_no
+          << ", is_clamped: " << rp.is_clamped
           << ": " << op->ToString();
     }
 
