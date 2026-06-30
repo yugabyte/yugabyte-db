@@ -3359,16 +3359,15 @@ TEST_P(PgCatalogVersionConnManagerTest,
     //   blocks in YbWaitForSharedCatalogVersionToCatchup() for the full 60s
     //   timeout (twice -- once for the shared init file, once for the per-DB
     //   init file) and then YBCGetTserverCatalogMessageLists() returns reason
-    //   "no match found". It falls back to a full relcache preload using
-    //   TRUST_CACHE @ master_catalog_version, which writes a new init file
-    //   stamped at v_new and populates a response-cache slot at v_new -- all
-    //   before master_read_count_before is captured. When we enter the loop,
-    //   each new connect's load_relcache_init_file() finds the init file
-    //   already fresh, so YbNeedNewCacheFileForPgAuthBackend stays false and
-    //   Phase3 skips its full prefetch entirely. Only the auth phase's
-    //   pg_authid lookup hits the response cache, so (1) and (2) collapse into
-    //   a single master RPC.
-    const int num_rebuild_rpcs = IsObjectLockingEnabled() ? 2 : 1;
+    //   "no match found", so the init file is stale when the loop runs. With
+    //   the #31844 yb_internal_conn routing the connecting conn-mgr backend no
+    //   longer rebuilds the init file inline; instead a single dedicated
+    //   relcache-init connection rebuilds the stale file once for all of them
+    //   during the loop (1 master RPC) -- strictly better than every conn-mgr
+    //   backend rebuilding it simultaneously. That rebuild (2) plus the auth
+    //   phase's pg_authid read (1) give 2 master RPCs, matching the
+    //   object-locking case above.
+    const int num_rebuild_rpcs = 2;
 
     // Each pg auth backend still costs 1 master RPC due to logical catalog version read.
     ASSERT_EQ(master_read_count_before + num_rebuild_rpcs,
