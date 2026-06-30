@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from db.connection_pool import ConnectionPool
+from db.system_connection_pool import SystemConnectionPool
 from work_queue.poller import Poller
 from work_queue.task_router import get_router
 from work_queue.task_type_keys import TaskTypeKeys
@@ -311,6 +312,14 @@ async def lifespan(app: FastAPI):
         ConnectionPool.initialize(db_connection_string)
         logger.info("ConnectionPool initialized successfully")
 
+        # Initialize the system connection pool when a dedicated meko_system
+        # connection string is configured. Used for the Langfuse key lookup,
+        # which lives in a different database than the shared pool serves.
+        system_connection_string = os.getenv("YUGABYTEDB_SYSTEM_CONN_STRING")
+        if system_connection_string:
+            SystemConnectionPool.initialize(system_connection_string)
+            logger.info("SystemConnectionPool initialized successfully")
+
         # Initialize task router and register processors
         router = get_router()
         router.register(
@@ -356,6 +365,9 @@ async def lifespan(app: FastAPI):
 
         ConnectionPool.close_all()
         logger.info("ConnectionPool closed successfully")
+
+        SystemConnectionPool.close_all()
+        logger.info("SystemConnectionPool closed successfully")
     except Exception as e:
         logger.error(f"Error during shutdown: {e}")
 
