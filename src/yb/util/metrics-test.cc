@@ -254,6 +254,7 @@ TEST_F(MetricsTest, AggregationTest) {
     entity_attr["tablet_id"] = tablet_id + "_id";
     entity_attr["table_name"] = table_id;
     entity_attr["table_id"] = table_id + "_id";
+    entity_attr["pgschema_name"] = table_id + "_schema";
     auto entity = METRIC_ENTITY_tablet.Instantiate(&registry_, tablet_id, entity_attr);
 
     // Test SUM aggregation
@@ -327,6 +328,7 @@ TEST_F(MetricsTest, AggregationTest) {
     attributes["metric_type"] = "tablet";
     attributes["table_id"] = "table_1_id";
     attributes["table_name"] = "table_1";
+    attributes["pgschema_name"] = "table_1_schema";
     CheckPreStoredAndScrapeTimeAttributes(writer, "table_1_id", attributes, attributes);
 
     CheckPreAggreatedAndScrapeTimeValues(writer, kSumGaugeName, "table_2_id", 15, std::nullopt);
@@ -334,6 +336,7 @@ TEST_F(MetricsTest, AggregationTest) {
     CheckPreAggreatedAndScrapeTimeValues(writer, kSumCounterName, "table_2_id", 15, std::nullopt);
     attributes["table_id"] = "table_2_id";
     attributes["table_name"] = "table_2";
+    attributes["pgschema_name"] = "table_2_schema";
     CheckPreStoredAndScrapeTimeAttributes(writer, "table_2_id", attributes, attributes);
   }
   {
@@ -371,6 +374,7 @@ TEST_F(MetricsTest, AggregationTest) {
     attributes["metric_type"] = "tablet";
     attributes["table_id"] = "table_1_id";
     attributes["table_name"] = "table_1";
+    attributes["pgschema_name"] = "table_1_schema";
     CheckPreStoredAndScrapeTimeAttributes(writer, "table_1_id", attributes, attributes);
 
     // Simulate adding a tablet metric entity.
@@ -741,6 +745,9 @@ TEST_F(MetricsTest, VerifyHelpAndTypeTags) {
   auto tablet_entity =
       METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id_44", entity_attr);
   auto server_entity = METRIC_ENTITY_server.Instantiate(&registry_, "server_entity_id_45");
+  entity_attr["namespace_name"] = "test_namespace";
+  entity_attr["table_type"] = "PGSQL_TABLE_TYPE";
+  entity_attr["pgschema_name"] = "test_schema";
   entity_attr["stream_id"] = "stream_id_46";
   auto xcluster_entity =
       METRIC_ENTITY_xcluster.Instantiate(&registry_, "xcluster_entity_id_47", entity_attr);
@@ -783,6 +790,7 @@ TEST_F(MetricsTest, VerifyHelpAndTypeTags) {
   // Check lag output.
   EXPECT_EQ(1, StringOccurence(output_str,
       "# HELP t_lag Test lag description\n# TYPE t_lag gauge"));
+  ASSERT_STR_CONTAINS(output_str, "pgschema_name=\"test_schema\"");
 }
 
 TEST_F(MetricsTest, SimulateMetricDeletionBeforeFlush) {
@@ -855,6 +863,7 @@ TEST_F(MetricsTest, VerifyLabelValueEscaping) {
   entity_attr1["tablet_id"] = "tablet_id_52";
   entity_attr1["table_name"] = "\"yo\".\"name_split\"";
   entity_attr1["table_id"] = "table_id_53";
+  entity_attr1["pgschema_name"] = "\"yo\"";
   auto tablet_entity1 =
       METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id_54", entity_attr1);
   scoped_refptr<Counter> counter1 = METRIC_t_counter.Instantiate(tablet_entity1);
@@ -864,6 +873,7 @@ TEST_F(MetricsTest, VerifyLabelValueEscaping) {
   entity_attr2["tablet_id"] = "tablet_id_55";
   entity_attr2["table_name"] = "path\\to\\table";
   entity_attr2["table_id"] = "table_id_56";
+  entity_attr2["pgschema_name"] = "path\\to\\schema";
   auto tablet_entity2 =
       METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id_57", entity_attr2);
   scoped_refptr<Counter> counter2 = METRIC_t_counter.Instantiate(tablet_entity2);
@@ -873,9 +883,22 @@ TEST_F(MetricsTest, VerifyLabelValueEscaping) {
   entity_attr3["tablet_id"] = "tablet_id_58";
   entity_attr3["table_name"] = "line1\nline2";
   entity_attr3["table_id"] = "table_id_59";
+  entity_attr3["pgschema_name"] = "schema_line1\nschema_line2";
   auto tablet_entity3 =
       METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id_60", entity_attr3);
   scoped_refptr<Counter> counter3 = METRIC_t_counter.Instantiate(tablet_entity3);
+
+  MetricEntity::AttributeMap xcluster_entity_attr;
+  xcluster_entity_attr["stream_id"] = "stream_id_61";
+  xcluster_entity_attr["table_id"] = "table_id_62";
+  xcluster_entity_attr["table_name"] = "xcluster_table";
+  xcluster_entity_attr["table_type"] = "PGSQL_TABLE_TYPE";
+  xcluster_entity_attr["namespace_name"] = "xcluster_namespace";
+  xcluster_entity_attr["pgschema_name"] = "\"xcluster_schema\"";
+  auto xcluster_entity =
+      METRIC_ENTITY_xcluster.Instantiate(&registry_, "xcluster_entity_id_63", xcluster_entity_attr);
+  scoped_refptr<EventStats> event_stats = METRIC_t_event_stats.Instantiate(xcluster_entity);
+  event_stats->Increment(1);
 
   MetricPrometheusOptions opts;
   std::stringstream output;
@@ -886,13 +909,17 @@ TEST_F(MetricsTest, VerifyLabelValueEscaping) {
 
   // Quotes should be escaped
   ASSERT_STR_CONTAINS(output_str, "table_name=\"\\\"yo\\\".\\\"name_split\\\"\"");
+  ASSERT_STR_CONTAINS(output_str, "pgschema_name=\"\\\"yo\\\"\"");
+  ASSERT_STR_CONTAINS(output_str, "pgschema_name=\"\\\"xcluster_schema\\\"\"");
   ASSERT_STR_NOT_CONTAINS(output_str, "table_name=\"\"yo\".\"name_split\"\"");
 
   // Backslashes should be escaped
   ASSERT_STR_CONTAINS(output_str, "table_name=\"path\\\\to\\\\table\"");
+  ASSERT_STR_CONTAINS(output_str, "pgschema_name=\"path\\\\to\\\\schema\"");
 
   // Newlines should be escaped
   ASSERT_STR_CONTAINS(output_str, "table_name=\"line1\\nline2\"");
+  ASSERT_STR_CONTAINS(output_str, "pgschema_name=\"schema_line1\\nschema_line2\"");
 }
 
 // Regression test for a dangling-reference bug in

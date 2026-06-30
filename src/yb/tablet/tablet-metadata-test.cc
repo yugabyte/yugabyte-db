@@ -123,6 +123,34 @@ TEST_F(TestRaftGroupMetadata, TestLoadFromSuperBlock) {
             << superblock_pb_1.DebugString();
 }
 
+TEST(TableInfoTest, PgSchemaNameInMetricAttributeMap) {
+  auto pgsql_schema = GetSimpleTestSchema();
+  pgsql_schema.InitColumnIdsByDefault();
+  pgsql_schema.SetSchemaName("test_schema");
+  auto pgsql_table_info = TableInfo::TEST_Create(
+      "table_id", "test_db", "test_table", TableType::PGSQL_TABLE_TYPE, pgsql_schema,
+      dockv::PartitionSchema());
+  auto pgsql_attrs = pgsql_table_info->CreateMetricAttributeMap();
+  ASSERT_EQ(pgsql_attrs["pgschema_name"], "test_schema");
+
+  auto empty_pgsql_schema = GetSimpleTestSchema();
+  empty_pgsql_schema.InitColumnIdsByDefault();
+  auto empty_pgsql_table_info = TableInfo::TEST_Create(
+      "table_id", "test_db", "test_table", TableType::PGSQL_TABLE_TYPE, empty_pgsql_schema,
+      dockv::PartitionSchema());
+  auto empty_pgsql_attrs = empty_pgsql_table_info->CreateMetricAttributeMap();
+  ASSERT_FALSE(empty_pgsql_attrs.contains("pgschema_name"));
+
+  auto ycql_schema = GetSimpleTestSchema();
+  ycql_schema.InitColumnIdsByDefault();
+  ycql_schema.SetSchemaName("test_schema");
+  auto ycql_table_info = TableInfo::TEST_Create(
+      "table_id", "test_keyspace", "test_table", TableType::YQL_TABLE_TYPE, ycql_schema,
+      dockv::PartitionSchema());
+  auto ycql_attrs = ycql_table_info->CreateMetricAttributeMap();
+  ASSERT_FALSE(ycql_attrs.contains("pgschema_name"));
+}
+
 TEST_F(TestRaftGroupMetadata, TestDeleteTabletDataClearsDisk) {
   auto tablet = harness_->tablet();
 
