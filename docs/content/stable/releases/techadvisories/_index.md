@@ -21,6 +21,12 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 32220>}}
+| Unique index inconsistency after primary-key updates on rows with NULL key columns
+| {{<product "ysql">}}
+| {{<release "2024.2.0.0">}} to {{<release "2024.2.10.0">}},<br>{{<release "2025.1.0.0">}} to {{<release "2025.1.4.0">}}, {{<release "2025.2.0.0">}} to {{<release "2025.2.4.0">}}, {{<release "2026.1.0.0">}}
+| {{<nobreak "30 June 2026">}}
+|
 | {{<ta 31187>}}
 | Logical replication might cause increase in disk storage footprint
 | {{<product "cdc">}}
