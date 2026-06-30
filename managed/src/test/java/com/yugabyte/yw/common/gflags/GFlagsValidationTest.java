@@ -2,9 +2,13 @@
 
 package com.yugabyte.yw.common.gflags;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -56,6 +60,58 @@ public class GFlagsValidationTest extends FakeDBApplication {
     this.gFlagsValidation = new GFlagsValidation(environment, null, null);
     this.universe = ModelFactory.createUniverse(ModelFactory.testCustomer().getId());
     TestHelper.updateUniverseVersion(universe, "2.23.0.0-b1");
+  }
+
+  @Test
+  public void testGetFilteredAutoFlagsWithNonInitialValueSkipsUndefokFlagsNotInMetadata()
+      throws Exception {
+    GFlagsValidation validation = spy(new GFlagsValidation(environment, null, null));
+    String version = "2025.2.0.0-b1";
+    String autoFlagName = "enable_tablet_split_of_xcluster_replicated_tables";
+    String unknownFlagName = "unknown_undefok_flag";
+
+    GFlagDetails autoFlag = new GFlagDetails();
+    autoFlag.name = autoFlagName;
+    autoFlag.tags = "runtime,stable,auto";
+    autoFlag.initial = "false";
+
+    GFlagDetails undefokFlag = new GFlagDetails();
+    undefokFlag.name = GFlagsUtil.UNDEFOK;
+    undefokFlag.tags = "advanced,stable";
+
+    doReturn(Arrays.asList(autoFlag, undefokFlag))
+        .when(validation)
+        .extractGFlags(eq(version), eq(ServerType.MASTER.name()), eq(false));
+
+    Map<String, String> flagsMissingFromMetadata = new HashMap<>();
+    flagsMissingFromMetadata.put(unknownFlagName, "true");
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            validation.getFilteredAutoFlagsWithNonInitialValue(
+                flagsMissingFromMetadata, version, ServerType.MASTER));
+
+    Map<String, String> flagsWithUndefok = new HashMap<>();
+    flagsWithUndefok.put(GFlagsUtil.UNDEFOK, unknownFlagName);
+    flagsWithUndefok.put(unknownFlagName, "true");
+    Map<String, String> filtered =
+        validation.getFilteredAutoFlagsWithNonInitialValue(
+            flagsWithUndefok, version, ServerType.MASTER);
+    assertTrue(filtered.isEmpty());
+
+    Map<String, String> nonInitialAutoFlag = new HashMap<>();
+    nonInitialAutoFlag.put(autoFlagName, "true");
+    filtered =
+        validation.getFilteredAutoFlagsWithNonInitialValue(
+            nonInitialAutoFlag, version, ServerType.MASTER);
+    assertEquals("true", filtered.get(autoFlagName));
+
+    Map<String, String> initialAutoFlag = new HashMap<>();
+    initialAutoFlag.put(autoFlagName, "false");
+    filtered =
+        validation.getFilteredAutoFlagsWithNonInitialValue(
+            initialAutoFlag, version, ServerType.MASTER);
+    assertTrue(filtered.isEmpty());
   }
 
   @Test
