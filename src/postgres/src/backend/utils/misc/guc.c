@@ -3906,6 +3906,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_dump_presplit_in_create", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("If true, ysql_dump records yb_presplit inside the CREATE statement's "
+						 "WITH clause instead of a separate ALTER ... SET (yb_presplit=...)."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_dump_presplit_in_create,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_pg_stat_statements_rpc_stats", PGC_SUSET, STATS_MONITORING,
 			gettext_noop("If true, enable RPC execution time stats for pg_stat_statements."),
 			NULL,
