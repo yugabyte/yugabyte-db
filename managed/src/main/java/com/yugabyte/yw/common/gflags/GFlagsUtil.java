@@ -1374,6 +1374,24 @@ public class GFlagsUtil {
     return writer.toString();
   }
 
+  // Extract out the flag names from the undefok gflag.
+  public static Set<String> extractUndefokFlags(Map<String, String> gflags) {
+    Set<String> undefokFlags = new HashSet<>();
+    String undefokValue = gflags.get(UNDEFOK);
+
+    if (StringUtils.isNotBlank(undefokValue)) {
+      String[] flagNames = undefokValue.split(",");
+      for (String flagName : flagNames) {
+        String trimmedFlagName = flagName.trim();
+        if (!trimmedFlagName.isEmpty()) {
+          undefokFlags.add(trimmedFlagName);
+        }
+      }
+    }
+
+    return undefokFlags;
+  }
+
   private static void appendEntries(
       CSVRecord record, Set<String> result, Set<String> existingKeys, boolean mergeKeyValues) {
     record
