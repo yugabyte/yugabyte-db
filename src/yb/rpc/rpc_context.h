@@ -35,6 +35,7 @@
 
 #include <boost/type_traits/is_detected.hpp>
 
+#include "yb/rpc/lightweight_message.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/serialization.h"
 #include "yb/rpc/service_if.h"

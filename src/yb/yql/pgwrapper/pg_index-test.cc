@@ -22,6 +22,7 @@
 #include "yb/integration-tests/mini_cluster_base.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"

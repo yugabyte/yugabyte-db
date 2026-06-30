@@ -34,6 +34,8 @@
 
 #include "yb/storage/storage_test_util.h"
 
+#include "yb/util/mem_tracker.h"
+
 using std::unique_ptr;
 
 namespace rocksdb {

@@ -47,6 +47,7 @@
 #include "yb/rocksdb/util/random.h"
 
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/mem_tracker_fwd.h"
 #include "yb/util/slice.h"
 
 DECLARE_bool(never_fsync);
