@@ -501,7 +501,15 @@ void ClusterAdminCli::SetUsage(const string& prog_name) {
   ostringstream str;
 
   str << prog_name << " [--master_addresses server1:port,server2:port,server3:port,...] "
-      << " [--timeout_ms <millisec>] [--certs_dir_name <dir_name>] <operation>" << endl
+      << " [--timeout_ms <millisec>] [--certs_dir_name <dir_name>]" << endl
+      << "  [--flagfile <path/to/master/conf/server.conf>]" << endl
+      << "  <operation>" << endl
+      << endl
+      << "Tip: Use --flagfile with the master's server.conf to automatically pick up" << endl
+      << "master_addresses and certs_dir, avoiding manual flag entry." << endl
+      << "Example: " << prog_name
+      << " --flagfile master/conf/server.conf list_all_masters" << endl
+      << endl
       << "<operation> must be one of:" << endl;
 
   for (size_t i = 0; i < commands_.size(); ++i) {
