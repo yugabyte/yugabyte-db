@@ -352,7 +352,7 @@ public class XClusterConfigController extends AuthenticatedController {
     JsonNode lagMetricData;
     try {
       Set<String> streamIds = xClusterConfig.getStreamIdsWithReplicationSetup();
-      log.info(
+      log.trace(
           "Querying lag metrics for XClusterConfig({}) using CDC stream IDs: {}",
           xClusterConfig.getUuid(),
           streamIds);
