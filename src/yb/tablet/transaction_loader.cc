@@ -154,6 +154,9 @@ class TransactionLoader::Executor {
         }
         RETURN_NOT_OK(LoadTransaction(id));
         ++loaded_transactions;
+        // Sync point AFTER each LoadTransaction call.
+        TEST_SYNC_POINT_CALLBACK(
+            "TransactionLoader::Executor::LoadedTransaction", &id);
       }
       current_key_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
       intents_iterator_.Seek(current_key_.AsSlice());
