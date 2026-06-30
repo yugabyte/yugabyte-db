@@ -27,7 +27,7 @@ Before OIDC can be used for authentication:
 
 - The user must already exist in the database (and have appropriate permissions).
 - The external IdP must be configured.
-- The [`use_cassandra_authentication`](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) flag must set to `true`.
+- The [use_cassandra_authentication](../../../reference/configuration/yb-tserver/#use-cassandra-authentication) flag must set to `true`.
 - To use OIDC authentication, set the YB-TServer flag `ycql_use_jwt_auth` to `true`.
 
 ## Configure OIDC
