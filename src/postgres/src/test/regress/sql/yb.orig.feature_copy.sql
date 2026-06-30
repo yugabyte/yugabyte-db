@@ -35,7 +35,7 @@ COPY x (a, b, c, d, e) from stdin;
 
 -- Note: expect more rows with Connection Manager, pg_stat_progress_copy stores one row per backend
 SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
-          tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
+          tuples_processed, tuples_excluded FROM pg_stat_progress_copy ORDER BY bytes_processed;
 
 -- non-existent column in column list: should fail
 COPY x (xyz) from stdin;
