@@ -479,9 +479,9 @@ To change storage class or volume count on a running universe, use the `tserverV
 
 ### Create a universe with placement information
 
-Starting from YugabyteDB Anywhere v2025.2, you can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `preferred` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
+You can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `preferred` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
 
-Starting in v2026.1, `placementInfo` also supports multi-region universes that span multiple Kubernetes clusters. Configure per-zone kubeconfigs in your YBProvider via [`kubeConfigSecret`](#using-a-custom-kubeconfig). Multi-cluster deployments require proper network connectivity between clusters; see [Configure Kubernetes multi-cluster environment](../../configure-yugabyte-platform/kubernetes/#configure-kubernetes-multi-cluster-environment) and [Networking for Kubernetes](../../prepare/networking-kubernetes/).
+`placementInfo` also supports multi-region universes that span multiple Kubernetes clusters. Configure per-zone kubeconfigs in your YBProvider via [kubeConfigSecret](#using-a-custom-kubeconfig). Multi-cluster deployments require proper network connectivity between clusters; see [Configure Kubernetes multi-cluster environment](../../configure-yugabyte-platform/kubernetes/#configure-kubernetes-multi-cluster-environment) and [Networking for Kubernetes](../../prepare/networking-kubernetes/).
 
 ```sh
 kubectl apply universedemo-placement.yaml -n yb-platform
