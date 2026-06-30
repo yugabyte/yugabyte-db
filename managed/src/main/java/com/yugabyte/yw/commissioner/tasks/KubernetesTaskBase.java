@@ -497,18 +497,17 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       // This will always be false in the case of a new universe.
       if (activeDeploymentConfigs.containsKey(azUUID)) {
         // Helm Upgrade
-        // Potential changes:
-        // 1) Adding masters: Do not want either old masters or tservers to be rolled.
-        // 2) Adding tservers:
-        //    a) No masters changed, that means the master addresses are the same. Do not need
-        //       to set partition on tserver or master.
-        //    b) Masters changed, that means the master addresses changed, and we don't want to
-        //       roll the older pods (or the new masters, since they will be in shell mode).
-        int tserverPartition = currNumMasters != newNumMasters ? currNumTservers : 0;
-        int masterPartition =
-            currNumMasters != newNumMasters
-                ? (serverType == ServerType.MASTER ? currNumMasters : newNumMasters)
-                : 0;
+        // This is a scale operation that should only bring up the newly added pods; it must not
+        // roll any existing pod. Never set partition to 0 here: a prior non-restart change may
+        // have advanced the StatefulSet template without rolling pods, and partition 0 would make
+        // the controller reconcile (restart) all existing pods at once. So always set partition to
+        // the count of pods that must be protected (new pods come up via the replica increase
+        // regardless of partition):
+        // 1) Adding masters: protect existing masters/tservers; new masters start in shell mode.
+        // 2) Adding tservers: protect existing tservers and all masters (master addresses are
+        //    unchanged when only tservers are added).
+        int tserverPartition = currNumTservers;
+        int masterPartition = serverType == ServerType.MASTER ? currNumMasters : newNumMasters;
         helmInstalls.addSubTask(
             createKubernetesExecutorTaskForServerType(
                 universeName,
@@ -1432,7 +1431,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           boolean waitForYsql =
               universeNode != null
                   && universeNode.isYsqlServer
-                  && ysqlWaitUniverse.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
+                  && ysqlWaitUniverse
+                      .getUniverseDetails()
+                      .getPrimaryCluster()
+                      .userIntent
+                      .enableYSQL;
           if (waitForYsql) {
             createWaitForServersTasks(nodeList, ServerType.YSQLSERVER, ysqlWaitUniverse)
                 .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -1589,15 +1592,23 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
         Map<String, Object> azOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
 
+        // This scale-down helm upgrade only reduces the replica count; it must not roll any
+        // surviving pod. Set partition to the post-scale-down pod counts (never 0) so a prior
+        // non-restart template change cannot trigger a simultaneous restart of remaining pods.
+        int masterPartition = newPlacement.masters.getOrDefault(azUUID, 0);
+        int tserverPartition = newPlacement.tservers.getOrDefault(azUUID, 0);
         helmDeletes.addSubTask(
-            createKubernetesExecutorTask(
+            createKubernetesExecutorTaskForServerType(
                 universeName,
                 CommandType.HELM_UPGRADE,
                 tempPI,
                 azCode,
                 masterAddresses,
                 ybSoftwareVersion,
+                ServerType.EITHER,
                 config,
+                masterPartition,
+                tserverPartition,
                 universeOverrides,
                 azOverrides,
                 isReadOnlyCluster,
