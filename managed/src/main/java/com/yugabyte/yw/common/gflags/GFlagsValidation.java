@@ -548,12 +548,17 @@ public class GFlagsValidation {
     Map<String, GFlagDetails> allGFlagsMap =
         extractGFlags(version, serverType.name(), false).stream()
             .collect(Collectors.toMap(flagDetails -> flagDetails.name, Function.identity()));
+    Set<String> undefokGFlags = GFlagsUtil.extractUndefokFlags(flags);
     for (Map.Entry<String, String> entry : flags.entrySet()) {
       String flag = entry.getKey();
-      if (!allGFlagsMap.containsKey(flag)) {
+      if (!undefokGFlags.contains(flag) && !allGFlagsMap.containsKey(flag)) {
         throw new PlatformServiceException(BAD_REQUEST, flag + " is not present in metadata.");
       }
       GFlagDetails flagDetail = allGFlagsMap.get(flag);
+      // flag details can be null for undefok flags
+      if (undefokGFlags.contains(flag) && flagDetail == null) {
+        continue;
+      }
       if (isAutoFlag(flagDetail) && !flagDetail.initial.equals(entry.getValue())) {
         filteredList.put(entry.getKey(), entry.getValue());
       }
