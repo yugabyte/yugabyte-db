@@ -407,6 +407,11 @@ public class NodeDetails {
     }
   }
 
+  /**
+   * This checks the status of the VM or the pod.
+   *
+   * @return true if the node is running, false otherwise.
+   */
   @JsonIgnore
   public boolean isNodeRunning() {
     return !(state == NodeState.Unreachable
@@ -416,7 +421,9 @@ public class NodeDetails {
         || state == NodeState.BeingDecommissioned
         || state == NodeState.Decommissioned
         || state == NodeState.Terminating
-        || state == NodeState.Terminated);
+        || state == NodeState.Terminated
+        || state == NodeState.InstanceStopping
+        || state == NodeState.InstanceStopped);
   }
 
   @JsonIgnore
@@ -426,6 +433,11 @@ public class NodeDetails {
         || state == NodeState.Terminated;
   }
 
+  /**
+   * Checks if the node is active based on the DB processes. VM may still be running.
+   *
+   * @return true if the node is active, false otherwise.
+   */
   @JsonIgnore
   public boolean isActive() {
     // TODO For some reason ToBeAdded node is treated as 'Active', which it's not the case.
