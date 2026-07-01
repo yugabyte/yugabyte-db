@@ -13,3 +13,5 @@ test: yb.orig.index_only_scan_decoded_pk
 test: yb.orig.index_scan_null_create
 test: yb.orig.index_scan_null_hash
 test: yb.orig.index_scan_null_asc
+
+test: yb.orig.yb_hash_code_row_compare
