@@ -396,7 +396,10 @@ struct pg_conn
 	char	   *ssl_max_protocol_version;	/* maximum TLS protocol version */
 	char	   *target_session_attrs;	/* desired session properties */
 
-	char	   *yb_auto_analyze; /* use the connection for auto analyze? */
+	char	   *yb_internal_conn_kind;	/* one of the YbInternalConnKind wire
+										 * names (see yb_internal_conn.h);
+										 * NULL/empty for a regular client
+										 * connection */
 
 	/* Optional file to write trace info to */
 	FILE	   *Pfdebug;
