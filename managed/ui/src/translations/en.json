@@ -4536,6 +4536,49 @@
             "message": "Enabling database query logging requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
             "back": "Back"
           }
+        },
+        "editAuditLogging": "Audit Logging Configuration",
+        "auditLogSettings": {
+          "title": "Configure Database Audit Logging",
+          "introTitle": "YSQL audit log",
+          "introText": "Customize the YSQL statements, relations, and log settings logged using PostgreSQL Audit Extension (<pgAuditLink>pgAudit</pgAuditLink>). Database audit logging will add performance overhead, especially for verbose logs. <docsLink>Learn more about YSQL audit logging</docsLink>.",
+          "section1Title": "1. Select YSQL statements and relations to log",
+          "section2Title": "2. Configure YSQL audit log settings",
+          "cancel": "Cancel",
+          "enableAuditLogging": "Enable Database Audit Logging",
+          "applyChanges": "Apply Changes",
+          "enableInProgress": "Enabling database audit logging",
+          "updateInProgress": "Updating database audit logging configuration",
+          "fields": {
+            "logCatalog": "pgaudit.log_catalog",
+            "logClient": "pgaudit.log_client",
+            "logLevel": "Level",
+            "logParameter": "pgaudit.log_parameter",
+            "logRelation": "pgaudit.log_relation",
+            "logStatement": "pgaudit.log_statement",
+            "logStatementOnce": "pgaudit.log_statement_once"
+          },
+          "tooltips": {
+            "read": "Log SELECT and COPY when the source is a relation or a query.",
+            "write": "Log INSERT, UPDATE, DELETE, TRUNCATE, and COPY when the destination is a relation.",
+            "function": "Log function calls and DO blocks.",
+            "role": "Log statements related to roles and privileges: GRANT, REVOKE, CREATE/ALTER/DROP ROLE.",
+            "ddl": "Log all DDL that is not included in the ROLE class.",
+            "misc": "Log miscellaneous commands, such as DISCARD, FETCH, CHECKPOINT, VACUUM, SET.",
+            "miscSet": "Log miscellaneous SET commands, such as SET ROLE.",
+            "logCatalog": "Log statements for the PostgreSQL system catalog relations in pg_catalog. Disable this option to reduce noise in the log.",
+            "logClient": "Log messages directly to clients such as ysqlsh and psql for debugging. When enabled, you can set the level of logs that are output using pgaudit.log_client.",
+            "logLevel": "Set the severity level of logs displayed in clients when pgaudit.log_client is on.",
+            "logParameter": "Include parameters passed with the statement. Parameters are provided in .csv format after the statement text.",
+            "logRelation": "Create separate log entries for each relation (TABLE, VIEW, etc.) referenced in a SELECT or DML statement. This is a shortcut for exhaustive logging without using object audit logging.",
+            "logStatement": "Include statement text with every log entry.",
+            "logStatementOnce": "Statement text (and, if enabled, parameters) are included with every log entry. Enable this option to only include them with the first log entry for a statement or sub-statement combination. This results in less verbose logging, but can make it more difficult to determine the statement that generated a log entry."
+          },
+          "confirmation": {
+            "title": "Confirm Configuration Change",
+            "message": "Enabling database audit logging requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+            "back": "Back"
+          }
         }
       },
       "masterServerNodeAllocationModal": {

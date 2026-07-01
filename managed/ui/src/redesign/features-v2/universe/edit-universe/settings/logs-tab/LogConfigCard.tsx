@@ -77,6 +77,8 @@ export interface LogConfigCardProps {
   description: string;
   learnMoreUrl: string;
   actionLabel: string;
+  actionIcon?: ReactNode;
+  actionVariant?: 'secondary' | 'ghost';
   onActionClick?: () => void;
   actionDisabled?: boolean;
   actionTestId: string;
@@ -88,6 +90,8 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({
   description,
   learnMoreUrl,
   actionLabel,
+  actionIcon,
+  actionVariant = 'secondary',
   onActionClick,
   actionDisabled = false,
   actionTestId
@@ -119,7 +123,8 @@ export const LogConfigCard: FC<LogConfigCardProps> = ({
       <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
         <YBButton
           dataTestId={actionTestId}
-          variant="secondary"
+          variant={actionVariant}
+          startIcon={actionIcon}
           disabled={actionDisabled}
           onClick={onActionClick}
         >

@@ -11,13 +11,14 @@ import {
   useEditUniverseContext,
   useIsUniverseReady
 } from '../../EditUniverseUtils';
-import { AuditLogSettings } from '@app/redesign/features/universe/universe-tabs/db-audit-logs/components/AuditLogSettings';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { AuditLogSettingsPanel } from './db-audit-log/AuditLogSettingsPanel';
 import { LogConfigCard } from './LogConfigCard';
 import { QueryLogSettingsPanel } from './query-log/QueryLogSettingsPanel';
 
 import QueryLogIcon from '@app/redesign/assets/approved/query-log.svg';
 import AuditLogIcon from '@app/redesign/assets/approved/audit-log.svg';
+import EditIcon from '@app/redesign/assets/approved/edit.svg';
 import IdeaIcon from '@app/redesign/assets/approved/idea.svg';
 
 const TRANSLATION_KEY_PREFIX = 'editUniverse.logs';
@@ -93,8 +94,12 @@ export const LogsTab = () => {
             title={t('databaseAuditLog')}
             description={t('databaseAuditLogDescription')}
             learnMoreUrl={AUDIT_LOG_DOCS_URL}
-            actionLabel={t('enableAuditLogging')}
-            actionDisabled={!isUniverseReady || isAuditLogEnabled}
+            actionLabel={
+              isAuditLogEnabled ? t('editAuditLogging') : t('enableAuditLogging')
+            }
+            actionIcon={isAuditLogEnabled ? <EditIcon width={24} height={24} /> : undefined}
+            actionVariant={isAuditLogEnabled ? 'ghost' : 'secondary'}
+            actionDisabled={!isUniverseReady}
             actionTestId="LogsTab-EnableAuditLoggingButton"
             onActionClick={() => setAuditLogSettingsModalOpen(true)}
           />
@@ -107,12 +112,12 @@ export const LogsTab = () => {
         </Typography>
       </div>
       {isAuditLogSettingsModalOpen && universeUuid && (
-        <AuditLogSettings
+        <AuditLogSettingsPanel
           open={isAuditLogSettingsModalOpen}
-          onClose={() => setAuditLogSettingsModalOpen(false)}
-          auditLogInfo={undefined}
-          universeUUID={universeUuid}
+          operation={isAuditLogEnabled ? 'edit' : 'create'}
+          universeUuid={universeUuid}
           universeName={universeName}
+          onClose={() => setAuditLogSettingsModalOpen(false)}
         />
       )}
       {isQueryLogSettingsModalOpen && universeUuid && (
