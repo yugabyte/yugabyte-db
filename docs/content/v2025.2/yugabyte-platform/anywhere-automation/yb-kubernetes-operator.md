@@ -467,7 +467,7 @@ To modify the universe, edit the CRD and use `kubectl apply/edit` operations.
 
 ### Create a universe with placement information
 
-Starting from YugabyteDB Anywhere v2025.2, you can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `preferred` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
+You can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `preferred` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
 
 ```sh
 kubectl apply universedemo-placement.yaml -n yb-platform
