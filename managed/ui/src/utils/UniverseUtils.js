@@ -66,7 +66,9 @@ export const nodeInClusterStates = [
   NodeState.Stopped,
   NodeState.Starting,
   NodeState.Unreachable,
-  NodeState.MetricsUnavailable
+  NodeState.MetricsUnavailable,
+  NodeState.InstanceStopping,
+  NodeState.InstanceStopped
 ];
 
 export const MultilineGFlags = {
