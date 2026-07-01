@@ -660,6 +660,11 @@ class Schema : public MissingValueProvider {
     return num_key_columns_ - num_hash_key_columns_;
   }
 
+  // True if any of the schema's primary (hash or range) key columns is BSON-typed.
+  // Used to decide whether DocDB should install the BSON-aware key comparator
+  // for the tablet's RocksDB instance.
+  bool HasBsonKeyColumn() const;
+
   // Return the byte offset within the row for the given column index.
   size_t column_offset(size_t col_idx) const {
     DCHECK_LT(col_idx, cols_.size());

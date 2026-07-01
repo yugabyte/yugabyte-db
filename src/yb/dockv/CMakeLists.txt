@@ -29,6 +29,7 @@ add_dependencies(dockv_proto gen_src_yb_tserver_pg_client_proto)
 
 set(DOCKV_SRCS
     doc_bson.cc
+    docdb_key_comparator.cc
     doc_key.cc
     doc_kv_util.cc
     doc_path.cc
@@ -52,7 +53,7 @@ set(DOCKV_SRCS
     value_packing_v2.cc
     )
 
-set(DOCKV_DEPS dockv_proto vector_index yb_common yb_pggate_util yb_util)
+set(DOCKV_DEPS bson dockv_proto rocksdb vector_index yb_common yb_pggate_util yb_util)
 
 ADD_YB_LIBRARY(yb_dockv
         SRCS ${DOCKV_SRCS}
@@ -71,6 +72,7 @@ set(YB_TEST_LINK_LIBS yb_common yb_dockv_test_util ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(doc_key-test)
 ADD_YB_TEST(doc_kv_util-test)
+ADD_YB_TEST(docdb_key_comparator-test)
 ADD_YB_TEST(intent-test)
 ADD_YB_TEST(packed_row-test)
 ADD_YB_TEST(partial_row-test)
