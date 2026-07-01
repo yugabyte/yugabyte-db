@@ -14,6 +14,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -34,6 +35,8 @@ void InitDistTrace(int64_t process_pid, opentelemetry::nostd::string_view node_u
 void CleanupDistTrace();
 nostd::shared_ptr<opentelemetry::trace::Tracer> GetDistTracer();
 bool IsDistTraceEnabled();
+// Returns the first path in paths that exists, or std::nullopt when none exist.
+std::optional<std::string> FindFirstExistingFile(const std::vector<std::string>& paths);
 trace::SpanContext GetTraceparentSpanContext(const char* traceparent);
 bool IsSpanContextValidAndRemote(const trace::SpanContext& span_context);
 
