@@ -3040,7 +3040,9 @@ typedef struct SetOpState
 
 typedef struct YbLockRowsStateInfo {
 	bool are_row_marks_for_yb_rels;	/* lr_arowMarks relates to YB * relations */
-	TupleTableSlot *tuple_slot;
+	TupleTableSlot *result_slot;	/* Slot returned to callers.
+									   In the same format as slot returned by the outer plan */
+	TupleTableSlot *minimal_tuple_slot;	/* Intermediate slot for tuplestore retrieval */
 	Tuplestorestate *buffered_slots;
 	uint16_t buffered_slots_capacity;
 	uint16_t buffered_slot_index;
