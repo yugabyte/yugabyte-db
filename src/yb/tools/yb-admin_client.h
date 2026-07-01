@@ -454,6 +454,8 @@ class ClusterAdminClient {
 
   Status ValidateAndSyncCDCStateEntriesForCDCSDKStream(const std::string& stream_id);
 
+  Status CleanupStaleCDCStreams(const std::string& ysql_database_name, bool dry_run);
+
   Status SetupNamespaceReplicationWithBootstrap(const std::string& replication_id,
                                   const std::vector<std::string>& producer_addresses,
                                   const TypedNamespaceName& ns,

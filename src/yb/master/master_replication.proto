@@ -882,6 +882,30 @@ message ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB {
   repeated string deleted_tablet_entries = 3;
 }
 
+message CleanupStaleCDCStreamsRequestPB {
+  optional string namespace_id = 1;
+  optional bool dry_run = 2 [default = false];
+}
+
+message CleanupStaleCDCStreamsResponsePB {
+  message StaleEntryPB {
+    message TablePB {
+      optional bytes table_id = 1;
+      optional string table_name = 2;
+    }
+
+    optional string tablet_id = 1;
+    optional bytes stream_id = 2;
+    optional bytes colocated_table_id = 3;
+    optional string reason = 4;
+    repeated TablePB tables = 5;
+  }
+
+  optional MasterErrorPB error = 1;
+  repeated StaleEntryPB stale_entries = 2;
+  repeated StaleEntryPB deleted_entries = 3;
+}
+
 message RemoveTablesFromCDCSDKStreamRequestPB {
   optional string stream_id = 1;
   repeated string table_ids = 2;
@@ -1045,6 +1069,8 @@ service MasterReplication {
   rpc ValidateAndSyncCDCStateEntriesForCDCSDKStream(
       ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB)
       returns (ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB);
+  rpc CleanupStaleCDCStreams(CleanupStaleCDCStreamsRequestPB)
+      returns (CleanupStaleCDCStreamsResponsePB);
   // Introduced for bug (#22876, #22773)
   rpc RemoveTablesFromCDCSDKStream (RemoveTablesFromCDCSDKStreamRequestPB)
       returns (RemoveTablesFromCDCSDKStreamResponsePB);

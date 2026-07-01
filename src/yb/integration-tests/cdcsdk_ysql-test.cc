@@ -9668,6 +9668,51 @@ TEST_F(
       /* use_consistent_snapshot_stream */ true);
 }
 
+TEST_F(CDCSDKYsqlTest, TestCleanupStaleCDCStreamsWithYBAdminDryRunAndDelete) {
+  ASSERT_OK(SetUpWithParams(3, 3, false));
+
+  const int kNumTables = 1;
+  vector<YBTableName> table(kNumTables);
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(kNumTables);
+  std::unordered_set<TableId> expected_tables;
+  std::unordered_set<TabletId> expected_tablets;
+  ASSERT_OK(CreateTables(kNumTables, &table, &tablets, &expected_tables, &expected_tablets));
+
+  const auto stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::EXPLICIT));
+  ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
+      stream_id, expected_tablets.size(), expected_tables.size(),
+      /* unqualified_table_ids_count */ 0, 60,
+      "Timed out waiting to verify stream metadata & cdc_state table after stream creation"));
+
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  const auto& tablet_id = tablets[0].Get(0).tablet_id();
+  const auto missing_stream_id = xrepl::StreamId::GenerateRandom();
+  const CDCStateTableKey missing_tablet_key("missing_tablet_id", stream_id);
+  const CDCStateTableKey missing_stream_key(tablet_id, missing_stream_id);
+  ASSERT_OK(cdc_state_table.InsertEntries({
+      CDCStateTableEntry(missing_tablet_key),
+      CDCStateTableEntry(missing_stream_key)}));
+
+  const auto dry_run_output =
+      ASSERT_RESULT(CleanupStaleCDCStreams(test_namespace_name, /*dry_run=*/true));
+  ASSERT_STR_CONTAINS(dry_run_output, "Found 2 stale cdc_state entries (dry run)");
+  ASSERT_STR_CONTAINS(dry_run_output, "reason: stream not found");
+  ASSERT_STR_CONTAINS(dry_run_output, "reason: tablet not found");
+  ASSERT_STR_CONTAINS(dry_run_output, table[0].table_id());
+  ASSERT_TRUE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(missing_tablet_key)));
+  ASSERT_TRUE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(missing_stream_key)));
+
+  const auto cleanup_output =
+      ASSERT_RESULT(CleanupStaleCDCStreams(test_namespace_name, /*dry_run=*/false));
+  ASSERT_STR_CONTAINS(cleanup_output, "Found 2 stale cdc_state entries");
+  ASSERT_STR_CONTAINS(cleanup_output, "Deleted 2 stale cdc_state entries");
+  ASSERT_FALSE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(missing_tablet_key)));
+  ASSERT_FALSE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(missing_stream_key)));
+  CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id);
+
+  ASSERT_TRUE(DeleteCDCStream(stream_id));
+}
+
 // This test performs the following:
 // 1. Create a table t1
 // 2. Create a CDC stream
