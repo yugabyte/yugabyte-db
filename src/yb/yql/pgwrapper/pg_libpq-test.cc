@@ -1655,8 +1655,8 @@ TEST_F_EX(
 void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
     const string database_name, bool colocated, const string tablegroup_name,
     const string query_statement) {
-  auto conn1 = ASSERT_RESULT(ConnectToDB(database_name));
-  auto conn2 = ASSERT_RESULT(ConnectToDB(database_name));
+  auto conn1 = ASSERT_RESULT(SetHighPriTxn(ConnectToDB(database_name)));
+  auto conn2 = ASSERT_RESULT(SetLowPriTxn(ConnectToDB(database_name)));
 
   if (colocated) {
     ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE t (a INT, PRIMARY KEY (a ASC))"));

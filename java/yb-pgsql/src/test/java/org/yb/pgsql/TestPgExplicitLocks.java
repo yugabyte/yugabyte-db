@@ -29,6 +29,7 @@ import java.sql.Statement;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -63,7 +64,24 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
   }
 
   @Test
-  public void testExplicitLocks() throws Exception {
+  public void testTxnPriorities() throws Exception {
+    // This test relies on FOR UPDATE being assigned the high txn priority band. That logic doesn't
+    // hold with concurrent DDL, because the priority is latched by the object lock/ catalog
+    // read RPCs that are sent before the row lock RPC, i.e. while the row mark is still absent.
+    // So, run just this test in the legacy mode.
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    // DDL savepoint support requires ysql_yb_ddl_transaction_block_enabled, so disable it too.
+    tserverFlags.put("ysql_yb_enable_ddl_savepoint_support", "false");
+    tserverFlags.put("enable_object_locking_for_table_locks", "false");
+    tserverFlags.put("ysql_enable_concurrent_ddl", "false");
+    // addCommonTServerFlags() overwrites the value set in getTServerFlags(), so repeat
+    // skip_prefix_locks here.
+    tserverFlags.put("allowed_preview_flags_csv", "skip_prefix_locks,ysql_enable_concurrent_ddl");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+    // The following tests in this class should run with the default flags again.
+    markClusterNeedsRecreation();
+
     setupSimpleTable("explicitlocks");
     Connection c1 = getConnectionBuilder().connect();
     Connection c2 = getConnectionBuilder().connect();

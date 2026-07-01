@@ -241,7 +241,7 @@ DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
 DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsMac,
     "Whether to use shared memory fastpath for shared object locks.");
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_concurrent_ddl, false,
+DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_concurrent_ddl, kEnableDdlTransactionBlocks,
     "[This is an advanced flag, avoid using it unless recommended by Yugabyte "
     "support.] Use this flag to toggle support for concurrent DDLs.");
 DEFINE_validator(ysql_enable_concurrent_ddl,

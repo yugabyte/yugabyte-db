@@ -1083,6 +1083,10 @@ class PgMasterDDLReadRestartProbeTest : public LibPqTestBase {
         Format("--ysql_enable_concurrent_ddl=false"));
     AppendFlagToAllowedPreviewFlagsCsv(
         options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    options->extra_master_flags.push_back(
+        Format("--ysql_enable_concurrent_ddl=false"));
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_master_flags, "ysql_enable_concurrent_ddl");
     LibPqTestBase::UpdateMiniClusterOptions(options);
   }
 

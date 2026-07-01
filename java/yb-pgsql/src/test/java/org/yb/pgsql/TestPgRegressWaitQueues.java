@@ -52,7 +52,7 @@ public class TestPgRegressWaitQueues extends BasePgRegressTest {
 
   @Test
   public void testPgRegressWithoutSkipPrefixLocks() throws Exception {
-    runIsolationRegressTest("yb_wait_queues_schedule_skip_prefix_locks_off");
+    runIsolationRegressTest("yb_wait_queues_skip_prefix_locks_off_schedule");
   }
 
   @Test

@@ -15,3 +15,6 @@ test: yb.port.insert-conflict-do-nothing-2
 test: yb.orig.deadlock
 test: yb.orig.modify-transaction-characteristics
 test: yb.orig.fk_triggers_use_latest_snapshot
+test: yb.orig.row-lock-conflict-matrix-prefix-locks-on
+test: yb.orig.partial-pk-conflict-prefix-locks-on
+

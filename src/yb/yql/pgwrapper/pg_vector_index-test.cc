@@ -72,6 +72,7 @@ DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_bool(vector_index_skip_filter_check);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(TEST_skip_process_apply);
@@ -226,6 +227,9 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     // serialization, which defaults on in release builds, would make CREATE INDEX wait for that
     // transaction to finish, so disable it to keep behavior consistent across build types.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    // ysql_enable_concurrent_ddl requires enable_object_locking_for_table_locks, so keep the two
+    // consistent instead of leaving a combination that flag validation rejects.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
 
     PgMiniTestBase::SetUp();
 

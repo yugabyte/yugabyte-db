@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -77,6 +78,18 @@ class PgCatalogVersionTest : public LibPqTestBase {
 
   bool IsTransactionalDdlEnabled() const {
     return ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_yb_ddl_transaction_block_enabled);
+  }
+
+  void CheckDroppedDatabaseError(const Status& status, Oid db_oid) {
+    const auto status_str = status.ToString();
+    const auto contains = [&status_str](const std::string& substr) {
+      return status_str.find(substr) != std::string::npos;
+    };
+    const auto namespace_not_found =
+        contains(GetPgsqlNamespaceId(db_oid)) && contains("OBJECT_NOT_FOUND");
+    const auto database_dropped =
+        contains(Format("base $0", db_oid)) && contains("base may have been dropped");
+    ASSERT_TRUE(namespace_not_found || database_dropped) << status;
   }
 
   // Sync up pg_yb_catalog_version with pg_database so that there is one row per
@@ -822,10 +835,7 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersion) {
   // After the test database is dropped, 'conn_test' should no longer succeed.
   LOG(INFO) << "Read the table from 'conn_test'";
   auto status = ResultToStatus(conn_test.Fetch("SELECT * FROM t"));
-  ASSERT_TRUE(status.IsNetworkError()) << status;
-  ASSERT_STR_CONTAINS(status.ToString(),
-                      Format("catalog version for database $0 was not found", new_db_oid));
-  ASSERT_STR_CONTAINS(status.ToString(), "Database may have been dropped and recreated");
+  ASSERT_NO_FATALS(CheckDroppedDatabaseError(status, new_db_oid));
 
   // Recreate the same database and table.
   LOG(INFO) << "Re-create the same database";
@@ -858,10 +868,7 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersion) {
   // same database and table.
   LOG(INFO) << "Read the table from 'conn_test'";
   status = ResultToStatus(conn_test.Fetch("SELECT * FROM t"));
-  ASSERT_TRUE(status.IsNetworkError()) << status;
-  ASSERT_STR_CONTAINS(status.ToString(),
-                      Format("catalog version for database $0 was not found", new_db_oid));
-  ASSERT_STR_CONTAINS(status.ToString(), "Database may have been dropped and recreated");
+  ASSERT_NO_FATALS(CheckDroppedDatabaseError(status, new_db_oid));
 
   // We need to make a new connection to the recreated database in order to have a
   // successful query of the re-created table.
@@ -901,9 +908,7 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersionDropDB) {
   // Execute any query in the test session that requires metadata lookup
   // should fail with error indicating that the database has been dropped.
   auto status = ResultToStatus(conn_test.Fetch("SELECT * FROM non_exist_table"));
-  ASSERT_TRUE(status.IsNetworkError()) << status;
-  ASSERT_STR_CONTAINS(status.ToString(), Format("base $0", new_db_oid));
-  ASSERT_STR_CONTAINS(status.ToString(), "base may have been dropped");
+  ASSERT_NO_FATALS(CheckDroppedDatabaseError(status, new_db_oid));
 }
 
 // Test various global DDL statements in a single-tenant cluster setting.
@@ -3535,13 +3540,19 @@ TEST_P(PgCatalogVersionConnManagerTest,
 TEST_P(PgCatalogVersionConnManagerOnlyTest,
        YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerDdlVersionGapWait)) {
   cluster_->Shutdown();
+  // Concurrent DDL requires object locking, so whenever object locking is off, concurrent DDL
+  // must be off too, otherwise the daemons FATAL at startup.
   for (size_t i = 0; i != cluster_->num_masters(); ++i) {
-    cluster_->master(i)->mutable_flags()->push_back(
-        "--enable_object_locking_for_table_locks=false");
+    auto* flags = cluster_->master(i)->mutable_flags();
+    flags->push_back("--enable_object_locking_for_table_locks=false");
+    flags->push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
   }
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    cluster_->tablet_server(i)->mutable_flags()->push_back(
-        "--enable_object_locking_for_table_locks=false");
+    auto* flags = cluster_->tablet_server(i)->mutable_flags();
+    flags->push_back("--enable_object_locking_for_table_locks=false");
+    flags->push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
   }
   ASSERT_OK(cluster_->Restart());
 

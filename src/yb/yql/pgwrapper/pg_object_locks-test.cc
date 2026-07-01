@@ -1538,6 +1538,10 @@ class PgObjecLocksTestOutOfOrderMessageHandling
         yb::Format("--pg_client_extra_timeout_ms=$0", kPgClientExtraTimeoutMs));
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--vmodule=ts_local_lock_manager=2,$0", FLAGS_vmodule));
+    // TODO(#33361): the UseDdlForLocks variants fail with concurrent DDL enabled. Disable it
+    // until the test is fixed to work in that mode.
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   }
 
   DoMasterFailover ShouldDoMasterFailover() const {
