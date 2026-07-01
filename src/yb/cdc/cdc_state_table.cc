@@ -688,6 +688,35 @@ Result<CDCStateTableRange> CDCStateTable::GetTableRange(
   return CDCStateTableRange(VERIFY_RESULT(GetTable()), iteration_status, std::move(columns));
 }
 
+Result<CDCStateTableRange> CDCStateTable::GetTableRange(
+    CDCStateTableEntrySelector&& field_filter, Status* iteration_status,
+    const xrepl::StreamId& stream_id) {
+  std::vector<std::string> columns;
+  columns.emplace_back(kCdcTabletId);
+  columns.emplace_back(kCdcStreamId);
+  MoveCollection(&field_filter.columns_, &columns);
+  VLOG_WITH_FUNC(1) << yb::ToString(columns) << ", stream_id: " << stream_id;
+
+  // The stream_id column stores either "streamId" (non-colocated) or
+  // "streamId_tableId" (colocated). Use a range filter on the stream_id prefix
+  // so both forms are matched: >= "streamId" AND < "streamId~" where '~' (0x7e)
+  // sorts after '_' (0x5f) and any hex chars in table IDs.
+  auto stream_id_str = stream_id.ToString();
+  auto stream_id_upper = stream_id_str + "~";
+  client::TableFilter filter =
+      [stream_id_str, stream_id_upper](
+          const client::TableHandle& table, QLConditionPB* condition) {
+        condition->set_op(QL_OP_AND);
+        table.AddStringCondition(
+            condition, kCdcStreamId, QL_OP_GREATER_THAN_EQUAL, stream_id_str);
+        table.AddStringCondition(
+            condition, kCdcStreamId, QL_OP_LESS_THAN, stream_id_upper);
+      };
+
+  return CDCStateTableRange(
+      VERIFY_RESULT(GetTable()), iteration_status, std::move(columns), std::move(filter));
+}
+
 Result<CDCStateTableRange> CDCStateTable::GetTableRangeAsync(
     CDCStateTableEntrySelector&& field_filter, Status* iteration_status) {
   bool creation_in_progress = false;
@@ -861,9 +890,10 @@ CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeActivePid() {
 
 CDCStateTableRange::CDCStateTableRange(
     const std::shared_ptr<client::TableHandle>& table, Status* failure_status,
-    std::vector<std::string>&& columns)
+    std::vector<std::string>&& columns, client::TableFilter filter)
     : table_(table) {
   options_.columns = std::move(columns);
+  options_.filter = std::move(filter);
 
   options_.error_handler = [failure_status](const Status& status) {
     *failure_status = status.CloneAndPrepend(
