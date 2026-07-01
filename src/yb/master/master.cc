@@ -534,6 +534,10 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
       return STATUS(NotFound, "No raft config found.");
   }
 
+  // Per-follower heartbeat delay; empty unless this master is the Raft leader.
+  const auto follower_heartbeat_delay_map =
+      catalog_manager_impl()->GetMasterFollowerHeartbeatDelaysMs();
+
   for (const RaftPeerPB& peer : cpb.config().peers()) {
     // Get all network addresses associated with this peer master
     std::vector<HostPort> addrs;
@@ -567,6 +571,13 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
       reg->mutable_private_rpc_addresses()->CopyFrom(peer.last_known_private_addr());
       reg->mutable_broadcast_addresses()->CopyFrom(peer.last_known_broadcast_addr());
     }
+
+    // Annotate with heartbeat delay when this master is the leader.
+    const auto it = follower_heartbeat_delay_map.find(peer.permanent_uuid());
+    if (it != follower_heartbeat_delay_map.end()) {
+      peer_entry.set_heartbeat_delay_ms(it->second);
+    }
+
     masters->push_back(peer_entry);
   }
 

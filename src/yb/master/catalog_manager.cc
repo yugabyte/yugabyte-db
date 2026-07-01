@@ -13224,6 +13224,40 @@ void CatalogManager::ResetMetrics() {
   metric_num_tablet_servers_dead_->set_value(0);
 }
 
+// Returns { peer_uuid -> ms since the sys catalog Raft leader last had a successful
+// exchange with that follower }. Only the leader tracks its followers, so this returns
+// an empty map on any other role. The local peer is never included, so the leader has
+// no entry for itself.
+std::unordered_map<std::string, int64_t> CatalogManager::GetMasterFollowerHeartbeatDelaysMs()
+    const {
+  std::unordered_map<std::string, int64_t> result;
+  // Only the leader tracks its followers.
+  if (Role() != PeerRole::LEADER) {
+    return result;
+  }
+  auto tp = tablet_peer();
+  if (!tp) {
+    return result;
+  }
+  auto consensus_result = tp->GetConsensus();
+  if (!consensus_result) {
+    return result;
+  }
+  const auto now = MonoTime::Now();
+  for (const auto& comm_time : (*consensus_result)->GetFollowerCommunicationTimes()) {
+    // last_successful_communication is initialized when the peer starts being tracked,
+    // so a never-reached follower still reports a small (and then growing) delay.
+    // For negative values, set to 0.
+    int64_t delay_ms = comm_time.last_successful_communication
+        ? now.GetDeltaSince(comm_time.last_successful_communication).ToMilliseconds()
+        : 0;
+    if (delay_ms < 0) {
+      delay_ms = 0;
+    }
+    result[comm_time.peer_uuid] = delay_ms;
+  }
+  return result;
+}
 
 std::string CatalogManager::LogPrefix() const {
   if (tablet_peer()) {

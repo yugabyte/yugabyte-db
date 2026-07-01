@@ -1476,7 +1476,9 @@ Status ClusterAdminClient::ListAllMasters() {
   cout << RightPadToUuidWidth("Master UUID") << kColumnSep
         << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth) << kColumnSep
         << RightPadToWidth("State", kSmallColWidth) << kColumnSep
-        << "Role" << kColumnSep << RightPadToWidth(kBroadcastHeading, kHostPortColWidth) << endl;
+        << RightPadToWidth("Role", kSmallColWidth) << kColumnSep
+        << RightPadToWidth(kBroadcastHeading, kHostPortColWidth)
+        << kColumnSep << "Lag(ms)" << endl;
 
   for (const auto& master : lresp.masters()) {
       const auto master_reg = master.has_registration() ? &master.registration() : nullptr;
@@ -1490,10 +1492,19 @@ Status ClusterAdminClient::ListAllMasters() {
                                 PBEnumToString(master.error().code()) : "ALIVE"),
                               kSmallColWidth)
             << kColumnSep;
-      cout << (master.has_role() ? PBEnumToString(master.role()) : "UNKNOWN") << kColumnSep;
+      cout << RightPadToWidth(
+                master.has_role() ? PBEnumToString(master.role()) : "UNKNOWN",
+                kSmallColWidth)
+            << kColumnSep;
       cout << RightPadToWidth(
         master_reg ? FormatFirstHostPort(master_reg->broadcast_addresses()) : "UNKNOWN",
-        kHostPortColWidth) << endl;
+        kHostPortColWidth) << kColumnSep;
+      if (master.has_heartbeat_delay_ms()) {
+        cout << master.heartbeat_delay_ms();
+      } else {
+        cout << "N/A";
+      }
+      cout << endl;
   }
 
   return Status::OK();

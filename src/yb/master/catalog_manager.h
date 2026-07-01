@@ -926,6 +926,17 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Tablet peer for the sys catalog tablet's peer.
   std::shared_ptr<tablet::TabletPeer> tablet_peer() const override;
 
+  // Returns { peer_uuid -> ms since the sys catalog Raft leader last had a successful
+  // exchange with that follower }. Only the leader tracks its followers, so this returns
+  // an empty map on any other role. The local peer is never included, so the leader has
+  // no entry for itself.
+  //
+  // Note that the underlying timestamp defaults to the time the peer started being
+  // tracked, so a follower that has never been successfully reached reports a small
+  // delay that then grows, rather than a distinguishable "never reached" value. This is
+  // the same data source as the max_follower_heartbeat_delay metric in ReportMetrics().
+  std::unordered_map<std::string, int64_t> GetMasterFollowerHeartbeatDelaysMs() const;
+
   ClusterLoadBalancer* cluster_balancer() override { return load_balance_policy_.get(); }
 
   // This never returns nullptr.
