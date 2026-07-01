@@ -540,13 +540,13 @@ RESET yb_test_skip_binding_scan_keys;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
  YB Bitmap Table Scan on simple (actual rows=1 loops=1)
    Recheck Cond: ((ROW(ind_a, ind_a) <= ROW(4, 1)) OR (ind_a IS NULL))
-   Rows Removed by Index Recheck: 9
-   ->  BitmapOr (actual rows=10 loops=1)
-         ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=10 loops=1)
+   Rows Removed by Index Recheck: 1
+   ->  BitmapOr (actual rows=2 loops=1)
+         ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=2 loops=1)
                Index Cond: (ROW(ind_a, ind_a) <= ROW(4, 1))
          ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=0 loops=1)
                Index Cond: (ind_a IS NULL)
