@@ -251,6 +251,50 @@ $(document).ready(() => {
     });
   })();
 
+  /**
+   * Add markdown copy functionality.
+   */
+  (() => {
+    const markdownCopyButton = document.querySelector('.markdown-actions button.copy-link');
+    if (markdownCopyButton) {
+      markdownCopyButton.addEventListener('click', function () {
+        const button = this;
+        const originalHtml = button.innerHTML;
+        const url = button.getAttribute('data-copy-file');
+
+        button.innerHTML = '<i class="fa fa-spinner fa-spin me-2"></i><span>Copying...</span>';
+
+        // Fetch the file content.
+        fetch(url)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error('File not found');
+            }
+            return response.text();
+          })
+          .then((text) => {
+            // Copy content to clipboard.
+            navigator.clipboard
+              .writeText(text)
+              .then(() => {
+                button.innerHTML = '<i class="fa fa-copy me-2"></i><span>Copied</span>';
+              })
+              .catch(() => {
+                button.innerHTML = '<i class="fa fa-copy me-2"></i><span>Failed to copy</span>';
+              })
+              .finally(() => {
+                setTimeout(() => {
+                  button.innerHTML = originalHtml;
+                }, 2000);
+              });
+          })
+          .catch((err) => {
+            button.innerHTML = originalHtml;
+          });
+      });
+    }
+  })();
+
   (() => {
     const contributeEditFilePath = document.querySelector('.contribute-edit-file-path');
     if (contributeEditFilePath) {

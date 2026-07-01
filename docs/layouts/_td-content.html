@@ -47,6 +47,7 @@
               {{- partial "tags/other.html" . -}}
             {{- end -}}
           {{- end -}}
+          {{ with .OutputFormats.Get "markdown" }}{{ partial "markdown-actions.html" . -}}{{ end }}
         </h1>
         {{ with .Params.headcontent }}<div class="lead">{{ . | markdownify }}</div>{{ end }}
       </div>
