@@ -12,6 +12,6 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V101.2__30642__update_yb_tablet_metadata.sql
-{ major => '101', minor => '2', name => '<baseline>', time_applied => '_null_' }
+# here: V101.3__30907__pg_replication_origin_shared.sql
+{ major => '101', minor => '3', name => '<baseline>', time_applied => '_null_' }
 ]

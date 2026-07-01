@@ -13196,6 +13196,46 @@ TEST_F(CDCSDKYsqlTest, TestOriginId) {
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 }
 
+TEST_F(CDCSDKYsqlTest, TestSharedOriginIdFromConcurrentSessions) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
+  const auto kOrigin = "shared_origin";
+  auto conn1 = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+
+  ASSERT_OK(conn1.FetchFormat("SELECT pg_replication_origin_create('$0');", kOrigin));
+  auto conn2 = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  ASSERT_OK(conn1.FetchFormat("SELECT yb_replication_origin_session_setup_shared('$0');", kOrigin));
+  ASSERT_OK(conn2.FetchFormat("SELECT yb_replication_origin_session_setup_shared('$0');", kOrigin));
+  ASSERT_OK(conn1.Execute("CREATE TEMP TABLE shared_origin_temp(i int)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO shared_origin_temp VALUES (1)"));
+  ASSERT_OK(conn1.Execute("DROP TABLE shared_origin_temp"));
+  ASSERT_OK(conn1.ExecuteFormat("INSERT INTO $0 VALUES (1, 100)", kTableName));
+  ASSERT_OK(conn2.ExecuteFormat("INSERT INTO $0 VALUES (2, 200)", kTableName));
+  ASSERT_OK(conn1.Fetch("SELECT yb_replication_origin_session_reset_shared()"));
+  ASSERT_OK(conn2.Fetch("SELECT yb_replication_origin_session_reset_shared()"));
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  LOG(INFO) << "CDC response: " << change_resp.ShortDebugString();
+  auto seen_inserts = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() != RowMessage::INSERT) {
+      continue;
+    }
+
+    ASSERT_TRUE(record.row_message().has_xrepl_origin_id());
+    ASSERT_EQ(record.row_message().xrepl_origin_id(), 1);
+    seen_inserts++;
+  }
+  ASSERT_EQ(seen_inserts, 2);
+}
+
 TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
   const auto kOrigin1 = "origin1";

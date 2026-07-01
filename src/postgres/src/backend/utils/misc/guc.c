@@ -3359,6 +3359,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_replication_origin_shared", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("Enable shared replication origin write tagging."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_replication_origin_shared,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_ddl_transaction_block_enabled", PGC_POSTMASTER, DEVELOPER_OPTIONS,
 			gettext_noop("If true, DDL operations in YSQL will execute within "
 						 "the active transaction block instead of their "

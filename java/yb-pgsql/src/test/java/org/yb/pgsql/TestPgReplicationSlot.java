@@ -5052,6 +5052,133 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   @Test
+  public void testPgoutputWithSharedOriginId() throws Exception {
+    final String slotName = "test_replication_with_shared_origin_id";
+    final String originId1 = "shared_origin1";
+    final String originId2 = "shared_origin2";
+
+    Connection replConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+        replConn.unwrap(PGConnection.class).getReplicationAPI();
+    Connection conn2 = getConnectionBuilder().withTServer(1).connect();
+
+    try (Statement stmt1 = connection.createStatement();
+         Statement stmt2 = conn2.createStatement()) {
+      stmt1.execute("DROP TABLE IF EXISTS shared_origin_tbl1");
+      stmt1.execute("DROP TABLE IF EXISTS shared_origin_tbl2");
+      stmt1.execute("CREATE TABLE shared_origin_tbl1 (a INT PRIMARY KEY, b TEXT)");
+      stmt1.execute("ALTER TABLE shared_origin_tbl1 REPLICA IDENTITY DEFAULT");
+      stmt1.execute("CREATE TABLE shared_origin_tbl2 (a INT PRIMARY KEY, b TEXT)");
+      stmt1.execute("ALTER TABLE shared_origin_tbl2 REPLICA IDENTITY DEFAULT");
+      stmt1.execute("CREATE PUBLICATION shared_origin_pub FOR ALL TABLES");
+
+      stmt1.execute("SELECT pg_replication_origin_create('" + originId1 + "')");
+      stmt1.execute("SELECT pg_replication_origin_create('" + originId2 + "')");
+      stmt1.execute("CREATE ROLE shared_origin_non_su LOGIN PASSWORD 'pwd'");
+      createSlot(replConnection, slotName, PG_OUTPUT_PLUGIN_NAME);
+
+      try (Connection nonSuConn = getConnectionBuilder()
+               .withUser("shared_origin_non_su").withPassword("pwd").connect();
+           Statement nonSuStmt = nonSuConn.createStatement()) {
+        runInvalidQuery(
+            nonSuStmt,
+            "SELECT yb_replication_origin_session_setup_shared('" + originId1 + "')",
+            "permission denied for function yb_replication_origin_session_setup_shared");
+        runInvalidQuery(
+            nonSuStmt,
+            "SELECT yb_replication_origin_session_reset_shared()",
+            "permission denied for function yb_replication_origin_session_reset_shared");
+      }
+
+      stmt1.execute("SELECT yb_replication_origin_session_setup_shared('" + originId1 + "')");
+      stmt2.execute("SELECT yb_replication_origin_session_setup_shared('" + originId2 + "')");
+
+      runInvalidQuery(
+          stmt1,
+          "SELECT pg_replication_origin_session_setup('" + originId2 + "')",
+          "replication origin session already setup");
+      runInvalidQuery(
+          stmt1,
+          "SELECT yb_replication_origin_session_setup_shared('" + originId2 + "')",
+          "replication origin session already setup");
+
+      stmt1.execute("CREATE TEMP TABLE shared_origin_temp(i int)");
+      stmt1.execute("INSERT INTO shared_origin_temp VALUES (1)");
+      stmt1.execute("DROP TABLE shared_origin_temp");
+      stmt1.execute("INSERT INTO shared_origin_tbl1 values (1, 'from_origin1')");
+      stmt2.execute("INSERT INTO shared_origin_tbl2 values (2, 'from_origin2')");
+
+      stmt1.execute("SELECT yb_replication_origin_session_reset_shared()");
+      stmt2.execute("SELECT yb_replication_origin_session_reset_shared()");
+      stmt1.execute("INSERT INTO shared_origin_tbl1 values (3, 'local_after_reset')");
+
+      stmt1.execute("SELECT pg_replication_origin_session_setup('" + originId1 + "')");
+      runInvalidQuery(
+          stmt1,
+          "SELECT yb_replication_origin_session_setup_shared('" + originId2 + "')",
+          "cannot use shared replication origin session while an exclusive one is active");
+      runInvalidQuery(
+          stmt1,
+          "SELECT yb_replication_origin_session_reset_shared()",
+          "cannot reset shared replication origin session while an exclusive one is active");
+      stmt1.execute("SELECT pg_replication_origin_session_reset()");
+
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "shared_origin_pub")
+                                     .start();
+
+    List<PgOutputMessage> result = receiveMessage(stream, 13);
+    int originMessages = 0;
+    int origin1Messages = 0;
+    int origin2Messages = 0;
+    for (PgOutputMessage message : result) {
+      if (message.messageType() == PgOutputMessageType.ORIGIN) {
+        originMessages++;
+      }
+      if (message.equals(PgOutputOriginMessage.Create(originId1))) {
+        origin1Messages++;
+      }
+      if (message.equals(PgOutputOriginMessage.Create(originId2))) {
+        origin2Messages++;
+      }
+    }
+    assertEquals(2, originMessages);
+    assertEquals(1, origin1Messages);
+    assertEquals(1, origin2Messages);
+
+    stream.close();
+    conn2.close();
+    replConn.close();
+  }
+
+  @Test
+  public void testSharedOriginIdDisabled() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    appendToYsqlPgConf(tserverFlags, "yb_enable_replication_origin_shared=false");
+    restartClusterWithFlags(getMasterFlags(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SELECT pg_replication_origin_create('disabled_shared_origin')");
+      runInvalidQuery(
+          stmt,
+          "SELECT yb_replication_origin_session_setup_shared('disabled_shared_origin')",
+          "yb_replication_origin_session_setup_shared requires "
+              + "yb_enable_replication_origin_shared to be enabled");
+      runInvalidQuery(
+          stmt,
+          "SELECT yb_replication_origin_session_reset_shared()",
+          "yb_replication_origin_session_reset_shared requires "
+              + "yb_enable_replication_origin_shared to be enabled");
+    }
+  }
+
+  @Test
   public void testYboutputWithOriginIdCreatedAfterSlot() throws Exception {
     final String slotName = "test_replication_with_origin_id_post_slot";
     final String originId1 = "origin1_post";
