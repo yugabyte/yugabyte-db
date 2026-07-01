@@ -14,12 +14,8 @@ test: yb.orig.seeknext_estimate_setup
 
 test: yb.orig.seeknext_estimate
 
-# Dependency for the roundtrip estimate tests
+# Shared dependency for the serial and parallel roundtrip estimate tests
 test: yb.orig.roundtrip_estimate_setup
 
 test: yb.orig.roundtrip_estimate
-
-# Dependency for the parallel roundtrip estimate tests
-test: yb.orig.roundtrip_estimate_parallel_setup
-
 test: yb.orig.roundtrip_estimate_parallel

@@ -223,7 +223,7 @@ SELECT count(*) FROM pctest1 WHERE k > 123;
 (1 row)
 
 -- index only
-/*+ Parallel(pctest1 2 hard) */
+/*+ Parallel(pctest1 2 hard) IndexOnlyScan(pctest1) */
 EXPLAIN (costs off)
 SELECT a FROM pctest1 WHERE a < 10;
                           QUERY PLAN                           
@@ -234,7 +234,7 @@ SELECT a FROM pctest1 WHERE a < 10;
          Storage Filter: (a < 10)
 (4 rows)
 
-/*+ Parallel(pctest1 2 hard) */
+/*+ Parallel(pctest1 2 hard) IndexOnlyScan(pctest1) */
 SELECT a FROM pctest1 WHERE a < 10;
  a 
 ---
@@ -251,7 +251,7 @@ SELECT a FROM pctest1 WHERE a < 10;
 (10 rows)
 
 -- with grouping
-/*+ Parallel(pctest1 2 hard) */
+/*+ Parallel(pctest1 2 hard) IndexOnlyScan(pctest1) */
 EXPLAIN (costs off)
 SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
                                    QUERY PLAN                                    
@@ -268,7 +268,7 @@ SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
                            Storage Filter: (c > 40)
 (10 rows)
 
-/*+ Parallel(pctest1 2 hard) */
+/*+ Parallel(pctest1 2 hard) IndexOnlyScan(pctest1) */
 SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
  c  | count 
 ----+-------
@@ -870,7 +870,7 @@ SELECT * FROM
 (6 rows)
 
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
-/*+ Parallel(pctest3 3 hard) */
+/*+ Parallel(pctest3 3 hard) IndexOnlyScan(pctest3) */
 EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
@@ -883,7 +883,7 @@ EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
                      Partial Aggregate: true
 (7 rows)
 
-/*+ Parallel(pctest3 3 hard) */
+/*+ Parallel(pctest3 3 hard) IndexOnlyScan(pctest3) */
 SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
  count | max  | min 
 -------+------+-----
