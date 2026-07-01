@@ -891,7 +891,16 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		{
 			if (type_is_enum(obj_id))
 				GetEnumLabels(obj_id, &enum_label_list);
-			AddTypeInfo(obj_id, schema, &type_info_list);
+
+			/*
+			 * ALTER TYPE allocates no new pg_type OID, so it needs no
+			 * type_info entry.  This is helpful because the ddl_command_end
+			 * trigger does not always provide the pg_type OID for it, but
+			 * rather sometimes a composite type's relation's pg_class OID.
+			 */
+			if (command_tag == CMDTAG_CREATE_TYPE)
+				AddTypeInfo(obj_id, schema, &type_info_list);
+
 			should_replicate_ddl |= true;
 		}
 		else if (command_tag == CMDTAG_CREATE_SEQUENCE ||
