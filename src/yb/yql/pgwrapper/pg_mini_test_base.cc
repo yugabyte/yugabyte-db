@@ -13,6 +13,12 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+#include <algorithm>
+#include <cctype>
+#include <filesystem>
+#include <fstream>
+#include <limits>
+
 #include "yb/client/yb_table_name.h"
 
 #include "yb/gutil/casts.h"
@@ -25,6 +31,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/metrics.h"
+#include "yb/util/status.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/pg_test_utils.h"
@@ -248,6 +255,48 @@ void PgMiniTestBase::EnableFailOnConflict() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
   // Set the number of retries to 2 to speed up the test.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(2);
+}
+
+Result<int64_t> PgMiniTestBase::ProcFileValue(const std::string& path, const char* key) {
+  std::ifstream f(path);
+  SCHECK(f.is_open(), IOError, Format("cannot open $0", path));
+  std::string k;
+  while (f >> k) {
+    if (k == key) {
+      int64_t v = 0;
+      f >> v;
+      return v;
+    }
+    f.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+  }
+  return STATUS_FORMAT(NotFound, "$0 not found in $1", key, path);
+}
+
+Result<int64_t> PgMiniTestBase::PeakRssMb(int pid) {
+  return VERIFY_RESULT(ProcFileValue(Format("/proc/$0/status", pid), "VmHWM:")) / 1024;
+}
+
+Result<int64_t> PgMiniTestBase::ClusterPgPssMb(int postmaster_pid) {
+  int64_t total_kb = 0;
+  for (const auto& entry : std::filesystem::directory_iterator("/proc")) {
+    const auto name = entry.path().filename().string();
+    if (name.empty() ||
+        !std::all_of(name.begin(), name.end(), [](unsigned char c) { return std::isdigit(c); })) {
+      continue;
+    }
+    const int pid = std::stoi(name);
+    if (pid != postmaster_pid) {
+      auto ppid = ProcFileValue(Format("/proc/$0/status", pid), "PPid:");
+      if (!ppid.ok() || *ppid != postmaster_pid) {
+        continue;
+      }
+    }
+    auto pss = ProcFileValue(Format("/proc/$0/smaps_rollup", pid), "Pss:");
+    if (pss.ok()) {
+      total_kb += *pss;
+    }
+  }
+  return total_kb / 1024;
 }
 
 } // namespace yb::pgwrapper
