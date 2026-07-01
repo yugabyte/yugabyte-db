@@ -2,6 +2,8 @@ import _ from 'lodash';
 import { ClusterSpec, UniverseRespResponse } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import type { DeviceInfo, K8NodeSpec } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { StorageType } from '@app/redesign/helpers/dtos';
+import { EditUniverseTabs } from '../edit-universe/EditUniverseContext';
+import { getEditUniverseSettingsRoute } from '../edit-universe/editUniverseTabUtils';
 import type { RRInstanceSettingsProps } from './add/steps/RRInstanceSettings/RRInstanceSettings';
 
 const STORAGE_KEYS_FOR_COMPARE = [
@@ -17,8 +19,14 @@ export function getAddReadReplicaRoute(universeUuid?: string | null) {
   return `/universes/${universeUuid ?? ''}/add-read-replica`;
 }
 
-export function getReadReplicaExitRoute(universeUuid?: string | null) {
-  return `/universes/${universeUuid ?? ''}/settings`;
+export function getReadReplicaExitRoute(
+  universeUuid?: string | null,
+  tab?: EditUniverseTabs
+) {
+  if (!universeUuid) {
+    return getEditUniverseSettingsRoute('', tab);
+  }
+  return getEditUniverseSettingsRoute(universeUuid, tab);
 }
 
 export function getAddGeoPartitionRoute(universeUuid?: string | null) {

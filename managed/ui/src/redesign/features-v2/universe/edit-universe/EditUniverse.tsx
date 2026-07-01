@@ -1,6 +1,7 @@
-import { FC, useMemo, useState } from 'react';
+import { FC, useEffect, useMemo } from 'react';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
+import { browserHistory, withRouter, WithRouterProps } from 'react-router';
 import { mui, YBTab, YBTabs } from '@yugabyte-ui-library/core';
 import { api } from '@app/redesign/helpers/api';
 import { useGetUniverse } from '@app/v2/api/universe/universe';
@@ -13,6 +14,10 @@ import {
 } from './EditUniverseContext';
 import { SwitchEditUniverseTabs } from './SwitchEditUniverseTabs';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
+import {
+  isValidEditUniverseTab,
+  parseEditUniverseTabFromQuery
+} from './editUniverseTabUtils';
 
 const { Grid, styled } = mui;
 
@@ -24,12 +29,43 @@ const TabItem = styled(YBTab)(({ theme }) => ({
   alignItems: 'flex-start'
 }));
 
-export const EditUniverse: FC<EditUniverseProps> = ({ universeUUID }) => {
+const EditUniverseComponent: FC<EditUniverseProps & WithRouterProps> = ({
+  universeUUID,
+  location
+}) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.tabs' });
 
-  const [selectedTab, setSelectedTab] = useState<EditUniverseTabs>(
-    InitialEditUniverseContextState.activeTab
+  const queryTab = location?.query?.tab as string | undefined;
+  const selectedTab = useMemo(
+    () => parseEditUniverseTabFromQuery(queryTab),
+    [queryTab]
   );
+
+  useEffect(() => {
+    if (!location) return;
+
+    if (!isValidEditUniverseTab(queryTab)) {
+      browserHistory.replace({
+        ...location,
+        query: {
+          ...location.query,
+          tab: EditUniverseTabs.GENERAL
+        }
+      });
+    }
+  }, [location, queryTab]);
+
+  const handleTabChange = (_event: unknown, newValue: EditUniverseTabs) => {
+    if (newValue === selectedTab || !location) return;
+
+    browserHistory.push({
+      ...location,
+      query: {
+        ...location.query,
+        tab: newValue
+      }
+    });
+  };
 
   const { data: universeData, isLoading, isSuccess } = useGetUniverse(universeUUID);
 
@@ -66,7 +102,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ universeUUID }) => {
         <YBTabs
           orientation="vertical"
           value={selectedTab}
-          onChange={(_event, newValue) => setSelectedTab(newValue)}
+          onChange={handleTabChange}
         >
           <TabItem value={EditUniverseTabs.GENERAL} label={t('general')} />
           <TabItem value={EditUniverseTabs.PLACEMENT} label={t('placement')} />
@@ -84,3 +120,5 @@ export const EditUniverse: FC<EditUniverseProps> = ({ universeUUID }) => {
     </Grid>
   );
 };
+
+export const EditUniverse = withRouter(EditUniverseComponent);
