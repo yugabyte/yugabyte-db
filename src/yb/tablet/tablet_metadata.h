@@ -764,6 +764,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // if any field has been updated and a flush may be required.
   bool OnPostSplitCompactionDone();
 
+  size_t GetTotalSchemaPackingCount() const;
+
  private:
   using MutexType = simple_spinlock;
 

@@ -156,6 +156,9 @@ class FullCompactionManager {
     return tablet_stats_window_.find(tablet_id) != tablet_stats_window_.end();
   }
 
+  bool ShouldCompactBasedOnMetadata(
+    const TabletId& tablet_id, const tablet::RaftGroupMetadataPtr& tablet_metadata);
+
  private:
   FRIEND_TEST(TsTabletManagerTest, FullCompactionCalculateNextCompaction);
   FRIEND_TEST(TsTabletManagerTest, CompactionsEvenlySpreadByJitter);

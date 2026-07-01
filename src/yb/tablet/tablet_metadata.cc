@@ -2528,4 +2528,17 @@ Result<docdb::EncodedPartitionBounds> RaftGroupMetadata::MakeEncodedPartitionBou
   };
 }
 
+size_t RaftGroupMetadata::GetTotalSchemaPackingCount() const {
+  std::lock_guard lock(data_mutex_);
+
+  size_t total_count = 0;
+  for (const auto& [table_id, table_info]: kv_store_.tables) {
+    if (!table_info || !table_info->doc_read_context) {
+      continue;
+    }
+    total_count += table_info->doc_read_context->schema_packing_storage.SchemaCount();
+  }
+  return total_count;
+}
+
 } // namespace yb::tablet
