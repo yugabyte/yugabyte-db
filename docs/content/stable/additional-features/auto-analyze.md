@@ -113,7 +113,7 @@ SELECT reltuples FROM pg_class WHERE relname = 'test';
 
 ## Observability
 
-To inspect what the Auto Analyze service is tracking for each table, use the `yb_stat_auto_analyze()` function. This is intended for debugging and observability, with one row per table that the service is currently tracking. (The function is available in v2025.2.3.0 and later.)
+To inspect what the Auto Analyze service is tracking for each table, use the `yb_stat_auto_analyze()` function. This is intended for debugging and observability, with one row per table that the service is currently tracking.
 
 ```sql
 SELECT * FROM yb_stat_auto_analyze();
