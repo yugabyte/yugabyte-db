@@ -29,6 +29,8 @@ public class TableSpaceUtil {
 
   public static final String REPLICA_PLACEMENT_TEXT = "replica_placement=";
 
+  public static final String READ_REPLICA_PLACEMENT_TEXT = "read_replica_placement=";
+
   public static TableSpaceInfo parseToTableSpaceInfo(TableSpaceQueryResponse tablespace) {
     TableSpaceInfo.TableSpaceInfoBuilder builder = TableSpaceInfo.builder();
     builder.name(tablespace.tableSpaceName);
@@ -36,7 +38,13 @@ public class TableSpaceUtil {
       ObjectMapper objectMapper = new ObjectMapper();
       if (tablespace.tableSpaceOptions != null) {
         for (String optionStr : tablespace.tableSpaceOptions) {
-          if (optionStr.startsWith(REPLICA_PLACEMENT_TEXT)) {
+          if (optionStr.startsWith(READ_REPLICA_PLACEMENT_TEXT)) {
+            // Read replica placements are not represented in TableSpaceInfo, so skip them instead
+            // of treating them as a syntax error.
+            log.debug(
+                "Skipping read_replica_placement parsing for tablespace {}",
+                tablespace.tableSpaceName);
+          } else if (optionStr.startsWith(REPLICA_PLACEMENT_TEXT)) {
             optionStr = optionStr.replaceFirst(REPLICA_PLACEMENT_TEXT, "");
             TableSpaceOptions option = objectMapper.readValue(optionStr, TableSpaceOptions.class);
             builder.numReplicas(option.numReplicas).placementBlocks(option.placementBlocks);
