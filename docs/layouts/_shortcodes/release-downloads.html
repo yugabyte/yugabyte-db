@@ -11,6 +11,9 @@ Usage:
   {{< release-downloads version="2026.1.0.0" build="115" type="yba" >}}
 */}}
 
+{{- .Page.Scratch.Add "releaseDownloadTabOrdinal" 1 -}}
+{{- $tabPaneOrdinal := .Page.Scratch.Get "releaseDownloadTabOrdinal" -}}
+
 {{- $version  := .Get "version" -}}
 {{- $build    := .Get "build" -}}
 {{- $type     := default "ybdb" (.Get "type") -}}
@@ -33,9 +36,11 @@ Usage:
 -}}
 {{- end -}}
 
-{{- $tabpane := print `{{< tabpane text=true plain=true >}}` "\n" -}}
+{{- $tabpane := print `{{< tabpane text=true plain=true ordinal="` $tabPaneOrdinal `" >}}` "\n" -}}
 {{- range $tabs -}}
 {{- $tabpane = print $tabpane `{{% tab header="` .header `" %}}` "\n" "```sh\n" .body "\n```\n" `{{% /tab %}}` "\n" -}}
 {{- end -}}
 {{- $tabpane = print $tabpane `{{< /tabpane >}}` -}}
+<div class="release-downloads">
 {{ $tabpane | .Page.RenderString }}
+</div>
