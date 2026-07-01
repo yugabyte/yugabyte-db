@@ -94,15 +94,15 @@ class AreNodesSafeToTakeDownItest : public YBTableTestBase {
       const vector<string>& tserver_uuids, const vector<string>& master_uuids) {
     auto status = client_->AreNodesSafeToTakeDown(tserver_uuids, master_uuids, kFollowerLagBoundMs);
     ASSERT_NOK(status);
-    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "tablet(s) would be under-replicated");
+    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "would not have enough replicas for quorum");
   }
 
   void AssertCallTimesOut(
       const vector<string>& tserver_uuids, const vector<string>& master_uuids) {
     auto status = client_->AreNodesSafeToTakeDown(tserver_uuids, master_uuids, kFollowerLagBoundMs);
     ASSERT_NOK(status);
-    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Timed out");
-    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "tablet(s) would be under-replicated");
+    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Some nodes did not respond");
+    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "would not have enough replicas for quorum");
   }
 
   const int kFollowerLagBoundMs = 1000 * kTimeMultiplier;
