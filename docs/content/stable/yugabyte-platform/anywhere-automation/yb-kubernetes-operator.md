@@ -1363,4 +1363,4 @@ Importing a universe to the operator creates or adopts the following in the targ
 - Currently, YugabyteDB Kubernetes Operator does not support the following features:
   - Software upgrade rollback
   - [Encryption-At-Rest](../../security/enable-encryption-at-rest/)
-- Only self-signed [encryption in transit](../../security/enable-encryption-in-transit/) is supported. Editing this later is not supported.
+- [Encryption in transit](../../security/enable-encryption-in-transit/) configuration cannot be edited after it is initially configured.
