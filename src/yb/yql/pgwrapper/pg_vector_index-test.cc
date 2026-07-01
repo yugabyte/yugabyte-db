@@ -16,6 +16,7 @@
 #include "yb/client/client_error.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/schema.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 
@@ -26,6 +27,7 @@
 #include "yb/docdb/doc_vector_index.h"
 
 #include "yb/docdb/docdb_util.h"
+#include "yb/dockv/value_type.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 
@@ -61,6 +63,7 @@
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
+DECLARE_bool(enable_table_owned_vector_reverse_mapping);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_usearch_exact);
 DECLARE_bool(vector_index_enable_compactions);
@@ -90,8 +93,6 @@ DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
 DECLARE_uint64(vector_index_max_merge_tasks);
 DECLARE_uint64(vector_index_task_size);
-DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
@@ -3314,6 +3315,171 @@ TEST_F(PgVectorIndexUtilTest, DeleteTabletDirs) {
     tablet_peers.pop_back();
   }
 }
+
+namespace {
+
+// kNoTypePrefix marks packed V2 column values, which do not carry a ValueEntryType prefix byte.
+constexpr char kNoTypePrefix = '\0';
+
+char ParseTypePrefixFromValueDump(const std::string& value_dump, PackingMode packing_mode) {
+  if (value_dump.starts_with("VECTOR_DATA")) {
+    return dockv::ValueEntryTypeAsChar::kVector;
+  }
+  if (packing_mode == PackingMode::kV2) {
+    return kNoTypePrefix;
+  }
+  return dockv::ValueEntryTypeAsChar::kString; // Legacy vector value format.
+}
+
+std::optional<std::string> ExtractPackedColumnValueDump(
+    const std::string& value_dump, ColumnId column_id) {
+  const auto packed_col = Format(" $0: ", column_id);
+  const auto pos = value_dump.find(packed_col);
+  if (pos == std::string::npos) {
+    return std::nullopt;
+  }
+  return value_dump.substr(pos + packed_col.size());
+}
+
+Status CheckTypePrefixes(const std::vector<char>& prefixes, char expected, size_t expected_count) {
+  if (prefixes.size() != expected_count) {
+    return STATUS_FORMAT(
+        IllegalState, "Expected $0 type prefixes, got $1", expected_count, prefixes.size());
+  }
+  for (size_t i = 0; i < prefixes.size(); ++i) {
+    if (prefixes[i] != expected) {
+      return STATUS_FORMAT(IllegalState,
+          "Type prefix mismatch at index $0: got $1, expected $2", i, prefixes[i], expected);
+    }
+  }
+  return Status::OK();
+}
+
+} // namespace
+
+class PgVectorValueFormatTest :
+    public PgMiniTestBase, public ::testing::WithParamInterface<PackingMode> {
+ protected:
+  static constexpr char kTypedTable[] = "typed_table";
+  static constexpr char kLegacyTable[] = "legacy_table";
+  static constexpr char kVectorColumn[] = "embedding";
+  static constexpr char kTypedPrefix = dockv::ValueEntryTypeAsChar::kVector;
+  static constexpr char kLegacyPrefix = dockv::ValueEntryTypeAsChar::kString;
+
+  void SetUp() override {
+    const auto packing_mode = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packing_mode != PackingMode::kNone;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = packing_mode == PackingMode::kV2;
+    PgMiniTestBase::SetUp();
+  }
+
+  // Dumps table SST files and collects type prefixes for the vector column.
+  // Table must have only one vector column.
+  Result<std::vector<char>> CollectTypePrefixes(
+      const std::string& table_name, const std::string& vector_column_name) {
+    const auto table_id = VERIFY_RESULT(GetTableIDFromTableName(table_name));
+    const auto yb_table = VERIFY_RESULT(client_->OpenTable(table_id));
+    ColumnId vector_column_id = kInvalidColumnId;
+    const auto& columns = yb_table->schema().columns();
+    for (size_t i = 0; i < columns.size(); ++i) {
+      if (columns[i].is_vector()) {
+        vector_column_id = ColumnId(yb_table->schema().ColumnId(i));
+        break;
+      }
+    }
+    SCHECK(vector_column_id != kInvalidColumnId, NotFound,
+           "Vector column $0 not found in table $1", vector_column_name, table_name);
+
+    const auto dump = VERIFY_RESULT(DumpTableLeadersDocDBToVector(cluster_.get(), table_name));
+    const auto column_subkey = Format("[ColumnId($0)]", vector_column_id);
+
+    std::vector<char> prefixes;
+    for (const auto& line : dump) {
+      std::optional<std::string> value;
+      if (line.find(column_subkey) != std::string::npos) {
+        value = line.substr(line.find(" -> ") + 4);
+      } else {
+        value = ExtractPackedColumnValueDump(line, vector_column_id);
+      }
+      if (!value) {
+        continue;
+      }
+      prefixes.push_back(ParseTypePrefixFromValueDump(*value, GetParam()));
+    }
+    return prefixes;
+  }
+
+  Status ValidateVectorColumnPrefixes(const std::string& table_name, size_t expected_count) {
+    RETURN_NOT_OK(WaitForAllIntentsApplied(cluster_.get()));
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    const auto prefixes = VERIFY_RESULT(CollectTypePrefixes(table_name, kVectorColumn));
+
+    const auto expected_prefix = GetParam() == PackingMode::kV2
+        ? kNoTypePrefix : table_name == kLegacyTable ? kLegacyPrefix : kTypedPrefix;
+    return CheckTypePrefixes(prefixes, expected_prefix, expected_count);
+  }
+
+  Result<bool> TableOwnsVectorReverseMapping(const std::string& table_name) {
+    const auto table_id = VERIFY_RESULT(GetTableIDFromTableName(table_name));
+    const auto yb_table = VERIFY_RESULT(client_->OpenTable(table_id));
+    return yb_table->schema().table_properties().owns_vector_reverse_mapping();
+  }
+
+  Status RestartClusterWithTableOwnedFlag() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = true;
+    RETURN_NOT_OK(cluster_->RestartSync());
+    return cluster_->WaitForAllTabletServers();
+  }
+};
+
+TEST_P(PgVectorValueFormatTest, TableOwnedEncodingSurvivesClusterRestart) {
+  constexpr char kCreateQuery[] =
+      "CREATE TABLE $0 (id INT PRIMARY KEY, $1 vector(3)) SPLIT INTO 1 TABLETS";
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.ExecuteFormat(kCreateQuery, kLegacyTable, kVectorColumn));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, '[1, 2, 3]')", kLegacyTable));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_FALSE(ASSERT_RESULT(TableOwnsVectorReverseMapping(kLegacyTable)));
+
+  ASSERT_OK(ValidateVectorColumnPrefixes(kLegacyTable, 1));
+
+  ASSERT_OK(RestartClusterWithTableOwnedFlag());
+  conn = ASSERT_RESULT(Connect());
+
+  ASSERT_FALSE(ASSERT_RESULT(TableOwnsVectorReverseMapping(kLegacyTable)));
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, '[4, 5, 6]')", kLegacyTable));
+  ASSERT_OK(conn.ExecuteFormat(kCreateQuery, kTypedTable, kVectorColumn));
+  ASSERT_TRUE(ASSERT_RESULT(TableOwnsVectorReverseMapping(kTypedTable)));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, '[7, 8, 9]')", kTypedTable));
+
+  ASSERT_OK(ValidateVectorColumnPrefixes(kLegacyTable, 2));
+  ASSERT_OK(ValidateVectorColumnPrefixes(kTypedTable, 1));
+
+  const auto get_count = [&conn](const std::string& table_name) {
+    return conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", table_name));
+  };
+  ASSERT_EQ(2, ASSERT_RESULT(get_count(kLegacyTable)));
+  ASSERT_EQ(1, ASSERT_RESULT(get_count(kTypedTable)));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgVectorValueFormatTest,
+    ::testing::Values(PackingMode::kNone, PackingMode::kV1, PackingMode::kV2),
+    [](const testing::TestParamInfo<PackingMode>& param_info) {
+      switch (param_info.param) {
+        case PackingMode::kNone: return "None";
+        case PackingMode::kV1: return "PackingV1";
+        case PackingMode::kV2: return "PackingV2";
+      }
+      FATAL_INVALID_ENUM_VALUE(PackingMode, param_info.param);
+    });
 
 // Reproduces the SIGSEGV in MvccManager::SafeTimeForFollower during tablet bootstrap.
 //

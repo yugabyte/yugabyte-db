@@ -179,6 +179,7 @@ namespace yb::dockv {
     ((kInt32, 'H'))  /* ASCII code 72 */ \
     ((kInt64, 'I'))  /* ASCII code 73 */ \
     ((kUInt32, 'O'))  /* ASCII code 79 */ \
+    ((kVector, 'R'))  /* ASCII code 82 */ \
     ((kString, 'S'))  /* ASCII code 83 */ \
     ((kTrue, 'T'))  /* ASCII code 84 */ \
     ((kUInt64, 'U')) /* ASCII code 85 */ \
