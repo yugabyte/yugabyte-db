@@ -66,7 +66,6 @@ TAG_FLAG(ysql_yb_follower_reads_behavior_before_fixing_20482, advanced);
     VLOG(vlog_level) << __func__ << ": " << TxnStateDebugStr() \
                      << "; query: { " << ::yb::pggate::GetDebugQueryString(pg_callbacks_) << " }; "
 
-DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace {
@@ -170,14 +169,23 @@ tserver::ReadTimeManipulation GetActualReadTimeManipulator(
 
 DEPRECATE_FLAG(int32, pg_yb_session_timeout_ms, "02_2024");
 
-PgTxnManager::SerialNo::SerialNo()
-    : SerialNo(0, 0) {}
+PgTxnManager::SerialNo::SerialNo(std::atomic<uint64_t>& next_read_time_serial_no)
+    : next_read_time_serial_no_(next_read_time_serial_no),
+      txn_(0),
+      read_time_(0),
+      min_read_time_(0),
+      max_read_time_(0) {
+}
 
-PgTxnManager::SerialNo::SerialNo(uint64_t txn_serial_no, uint64_t read_time_serial_no)
-    : txn_(txn_serial_no),
-      read_time_(read_time_serial_no),
-      min_read_time_(read_time_),
-      max_read_time_(read_time_) {
+void PgTxnManager::SerialNo::Set(uint64_t txn_serial_no, uint64_t read_time_serial_no) {
+  txn_ = txn_serial_no;
+  read_time_ = min_read_time_ = max_read_time_ = read_time_serial_no;
+}
+
+uint64_t PgTxnManager::SerialNo::NextReadTimeSerialNo() {
+  // fetch_add returns the previous value, so the first allocated serial number is 1. This matches
+  // the historical behaviour where read time serial numbers started from 1.
+  return next_read_time_serial_no_.fetch_add(1, std::memory_order_acq_rel) + 1;
 }
 
 void PgTxnManager::SerialNo::IncTxn(
@@ -199,12 +207,12 @@ void PgTxnManager::SerialNo::IncTxn(
 }
 
 void PgTxnManager::SerialNo::IncReadTime() {
-  read_time_ = ++max_read_time_;
+  read_time_ = max_read_time_ = NextReadTimeSerialNo();
   VLOG(4) << "IncReadTime to " << max_read_time_;
 }
 
 void PgTxnManager::SerialNo::IncMaxReadTime() {
-  ++max_read_time_;
+  max_read_time_ = NextReadTimeSerialNo();
   VLOG(4) << "IncMaxReadTime to " << max_read_time_;
 }
 
@@ -240,10 +248,10 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
 #endif
 
 PgTxnManager::PgTxnManager(
-    PgClient* client, scoped_refptr<ClockBase> clock, YbcPgCallbacks pg_callbacks,
-    bool enable_table_locking)
+    PgClient* client, YbcPgCallbacks pg_callbacks, bool enable_table_locking,
+    std::atomic<uint64_t>& next_read_time_serial_no)
     : client_(client),
-      clock_(std::move(clock)),
+      serial_no_(next_read_time_serial_no),
       pg_callbacks_(pg_callbacks),
       enable_table_locking_(enable_table_locking) {}
 
@@ -309,10 +317,9 @@ PgIsolationLevel PgTxnManager::GetPgIsolationLevel() const {
   return pg_isolation_level_;
 }
 
-Status PgTxnManager::SetReadOnly(bool read_only) {
+void PgTxnManager::SetReadOnly(bool read_only) {
   read_only_ = read_only;
   VLOG(2) << __func__ << " set to " << read_only_;
-  return UpdateReadTimeForFollowerReadsIfRequired();
 }
 
 Status PgTxnManager::SetEnableTracing(bool tracing) {
@@ -320,36 +327,17 @@ Status PgTxnManager::SetEnableTracing(bool tracing) {
   return Status::OK();
 }
 
-Status PgTxnManager::UpdateFollowerReadsConfig(
+void PgTxnManager::UpdateFollowerReadsConfig(
     bool enable_follower_reads, int32_t session_staleness) {
   VLOG_TXN_STATE(2) << (enable_follower_reads ? "Enabling follower reads "
                                               : "Disabling follower reads ")
                     << " with staleness " << session_staleness << " ms";
-  enable_follower_reads_ = enable_follower_reads;
-  follower_read_staleness_ms_ = session_staleness;
-  return UpdateReadTimeForFollowerReadsIfRequired();
+  follower_read_staleness_ms_ =
+      enable_follower_reads ? std::optional<uint64_t>(session_staleness) : std::nullopt;
 }
 
-Status PgTxnManager::UpdateReadTimeForFollowerReadsIfRequired() {
-  if (enable_follower_reads_ && read_only_) {
-    constexpr uint64_t kMargin = 2;
-    RSTATUS_DCHECK(
-        follower_read_staleness_ms_ * 1000 > kMargin * FLAGS_max_clock_skew_usec,
-        InvalidArgument,
-        Format("Setting follower read staleness less than the $0 x max_clock_skew.", kMargin));
-    // Add a delta to the start point to lower the read point.
-    read_time_for_follower_reads_ = clock_->Now().AddMilliseconds(-follower_read_staleness_ms_);
-    VLOG_TXN_STATE(2) << "Updating read-time with staleness "
-                      << follower_read_staleness_ms_ << " to "
-                      << read_time_for_follower_reads_;
-  } else {
-    read_time_for_follower_reads_ = HybridTime();
-    VLOG_TXN_STATE(2) << "Resetting read-time."
-                      << (enable_follower_reads_ ? " Follower reads allowed."
-                                                 : " Follower reads DISallowed.")
-                      << (read_only_ ? " Is read-only" : " Is NOT read-only");
-  }
-  return Status::OK();
+bool PgTxnManager::UsesFollowerReads() const {
+  return follower_read_staleness_ms_ && read_only_;
 }
 
 Status PgTxnManager::SetDeferrable(bool deferrable) {
@@ -521,8 +509,6 @@ Status PgTxnManager::ResetTransactionReadPoint(bool is_catalog_snapshot) {
   read_time_manipulation_ = PREDICT_FALSE(FLAGS_ysql_rc_force_pick_read_time_on_pg_client)
       ? tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET
       : tserver::ReadTimeManipulation::NONE;
-  read_time_for_follower_reads_ = HybridTime();
-  RETURN_NOT_OK(UpdateReadTimeForFollowerReadsIfRequired());
   return Status::OK();
 }
 
@@ -620,11 +606,10 @@ void PgTxnManager::ResetTxnAndSession() {
   priority_ = std::nullopt;
   IncTxnSerialNo();
 
-  enable_follower_reads_ = false;
+  follower_read_staleness_ms_.reset();
   read_only_ = false;
   has_writes_ = false;
   enable_tracing_ = false;
-  read_time_for_follower_reads_ = HybridTime();
   snapshot_read_time_is_used_ = false;
   read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   read_only_stmt_ = false;
@@ -801,16 +786,22 @@ Status PgTxnManager::SetupPerformOptions(
     }
   }
 
-  // In parallel execution (leader and workers), always pick read time on the proxy instead
-  // of a remote tserver. This is required because the "used_read_time" mechanism
-  // doesn't work with parallel rpcs. In other words, if some operation from Pg to the proxy
-  // doesn't have a read time picked already and expects one to be picked on the remote tserver,
-  // no simultaneous operation should be performed before the response for the rpc is received.
-  //
-  // For serializable isolation, there is no read time.
-  if (pg_callbacks_.IsInParallelMode() &&
-      isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION &&
-      !yb_skip_ensure_read_time_in_parallel_execution) {
+  if (UsesFollowerReads()) {
+    // Follower reads pick their own (stale) read time on the PgClientSession, which already
+    // satisfies "pick the read time on the proxy". Any read time manipulation (e.g.
+    // ENSURE_READ_TIME_IS_SET from parallel execution) is redundant and must not be combined
+    // with the staleness.
+    read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+  } else if (pg_callbacks_.IsInParallelMode() &&
+             isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION &&
+             !yb_skip_ensure_read_time_in_parallel_execution) {
+    // In parallel execution (leader and workers), always pick read time on the proxy instead
+    // of a remote tserver. This is required because the "used_read_time" mechanism
+    // doesn't work with parallel rpcs. In other words, if some operation from Pg to the proxy
+    // doesn't have a read time picked already and expects one to be picked on the remote tserver,
+    // no simultaneous operation should be performed before the response for the rpc is received.
+    //
+    // For serializable isolation, there is no read time.
     read_time_manipulation_ = tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET;
   }
 
@@ -822,9 +813,9 @@ Status PgTxnManager::SetupPerformOptions(
         GetActualReadTimeManipulator(isolation_level_, read_time_manipulation_, read_time_action));
     read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   }
-  if (read_time_for_follower_reads_) {
-    ReadHybridTime::SingleTime(read_time_for_follower_reads_).ToPB(options->mutable_read_time());
-    options->set_read_from_followers(true);
+  if (UsesFollowerReads()) {
+    options->mutable_follower_read_staleness_ms()->set_value(
+        static_cast<uint32_t>(*follower_read_staleness_ms_));
   }
 
   if (read_time_action && *read_time_action == ReadTimeAction::RESET) {
@@ -884,8 +875,7 @@ void PgTxnManager::DumpSessionState(YbcPgSessionState* session_data) {
 void PgTxnManager::RestoreSessionState(const YbcPgSessionState& session_data) {
   VLOG(2) << "RestoreSessionState: txn_serial_no=" << session_data.txn_serial_no
           << ", read_time_serial_no=" << session_data.read_time_serial_no;
-  serial_no_ =
-      SerialNo(session_data.txn_serial_no, session_data.read_time_serial_no);
+  serial_no_.Set(session_data.txn_serial_no, session_data.read_time_serial_no);
   active_sub_transaction_id_ = session_data.active_sub_transaction_id;
   VLOG_TXN_STATE(2);
 }
@@ -981,7 +971,7 @@ Result<YbcPgTxnSnapshot> PgTxnManager::ImportSnapshot(
 
 Status PgTxnManager::CheckSnapshotTimeConflict() const {
   SCHECK(
-      !read_time_for_follower_reads_, NotSupported,
+      !UsesFollowerReads(), NotSupported,
       "Cannot set both 'transaction snapshot' and 'yb_read_from_followers' in the same "
       "transaction.");
   SCHECK_EQ(

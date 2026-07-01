@@ -17,6 +17,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_uint64(reject_writes_min_disk_space_mb);
+DECLARE_uint32(reject_writes_min_disk_space_pct);
 DECLARE_uint32(reject_writes_min_disk_space_check_interval_sec);
 
 namespace yb {
@@ -63,6 +64,30 @@ TEST_F(YCqlDiskFullTest, YB_DISABLE_TEST_IN_ASAN(TestDiskFull)) {
   ASSERT_OK(client_->TruncateTable(table_.table()->id()));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_reject_writes_min_disk_space_mb) = 0;
+  SleepFor(2s);
+  ASSERT_OK(WriteRow(session, i, i));
+}
+
+TEST_F(YCqlDiskFullTest, YB_DISABLE_TEST_IN_ASAN(TestDiskFullPercentage)) {
+  CreateTable(client::Transactional::kFalse);
+
+  constexpr int kNumRows = 100;
+  int i = 0;
+  auto session = CreateSession();
+  for (; i < kNumRows; ++i) {
+    ASSERT_OK(WriteRow(session, i, i));
+  }
+  ++i;
+
+  // Require 100% of the disk capacity to be free to simulate disk full. Since some space is always
+  // used, free space will always be below this threshold.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reject_writes_min_disk_space_pct) = 100;
+  SleepFor(2s);
+
+  ASSERT_NOK_STR_CONTAINS(WriteRow(session, i, i), "has insufficient disk space");
+
+  // A zero value disables the percentage-based threshold.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reject_writes_min_disk_space_pct) = 0;
   SleepFor(2s);
   ASSERT_OK(WriteRow(session, i, i));
 }

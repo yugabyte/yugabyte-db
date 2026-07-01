@@ -1,3 +1,44 @@
+.highlight-card {
+  margin-bottom: 12px;
+  border-radius: 8px;
+
+  .card-body {
+    padding: 1rem 1.25rem;
+  }
+
+  .highlight-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+
+  .highlight-card-title {
+    font-weight: 600;
+    font-size: 15px;
+  }
+
+  p,
+  ul,
+  ol {
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 6px;
+  }
+
+  li {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  p:last-child {
+    margin-bottom: 0;
+    font-size: 13px;
+    color: #555;
+  }
+}
+
 .td-content {
   h1 > .tag {
     margin: 0 10px;

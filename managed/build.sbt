@@ -1121,14 +1121,19 @@ Global / concurrentRestrictions := Seq(Tags.limitAll(16))
 
 val testParallelForks = SettingKey[Int]("testParallelForks",
   "Number of parallel forked JVMs, running tests")
-testParallelForks := 4
+// Include some CPU headroom in the divisor.
+// Max depends on the IP range.
+def defaultTestParallelForks: Int =
+  math.min(7,
+    math.max(1, (java.lang.Runtime.getRuntime.availableProcessors().toDouble / 1.5).toInt))
+testParallelForks := defaultTestParallelForks
 val testShardSize = SettingKey[Int]("testShardSize",
   "Number of test classes, executed by each forked JVM")
 testShardSize := 30
 
 val testLocalShardSize = SettingKey[Int]("testLocalShardSize",
   "Number of local test classes, executed by each forked JVM")
-testLocalShardSize := 4
+testLocalShardSize := 2
 
 val testLocalIpRangeStart = SettingKey[Int]("testLocalIpRangeStart",
   "First loopback IP index for local provider tests (127.0.x.y encoding)")

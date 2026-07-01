@@ -51,9 +51,11 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
+import org.mapstruct.factory.Mappers;
 
 @Mapper(config = CentralConfig.class)
 public interface UserIntentMapper {
+  public static UserIntentMapper INSTANCE = Mappers.getMapper(UserIntentMapper.class);
 
   default ClusterNodeSpec userIntentToClusterNodeSpec(
       UniverseDefinitionTaskParams.UserIntent userIntent) {

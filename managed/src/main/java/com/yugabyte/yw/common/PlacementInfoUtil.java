@@ -378,10 +378,9 @@ public class PlacementInfoUtil {
         isNewUI);
   }
 
-  private static void updateUniverseDefinitionV2(
+  public static void updateUniverseDefinitionV2(
       Universe universe,
       UniverseDefinitionTaskParams taskParams,
-      Long customerId,
       UUID placementUuid,
       ClusterOperationType clusterOpType) {
     LOG.info("Start update universe definition V2. ");
@@ -457,7 +456,7 @@ public class PlacementInfoUtil {
     validateAndInitParams(customerId, taskParams, cluster, clusterOpType, universe);
 
     if (isNewUI) {
-      updateUniverseDefinitionV2(universe, taskParams, customerId, placementUuid, clusterOpType);
+      updateUniverseDefinitionV2(universe, taskParams, placementUuid, clusterOpType);
       return;
     } else if (cluster.isGeoPartitioned()) {
       throw new PlatformServiceException(

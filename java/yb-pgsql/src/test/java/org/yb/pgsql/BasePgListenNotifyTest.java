@@ -91,7 +91,14 @@ public class BasePgListenNotifyTest extends BasePgSQLTest {
     PGConnection pgConn = connection.unwrap(PGConnection.class);
     boolean found = false;
     try (Statement stmt = connection.createStatement()) {
-      for (int attempt = 0; attempt < 75 && !found; attempt++) {
+      /**
+       * Poll for notifications for upto 1 minute. In most case it should arrive in
+       * under a second. The exception to this when the poller retsarts
+       * (testPollerRestartDoesNotRedeliverNotifications). When a poller restarts, it
+       * takes upto pg_client_session_expiration_ms (defaults to 1 min) to acquire the
+       * slot, which is necessary to fetch new notifications.
+       */
+      for (int attempt = 0; attempt < 350 && !found; attempt++) {
         stmt.execute("SELECT 1");
         PGNotification[] notifications = pgConn.getNotifications();
         if (notifications != null) {
@@ -131,6 +138,8 @@ public class BasePgListenNotifyTest extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     addListenNotifyFlags(flagMap);
+    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replication_slot_exclusive_lock");
+    flagMap.put("ysql_yb_enable_replication_slot_exclusive_lock", "true");
     return flagMap;
   }
 

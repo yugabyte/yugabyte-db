@@ -442,6 +442,7 @@ class PGConn {
 namespace YbInternalConnKindWireName {
 inline constexpr std::string_view kRelcacheInit = "relcache_init";
 inline constexpr std::string_view kGlobalView = "global_view";
+inline constexpr std::string_view kAutoAnalyze = "auto_analyze";
 }  // namespace YbInternalConnKindWireName
 
 struct PGConnSettings {
@@ -454,7 +455,6 @@ struct PGConnSettings {
   std::string password = {};
   std::string replication = {};
   size_t connect_timeout = 0;
-  bool yb_auto_analyze = false;
   // Wire name of the YbInternalConnKind this connection should be assigned.
   // Empty for a regular client connection.
   std::string yb_internal_conn_kind = {};
@@ -492,7 +492,7 @@ class PGConnPerf {
 PGConnBuilder CreateInternalPGConnBuilder(
     const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
     std::string_view user, uint64_t postgres_auth_key,
-    const std::optional<CoarseTimePoint>& deadline, bool yb_auto_analyze = false,
+    const std::optional<CoarseTimePoint>& deadline,
     std::string_view yb_internal_conn_kind = {});
 
 Result<std::string> ResultAsString(

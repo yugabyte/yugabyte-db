@@ -134,6 +134,7 @@
 #include "utils/ps_status.h"
 
 /* YB includes */
+#include "access/parallel.h"
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
 #include "ybgate/ybgate_status.h"
@@ -3911,7 +3912,9 @@ send_message_to_frontend(ErrorData *edata)
 		err_sendstring(&msgbuf, sev);
 
 		pq_sendbyte(&msgbuf, PG_DIAG_SQLSTATE);
-		edata->sqlerrcode = yb_external_errcode(edata->sqlerrcode);
+		/* YB: Use internal codes for communication across parallel workers. */
+		if (IsYugaByteEnabled() && !IsParallelWorker())
+			edata->sqlerrcode = yb_external_errcode(edata->sqlerrcode);
 		err_sendstring(&msgbuf, unpack_sql_state(edata->sqlerrcode));
 
 		/* M field is required per protocol, so always send something */

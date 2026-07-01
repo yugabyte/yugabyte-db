@@ -2649,6 +2649,20 @@ YbPrefetcherStarterNoCacheCall(YbPrefetcherStarterFunctor *functor)
 	return false;
 }
 
+/*
+ * Whether a conn-mgr auth backend (or auth passthrough) should serve its
+ * connection-auth prefetch from the lifetime-bounded TRUST_CACHE_AUTH response
+ * cache. Combines the auth-backend/passthrough scoping with the (backend-type-
+ * agnostic) YbUseTserverResponseCacheForAuth gflag/precondition check. Shared by
+ * the two relcache-init call sites below.
+ */
+static bool
+YbAuthBackendUsesTserverResponseCache(uint64_t shared_catalog_version)
+{
+	return (YbIsAuthBackend() || YbIsAuthPassthroughInProgress(MyProcPort)) &&
+		YbUseTserverResponseCacheForAuth(shared_catalog_version);
+}
+
 static void
 YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 					bool keep_prefetcher)
@@ -2665,7 +2679,8 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 	 * latest master catalog version instead of the shared catalog version.
 	 */
 	const bool	use_tserver_cache_for_auth =
-		YbUseTserverResponseCacheForAuth(shared_catalog_version) && !YbNeedNewCacheFileForPgAuthBackend;
+		YbAuthBackendUsesTserverResponseCache(shared_catalog_version) &&
+		!YbNeedNewCacheFileForPgAuthBackend;
 	YbcPgSysTablePrefetcherCacheMode trust_mode =
 		use_tserver_cache_for_auth ? YB_YQL_PREFETCHER_TRUST_CACHE_AUTH
 		: YB_YQL_PREFETCHER_TRUST_CACHE;
@@ -6724,7 +6739,13 @@ RelationCacheInitializePhase3(void)
 			uint64_t	shared_catalog_version;
 
 			HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
-			if (YbUseTserverResponseCacheForAuth(shared_catalog_version))
+			/*
+			 * This branch is conn-mgr-auth-backend-specific: it either signals
+			 * "rebuild the init file from fresh master data" or skips the
+			 * relcache preload entirely (auth backends don't need a full
+			 * relcache).
+			 */
+			if (YbAuthBackendUsesTserverResponseCache(shared_catalog_version))
 			{
 				if (needNewCacheFile)
 					YbNeedNewCacheFileForPgAuthBackend = true;

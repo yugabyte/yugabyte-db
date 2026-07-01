@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.29.0.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.29.0.0-b0
+-- Dumped from database version 15.12-YB-2.31.0.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2.31.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -452,6 +452,7 @@ CREATE TABLE hint_plan.hints (
     hints text NOT NULL,
     CONSTRAINT hints_pkey PRIMARY KEY((id) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 -- For binary upgrade, handle extension membership the hard way
@@ -530,6 +531,7 @@ CREATE TABLE public.chat_user (
     "chatID" text NOT NULL,
     CONSTRAINT chat_user_pkey PRIMARY KEY(("chatID") HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -570,8 +572,8 @@ CREATE TABLE public.hash_tbl_pk_with_include_clause (
     k1 integer NOT NULL,
     CONSTRAINT hash_tbl_pk_with_include_clause_pkey PRIMARY KEY((k1, k2) HASH) INCLUDE (v)
 )
+WITH (yb_presplit='8')
 SPLIT INTO 8 TABLETS;
-ALTER TABLE public.hash_tbl_pk_with_include_clause SET (yb_presplit='8');
 
 
 \if :use_roles
@@ -612,6 +614,7 @@ CREATE TABLE public.hash_tbl_pk_with_multiple_included_columns (
     col4 integer,
     CONSTRAINT hash_tbl_pk_with_multiple_included_columns_pkey PRIMARY KEY((col1) HASH, col2 ASC) INCLUDE (col3, col4)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -649,6 +652,7 @@ CREATE TABLE public.level0 (
     CONSTRAINT level0_c1_cons CHECK ((c1 > 0)),
     CONSTRAINT level0_c1_cons2 CHECK ((c1 IS NULL)) NO INHERIT
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -689,7 +693,8 @@ CREATE TABLE public.level1_0 (
     c3 text,
     c4 text,
     CONSTRAINT level1_0_pkey PRIMARY KEY(c1 ASC)
-);
+)
+WITH (yb_presplit='');
 
 -- For binary upgrade, recreate inherited column.
 UPDATE pg_catalog.pg_attribute
@@ -759,6 +764,7 @@ CREATE TABLE public.level1_1 (
     CONSTRAINT level1_1_c1_cons CHECK ((c1 >= 2)),
     CONSTRAINT level1_1_pkey PRIMARY KEY((c2) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 -- For binary upgrade, recreate inherited column.
@@ -822,6 +828,7 @@ CREATE TABLE public.level2_0 (
     c3 text NOT NULL,
     c4 text
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 -- For binary upgrade, recreate inherited column.
@@ -879,6 +886,7 @@ CREATE TABLE public.level2_1 (
     c4 text NOT NULL,
     CONSTRAINT level2_1_pkey PRIMARY KEY((c4) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 -- For binary upgrade, set up inherited constraint.
@@ -936,6 +944,7 @@ CREATE TABLE public.p1 (
     v text,
     CONSTRAINT p1_pkey PRIMARY KEY((k) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -975,6 +984,7 @@ CREATE TABLE public.p2 (
     v text,
     CONSTRAINT p2_pkey PRIMARY KEY((k) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -1015,7 +1025,8 @@ CREATE TABLE public.part_uniq_const (
     v3 integer NOT NULL,
     CONSTRAINT part_uniq_const_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
-PARTITION BY RANGE (v1);
+PARTITION BY RANGE (v1)
+WITH (yb_presplit='');
 
 
 \if :use_roles
@@ -1055,6 +1066,7 @@ CREATE TABLE public.part_uniq_const_30_50 (
     v3 integer NOT NULL,
     CONSTRAINT part_uniq_const_30_50_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -1095,6 +1107,7 @@ CREATE TABLE public.part_uniq_const_50_100 (
     v3 integer NOT NULL,
     CONSTRAINT part_uniq_const_50_100_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -1135,6 +1148,7 @@ CREATE TABLE public.part_uniq_const_default (
     v3 integer NOT NULL,
     CONSTRAINT part_uniq_const_default_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -1187,8 +1201,8 @@ CREATE TABLE public.pre_split_range (
     more_col3 text,
     CONSTRAINT pre_split_range_pkey PRIMARY KEY(customer_id ASC)
 )
+WITH (yb_presplit='((1000), (5000), (10000), (15000), (20000), (25000), (30000), (35000), (55000), (85000), (110000), (150000), (250000), (300000), (350000), (400000), (450000), (500000), (1000000))')
 SPLIT AT VALUES ((1000), (5000), (10000), (15000), (20000), (25000), (30000), (35000), (55000), (85000), (110000), (150000), (250000), (300000), (350000), (400000), (450000), (500000), (1000000));
-ALTER TABLE public.pre_split_range SET (yb_presplit='((1000), (5000), (10000), (15000), (20000), (25000), (30000), (35000), (55000), (85000), (110000), (150000), (250000), (300000), (350000), (400000), (450000), (500000), (1000000))');
 
 
 \if :use_roles
@@ -1228,8 +1242,8 @@ CREATE TABLE public.range_tbl_pk_with_include_clause (
     k1 integer NOT NULL,
     CONSTRAINT range_tbl_pk_with_include_clause_pkey PRIMARY KEY(k1 ASC, k2 ASC) INCLUDE (v)
 )
+WITH (yb_presplit='((1, ''1''), (100, ''100''))')
 SPLIT AT VALUES ((1, '1'), (100, '100'));
-ALTER TABLE public.range_tbl_pk_with_include_clause SET (yb_presplit='((1, ''1''), (100, ''100''))');
 
 
 \if :use_roles
@@ -1269,7 +1283,8 @@ CREATE TABLE public.range_tbl_pk_with_multiple_included_columns (
     col3 integer,
     col4 integer,
     CONSTRAINT range_tbl_pk_with_multiple_included_columns_pkey PRIMARY KEY(col1 ASC, col2 ASC) INCLUDE (col3, col4)
-);
+)
+WITH (yb_presplit='');
 
 
 \if :use_roles
@@ -1308,6 +1323,7 @@ CREATE TABLE public.range_test (
     num_range int4range,
     CONSTRAINT range_test_pkey PRIMARY KEY((id) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -1381,6 +1397,7 @@ CREATE TABLE public.rls_private (
     v text,
     CONSTRAINT rls_private_pkey PRIMARY KEY((k) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 ALTER TABLE ONLY public.rls_private FORCE ROW LEVEL SECURITY;
@@ -1422,6 +1439,7 @@ CREATE TABLE public.rls_public (
     v text,
     CONSTRAINT rls_public_pkey PRIMARY KEY((k) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -1455,6 +1473,7 @@ CREATE TABLE public.tbl1 (
     a integer NOT NULL,
     b integer
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -1496,6 +1515,7 @@ CREATE TABLE public.tbl10 (
     d integer,
     CONSTRAINT tbl10_pkey PRIMARY KEY((a, c) HASH, b ASC)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -1535,7 +1555,8 @@ CREATE TABLE public.tbl11 (
     b integer NOT NULL,
     c integer,
     CONSTRAINT tbl11_pkey PRIMARY KEY(a DESC, b ASC)
-);
+)
+WITH (yb_presplit='');
 
 
 \if :use_roles
@@ -1575,7 +1596,8 @@ CREATE TABLE public.tbl12 (
     c integer NOT NULL,
     d integer NOT NULL,
     CONSTRAINT tbl12_pkey PRIMARY KEY(a ASC, d DESC, c DESC)
-);
+)
+WITH (yb_presplit='');
 
 
 \if :use_roles
@@ -1616,6 +1638,7 @@ CREATE TABLE public.tbl13 (
     d integer,
     CONSTRAINT tbl13_pkey PRIMARY KEY((b, c) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -1682,6 +1705,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16390'::pg_catalog.o
 CREATE TABLE public.tbl2 (
     a integer NOT NULL
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -1754,7 +1778,8 @@ CREATE TABLE public.tbl3 (
     a integer NOT NULL,
     b integer,
     CONSTRAINT tbl3_pkey PRIMARY KEY(a ASC)
-);
+)
+WITH (yb_presplit='');
 
 
 \if :use_roles
@@ -1793,6 +1818,7 @@ CREATE TABLE public.tbl4 (
     b integer NOT NULL,
     CONSTRAINT tbl4_pkey PRIMARY KEY((a) HASH, b ASC)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -1833,6 +1859,7 @@ CREATE TABLE public.tbl5 (
     c integer,
     CONSTRAINT tbl5_pkey PRIMARY KEY((a) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -1871,6 +1898,7 @@ CREATE TABLE public.tbl6 (
     a integer NOT NULL,
     CONSTRAINT tbl6_pkey PRIMARY KEY((a) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -1912,6 +1940,7 @@ CREATE TABLE public.tbl7 (
     d integer,
     CONSTRAINT tbl7_pkey PRIMARY KEY((b) HASH, c ASC)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -1953,6 +1982,7 @@ CREATE TABLE public.tbl8 (
     d integer NOT NULL,
     CONSTRAINT tbl8_pkey PRIMARY KEY((a) HASH, d ASC)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -1993,6 +2023,7 @@ CREATE TABLE public.tbl9 (
     c integer,
     CONSTRAINT tbl9_pkey PRIMARY KEY((a, b) HASH)
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -2025,7 +2056,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16499'::pg_catalog.o
 CREATE TABLE public.tgroup_after_options (
     a integer
 )
-WITH (parallel_workers='2', colocation_id='20002')
+WITH (parallel_workers='2', colocation_id='20002', yb_presplit='')
 TABLEGROUP grp1;
 
 
@@ -2058,6 +2089,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16505'::pg_catalog.o
 CREATE TABLE public.tgroup_empty_options (
     a integer
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -2090,7 +2122,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16502'::pg_catalog.o
 CREATE TABLE public.tgroup_in_between_options (
     a integer
 )
-WITH (parallel_workers='2', autovacuum_enabled='true', colocation_id='20003')
+WITH (parallel_workers='2', autovacuum_enabled='true', colocation_id='20003', yb_presplit='')
 TABLEGROUP grp1;
 
 
@@ -2123,7 +2155,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16481'::pg_catalog.o
 CREATE TABLE public.tgroup_no_options_and_tgroup (
     a integer
 )
-WITH (colocation_id='20001')
+WITH (colocation_id='20001', yb_presplit='')
 TABLEGROUP grp1;
 
 
@@ -2156,7 +2188,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16484'::pg_catalog.o
 CREATE TABLE public.tgroup_one_option (
     a integer
 )
-WITH (autovacuum_enabled='true')
+WITH (autovacuum_enabled='true', yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -2189,7 +2221,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16487'::pg_catalog.o
 CREATE TABLE public.tgroup_one_option_and_tgroup (
     a integer
 )
-WITH (autovacuum_enabled='true', colocation_id='20001')
+WITH (autovacuum_enabled='true', colocation_id='20001', yb_presplit='')
 TABLEGROUP grp2;
 
 
@@ -2222,7 +2254,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16490'::pg_catalog.o
 CREATE TABLE public.tgroup_options (
     a integer
 )
-WITH (autovacuum_enabled='true', parallel_workers='2')
+WITH (autovacuum_enabled='true', parallel_workers='2', yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -2255,7 +2287,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16493'::pg_catalog.o
 CREATE TABLE public.tgroup_options_and_tgroup (
     a integer
 )
-WITH (autovacuum_enabled='true', parallel_workers='2', colocation_id='20002')
+WITH (autovacuum_enabled='true', parallel_workers='2', colocation_id='20002', yb_presplit='')
 TABLEGROUP grp2;
 
 
@@ -2288,7 +2320,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16496'::pg_catalog.o
 CREATE TABLE public.tgroup_options_tgroup_and_custom_colocation_id (
     a integer
 )
-WITH (autovacuum_enabled='true', parallel_workers='2', colocation_id='100500')
+WITH (autovacuum_enabled='true', parallel_workers='2', colocation_id='100500', yb_presplit='')
 TABLEGROUP grp2;
 
 
@@ -2321,7 +2353,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16508'::pg_catalog.o
 CREATE TABLE public.tgroup_with_spc (
     a integer
 )
-WITH (colocation_id='20001')
+WITH (colocation_id='20001', yb_presplit='')
 TABLEGROUP grp_with_spc;
 
 
@@ -2356,8 +2388,8 @@ CREATE TABLE public.th1 (
     b text,
     c double precision
 )
+WITH (yb_presplit='2')
 SPLIT INTO 2 TABLETS;
-ALTER TABLE public.th1 SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -2397,8 +2429,8 @@ CREATE TABLE public.th2 (
     c double precision,
     CONSTRAINT th2_pkey PRIMARY KEY((a) HASH, b ASC)
 )
+WITH (yb_presplit='3')
 SPLIT INTO 3 TABLETS;
-ALTER TABLE public.th2 SET (yb_presplit='3');
 
 
 \if :use_roles
@@ -2438,8 +2470,8 @@ CREATE TABLE public.th3 (
     c double precision,
     CONSTRAINT th3_pkey PRIMARY KEY((a, b) HASH)
 )
+WITH (yb_presplit='4')
 SPLIT INTO 4 TABLETS;
-ALTER TABLE public.th3 SET (yb_presplit='4');
 
 
 \if :use_roles
@@ -2479,8 +2511,8 @@ CREATE TABLE public.tr1 (
     c double precision,
     CONSTRAINT tr1_pkey PRIMARY KEY(a ASC)
 )
+WITH (yb_presplit='((1), (100))')
 SPLIT AT VALUES ((1), (100));
-ALTER TABLE public.tr1 SET (yb_presplit='((1), (100))');
 
 
 \if :use_roles
@@ -2520,8 +2552,8 @@ CREATE TABLE public.tr2 (
     c double precision NOT NULL,
     CONSTRAINT tr2_pkey PRIMARY KEY(a DESC, b ASC, c DESC)
 )
+WITH (yb_presplit='((100, ''a'', 2.5), (50, ''n''), (1, ''z'', -5.12))')
 SPLIT AT VALUES ((100, 'a', 2.5), (50, 'n'), (1, 'z', -5.12));
-ALTER TABLE public.tr2 SET (yb_presplit='((100, ''a'', 2.5), (50, ''n''), (1, ''z'', -5.12))');
 
 
 \if :use_roles
@@ -2559,7 +2591,8 @@ CREATE TABLE public.uaccount (
     pguser name NOT NULL,
     seclv integer,
     CONSTRAINT uaccount_pkey PRIMARY KEY(pguser ASC)
-);
+)
+WITH (yb_presplit='');
 
 
 \if :use_roles
@@ -3794,7 +3827,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16552'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16552'::pg_catalog.oid);
 
-CREATE UNIQUE INDEX NONCONCURRENTLY hints_norm_and_app ON hint_plan.hints USING lsm (norm_query_string HASH, application_name ASC) SPLIT INTO 3 TABLETS;
+CREATE UNIQUE INDEX NONCONCURRENTLY hints_norm_and_app ON hint_plan.hints USING lsm (norm_query_string HASH, application_name ASC) WITH (yb_presplit='') SPLIT INTO 3 TABLETS;
 
 
 --
@@ -3806,8 +3839,7 @@ CREATE UNIQUE INDEX NONCONCURRENTLY hints_norm_and_app ON hint_plan.hints USING 
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16560'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16560'::pg_catalog.oid);
 
-CREATE UNIQUE INDEX NONCONCURRENTLY c1 ON public.p1 USING lsm (v ASC) SPLIT AT VALUES (('foo'), ('qux'));
-ALTER INDEX public.c1 SET (yb_presplit='((''foo''), (''qux''))');
+CREATE UNIQUE INDEX NONCONCURRENTLY c1 ON public.p1 USING lsm (v ASC) WITH (yb_presplit='((''foo''), (''qux''))') SPLIT AT VALUES (('foo'), ('qux'));
 
 ALTER TABLE ONLY public.p1
     ADD CONSTRAINT c1 UNIQUE USING INDEX c1;
@@ -3822,8 +3854,7 @@ ALTER TABLE ONLY public.p1
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16567'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16567'::pg_catalog.oid);
 
-CREATE UNIQUE INDEX NONCONCURRENTLY c2 ON public.p2 USING lsm (v HASH) SPLIT INTO 10 TABLETS;
-ALTER INDEX public.c2 SET (yb_presplit='10');
+CREATE UNIQUE INDEX NONCONCURRENTLY c2 ON public.p2 USING lsm (v HASH) WITH (yb_presplit='10') SPLIT INTO 10 TABLETS;
 
 ALTER TABLE ONLY public.p2
     ADD CONSTRAINT c2 UNIQUE USING INDEX c2;
@@ -3862,7 +3893,7 @@ CREATE INDEX NONCONCURRENTLY level2_1_c3_idx ON public.level2_1 USING lsm (c3 AS
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16580'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16580'::pg_catalog.oid);
 
-CREATE UNIQUE INDEX NONCONCURRENTLY non_unique_idx_with_include_clause ON public.hash_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 3 TABLETS;
+CREATE UNIQUE INDEX NONCONCURRENTLY non_unique_idx_with_include_clause ON public.hash_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) WITH (yb_presplit='') SPLIT INTO 3 TABLETS;
 
 
 --
@@ -3941,7 +3972,7 @@ ALTER TABLE ONLY public.part_uniq_const_default
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16424'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16424'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY tbl8_idx ON public.tbl8 USING lsm ((b, c) HASH) SPLIT INTO 3 TABLETS;
+CREATE INDEX NONCONCURRENTLY tbl8_idx ON public.tbl8 USING lsm ((b, c) HASH) WITH (yb_presplit='') SPLIT INTO 3 TABLETS;
 
 
 --
@@ -3953,7 +3984,7 @@ CREATE INDEX NONCONCURRENTLY tbl8_idx ON public.tbl8 USING lsm ((b, c) HASH) SPL
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16425'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16425'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b ASC) SPLIT INTO 3 TABLETS;
+CREATE INDEX NONCONCURRENTLY tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b ASC) WITH (yb_presplit='') SPLIT INTO 3 TABLETS;
 
 
 --
@@ -3989,7 +4020,7 @@ CREATE INDEX NONCONCURRENTLY tbl8_idx4 ON public.tbl8 USING lsm (b DESC);
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16428'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16428'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY tbl8_idx5 ON public.tbl8 USING lsm (c HASH) SPLIT INTO 3 TABLETS;
+CREATE INDEX NONCONCURRENTLY tbl8_idx5 ON public.tbl8 USING lsm (c HASH) WITH (yb_presplit='') SPLIT INTO 3 TABLETS;
 
 
 --
@@ -4001,8 +4032,7 @@ CREATE INDEX NONCONCURRENTLY tbl8_idx5 ON public.tbl8 USING lsm (c HASH) SPLIT I
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16539'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16539'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY th2_c_b_idx ON public.th2 USING lsm (c HASH, b DESC) SPLIT INTO 4 TABLETS;
-ALTER INDEX public.th2_c_b_idx SET (yb_presplit='4');
+CREATE INDEX NONCONCURRENTLY th2_c_b_idx ON public.th2 USING lsm (c HASH, b DESC) WITH (yb_presplit='4') SPLIT INTO 4 TABLETS;
 
 
 --
@@ -4014,8 +4044,7 @@ ALTER INDEX public.th2_c_b_idx SET (yb_presplit='4');
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16540'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16540'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY th3_c_b_idx ON public.th3 USING lsm ((c, b) HASH) SPLIT INTO 3 TABLETS;
-ALTER INDEX public.th3_c_b_idx SET (yb_presplit='3');
+CREATE INDEX NONCONCURRENTLY th3_c_b_idx ON public.th3 USING lsm ((c, b) HASH) WITH (yb_presplit='3') SPLIT INTO 3 TABLETS;
 
 
 --
@@ -4027,8 +4056,7 @@ ALTER INDEX public.th3_c_b_idx SET (yb_presplit='3');
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16542'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16542'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12, 'z', 1), (-0.75, 'l'), (2.5, 'a', 100));
-ALTER INDEX public.tr2_c_b_a_idx SET (yb_presplit='((-5.12, ''z'', 1), (-0.75, ''l''), (2.5, ''a'', 100))');
+CREATE INDEX NONCONCURRENTLY tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC) WITH (yb_presplit='((-5.12, ''z'', 1), (-0.75, ''l''), (2.5, ''a'', 100))') SPLIT AT VALUES ((-5.12, 'z', 1), (-0.75, 'l'), (2.5, 'a', 100));
 
 
 --
@@ -4040,8 +4068,7 @@ ALTER INDEX public.tr2_c_b_a_idx SET (yb_presplit='((-5.12, ''z'', 1), (-0.75, '
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16541'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16541'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY tr2_c_idx ON public.tr2 USING lsm (c DESC) SPLIT AT VALUES ((100.5), (1.5));
-ALTER INDEX public.tr2_c_idx SET (yb_presplit='((100.5), (1.5))');
+CREATE INDEX NONCONCURRENTLY tr2_c_idx ON public.tr2 USING lsm (c DESC) WITH (yb_presplit='((100.5), (1.5))') SPLIT AT VALUES ((100.5), (1.5));
 
 
 --
@@ -4053,7 +4080,7 @@ ALTER INDEX public.tr2_c_idx SET (yb_presplit='((100.5), (1.5))');
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16574'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16574'::pg_catalog.oid);
 
-CREATE UNIQUE INDEX NONCONCURRENTLY unique_idx_with_include_clause ON public.range_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 3 TABLETS;
+CREATE UNIQUE INDEX NONCONCURRENTLY unique_idx_with_include_clause ON public.range_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) WITH (yb_presplit='') SPLIT INTO 3 TABLETS;
 
 
 --

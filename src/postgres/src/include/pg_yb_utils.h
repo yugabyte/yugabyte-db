@@ -34,6 +34,7 @@
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
 #include "nodes/primnodes.h"
+#include "storage/lock.h"
 #include "tcop/utility.h"
 #include "utils/guc.h"
 #include "utils/relcache.h"
@@ -1770,8 +1771,6 @@ extern uint64_t YbGetRetryCount(YbTxnError kind);
 extern uint64_t YbGetTotalRetryCount();
 extern YbTxnError YbSqlErrorCodeToTransactionError(int sqlerrcode);
 
-extern bool yb_is_internal_connection;
-
 extern bool YbCatalogPreloadRequired();
 extern bool YbUseMinimalCatalogCachesPreload();
 
@@ -1844,5 +1843,17 @@ extern void YbInvalidatePlannerRelcache(struct PlannerInfo *root);
 extern void YbHandleConflictError(Relation rel, LockWaitPolicy wait_policy);
 
 extern void HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status);
+
+/*
+ * YB: db_oid namespace for internal advisory locks. InvalidOid cannot collide
+ * with user advisory locks, which always use MyDatabaseId.
+ */
+#define YB_INTERNAL_ADVISORY_LOCK_DB_OID	InvalidOid
+
+/* YB: classid for replication slot advisory locks. */
+#define ADVISORY_LOCK_CLASSID_REPL_SLOT	2
+
+extern YbcAdvisoryLockId GetYBAdvisoryLockId(LOCKTAG tag);
+extern bool HandleStatusIgnoreSkipLocking(YbcStatus status);
 
 #endif							/* PG_YB_UTILS_H */

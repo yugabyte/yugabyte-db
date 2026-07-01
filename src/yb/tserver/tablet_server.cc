@@ -853,10 +853,11 @@ Status TabletServer::RegisterServices() {
   if (FLAGS_ysql_enable_auto_analyze_infra) {
     auto connect_to_pg = [this](const std::string& database_name,
                                 const CoarseTimePoint& deadline) {
-      return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
-                                                    pgwrapper::PGConnSettings::kDefaultUser,
-                                                    GetSharedMemoryPostgresAuthKey(),
-                                                    deadline, true).Connect();
+      return pgwrapper::CreateInternalPGConnBuilder(
+                 pgsql_proxy_bind_address(), database_name,
+                 pgwrapper::PGConnSettings::kDefaultUser, GetSharedMemoryPostgresAuthKey(),
+                 deadline, pgwrapper::YbInternalConnKindWireName::kAutoAnalyze)
+          .Connect();
     };
     auto pg_auto_analyze_service =
         std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future(),
@@ -1465,7 +1466,7 @@ void TabletServer::MakeRelcacheInitConnection(const std::string& dbname) {
   auto status = ResultToStatus(
       pgwrapper::CreateInternalPGConnBuilder(
           pgsql_proxy_bind_address(), dbname, kDefaultInternalPgUser,
-          GetSharedMemoryPostgresAuthKey(), deadline, /*yb_auto_analyze=*/false,
+          GetSharedMemoryPostgresAuthKey(), deadline,
           pgwrapper::YbInternalConnKindWireName::kRelcacheInit)
           .Connect(/*simple_query_protocol=*/false));
   if (status.ok()) {
@@ -2557,6 +2558,10 @@ Status TabletServer::ClearMetacache(const std::string& namespace_id) {
   return client()->ClearMetacache(namespace_id);
 }
 
+void TabletServer::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {
+  client()->MarkTServersAsFollowers(ts_uuids);
+}
+
 Status TabletServer::ClearYCQLMetaDataCache() {
   auto* cql_server_api = cql_server_external_.load();
   SCHECK_NOTNULL(cql_server_api);
@@ -2663,7 +2668,7 @@ Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(
     std::string_view yb_internal_conn_kind) {
   return pgwrapper::CreateInternalPGConnBuilder(
              pgsql_proxy_bind_address(), database_name, user, GetSharedMemoryPostgresAuthKey(),
-             deadline, /* yb_auto_analyze */ false, yb_internal_conn_kind)
+             deadline, yb_internal_conn_kind)
       .Connect(simple_query_protocol);
 }
 

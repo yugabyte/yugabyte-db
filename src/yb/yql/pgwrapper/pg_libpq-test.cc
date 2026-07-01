@@ -4406,6 +4406,137 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   }
 }
 
+// Base fixture for the ysql_preload_pg_authid_for_auth tests. Enables full
+// catalog preload and disables the relcache init file, so each fresh backend
+// rebuilds its catalog caches and the pg_authid auth/startup reads are real
+// cache misses unless the preload populates them before authentication.
+// (ysql_preload_pg_authid_for_auth is effectively start-time: it is read during
+// backend startup, so the two cases are exercised by separate fixtures rather
+// than a runtime flag toggle.)
+class PgPreloadPgAuthidTestBase : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.emplace_back("--ysql_catalog_preload_additional_tables=true");
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_enable_relcache_init_optimization=false");
+    for (const auto& flag : ExtraTServerFlags()) {
+      options->extra_tserver_flags.emplace_back(flag);
+    }
+  }
+
+  virtual std::vector<std::string> ExtraTServerFlags() const { return {}; }
+
+  // Returns the pg_authid catalog cache misses incurred while opening `n` fresh
+  // backends. Each runs a query and is then closed so its startup miss counters
+  // are flushed to the shared YSQL metrics.
+  Result<int64_t> PgAuthidMissesForFreshConnections(int n) {
+    const auto pg_authid_misses = [this]() -> Result<int64_t> {
+      auto res = GetCatCacheTableMissMetric("pg_authid");
+      // The per-table metric is absent until the first such miss is recorded.
+      if (!res.ok() && res.status().IsNotFound()) {
+        return 0;
+      }
+      return res;
+    };
+    const auto before = VERIFY_RESULT(pg_authid_misses());
+    for (int i = 0; i < n; ++i) {
+      auto conn = VERIFY_RESULT(Connect());
+      RETURN_NOT_OK(conn.Fetch("SELECT 1"));
+    }
+    // Let the just-closed backends' metrics propagate to the YSQL webserver.
+    std::this_thread::sleep_for(3s * kTimeMultiplier);
+    const auto delta = VERIFY_RESULT(pg_authid_misses()) - before;
+    LOG(INFO) << "pg_authid catalog cache miss delta over " << n
+              << " fresh connections: " << delta;
+    return delta;
+  }
+};
+
+// ysql_preload_pg_authid_for_auth defaults to true.
+class PgPreloadPgAuthidEnabledTest : public PgPreloadPgAuthidTestBase {};
+
+class PgPreloadPgAuthidDisabledTest : public PgPreloadPgAuthidTestBase {
+ protected:
+  std::vector<std::string> ExtraTServerFlags() const override {
+    return {"--ysql_preload_pg_authid_for_auth=false"};
+  }
+};
+
+// pg_authid is read by name during authentication (to fetch the stored
+// password) and again during backend startup (by name for session-user setup
+// and by OID for the superuser check). Those reads happen before the regular
+// catalog cache preload, so with the preload disabled each fresh backend incurs
+// pg_authid catalog cache misses.
+TEST_F_EX(PgLibPqTest, YbPreloadPgAuthidForAuthDisabled, PgPreloadPgAuthidDisabledTest) {
+  ASSERT_RESULT(Connect());  // warm up the cluster's catalog state
+  ASSERT_GT(ASSERT_RESULT(PgAuthidMissesForFreshConnections(5)), 0)
+      << "with ysql_preload_pg_authid_for_auth=false, fresh connections should "
+         "incur pg_authid catalog cache misses";
+}
+
+// With the preload enabled (default), the pg_authid caches are populated before
+// authentication, so fresh backends incur no pg_authid catalog cache misses.
+TEST_F_EX(PgLibPqTest, YbPreloadPgAuthidForAuthEnabled, PgPreloadPgAuthidEnabledTest) {
+  ASSERT_RESULT(Connect());  // warm up the cluster's catalog state
+  ASSERT_EQ(ASSERT_RESULT(PgAuthidMissesForFreshConnections(5)), 0)
+      << "with ysql_preload_pg_authid_for_auth=true, fresh connections should "
+         "incur no pg_authid catalog cache misses";
+}
+
+// Enables the regular-backend tserver response cache for the connection-auth
+// prefetch (#32063): the connection-auth prefetch batch (pg_authid, ...) is
+// served from the tserver response cache, removing the per-connection master
+// read for the batch. It requires invalidation messages.
+class PgPreloadPgAuthidWithTserverCacheTest : public PgPreloadPgAuthidTestBase {
+ protected:
+  std::vector<std::string> ExtraTServerFlags() const override {
+    return {"--ysql_enable_read_request_cache_for_connection_auth=true",
+            "--ysql_yb_enable_invalidation_messages=true"};
+  }
+};
+
+// Same tserver auth cache, but with the pg_authid catcache preload disabled.
+class PgPreloadPgAuthidWithTserverCacheNoPreloadTest
+    : public PgPreloadPgAuthidWithTserverCacheTest {
+ protected:
+  std::vector<std::string> ExtraTServerFlags() const override {
+    auto flags = PgPreloadPgAuthidWithTserverCacheTest::ExtraTServerFlags();
+    flags.emplace_back("--ysql_preload_pg_authid_for_auth=false");
+    return flags;
+  }
+};
+
+// The two changes are complementary layers and compose: the regular-backend
+// tserver response cache (#32063) caches the connection-auth prefetch batch,
+// and the pg_authid catcache preload (this change, #31999) populates the PG
+// catcache before authentication. Together a fresh backend incurs no pg_authid
+// catalog cache misses -- the preload reads pg_authid from the (now cached)
+// prefetch buffer and fully loads the catcache.
+TEST_F_EX(PgLibPqTest, YbPreloadPgAuthidForAuthWithTserverCache,
+          PgPreloadPgAuthidWithTserverCacheTest) {
+  ASSERT_RESULT(Connect());  // warm up the cluster + tserver response cache
+  ASSERT_EQ(ASSERT_RESULT(PgAuthidMissesForFreshConnections(5)), 0)
+      << "with both the pg_authid catcache preload and the regular-backend "
+         "tserver auth cache enabled, fresh connections should incur no "
+         "pg_authid catalog cache misses";
+}
+
+// The tserver response cache for the connection-auth prefetch is a tserver-side
+// (master-read) optimization; it does not populate the PG catcache. So with the
+// pg_authid catcache preload disabled, fresh backends still incur pg_authid
+// catalog cache misses even though the prefetch batch itself is cached -- i.e.
+// the tserver auth cache alone does not eliminate per-connection pg_authid
+// catalog cache work; the catcache preload (#31999) is also required.
+TEST_F_EX(PgLibPqTest, YbPreloadPgAuthidForAuthWithTserverCacheNoPreload,
+          PgPreloadPgAuthidWithTserverCacheNoPreloadTest) {
+  ASSERT_RESULT(Connect());  // warm up the cluster + tserver response cache
+  ASSERT_GT(ASSERT_RESULT(PgAuthidMissesForFreshConnections(5)), 0)
+      << "the regular-backend tserver auth cache alone (without the pg_authid "
+         "catcache preload) does not eliminate per-connection pg_authid "
+         "catalog cache misses";
+}
+
 class PgLibPqNegCacheTest : public PgLibPqTest {
  public:
   enum class NegCacheTestType {

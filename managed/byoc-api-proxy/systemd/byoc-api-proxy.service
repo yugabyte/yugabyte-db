@@ -1,0 +1,37 @@
+[Unit]
+Description=YugabyteDB BYOC API Proxy
+Documentation=https://github.com/yugabyte/yugabyte-db/tree/master/managed/byoc-api-proxy
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=yugabyte
+Group=yugabyte
+
+WorkingDirectory=/opt/yugabyte/byoc-api-proxy
+
+# Defaults; values in byoc-api-proxy.env override these when set.
+Environment=JAVA_HOME=/opt/yugabyte/jdk-17
+EnvironmentFile=-/etc/yugabyte/byoc-api-proxy/byoc-api-proxy.env
+Environment=SPRING_CONFIG_ADDITIONAL_LOCATION=optional:file:/etc/yugabyte/byoc-api-proxy/application.yaml
+
+ExecStart=/bin/sh -c 'exec "${JAVA_HOME}/bin/java" -Djdk.internal.httpclient.disableHostnameVerification=true -XX:+ExitOnOutOfMemoryError -jar /opt/yugabyte/byoc-api-proxy/byoc-api-proxy.jar'
+
+# Spring Boot handles SIGTERM; 143 is normal for Java on systemd stop.
+SuccessExitStatus=143
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=5
+
+Restart=on-failure
+RestartSec=10
+
+LimitNOFILE=65536
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=byoc-api-proxy
+
+[Install]
+WantedBy=multi-user.target
