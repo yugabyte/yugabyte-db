@@ -24,6 +24,7 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
+import com.yugabyte.yw.cloud.oci.OCICloudUtil;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.AddOnClusterDelete;
@@ -1052,6 +1053,7 @@ public class UniverseCRUDHandler {
     }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CREATE);
+    validateOciInstanceTags(taskParams);
 
     // Create a new universe. This makes sure that a universe of this name does not already exist
     // for this customer id.
@@ -1379,6 +1381,7 @@ public class UniverseCRUDHandler {
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
     }
+    validateOciInstanceTags(taskParams);
     if (u.isYbcEnabled()) {
       taskParams.installYbc = true;
       taskParams.setEnableYbc(true);
@@ -1723,6 +1726,7 @@ public class UniverseCRUDHandler {
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
     }
+    validateOciInstanceTags(taskParams);
 
     if (universe.isYbcEnabled()) {
       taskParams.installYbc = true;
@@ -3100,6 +3104,10 @@ public class UniverseCRUDHandler {
                   userTag, StringUtils.join(acceptedValuesSet, ", ")));
       }
     }
+  }
+
+  private void validateOciInstanceTags(UniverseDefinitionTaskParams taskParams) {
+    OCICloudUtil.validateInstanceTags(taskParams.clusters);
   }
 
   private UUID getClusterUuid(ImportUniverseTaskParams taskParams) {
