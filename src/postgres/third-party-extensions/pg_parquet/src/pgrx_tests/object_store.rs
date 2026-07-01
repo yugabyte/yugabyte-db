@@ -1,7 +1,5 @@
 #[pgrx::pg_schema]
 mod tests {
-    use std::io::Write;
-
     use pgrx::{pg_sys::Timestamp, pg_test, Spi};
 
     use crate::pgrx_tests::common::TestTable;
@@ -10,23 +8,25 @@ mod tests {
         Spi::run("SELECT parquet_test.object_store_cache_clear();").unwrap();
     }
 
-    fn object_store_cache_items() -> Vec<(&'static str, &'static str, Option<Timestamp>)> {
+    fn object_store_cache_items() -> Vec<(String, String, String, Option<String>, Option<Timestamp>)> {
         Spi::connect(|client| {
             let mut results = Vec::new();
             let tup_table = client
                 .select(
-                    "SELECT * FROM parquet_test.object_store_cache_items() ORDER BY 1,2,3;",
+                    "SELECT * FROM parquet_test.object_store_cache_items() ORDER BY 1,2,3,4,5;",
                     None,
                     &[],
                 )
                 .unwrap();
 
             for row in tup_table {
-                let scheme = row.get_by_name("scheme").unwrap().unwrap();
-                let bucket = row.get_by_name("bucket").unwrap().unwrap();
-                let expire_at = row.get_by_name("expire_at").unwrap();
+                let scheme: String = row.get_by_name("scheme").unwrap().unwrap();
+                let bucket: String = row.get_by_name("bucket").unwrap().unwrap();
+                let role_oid: String = row.get_by_name("role_oid").unwrap().unwrap();
+                let server_oid: Option<String> = row.get_by_name("server_oid").unwrap();
+                let expire_at: Option<Timestamp> = row.get_by_name("expire_at").unwrap();
 
-                results.push((scheme, bucket, expire_at));
+                results.push((scheme, bucket, role_oid, server_oid, expire_at));
             }
 
             results
@@ -41,12 +41,66 @@ mod tests {
         .unwrap();
     }
 
+    fn setup_s3_foreign_server(server_name: &str, scope: &str, key_id: &str, secret: &str) {
+        let region = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
+        let endpoint = std::env::var("AWS_ENDPOINT_URL").expect("AWS_ENDPOINT_URL not found");
+        let allow_http = if endpoint.starts_with("http://") {
+            ", allow_http 'true'"
+        } else {
+            ""
+        };
+
+        Spi::run(&format!(
+            "DROP SERVER IF EXISTS {server_name} CASCADE;
+             CREATE SERVER {server_name} TYPE 's3' FOREIGN DATA WRAPPER parquet \
+             OPTIONS (scope '{scope}', region '{region}', endpoint '{endpoint}'{allow_http});
+             CREATE USER MAPPING FOR CURRENT_USER SERVER {server_name} \
+             OPTIONS (key_id '{key_id}', secret '{secret}');"
+        ))
+        .unwrap();
+    }
+
+    fn setup_s3_foreign_server_for_user(
+        server_name: &str,
+        scope: &str,
+        key_id: &str,
+        secret: &str,
+        username: &str,
+    ) {
+        let region = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
+        let endpoint = std::env::var("AWS_ENDPOINT_URL").expect("AWS_ENDPOINT_URL not found");
+        let allow_http = if endpoint.starts_with("http://") {
+            ", allow_http 'true'"
+        } else {
+            ""
+        };
+
+        Spi::run(&format!(
+            "DROP SERVER IF EXISTS {server_name} CASCADE;
+             CREATE SERVER {server_name} TYPE 's3' FOREIGN DATA WRAPPER parquet \
+             OPTIONS (scope '{scope}', region '{region}', endpoint '{endpoint}'{allow_http});
+             CREATE USER MAPPING FOR {username} SERVER {server_name} \
+             OPTIONS (key_id '{key_id}', secret '{secret}');
+             GRANT USAGE ON FOREIGN SERVER {server_name} TO {username};"
+        ))
+        .unwrap();
+    }
+
+    fn default_s3_credentials() -> (String, String) {
+        (
+            std::env::var("AWS_ACCESS_KEY_ID").expect("AWS_ACCESS_KEY_ID not found"),
+            std::env::var("AWS_SECRET_ACCESS_KEY").expect("AWS_SECRET_ACCESS_KEY not found"),
+        )
+    }
+
     #[pg_test]
     fn test_s3_from_env() {
         object_store_cache_clear();
 
         let test_bucket_name: String =
             std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
+        let (key_id, secret) = default_s3_credentials();
+        setup_s3_foreign_server("pg_parquet_s3_test", &test_bucket_name, &key_id, &secret);
 
         let s3_uris = [
             format!("s3://{}/pg_parquet_test.parquet", test_bucket_name),
@@ -69,57 +123,19 @@ mod tests {
     }
 
     #[pg_test]
-    fn test_s3_from_config_file() {
+    fn test_s3_foreign_server_catalog() {
         object_store_cache_clear();
 
         let test_bucket_name: String =
             std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
-
-        // remove these to make sure the config file is used
-        let access_key_id = std::env::var("AWS_ACCESS_KEY_ID").unwrap();
-        std::env::remove_var("AWS_ACCESS_KEY_ID");
-        let secret_access_key = std::env::var("AWS_SECRET_ACCESS_KEY").unwrap();
-        std::env::remove_var("AWS_SECRET_ACCESS_KEY");
-        let region = std::env::var("AWS_REGION").unwrap();
-        std::env::remove_var("AWS_REGION");
-        let endpoint = std::env::var("AWS_ENDPOINT_URL").unwrap();
-        std::env::remove_var("AWS_ENDPOINT_URL");
-
-        let profile = "pg_parquet_test";
-
-        // create a config file
-        let aws_config_file_content = format!(
-            "[profile {profile}]\n\
-            region={region}\n\
-            aws_access_key_id={access_key_id}\n\
-            aws_secret_access_key={secret_access_key}\n\
-            endpoint_url={endpoint}\n"
-        );
-        std::env::set_var("AWS_PROFILE", profile);
-
-        let aws_config_file_path = "/tmp/pg_parquet_aws_config";
-        std::env::set_var("AWS_CONFIG_FILE", aws_config_file_path);
-
-        let mut aws_config_file = std::fs::OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .create(true)
-            .open(aws_config_file_path)
-            .unwrap();
-
-        aws_config_file
-            .write_all(aws_config_file_content.as_bytes())
-            .unwrap();
+        let (key_id, secret) = default_s3_credentials();
+        setup_s3_foreign_server("pg_parquet_s3_catalog", &test_bucket_name, &key_id, &secret);
 
         let s3_uri = format!("s3://{}/pg_parquet_test.parquet", test_bucket_name);
-
         let test_table = TestTable::<i32>::new("int4".into()).with_uri(s3_uri);
 
         test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
         test_table.assert_expected_and_result_rows();
-
-        // remove the config file
-        std::fs::remove_file(aws_config_file_path).unwrap();
     }
 
     #[pg_test]
@@ -127,10 +143,15 @@ mod tests {
     fn test_s3_wrong_access_key_id() {
         object_store_cache_clear();
 
-        std::env::set_var("AWS_ACCESS_KEY_ID", "wrong_access_key_id");
-
         let test_bucket_name: String =
             std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
+        let (_, secret) = default_s3_credentials();
+        setup_s3_foreign_server(
+            "pg_parquet_s3_wrong_key",
+            &test_bucket_name,
+            "wrong_access_key_id",
+            &secret,
+        );
 
         let s3_uri = format!("s3://{}/pg_parquet_test.parquet", test_bucket_name);
 
@@ -145,10 +166,15 @@ mod tests {
     fn test_s3_wrong_secret_access_key() {
         object_store_cache_clear();
 
-        std::env::set_var("AWS_SECRET_ACCESS_KEY", "wrong_secret_access_key");
-
         let test_bucket_name: String =
             std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
+        let (key_id, _) = default_s3_credentials();
+        setup_s3_foreign_server(
+            "pg_parquet_s3_wrong_secret",
+            &test_bucket_name,
+            &key_id,
+            "wrong_secret_access_key",
+        );
 
         let s3_uri = format!("s3://{}/pg_parquet_test.parquet", test_bucket_name);
 
@@ -163,20 +189,22 @@ mod tests {
     fn test_s3_no_read_access() {
         object_store_cache_clear();
 
-        // create regular user
         Spi::run("CREATE USER regular_user;").unwrap();
-
-        // grant write access to the regular user but not read access
         Spi::run("GRANT parquet_object_store_write TO regular_user;").unwrap();
-
-        // grant all permissions for public schema
         Spi::run("GRANT ALL ON SCHEMA public TO regular_user;").unwrap();
-
-        // set the current user to the regular user
-        Spi::run("SET SESSION AUTHORIZATION regular_user;").unwrap();
 
         let test_bucket_name: String =
             std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
+        let (key_id, secret) = default_s3_credentials();
+        setup_s3_foreign_server_for_user(
+            "pg_parquet_s3_no_read",
+            &test_bucket_name,
+            &key_id,
+            &secret,
+            "regular_user",
+        );
+
+        Spi::run("SET SESSION AUTHORIZATION regular_user;").unwrap();
 
         let s3_uri = format!("s3://{}/pg_parquet_test.parquet", test_bucket_name);
 
@@ -184,14 +212,12 @@ mod tests {
 
         test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
 
-        // can write to s3
         let copy_to_command = format!(
             "COPY (SELECT a FROM generate_series(1,10) a) TO '{}';",
             s3_uri
         );
         Spi::run(copy_to_command.as_str()).unwrap();
 
-        // cannot read from s3
         let copy_from_command = format!("COPY test_expected FROM '{}';", s3_uri);
         Spi::run(copy_from_command.as_str()).unwrap();
     }
@@ -201,28 +227,27 @@ mod tests {
     fn test_s3_no_write_access() {
         object_store_cache_clear();
 
-        // create regular user
         Spi::run("CREATE USER regular_user;").unwrap();
-
-        // grant read access to the regular user but not write access
         Spi::run("GRANT parquet_object_store_read TO regular_user;").unwrap();
-
-        // grant usage access to parquet schema and its udfs
         Spi::run("GRANT USAGE ON SCHEMA parquet TO regular_user;").unwrap();
         Spi::run("GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA parquet TO regular_user;").unwrap();
-
-        // grant all permissions for public schema
         Spi::run("GRANT ALL ON SCHEMA public TO regular_user;").unwrap();
-
-        // set the current user to the regular user
-        Spi::run("SET SESSION AUTHORIZATION regular_user;").unwrap();
 
         let test_bucket_name: String =
             std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
+        let (key_id, secret) = default_s3_credentials();
+        setup_s3_foreign_server_for_user(
+            "pg_parquet_s3_no_write",
+            &test_bucket_name,
+            &key_id,
+            &secret,
+            "regular_user",
+        );
+
+        Spi::run("SET SESSION AUTHORIZATION regular_user;").unwrap();
 
         let s3_uri = format!("s3://{}/pg_parquet_test.parquet", test_bucket_name);
 
-        // can call metadata udf (requires read access)
         let metadata_query = format!("SELECT parquet.metadata('{}');", s3_uri.clone());
         Spi::run(&metadata_query).unwrap();
 
@@ -230,11 +255,9 @@ mod tests {
 
         test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
 
-        // can read from s3
         let copy_from_command = format!("COPY test_expected FROM '{}';", s3_uri);
         Spi::run(copy_from_command.as_str()).unwrap();
 
-        // cannot write to s3
         let copy_to_command = format!(
             "COPY (SELECT a FROM generate_series(1,10) a) TO '{}';",
             s3_uri
@@ -243,9 +266,19 @@ mod tests {
     }
 
     #[pg_test]
-    #[should_panic(expected = "404 Not Found")]
+    #[should_panic(expected = "no parquet S3 foreign server and user mapping match uri")]
     fn test_s3_write_wrong_bucket() {
         object_store_cache_clear();
+
+        let test_bucket_name: String =
+            std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
+        let (key_id, secret) = default_s3_credentials();
+        setup_s3_foreign_server(
+            "pg_parquet_s3_scope",
+            &test_bucket_name,
+            &key_id,
+            &secret,
+        );
 
         let s3_uri = "s3://randombucketwhichdoesnotexist/pg_parquet_test.parquet";
 
@@ -257,9 +290,19 @@ mod tests {
     }
 
     #[pg_test]
-    #[should_panic(expected = "404 Not Found")]
+    #[should_panic(expected = "no parquet S3 foreign server and user mapping match uri")]
     fn test_s3_read_wrong_bucket() {
         object_store_cache_clear();
+
+        let test_bucket_name: String =
+            std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
+        let (key_id, secret) = default_s3_credentials();
+        setup_s3_foreign_server(
+            "pg_parquet_s3_scope_read",
+            &test_bucket_name,
+            &key_id,
+            &secret,
+        );
 
         let s3_uri = "s3://randombucketwhichdoesnotexist/pg_parquet_test.parquet";
 
@@ -276,46 +319,23 @@ mod tests {
 
         let test_bucket_name: String =
             std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
+        let (key_id, secret) = default_s3_credentials();
+        let region = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
+        let endpoint = std::env::var("AWS_ENDPOINT_URL").expect("AWS_ENDPOINT_URL not found");
+        let allow_http = if endpoint.starts_with("http://") {
+            ", allow_http 'true'"
+        } else {
+            ""
+        };
 
-        // remove these to make sure the config file is used
-        let access_key_id = std::env::var("AWS_ACCESS_KEY_ID").unwrap();
-        std::env::remove_var("AWS_ACCESS_KEY_ID");
-        let secret_access_key = std::env::var("AWS_SECRET_ACCESS_KEY").unwrap();
-        std::env::remove_var("AWS_SECRET_ACCESS_KEY");
-        let region = std::env::var("AWS_REGION").unwrap();
-        std::env::remove_var("AWS_REGION");
-        let endpoint = std::env::var("AWS_ENDPOINT_URL").unwrap();
-        std::env::remove_var("AWS_ENDPOINT_URL");
-
-        let profile = "pg_parquet_test";
-
-        // create a config file
-        let aws_config_file_content = format!(
-            "[profile {profile}-source]\n\
-            aws_access_key_id={access_key_id}\n\
-            aws_secret_access_key={secret_access_key}\n\
-            \n\
-            [profile {profile}]\n\
-            region={region}\n\
-            source_profile={profile}-source\n\
-            role_arn=arn:aws:iam::123456789012:dummy\n\
-            endpoint_url={endpoint}\n"
-        );
-        std::env::set_var("AWS_PROFILE", profile);
-
-        let aws_config_file_path = "/tmp/pg_parquet_aws_config";
-        std::env::set_var("AWS_CONFIG_FILE", aws_config_file_path);
-
-        let mut aws_config_file = std::fs::OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .create(true)
-            .open(aws_config_file_path)
-            .unwrap();
-
-        aws_config_file
-            .write_all(aws_config_file_content.as_bytes())
-            .unwrap();
+        Spi::run(&format!(
+            "DROP SERVER IF EXISTS pg_parquet_s3_token CASCADE;
+             CREATE SERVER pg_parquet_s3_token TYPE 's3' FOREIGN DATA WRAPPER parquet \
+             OPTIONS (scope '{test_bucket_name}', region '{region}', endpoint '{endpoint}'{allow_http});
+             CREATE USER MAPPING FOR CURRENT_USER SERVER pg_parquet_s3_token \
+             OPTIONS (key_id '{key_id}', secret '{secret}', session_token 'temporary-token');"
+        ))
+        .unwrap();
 
         let s3_uri = format!("s3://{}/pg_parquet_test.parquet", test_bucket_name);
 
@@ -323,21 +343,103 @@ mod tests {
         test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
         test_table.assert_expected_and_result_rows();
 
-        assert!(matches!(
-            object_store_cache_items()[..],
-            [("AmazonS3", "testbucket" , Some(expire_at) )] if expire_at > 0
-        ));
+        let cache_items = object_store_cache_items();
+        assert_eq!(cache_items.len(), 1);
+        assert!(cache_items[0].4.is_some());
 
-        // expire the token for the bucket
-        object_store_expire_item("testbucket");
+        object_store_expire_item(&test_bucket_name);
 
-        // next run will create a new token
         let test_table = TestTable::<i32>::new("int4".into()).with_uri(s3_uri);
         test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
         test_table.assert_expected_and_result_rows();
+    }
 
-        // remove the config file
-        std::fs::remove_file(aws_config_file_path).unwrap();
+    fn cache_scheme_bucket_pairs() -> Vec<(String, String)> {
+        object_store_cache_items()
+            .into_iter()
+            .map(|(scheme, bucket, _, _, _)| (scheme, bucket))
+            .collect()
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "cannot be used in the SERVER's OPTIONS")]
+    fn test_s3_rejects_secret_on_server() {
+        Spi::run(
+            "CREATE SERVER pg_parquet_s3_invalid TYPE 's3' FOREIGN DATA WRAPPER parquet OPTIONS (secret 'leaked');",
+        )
+        .unwrap();
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "no parquet S3 foreign server and user mapping match uri")]
+    fn test_s3_missing_user_mapping() {
+        object_store_cache_clear();
+
+        let test_bucket_name: String =
+            std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
+        let region = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
+        let endpoint = std::env::var("AWS_ENDPOINT_URL").expect("AWS_ENDPOINT_URL not found");
+        let allow_http = if endpoint.starts_with("http://") {
+            ", allow_http 'true'"
+        } else {
+            ""
+        };
+
+        Spi::run(&format!(
+            "DROP SERVER IF EXISTS pg_parquet_s3_no_mapping CASCADE;
+             CREATE SERVER pg_parquet_s3_no_mapping TYPE 's3' FOREIGN DATA WRAPPER parquet \
+             OPTIONS (scope '{test_bucket_name}', region '{region}', endpoint '{endpoint}'{allow_http});"
+        ))
+        .unwrap();
+
+        let s3_uri = format!("s3://{}/pg_parquet_test.parquet", test_bucket_name);
+        let test_table = TestTable::<i32>::new("int4".into()).with_uri(s3_uri);
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
+    }
+
+    #[pg_test]
+    fn test_s3_user_isolation() {
+        object_store_cache_clear();
+
+        let test_bucket_name: String =
+            std::env::var("AWS_S3_TEST_BUCKET").expect("AWS_S3_TEST_BUCKET not found");
+        let (key_id, secret) = default_s3_credentials();
+
+        Spi::run("CREATE USER parquet_user_a;").unwrap();
+        Spi::run("CREATE USER parquet_user_b;").unwrap();
+        Spi::run("GRANT parquet_object_store_read, parquet_object_store_write TO parquet_user_a;")
+            .unwrap();
+        Spi::run("GRANT parquet_object_store_read, parquet_object_store_write TO parquet_user_b;")
+            .unwrap();
+        Spi::run("GRANT ALL ON SCHEMA public TO parquet_user_a, parquet_user_b;").unwrap();
+
+        setup_s3_foreign_server_for_user(
+            "pg_parquet_s3_user_a",
+            &test_bucket_name,
+            &key_id,
+            &secret,
+            "parquet_user_a",
+        );
+        setup_s3_foreign_server_for_user(
+            "pg_parquet_s3_user_b",
+            &test_bucket_name,
+            &key_id,
+            &secret,
+            "parquet_user_b",
+        );
+
+        let s3_uri = format!("s3://{}/pg_parquet_user_isolation.parquet", test_bucket_name);
+
+        Spi::run("SET SESSION AUTHORIZATION parquet_user_a;").unwrap();
+        let test_table = TestTable::<i32>::new("int4".into()).with_uri(s3_uri.clone());
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
+
+        Spi::run("SET SESSION AUTHORIZATION parquet_user_b;").unwrap();
+        let test_table = TestTable::<i32>::new("int4".into()).with_uri(s3_uri);
+        test_table.insert("INSERT INTO test_expected (a) VALUES (1), (2), (null);");
+        test_table.assert_expected_and_result_rows();
     }
 
     #[pg_test]
@@ -650,12 +752,38 @@ mod tests {
         }
     }
 
+    fn setup_gcs_foreign_server(server_name: &str, scope: &str) {
+        let hmac_key_id = std::env::var("GOOGLE_HMAC_KEY_ID").ok();
+        let hmac_secret = std::env::var("GOOGLE_HMAC_SECRET").ok();
+        let sa_key = std::env::var("GOOGLE_SERVICE_ACCOUNT_KEY").ok();
+        let sa_path = std::env::var("GOOGLE_SERVICE_ACCOUNT_PATH").ok();
+
+        let mapping_options = match (hmac_key_id, hmac_secret, sa_key, sa_path) {
+            (Some(k), Some(s), _, _) => {
+                format!("key_id '{}', secret '{}'", k, s)
+            }
+            (_, _, Some(key), _) => format!("service_account_key '{}'", key.replace('\'', "''")),
+            (_, _, _, Some(path)) => format!("service_account_path '{}'", path),
+            _ => panic!("GCS credentials not provided: set GOOGLE_HMAC_KEY_ID/GOOGLE_HMAC_SECRET or GOOGLE_SERVICE_ACCOUNT_KEY or GOOGLE_SERVICE_ACCOUNT_PATH"),
+        };
+
+        Spi::run(&format!(
+            "DROP SERVER IF EXISTS {server_name} CASCADE;
+             CREATE SERVER {server_name} TYPE 'gcs' FOREIGN DATA WRAPPER parquet \
+             OPTIONS (scope '{scope}');
+             CREATE USER MAPPING FOR CURRENT_USER SERVER {server_name} \
+             OPTIONS ({mapping_options});"
+        ))
+        .unwrap();
+    }
+
     #[pg_test]
-    fn test_gcs_from_env() {
+    fn test_gcs_foreign_server_catalog() {
         object_store_cache_clear();
 
         let test_bucket_name: String =
             std::env::var("GOOGLE_TEST_BUCKET").expect("GOOGLE_TEST_BUCKET not found");
+        setup_gcs_foreign_server("pg_parquet_gcs_catalog", &test_bucket_name);
 
         let gcs_uri = format!("gs://{}/pg_parquet_test.parquet", test_bucket_name);
 
@@ -666,7 +794,7 @@ mod tests {
     }
 
     #[pg_test]
-    #[should_panic(expected = "404 Not Found")]
+    #[should_panic(expected = "no parquet gcs foreign server and user mapping match uri")]
     fn test_gcs_write_wrong_bucket() {
         object_store_cache_clear();
 
@@ -680,7 +808,7 @@ mod tests {
     }
 
     #[pg_test]
-    #[should_panic(expected = "404 Not Found")]
+    #[should_panic(expected = "no parquet gcs foreign server and user mapping match uri")]
     fn test_gcs_read_wrong_bucket() {
         object_store_cache_clear();
 
@@ -691,6 +819,144 @@ mod tests {
 
         let copy_from_command = format!("COPY test_table FROM '{}';", gcs_uri);
         Spi::run(copy_from_command.as_str()).unwrap();
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "cannot be used in the SERVER's OPTIONS")]
+    fn test_gcs_rejects_service_account_on_server() {
+        Spi::run(
+            "CREATE SERVER pg_parquet_gcs_invalid TYPE 'gcs' FOREIGN DATA WRAPPER parquet \
+             OPTIONS (service_account_key '{}');",
+        )
+        .unwrap();
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "invalid option \"region\" for parquet foreign server")]
+    fn test_gcs_rejects_region_on_server() {
+        Spi::run(
+            "CREATE SERVER pg_parquet_gcs_region TYPE 'gcs' FOREIGN DATA WRAPPER parquet \
+             OPTIONS (region 'us-east-1');",
+        )
+        .unwrap();
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "cannot mix HMAC")]
+    fn test_gcs_rejects_mixed_credentials() {
+        Spi::run(
+            "DROP SERVER IF EXISTS pg_parquet_gcs_mixed CASCADE;
+             CREATE SERVER pg_parquet_gcs_mixed TYPE 'gcs' FOREIGN DATA WRAPPER parquet;
+             CREATE USER MAPPING FOR CURRENT_USER SERVER pg_parquet_gcs_mixed \
+             OPTIONS (key_id 'k', secret 's', service_account_path '/tmp/sa.json');",
+        )
+        .unwrap();
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "service_account_key or service_account_path, not both")]
+    fn test_gcs_rejects_both_service_account_fields() {
+        Spi::run(
+            "DROP SERVER IF EXISTS pg_parquet_gcs_two_sa CASCADE;
+             CREATE SERVER pg_parquet_gcs_two_sa TYPE 'gcs' FOREIGN DATA WRAPPER parquet;
+             CREATE USER MAPPING FOR CURRENT_USER SERVER pg_parquet_gcs_two_sa \
+             OPTIONS (service_account_key '{}', service_account_path '/tmp/sa.json');",
+        )
+        .unwrap();
+    }
+
+    fn count_user_mapping_for_server(server_name: &str) -> i64 {
+        Spi::get_one_with_args::<i64>(
+            "SELECT count(*)::bigint FROM pg_catalog.pg_user_mappings \
+             WHERE srvname = $1 AND usename = current_user;",
+            &[server_name.into()],
+        )
+        .expect("count user mapping")
+        .expect("non-null count")
+    }
+
+    fn server_type(server_name: &str) -> String {
+        Spi::get_one_with_args::<String>(
+            "SELECT srvtype::text FROM pg_catalog.pg_foreign_server WHERE srvname = $1;",
+            &[server_name.into()],
+        )
+        .expect("server type")
+        .expect("non-null server type")
+    }
+
+    #[pg_test]
+    fn test_create_simple_secret_s3() {
+        let name: String = Spi::get_one(
+            "SELECT parquet.create_simple_secret(\
+                'S3', key_id := 'AKIATESTKEY', secret := 'sek', region := 'us-east-1');",
+        )
+        .expect("simple secret")
+        .expect("non-null name");
+        assert_eq!(name, "simple_s3_secret");
+        assert_eq!(server_type(&name), "s3");
+        assert_eq!(count_user_mapping_for_server(&name), 1);
+
+        let name2: String = Spi::get_one(
+            "SELECT parquet.create_simple_secret(\
+                's3', 'AKIATESTKEY2', 'sek2', region => 'us-east-2');",
+        )
+        .expect("simple secret")
+        .expect("non-null name");
+        assert_eq!(name2, "simple_s3_secret_1");
+    }
+
+    #[pg_test]
+    fn test_create_simple_secret_gcs_hmac() {
+        let name: String = Spi::get_one(
+            "SELECT parquet.create_simple_secret('gcs', 'GOOGTESTKEY', 'sek');",
+        )
+        .expect("simple secret")
+        .expect("non-null name");
+        assert_eq!(name, "simple_gcs_secret");
+        assert_eq!(server_type(&name), "gcs");
+        assert_eq!(count_user_mapping_for_server(&name), 1);
+    }
+
+    #[pg_test]
+    fn test_create_simple_secret_gcs_service_account() {
+        let name: String = Spi::get_one(
+            "SELECT parquet.create_simple_secret('gcs', service_account_path => '/tmp/sa.json');",
+        )
+        .expect("simple secret")
+        .expect("non-null name");
+        assert_eq!(name, "simple_gcs_secret");
+        assert_eq!(server_type(&name), "gcs");
+        assert_eq!(count_user_mapping_for_server(&name), 1);
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "type must be 's3' or 'gcs'")]
+    fn test_create_simple_secret_invalid_type() {
+        Spi::run("SELECT parquet.create_simple_secret('azure', 'k', 's');").unwrap();
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "service_account_* options are only valid for type='gcs'")]
+    fn test_create_simple_secret_s3_rejects_sa() {
+        Spi::run(
+            "SELECT parquet.create_simple_secret('s3', 'k', 's', service_account_path => '/tmp/sa.json');",
+        )
+        .unwrap();
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "cannot mix HMAC and service-account")]
+    fn test_create_simple_secret_gcs_rejects_mixed() {
+        Spi::run(
+            "SELECT parquet.create_simple_secret('gcs', 'k', 's', service_account_path => '/tmp/sa.json');",
+        )
+        .unwrap();
+    }
+
+    #[pg_test]
+    #[should_panic(expected = "type='gcs' requires HMAC")]
+    fn test_create_simple_secret_gcs_requires_credentials() {
+        Spi::run("SELECT parquet.create_simple_secret('gcs');").unwrap();
     }
 
     #[pg_test]
@@ -730,6 +996,10 @@ mod tests {
     fn test_object_store_cache() {
         object_store_cache_clear();
 
+        let (key_id, secret) = default_s3_credentials();
+        setup_s3_foreign_server("pg_parquet_cache_1", "testbucket", &key_id, &secret);
+        setup_s3_foreign_server("pg_parquet_cache_2", "testbucket2", &key_id, &secret);
+
         // s3 scheme and bucket
         let test_table =
             TestTable::<i32>::new("int4".into()).with_uri("s3://testbucket/test1.parquet".into());
@@ -737,8 +1007,10 @@ mod tests {
         test_table.assert_expected_and_result_rows();
 
         assert_eq!(
-            object_store_cache_items(),
-            vec![("AmazonS3", "testbucket", None)]
+            cache_scheme_bucket_pairs(),
+            vec![
+                ("AmazonS3".to_string(), "testbucket".to_string()),
+            ]
         );
 
         // s3 scheme and same bucket
@@ -748,8 +1020,10 @@ mod tests {
         test_table.assert_expected_and_result_rows();
 
         assert_eq!(
-            object_store_cache_items(),
-            vec![("AmazonS3", "testbucket", None)]
+            cache_scheme_bucket_pairs(),
+            vec![
+                ("AmazonS3".to_string(), "testbucket".to_string()),
+            ]
         );
 
         // s3 scheme and different bucket
@@ -759,10 +1033,10 @@ mod tests {
         test_table.assert_expected_and_result_rows();
 
         assert_eq!(
-            object_store_cache_items(),
+            cache_scheme_bucket_pairs(),
             vec![
-                ("AmazonS3", "testbucket", None),
-                ("AmazonS3", "testbucket2", None)
+                ("AmazonS3".to_string(), "testbucket".to_string()),
+                ("AmazonS3".to_string(), "testbucket2".to_string())
             ]
         );
 
@@ -773,11 +1047,11 @@ mod tests {
         test_table.assert_expected_and_result_rows();
 
         assert_eq!(
-            object_store_cache_items(),
+            cache_scheme_bucket_pairs(),
             vec![
-                ("AmazonS3", "testbucket", None),
-                ("AmazonS3", "testbucket2", None),
-                ("MicrosoftAzure", "testcontainer", None)
+                ("AmazonS3".to_string(), "testbucket".to_string()),
+                ("AmazonS3".to_string(), "testbucket2".to_string()),
+                ("MicrosoftAzure".to_string(), "testcontainer".to_string())
             ]
         );
 
@@ -788,11 +1062,11 @@ mod tests {
         test_table.assert_expected_and_result_rows();
 
         assert_eq!(
-            object_store_cache_items(),
+            cache_scheme_bucket_pairs(),
             vec![
-                ("AmazonS3", "testbucket", None),
-                ("AmazonS3", "testbucket2", None),
-                ("MicrosoftAzure", "testcontainer", None)
+                ("AmazonS3".to_string(), "testbucket".to_string()),
+                ("AmazonS3".to_string(), "testbucket2".to_string()),
+                ("MicrosoftAzure".to_string(), "testcontainer".to_string())
             ]
         );
 
@@ -803,12 +1077,12 @@ mod tests {
         test_table.assert_expected_and_result_rows();
 
         assert_eq!(
-            object_store_cache_items(),
+            cache_scheme_bucket_pairs(),
             vec![
-                ("AmazonS3", "testbucket", None),
-                ("AmazonS3", "testbucket2", None),
-                ("MicrosoftAzure", "testcontainer", None),
-                ("MicrosoftAzure", "testcontainer2", None)
+                ("AmazonS3".to_string(), "testbucket".to_string()),
+                ("AmazonS3".to_string(), "testbucket2".to_string()),
+                ("MicrosoftAzure".to_string(), "testcontainer".to_string()),
+                ("MicrosoftAzure".to_string(), "testcontainer2".to_string())
             ]
         );
 
@@ -819,13 +1093,13 @@ mod tests {
         test_table.assert_expected_and_result_rows();
 
         assert_eq!(
-            object_store_cache_items(),
+            cache_scheme_bucket_pairs(),
             vec![
-                ("AmazonS3", "testbucket", None),
-                ("AmazonS3", "testbucket2", None),
-                ("GoogleCloudStorage", "testbucket", None),
-                ("MicrosoftAzure", "testcontainer", None),
-                ("MicrosoftAzure", "testcontainer2", None)
+                ("AmazonS3".to_string(), "testbucket".to_string()),
+                ("AmazonS3".to_string(), "testbucket2".to_string()),
+                ("GoogleCloudStorage".to_string(), "testbucket".to_string()),
+                ("MicrosoftAzure".to_string(), "testcontainer".to_string()),
+                ("MicrosoftAzure".to_string(), "testcontainer2".to_string())
             ]
         );
 
@@ -836,13 +1110,13 @@ mod tests {
         test_table.assert_expected_and_result_rows();
 
         assert_eq!(
-            object_store_cache_items(),
+            cache_scheme_bucket_pairs(),
             vec![
-                ("AmazonS3", "testbucket", None),
-                ("AmazonS3", "testbucket2", None),
-                ("GoogleCloudStorage", "testbucket", None),
-                ("MicrosoftAzure", "testcontainer", None),
-                ("MicrosoftAzure", "testcontainer2", None)
+                ("AmazonS3".to_string(), "testbucket".to_string()),
+                ("AmazonS3".to_string(), "testbucket2".to_string()),
+                ("GoogleCloudStorage".to_string(), "testbucket".to_string()),
+                ("MicrosoftAzure".to_string(), "testcontainer".to_string()),
+                ("MicrosoftAzure".to_string(), "testcontainer2".to_string())
             ]
         );
 
@@ -853,14 +1127,14 @@ mod tests {
         test_table.assert_expected_and_result_rows();
 
         assert_eq!(
-            object_store_cache_items(),
+            cache_scheme_bucket_pairs(),
             vec![
-                ("AmazonS3", "testbucket", None),
-                ("AmazonS3", "testbucket2", None),
-                ("GoogleCloudStorage", "testbucket", None),
-                ("GoogleCloudStorage", "testbucket2", None),
-                ("MicrosoftAzure", "testcontainer", None),
-                ("MicrosoftAzure", "testcontainer2", None)
+                ("AmazonS3".to_string(), "testbucket".to_string()),
+                ("AmazonS3".to_string(), "testbucket2".to_string()),
+                ("GoogleCloudStorage".to_string(), "testbucket".to_string()),
+                ("GoogleCloudStorage".to_string(), "testbucket2".to_string()),
+                ("MicrosoftAzure".to_string(), "testcontainer".to_string()),
+                ("MicrosoftAzure".to_string(), "testcontainer2".to_string())
             ]
         );
 
@@ -870,15 +1144,15 @@ mod tests {
         Spi::run(format!("SELECT * FROM parquet.schema('{http_uri}')").as_str()).unwrap();
 
         assert_eq!(
-            object_store_cache_items(),
+            cache_scheme_bucket_pairs(),
             vec![
-                ("AmazonS3", "testbucket", None),
-                ("AmazonS3", "testbucket2", None),
-                ("GoogleCloudStorage", "testbucket", None),
-                ("GoogleCloudStorage", "testbucket2", None),
-                ("Http", "https://d37ci6vzurychx.cloudfront.net", None),
-                ("MicrosoftAzure", "testcontainer", None),
-                ("MicrosoftAzure", "testcontainer2", None)
+                ("AmazonS3".to_string(), "testbucket".to_string()),
+                ("AmazonS3".to_string(), "testbucket2".to_string()),
+                ("GoogleCloudStorage".to_string(), "testbucket".to_string()),
+                ("GoogleCloudStorage".to_string(), "testbucket2".to_string()),
+                ("Http".to_string(), "https://d37ci6vzurychx.cloudfront.net".to_string()),
+                ("MicrosoftAzure".to_string(), "testcontainer".to_string()),
+                ("MicrosoftAzure".to_string(), "testcontainer2".to_string())
             ]
         );
 
@@ -888,15 +1162,15 @@ mod tests {
         Spi::run(format!("SELECT * FROM parquet.schema('{http_uri}')").as_str()).unwrap();
 
         assert_eq!(
-            object_store_cache_items(),
+            cache_scheme_bucket_pairs(),
             vec![
-                ("AmazonS3", "testbucket", None),
-                ("AmazonS3", "testbucket2", None),
-                ("GoogleCloudStorage", "testbucket", None),
-                ("GoogleCloudStorage", "testbucket2", None),
-                ("Http", "https://d37ci6vzurychx.cloudfront.net", None),
-                ("MicrosoftAzure", "testcontainer", None),
-                ("MicrosoftAzure", "testcontainer2", None)
+                ("AmazonS3".to_string(), "testbucket".to_string()),
+                ("AmazonS3".to_string(), "testbucket2".to_string()),
+                ("GoogleCloudStorage".to_string(), "testbucket".to_string()),
+                ("GoogleCloudStorage".to_string(), "testbucket2".to_string()),
+                ("Http".to_string(), "https://d37ci6vzurychx.cloudfront.net".to_string()),
+                ("MicrosoftAzure".to_string(), "testcontainer".to_string()),
+                ("MicrosoftAzure".to_string(), "testcontainer2".to_string())
             ]
         );
 
@@ -905,16 +1179,16 @@ mod tests {
         Spi::run(format!("SELECT * FROM parquet.schema('{http_uri}')").as_str()).unwrap();
 
         assert_eq!(
-            object_store_cache_items(),
+            cache_scheme_bucket_pairs(),
             vec![
-                ("AmazonS3", "testbucket", None),
-                ("AmazonS3", "testbucket2", None),
-                ("GoogleCloudStorage", "testbucket", None),
-                ("GoogleCloudStorage", "testbucket2", None),
-                ("Http", "https://d37ci6vzurychx.cloudfront.net", None),
-                ("Http", "https://www.filesampleshub.com", None),
-                ("MicrosoftAzure", "testcontainer", None),
-                ("MicrosoftAzure", "testcontainer2", None)
+                ("AmazonS3".to_string(), "testbucket".to_string()),
+                ("AmazonS3".to_string(), "testbucket2".to_string()),
+                ("GoogleCloudStorage".to_string(), "testbucket".to_string()),
+                ("GoogleCloudStorage".to_string(), "testbucket2".to_string()),
+                ("Http".to_string(), "https://d37ci6vzurychx.cloudfront.net".to_string()),
+                ("Http".to_string(), "https://www.filesampleshub.com".to_string()),
+                ("MicrosoftAzure".to_string(), "testcontainer".to_string()),
+                ("MicrosoftAzure".to_string(), "testcontainer2".to_string())
             ]
         );
     }
