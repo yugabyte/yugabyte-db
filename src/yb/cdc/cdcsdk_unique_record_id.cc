@@ -44,10 +44,21 @@ CDCSDKUniqueRecordID::CDCSDKUniqueRecordID(
     this->docdb_txn_id_ = "";
   }
   switch (this->vwal_record_type_) {
-    case VWALRecordType::PUBLICATION_REFRESH: FALLTHROUGH_INTENDED;
-    case VWALRecordType::DDL:
+    case VWALRecordType::PUBLICATION_REFRESH:
       this->record_time_ = 0;
       this->write_id_ = 0;
+      this->table_id_ = record->row_message().table_id();
+      this->primary_key_ = "";
+      break;
+    case VWALRecordType::DDL:
+      // Transactional DDLs constructed from pg_attribute DMLs carry record_time for correct
+      // ordering (commit_time, then record_time). Legacy CHANGE_METADATA DDLs may omit it.
+      this->record_time_ = record->row_message().has_record_time()
+                               ? record->row_message().record_time()
+                               : 0;
+      this->write_id_ = record->has_cdc_sdk_op_id() && record->cdc_sdk_op_id().has_write_id()
+                            ? record->cdc_sdk_op_id().write_id()
+                            : 0;
       this->table_id_ = record->row_message().table_id();
       this->primary_key_ = "";
       break;
@@ -190,16 +201,22 @@ bool CDCSDKUniqueRecordID::HasHigherPriorityThan(
     return this->commit_time_ < other_unique_record_id->commit_time_;
   }
 
-  // DDL records should get the highest priority.
-  if (IsDDLRecordType(this->vwal_record_type_) ||
-      IsDDLRecordType(other_unique_record_id->vwal_record_type_)) {
+  // Transactional DDLs are ordered like DMLs: commit_time then record_time. Only fall back to
+  // the legacy DDL-first tie-break when neither side has a record_time (CHANGE_METADATA DDLs).
+  const bool this_is_ddl = IsDDLRecordType(this->vwal_record_type_);
+  const bool other_is_ddl = IsDDLRecordType(other_unique_record_id->vwal_record_type_);
+  if ((this_is_ddl || other_is_ddl) && this->record_time_ == 0 &&
+      other_unique_record_id->record_time_ == 0) {
     return CompareDDLOrder(other_unique_record_id);
   }
 
-  // If either one of the records being compared is not a BEGIN/COMMIT/DML record then use
+  // If either one of the records being compared is not a BEGIN/COMMIT/DML/DDL record then use
   // vwal_record_type to break the tie.
-  if (!IsBeginOrCommitOrDMLType(this->vwal_record_type_) ||
-      !IsBeginOrCommitOrDMLType(other_unique_record_id->vwal_record_type_)) {
+  const bool this_is_begin_commit_dml_or_ddl =
+      IsBeginOrCommitOrDMLType(this->vwal_record_type_) || this_is_ddl;
+  const bool other_is_begin_commit_dml_or_ddl =
+      IsBeginOrCommitOrDMLType(other_unique_record_id->vwal_record_type_) || other_is_ddl;
+  if (!this_is_begin_commit_dml_or_ddl || !other_is_begin_commit_dml_or_ddl) {
     if (this->vwal_record_type_ != other_unique_record_id->vwal_record_type_) {
       return this->vwal_record_type_ < other_unique_record_id->vwal_record_type_;
     }

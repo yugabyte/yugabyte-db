@@ -220,6 +220,12 @@ class CDCSDKVirtualWAL {
 
   bool IsCatalogTableEligibleForCDC(const TableId& table_id) const;
 
+  // Constructs a DDL CDC record from a DML change on pg_attribute for transactional DDL support.
+  // Returns nullptr if the record should be ignored (e.g. non-publication table, duplicate for
+  // the same commit_time/table).
+  Result<std::shared_ptr<CDCSDKProtoRecordPB>> ConstructDDLRecordFromPgAttributeDML(
+      const std::shared_ptr<CDCSDKProtoRecordPB>& attribute_record);
+
   bool ShouldPopulateExplicitCheckpoint();
 
   bool CheckForTableRewriteOrDrop(std::shared_ptr<CDCSDKProtoRecordPB> record);
@@ -370,6 +376,14 @@ class CDCSDKVirtualWAL {
 
   // The table ID of pg_publication catalog table for the database on which virtual WAL is polling.
   TableId pg_publication_table_id_;
+
+  // The table ID of pg_attribute catalog table for the database on which virtual WAL is polling.
+  // Used to detect transactional DDLs.
+  TableId pg_attribute_table_id_;
+
+  // Tracks (commit_time, table_id) pairs for which a transactional DDL record has already been
+  // shipped, so multiple pg_attribute DML rows for the same table/txn only produce one DDL.
+  std::unordered_set<std::string> shipped_transactional_ddl_keys_;
 
   // The list of publication OIDs that are being polled by the virtual WAL.
   std::unordered_set<uint32_t> publications_list_;

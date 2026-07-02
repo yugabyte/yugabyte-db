@@ -149,6 +149,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
     table_ids.insert(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
     table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationOid));
+    table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgAttributeTableOid));
 
     if (with_table) {
       auto table =
@@ -172,7 +173,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     std::vector<xrepl::StreamId> resp_stream_ids;
     for (uint32_t i = 0; i < num_streams; ++i) {
       if (with_table) {
-        // Since there are four tables (1 user + 3 catalog), all the streams would contain four
+        // Since there are six tables (1 user + 5 catalog), all the streams would contain six
         // table_ids in their response.
         ASSERT_EQ(1 + kNumberOfCatalogTablesBeingPolledByCDC, list_streams.Get(i).table_id_size());
 
@@ -183,7 +184,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
           ASSERT_TRUE(table_ids.contains(table_id_in_resp));
         }
       } else {
-        // Since there are no user tables in DB, there would be 3 table_ids (catalog tables) in the
+        // Since there are no user tables in DB, there would be 5 table_ids (catalog tables) in the
         // response.
         ASSERT_EQ(kNumberOfCatalogTablesBeingPolledByCDC, list_streams.Get(i).table_id_size());
       }
@@ -235,6 +236,8 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
         GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
     tables_expected_in_stream_metadata.insert(
         GetPgsqlTableId(pg_database_oid, kPgPublicationOid));
+    tables_expected_in_stream_metadata.insert(
+        GetPgsqlTableId(pg_database_oid, kPgAttributeTableOid));
 
     auto db_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
@@ -526,7 +529,7 @@ TEST_F(CDCSDKStreamTest, TestPgReplicationSlotCreateWithDropTable) {
           LOG(INFO) << "GetDBStreamInfo response = " << resp.ToString();
           RETURN_NOT_OK(StatusFromPB(resp->error().status()));
         }
-        // We will have 3 pg_catalog tables in the stream metadata.
+        // We will have 5 pg_catalog tables in the stream metadata.
         return (resp->table_info_size() == kNumberOfCatalogTablesBeingPolledByCDC);
       },
       MonoDelta::FromSeconds(60),
