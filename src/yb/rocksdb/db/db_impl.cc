@@ -2878,8 +2878,12 @@ Status DBImpl::WaitForFlush(ColumnFamilyHandle* column_family) {
 
 Status DBImpl::UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) {
   InstrumentedMutexLock l(&mutex_);
-  SCHECK(column_family_memtables_->Seek(0), NotFound, "Column family not found");
-  column_family_memtables_->GetMemTable()->UpdateFrontiers(frontiers);
+  // Access the default column family's memtable directly rather than through the shared
+  // column_family_memtables_ object. The latter's current_/handle_ members are mutated by write
+  // threads (which do not hold mutex_), so seeking on it here would race with concurrent writes.
+  auto* cfd = versions_->GetColumnFamilySet()->GetDefault();
+  SCHECK(cfd, NotFound, "Column family not found");
+  cfd->mem()->UpdateFrontiers(frontiers);
   return Status::OK();
 }
 
