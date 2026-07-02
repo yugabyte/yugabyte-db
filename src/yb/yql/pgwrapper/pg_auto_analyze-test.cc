@@ -1736,6 +1736,10 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
     // The test verifies a long ANALYZE can be interrupted by another DDL. However, table lock
     // prevents this so we're disabling it to keep the test's original intent.
     options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    options->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
 
     // The test is specifically written for cases when txn ddl is disabled.
     // For the enabled case, see PgConcurrentDDLAnalyzeTestTxnDDL below.
@@ -1916,8 +1920,10 @@ TEST_F(PgConcurrentCreateIndexTest, ConcurrentCreateIndex) {
     const uint64_t pg_auth_key = ASSERT_RESULT(GetPostgresAuthKey(ts2));
     auto conn2 = ASSERT_RESULT(
         pgwrapper::CreateInternalPGConnBuilder(
-            HostPort(ts2->bind_host(), ts2->ysql_port()), "yugabyte", pg_auth_key,
-            /*deadline=*/std::nullopt, /*yb_auto_analyze=*/true)
+            HostPort(ts2->bind_host(), ts2->ysql_port()), "yugabyte",
+            pgwrapper::PGConnSettings::kDefaultUser, pg_auth_key,
+            /*deadline=*/std::nullopt,
+            pgwrapper::YbInternalConnKindWireName::kAutoAnalyze)
             .Connect());
 
     ASSERT_OK(conn1.Execute("CREATE TABLE test (k TEXT PRIMARY KEY)"));

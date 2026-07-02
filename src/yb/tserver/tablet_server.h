@@ -461,6 +461,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status ClearMetacache(const std::string& namespace_id) override;
 
+  void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
+
   Status ClearYCQLMetaDataCache() override;
 
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
@@ -505,8 +507,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void SetCronLeaderLease(MonoTime cron_leader_lease_end);
 
   Result<pgwrapper::PGConn> CreateInternalPGConn(
-      const std::string& database_name, bool simple_query_protocol = false,
-      const std::optional<CoarseTimePoint>& deadline = std::nullopt) override;
+      const std::string& database_name, std::string_view user = kDefaultInternalPgUser,
+      bool simple_query_protocol = false,
+      const std::optional<CoarseTimePoint>& deadline = std::nullopt,
+      std::string_view yb_internal_conn_kind = {}) override;
 
   std::atomic<bool> initted_{false};
 

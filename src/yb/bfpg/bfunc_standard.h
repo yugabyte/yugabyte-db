@@ -28,7 +28,7 @@
 
 #include "yb/bfcommon/bfunc_standard.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
 #include "yb/util/uuid.h"
 

@@ -51,9 +51,9 @@ class PgRelcacheInitInternalConnTest : public PgMiniTestBase {
   Result<PGConn> ConnectAs(std::string_view yb_internal_conn_kind_wire_name) {
     auto* ts = cluster_->mini_tablet_server(0)->server();
     return CreateInternalPGConnBuilder(
-        ts->pgsql_proxy_bind_address(), /*database_name=*/"yugabyte",
+        ts->pgsql_proxy_bind_address(), /*database_name=*/"yugabyte", /*user=*/"postgres",
         ts->GetSharedMemoryPostgresAuthKey(), /*deadline=*/std::nullopt,
-        /*yb_auto_analyze=*/false, yb_internal_conn_kind_wire_name).Connect();
+        yb_internal_conn_kind_wire_name).Connect();
   }
 
   static Result<std::string> CurrentBackendType(PGConn* conn) {
@@ -70,6 +70,17 @@ TEST_F(PgRelcacheInitInternalConnTest, RelcacheInitConnGetsDedicatedBackendType)
   auto conn = ASSERT_RESULT(ConnectAs(YbInternalConnKindWireName::kRelcacheInit));
   const auto backend_type = ASSERT_RESULT(CurrentBackendType(&conn));
   ASSERT_EQ(backend_type, "yb relcache init backend");
+}
+
+// A different kind of internal connection (auto-analyze) must NOT show up as the
+// relcache-init backend type. This is the direct regression guard for the problem the
+// framework solves: previously every internal connection was lumped together and would
+// have its dedicated relcache-init build suppressed.
+TEST_F(PgRelcacheInitInternalConnTest, NonRelcacheInitInternalConnIsNotRelcacheInitBackend) {
+  auto conn = ASSERT_RESULT(ConnectAs(YbInternalConnKindWireName::kAutoAnalyze));
+  const auto backend_type = ASSERT_RESULT(CurrentBackendType(&conn));
+  ASSERT_NE(backend_type, "yb relcache init backend");
+  ASSERT_EQ(backend_type, "yb auto analyze backend");
 }
 
 // A plain client connection must not be confused with the relcache-init backend.

@@ -19,7 +19,7 @@
 
 #include "yb/gutil/macros.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/tostring.h"
 
 #include "yb/yql/pggate/pg_tools.h"

@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -21,7 +22,7 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
@@ -83,6 +84,19 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
   virtual Status SetupConnection(PGConn* conn) const;
 
   void EnableFailOnConflict();
+
+  // Reads an integer field (e.g. "VmHWM:", "PPid:", "Pss:") from a /proc file
+  // whose lines look like "Key:  <int> [unit]". Returns the int in its native
+  // unit (kB for Vm*/Pss).
+  static Result<int64_t> ProcFileValue(const std::string& path, const char* key);
+
+  // Peak resident set size (VmHWM, the lifetime high-water mark) in MB.
+  static Result<int64_t> PeakRssMb(int pid);
+
+  // Total proportional set size (PSS) in MB across the postmaster and its
+  // children. PSS avoids multiply-counting shared pages mapped by several PG
+  // processes, unlike a naive RSS sum.
+  static Result<int64_t> ClusterPgPssMb(int postmaster_pid);
 
   Status SetupPGCallbacksAndStartPG(uint16_t pg_port, size_t pg_ts_idx);
 

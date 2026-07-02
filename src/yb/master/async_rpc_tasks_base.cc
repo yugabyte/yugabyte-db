@@ -667,6 +667,16 @@ AsyncTabletLeaderTask::AsyncTabletLeaderTask(
       tablet_(tablet) {
 }
 
+AsyncTabletLeaderTask::AsyncTabletLeaderTask(
+    Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
+    const scoped_refptr<TableInfo>& table, LeaderEpoch epoch,
+    AsyncTaskThrottlerBase* async_task_throttler)
+    : RetryingTSRpcTaskWithTable(
+          master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), table,
+          std::move(epoch), async_task_throttler),
+      tablet_(tablet) {
+}
+
 AsyncTabletLeaderTask::~AsyncTabletLeaderTask() = default;
 
 std::string AsyncTabletLeaderTask::description() const {

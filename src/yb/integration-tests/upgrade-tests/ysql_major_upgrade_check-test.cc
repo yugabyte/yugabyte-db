@@ -641,4 +641,175 @@ TEST_F(YsqlMajorUpgradeCheckTest, StaleFunctionAclGrantors) {
   // Cleanup functions, schema grants, roles, and the extra databases.
   ASSERT_NO_FATALS(cleanup());
 }
+
+TEST_F(YsqlMajorUpgradeCheckTest, RemovedRenamedFunctionsAcl) {
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  const std::string removed_renamed_pronames =
+      "{timenow,abstime,reltime,tinterval,"
+      "mktinterval,tintervalstart,tintervalend,tintervalrel,"
+      "intinterval,timepl,timemi,"
+      "abstimeeq,abstimege,abstimegt,abstimele,abstimelt,abstimene,"
+      "btabstimecmp,"
+      "abstimein,abstimeout,abstimerecv,abstimesend,"
+      "reltimeeq,reltimege,reltimegt,reltimele,reltimelt,reltimene,"
+      "btreltimecmp,"
+      "reltimein,reltimeout,reltimerecv,reltimesend,"
+      "tintervalct,tintervaleq,tintervalge,tintervalgt,"
+      "tintervalle,tintervallt,tintervalne,tintervalov,"
+      "tintervalleneq,tintervallenge,tintervallengt,"
+      "tintervallenle,tintervallenlt,tintervallenne,"
+      "bttintervalcmp,"
+      "tintervalin,tintervalout,tintervalrecv,tintervalsend,"
+      "interval_transform,numeric_transform,time_transform,"
+      "timestamp_transform,timestamp_izone_transform,timestamp_zone_transform,"
+      "varbit_transform,varchar_transform,"
+      "numeric_fac,"
+      "pg_start_backup,pg_stop_backup,pg_backup_start_time,pg_is_in_backup,"
+      "smgrin,smgreq,smgrne,smgrout,"
+      "opaque_in,opaque_out,shell_out,"
+      "close_lb,close_sl,dist_lb,path_center,point,"
+      "currtid,pg_create_logical_replication_slot,pg_stat_statements_reset,"
+      "pg_read_file_old,pg_rotate_logfile_old}";
+
+  // Restore pg_catalog function ACLs to their initdb defaults, matching the mitigation SQL
+  // that yb_check_removed_renamed_functions_acl prints in its output.
+  auto reset_acl = [&removed_renamed_pronames](pgwrapper::PGConn& c) -> Status {
+    RETURN_NOT_OK(c.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed TO on"));
+    RETURN_NOT_OK(c.ExecuteFormat(
+        "UPDATE pg_proc SET proacl = ("
+        "    SELECT initprivs FROM pg_init_privs pip"
+        "    WHERE pip.objoid = pg_proc.oid"
+        "      AND pip.classoid = 'pg_proc'::regclass"
+        "      AND pip.objsubid = 0)"
+        "WHERE pronamespace = 'pg_catalog'::regnamespace"
+        "  AND proname = ANY('$0')"
+        "  AND proacl IS DISTINCT FROM ("
+        "      SELECT initprivs FROM pg_init_privs pip"
+        "      WHERE pip.objoid = pg_proc.oid"
+        "        AND pip.classoid = 'pg_proc'::regclass"
+        "        AND pip.objsubid = 0)",
+        removed_renamed_pronames));
+    RETURN_NOT_OK(c.Execute("RESET yb_non_ddl_txn_for_sys_tables_allowed"));
+    return Status::OK();
+  };
+
+  const std::vector<std::string> expected_removed_renamed_acl_failure = {
+      "Your installation contains modified ACL entries on pg_catalog",
+      "In database: yugabyte",
+      // PG12: abstime/reltime/tinterval public API
+      "Function: pg_catalog.abstime(",
+      "Function: pg_catalog.intinterval(",
+      "Function: pg_catalog.mktinterval(",
+      "Function: pg_catalog.reltime(",
+      "Function: pg_catalog.timemi(",
+      "Function: pg_catalog.timepl(",
+      "Function: pg_catalog.timenow(",
+      "Function: pg_catalog.tinterval(",
+      "Function: pg_catalog.tintervalend(",
+      "Function: pg_catalog.tintervalrel(",
+      "Function: pg_catalog.tintervalstart(",
+      // PG12: abstime comparison operators
+      "Function: pg_catalog.abstimeeq(",
+      "Function: pg_catalog.btabstimecmp(",
+      // PG12: I/O procs for the removed types
+      "Function: pg_catalog.abstimein(",
+      "Function: pg_catalog.reltimein(",
+      "Function: pg_catalog.tintervalin(",
+      // PG12: reltime/tinterval comparison operators
+      "Function: pg_catalog.reltimeeq(",
+      "Function: pg_catalog.btreltimecmp(",
+      "Function: pg_catalog.tintervaleq(",
+      "Function: pg_catalog.bttintervalcmp(",
+      // PG14: transform procs and factorial backing function
+      "Function: pg_catalog.interval_transform(",
+      "Function: pg_catalog.numeric_transform(",
+      "Function: pg_catalog.numeric_fac(",
+      // PG15: backup functions removed
+      "Function: pg_catalog.pg_backup_start_time(",
+      "Function: pg_catalog.pg_is_in_backup(",
+      // smgr/opaque internal type functions
+      "Function: pg_catalog.smgrin(",
+      "Function: pg_catalog.opaque_in(",
+      // geometric functions removed
+      "Function: pg_catalog.close_lb(",
+      // other removed catalog functions
+      "Function: pg_catalog.currtid(",
+      "UPDATE pg_proc SET proacl = (",
+      "proname = ANY('{timenow,abstime",
+  };
+
+  // Sub-test 1: REVOKE on all pg_catalog functions in one database.
+  auto single_database_revoke =
+      [this, &conn, &reset_acl, &expected_removed_renamed_acl_failure]() -> Status {
+    RETURN_NOT_OK(conn.Execute("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA pg_catalog FROM yugabyte"));
+
+    RETURN_NOT_OK(ValidateUpgradeCompatibilityFailure(expected_removed_renamed_acl_failure));
+
+    RETURN_NOT_OK(reset_acl(conn));
+
+    RETURN_NOT_OK(ValidateUpgradeCompatibility());
+    return Status::OK();
+  };
+
+  // Sub-test 2: GRANT EXECUTE on all pg_catalog functions in one database.
+  auto single_database_grant =
+      [this, &conn, &reset_acl, &expected_removed_renamed_acl_failure]() -> Status {
+    RETURN_NOT_OK(conn.Execute("GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_catalog TO PUBLIC"));
+
+    RETURN_NOT_OK(ValidateUpgradeCompatibilityFailure(expected_removed_renamed_acl_failure));
+
+    RETURN_NOT_OK(reset_acl(conn));
+
+    RETURN_NOT_OK(ValidateUpgradeCompatibility());
+    return Status::OK();
+  };
+
+  // Sub-test 3: set proacl = '{}' on the full removed/renamed function list.
+  auto single_database_set_proacl_empty =
+      [this, &conn, &reset_acl, &expected_removed_renamed_acl_failure, &removed_renamed_pronames]()
+          -> Status {
+    RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed TO on"));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "UPDATE pg_proc SET proacl = '{}'::aclitem[] "
+        "WHERE pronamespace = 'pg_catalog'::regnamespace "
+        "  AND proname = ANY('$0')",
+        removed_renamed_pronames));
+    RETURN_NOT_OK(conn.Execute("RESET yb_non_ddl_txn_for_sys_tables_allowed"));
+
+    RETURN_NOT_OK(ValidateUpgradeCompatibilityFailure(expected_removed_renamed_acl_failure));
+
+    RETURN_NOT_OK(reset_acl(conn));
+    RETURN_NOT_OK(ValidateUpgradeCompatibility());
+    return Status::OK();
+  };
+
+  // Sub-test 4: two databases with mixed REVOKE and GRANT changes.
+  auto multiple_databases_mix = [this, &reset_acl, &expected_removed_renamed_acl_failure]()
+      -> Status {
+    auto conn_yugabyte = VERIFY_RESULT(cluster_->ConnectToDB("yugabyte"));
+    auto conn_postgres = VERIFY_RESULT(cluster_->ConnectToDB("postgres"));
+
+    RETURN_NOT_OK(
+        conn_yugabyte.Execute("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA pg_catalog FROM yugabyte"));
+    RETURN_NOT_OK(
+        conn_postgres.Execute("GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA pg_catalog TO PUBLIC"));
+
+    auto expected_multiple_databases_failure =
+        expected_removed_renamed_acl_failure;
+    expected_multiple_databases_failure.push_back("In database: postgres");
+    RETURN_NOT_OK(ValidateUpgradeCompatibilityFailure(
+        expected_multiple_databases_failure));
+
+    RETURN_NOT_OK(reset_acl(conn_yugabyte));
+    RETURN_NOT_OK(reset_acl(conn_postgres));
+
+    RETURN_NOT_OK(ValidateUpgradeCompatibility());
+    return Status::OK();
+  };
+
+  ASSERT_OK(single_database_revoke());
+  ASSERT_OK(single_database_grant());
+  ASSERT_OK(single_database_set_proacl_empty());
+  ASSERT_OK(multiple_databases_mix());
+}
 }  // namespace yb

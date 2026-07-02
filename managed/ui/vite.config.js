@@ -77,7 +77,7 @@ export default defineConfig(({ mode }) => {
       svgr({
         exportAsDefault: true,
         svgrOptions: {
-          plugins: ['@svgr/plugin-svgo', '@svgr/plugin-jsx'],
+          plugins: ['@svgr/plugin-jsx'],
           ref: true,
           svgo: false,
           titleProp: true
@@ -135,7 +135,10 @@ export default defineConfig(({ mode }) => {
       global: 'globalThis'
     },
     optimizeDeps: {
-      exclude: ['node_modules/.cache'],
+      // `@yugabytedb/perf-advisor-ui` is locally linked via yalc during dev.
+      // Excluding it from pre-bundling makes Vite serve its ESM straight from node_modules,
+      // so every push is picked up on a plain restart.
+      exclude: ['node_modules/.cache', '@yugabytedb/perf-advisor-ui'],
       include: ['redux-form'],
       rolldownOptions: {
         plugins: [reduxFormRolldownPlugin()]

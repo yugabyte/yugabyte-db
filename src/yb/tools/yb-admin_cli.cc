@@ -33,6 +33,7 @@
 #include "yb/tools/yb-admin_cli.h"
 
 #include <memory>
+#include <unordered_set>
 #include <utility>
 
 #include <boost/algorithm/string.hpp>
@@ -1920,7 +1921,8 @@ Status write_universe_key_to_file_action(
 
 const auto create_change_data_stream_args =
     "<namespace> [<checkpoint_type>] [<record_type>] [<consistent_snapshot_option>] "
-    "[<dynamic_tables_option>] (default DYNAMIC_TABLES_ENABLED)";
+    "[<dynamic_tables_option>] (default DYNAMIC_TABLES_ENABLED) "
+    "[<bound_table_ids>]";
 Status create_change_data_stream_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 1) {
@@ -1931,6 +1933,7 @@ Status create_change_data_stream_action(
   cdc::CDCRecordType record_type_pb = cdc::CDCRecordType::CHANGE;
   std::string consistent_snapshot_option = "EXPORT_SNAPSHOT";
   std::string dynamic_tables_option = "DYNAMIC_TABLES_ENABLED";
+  std::unordered_set<std::string> bound_table_ids;
   std::string uppercase_checkpoint_type;
   std::string uppercase_record_type;
   std::string uppercase_consistent_snapshot_option;
@@ -1972,13 +1975,28 @@ Status create_change_data_stream_action(
     dynamic_tables_option = uppercase_dynamic_tables_option;
   }
 
+  if (args.size() > 5) {
+    std::vector<std::string> raw_ids;
+    boost::split(raw_ids, args[5], boost::is_any_of(","));
+    for (auto& id : raw_ids) {
+      boost::trim(id);
+      if (id.empty()) {
+        continue;
+      }
+      bound_table_ids.insert(std::move(id));
+    }
+    if (bound_table_ids.empty()) {
+      return ClusterAdminCli::kInvalidArguments;
+    }
+  }
+
   const string namespace_name = args[0];
   const TypedNamespaceName database = VERIFY_RESULT(ParseNamespaceName(args[0]));
 
   RETURN_NOT_OK_PREPEND(
       client->CreateCDCSDKDBStream(
           database, checkpoint_type, record_type_pb, consistent_snapshot_option,
-          dynamic_tables_option == "DYNAMIC_TABLES_ENABLED"),
+          dynamic_tables_option == "DYNAMIC_TABLES_ENABLED", bound_table_ids),
       Format("Unable to create CDC stream for database $0", namespace_name));
   return Status::OK();
 }

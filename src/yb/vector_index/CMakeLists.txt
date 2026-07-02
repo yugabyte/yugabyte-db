@@ -31,6 +31,7 @@ set(VECTOR_INDEX_SRCS
   benchmark_data.cc
   hnsw_options.cc
   hnsw_util.cc
+  index_wrapper_base.cc
   vector_id.cc
   vector_lsm.cc
   vector_lsm_metadata.cc

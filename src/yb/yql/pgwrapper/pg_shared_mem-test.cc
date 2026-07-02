@@ -35,6 +35,7 @@ DECLARE_bool(TEST_skip_remove_tserver_shared_memory_object);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(TEST_transactional_read_delay_ms);
+DECLARE_uint64(TEST_doc_op_next_result_prefetching_delay_ms);
 DECLARE_uint64(TEST_shared_exchange_big_response_delay_ms);
 DECLARE_uint64(big_shared_memory_segment_expiration_time_ms);
 DECLARE_uint64(big_shared_memory_segment_session_expiration_time_ms);
@@ -61,6 +62,18 @@ class PgSharedMemTest : public PgMiniTestBase {
 
   virtual int GetReadWriteTimeout() const {
     return RegularBuildVsSanitizers(2, 20) * 1000;
+  }
+
+  // Cumulative number of worker threads ever created across all tserver shared memory exchange
+  // thread pools. Scoped to the exchange pools, so it is not affected by unrelated background
+  // thread creation in the cluster.
+  size_t SumExchangeThreadPoolWorkersCreated() const {
+    size_t result = 0;
+    for (const auto& mini_server : cluster_->mini_tablet_servers()) {
+      result += mini_server->server()->TEST_GetPgClientService()
+          ->TEST_ExchangeThreadPoolWorkersCreated();
+    }
+    return result;
   }
 
   std::pair<size_t, size_t> SumBigSharedMemUsage() const {
@@ -224,6 +237,84 @@ TEST_F(PgSharedMemTest, AbandonedBigResponse) {
   }
 }
 
+class PgSharedMemNextResultPrefetchingDelayTest : public PgSharedMemTest {
+ protected:
+  void SetUp() override {
+    PgSharedMemTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_doc_op_next_result_prefetching_delay_ms) =
+        FLAGS_ysql_client_read_write_timeout_ms + 2 * kExtraDelayMs;
+  }
+
+  int GetReadWriteTimeout() const override {
+    return RegularBuildVsSanitizers(2, 10) * 1000;
+  }
+
+  static constexpr auto kExtraDelayMs = 500;
+};
+
+// The test checks absence of unexpectedly missed responses after first request timeout.
+// Test simulates the following situation:
+// 1. pggate initiates request over shared exchange
+// 2. t-server respond with delay large then request's deadline
+// 3. pggate marks request as failed due to timeout
+// 4. pggate initiates new read request, but shared exchange is busy, so request goes over RPC
+// 5. pggate initiates prefetching of next request after delay, to be sure that shared exchange is
+//   free and request will go over it
+// 6. pggate initiates new read request without waiting for previous request's response,
+//    it is expected that shared exchange is busy and request will go over RPC
+// Note: In case on step #6 shared exchange will be used, the response for prefetching request
+//       (sent on step #5) will be overwritten. Later pggate's attempt to get response for this
+//       request will fail with the 'Timed out waiting kResponseSent, state: kIdle' error
+TEST_F_EX(
+    PgSharedMemTest, ReadAfterPreviousRequestTimeout, PgSharedMemNextResultPrefetchingDelayTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT, PRIMARY KEY(k ASC))"));
+  ASSERT_OK(conn.Execute("CREATE TABLE long_text(k INT, v TEXT, PRIMARY KEY(k ASC))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION any_read(key INT) RETURNS INT AS $$"
+      "DECLARE"
+      " result INT;"
+      "BEGIN "
+      "  SELECT v FROM t WHERE k = key INTO result; "
+      "  RETURN result; "
+      "END;$$ LANGUAGE plpgsql"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION read_after_shared_exchange_timeout() RETURNS INT AS $$ "
+      "DECLARE"
+      " result INT; "
+      " msg_text TEXT; "
+      "BEGIN "
+      "  BEGIN "
+      "    SELECT SUM(LENGTH(v)) FROM long_text INTO result; "
+      "  EXCEPTION WHEN OTHERS THEN "
+      "    GET STACKED DIAGNOSTICS msg_text = MESSAGE_TEXT; "
+      "    RAISE NOTICE 'Expected time out exception: %', msg_text; "
+      "  END;"
+      "  SELECT COUNT(any_read(k)) FROM t INTO result;"
+      "  RETURN result; "
+      "END;$$ LANGUAGE plpgsql"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_shared_exchange_big_response_delay_ms) =
+      FLAGS_ysql_client_read_write_timeout_ms + kExtraDelayMs;
+  constexpr auto kFetchRowLimit = 10;
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT s, s FROM generate_series(1, $0) AS s", kFetchRowLimit * 2));
+
+  auto do_read_after_shared_exchange_timeout = [&conn]() {
+    return conn.FetchRow<int32_t>("SELECT read_after_shared_exchange_timeout()");
+  };
+
+  // Warmup YSQL caches
+  ASSERT_RESULT(do_read_after_shared_exchange_timeout());
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO long_text SELECT s, '$0' FROM generate_series(1, 10) AS s",
+      RandomHumanReadableString(512*100)));
+
+  ASSERT_OK(conn.ExecuteFormat("SET yb_fetch_row_limit = $0", kFetchRowLimit));
+  auto row = ASSERT_RESULT(do_read_after_shared_exchange_timeout());
+  ASSERT_EQ(row, 20);
+}
+
 TEST_F(PgSharedMemTest, Crash) {
   auto conn = ASSERT_RESULT(Connect());
 
@@ -290,7 +381,7 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
   }
 
   auto threads_before = CountManagedThreads();
-  auto threads_started_before = CountStartedThreads();
+  auto workers_created_before = SumExchangeThreadPoolWorkersCreated();
   constexpr size_t kNumIterations = 16;
 
   for (int i = 0; i != kNumIterations; ++i) {
@@ -301,13 +392,16 @@ TEST_F(PgSharedMemTest, ConnectionShutdown) {
   }
 
   auto threads_after = CountManagedThreads();
-  auto threads_started_after = CountStartedThreads();
+  auto workers_created_after = SumExchangeThreadPoolWorkersCreated();
 
   LOG(INFO) << "Running threads: " << threads_before << ", " << threads_after
-            << ", started threads: " << threads_started_before << ", " << threads_started_after;
+            << ", exchange pool workers created: " << workers_created_before << ", "
+            << workers_created_after;
 
-  // Expect that we reuse at least some threads;
-  ASSERT_LT(threads_started_after, threads_started_before + kNumIterations);
+  // Connections are created and destroyed sequentially, so a single reused exchange thread per
+  // tserver is enough to serve all of them. Expect far fewer new workers than connections, which
+  // confirms the exchange thread pool reuses threads instead of spawning one per connection.
+  ASSERT_LT(workers_created_after, workers_created_before + kNumIterations);
 
   ASSERT_OK(WaitFor([threads_before] {
     return CountManagedThreads() <= threads_before;

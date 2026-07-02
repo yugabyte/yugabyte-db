@@ -3292,7 +3292,19 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 				 * We could have solved the recursion problem by plumbing a flag to skip calling
 				 * BeginInternalSubTransaction() again, but it is simpler and less error-prone to just copy
 				 * the minimal required logic.
+				 *
+				 * Release any previous internal savepoints. This avoids a long
+				 * chain of nested CurTransactionContexts and a subsequent crash
+				 * at COMMIT time when we attempt to MemoryContextDelete the
+				 * TopTransactionContext.
 				 */
+				const char *cur_transaction_name = GetCurrentTransactionName();
+				if (cur_transaction_name && (strcmp(cur_transaction_name,
+													YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME) == 0))
+				{
+					ReleaseCurrentSubTransaction();
+				}
+
 				YbBeginInternalSubTransactionForReadCommittedStatement();
 			}
 

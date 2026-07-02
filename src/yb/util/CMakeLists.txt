@@ -257,6 +257,7 @@ set(OPENTELEMETRY_LIBRARIES
   opentelemetry_trace
   opentelemetry_exporter_otlp_http
   opentelemetry_resources
+  opentelemetry_common
   opentelemetry_proto)
 
 set(UTIL_LIBS
@@ -291,7 +292,9 @@ endif()
 
 # We used to add tcmalloc as a dependency of yb_util here, but in D20382 we started linking tcmalloc
 # as a static library directy into each executable, to ensure that it is initialized earlier than
-# any shared library.
+# any shared library. On macOS tcmalloc is instead a shared library (it installs a malloc zone at
+# load time), and yb_util/yb_test_util link it explicitly below so their references to the tcmalloc
+# API (MallocExtension/MallocHook/HeapProfiler/ProfilerStart) resolve at link time.
 
 # We need libdl for accessing library load addresses.
 list(APPEND UTIL_LIBS curl dl)
@@ -335,6 +338,13 @@ ADD_YB_TEST_LIBRARY(
   SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc
        multi_drive_test_env.cc
   DEPS gflags glog gmock gtest yb_util yb_util_shmem)
+
+if(APPLE AND "${YB_TCMALLOC_ENABLED}" STREQUAL "1")
+  # See the comment above ADD_YB_LIBRARY(yb_util): on macOS tcmalloc/profiler are shared libraries
+  # linked here so the tcmalloc API symbols these libraries reference resolve at link time.
+  target_link_libraries(yb_util tcmalloc profiler)
+  target_link_libraries(yb_test_util tcmalloc profiler)
+endif()
 
 #######################################
 # yb_test_main

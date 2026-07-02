@@ -59,6 +59,9 @@
 #define GET_PUBOID_FROM_PG_PUBLICATION_REL_RECORD(record) \
   record->row_message().new_tuple().Get(1).pg_catalog_value().uint32_value()
 
+#define GET_OID_FROM_PG_PUBLICATION_RECORD(record) \
+  record->row_message().new_tuple().Get(0).pg_catalog_value().uint32_value()
+
 DEFINE_RUNTIME_uint32(cdcsdk_vwal_tablets_to_poll_batch_size, 200,
     "The maximum number of tablets to poll in a single GetConsistentChanges call. If there are "
     "more tablets to be polled, then an empty response is sent in current call.");
@@ -245,11 +248,13 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     pg_class_table_id_ = GetPgsqlTableId(pg_database_oid, kPgClassTableOid);
     pg_publication_rel_table_id_ = GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid);
     pg_replication_origin_table_id_ = GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid);
+    pg_publication_table_id_ = GetPgsqlTableId(pg_database_oid, kPgPublicationOid);
     table_list.emplace(pg_class_table_id_);
     table_list.emplace(pg_publication_rel_table_id_);
     table_list.emplace(pg_replication_origin_table_id_);
-    VLOG_WITH_PREFIX(1) << "Successfully added the catalog tables pg_class, pg_publication_rel and "
-                           "pg_replication_origin to the polling list.";
+    table_list.emplace(pg_publication_table_id_);
+    VLOG_WITH_PREFIX(1) << "Successfully added the catalog tables pg_class, pg_publication_rel, "
+                           "pg_replication_origin and pg_publication to the polling list.";
   }
 
   if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
@@ -632,17 +637,20 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     auto record = tablet_record_info_pair.second.second;
 
     if (tablet_id == master::kSysCatalogTabletId) {
-      auto pub_refresh_required =
-          DeterminePubRefreshFromMasterRecord(tablet_record_info_pair.second);
+      bool explicit_alter_pub_detected;
+      auto pub_refresh_required = DeterminePubRefreshFromMasterRecord(
+          tablet_record_info_pair.second, &explicit_alter_pub_detected);
       if (pub_refresh_required) {
         last_pub_refresh_time = unique_id->GetCommitTime();
         resp->set_needs_publication_table_list_refresh(true);
         resp->set_publication_refresh_time(last_pub_refresh_time);
+        resp->set_explicit_alter_publication_detected(explicit_alter_pub_detected);
         metadata.contains_publication_refresh_record = true;
         VLOG_WITH_PREFIX(1)
             << "Notifying walsender to refresh publication list in the GetConsistentChanges "
                "response at commit_time: "
-            << last_pub_refresh_time;
+            << last_pub_refresh_time
+            << ", explicit_alter_publication_detected: " << explicit_alter_pub_detected;
         break;
       }
       continue;
@@ -1786,12 +1794,14 @@ std::vector<TabletId> CDCSDKVirtualWAL::GetTabletIdsFromVirtualWAL() {
 
 bool CDCSDKVirtualWAL::IsCatalogTableEligibleForCDC(const TableId& table_id) const {
   return table_id == pg_class_table_id_ || table_id == pg_publication_rel_table_id_ ||
-         table_id == pg_replication_origin_table_id_;
+         table_id == pg_replication_origin_table_id_ || table_id == pg_publication_table_id_;
 }
 
-bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(const RecordInfo& record_info) {
+bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(
+    const RecordInfo& record_info, bool* explicit_alter_publication_detected) {
   auto const& record = record_info.second;
   auto table_id = record->row_message().table_id();
+  *explicit_alter_publication_detected = false;
 
   // The record is a BEGIN / COMMIT.
   if (table_id.empty()) {
@@ -1817,11 +1827,12 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(const RecordInfo& rec
       return false;
     }
 
+    *explicit_alter_publication_detected = true;
+
     if (record->row_message().op() == RowMessage_Op_DELETE) {
       return true;
     }
 
-    // If we reach here it means that this is an INSERT record in pg_publication_rel.
     auto pub_oid = GET_PUBOID_FROM_PG_PUBLICATION_REL_RECORD(record);
     if (!publications_list_.contains(pub_oid)) {
       return false;
@@ -1834,18 +1845,31 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(const RecordInfo& rec
       return false;
     }
     return true;
+  } else if (table_id == pg_publication_table_id_) {
+    if (record->row_message().op() != RowMessage_Op_UPDATE) {
+      return false;
+    }
+
+    auto pub_oid = GET_OID_FROM_PG_PUBLICATION_RECORD(record);
+    if (!publications_list_.contains(pub_oid)) {
+      return false;
+    }
+
+    *explicit_alter_publication_detected = true;
+    return true;
   }
 
-  // We should only receive records corresponding to pg_class, pg_publication_rel and
-  // pg_replication_origin tables. Only possibility of reaching here is when a DDL record is sent
-  // from sys catalog tablet, for ex: when a new slot is created, the existing slot sees the
-  // CHANGE_METADATA_OP used for setting retention barriers and sends a DDL record.
+  // We should only receive records corresponding to pg_class, pg_publication_rel,
+  // pg_replication_origin and pg_publication tables. Only possibility of reaching here is when a
+  // DDL record is sent from sys catalog tablet, for ex: when a new slot is created, the existing
+  // slot sees the CHANGE_METADATA_OP used for setting retention barriers and sends a DDL record.
   LOG_IF(DFATAL, record->row_message().op() != RowMessage_Op_DDL)
       << "Records from an unexpected table: " << table_id
       << " received from sys catalog tablet in virtual WAL."
       << " pg_class_table_id_ = " << pg_class_table_id_
       << " pg_publication_rel_table_id_ = " << pg_publication_rel_table_id_
-      << " pg_replication_origin_table_id_ = " << pg_replication_origin_table_id_;
+      << " pg_replication_origin_table_id_ = " << pg_replication_origin_table_id_
+      << " pg_publication_table_id_ = " << pg_publication_table_id_;
   return false;
 }
 

@@ -21,6 +21,17 @@ rightNav:
 
 ### 2026
 
+#### June 30, 2026
+
+##### Improvements
+
+- {{<tags/feature/ga>}}Support for [point-in-time recovery](../cloud-clusters/aeon-pitr/) using database clones is now GA. Create a zero-copy, independent writable clone of your database at a point in time for recovery or testing.
+
+##### Database
+
+- Extended track updated to v2024.2.9.1.
+- Rapid track updated to v2025.2.3.2.
+
 #### May 27, 2026
 
 ##### New features

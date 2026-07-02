@@ -186,6 +186,12 @@ set(POSTGRES_FINAL_CXX_FLAGS
 yb_deduplicate_arguments(POSTGRES_FINAL_CXX_FLAGS)
 
 set(POSTGRES_FINAL_LD_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${POSTGRES_EXTRA_LD_FLAGS}")
+if(APPLE)
+  # PostgreSQL builds shared modules (extensions) that are loaded into the backend and resolve
+  # backend symbols at runtime. YugabyteDB links strictly by default on macOS, so re-enable flat
+  # dynamic lookup for these shared modules (and -no_fixup_chains, which flat lookup requires).
+  string(APPEND POSTGRES_FINAL_LD_FLAGS " -undefined dynamic_lookup -Wl,-no_fixup_chains")
+endif()
 yb_deduplicate_arguments(POSTGRES_FINAL_LD_FLAGS)
 
 set(POSTGRES_FINAL_EXE_LD_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${POSTGRES_EXTRA_LD_FLAGS}")

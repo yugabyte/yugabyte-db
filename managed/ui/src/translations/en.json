@@ -65,7 +65,9 @@
         "seconds": "s",
         "megabyte": "MB",
         "megabytesPerSecond": "MBps"
-      }
+      },
+      "assigned": "Assigned",
+      "notAssigned": "Not Assigned"
     },
     "iconAltText": {
       "infoIcon": "Information icon",
@@ -2949,6 +2951,7 @@
             "aws": "Amazon Web Services",
             "gcp": "Google Cloud Platform",
             "azu": "Microsoft Azure",
+            "oci": "Oracle Cloud Infrastructure",
             "vmwareTanzu": "VMware Tanzu",
             "redHatOpenShift": "Red Hat OpenShift",
             "managedK8s": "Managed Kubernetes Service",
@@ -4122,7 +4125,7 @@
           "redisServerHttpPort": "Redis HTTP Port",
           "redisServerRpcPort": "Redis HTTP Port",
           "nodeExporterPort": "Node Exporter Port",
-          "ybControllerrRpcPort": "YB Controller RPC Port",
+          "ybControllerRpcPort": "YB Controller RPC Port",
           "masterGroup": "Master Server",
           "tServerGroup": "T-Server",
           "ysqlGroup": "YSQL",
@@ -4355,7 +4358,10 @@
         "encryptionAtRest": "Encryption At Rest",
         "nodeToNode": "Node to Node Encryption",
         "clientToNode": "Client to Node Encryption",
-        "encryption": "Encryption"
+        "encryption": "Encryption",
+        "networkAccess": "Network Access",
+        "publicIP": "PUBLIC IP",
+        "ipv6": "IPV6"
       },
       "database": {
         "ysql": "YSQL",
@@ -4380,7 +4386,16 @@
         "secureWebProxy": "Secure Web Proxy (HTTPS)",
         "webProxy": "Web Proxy (HTTP)",
         "bypassProxyList": "Bypass Proxy List",
-        "editProxyConfiguration": "Edit Proxy Configuration"
+        "editProxyConfiguration": "Edit Proxy Configuration",
+        "userTagsTitle": "User Tags",
+        "addTags": "Add User Tags",
+        "userTagName": "Name",
+        "userTagValue": "Value",
+        "userTagTooltip": "Assign tags to manage, track costs, and audit resources. <a>Learn more </a>",
+        "nodeAccess": "Node Access",
+        "sshKey": "SSH ACCESS KEY",
+        "awsArn": "INSTANCE PROFILE ARN",
+        "networkPorts": "Network Ports"
       },
       "masterServerNodeAllocationModal": {
         "title": "Master Server Node Allocation",

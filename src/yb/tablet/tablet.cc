@@ -962,7 +962,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(
   VLOG_WITH_PREFIX(4) << __func__;
 
   if (state->flush_ability.empty() && state->largest_flushed_index.empty()) {
-    state->vector_indexes = VectorIndexList(vector_indexes_->List());
+    state->vector_indexes = vector_indexes_->List();
   }
 
   auto frontiers = memtable.Frontiers();
@@ -1554,7 +1554,7 @@ Status Tablet::EnableCompactions(
 }
 
 Status Tablet::DoEnableCompactions() {
-  tablet::VectorIndexList{ vector_indexes().List() }.EnableAutoCompactions();
+  vector_indexes().List().EnableAutoCompactions();
 
   Status regular_db_status;
   std::unordered_map<std::string, std::string> new_options = {
@@ -1961,7 +1961,7 @@ Status Tablet::ApplyKeyValueRowOperations(
     rocksdb::WriteBatch intents_write_batch;
     docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
-        GetSchemaPackingProvider(), frontiers, vector_indexes_->List(), apply_to_storages);
+        GetSchemaPackingProvider(), frontiers, vector_indexes_->List().impl(), apply_to_storages);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetDirectWriter(&batcher);
@@ -2457,7 +2457,7 @@ Status Tablet::Flush(
 
   VectorIndexList vector_indexes_list;
   if (HasFlags(flags, FlushFlags::kVectorIndexes)) {
-    vector_indexes_list = VectorIndexList(vector_indexes_->List());
+    vector_indexes_list = vector_indexes_->List();
     vector_indexes_list.Flush();
   }
 
@@ -2496,7 +2496,7 @@ Status Tablet::Flush(FlushMode mode, rocksdb::FlushReason rocksdb_flush_reason) 
 Status Tablet::WaitForFlush() {
   TRACE_EVENT0("tablet", "Tablet::WaitForFlush");
 
-  RETURN_NOT_OK(VectorIndexList(vector_indexes_->List()).WaitForFlush());
+  RETURN_NOT_OK(vector_indexes_->List().WaitForFlush());
 
   if (regular_db_) {
     RETURN_NOT_OK(regular_db_->WaitForFlush());
@@ -2536,7 +2536,7 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_intents_ms);
   docdb::ConsensusFrontiers frontiers;
   InitFrontiers(data, frontiers);
-  auto vector_indexes = vector_indexes_->List();
+  auto vector_indexes = vector_indexes_->List().impl();
   docdb::ApplyIntentsContextCompleteListener complete_listener;
   if (!vector_indexes_->has_vector_deletion()) {
     complete_listener = [this](const docdb::ConsensusFrontiers& frontiers) {
@@ -3254,7 +3254,8 @@ Status Tablet::BackfillIndexesForYsql(
   *backfilled_until = backfill_from;
   BackfillParams backfill_params(deadline, true /* is_ysql */);
   auto conn_result  = pgwrapper::CreateInternalPGConnBuilder(
-                          pgsql_proxy_bind_address, database_name, postgres_auth_key,
+                          pgsql_proxy_bind_address, database_name,
+                          pgwrapper::PGConnSettings::kDefaultUser, postgres_auth_key,
                           backfill_params.modified_deadline)
                           .Connect();
   // BACKFILL passes a read time and SERIALIZABLE is incompatible with fixed read time.
@@ -5060,7 +5061,7 @@ Status Tablet::TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions&
 
 Status Tablet::TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "vectors index ids: " << AsString(vector_index_ids);
-  tablet::VectorIndexList vector_index_list { vector_indexes().Collect(vector_index_ids) };
+  auto vector_index_list = vector_indexes().Collect(vector_index_ids);
   vector_index_list.Compact();
   auto status = vector_index_list.WaitForCompaction();
   WARN_WITH_PREFIX_NOT_OK(

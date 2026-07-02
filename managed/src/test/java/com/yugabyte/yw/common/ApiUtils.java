@@ -65,6 +65,14 @@ public class ApiUtils {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
         userIntent.providerType = cloudType;
+        if (cloudType != null) {
+          Customer c = Customer.get(universe.getCustomerId());
+          List<Provider> providerList = Provider.get(c.getUuid(), cloudType);
+          if (providerList.size() > 0) {
+            userIntent.provider = providerList.get(0).getUuid().toString();
+          }
+        }
+
         userIntent.accessKeyCode = DEFAULT_ACCESS_KEY_CODE;
         // Add a desired number of nodes.
         userIntent.numNodes = userIntent.replicationFactor;

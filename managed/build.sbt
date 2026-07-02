@@ -199,7 +199,7 @@ libraryDependencies ++= Seq(
   "com.azure" % "azure-core-http-netty" % "1.16.2",
   "com.azure" % "azure-core" % "1.57.0",
   "com.azure" % "azure-identity" % "1.18.1",
-  "com.azure" % "azure-security-keyvault-keys" % "4.10.3",
+  "com.azure" % "azure-security-keyvault-keys" % "4.10.6",
   "com.azure" % "azure-storage-blob" % "12.31.3",
   "com.azure" % "azure-storage-blob-batch" % "12.27.3",
   "com.azure.resourcemanager" % "azure-resourcemanager" % "2.55.0",
@@ -226,7 +226,7 @@ libraryDependencies ++= Seq(
   "com.google.apis" % "google-api-services-compute" % "v1-rev20241008-2.0.0",
   "com.google.apis" % "google-api-services-iam" % "v1-rev20240918-2.0.0",
   "com.google.cloud" % "google-cloud-compute" % "1.88.0",
-  "com.google.cloud" % "google-cloud-storage" % "2.60.0",
+  "com.google.cloud" % "google-cloud-storage" % "2.69.0",
   "com.google.cloud" % "google-cloud-kms" % "2.81.0",
   "com.google.cloud" % "google-cloud-resourcemanager" % "1.80.0",
   "com.google.cloud" % "google-cloud-logging" % "3.23.7",
@@ -1028,16 +1028,23 @@ libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
-  "io.netty" % "netty-codec-haproxy" % "4.1.89.Final",
+  "io.netty" % "netty-codec-haproxy" % "4.1.135.Final",
   "io.projectreactor.netty" % "reactor-netty-http" % "1.0.39",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
 )
 
 
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
-dependencyOverrides += "io.netty" % "netty-all" % "4.1.133.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.133.Final"
-dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.133.Final"
+dependencyOverrides += "io.netty" % "netty-all" % "4.1.135.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.135.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.135.Final"
+// netty-all does not force these core modules, so they stay at the next-highest
+// requested version (4.1.130) and must be pinned explicitly to reach 4.1.135.
+dependencyOverrides += "io.netty" % "netty-buffer" % "4.1.135.Final"
+dependencyOverrides += "io.netty" % "netty-codec" % "4.1.135.Final"
+dependencyOverrides += "io.netty" % "netty-common" % "4.1.135.Final"
+dependencyOverrides += "io.netty" % "netty-handler" % "4.1.135.Final"
+dependencyOverrides += "io.netty" % "netty-transport" % "4.1.135.Final"
 
 dependencyOverrides += "junit" % "junit" % "4.13.2" % Test
 
@@ -1114,14 +1121,19 @@ Global / concurrentRestrictions := Seq(Tags.limitAll(16))
 
 val testParallelForks = SettingKey[Int]("testParallelForks",
   "Number of parallel forked JVMs, running tests")
-testParallelForks := 4
+// Include some CPU headroom in the divisor.
+// Max depends on the IP range.
+def defaultTestParallelForks: Int =
+  math.min(7,
+    math.max(1, (java.lang.Runtime.getRuntime.availableProcessors().toDouble / 1.5).toInt))
+testParallelForks := defaultTestParallelForks
 val testShardSize = SettingKey[Int]("testShardSize",
   "Number of test classes, executed by each forked JVM")
 testShardSize := 30
 
 val testLocalShardSize = SettingKey[Int]("testLocalShardSize",
   "Number of local test classes, executed by each forked JVM")
-testLocalShardSize := 4
+testLocalShardSize := 2
 
 val testLocalIpRangeStart = SettingKey[Int]("testLocalIpRangeStart",
   "First loopback IP index for local provider tests (127.0.x.y encoding)")

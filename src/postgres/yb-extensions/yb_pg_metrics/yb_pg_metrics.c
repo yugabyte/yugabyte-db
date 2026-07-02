@@ -706,7 +706,6 @@ pullRpczEntries(void)
 			PGPROC	   *proc = NULL;
 
 			if (beentry->st_backendType == B_BACKEND ||
-				beentry->st_backendType == YB_AUTO_ANALYZE_BACKEND ||
 				YbIsInternalConnBackendType(beentry->st_backendType))
 				proc = BackendPidGetProc(rpcz[i].proc_id);
 			else if (beentry->st_backendType != YB_YSQL_CONN_MGR &&
@@ -1079,7 +1078,9 @@ ybpgm_InitPostgres()
 						&conn_init_secs, &conn_init_usecs);
 	uint64_t	conn_latency_us = (uint64_t) (conn_init_secs * 1000000 + conn_init_usecs);
 	YbStatementType conn_type =
-		YbIsAuthBackend() ? AuthBackendInitLatency : RegularBackendInitLatency;
+		(YbIsAuthBackend() || YbIsAuthPassthroughControlBackend()) ?
+			AuthBackendInitLatency :
+			RegularBackendInitLatency;
 
 	ybpgm_Store(conn_type, conn_latency_us, 0);
 

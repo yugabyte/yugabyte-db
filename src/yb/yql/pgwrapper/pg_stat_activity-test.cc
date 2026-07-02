@@ -59,6 +59,9 @@ class PgStatActivityTest : public LibPqTestBase {
     // AllBackendsTransaction test than just the queries launched by the test.
     // So disable table locks for these tests.
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
     LibPqTestBase::UpdateMiniClusterOptions(options);
   }
 

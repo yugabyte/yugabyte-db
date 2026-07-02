@@ -549,8 +549,10 @@ public class OperatorUtils {
           .getAllAZUUIDs()
           .forEach(
               azUUID -> {
-                DeviceInfo tsDeviceInfo = curCluster.userIntent.getDeviceInfoForAz(azUUID, false);
-                DeviceInfo newTsDeviceInfo = newIntentClone.getDeviceInfoForAz(azUUID, false);
+                DeviceInfo tsDeviceInfo =
+                    curCluster.userIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
+                DeviceInfo newTsDeviceInfo =
+                    newIntentClone.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
                 log.debug(
                     "Comparing tserver device info for AZ {}: old {}, new {}",
                     azUUID,
@@ -561,8 +563,9 @@ public class OperatorUtils {
 
                 if (curCluster.clusterType != ClusterType.ASYNC) {
                   DeviceInfo masterDeviceInfo =
-                      curCluster.userIntent.getDeviceInfoForAz(azUUID, true);
-                  DeviceInfo newMasterDeviceInfo = newIntentClone.getDeviceInfoForAz(azUUID, true);
+                      curCluster.userIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
+                  DeviceInfo newMasterDeviceInfo =
+                      newIntentClone.getDeviceInfoForAz(azUUID, ServerType.MASTER);
                   log.debug(
                       "Comparing master device info for AZ {}: old {}, new {}",
                       azUUID,

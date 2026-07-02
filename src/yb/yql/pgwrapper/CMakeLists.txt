@@ -65,7 +65,8 @@ set(YSQL_BINARY_RUNNER_SRCS
     ysql_binary_runner.cc)
 set(YSQL_BINARY_RUNNER_LIBS
     yb_util
-    yb_pgwrapper)
+    yb_pgwrapper
+    pq_utils)
 ADD_YB_LIBRARY(yb_ysql_binary_runner
                SRCS ${YSQL_BINARY_RUNNER_SRCS}
                DEPS ${YSQL_BINARY_RUNNER_LIBS})
@@ -191,6 +192,7 @@ ADD_YB_TEST(pg_read_after_commit_visibility-test)
 ADD_YB_TEST(pg_read_time-test)
 ADD_YB_TEST(pg_relcache_corruption_fallback-test)
 ADD_YB_TEST(pg_relcache_init_internal_conn-test)
+ADD_YB_TEST(pg_relcache_preload_mem-test)
 ADD_YB_TEST(pg_row_lock-test)
 ADD_YB_TEST(pg_server_restart-test)
 ADD_YB_TEST(pg_shared_mem-test)

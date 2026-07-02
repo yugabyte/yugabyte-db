@@ -1118,6 +1118,23 @@ if [[ ${build_java} == "true" ]]; then
     # and in general we don't need them when running tests, so skip them in the most common
     # development workflow when running a single test.
     java_build_opts+=( "-Dassembly.skipAssembly=true" )
+    # Source jars (-sources.jar / -test-sources.jar) are only useful for IDEs and publishing, never
+    # for running a test. Building them is a few seconds per module (plus extra forked
+    # generate-sources lifecycle runs), so skip them when running a single test.
+    java_build_opts+=( "-Dmaven.source.skip=true" )
+  fi
+
+  # When building for a single Java test, scope the Maven build to that test's module and its
+  # dependencies (mvn -pl <module> --also-make), so we don't build unrelated modules. We skip this
+  # when resolving all Java dependencies, which intentionally needs the full reactor.
+  if [[ ${scope_java_build_to_test_module} == "true" &&
+        ${run_java_tests} == "true" && -n $java_test_name &&
+        ${resolve_java_dependencies} != "true" ]]; then
+    resolve_java_test "$java_test_name"
+    log "Scoping Java build to module '$resolved_java_test_module' and its dependencies for test" \
+        "'$java_test_name' (use --no-scoped-java-build to build all modules)."
+    java_build_opts+=( --projects "$resolved_java_test_module" --also-make )
+    unset resolved_java_test_module resolved_java_test_module_dir resolved_java_test_name
   fi
 
   if [[ ${resolve_java_dependencies} == "true" ]]; then

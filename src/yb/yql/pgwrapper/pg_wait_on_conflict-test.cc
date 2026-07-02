@@ -71,6 +71,7 @@ DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_int32(leader_lease_duration_ms);
 
@@ -129,7 +130,9 @@ class PgWaitQueuesTestWithoutObjectLocking : public PgWaitQueuesTest {
  protected:
   void InitFlags() override {
     PgWaitQueuesTest::InitFlags();
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
   }
 };
 
@@ -1580,7 +1583,9 @@ class PgWaitQueueRF1TestWithoutObjectLocking : public PgWaitQueueRF1Test {
  protected:
   void InitFlags() override {
     PgWaitQueuesTest::InitFlags();
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
   }
 };
 
@@ -1846,7 +1851,9 @@ class PgWaitQueuesWithRetriesTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_debug_log_internal_restarts=true";
     // TODO(#24877): Remove the below once we enable query layer retries for object locking.
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     PgMiniTestBase::SetUp();
   }
 };
