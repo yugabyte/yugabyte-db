@@ -126,6 +126,20 @@ class PgAshSingleNode : public PgAshTest {
   }
 };
 
+class PgAshVectorIndexTest : public PgAshSingleNode {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgAshSingleNode::UpdateMiniClusterOptions(options);
+    // A vector index search is fast, so it is unlikely to be in-flight when the sampler runs.
+    // Force it to linger in the wait state long enough for the sampler to catch it reliably.
+    options->extra_tserver_flags.push_back(Format(
+        "--TEST_yb_ash_wait_code_to_sleep_at=$0",
+        std::to_underlying(ash::WaitStateCode::kVectorIndex_Search)));
+    options->extra_tserver_flags.push_back(Format(
+        "--TEST_yb_ash_sleep_at_wait_state_ms=$0", 2 * kSamplingIntervalMs));
+  }
+};
+
 class PgAshMinRunningHybridTimeTest : public PgAshSingleNode {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -1609,6 +1623,48 @@ TEST_F_EX(PgAshTest, ConflictWaitPropagatesQueryIdAcrossRefresh, PgWaitOnConflic
       << "Found " << zero_query_id_samples << "ConflictResolution_WaitOnConflictingTxns "
       << "samples with query_id=0. Wait-queue refresh retries are dropping the user's wait "
       << "state when AsyncRpc::SendRpc runs on the reactor thread.";
+}
+
+// Verifies that a YSQL vector index (pgvector / ybhnsw) search shows up in ASH as the
+// VectorIndex_Search wait event, attributed to the originating query. The search runs under a
+// tserver Read RPC, so the sample carries the query's query_id and is not filtered by the sampler.
+TEST_F_EX(PgAshTest, VectorIndexSearch, PgAshVectorIndexTest) {
+  constexpr int kNumRows = 1000;
+
+  ASSERT_OK(conn_->Execute("CREATE EXTENSION IF NOT EXISTS vector"));
+  ASSERT_OK(conn_->Execute("CREATE TABLE vectors (id int PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO vectors SELECT i, format('[%s,%s,%s]', i, i + 1, i + 2)::vector "
+      "FROM generate_series(1, $0) i", kNumRows));
+  ASSERT_OK(conn_->Execute(
+      "CREATE INDEX ON vectors USING ybhnsw (embedding vector_l2_ops)"));
+
+  const std::string search_query =
+      "SELECT id FROM vectors ORDER BY embedding <-> '[1, 2, 3]' LIMIT 5";
+
+  // Drive searches continuously so the sampler observes the (deliberately slowed) search.
+  thread_holder_.AddThreadFunctor(
+      [this, &stop = thread_holder_.stop_flag(), search_query] {
+    auto conn = ASSERT_RESULT(Connect());
+    while (!stop) {
+      ASSERT_RESULT(conn.FetchRows<int32_t>(search_query));
+    }
+  });
+
+  // Let ASH take several samples.
+  SleepFor(kSamplingIntervalMs * 40ms * kTimeMultiplier);
+  thread_holder_.Stop();
+
+  const auto query_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+      "SELECT queryid FROM pg_stat_statements "
+      "WHERE query LIKE 'SELECT id FROM vectors ORDER BY%'"));
+
+  const auto count = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT COUNT(*) FROM yb_active_session_history "
+      "WHERE wait_event = 'VectorIndex_Search' AND query_id = $0", query_id)));
+  ASSERT_GT(count, 0)
+      << "ASH recorded no VectorIndex_Search samples carrying the search query_id; the wait "
+      << "event was either not entered or not attributed to the originating query.";
 }
 
 } // namespace yb::pgwrapper

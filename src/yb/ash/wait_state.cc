@@ -245,6 +245,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "YB client is waiting on an RPC sent to the master.";
     case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
       return "Waiting for index backfill chunk to be processed.";
+    case WaitStateCode::kVectorIndex_Search:
+      return "The vector index is performing an approximate nearest neighbor search.";
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
@@ -262,6 +264,7 @@ bool AshIsPGClass(ash::Class class_id) {
     case ash::Class::kTabletWait:
     case ash::Class::kRocksDB:
     case ash::Class::kCommon:
+    case ash::Class::kVectorIndex:
       return false;
   }
   FATAL_INVALID_ENUM_VALUE(ash::Class, class_id);
@@ -691,6 +694,9 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kYBClient_LookingUpTablet:
     case WaitStateCode::kYBClient_WaitingOnMaster:
       return WaitStateType::kRPCWait;
+
+    case WaitStateCode::kVectorIndex_Search:
+      return WaitStateType::kCpu;
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
@@ -745,6 +751,7 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kRocksDB_CreateCheckpoint:
     case WaitStateCode::kXCluster_WaitingForGetChanges:
     case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
+    case WaitStateCode::kVectorIndex_Search:
       return "This contains tablet ID.";
 
     case WaitStateCode::kYCQL_Parse:

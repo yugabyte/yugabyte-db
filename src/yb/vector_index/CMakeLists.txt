@@ -41,6 +41,7 @@ set(VECTOR_INDEX_SRCS
 set(VECTOR_INDEX_LIBS
   rocksdb
   vector_index_proto
+  yb_ash
   yb_common
   yb_util
   )

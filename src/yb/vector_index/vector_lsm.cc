@@ -18,6 +18,8 @@
 
 #include <boost/intrusive/list.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/metadata.h"
 
@@ -1411,6 +1413,8 @@ auto VectorLSM<Vector, DistanceResult>::Search(
   if (options.max_num_results == 0) {
     return SearchResults();
   }
+
+  SCOPED_WAIT_STATUS(VectorIndex_Search);
 
   auto indexes = VERIFY_RESULT(AllIndexes());
   bool dump_stats = FLAGS_vector_index_dump_stats;

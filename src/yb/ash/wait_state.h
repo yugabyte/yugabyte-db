@@ -113,7 +113,8 @@ YB_DEFINE_TYPED_ENUM(Class, uint8_t,
     (kConsensus)
     (kTabletWait)
     (kRocksDB)
-    (kCommon));
+    (kCommon)
+    (kVectorIndex));
 
 // This is YB equivalent of wait events from pgstat.h, the term wait event and wait state
 // is used interchangeably in the code. The uint32_t values of all the wait events across PG
@@ -207,6 +208,9 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     ((kYBClient_WaitingOnDocDB, YB_ASH_MAKE_EVENT(Client)))
     (kYBClient_LookingUpTablet)
     (kYBClient_WaitingOnMaster)
+
+    // Wait states related to the vector index
+    ((kVectorIndex_Search, YB_ASH_MAKE_EVENT(VectorIndex)))
 );
 
 // We also want to track background operations such as, log-append
