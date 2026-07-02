@@ -24,6 +24,6 @@ public class CustomerConfigStorageOCIValidator extends CustomerConfigStorageVali
   @Override
   public void validate(CustomerConfigData data) {
     super.validate(data);
-    // TODO: Add OCI-specific validation (auth mode XOR, URL format, live bucket checks).
+    // TODO: OCI - auth XOR, location format, live bucket checks via ociUtil.
   }
 }
