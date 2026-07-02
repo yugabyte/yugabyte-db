@@ -577,12 +577,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       if (userIntent.isMulticloudSupport()) {
         for (ProviderSpecification providerSpecification : userIntent.providerSpecifications) {
-
-          ProviderSpecification other =
-              userIntent.getProviderSpecification(providerSpecification.providerUUID);
-          if (other != null
-              && Provider.InstanceTagsModificationEnabledProviders.contains(other.providerType)
-              && !Objects.equals(other.instanceTags, providerSpecification.instanceTags)) {
+          if (!Provider.InstanceTagsModificationEnabledProviders.contains(
+              providerSpecification.providerType)) {
+            continue;
+          }
+          if (!Objects.equals(
+              providerSpecification.instanceTags,
+              cluster.userIntent.getInstanceTagsForProvider(providerSpecification.providerUUID))) {
             return false;
           }
         }
