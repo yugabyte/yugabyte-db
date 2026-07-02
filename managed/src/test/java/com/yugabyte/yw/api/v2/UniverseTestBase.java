@@ -1002,11 +1002,14 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       assertThat(dbAuditLogConfig, is(nullValue()));
       return;
     }
-    if (v2AuditLogConfig.getExportActive() == null) {
-      assertThat(dbAuditLogConfig.isExportActive(), is(true));
-    } else {
-      assertThat(v2AuditLogConfig.getExportActive(), is(dbAuditLogConfig.isExportActive()));
-    }
+    // exportActive is normalized to false when no exporter is configured (see
+    // AuditLogConfig.normalizeExportActive), so the expected DB value is the requested flag
+    // (defaulting to true when unset) AND-ed with "has at least one exporter".
+    boolean expectedAuditExportActive =
+        (v2AuditLogConfig.getExportActive() == null || v2AuditLogConfig.getExportActive())
+            && v2AuditLogConfig.getUniverseLogsExporterConfig() != null
+            && !v2AuditLogConfig.getUniverseLogsExporterConfig().isEmpty();
+    assertThat(dbAuditLogConfig.isExportActive(), is(expectedAuditExportActive));
     assertThat(
         v2AuditLogConfig.getUniverseLogsExporterConfig().size(),
         is(dbAuditLogConfig.getUniverseLogsExporterConfig().size()));
@@ -1032,11 +1035,14 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       assertThat(dbQueryLogConfig, is(nullValue()));
       return;
     }
-    if (v2QueryLogConfig.getExportActive() == null) {
-      assertThat(dbQueryLogConfig.isExportActive(), is(true));
-    } else {
-      assertThat(v2QueryLogConfig.getExportActive(), is(dbQueryLogConfig.isExportActive()));
-    }
+    // exportActive is normalized to false when no exporter is configured (see
+    // QueryLogConfig.normalizeExportActive), so the expected DB value is the requested flag
+    // (defaulting to true when unset) AND-ed with "has at least one exporter".
+    boolean expectedQueryExportActive =
+        (v2QueryLogConfig.getExportActive() == null || v2QueryLogConfig.getExportActive())
+            && v2QueryLogConfig.getUniverseLogsExporterConfig() != null
+            && !v2QueryLogConfig.getUniverseLogsExporterConfig().isEmpty();
+    assertThat(dbQueryLogConfig.isExportActive(), is(expectedQueryExportActive));
     assertThat(
         v2QueryLogConfig.getUniverseLogsExporterConfig().size(),
         is(dbQueryLogConfig.getUniverseLogsExporterConfig().size()));

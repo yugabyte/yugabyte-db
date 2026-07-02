@@ -70,7 +70,6 @@ import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExportTelemetryConfig;
@@ -383,8 +382,12 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
     log.info("Configure metrics export for universe with v2 spec: {}", prettyPrint(req));
+
+    // Current telemetry config from the export_telemetry_config table (source of truth), falling
+    // back to the synced userIntent copies. Used both to detect a no-op and to preserve the audit
+    // and query log configs that this metrics-only request must not clobber.
+    TelemetryConfig currentTelemetryConfig = v1Handler.getCurrentTelemetryConfig(universe);
 
     MetricsExportConfigParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toMetricsExportConfigParams(
@@ -395,7 +398,9 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
 
     // Verify if the metrics export payload is same as existing metrics export config.
     if (v1Params.getMetricsExportConfig() != null
-        && v1Params.getMetricsExportConfig().equals(userIntent.metricsExportConfig)) {
+        && v1Params
+            .getMetricsExportConfig()
+            .equals(currentTelemetryConfig.getMetricsExportConfig())) {
       String errorMessage =
           String.format(
               "Metrics export config is same as existing config on universe '%s'.",
@@ -464,8 +469,8 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     // Override the metrics export config in the export params with the requested config.
     exportParams.setTelemetryConfig(
         TelemetryConfig.of(
-            exportParams.getAuditLogConfig(),
-            exportParams.getQueryLogConfig(),
+            currentTelemetryConfig.getAuditLogConfig(),
+            currentTelemetryConfig.getQueryLogConfig(),
             v1Params.getMetricsExportConfig()));
     exportParams.upgradeOption = v1Params.upgradeOption;
     UUID taskUUID = v1Handler.submitExportTelemetryConfigs(exportParams, customer, universe);
