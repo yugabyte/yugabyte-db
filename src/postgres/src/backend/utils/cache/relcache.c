@@ -3292,6 +3292,17 @@ YbTryPrepareStaleCatalogPrefetch(const YbcPgLastKnownCatalogVersionInfo version,
 	return true;
 }
 
+/*
+ * Like YbUseTserverResponseCacheForAuth, but only for connection manager auth
+ * backends (and auth passthrough), not regular backends.
+ */
+static bool
+YbAuthBackendUsesTserverResponseCache(uint64_t shared_catalog_version)
+{
+	return (YbIsAuthBackend() || YbIsAuthPassthroughInProgress(MyProcPort)) &&
+		YbUseTserverResponseCacheForAuth(shared_catalog_version);
+}
+
 static void
 YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 					bool keep_prefetcher,
@@ -3329,7 +3340,8 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 	 * latest master catalog version instead of the shared catalog version.
 	 */
 	const bool	use_tserver_cache_for_auth =
-		YbUseTserverResponseCacheForAuth(shared_catalog_version) && !YbNeedNewCacheFileForPgAuthBackend;
+		YbAuthBackendUsesTserverResponseCache(shared_catalog_version) &&
+		!YbNeedNewCacheFileForPgAuthBackend;
 	YbcPgSysTablePrefetcherCacheMode trust_mode =
 		use_tserver_cache_for_auth ? YB_YQL_PREFETCHER_TRUST_CACHE_AUTH
 		: YB_YQL_PREFETCHER_TRUST_CACHE;
@@ -7490,7 +7502,7 @@ RelationCacheInitializePhase3(void)
 			uint64_t	shared_catalog_version;
 
 			HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
-			if (YbUseTserverResponseCacheForAuth(shared_catalog_version))
+			if (YbAuthBackendUsesTserverResponseCache(shared_catalog_version))
 			{
 				if (needNewCacheFile)
 					YbNeedNewCacheFileForPgAuthBackend = true;
