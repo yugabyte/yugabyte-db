@@ -31,6 +31,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomWsClientFactory;
@@ -38,6 +39,7 @@ import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -56,18 +58,23 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.queries.QueryHelper;
 import java.io.File;
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import kamon.instrumentation.play.GuiceModule;
 import org.apache.commons.io.FileUtils;
@@ -343,6 +350,68 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     return Json.newArray().add(cluster);
   }
 
+  protected Set<NodeDetails> buildNodeDetailsSet(
+      PlacementInfo placementInfo, UUID clusterUuid, NodeState nodeState, String instanceType) {
+    Set<NodeDetails> nodes = new HashSet<>();
+    int idx = 1;
+    for (PlacementInfo.PlacementCloud cloud : placementInfo.cloudList) {
+      for (PlacementInfo.PlacementRegion region : cloud.regionList) {
+        for (PlacementInfo.PlacementAZ az : region.azList) {
+          for (int n = 0; n < az.numNodesInAZ; n++) {
+            NodeDetails node = ApiUtils.getDummyNodeDetails(idx++, nodeState);
+            node.placementUuid = clusterUuid;
+            node.azUuid = az.uuid;
+            AvailabilityZone availabilityZone = AvailabilityZone.getOrBadRequest(az.uuid);
+            node.cloudInfo.region = availabilityZone.getRegion().getCode();
+            node.cloudInfo.az = availabilityZone.getName();
+            if (instanceType != null) {
+              node.cloudInfo.instance_type = instanceType;
+            }
+            if (nodeState == NodeState.ToBeAdded) {
+              node.nodeName = null;
+            }
+            nodes.add(node);
+          }
+        }
+      }
+    }
+    return nodes;
+  }
+
+  protected ArrayNode nodeDetailsSetJson(
+      PlacementInfo placementInfo, UUID clusterUuid, NodeState nodeState, String instanceType) {
+    ArrayNode nodeDetailsJsonArray = Json.newArray();
+    buildNodeDetailsSet(placementInfo, clusterUuid, nodeState, instanceType)
+        .forEach(node -> nodeDetailsJsonArray.add(Json.toJson(node)));
+    return nodeDetailsJsonArray;
+  }
+
+  protected ArrayNode nodeDetailsSetJson(PlacementInfo placementInfo, UUID clusterUuid) {
+    return nodeDetailsSetJson(placementInfo, clusterUuid, NodeState.ToBeAdded, null);
+  }
+
+  protected UUID setClustersAndNodeDetailsSet(
+      ObjectNode bodyJson, ObjectNode userIntentJson, PlacementInfo placementInfo) {
+    return setClustersAndNodeDetailsSet(bodyJson, userIntentJson, placementInfo, null);
+  }
+
+  protected UUID setClustersAndNodeDetailsSet(
+      ObjectNode bodyJson,
+      ObjectNode userIntentJson,
+      PlacementInfo placementInfo,
+      String instanceType) {
+    UUID clusterUuid = UUID.randomUUID();
+    ObjectNode clusterJson = Json.newObject();
+    clusterJson.set("userIntent", userIntentJson);
+    clusterJson.set("placementInfo", Json.toJson(placementInfo));
+    clusterJson.put("uuid", clusterUuid.toString());
+    bodyJson.set("clusters", Json.newArray().add(clusterJson));
+    bodyJson.set(
+        "nodeDetailsSet",
+        nodeDetailsSetJson(placementInfo, clusterUuid, NodeState.ToBeAdded, instanceType));
+    return clusterUuid;
+  }
+
   protected ObjectNode createDeviceInfo(
       StorageType storageType,
       Integer numVolumes,
@@ -370,5 +439,26 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
       deviceInfo.put("mountPoints", mountPoints);
     }
     return deviceInfo;
+  }
+
+  // Creating basic RF3 placement with total replicas always equal to 3.
+  protected PlacementInfo placement(Provider provider, int numberOfZones) {
+    assert numberOfZones <= 3;
+    PlacementInfo placementInfo = new PlacementInfo();
+    if (numberOfZones == 0) {
+      return placementInfo;
+    }
+    int baseReplicas = 3 / numberOfZones;
+    int extraReplicas = 3 % numberOfZones;
+    for (int i = 1; i < numberOfZones + 1; i++) {
+      AvailabilityZone az = AvailabilityZone.getByCode(provider, "az-" + i);
+      int replicas = baseReplicas + (i == 1 ? extraReplicas : 0);
+      PlacementInfoUtil.addPlacementZone(az.getUuid(), placementInfo, replicas, replicas);
+    }
+    return placementInfo;
+  }
+
+  protected PlacementInfo placement(Provider provider) {
+    return placement(provider, 3);
   }
 }

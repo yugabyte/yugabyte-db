@@ -18,6 +18,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import junitparams.JUnitParamsRunner;
@@ -35,11 +37,12 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
 
   private Customer customer;
   private UniverseCRUDHandler universeCRUDHandler;
+  private Provider provider;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
-    ModelFactory.awsProvider(customer);
+    provider = ModelFactory.awsProvider(customer);
     universeCRUDHandler = app.injector().instanceOf(UniverseCRUDHandler.class);
   }
 
@@ -85,6 +88,32 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
     } else {
       throw new IllegalArgumentException("Unsupported type " + field.getType());
     }
+  }
+
+  @Test
+  public void updatePrimaryIncorrectReplicasFailTest() {
+    Universe universe = ModelFactory.createFromConfig(provider, "ahaha", "r1-az1-3-3;r2-az2-2-2");
+
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    // This will make zone with 2 nodes have 3 replicas and vica-versa.
+    primaryCluster
+        .placementInfo
+        .azStream()
+        .forEach(az -> az.replicationFactor = 5 - az.replicationFactor);
+
+    IllegalStateException ex =
+        assertThrows(
+            IllegalStateException.class,
+            () ->
+                universeCRUDHandler.update(
+                    customer,
+                    Universe.getOrBadRequest(universe.getUniverseUUID()),
+                    universe.getUniverseDetails()));
+    assertTrue(
+        ex.getLocalizedMessage(),
+        ex.getMessage()
+            .contains("Cannot have number of replicas 3 greater than the number of nodes 2"));
   }
 
   @Test

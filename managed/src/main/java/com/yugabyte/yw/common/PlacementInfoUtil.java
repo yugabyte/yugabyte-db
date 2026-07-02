@@ -340,8 +340,8 @@ public class PlacementInfoUtil {
         customerId,
         placementUuid,
         clusterOpType,
-        false,
-        !CollectionUtils.isEmpty(taskParams.getPrimaryCluster().getPartitions()));
+        false /* allowGeoPartitioning */,
+        !CollectionUtils.isEmpty(taskParams.getPrimaryCluster().getPartitions()) /* isNewUI */);
   }
 
   static void updateUniverseDefinition(
@@ -1178,7 +1178,18 @@ public class PlacementInfoUtil {
     return dedicatedInNodes != cluster.userIntent.dedicatedNodes;
   }
 
-  private static boolean checkReplicasDistributionIsCorrect(
+  /**
+   * Validates that replicas are placed correctly: 1) Each zone has replicas (unless it is old
+   * geo-partitioning case) 2) Number of replicas in AZ doesn't exceed the number of nodes 3) Total
+   * sum of all replicas is equal to RF (unless it is special case RF3 2AZ)
+   *
+   * @param placementInfo Placement to check
+   * @param rf Total replication factor for placement
+   * @param defaultRegionUUID Default region UUID (old geo-partitioning flow)
+   * @param throwInIncorrect Whether to throw an exception in case of incorrect distribution.
+   * @return whether the distribution is correct
+   */
+  public static boolean checkReplicasDistributionIsCorrect(
       PlacementInfo placementInfo, int rf, UUID defaultRegionUUID, boolean throwInIncorrect) {
     AtomicInteger zoneCount = new AtomicInteger();
     Set<String> zeroZones = new HashSet<>();
@@ -1195,7 +1206,7 @@ public class PlacementInfoUtil {
                 String message = "Cannot have negative number of replicas: " + az.replicationFactor;
                 LOG.error(message);
                 if (throwInIncorrect) {
-                  throw new IllegalArgumentException(message);
+                  throw new IllegalStateException(message);
                 } else {
                   result.set(false);
                 }
@@ -1210,13 +1221,15 @@ public class PlacementInfoUtil {
                         + az.name;
                 LOG.error(message);
                 if (throwInIncorrect) {
-                  throw new IllegalArgumentException(message);
+                  throw new IllegalStateException(message);
                 } else {
                   result.set(false);
                 }
               }
               if (az.replicationFactor == 0) {
-                zeroZones.add(az.name);
+                if (defaultRegionUUID == null) {
+                  zeroZones.add(az.name);
+                }
               } else if (defaultRegionUUID != null
                   && !azInfo.region.uuid.equals(defaultRegionUUID)) {
                 incorrectlyPlacedReplicas.add(az.name);
@@ -1257,8 +1270,9 @@ public class PlacementInfoUtil {
       if (throwInIncorrect) {
         throw new IllegalStateException(message);
       }
+      return false;
     }
-    return totalReplicas.get() == rf;
+    return true;
   }
 
   /**
@@ -2068,7 +2082,8 @@ public class PlacementInfoUtil {
 
   /**
    * Check to confirm the following after each configure call: - node AZs and placement AZs match. -
-   * instance type of all nodes matches. - each nodes has a unique name.
+   * instance type of all nodes matches. - each node has a unique name. Replicas are placed
+   * correctly.
    *
    * @param cluster The cluster whose placement is checked.
    * @param nodes The nodes in this cluster.
@@ -2081,6 +2096,23 @@ public class PlacementInfoUtil {
       String msg = "Nodes are in different AZs compared to placement";
       LOG.error("{}. PlacementAZ={}, nodesAZ={}", msg, placementAZToNodeMap, nodesAZToNodeMap);
       throw new IllegalStateException(msg);
+    }
+    if (cluster.isGeoPartitioned()) {
+      for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
+        if (partition.isDefaultPartition()) {
+          checkReplicasDistributionIsCorrect(
+              partition.getPlacement(),
+              partition.getReplicationFactor(),
+              null,
+              true /* throwIfIncorrect */);
+        }
+      }
+    } else {
+      checkReplicasDistributionIsCorrect(
+          placementInfo,
+          cluster.userIntent.replicationFactor,
+          getDefaultRegion(cluster),
+          true /* throwIfIncorrect */);
     }
     if (cluster.userIntent.providerType == CloudType.kubernetes) {
       return;

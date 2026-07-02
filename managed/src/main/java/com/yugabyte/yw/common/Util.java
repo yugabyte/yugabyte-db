@@ -932,6 +932,7 @@ public class Util {
     int maxNamespaceLen = 63;
     int firstPartLength = maxNamespaceLen - reserveSuffixLen;
     checkArgument(firstPartLength > 0, "Invalid suffix length");
+    checkArgument(name != null, "node prefix cannot be null");
     String sanitizedName = name.toLowerCase();
     if (sanitizedName.equals(name) && firstPartLength >= sanitizedName.length()) {
       // Backward compatibility taken care as old namespaces must have already passed this test for

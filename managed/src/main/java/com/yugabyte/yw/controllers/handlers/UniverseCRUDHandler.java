@@ -1497,6 +1497,8 @@ public class UniverseCRUDHandler {
 
     PlacementInfoUtil.updatePlacementInfo(
         taskParams.getNodesInCluster(primaryCluster.uuid), primaryCluster);
+    PlacementInfoUtil.finalSanityCheckConfigure(
+        primaryCluster, taskParams.getNodesInCluster(primaryCluster.uuid));
     TaskType taskType = TaskType.EditUniverse;
     if (primaryCluster.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes)) {
       taskType = TaskType.EditKubernetesUniverse;
@@ -1527,6 +1529,8 @@ public class UniverseCRUDHandler {
     Cluster cluster = getOnlyReadReplicaOrBadRequest(taskParams.getReadOnlyClusters());
     validateConsistency(u.getUniverseDetails().getPrimaryCluster(), cluster);
     PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(cluster.uuid), cluster);
+    PlacementInfoUtil.finalSanityCheckConfigure(
+        cluster, taskParams.getNodesInCluster(cluster.uuid));
     TaskType taskType = TaskType.EditUniverse;
     if (cluster.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes)) {
       taskType = TaskType.EditKubernetesUniverse;
@@ -1987,6 +1991,8 @@ public class UniverseCRUDHandler {
 
     PlacementInfoUtil.updatePlacementInfo(
         taskParams.getNodesInCluster(readOnlyCluster.uuid), readOnlyCluster);
+    PlacementInfoUtil.finalSanityCheckConfigure(
+        readOnlyCluster, taskParams.getNodesInCluster(readOnlyCluster.uuid));
 
     // Submit the task to create the cluster.
     UUID taskUUID = commissioner.submit(taskType, taskParams);
