@@ -186,6 +186,9 @@ public class Backup extends Model {
     @EnumValue("GCS")
     GCS,
 
+    @EnumValue("OCI")
+    OCI,
+
     @EnumValue("FILE")
     FILE;
   }

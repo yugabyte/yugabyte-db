@@ -4060,6 +4060,7 @@
             "NFS",
             "AZ",
             "GCS",
+            "OCI",
             "FILE"
           ],
           "type" : "string"
@@ -4514,6 +4515,7 @@
             "NFS",
             "AZ",
             "GCS",
+            "OCI",
             "FILE"
           ],
           "type" : "string"
@@ -13067,6 +13069,7 @@
             "NFS",
             "AZ",
             "GCS",
+            "OCI",
             "FILE"
           ],
           "type" : "string"
