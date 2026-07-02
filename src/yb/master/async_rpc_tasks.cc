@@ -576,6 +576,16 @@ TableType AsyncAlterTable::table_type() const {
   return tablet_->table()->GetTableType();
 }
 
+void AsyncAlterTable::Finished(const Status& status) {
+  // Notify the CDC-SDK batch tracker (if any) so the CreateCDCStream dispatcher can move
+  // on to the next batch once all of this batch's per-tablet RPCs have reached a terminal
+  // state. RetryingRpcTask::Finished() fires exactly once per task at terminal state, so
+  // it's safe to call OnComplete here without worrying about per-attempt double-counting.
+  if (cdc_alter_batch_tracker_) {
+    cdc_alter_batch_tracker_->OnComplete(status);
+  }
+}
+
 bool AsyncAlterTable::SendRequest(int attempt) {
   ADOPT_WAIT_STATE(wait_state_);
   VLOG_WITH_PREFIX(1) << "Send alter table request to " << permanent_uuid() << " for "

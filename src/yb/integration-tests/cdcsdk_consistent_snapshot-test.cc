@@ -31,7 +31,8 @@ class CDCSDKConsistentSnapshotTest : public CDCSDKYsqlTest {
   void TestCSStreamSnapshotEstablishment(
       bool use_replication_slot, bool enable_replication_commands);
   void TestCSStreamFailureRollback(
-      std::string sync_point, std::string expected_error, bool poll_catalog_tables = false);
+      std::string sync_point, std::string expected_error, bool poll_catalog_tables = false,
+      bool use_batching_and_throttling = false);
 };
 
 void CDCSDKConsistentSnapshotTest::TestCSStreamSnapshotEstablishment(
@@ -121,17 +122,36 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotNameFromCreateReplicationSlot) 
 }
 
 void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
-    std::string sync_point, std::string expected_error, bool poll_catalog_tables) {
+    std::string sync_point, std::string expected_error, bool poll_catalog_tables,
+    bool use_batching_and_throttling) {
   // Make UpdatePeersAndMetrics and Catalog Manager background tasks run frequently.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
-  ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = poll_catalog_tables;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      poll_catalog_tables;
 
-  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
-  auto tablet_peer =
-      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
+  if (use_batching_and_throttling) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_create_stream_alter_table_dispatch_batch_size) = 2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_create_stream_alter_table_dispatch_delay_ms) = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_concurrent_alter_table_rpcs) = 5;
+  }
+
+  ASSERT_OK(SetUpWithParams(/*replication_factor=*/1, /*num_masters=*/1, /*colocated=*/false));
+
+  const int kNumTables = use_batching_and_throttling ? 5 : 1;
+  const uint32_t kNumTabletsPerTable = use_batching_and_throttling ? 3 : 1;
+
+  std::vector<TabletId> tablet_ids;
+  for (int i = 1; i <= kNumTables; ++i) {
+    const auto table_name = Format("test_table_$0", i);
+    auto table = ASSERT_RESULT(
+        CreateTable(&test_cluster_, test_namespace_name, table_name, kNumTabletsPerTable));
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /*partition_list_version=*/nullptr));
+    for (const auto& t : tablets) {
+      tablet_ids.push_back(t.tablet_id());
+    }
+  }
 
   std::atomic<bool> force_failure = true;
   yb::SyncPoint::GetInstance()->SetCallBack(sync_point, [&force_failure, &sync_point](void* arg) {
@@ -146,29 +166,49 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
   ASSERT_NOK(s);
   if (sync_point == "CreateCDCSDKStream::kWhileStoringConsistentSnapshotDetails") {
     auto error_message = s.status().message().AsStringView();
-    ASSERT_TRUE(
-        error_message.find("timed out") != std::string::npos ||
-        error_message.find("already exists") != std::string::npos);
+    ASSERT_TRUE(error_message.find("unexpectedly found Invalid") != std::string::npos)
+        << error_message;
   } else {
     ASSERT_NE(s.status().message().AsStringView().find(expected_error), std::string::npos)
         << s.status().message().AsStringView();
   }
   LOG(INFO) << "Asserted the stream creation failures";
 
-  auto condition = [this, tablet_peer]() -> Result<bool> {
+  auto metadata_cleanup_condition = [this]() -> Result<bool> {
     auto list_streams_resp = VERIFY_RESULT(ListDBStreams());
-    if(list_streams_resp.streams_size() != 0) {
+    if (list_streams_resp.streams_size() != 0) {
       LOG(INFO) << "Non empty streams: " << list_streams_resp.ShortDebugString();
       return false;
     }
 
-    return tablet_peer->get_cdc_sdk_safe_time() == HybridTime::kInvalid;
+    auto active_rows = VERIFY_RESULT(GetStateTableRowCount());
+    return active_rows == 0;
   };
 
-  // Allow the background UpdatePeersAndMetrics to clean up the stream.
-  auto timeout = MonoDelta::FromSeconds(
-      10 * FLAGS_update_min_cdc_indices_interval_secs * kTimeMultiplier);
-  ASSERT_OK(WaitFor(condition, timeout, "Wait streams cleaned"));
+  auto metadata_clean_timeout =
+      MonoDelta::FromSeconds(10 * FLAGS_catalog_manager_bg_task_wait_ms * kTimeMultiplier);
+  ASSERT_OK(WaitFor(
+      metadata_cleanup_condition, metadata_clean_timeout,
+      "Wait for stream_metadata and cdc_state entries cleanup"));
+
+  auto barriers_release_condition = [this, &tablet_ids]() -> Result<bool> {
+    for (const auto& tablet_id : tablet_ids) {
+      auto peer = VERIFY_RESULT(GetLeaderPeerForTablet(test_cluster(), tablet_id));
+      if (peer->get_cdc_sdk_safe_time() != HybridTime::kInvalid ||
+          peer->get_cdc_min_replicated_index() != std::numeric_limits<int64_t>::max() ||
+          peer->cdc_sdk_min_checkpoint_op_id() != OpId::Max()) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 5;
+  auto barriers_release_timeout = MonoDelta::FromSeconds(
+      10 * FLAGS_cdc_min_replicated_index_considered_stale_secs * kTimeMultiplier);
+  ASSERT_OK(WaitFor(
+      barriers_release_condition, barriers_release_timeout,
+      "Wait for the release of all tablets retention barriers"));
 
   // Future stream creations must succeed. Disable running UpdatePeersAndMetrics now so that it
   // doesn't interfere with the safe time.
@@ -177,20 +217,19 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
 
   LOG(INFO) << "Creating Consistent snapshot stream again.";
   auto stream1_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
-  const auto& snapshot_time_key_pair =
-      ASSERT_RESULT(GetSnapshotDetailsFromCdcStateTable(
-          stream1_id, tablet_peer->tablet_id(), test_client()));
-  auto checkpoint_result =
-      ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream1_id, tablet_peer->tablet_id()));
+  for (const auto& tablet_id : tablet_ids) {
+    const auto& snapshot_time_key_pair =
+        ASSERT_RESULT(GetSnapshotDetailsFromCdcStateTable(stream1_id, tablet_id, test_client()));
+    auto checkpoint_result = ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream1_id, tablet_id));
 
-  LogRetentionBarrierAndRelatedDetails(checkpoint_result, tablet_peer);
-  ASSERT_GT(checkpoint_result.checkpoint().op_id().term(), 0);
-  ASSERT_GT(checkpoint_result.checkpoint().op_id().index(), 0);
-  ASSERT_GT(std::get<0>(snapshot_time_key_pair), tablet_peer->get_cdc_sdk_safe_time().ToUint64());
-  ASSERT_LE(checkpoint_result.checkpoint().op_id().index(),
-            tablet_peer->get_cdc_min_replicated_index());
-  ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id().index,
-            tablet_peer->get_cdc_min_replicated_index());
+    auto peer = ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablet_id));
+    LogRetentionBarrierAndRelatedDetails(checkpoint_result, peer);
+    ASSERT_GT(checkpoint_result.checkpoint().op_id().term(), 0);
+    ASSERT_GT(checkpoint_result.checkpoint().op_id().index(), 0);
+    ASSERT_GT(std::get<0>(snapshot_time_key_pair), peer->get_cdc_sdk_safe_time().ToUint64());
+    ASSERT_LE(checkpoint_result.checkpoint().op_id().index(), peer->get_cdc_min_replicated_index());
+    ASSERT_EQ(peer->cdc_sdk_min_checkpoint_op_id().index, peer->get_cdc_min_replicated_index());
+  }
 
   auto list_streams_resp = ASSERT_RESULT(ListDBStreams());
   ASSERT_EQ(list_streams_resp.streams_size(), 1);
@@ -251,6 +290,81 @@ TEST_F(
   TestCSStreamFailureRollback(
       "CreateCDCSDKStream::kAfterStoringConsistentSnapshotDetails",
       "Test failure for sync point CreateCDCSDKStream::kAfterStoringConsistentSnapshotDetails.");
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest, TestBatchedCSStreamFailureRollbackFailureBeforeSysCatalogEntry) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kBeforeSysCatalogEntry",
+      "Test failure for sync point CreateCDCSDKStream::kBeforeSysCatalogEntry.",
+      false /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest, TestBatchedCSStreamFailureRollbackFailureBeforeInMemoryCommit) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kBeforeInMemoryStateCommit",
+      "Test failure for sync point CreateCDCSDKStream::kBeforeInMemoryStateCommit.",
+      false /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest,
+    TestBatchedCSStreamFailureRollbackFailureAfterInMemoryStateCommit) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterInMemoryStateCommit",
+      "Test failure for sync point CreateCDCSDKStream::kAfterInMemoryStateCommit.",
+      false /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestBatchedCSStreamFailureRollbackFailureAfterDummy) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterDummyCDCStateEntries",
+      "Test failure for sync point CreateCDCSDKStream::kAfterDummyCDCStateEntries.",
+      false /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest,
+    TestBatchedCSStreamFailureRollbackFailureBeforeFinalAlterTableBatchFlush) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kBeforeFinalAlterTableBatchFlush",
+      "Test failure for sync point CreateCDCSDKStream::kBeforeFinalAlterTableBatchFlush.",
+      false /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest, TestBatchedCSStreamFailureRollbackFailureAfterRetentionBarriers) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterRetentionBarriers",
+      "Test failure for sync point CreateCDCSDKStream::kAfterRetentionBarriers.",
+      false /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest,
+    TestBatchedCSStreamFailureRollbackFailureAfterRetentionBarriersWithCatalogTables) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterRetentionBarriers",
+      "Test failure for sync point CreateCDCSDKStream::kAfterRetentionBarriers.",
+      true /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest,
+    TestBatchedCSStreamFailureRollbackFailureWhileStoringConsistentSnapshot) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kWhileStoringConsistentSnapshotDetails", "" /* ignored */,
+      false /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest,
+    TestBatchedCSStreamFailureRollbackFailureAfterStoringConsistentSnapshot) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterStoringConsistentSnapshotDetails",
+      "Test failure for sync point CreateCDCSDKStream::kAfterStoringConsistentSnapshotDetails.",
+      false /* poll_catalog_tables */, true /* use_batching_and_throttling */);
 }
 
 // The goal of this test is to confirm that the retention barriers are set

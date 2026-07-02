@@ -152,6 +152,10 @@ DECLARE_uint32(cdcsdk_vwal_tablets_to_poll_batch_size);
 DECLARE_uint32(TEST_cdcsdk_vwal_getchanges_rpc_delay_ms);
 DECLARE_bool(TEST_cdc_fail_before_setting_barrier);
 DECLARE_string(ysql_yb_default_replica_identity);
+DECLARE_int32(cdc_create_stream_alter_table_dispatch_batch_size);
+DECLARE_int32(cdc_create_stream_alter_table_dispatch_delay_ms);
+DECLARE_int32(max_concurrent_alter_table_rpcs);
+DECLARE_int32(ysql_ddl_rpc_timeout_sec);
 
 namespace yb {
 

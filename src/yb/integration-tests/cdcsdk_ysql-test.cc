@@ -34,6 +34,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tostring.h"
@@ -13652,6 +13653,44 @@ TEST_F(CDCSDKYsqlTest, TestTableBoundStreamYbAdminRejectsTableFromDifferentNames
       {Format("ysql.$0", test_namespace_name), "EXPLICIT", "CHANGE", "NOEXPORT_SNAPSHOT",
        "DYNAMIC_TABLES_DISABLED", other_table.table_id()});
   ASSERT_NOK(status);
+}
+
+TEST_F(CDCSDKYsqlTest, TestCreateStreamWithBatchedAlterTables) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_rpc_timeout_sec) = 600;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_create_stream_alter_table_dispatch_batch_size) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_create_stream_alter_table_dispatch_delay_ms) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_concurrent_alter_table_rpcs) = 5;
+
+  ASSERT_OK(SetUpWithParams(/*replication_factor=*/3, /*num_masters=*/1, /*colocated=*/false));
+
+  constexpr int kNumTables = 5;
+  constexpr uint32_t kNumTabletsPerTable = 3;
+  for (int i = 1; i <= kNumTables; ++i) {
+    const auto table_name = Format("test_table_$0", i);
+    ASSERT_RESULT(
+        CreateTable(&test_cluster_, test_namespace_name, table_name, kNumTabletsPerTable));
+  }
+
+  // Watch for the long-operation-tracker warning emitted from long_operation_tracker.cc (e.g. when
+  // the master holds the CatalogManager mutex_ for too long while fanning out the batched
+  // AlterTable RPCs). The batched dispatch with inter-batch sleeps is designed to keep each
+  // TSHeartbeat operation short, so creating many streams concurrently with master should never
+  // trip it.
+  StringWaiterLogSink long_operation_sink_1{"TSHeartbeat running for"};
+  StringWaiterLogSink long_operation_sink_2{"TSHeartbeat took a long time"};
+
+  constexpr int kNumStreams = 5;
+  for (int i = 1; i <= kNumStreams; ++i) {
+    ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  }
+
+  // Wait for a while to ensure that if any long operation warnings were to be emitted, they would
+  // have been emitted by now.
+  SleepFor(MonoDelta::FromSeconds(10));
+  ASSERT_EQ(long_operation_sink_1.GetEventCount(), 0)
+      << "Unexpected 'TSHeartbeat running for' warning(s) during multi-stream creation";
+  ASSERT_EQ(long_operation_sink_2.GetEventCount(), 0)
+      << "Unexpected 'TSHeartbeat took a long time' warning(s) during multi-stream creation";
 }
 
 }  // namespace cdc
