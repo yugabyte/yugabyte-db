@@ -97,8 +97,6 @@ For some xCluster setups, before upgrading, you should run a verification script
 
 **Upgrading from v2025.1 to v2025.2 or later:** Drop all [vector indexes](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) before upgrading and re-add them after the upgrade is finalized.
 
-**Upgrading from v2025.2 to v2026.1:** The upgrade is backward compatible and no index rebuild is required. However, if you have configured the [vector_index_use_yb_hnsw](../../reference/configuration/all-flags-yb-master/#vector-index-use-yb-hnsw) or [vector_index_use_hnswlib](../../reference/configuration/all-flags-yb-master/#vector-index-use-hnswlib) Master flags (now deprecated), update them to use the replacement Master flag [vector_index_backend](../../reference/configuration/all-flags-yb-master/#vector-index-backend) before upgrading.
-
 ## Upgrade YugabyteDB cluster
 
 You upgrade a cluster in the following phases:
