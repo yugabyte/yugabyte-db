@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <mutex>
 #include <memory>
 #include <optional>
@@ -58,12 +59,14 @@ struct TxnReadPoint {
   uint64_t txn; // Transaction serial number
   uint64_t read_time_serial_no; // Read time serial number
   bool is_clamped; // Whether the uncertainty window is clamped
+  std::optional<uint64_t> follower_read_staleness_ms; // Follower read time staleness
 };
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
   PgTxnManager(
-      PgClient* pg_client, YbcPgCallbacks pg_callbacks, bool enable_table_locking);
+      PgClient* pg_client, YbcPgCallbacks pg_callbacks, bool enable_table_locking,
+      std::atomic<uint64_t>& next_read_time_serial_no);
 
   ~PgTxnManager();
 
@@ -172,12 +175,13 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool ShouldEnableTableLocking() const;
 
   void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
+  void ResetFollowerReadTime() { follower_read_staleness_ms_ = std::nullopt; }
 
  private:
   class SerialNo {
    public:
-    SerialNo();
-    SerialNo(uint64_t txn_serial_no, uint64_t read_time_serial_no);
+    explicit SerialNo(std::atomic<uint64_t>& next_read_time_serial_no);
+    void Set(uint64_t txn_serial_no, uint64_t read_time_serial_no);
     void IncTxn(bool preserve_read_time_history, YbcReadPointHandle catalog_read_time_serial_no);
     void IncReadTime();
     void IncMaxReadTime();
@@ -191,6 +195,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
     }
 
    private:
+    uint64_t NextReadTimeSerialNo();
+
+    std::atomic<uint64_t>& next_read_time_serial_no_;
     uint64_t txn_;
     uint64_t read_time_;
     // Txn may have multiple valid read time values (i.e. multiple read times inside

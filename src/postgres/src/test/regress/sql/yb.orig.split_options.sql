@@ -183,9 +183,23 @@ SELECT num_tablets FROM yb_table_properties('test_presplit_multiple'::regclass);
 SELECT reloptions FROM pg_class WHERE relname = 'test_presplit_multiple';
 DROP TABLE test_presplit_multiple;
 
--- Test: SPLIT INTO and yb_presplit together should fail (duplicate option)
-CREATE TABLE test_presplit_duplicate (k int PRIMARY KEY, v int)
+-- Test: SPLIT INTO and yb_presplit together are both honored: the SPLIT
+-- clause governs the initial tablet layout, the yb_presplit reloption is
+-- recorded as-is.  They are allowed to disagree.
+CREATE TABLE test_presplit_both (k int PRIMARY KEY, v int)
     WITH (yb_presplit='5') SPLIT INTO 3 TABLETS;
+SELECT num_tablets FROM yb_table_properties('test_presplit_both'::regclass);
+SELECT reloptions FROM pg_class WHERE relname = 'test_presplit_both';
+DROP TABLE test_presplit_both;
+
+-- Test: empty-string yb_presplit alongside SPLIT clause is a
+-- suppress-auto-derive sentinel; the entry is stripped and no
+-- yb_presplit reloption is recorded.
+CREATE TABLE test_presplit_sentinel (k int PRIMARY KEY, v int)
+    WITH (yb_presplit='') SPLIT INTO 4 TABLETS;
+SELECT num_tablets FROM yb_table_properties('test_presplit_sentinel'::regclass);
+SELECT reloptions FROM pg_class WHERE relname = 'test_presplit_sentinel';
+DROP TABLE test_presplit_sentinel;
 
 -- Test: yb_presplit with valid split points format on range table
 CREATE TABLE test_presplit_range_points (k int, v int, PRIMARY KEY(k ASC))

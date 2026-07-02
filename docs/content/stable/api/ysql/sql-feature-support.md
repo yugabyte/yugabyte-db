@@ -35,7 +35,7 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 | {{<icon/yes>}} | `SMALLINT, INT, INTEGER, BIGINT`                                          | [Integers](../datatypes/type_numeric/#integers)                             |
 | {{<icon/yes>}} | `INT4RANGE`, `INT8RANGE`, `NUMRANGE`, `TSRANGE`, `TSTZRANGE`, `DATERANGE` | [Range data types](../datatypes/type_range/)                                |
 | {{<icon/yes>}} | `UUID`                                                                    | [UUID data type](../datatypes/type_uuid/)                                   |
-| {{<icon/no>}}  | `XML`                                                                     |                                                                                            |
+| {{<icon/yes>}} | `XML`                                                                     | [XML data type and functions](../datatypes/type_xml/)                                       |
 | {{<icon/yes>}} | `TSVECTOR`                                                                |                                                                                            |
 | {{<icon/yes>}} | UDT(Base, Enumerated, Range, Composite, Array, Domain types)              |                                                                                            |
 {.sno-1}

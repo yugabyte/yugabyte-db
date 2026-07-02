@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { isEmpty, snakeCase } from 'lodash';
+import { isEmpty } from 'lodash';
 import { useTranslation, Trans } from 'react-i18next';
 import { mui, YBButton, YBTag, YBTab, YBTabs, YBTable } from '@yugabyte-ui-library/core';
 import { useToggle } from 'react-use';
@@ -10,15 +10,23 @@ import {
   StyledPanel
 } from '../../create-universe/components/DefaultComponents';
 import { getClusterByType, useEditUniverseContext, useIsUniverseReady } from '../EditUniverseUtils';
-import { getAccessiblePorts } from '../../create-universe/utils/createUniversePayload';
+import {
+  getAccessiblePorts,
+  mapPortsKeys
+} from '../../create-universe/utils/createUniversePayload';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { EditAdvancedSettingsModal } from '../edit-advanced/EditAdvancedSettingsModal';
-import { EditUserTagsModal } from '../edit-advanced/EditUserTagsModal';
+import {
+  EditAdvancedSettingsModal,
+  EditNetworkPortsModal,
+  EditNodeAcessModal,
+  EditUserTagsModal
+} from '../edit-advanced';
 import { useYBToast } from '../../create-universe/helpers/ToastUtils';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 import { transformInstanceTags } from '../../../../features/universe/universe-form/utils/helpers';
 import { StyledLink } from '../../create-universe/components/DefaultComponents';
+import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 
 //icons
 import Checked from '@app/redesign/assets/check-new.svg';
@@ -55,7 +63,7 @@ export const NodeField = ({ label, value }: NodeFieldProps) => {
   const toast = useYBToast();
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '200px' }}>
       <Typography variant="button">{label}</Typography>
       <Box sx={{ display: 'flex', flexDirection: 'row', gap: '4px', alignItems: 'center' }}>
         <Typography variant="body2">{value ?? '-'}</Typography>
@@ -108,16 +116,18 @@ export const NetworkPortsContent = () => {
                 {pg.name}
               </Typography>
             </Box>
-            {pg.PORTS_LIST.map((item) => (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '200px' }}>
-                <Typography variant="button" sx={{ color: '#6D7C88' }}>
-                  {t(item.id)}
-                </Typography>
-                <Typography variant="body2" sx={{ color: '#0B1117' }}>
-                  {communicationPorts[snakeCase(item.id)]}
-                </Typography>
-              </Box>
-            ))}
+            {pg.PORTS_LIST.map((item) => {
+              return (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '200px' }}>
+                  <Typography variant="button" sx={{ color: '#6D7C88' }}>
+                    {t(item.id)}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#0B1117' }}>
+                    {communicationPorts[mapPortsKeys()[item.id]]}
+                  </Typography>
+                </Box>
+              );
+            })}
           </Box>
         );
       })}
@@ -134,9 +144,11 @@ export const AdvancedTab = () => {
   const [isEditAdvancedSettingsModalVisible, setEditAdvancedSettingsModalVisible] =
     useToggle(false);
   const [isUserTagsModalOpen, setUserTagsModalOpen] = useState(false);
-
+  const [isNodeModalOpen, setNodeModalOpen] = useState(false);
+  const [isNetworkPortsModalOpen, setNetworkPortsModalOpen] = useState(false);
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   const networking_spec = primaryCluster?.networking_spec;
+  const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
   const isUniverseReady = useIsUniverseReady();
   const accessKeyValue = primaryCluster?.provider_spec?.access_key_code;
   const awsArnString = primaryCluster?.provider_spec?.aws_instance_profile;
@@ -159,7 +171,9 @@ export const AdvancedTab = () => {
     <Box sx={{ width: '100%' }}>
       <YBTabs value={selectedTab} onChange={(_event, newValue) => setSelectedTab(newValue)}>
         <YBTab value={AdvancedTabs.PROXY} label={'Proxy Settings'} />
-        <YBTab value={AdvancedTabs.OTHER} label={'Other Advanced Settings'} />
+        {providerCode !== CloudType.kubernetes && (
+          <YBTab value={AdvancedTabs.OTHER} label={'Other Advanced Settings'} />
+        )}
       </YBTabs>
       {selectedTab === AdvancedTabs.PROXY && (
         <StyledPanel sx={{ marginTop: '24px' }}>
@@ -216,59 +230,47 @@ export const AdvancedTab = () => {
       )}
       {selectedTab === AdvancedTabs.OTHER && (
         <>
-          <StyledPanel sx={{ marginTop: '24px' }}>
-            <StyledHeader
-              sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            >
-              {t('nodeAccess')}
-              <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
-                <YBButton
-                  dataTestId="edit-security-transit-button"
-                  variant="ghost"
-                  startIcon={<EditIcon />}
-                  onClick={() => {}}
-                  disabled={!isUniverseReady}
-                >
-                  {t('edit', { keyPrefix: 'common' })}
-                </YBButton>
-              </RbacValidator>
-            </StyledHeader>
-            <StyledContent>
-              <Box
-                sx={{ display: 'flex', flexDirection: 'row', gap: '72px', alignItems: 'center' }}
+          {providerCode !== CloudType.kubernetes && (
+            <StyledPanel sx={{ marginTop: '24px' }}>
+              <StyledHeader
+                sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
               >
-                <NodeField label={t('sshKey')} value={accessKeyValue} />
-                <NodeField label={t('awsArn')} value={awsArnString} />
-              </Box>
-            </StyledContent>
-          </StyledPanel>
-          <StyledPanel sx={{ marginTop: '24px' }}>
-            <StyledHeader
-              sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            >
-              {t('networkPorts')}
-              <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
-                <YBButton
-                  dataTestId="edit-security-transit-button"
-                  variant="ghost"
-                  startIcon={<EditIcon />}
-                  onClick={() => {}}
-                  disabled={!isUniverseReady}
+                {t('nodeAccess')}
+                {providerCode === CloudType.aws && (
+                  <RbacValidator
+                    accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER}
+                    isControl
+                  >
+                    <YBButton
+                      dataTestId="edit-security-transit-button"
+                      variant="ghost"
+                      startIcon={<EditIcon />}
+                      onClick={() => setNodeModalOpen(true)}
+                      disabled={!isUniverseReady}
+                    >
+                      {t('edit', { keyPrefix: 'common' })}
+                    </YBButton>
+                  </RbacValidator>
+                )}
+              </StyledHeader>
+              <StyledContent>
+                <Box
+                  sx={{ display: 'flex', flexDirection: 'row', gap: '72px', alignItems: 'center' }}
                 >
-                  {t('edit', { keyPrefix: 'common' })}
-                </YBButton>
-              </RbacValidator>
-            </StyledHeader>
-            <StyledContent>
-              <NetworkPortsContent />
-            </StyledContent>
-          </StyledPanel>
-          <StyledPanel sx={{ marginTop: '24px' }}>
-            <StyledHeader
-              sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            >
-              {t('userTagsTitle')}
-              {userTags.length >= 0 && (
+                  <NodeField label={t('sshKey')} value={accessKeyValue} />
+                  {providerCode === CloudType.aws && (
+                    <NodeField label={t('awsArn')} value={awsArnString} />
+                  )}
+                </Box>
+              </StyledContent>
+            </StyledPanel>
+          )}
+          {providerCode !== CloudType.kubernetes && (
+            <StyledPanel sx={{ marginTop: '24px' }}>
+              <StyledHeader
+                sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                {t('networkPorts')}
                 <RbacValidator
                   accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER}
                   isControl
@@ -277,74 +279,114 @@ export const AdvancedTab = () => {
                     dataTestId="edit-security-transit-button"
                     variant="ghost"
                     startIcon={<EditIcon />}
-                    onClick={() => {
-                      setUserTagsModalOpen(true);
-                    }}
+                    onClick={() => setNetworkPortsModalOpen(true)}
                     disabled={!isUniverseReady}
                   >
                     {t('edit', { keyPrefix: 'common' })}
                   </YBButton>
                 </RbacValidator>
-              )}
-            </StyledHeader>
-            <StyledContent>
-              {userTags.length <= 0 ? (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    height: '168px',
-                    width: '100%',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    bgcolor: '#F2F6FF',
-                    border: '1px dashed #CBDBFF',
-                    borderRadius: '8px',
-                    color: '#4E5F6D',
-                    fontSize: '13px'
-                  }}
-                >
-                  <Typography variant="body2" sx={{ color: '#4E5F6D' }}>
-                    <Trans t={t} i18nKey={'userTagTooltip'} components={{ a: <StyledLink /> }} />
-                  </Typography>
+              </StyledHeader>
+              <StyledContent>
+                <NetworkPortsContent />
+              </StyledContent>
+            </StyledPanel>
+          )}
+          {[CloudType.aws, CloudType.gcp, CloudType.azu].includes(providerCode) && (
+            <StyledPanel sx={{ marginTop: '24px' }}>
+              <StyledHeader
+                sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                {t('userTagsTitle')}
+                {userTags.length > 0 && (
                   <RbacValidator
                     accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER}
                     isControl
                   >
                     <YBButton
-                      variant="secondary"
-                      dataTestId="add-gflags-button"
-                      startIcon={<AddCircleIcon />}
-                      sx={{ mt: 2 }}
-                      disabled={!isUniverseReady}
+                      dataTestId="edit-security-transit-button"
+                      variant="ghost"
+                      startIcon={<EditIcon />}
                       onClick={() => {
                         setUserTagsModalOpen(true);
                       }}
+                      disabled={!isUniverseReady}
                     >
-                      {t('addTags')}
+                      {t('edit', { keyPrefix: 'common' })}
                     </YBButton>
                   </RbacValidator>
-                </Box>
-              ) : (
-                <YBTable
-                  columns={[
-                    { accessorKey: 'name', header: t('userTagName') },
-                    { accessorKey: 'value', header: t('userTagValue') }
-                  ]}
-                  data={userTags}
-                  options={{
-                    pagination: false
-                  }}
-                />
-              )}
-            </StyledContent>
-          </StyledPanel>
+                )}
+              </StyledHeader>
+              <StyledContent>
+                {userTags.length <= 0 ? (
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      height: '168px',
+                      width: '100%',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      bgcolor: '#F2F6FF',
+                      border: '1px dashed #CBDBFF',
+                      borderRadius: '8px',
+                      color: '#4E5F6D',
+                      fontSize: '13px'
+                    }}
+                  >
+                    <Typography variant="body2" sx={{ color: '#4E5F6D' }}>
+                      <Trans t={t} i18nKey={'userTagTooltip'} components={{ a: <StyledLink /> }} />
+                    </Typography>
+                    <RbacValidator
+                      accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER}
+                      isControl
+                    >
+                      <YBButton
+                        variant="secondary"
+                        dataTestId="add-gflags-button"
+                        startIcon={<AddCircleIcon />}
+                        sx={{ mt: 2 }}
+                        disabled={!isUniverseReady}
+                        onClick={() => {
+                          setUserTagsModalOpen(true);
+                        }}
+                      >
+                        {t('addTags')}
+                      </YBButton>
+                    </RbacValidator>
+                  </Box>
+                ) : (
+                  <YBTable
+                    columns={[
+                      { accessorKey: 'name', header: t('userTagName') },
+                      { accessorKey: 'value', header: t('userTagValue') }
+                    ]}
+                    data={userTags}
+                    options={{
+                      pagination: false
+                    }}
+                  />
+                )}
+              </StyledContent>
+            </StyledPanel>
+          )}
         </>
       )}
       <EditUserTagsModal
         open={isUserTagsModalOpen}
         onClose={() => {
           setUserTagsModalOpen(false);
+        }}
+      />
+      <EditNodeAcessModal
+        open={isNodeModalOpen}
+        onClose={() => {
+          setNodeModalOpen(false);
+        }}
+      />
+      <EditNetworkPortsModal
+        open={isNetworkPortsModalOpen}
+        onClose={() => {
+          setNetworkPortsModalOpen(false);
         }}
       />
     </Box>

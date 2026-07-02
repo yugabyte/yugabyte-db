@@ -52,6 +52,10 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
     // The test suite asserts for DML failing with catalog version mismatch when run
     // immediately after DDLs, which isn't true with object locking enabled.
     flags.put("enable_object_locking_for_table_locks", "false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    flags.put("ysql_enable_concurrent_ddl", "false");
+    flags.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
+        (existing, added) -> existing + "," + added);
     // TODO(29142): Fix the test with txn ddl and reenable.
     flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
     return flags;

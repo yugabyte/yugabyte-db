@@ -118,7 +118,7 @@ DEFINE_RUNTIME_bool(enable_namespace_snapshot_workflow, true,
     "part of snapshot");
 
 DEFINE_test_flag(double, crash_during_sys_catalog_restoration, 0.0,
-                 "Probability of crash during the RESTORE_SYS_CATALOG phase.");
+    "Probability of crash during the RESTORE_SYS_CATALOG phase.");
 
 DEFINE_test_flag(bool, import_snapshot_failed, false,
     "Return a error from ImportSnapshotMeta RPC for testing the RPC failure.");
@@ -2517,15 +2517,26 @@ Status CatalogManager::ImportTableEntry(
       }
     }
 
-    // Restore partition key version.
-    if (persisted_schema.table_properties().partitioning_version() !=
-        schema.table_properties().partitioning_version()) {
+    // Restore table properties fixed at create time (partitioning_version,
+    // owns_vector_reverse_mapping) from backup snapshot metadata.
+    const bool restore_partitioning_version =
+        persisted_schema.table_properties().partitioning_version() !=
+        schema.table_properties().partitioning_version();
+    const bool restore_owns_vector_reverse_mapping =
+        persisted_schema.table_properties().owns_vector_reverse_mapping() !=
+        schema.table_properties().owns_vector_reverse_mapping();
+    if (restore_partitioning_version || restore_owns_vector_reverse_mapping) {
       auto l = table->LockForWrite();
-      auto table_props = l.mutable_data()->pb.mutable_schema()->mutable_table_properties();
-      table_props->set_partitioning_version(schema.table_properties().partitioning_version());
+      auto* table_props = l.mutable_data()->pb.mutable_schema()->mutable_table_properties();
+      if (restore_partitioning_version) {
+        table_props->set_partitioning_version(schema.table_properties().partitioning_version());
+      }
+      if (restore_owns_vector_reverse_mapping) {
+        table_props->set_owns_vector_reverse_mapping(
+            schema.table_properties().owns_vector_reverse_mapping());
+      }
 
       l.mutable_data()->pb.set_version(l->pb.version() + 1);
-      // Update sys-catalog with the new table schema.
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
       l.Commit();
       notify_ts_for_schema_change = true;

@@ -40,6 +40,7 @@
 
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
@@ -554,6 +555,13 @@ class PgObjectLocksTest : public LibPqTestBase {
         yb::Format("libpq_utils=1,ts_local_lock_manager=2,$0", FLAGS_vmodule);
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--enable_object_locking_for_table_locks=$0", EnableTableLocks()));
+    // Concurrent DDL requires object locking, so when object locking is disabled, disable
+    // concurrent DDL too; otherwise the cross-flag validator would FATAL if concurrent DDL defaults
+    // on. When object locking is enabled, leave concurrent DDL at its default.
+    if (!EnableTableLocks()) {
+      opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+      AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    }
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", EnableTransactionalDdl()));
     opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
@@ -765,6 +773,13 @@ TEST_P(PgObjectLocksTestAbortTxnsInMixedMode, TestDDLAbortsTxnsInMixedMode) {
   // precedence over value set by GetParam()
   ts1->mutable_flags()->push_back(yb::Format(
       "--enable_object_locking_for_table_locks=$0", ts1_should_use_table_locks ? "true" : "false"));
+  // When object locking is disabled on the restarted TServer, disable concurrent DDL too;
+  // otherwise the cross-flag validator would FATAL if concurrent DDL defaults on. When object
+  // locking is enabled, leave concurrent DDL at its default.
+  if (!ts1_should_use_table_locks) {
+    ts1->mutable_flags()->push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(*ts1->mutable_flags(), "ysql_enable_concurrent_ddl");
+  }
   ASSERT_OK(ts1->Restart(ExternalMiniClusterOptions::kDefaultStartCqlProxy));
   ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
 

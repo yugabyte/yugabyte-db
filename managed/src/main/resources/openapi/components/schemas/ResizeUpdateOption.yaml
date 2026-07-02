@@ -1,0 +1,7 @@
+title: ResizeUpdateOption
+description: Available operation when changing cluster node settings.
+type: string
+enum:
+  - FULL_MOVE
+  - SMART_RESIZE
+  - SMART_RESIZE_NON_RESTART

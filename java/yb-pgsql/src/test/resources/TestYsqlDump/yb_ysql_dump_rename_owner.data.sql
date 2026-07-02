@@ -203,8 +203,8 @@ CREATE TABLE public.t_other (
     k integer NOT NULL,
     CONSTRAINT t_other_pkey PRIMARY KEY((k) HASH)
 )
+WITH (yb_presplit='3')
 SPLIT INTO 3 TABLETS;
-ALTER TABLE public.t_other SET (yb_presplit='3');
 
 
 \if :use_roles
@@ -242,8 +242,8 @@ CREATE TABLE public.t_src (
     k integer NOT NULL,
     CONSTRAINT t_src_pkey PRIMARY KEY((k) HASH)
 )
+WITH (yb_presplit='3')
 SPLIT INTO 3 TABLETS;
-ALTER TABLE public.t_src SET (yb_presplit='3');
 
 
 \if :use_roles

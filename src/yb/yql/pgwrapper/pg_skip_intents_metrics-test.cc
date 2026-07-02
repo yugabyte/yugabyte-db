@@ -47,8 +47,8 @@ class SkipIntentsMetricTest : public pgwrapper::LibPqTestBase {
 
     options->extra_tserver_flags.emplace_back(
         "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=true");
-    options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
 
     // Set a high max batch size to ensure metric tests stay reliable.
     // If the batch size is too low, inserting rows into a single table might

@@ -257,6 +257,7 @@ set(OPENTELEMETRY_LIBRARIES
   opentelemetry_trace
   opentelemetry_exporter_otlp_http
   opentelemetry_resources
+  opentelemetry_common
   opentelemetry_proto)
 
 set(UTIL_LIBS

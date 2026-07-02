@@ -51,6 +51,7 @@ DECLARE_bool(TEST_skip_aborting_active_transactions_during_schema_change);
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
@@ -92,7 +93,9 @@ class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase>,
 class PgPackedRowTestDisableTableLocks : public PgPackedRowTest {
  protected:
   void SetUp() override {
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     PgPackedRowTest::SetUp();
   }
 

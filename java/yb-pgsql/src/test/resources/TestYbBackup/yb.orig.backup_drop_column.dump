@@ -116,8 +116,8 @@ CREATE TABLE public.comp_child (
     "........pg.dropped.4........" INTEGER /* dummy */,
     a integer
 )
+WITH (yb_presplit='')
 SPLIT INTO 2 TABLETS;
-ALTER TABLE public.comp_child SET (yb_presplit='2');
 
 -- For binary upgrade, recreate dropped column.
 UPDATE pg_catalog.pg_attribute
@@ -159,8 +159,8 @@ CREATE TABLE public.comp_uses_child (
     tag text,
     r public.comp_child
 )
+WITH (yb_presplit='')
 SPLIT INTO 2 TABLETS;
-ALTER TABLE public.comp_uses_child SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -188,8 +188,8 @@ CREATE TABLE public.comp_uses_parent (
     tag text,
     r public.comp_parent
 )
+WITH (yb_presplit='')
 SPLIT INTO 2 TABLETS;
-ALTER TABLE public.comp_uses_parent SET (yb_presplit='2');
 
 
 \if :use_roles
@@ -265,8 +265,8 @@ CREATE TABLE public.part_drop_child (
     "........pg.dropped.4........" INTEGER /* dummy */,
     "........pg.dropped.5........" INTEGER /* dummy */
 )
+WITH (yb_presplit='')
 SPLIT INTO 2 TABLETS;
-ALTER TABLE public.part_drop_child SET (yb_presplit='2');
 
 -- For binary upgrade, recreate dropped column.
 UPDATE pg_catalog.pg_attribute
@@ -308,8 +308,8 @@ CREATE TABLE public.row_type_tbl (
     "........pg.dropped.1........" INTEGER /* dummy */,
     x1 integer
 )
+WITH (yb_presplit='')
 SPLIT INTO 2 TABLETS;
-ALTER TABLE public.row_type_tbl SET (yb_presplit='2');
 
 -- For binary upgrade, recreate dropped column.
 UPDATE pg_catalog.pg_attribute
@@ -343,8 +343,8 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16387'::pg_catalog.o
 CREATE TABLE public.row_type_user (
     x public.row_type_tbl
 )
+WITH (yb_presplit='')
 SPLIT INTO 2 TABLETS;
-ALTER TABLE public.row_type_user SET (yb_presplit='2');
 
 
 \if :use_roles

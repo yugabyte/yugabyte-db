@@ -568,7 +568,7 @@ SELECT * FROM
                Hash Cond: (pctest4.c = pctest1.b)
                ->  Gather
                      Workers Planned: 2
-                     ->  Parallel Seq Scan on pctest2 pctest4
+                     ->  Parallel Index Scan using pctest2_pkey on pctest2 pctest4
                ->  Hash
                      ->  Merge Join
                            Merge Cond: (pctest1.k = pctest2.k)
@@ -1048,8 +1048,8 @@ SELECT pctest1.* FROM pctest1, pctest2
    Join Filter: (pctest1.a = pctest2.b)
    ->  Gather
          Workers Planned: 2
-         ->  Parallel Index Scan using pctest1_a_idx on pctest1
-               Storage Index Filter: ((a % 10) = 0)
+         ->  Parallel Seq Scan on pctest1
+               Storage Filter: ((a % 10) = 0)
    ->  Gather
          Workers Planned: 2
          ->  Parallel Index Only Scan using pctest2_b_idx on pctest2
@@ -1064,26 +1064,26 @@ SELECT pctest1.* FROM pctest1, pctest2
   WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
   k   | a  |  b  | c  |     d     
 ------+----+-----+----+-----------
- 1000 |  0 | 333 |  0 | Value1000
- 1000 |  0 | 333 |  0 | Value1000
- 1000 |  0 | 333 |  0 | Value1000
- 1000 |  0 | 333 |  0 | Value1000
-  990 | 10 | 330 | 40 | Value990
-  990 | 10 | 330 | 40 | Value990
-  990 | 10 | 330 | 40 | Value990
-  990 | 10 | 330 | 40 | Value990
-  990 | 10 | 330 | 40 | Value990
-  980 | 20 | 326 | 30 | Value980
-  980 | 20 | 326 | 30 | Value980
-  980 | 20 | 326 | 30 | Value980
-  980 | 20 | 326 | 30 | Value980
-  980 | 20 | 326 | 30 | Value980
-  970 | 30 | 323 | 20 | Value970
-  970 | 30 | 323 | 20 | Value970
-  970 | 30 | 323 | 20 | Value970
-  970 | 30 | 323 | 20 | Value970
-  970 | 30 | 323 | 20 | Value970
   960 | 40 | 320 | 10 | Value960
+  970 | 30 | 323 | 20 | Value970
+  970 | 30 | 323 | 20 | Value970
+  970 | 30 | 323 | 20 | Value970
+  970 | 30 | 323 | 20 | Value970
+  970 | 30 | 323 | 20 | Value970
+  980 | 20 | 326 | 30 | Value980
+  980 | 20 | 326 | 30 | Value980
+  980 | 20 | 326 | 30 | Value980
+  980 | 20 | 326 | 30 | Value980
+  980 | 20 | 326 | 30 | Value980
+  990 | 10 | 330 | 40 | Value990
+  990 | 10 | 330 | 40 | Value990
+  990 | 10 | 330 | 40 | Value990
+  990 | 10 | 330 | 40 | Value990
+  990 | 10 | 330 | 40 | Value990
+ 1000 |  0 | 333 |  0 | Value1000
+ 1000 |  0 | 333 |  0 | Value1000
+ 1000 |  0 | 333 |  0 | Value1000
+ 1000 |  0 | 333 |  0 | Value1000
 (20 rows)
 
 EXPLAIN (costs off)
@@ -1268,13 +1268,13 @@ SELECT * FROM
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
 /*+ Parallel(pctest3 3 hard) */
 EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Finalize Aggregate
    ->  Gather
          Workers Planned: 3
          ->  Noop Aggregate
-               ->  Parallel Index Only Scan using pctest3_a_key on pctest3
+               ->  Parallel Seq Scan on pctest3
                      Storage Filter: (a > 123)
                      Partial Aggregate: true
 (7 rows)

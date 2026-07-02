@@ -1144,6 +1144,7 @@ Result<TxnReadPoint> PgSession::UpdateReadPointForCatalogOps(PgOid catalog_table
   // Without clamping, the uncertainty window causes spurious read restart errors on catalog
   // tables that are unnecessary given the object-lock / invalidation-messages protocol.
   pg_txn_manager_->SetClampUncertaintyWindow(true);
+  pg_txn_manager_->ResetFollowerReadTime();
   return original_read_point;
 }
 

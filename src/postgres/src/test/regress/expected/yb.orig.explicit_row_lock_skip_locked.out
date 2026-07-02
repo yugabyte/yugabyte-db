@@ -1,0 +1,3840 @@
+--
+-- YB tests for SKIP LOCKED with parallel read-ahead batching.
+--
+\set ECHO queries
+create function explain_filter(text) returns setof text
+language plpgsql as
+$$
+declare
+    ln text;
+begin
+    for ln in execute $1
+    loop
+        -- Replace any numeric word with just 'N'
+        ln := regexp_replace(ln, '-?\m\d+\M', 'N', 'g');
+        -- In sort output, the above won't match units-suffixed numbers
+        ln := regexp_replace(ln, '\m\d+kB', 'NkB', 'g');
+        -- Ignore text-mode buffers output because it varies depending
+        -- on the system state
+        CONTINUE WHEN (ln ~ ' +Buffers: .*');
+        -- Ignore text-mode "Planning:" line because whether it's output
+        -- varies depending on the system state
+        CONTINUE WHEN (ln = 'Planning:');
+        return next ln;
+    end loop;
+end;
+$$;
+create function explain_filter_to_json(text) returns jsonb
+language plpgsql as
+$$
+declare
+    data text := '';
+    ln text;
+begin
+    for ln in execute $1
+    loop
+        -- Replace any numeric word with just '0'
+        ln := regexp_replace(ln, '\m\d+\M', '0', 'g');
+        data := data || ln;
+    end loop;
+    return data::jsonb;
+end;
+$$;
+CREATE FUNCTION yb_lockrows_max_read_aheads(query text) RETURNS SETOF text
+LANGUAGE plpgsql AS $$
+BEGIN
+    -- DEBUG is required to emit Max Read Ahead; only that field is printed below.
+    PERFORM set_config('yb_explain_hide_non_deterministic_fields', 'off', true);
+    RETURN QUERY
+        SELECT ln
+        FROM explain_filter('EXPLAIN (ANALYZE, DEBUG, DIST, COSTS OFF, SUMMARY OFF) ' || query) ln
+        WHERE ln LIKE '%Max Read Ahead%';
+    PERFORM set_config('yb_explain_hide_non_deterministic_fields', 'on', true);
+END;
+$$;
+CREATE TABLE t_asc (k INT, v INT, PRIMARY KEY (k ASC));
+INSERT INTO t_asc SELECT i, i FROM generate_series(1, 15) AS i;
+CREATE TABLE t_multi (k1 INT, k2 INT, k3 INT, v INT, PRIMARY KEY(k1, k2, k3));
+INSERT INTO t_multi SELECT x, x+1, x+2, x+3 FROM generate_series(1, 13, 4) AS s(x);
+CREATE TABLE t_with_idx (k INT, v INT, PRIMARY KEY (k ASC));
+CREATE INDEX t_with_idx_v ON t_with_idx (v ASC);
+INSERT INTO t_with_idx SELECT i, i*2 FROM generate_series(1, 10) AS i;
+CREATE TABLE t_part (a INT PRIMARY KEY) PARTITION BY RANGE (a);
+CREATE TABLE t_part_lo PARTITION OF t_part FOR VALUES FROM (1) TO (6);
+CREATE TABLE t_part_hi PARTITION OF t_part FOR VALUES FROM (6) TO (11);
+INSERT INTO t_part SELECT i FROM generate_series(1, 10) AS i;
+BEGIN;
+SELECT k FROM t_asc ORDER BY v FOR UPDATE SKIP LOCKED;
+ k  
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+ 11
+ 12
+ 13
+ 14
+ 15
+(15 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {10}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {11}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {12}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {13}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {14}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {15}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {9}
+(15 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM t_asc ORDER BY v FOR UPDATE SKIP LOCKED;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ LockRows (actual rows=15 loops=1)
+   ->  Sort (actual rows=15 loops=1)
+         Sort Key: v
+         Sort Method: quicksort
+         ->  Seq Scan on t_asc (actual rows=15 loops=1)
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 15
+ Storage Read Requests: 16
+ Storage Read Ops: 16
+ Storage Rows Scanned: 30
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(13 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT k FROM t_asc ORDER BY v FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+   Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT k FROM t_asc ORDER BY v LIMIT 5 FOR UPDATE SKIP LOCKED;
+ k 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+(5 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM t_asc ORDER BY v LIMIT 5 FOR UPDATE SKIP LOCKED;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  LockRows (actual rows=5 loops=1)
+         ->  Sort (actual rows=5 loops=1)
+               Sort Key: v
+               Sort Method: quicksort
+               ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 15
+ Storage Read Requests: 6
+ Storage Read Ops: 6
+ Storage Rows Scanned: 20
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(14 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT k FROM t_asc ORDER BY v LIMIT 5 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT k FROM t_asc WHERE k < 6 ORDER BY v FOR UPDATE SKIP LOCKED;
+ k 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+(5 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM t_asc WHERE k < 6 ORDER BY v FOR UPDATE SKIP LOCKED;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ LockRows (actual rows=5 loops=1)
+   ->  Sort (actual rows=5 loops=1)
+         Sort Key: v
+         Sort Method: quicksort
+         ->  Index Scan using t_asc_pkey on t_asc (actual rows=5 loops=1)
+               Index Cond: (k < 6)
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 5
+ Storage Read Requests: 6
+ Storage Read Ops: 6
+ Storage Rows Scanned: 10
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(14 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT k FROM t_asc WHERE k < 6 ORDER BY v FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+   Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT k FROM t_asc WHERE k::text LIKE '%1%' ORDER BY v FOR UPDATE SKIP LOCKED;
+ k  
+----
+  1
+ 10
+ 11
+ 12
+ 13
+ 14
+ 15
+(7 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {10}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {11}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {12}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {13}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {14}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {15}
+(7 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM t_asc WHERE k::text LIKE '%1%' ORDER BY v FOR UPDATE SKIP LOCKED;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ LockRows (actual rows=7 loops=1)
+   ->  Sort (actual rows=7 loops=1)
+         Sort Key: v
+         Sort Method: quicksort
+         ->  Seq Scan on t_asc (actual rows=7 loops=1)
+               Filter: ((k)::text ~~ '%1%'::text)
+               Rows Removed by Filter: 8
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 15
+ Storage Read Requests: 8
+ Storage Read Ops: 8
+ Storage Rows Scanned: 22
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(15 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT k FROM t_asc WHERE k::text LIKE ''%1%'' ORDER BY v FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+   Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT k FROM t_asc WHERE k < 6 LIMIT 3 FOR UPDATE SKIP LOCKED;
+ k 
+---
+ 1
+ 2
+ 3
+(3 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+(3 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM t_asc WHERE k < 6 LIMIT 3 FOR UPDATE SKIP LOCKED;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  LockRows (actual rows=3 loops=1)
+         ->  Index Scan using t_asc_pkey on t_asc (actual rows=3 loops=1)
+               Index Cond: (k < 6)
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 3
+ Storage Read Requests: 4
+ Storage Read Ops: 4
+ Storage Rows Scanned: 6
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(12 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT k FROM t_asc WHERE k < 6 LIMIT 3 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT * FROM t_with_idx WHERE v > 10 ORDER BY k FOR UPDATE SKIP LOCKED;
+ k  | v  
+----+----
+  6 | 12
+  7 | 14
+  8 | 16
+  9 | 18
+ 10 | 20
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype |  relation  |            mode            | hash_cols | range_cols 
+----------+------------+----------------------------+-----------+------------
+ row      | t_with_idx | {STRONG_READ,STRONG_WRITE} |           | {10}
+ row      | t_with_idx | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_with_idx | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_with_idx | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_with_idx | {STRONG_READ,STRONG_WRITE} |           | {9}
+(5 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_with_idx WHERE v > 10 ORDER BY k FOR UPDATE SKIP LOCKED;
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ LockRows (actual rows=5 loops=1)
+   ->  Sort (actual rows=5 loops=1)
+         Sort Key: k
+         Sort Method: quicksort
+         ->  Index Scan using t_with_idx_v on t_with_idx (actual rows=5 loops=1)
+               Index Cond: (v > 10)
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 5
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 1
+               Storage Index Rows Scanned: 5
+ Storage Read Requests: 7
+ Storage Read Ops: 7
+ Storage Rows Scanned: 15
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(17 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT * FROM t_with_idx WHERE v > 10 ORDER BY k FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+   Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT * FROM t_with_idx WHERE v::text LIKE '%1%' ORDER BY (k + v) FOR UPDATE SKIP LOCKED;
+ k | v  
+---+----
+ 5 | 10
+ 6 | 12
+ 7 | 14
+ 8 | 16
+ 9 | 18
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype |  relation  |            mode            | hash_cols | range_cols 
+----------+------------+----------------------------+-----------+------------
+ row      | t_with_idx | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_with_idx | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_with_idx | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_with_idx | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_with_idx | {STRONG_READ,STRONG_WRITE} |           | {9}
+(5 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_with_idx WHERE v::text LIKE '%1%' ORDER BY (k + v) FOR UPDATE SKIP LOCKED;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ LockRows (actual rows=5 loops=1)
+   ->  Sort (actual rows=5 loops=1)
+         Sort Key: ((k + v))
+         Sort Method: quicksort
+         ->  Seq Scan on t_with_idx (actual rows=5 loops=1)
+               Filter: ((v)::text ~~ '%1%'::text)
+               Rows Removed by Filter: 5
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 10
+ Storage Read Requests: 6
+ Storage Read Ops: 6
+ Storage Rows Scanned: 15
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(15 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT * FROM t_with_idx WHERE v::text LIKE ''%1%'' ORDER BY (k + v) FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+   Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+WITH cte AS (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) SELECT k FROM cte ORDER BY k;
+ k  
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+ 11
+ 12
+ 13
+ 14
+ 15
+(15 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {10}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {11}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {12}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {13}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {14}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {15}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {9}
+(15 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) SELECT k FROM cte ORDER BY k;
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Sort (actual rows=15 loops=1)
+   Sort Key: cte.k
+   Sort Method: quicksort
+   CTE cte
+     ->  LockRows (actual rows=15 loops=1)
+           ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                 Storage Table Read Requests: 1
+                 Storage Table Read Ops: 1
+                 Storage Table Rows Scanned: 15
+   ->  CTE Scan on cte (actual rows=15 loops=1)
+ Storage Read Requests: 16
+ Storage Read Ops: 16
+ Storage Rows Scanned: 30
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(15 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('WITH cte AS (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) SELECT k FROM cte ORDER BY k');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+WITH cte AS MATERIALIZED (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) SELECT k FROM cte LIMIT 5;
+ k 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+(5 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS MATERIALIZED (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) SELECT k FROM cte LIMIT 5;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   CTE cte
+     ->  LockRows (actual rows=5 loops=1)
+           ->  Seq Scan on t_asc (actual rows=5 loops=1)
+                 Storage Table Read Requests: 1
+                 Storage Table Read Ops: 1
+                 Storage Table Rows Scanned: 5
+   ->  CTE Scan on cte (actual rows=5 loops=1)
+ Storage Read Requests: 6
+ Storage Read Ops: 6
+ Storage Rows Scanned: 10
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(13 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('WITH cte AS MATERIALIZED (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) SELECT k FROM cte LIMIT 5');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+WITH cte AS NOT MATERIALIZED (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) SELECT k FROM cte LIMIT 5;
+ k 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+(5 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS NOT MATERIALIZED (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) SELECT k FROM cte LIMIT 5;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   CTE cte
+     ->  LockRows (actual rows=5 loops=1)
+           ->  Seq Scan on t_asc (actual rows=5 loops=1)
+                 Storage Table Read Requests: 1
+                 Storage Table Read Ops: 1
+                 Storage Table Rows Scanned: 5
+   ->  CTE Scan on cte (actual rows=5 loops=1)
+ Storage Read Requests: 6
+ Storage Read Ops: 6
+ Storage Rows Scanned: 10
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(13 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('WITH cte AS NOT MATERIALIZED (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) SELECT k FROM cte LIMIT 5');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+WITH cte AS (SELECT k FROM t_asc ORDER BY v LIMIT 5 FOR UPDATE SKIP LOCKED) SELECT k FROM cte;
+ k 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+(5 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc ORDER BY v LIMIT 5 FOR UPDATE SKIP LOCKED) SELECT k FROM cte;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ CTE Scan on cte (actual rows=5 loops=1)
+   CTE cte
+     ->  Limit (actual rows=5 loops=1)
+           ->  LockRows (actual rows=5 loops=1)
+                 ->  Sort (actual rows=5 loops=1)
+                       Sort Key: t_asc.v
+                       Sort Method: quicksort
+                       ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                             Storage Table Read Requests: 1
+                             Storage Table Read Ops: 1
+                             Storage Table Rows Scanned: 15
+ Storage Read Requests: 6
+ Storage Read Ops: 6
+ Storage Rows Scanned: 20
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('WITH cte AS (SELECT k FROM t_asc ORDER BY v LIMIT 5 FOR UPDATE SKIP LOCKED) SELECT k FROM cte');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+WITH cte AS (SELECT k FROM t_asc ORDER BY v LIMIT 5 FOR UPDATE SKIP LOCKED) SELECT k FROM cte ORDER BY k;
+ k 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+(5 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc ORDER BY v LIMIT 5 FOR UPDATE SKIP LOCKED) SELECT k FROM cte ORDER BY k;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Sort (actual rows=5 loops=1)
+   Sort Key: cte.k
+   Sort Method: quicksort
+   CTE cte
+     ->  Limit (actual rows=5 loops=1)
+           ->  LockRows (actual rows=5 loops=1)
+                 ->  Sort (actual rows=5 loops=1)
+                       Sort Key: t_asc.v
+                       Sort Method: quicksort
+                       ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                             Storage Table Read Requests: 1
+                             Storage Table Read Ops: 1
+                             Storage Table Rows Scanned: 15
+   ->  CTE Scan on cte (actual rows=5 loops=1)
+ Storage Read Requests: 6
+ Storage Read Ops: 6
+ Storage Rows Scanned: 20
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(19 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('WITH cte AS (SELECT k FROM t_asc ORDER BY v LIMIT 5 FOR UPDATE SKIP LOCKED) SELECT k FROM cte ORDER BY k');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+WITH cte AS (SELECT k FROM t_asc LIMIT 5) SELECT k FROM cte ORDER BY k FOR UPDATE SKIP LOCKED;
+ k 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation | mode | hash_cols | range_cols 
+----------+----------+------+-----------+------------
+(0 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc LIMIT 5) SELECT k FROM cte ORDER BY k FOR UPDATE SKIP LOCKED;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Sort (actual rows=5 loops=1)
+   Sort Key: t_asc.k
+   Sort Method: quicksort
+   ->  Limit (actual rows=5 loops=1)
+         ->  Seq Scan on t_asc (actual rows=5 loops=1)
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 5
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 5
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(13 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('WITH cte AS (SELECT k FROM t_asc LIMIT 5) SELECT k FROM cte ORDER BY k FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+WITH cte AS (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) SELECT k FROM cte ORDER BY k LIMIT 5 FOR UPDATE SKIP LOCKED;
+ k 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {10}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {11}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {12}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {13}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {14}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {15}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {9}
+(15 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) SELECT k FROM cte ORDER BY k LIMIT 5 FOR UPDATE SKIP LOCKED;
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   CTE cte
+     ->  LockRows (actual rows=15 loops=1)
+           ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                 Storage Table Read Requests: 1
+                 Storage Table Read Ops: 1
+                 Storage Table Rows Scanned: 15
+   ->  Sort (actual rows=5 loops=1)
+         Sort Key: cte.k
+         Sort Method: top-N heapsort
+         ->  CTE Scan on cte (actual rows=15 loops=1)
+ Storage Read Requests: 16
+ Storage Read Ops: 16
+ Storage Rows Scanned: 30
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('WITH cte AS (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) SELECT k FROM cte ORDER BY k LIMIT 5 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+WITH cte AS (SELECT k FROM t_asc ORDER BY v LIMIT 10 FOR UPDATE SKIP LOCKED) SELECT k FROM cte ORDER BY k LIMIT 3;
+ k 
+---
+ 1
+ 2
+ 3
+(3 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {10}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {9}
+(10 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc ORDER BY v LIMIT 10 FOR UPDATE SKIP LOCKED) SELECT k FROM cte ORDER BY k LIMIT 3;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   CTE cte
+     ->  Limit (actual rows=10 loops=1)
+           ->  LockRows (actual rows=10 loops=1)
+                 ->  Sort (actual rows=10 loops=1)
+                       Sort Key: t_asc.v
+                       Sort Method: quicksort
+                       ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                             Storage Table Read Requests: 1
+                             Storage Table Read Ops: 1
+                             Storage Table Rows Scanned: 15
+   ->  Sort (actual rows=3 loops=1)
+         Sort Key: cte.k
+         Sort Method: top-N heapsort
+         ->  CTE Scan on cte (actual rows=10 loops=1)
+ Storage Read Requests: 11
+ Storage Read Ops: 11
+ Storage Rows Scanned: 25
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(20 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('WITH cte AS (SELECT k FROM t_asc ORDER BY v LIMIT 10 FOR UPDATE SKIP LOCKED) SELECT k FROM cte ORDER BY k LIMIT 3');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+WITH cte AS (SELECT k FROM t_asc ORDER BY v) SELECT k FROM cte ORDER BY k LIMIT 5 FOR UPDATE SKIP LOCKED;
+ k 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation | mode | hash_cols | range_cols 
+----------+----------+------+-----------+------------
+(0 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH cte AS (SELECT k FROM t_asc ORDER BY v) SELECT k FROM cte ORDER BY k LIMIT 5 FOR UPDATE SKIP LOCKED;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  Sort (actual rows=5 loops=1)
+         Sort Key: cte.k
+         Sort Method: top-N heapsort
+         ->  Subquery Scan on cte (actual rows=15 loops=1)
+               ->  Sort (actual rows=15 loops=1)
+                     Sort Key: t_asc.v
+                     Sort Method: quicksort
+                     ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 1
+                           Storage Table Rows Scanned: 15
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 15
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(17 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('WITH cte AS (SELECT k FROM t_asc ORDER BY v) SELECT k FROM cte ORDER BY k LIMIT 5 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+WITH locked AS (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED), filtered AS (SELECT k FROM locked WHERE k < 6) SELECT k FROM filtered ORDER BY k;
+ k 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {10}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {11}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {12}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {13}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {14}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {15}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {9}
+(15 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH locked AS (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED), filtered AS (SELECT k FROM locked WHERE k < 6) SELECT k FROM filtered ORDER BY k;
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Sort (actual rows=5 loops=1)
+   Sort Key: locked.k
+   Sort Method: quicksort
+   CTE locked
+     ->  LockRows (actual rows=15 loops=1)
+           ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                 Storage Table Read Requests: 1
+                 Storage Table Read Ops: 1
+                 Storage Table Rows Scanned: 15
+   ->  CTE Scan on locked (actual rows=5 loops=1)
+         Filter: (k < 6)
+         Rows Removed by Filter: 10
+ Storage Read Requests: 16
+ Storage Read Ops: 16
+ Storage Rows Scanned: 30
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(17 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('WITH locked AS (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED), filtered AS (SELECT k FROM locked WHERE k < 6) SELECT k FROM filtered ORDER BY k');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+SELECT k FROM (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) sub WHERE k < 6 ORDER BY k;
+ k 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+(5 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) sub WHERE k < 6 ORDER BY k;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Sort (actual rows=5 loops=1)
+   Sort Key: sub.k
+   Sort Method: quicksort
+   ->  Subquery Scan on sub (actual rows=5 loops=1)
+         ->  LockRows (actual rows=5 loops=1)
+               ->  Index Scan using t_asc_pkey on t_asc (actual rows=5 loops=1)
+                     Index Cond: (k < 6)
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 5
+ Storage Read Requests: 6
+ Storage Read Ops: 6
+ Storage Rows Scanned: 10
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(15 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT k FROM (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) sub WHERE k < 6 ORDER BY k');
+   yb_lockrows_max_read_aheads   
+---------------------------------
+               Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT k FROM (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED LIMIT 3) sub WHERE k < 6 ORDER BY k;
+ k 
+---
+ 1
+ 2
+ 3
+(3 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+(3 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED LIMIT 3) sub WHERE k < 6 ORDER BY k;
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Sort (actual rows=3 loops=1)
+   Sort Key: sub.k
+   Sort Method: quicksort
+   ->  Subquery Scan on sub (actual rows=3 loops=1)
+         Filter: (sub.k < 6)
+         ->  Limit (actual rows=3 loops=1)
+               ->  LockRows (actual rows=3 loops=1)
+                     ->  Seq Scan on t_asc (actual rows=3 loops=1)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 1
+                           Storage Table Rows Scanned: 3
+ Storage Read Requests: 4
+ Storage Read Ops: 4
+ Storage Rows Scanned: 6
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT k FROM (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED LIMIT 3) sub WHERE k < 6 ORDER BY k');
+      yb_lockrows_max_read_aheads      
+---------------------------------------
+                     Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT k FROM (SELECT k FROM t_asc ORDER BY v) sub FOR UPDATE SKIP LOCKED;
+ k  
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+ 11
+ 12
+ 13
+ 14
+ 15
+(15 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {10}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {11}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {12}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {13}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {14}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {15}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {9}
+(15 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM (SELECT k FROM t_asc ORDER BY v) sub FOR UPDATE SKIP LOCKED;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ LockRows (actual rows=15 loops=1)
+   ->  Subquery Scan on sub (actual rows=15 loops=1)
+         ->  LockRows (actual rows=15 loops=1)
+               ->  Sort (actual rows=15 loops=1)
+                     Sort Key: t_asc.v
+                     Sort Method: quicksort
+                     ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 1
+                           Storage Table Rows Scanned: 15
+ Storage Read Requests: 16
+ Storage Read Ops: 16
+ Storage Rows Scanned: 30
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(15 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT k FROM (SELECT k FROM t_asc ORDER BY v) sub FOR UPDATE SKIP LOCKED');
+   yb_lockrows_max_read_aheads   
+---------------------------------
+               Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT * FROM t_part ORDER BY a FOR UPDATE SKIP LOCKED;
+ a  
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+(10 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation  |            mode            | hash_cols | range_cols 
+----------+-----------+----------------------------+-----------+------------
+ row      | t_part_hi | {STRONG_READ,STRONG_WRITE} | {10}      | 
+ row      | t_part_hi | {STRONG_READ,STRONG_WRITE} | {6}       | 
+ row      | t_part_hi | {STRONG_READ,STRONG_WRITE} | {7}       | 
+ row      | t_part_hi | {STRONG_READ,STRONG_WRITE} | {8}       | 
+ row      | t_part_hi | {STRONG_READ,STRONG_WRITE} | {9}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {1}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {2}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {3}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {4}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {5}       | 
+(10 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_part ORDER BY a FOR UPDATE SKIP LOCKED;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ LockRows (actual rows=10 loops=1)
+   ->  Sort (actual rows=10 loops=1)
+         Sort Key: t_part.a
+         Sort Method: quicksort
+         ->  Append (actual rows=10 loops=1)
+               ->  Seq Scan on t_part_lo t_part_1 (actual rows=5 loops=1)
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 3
+                     Storage Table Rows Scanned: 5
+               ->  Seq Scan on t_part_hi t_part_2 (actual rows=5 loops=1)
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 3
+                     Storage Table Rows Scanned: 5
+ Storage Read Requests: 12
+ Storage Read Ops: 16
+ Storage Rows Scanned: 20
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(18 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT * FROM t_part ORDER BY a FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+   Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT k FROM t_asc ORDER BY v OFFSET 3 LIMIT 5 FOR UPDATE SKIP LOCKED;
+ k 
+---
+ 4
+ 5
+ 6
+ 7
+ 8
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {8}
+(8 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM t_asc ORDER BY v OFFSET 3 LIMIT 5 FOR UPDATE SKIP LOCKED;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  LockRows (actual rows=8 loops=1)
+         ->  Sort (actual rows=8 loops=1)
+               Sort Key: v
+               Sort Method: quicksort
+               ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 15
+ Storage Read Requests: 9
+ Storage Read Ops: 9
+ Storage Rows Scanned: 23
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(14 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT k FROM t_asc ORDER BY v OFFSET 3 LIMIT 5 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT k FROM (SELECT k FROM t_asc ORDER BY v LIMIT 10 FOR UPDATE SKIP LOCKED) sub LIMIT 3;
+ k 
+---
+ 1
+ 2
+ 3
+(3 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+(3 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM (SELECT k FROM t_asc ORDER BY v LIMIT 10 FOR UPDATE SKIP LOCKED) sub LIMIT 3;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  Subquery Scan on sub (actual rows=3 loops=1)
+         ->  Limit (actual rows=3 loops=1)
+               ->  LockRows (actual rows=3 loops=1)
+                     ->  Sort (actual rows=3 loops=1)
+                           Sort Key: t_asc.v
+                           Sort Method: quicksort
+                           ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                                 Storage Table Read Requests: 1
+                                 Storage Table Read Ops: 1
+                                 Storage Table Rows Scanned: 15
+ Storage Read Requests: 4
+ Storage Read Ops: 4
+ Storage Rows Scanned: 18
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(16 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT k FROM (SELECT k FROM t_asc ORDER BY v LIMIT 10 FOR UPDATE SKIP LOCKED) sub LIMIT 3');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+SELECT k FROM (SELECT k FROM t_asc ORDER BY v LIMIT 10) sub LIMIT 3 FOR UPDATE SKIP LOCKED;
+ k 
+---
+ 1
+ 2
+ 3
+(3 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+(3 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM (SELECT k FROM t_asc ORDER BY v LIMIT 10) sub LIMIT 3 FOR UPDATE SKIP LOCKED;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  LockRows (actual rows=3 loops=1)
+         ->  Subquery Scan on sub (actual rows=3 loops=1)
+               ->  Limit (actual rows=3 loops=1)
+                     ->  LockRows (actual rows=3 loops=1)
+                           ->  Sort (actual rows=3 loops=1)
+                                 Sort Key: t_asc.v
+                                 Sort Method: quicksort
+                                 ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                                       Storage Table Read Requests: 1
+                                       Storage Table Read Ops: 1
+                                       Storage Table Rows Scanned: 15
+ Storage Read Requests: 4
+ Storage Read Ops: 4
+ Storage Rows Scanned: 18
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(17 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT k FROM (SELECT k FROM t_asc ORDER BY v LIMIT 10) sub LIMIT 3 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+SELECT k FROM (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) sub ORDER BY k LIMIT 5;
+ k 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {10}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {11}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {12}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {13}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {14}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {15}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {9}
+(15 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT k FROM (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) sub ORDER BY k LIMIT 5;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  Sort (actual rows=5 loops=1)
+         Sort Key: sub.k
+         Sort Method: top-N heapsort
+         ->  Subquery Scan on sub (actual rows=15 loops=1)
+               ->  LockRows (actual rows=15 loops=1)
+                     ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 1
+                           Storage Table Rows Scanned: 15
+ Storage Read Requests: 16
+ Storage Read Ops: 16
+ Storage Rows Scanned: 30
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(15 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT k FROM (SELECT k FROM t_asc FOR UPDATE SKIP LOCKED) sub ORDER BY k LIMIT 5');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+CREATE TABLE t_a (id INT, grp INT, tag TEXT, ord INT, PRIMARY KEY (id ASC));
+INSERT INTO t_a (SELECT i, CASE WHEN i <= 4 THEN 1 ELSE 2 END, 'item-' || i, i FROM generate_series(1, 8) AS i);
+INSERT INTO t_a VALUES (9, 2, 'item-9', 9);
+CREATE TABLE t_b (cid INT, parent_id INT, val INT, flag TEXT, ord INT, PRIMARY KEY (cid ASC));
+INSERT INTO t_b (SELECT i, (i - 1) / 3 + 1, i * 10, CASE WHEN i % 2 = 0 THEN 'even' ELSE 'odd' END, i FROM generate_series(1, 24) AS i);
+CREATE INDEX t_b_parent_idx ON t_b (parent_id ASC);
+CREATE INDEX t_b_val_idx    ON t_b (val ASC);
+BEGIN;
+SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id ORDER BY t_a.id, t_b.cid FOR UPDATE SKIP LOCKED;
+ id | cid 
+----+-----
+  1 |   1
+  1 |   2
+  1 |   3
+  2 |   4
+  2 |   5
+  2 |   6
+  3 |   7
+  3 |   8
+  3 |   9
+  4 |  10
+  4 |  11
+  4 |  12
+  5 |  13
+  5 |  14
+  5 |  15
+  6 |  16
+  6 |  17
+  6 |  18
+  7 |  19
+  7 |  20
+  7 |  21
+  8 |  22
+  8 |  23
+  8 |  24
+(24 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {10}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {11}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {12}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {13}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {14}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {15}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {16}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {17}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {18}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {19}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {20}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {21}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {22}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {23}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {24}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {9}
+(48 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id ORDER BY t_a.id, t_b.cid FOR UPDATE SKIP LOCKED;
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ LockRows (actual rows=24 loops=1)
+   ->  Sort (actual rows=24 loops=1)
+         Sort Key: t_a.id, t_b.cid
+         Sort Method: quicksort
+         ->  YB Batched Nested Loop Join (actual rows=24 loops=1)
+               Join Filter: (t_a.id = t_b.parent_id)
+               ->  Seq Scan on t_b (actual rows=24 loops=1)
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 24
+               ->  Index Scan using t_a_pkey on t_a (actual rows=8 loops=1)
+                     Index Cond: (id = ANY (ARRAY[t_b.parent_id, $2, $3, ..., $1024]))
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 8
+ Storage Read Requests: 50
+ Storage Read Ops: 50
+ Storage Rows Scanned: 80
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(20 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id ORDER BY t_a.id, t_b.cid FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+   Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id ORDER BY t_a.id, t_b.cid FOR UPDATE OF t_a SKIP LOCKED;
+ id | cid 
+----+-----
+  1 |   1
+  1 |   2
+  1 |   3
+  2 |   4
+  2 |   5
+  2 |   6
+  3 |   7
+  3 |   8
+  3 |   9
+  4 |  10
+  4 |  11
+  4 |  12
+  5 |  13
+  5 |  14
+  5 |  15
+  6 |  16
+  6 |  17
+  6 |  18
+  7 |  19
+  7 |  20
+  7 |  21
+  8 |  22
+  8 |  23
+  8 |  24
+(24 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {8}
+(24 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id ORDER BY t_a.id, t_b.cid FOR UPDATE OF t_a SKIP LOCKED;
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ LockRows (actual rows=24 loops=1)
+   ->  Sort (actual rows=24 loops=1)
+         Sort Key: t_a.id, t_b.cid
+         Sort Method: quicksort
+         ->  YB Batched Nested Loop Join (actual rows=24 loops=1)
+               Join Filter: (t_a.id = t_b.parent_id)
+               ->  Seq Scan on t_b (actual rows=24 loops=1)
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 24
+               ->  Index Scan using t_a_pkey on t_a (actual rows=8 loops=1)
+                     Index Cond: (id = ANY (ARRAY[t_b.parent_id, $2, $3, ..., $1024]))
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 8
+ Storage Read Requests: 26
+ Storage Read Ops: 26
+ Storage Rows Scanned: 56
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(20 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id ORDER BY t_a.id, t_b.cid FOR UPDATE OF t_a SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+   Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT t_a.id, t_b.cid FROM t_a LEFT JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.id = 9 ORDER BY t_a.ord FOR UPDATE OF t_a SKIP LOCKED;
+ id | cid 
+----+-----
+  9 |    
+(1 row)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {9}
+(1 row)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a LEFT JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.id = 9 ORDER BY t_a.ord FOR UPDATE OF t_a SKIP LOCKED;
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ LockRows (actual rows=1 loops=1)
+   ->  Sort (actual rows=1 loops=1)
+         Sort Key: t_a.ord
+         Sort Method: quicksort
+         ->  Nested Loop Left Join (actual rows=1 loops=1)
+               Join Filter: (t_a.id = t_b.parent_id)
+               ->  Index Scan using t_a_pkey on t_a (actual rows=1 loops=1)
+                     Index Cond: (id = 9)
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 1
+               ->  Index Scan using t_b_parent_idx on t_b (actual rows=0 loops=1)
+                     Index Cond: (parent_id = 9)
+                     Storage Index Read Requests: 1
+                     Storage Index Read Ops: 1
+ Storage Read Requests: 3
+ Storage Read Ops: 3
+ Storage Rows Scanned: 2
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(20 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_a.id, t_b.cid FROM t_a LEFT JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.id = 9 ORDER BY t_a.ord FOR UPDATE OF t_a SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+   Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
+ id | cid 
+----+-----
+  1 |   1
+  1 |   2
+  1 |   3
+  2 |   4
+  2 |   5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {5}
+(10 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  LockRows (actual rows=5 loops=1)
+         ->  Incremental Sort (actual rows=5 loops=1)
+               Sort Key: t_a.id, t_b.cid
+               Presorted Key: t_a.id
+               Full-sort Groups: 1  Sort Method: quicksort
+               ->  Result (actual rows=24 loops=1)
+                     ->  YB Batched Nested Loop Join (actual rows=24 loops=1)
+                           Join Filter: (t_a.id = t_b.parent_id)
+                           Sort Keys: t_a.id
+                           ->  Index Scan using t_b_parent_idx on t_b (actual rows=24 loops=1)
+                                 Storage Table Read Requests: 2
+                                 Storage Table Read Ops: 2
+                                 Storage Table Rows Scanned: 24
+                                 Storage Index Read Requests: 2
+                                 Storage Index Read Ops: 2
+                                 Storage Index Rows Scanned: 24
+                           ->  Index Scan using t_a_pkey on t_a (actual rows=4 loops=2)
+                                 Index Cond: (id = ANY (ARRAY[t_b.parent_id, $3, $4, ..., $1025]))
+                                 Storage Table Read Requests: 1
+                                 Storage Table Read Ops: 1
+                                 Storage Table Rows Scanned: 4
+ Storage Read Requests: 16
+ Storage Read Ops: 16
+ Storage Rows Scanned: 67
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(27 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT x.id AS x_id, y.id AS y_id FROM t_a x JOIN t_a y ON x.id = y.id ORDER BY x.ord LIMIT 5 FOR UPDATE OF x SKIP LOCKED;
+ x_id | y_id 
+------+------
+    1 |    1
+    2 |    2
+    3 |    3
+    4 |    4
+    5 |    5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {5}
+(5 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT x.id AS x_id, y.id AS y_id FROM t_a x JOIN t_a y ON x.id = y.id ORDER BY x.ord LIMIT 5 FOR UPDATE OF x SKIP LOCKED;
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  LockRows (actual rows=5 loops=1)
+         ->  Sort (actual rows=5 loops=1)
+               Sort Key: x.ord
+               Sort Method: quicksort
+               ->  YB Batched Nested Loop Join (actual rows=9 loops=1)
+                     Join Filter: (x.id = y.id)
+                     ->  Seq Scan on t_a x (actual rows=9 loops=1)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 1
+                           Storage Table Rows Scanned: 9
+                     ->  Index Scan using t_a_pkey on t_a y (actual rows=9 loops=1)
+                           Index Cond: (id = ANY (ARRAY[x.id, $2, $3, ..., $1024]))
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 1
+                           Storage Table Rows Scanned: 9
+ Storage Read Requests: 7
+ Storage Read Ops: 7
+ Storage Rows Scanned: 23
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(21 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT x.id AS x_id, y.id AS y_id FROM t_a x JOIN t_a y ON x.id = y.id ORDER BY x.ord LIMIT 5 FOR UPDATE OF x SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT sub.id, t_b.cid FROM (SELECT * FROM t_a ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED) sub JOIN t_b ON sub.id = t_b.parent_id ORDER BY sub.ord, t_b.cid;
+ id | cid 
+----+-----
+  1 |   1
+  1 |   2
+  1 |   3
+  2 |   4
+  2 |   5
+  2 |   6
+  3 |   7
+  3 |   8
+  3 |   9
+(9 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+(3 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub.id, t_b.cid FROM (SELECT * FROM t_a ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED) sub JOIN t_b ON sub.id = t_b.parent_id ORDER BY sub.ord, t_b.cid;
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Sort (actual rows=9 loops=1)
+   Sort Key: sub.ord, t_b.cid
+   Sort Method: quicksort
+   ->  YB Batched Nested Loop Join (actual rows=9 loops=1)
+         Join Filter: (sub.id = t_b.parent_id)
+         ->  Subquery Scan on sub (actual rows=3 loops=1)
+               ->  Limit (actual rows=3 loops=1)
+                     ->  LockRows (actual rows=3 loops=1)
+                           ->  Sort (actual rows=3 loops=1)
+                                 Sort Key: t_a.ord
+                                 Sort Method: quicksort
+                                 ->  Seq Scan on t_a (actual rows=9 loops=1)
+                                       Storage Table Read Requests: 1
+                                       Storage Table Read Ops: 1
+                                       Storage Table Rows Scanned: 9
+         ->  Index Scan using t_b_parent_idx on t_b (actual rows=9 loops=1)
+               Index Cond: (parent_id = ANY (ARRAY[sub.id, $2, $3, ..., $1024]))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 9
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 1
+               Storage Index Rows Scanned: 9
+ Storage Read Requests: 6
+ Storage Read Ops: 6
+ Storage Rows Scanned: 30
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(28 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT sub.id, t_b.cid FROM (SELECT * FROM t_a ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED) sub JOIN t_b ON sub.id = t_b.parent_id ORDER BY sub.ord, t_b.cid');
+         yb_lockrows_max_read_aheads         
+---------------------------------------------
+                           Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.grp = 1 ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
+ id | cid 
+----+-----
+  1 |   1
+  1 |   2
+  1 |   3
+  2 |   4
+  2 |   5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {5}
+(10 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.grp = 1 ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  LockRows (actual rows=5 loops=1)
+         ->  Incremental Sort (actual rows=5 loops=1)
+               Sort Key: t_a.id, t_b.cid
+               Presorted Key: t_a.id
+               Full-sort Groups: 1  Sort Method: quicksort
+               ->  Result (actual rows=12 loops=1)
+                     ->  YB Batched Nested Loop Join (actual rows=12 loops=1)
+                           Join Filter: (t_a.id = t_b.parent_id)
+                           Sort Keys: t_a.id
+                           ->  Index Scan using t_b_parent_idx on t_b (actual rows=24 loops=1)
+                                 Storage Table Read Requests: 2
+                                 Storage Table Read Ops: 2
+                                 Storage Table Rows Scanned: 24
+                                 Storage Index Read Requests: 2
+                                 Storage Index Read Ops: 2
+                                 Storage Index Rows Scanned: 24
+                           ->  Index Scan using t_a_pkey on t_a (actual rows=2 loops=2)
+                                 Index Cond: (id = ANY (ARRAY[t_b.parent_id, $3, $4, ..., $1025]))
+                                 Storage Filter: (grp = 1)
+                                 Storage Table Read Requests: 1
+                                 Storage Table Read Ops: 1
+                                 Storage Table Rows Scanned: 4
+ Storage Read Requests: 16
+ Storage Read Ops: 16
+ Storage Rows Scanned: 67
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(28 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.grp = 1 ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_b.val < 70 ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
+ id | cid 
+----+-----
+  1 |   1
+  1 |   2
+  1 |   3
+  2 |   4
+  2 |   5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {5}
+(10 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_b.val < 70 ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  LockRows (actual rows=5 loops=1)
+         ->  Sort (actual rows=5 loops=1)
+               Sort Key: t_a.id, t_b.cid
+               Sort Method: quicksort
+               ->  YB Batched Nested Loop Join (actual rows=6 loops=1)
+                     Join Filter: (t_a.id = t_b.parent_id)
+                     ->  Index Scan using t_b_val_idx on t_b (actual rows=6 loops=1)
+                           Index Cond: (val < 70)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 1
+                           Storage Table Rows Scanned: 6
+                           Storage Index Read Requests: 1
+                           Storage Index Read Ops: 1
+                           Storage Index Rows Scanned: 6
+                     ->  Index Scan using t_a_pkey on t_a (actual rows=2 loops=1)
+                           Index Cond: (id = ANY (ARRAY[t_b.parent_id, $2, $3, ..., $1024]))
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 1
+                           Storage Table Rows Scanned: 2
+ Storage Read Requests: 13
+ Storage Read Ops: 13
+ Storage Rows Scanned: 24
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(25 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_b.val < 70 ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.grp = 1 AND t_b.val < 70 ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
+ id | cid 
+----+-----
+  1 |   1
+  1 |   2
+  1 |   3
+  2 |   4
+  2 |   5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {5}
+(10 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.grp = 1 AND t_b.val < 70 ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  LockRows (actual rows=5 loops=1)
+         ->  Sort (actual rows=5 loops=1)
+               Sort Key: t_a.id, t_b.cid
+               Sort Method: quicksort
+               ->  YB Batched Nested Loop Join (actual rows=6 loops=1)
+                     Join Filter: (t_a.id = t_b.parent_id)
+                     ->  Index Scan using t_b_val_idx on t_b (actual rows=6 loops=1)
+                           Index Cond: (val < 70)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 1
+                           Storage Table Rows Scanned: 6
+                           Storage Index Read Requests: 1
+                           Storage Index Read Ops: 1
+                           Storage Index Rows Scanned: 6
+                     ->  Index Scan using t_a_pkey on t_a (actual rows=2 loops=1)
+                           Index Cond: (id = ANY (ARRAY[t_b.parent_id, $2, $3, ..., $1024]))
+                           Storage Filter: (grp = 1)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 1
+                           Storage Table Rows Scanned: 2
+ Storage Read Requests: 13
+ Storage Read Ops: 13
+ Storage Rows Scanned: 24
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(26 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.grp = 1 AND t_b.val < 70 ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.id::text LIKE '%1%' ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
+ id | cid 
+----+-----
+  1 |   1
+  1 |   2
+  1 |   3
+(3 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {3}
+(6 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.id::text LIKE '%1%' ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  LockRows (actual rows=3 loops=1)
+         ->  Incremental Sort (actual rows=3 loops=1)
+               Sort Key: t_a.id, t_b.cid
+               Presorted Key: t_a.id
+               Full-sort Groups: 1  Sort Method: quicksort
+               ->  Result (actual rows=3 loops=1)
+                     ->  YB Batched Nested Loop Join (actual rows=3 loops=1)
+                           Join Filter: (t_a.id = t_b.parent_id)
+                           Sort Keys: t_a.id
+                           ->  Index Scan using t_b_parent_idx on t_b (actual rows=24 loops=1)
+                                 Storage Table Read Requests: 2
+                                 Storage Table Read Ops: 2
+                                 Storage Table Rows Scanned: 24
+                                 Storage Index Read Requests: 2
+                                 Storage Index Read Ops: 2
+                                 Storage Index Rows Scanned: 24
+                           ->  Index Scan using t_a_pkey on t_a (actual rows=0 loops=2)
+                                 Index Cond: (id = ANY (ARRAY[t_b.parent_id, $3, $4, ..., $1025]))
+                                 Filter: ((id)::text ~~ '%1%'::text)
+                                 Rows Removed by Filter: 4
+                                 Storage Table Read Requests: 1
+                                 Storage Table Read Ops: 1
+                                 Storage Table Rows Scanned: 4
+ Storage Read Requests: 12
+ Storage Read Ops: 12
+ Storage Rows Scanned: 63
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(29 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.id::text LIKE ''%1%'' ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_b.cid::text LIKE '%1%' ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
+ id | cid 
+----+-----
+  1 |   1
+  4 |  10
+  4 |  11
+  4 |  12
+  5 |  13
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {10}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {11}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {12}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {13}
+(10 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_b.cid::text LIKE '%1%' ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  LockRows (actual rows=5 loops=1)
+         ->  Incremental Sort (actual rows=5 loops=1)
+               Sort Key: t_a.id, t_b.cid
+               Presorted Key: t_a.id
+               Full-sort Groups: 1  Sort Method: quicksort
+               ->  Result (actual rows=12 loops=1)
+                     ->  YB Batched Nested Loop Join (actual rows=12 loops=1)
+                           Join Filter: (t_a.id = t_b.parent_id)
+                           Sort Keys: t_a.id
+                           ->  Index Scan using t_b_parent_idx on t_b (actual rows=12 loops=1)
+                                 Filter: ((cid)::text ~~ '%1%'::text)
+                                 Rows Removed by Filter: 12
+                                 Storage Table Read Requests: 1
+                                 Storage Table Read Ops: 1
+                                 Storage Table Rows Scanned: 24
+                                 Storage Index Read Requests: 1
+                                 Storage Index Read Ops: 1
+                                 Storage Index Rows Scanned: 24
+                           ->  Index Scan using t_a_pkey on t_a (actual rows=3 loops=2)
+                                 Index Cond: (id = ANY (ARRAY[t_b.parent_id, $3, $4, ..., $1025]))
+                                 Storage Table Read Requests: 1
+                                 Storage Table Read Ops: 1
+                                 Storage Table Rows Scanned: 3
+ Storage Read Requests: 14
+ Storage Read Ops: 14
+ Storage Rows Scanned: 64
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(29 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_b.cid::text LIKE ''%1%'' ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.id + t_b.cid > 15 ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
+ id | cid 
+----+-----
+  4 |  12
+  5 |  13
+  5 |  14
+  5 |  15
+  6 |  16
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {12}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {13}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {14}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {15}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {16}
+(10 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.id + t_b.cid > 15 ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED;
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  LockRows (actual rows=5 loops=1)
+         ->  Incremental Sort (actual rows=5 loops=1)
+               Sort Key: t_a.id, t_b.cid
+               Presorted Key: t_a.id
+               Full-sort Groups: 1  Sort Method: quicksort
+               ->  Nested Loop (actual rows=13 loops=1)
+                     ->  Index Scan using t_b_parent_idx on t_b (actual rows=24 loops=1)
+                           Storage Table Read Requests: 2
+                           Storage Table Read Ops: 2
+                           Storage Table Rows Scanned: 24
+                           Storage Index Read Requests: 2
+                           Storage Index Read Ops: 2
+                           Storage Index Rows Scanned: 24
+                     ->  Index Scan using t_a_pkey on t_a (actual rows=1 loops=24)
+                           Index Cond: (id = t_b.parent_id)
+                           Storage Filter: ((id + t_b.cid) > 15)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 1
+                           Storage Table Rows Scanned: 1
+ Storage Read Requests: 38
+ Storage Read Ops: 38
+ Storage Rows Scanned: 82
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(25 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_a.id, t_b.cid FROM t_a JOIN t_b ON t_a.id = t_b.parent_id WHERE t_a.id + t_b.cid > 15 ORDER BY t_a.id, t_b.cid LIMIT 5 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT t_a.id FROM t_a JOIN unnest(ARRAY[1, 2, 3, 4]) AS ids(id) ON t_a.id = ids.id ORDER BY t_a.ord FOR UPDATE OF t_a SKIP LOCKED;
+ id 
+----
+  1
+  2
+  3
+  4
+(4 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+(4 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id FROM t_a JOIN unnest(ARRAY[1, 2, 3, 4]) AS ids(id) ON t_a.id = ids.id ORDER BY t_a.ord FOR UPDATE OF t_a SKIP LOCKED;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ LockRows (actual rows=4 loops=1)
+   ->  Sort (actual rows=4 loops=1)
+         Sort Key: t_a.ord
+         Sort Method: quicksort
+         ->  YB Batched Nested Loop Join (actual rows=4 loops=1)
+               Join Filter: (t_a.id = ids.id)
+               ->  Function Scan on unnest ids (actual rows=4 loops=1)
+               ->  Index Scan using t_a_pkey on t_a (actual rows=4 loops=1)
+                     Index Cond: (id = ANY (ARRAY[ids.id, $2, $3, ..., $1024]))
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 4
+ Storage Read Requests: 5
+ Storage Read Ops: 5
+ Storage Rows Scanned: 8
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(17 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_a.id FROM t_a JOIN unnest(ARRAY[1, 2, 3, 4]) AS ids(id) ON t_a.id = ids.id ORDER BY t_a.ord FOR UPDATE OF t_a SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+   Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+SET yb_enable_bitmapscan = on;
+BEGIN;
+SELECT t_b.cid, t_a.id FROM t_b JOIN t_a ON t_b.parent_id = t_a.id WHERE t_b.parent_id = 1 OR t_b.val = 60 ORDER BY t_b.ord FOR UPDATE SKIP LOCKED;
+ cid | id 
+-----+----
+   1 |  1
+   2 |  1
+   3 |  1
+   6 |  2
+(4 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {6}
+(8 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_b.cid, t_a.id FROM t_b JOIN t_a ON t_b.parent_id = t_a.id WHERE t_b.parent_id = 1 OR t_b.val = 60 ORDER BY t_b.ord FOR UPDATE SKIP LOCKED;
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ LockRows (actual rows=4 loops=1)
+   ->  Sort (actual rows=4 loops=1)
+         Sort Key: t_b.ord
+         Sort Method: quicksort
+         ->  YB Batched Nested Loop Join (actual rows=4 loops=1)
+               Join Filter: (t_b.parent_id = t_a.id)
+               ->  YB Bitmap Table Scan on t_b (actual rows=4 loops=1)
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 4
+                     ->  BitmapOr (actual rows=4 loops=1)
+                           ->  Bitmap Index Scan on t_b_parent_idx (actual rows=3 loops=1)
+                                 Index Cond: (parent_id = 1)
+                                 Storage Index Read Requests: 1
+                                 Storage Index Read Ops: 1
+                                 Storage Index Rows Scanned: 3
+                           ->  Bitmap Index Scan on t_b_val_idx (actual rows=1 loops=1)
+                                 Index Cond: (val = 60)
+                                 Storage Index Read Requests: 1
+                                 Storage Index Read Ops: 1
+                                 Storage Index Rows Scanned: 1
+               ->  Index Scan using t_a_pkey on t_a (actual rows=2 loops=1)
+                     Index Cond: (id = ANY (ARRAY[t_b.parent_id, $2, $3, ..., $1024]))
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 2
+ Storage Read Requests: 12
+ Storage Read Ops: 12
+ Storage Rows Scanned: 18
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(31 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_b.cid, t_a.id FROM t_b JOIN t_a ON t_b.parent_id = t_a.id WHERE t_b.parent_id = 1 OR t_b.val = 60 ORDER BY t_b.ord FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+   Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+RESET yb_enable_bitmapscan;
+BEGIN;
+SELECT sub.k, t_multi.v FROM (SELECT k FROM t_asc ORDER BY v FOR UPDATE SKIP LOCKED) sub JOIN t_multi ON sub.k = t_multi.k1 LIMIT 3;
+ k | v  
+---+----
+ 1 |  4
+ 9 | 12
+ 5 |  8
+(3 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {10}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {11}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {12}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {13}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {14}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {15}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {9}
+(15 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub.k, t_multi.v FROM (SELECT k FROM t_asc ORDER BY v FOR UPDATE SKIP LOCKED) sub JOIN t_multi ON sub.k = t_multi.k1 LIMIT 3;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=3 loops=1)
+         Join Filter: (sub.k = t_multi.k1)
+         ->  Subquery Scan on sub (actual rows=15 loops=1)
+               ->  LockRows (actual rows=15 loops=1)
+                     ->  Sort (actual rows=15 loops=1)
+                           Sort Key: t_asc.v
+                           Sort Method: quicksort
+                           ->  Seq Scan on t_asc (actual rows=15 loops=1)
+                                 Storage Table Read Requests: 1
+                                 Storage Table Read Ops: 1
+                                 Storage Table Rows Scanned: 15
+         ->  Index Scan using t_multi_pkey on t_multi (actual rows=2 loops=2)
+               Index Cond: (k1 = ANY (ARRAY[sub.k, $2, $3, ..., $1024]))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 2
+ Storage Read Requests: 18
+ Storage Read Ops: 20
+ Storage Rows Scanned: 34
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(22 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT sub.k, t_multi.v FROM (SELECT k FROM t_asc ORDER BY v FOR UPDATE SKIP LOCKED) sub JOIN t_multi ON sub.k = t_multi.k1 LIMIT 3');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+WITH locked_a AS (SELECT id FROM t_a ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED), locked_b AS (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 9 FOR UPDATE SKIP LOCKED) SELECT locked_a.id, locked_b.cid FROM locked_a JOIN locked_b ON locked_a.id = locked_b.parent_id ORDER BY locked_a.id, locked_b.cid;
+ id | cid 
+----+-----
+  1 |   1
+  1 |   2
+  1 |   3
+  2 |   4
+  2 |   5
+  2 |   6
+  3 |   7
+  3 |   8
+  3 |   9
+(9 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {9}
+(12 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH locked_a AS (SELECT id FROM t_a ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED), locked_b AS (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 9 FOR UPDATE SKIP LOCKED) SELECT locked_a.id, locked_b.cid FROM locked_a JOIN locked_b ON locked_a.id = locked_b.parent_id ORDER BY locked_a.id, locked_b.cid;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Sort (actual rows=9 loops=1)
+   Sort Key: locked_a.id, locked_b.cid
+   Sort Method: quicksort
+   CTE locked_a
+     ->  Limit (actual rows=3 loops=1)
+           ->  LockRows (actual rows=3 loops=1)
+                 ->  Sort (actual rows=3 loops=1)
+                       Sort Key: t_a.ord
+                       Sort Method: quicksort
+                       ->  Seq Scan on t_a (actual rows=9 loops=1)
+                             Storage Table Read Requests: 1
+                             Storage Table Read Ops: 1
+                             Storage Table Rows Scanned: 9
+   CTE locked_b
+     ->  Limit (actual rows=9 loops=1)
+           ->  LockRows (actual rows=9 loops=1)
+                 ->  Sort (actual rows=9 loops=1)
+                       Sort Key: t_b.ord
+                       Sort Method: quicksort
+                       ->  Seq Scan on t_b (actual rows=24 loops=1)
+                             Storage Table Read Requests: 1
+                             Storage Table Read Ops: 1
+                             Storage Table Rows Scanned: 24
+   ->  Hash Join (actual rows=9 loops=1)
+         Hash Cond: (locked_b.parent_id = locked_a.id)
+         ->  CTE Scan on locked_b (actual rows=9 loops=1)
+         ->  Hash (actual rows=3 loops=1)
+               Buckets: 1024 (originally 1024)  Original Batches: 1
+               ->  CTE Scan on locked_a (actual rows=3 loops=1)
+ Storage Read Requests: 14
+ Storage Read Ops: 14
+ Storage Rows Scanned: 45
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(34 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('WITH locked_a AS (SELECT id FROM t_a ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED), locked_b AS (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 9 FOR UPDATE SKIP LOCKED) SELECT locked_a.id, locked_b.cid FROM locked_a JOIN locked_b ON locked_a.id = locked_b.parent_id ORDER BY locked_a.id, locked_b.cid');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+SELECT sub_a.id, sub_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED) sub_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 9 FOR UPDATE SKIP LOCKED) sub_b ON sub_a.id = sub_b.parent_id ORDER BY sub_a.id, sub_b.cid;
+ id | cid 
+----+-----
+  1 |   1
+  1 |   2
+  1 |   3
+  2 |   4
+  2 |   5
+  2 |   6
+  3 |   7
+  3 |   8
+  3 |   9
+(9 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {9}
+(12 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub_a.id, sub_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED) sub_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 9 FOR UPDATE SKIP LOCKED) sub_b ON sub_a.id = sub_b.parent_id ORDER BY sub_a.id, sub_b.cid;
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Sort (actual rows=9 loops=1)
+   Sort Key: sub_a.id, sub_b.cid
+   Sort Method: quicksort
+   ->  Merge Join (actual rows=9 loops=1)
+         Merge Cond: (sub_a.id = sub_b.parent_id)
+         ->  Sort (actual rows=3 loops=1)
+               Sort Key: sub_a.id
+               Sort Method: quicksort
+               ->  Subquery Scan on sub_a (actual rows=3 loops=1)
+                     ->  Limit (actual rows=3 loops=1)
+                           ->  LockRows (actual rows=3 loops=1)
+                                 ->  Sort (actual rows=3 loops=1)
+                                       Sort Key: t_a.ord
+                                       Sort Method: quicksort
+                                       ->  Seq Scan on t_a (actual rows=9 loops=1)
+                                             Storage Table Read Requests: 1
+                                             Storage Table Read Ops: 1
+                                             Storage Table Rows Scanned: 9
+         ->  Sort (actual rows=9 loops=1)
+               Sort Key: sub_b.parent_id
+               Sort Method: quicksort
+               ->  Subquery Scan on sub_b (actual rows=9 loops=1)
+                     ->  Limit (actual rows=9 loops=1)
+                           ->  LockRows (actual rows=9 loops=1)
+                                 ->  Sort (actual rows=9 loops=1)
+                                       Sort Key: t_b.ord
+                                       Sort Method: quicksort
+                                       ->  Seq Scan on t_b (actual rows=24 loops=1)
+                                             Storage Table Read Requests: 1
+                                             Storage Table Read Ops: 1
+                                             Storage Table Rows Scanned: 24
+ Storage Read Requests: 14
+ Storage Read Ops: 14
+ Storage Rows Scanned: 45
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(36 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT sub_a.id, sub_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED) sub_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 9 FOR UPDATE SKIP LOCKED) sub_b ON sub_a.id = sub_b.parent_id ORDER BY sub_a.id, sub_b.cid');
+            yb_lockrows_max_read_aheads            
+---------------------------------------------------
+                                 Max Read Ahead: N
+                                 Max Read Ahead: N
+(2 rows)
+
+ROLLBACK;
+BEGIN;
+WITH locked_a AS (SELECT id FROM t_a ORDER BY ord LIMIT 2 FOR UPDATE SKIP LOCKED), locked_b AS (SELECT cid FROM t_b ORDER BY ord LIMIT 4 FOR UPDATE SKIP LOCKED) SELECT locked_a.id, locked_b.cid FROM locked_a CROSS JOIN locked_b ORDER BY locked_a.id, locked_b.cid;
+ id | cid 
+----+-----
+  1 |   1
+  1 |   2
+  1 |   3
+  1 |   4
+  2 |   1
+  2 |   2
+  2 |   3
+  2 |   4
+(8 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {4}
+(6 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH locked_a AS (SELECT id FROM t_a ORDER BY ord LIMIT 2 FOR UPDATE SKIP LOCKED), locked_b AS (SELECT cid FROM t_b ORDER BY ord LIMIT 4 FOR UPDATE SKIP LOCKED) SELECT locked_a.id, locked_b.cid FROM locked_a CROSS JOIN locked_b ORDER BY locked_a.id, locked_b.cid;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Sort (actual rows=8 loops=1)
+   Sort Key: locked_a.id, locked_b.cid
+   Sort Method: quicksort
+   CTE locked_a
+     ->  Limit (actual rows=2 loops=1)
+           ->  LockRows (actual rows=2 loops=1)
+                 ->  Sort (actual rows=2 loops=1)
+                       Sort Key: t_a.ord
+                       Sort Method: quicksort
+                       ->  Seq Scan on t_a (actual rows=9 loops=1)
+                             Storage Table Read Requests: 1
+                             Storage Table Read Ops: 1
+                             Storage Table Rows Scanned: 9
+   CTE locked_b
+     ->  Limit (actual rows=4 loops=1)
+           ->  LockRows (actual rows=4 loops=1)
+                 ->  Sort (actual rows=4 loops=1)
+                       Sort Key: t_b.ord
+                       Sort Method: quicksort
+                       ->  Seq Scan on t_b (actual rows=24 loops=1)
+                             Storage Table Read Requests: 1
+                             Storage Table Read Ops: 1
+                             Storage Table Rows Scanned: 24
+   ->  Nested Loop (actual rows=8 loops=1)
+         ->  CTE Scan on locked_a (actual rows=2 loops=1)
+         ->  CTE Scan on locked_b (actual rows=4 loops=2)
+ Storage Read Requests: 8
+ Storage Read Ops: 8
+ Storage Rows Scanned: 39
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(31 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('WITH locked_a AS (SELECT id FROM t_a ORDER BY ord LIMIT 2 FOR UPDATE SKIP LOCKED), locked_b AS (SELECT cid FROM t_b ORDER BY ord LIMIT 4 FOR UPDATE SKIP LOCKED) SELECT locked_a.id, locked_b.cid FROM locked_a CROSS JOIN locked_b ORDER BY locked_a.id, locked_b.cid');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+SELECT sub_a.id, sub_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 4 FOR UPDATE SKIP LOCKED) sub_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 12 FOR UPDATE SKIP LOCKED) sub_b ON sub_a.id = sub_b.parent_id ORDER BY sub_a.id, sub_b.cid LIMIT 6;
+ id | cid 
+----+-----
+  1 |   1
+  1 |   2
+  1 |   3
+  2 |   4
+  2 |   5
+  2 |   6
+(6 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {10}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {11}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {12}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {9}
+(16 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub_a.id, sub_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 4 FOR UPDATE SKIP LOCKED) sub_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 12 FOR UPDATE SKIP LOCKED) sub_b ON sub_a.id = sub_b.parent_id ORDER BY sub_a.id, sub_b.cid LIMIT 6;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Limit (actual rows=6 loops=1)
+   ->  Sort (actual rows=6 loops=1)
+         Sort Key: sub_a.id, sub_b.cid
+         Sort Method: quicksort
+         ->  Merge Join (actual rows=12 loops=1)
+               Merge Cond: (sub_a.id = sub_b.parent_id)
+               ->  Sort (actual rows=4 loops=1)
+                     Sort Key: sub_a.id
+                     Sort Method: quicksort
+                     ->  Subquery Scan on sub_a (actual rows=4 loops=1)
+                           ->  Limit (actual rows=4 loops=1)
+                                 ->  LockRows (actual rows=4 loops=1)
+                                       ->  Sort (actual rows=4 loops=1)
+                                             Sort Key: t_a.ord
+                                             Sort Method: quicksort
+                                             ->  Seq Scan on t_a (actual rows=9 loops=1)
+                                                   Storage Table Read Requests: 1
+                                                   Storage Table Read Ops: 1
+                                                   Storage Table Rows Scanned: 9
+               ->  Sort (actual rows=12 loops=1)
+                     Sort Key: sub_b.parent_id
+                     Sort Method: quicksort
+                     ->  Subquery Scan on sub_b (actual rows=12 loops=1)
+                           ->  Limit (actual rows=12 loops=1)
+                                 ->  LockRows (actual rows=12 loops=1)
+                                       ->  Sort (actual rows=12 loops=1)
+                                             Sort Key: t_b.ord
+                                             Sort Method: quicksort
+                                             ->  Seq Scan on t_b (actual rows=24 loops=1)
+                                                   Storage Table Read Requests: 1
+                                                   Storage Table Read Ops: 1
+                                                   Storage Table Rows Scanned: 24
+ Storage Read Requests: 18
+ Storage Read Ops: 18
+ Storage Rows Scanned: 49
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(37 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT sub_a.id, sub_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 4 FOR UPDATE SKIP LOCKED) sub_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 12 FOR UPDATE SKIP LOCKED) sub_b ON sub_a.id = sub_b.parent_id ORDER BY sub_a.id, sub_b.cid LIMIT 6');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+SELECT sub.id, t_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 8 FOR UPDATE SKIP LOCKED) sub JOIN t_b ON sub.id = t_b.parent_id ORDER BY sub.id, t_b.cid LIMIT 3 FOR UPDATE SKIP LOCKED;
+ id | cid 
+----+-----
+  1 |   1
+  1 |   2
+  1 |   3
+(3 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {3}
+(11 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub.id, t_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 8 FOR UPDATE SKIP LOCKED) sub JOIN t_b ON sub.id = t_b.parent_id ORDER BY sub.id, t_b.cid LIMIT 3 FOR UPDATE SKIP LOCKED;
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  LockRows (actual rows=3 loops=1)
+         ->  Sort (actual rows=3 loops=1)
+               Sort Key: sub.id, t_b.cid
+               Sort Method: quicksort
+               ->  YB Batched Nested Loop Join (actual rows=24 loops=1)
+                     Join Filter: (sub.id = t_b.parent_id)
+                     ->  Subquery Scan on sub (actual rows=8 loops=1)
+                           ->  Limit (actual rows=8 loops=1)
+                                 ->  LockRows (actual rows=8 loops=1)
+                                       ->  Sort (actual rows=8 loops=1)
+                                             Sort Key: t_a.ord
+                                             Sort Method: quicksort
+                                             ->  Seq Scan on t_a (actual rows=9 loops=1)
+                                                   Storage Table Read Requests: 1
+                                                   Storage Table Read Ops: 1
+                                                   Storage Table Rows Scanned: 9
+                     ->  Index Scan using t_b_parent_idx on t_b (actual rows=24 loops=1)
+                           Index Cond: (parent_id = ANY (ARRAY[sub.id, $3, $4, ..., $1025]))
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 1
+                           Storage Table Rows Scanned: 24
+                           Storage Index Read Requests: 1
+                           Storage Index Read Ops: 1
+                           Storage Index Rows Scanned: 24
+ Storage Read Requests: 14
+ Storage Read Ops: 14
+ Storage Rows Scanned: 68
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(30 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT sub.id, t_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 8 FOR UPDATE SKIP LOCKED) sub JOIN t_b ON sub.id = t_b.parent_id ORDER BY sub.id, t_b.cid LIMIT 3 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT t_a.id, sub.cid FROM t_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 12 FOR UPDATE SKIP LOCKED) sub ON t_a.id = sub.parent_id ORDER BY t_a.id, sub.cid LIMIT 4 FOR UPDATE SKIP LOCKED;
+ id | cid 
+----+-----
+  1 |   1
+  1 |   2
+  1 |   3
+  2 |   4
+(4 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {10}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {11}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {12}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {9}
+(16 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_a.id, sub.cid FROM t_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 12 FOR UPDATE SKIP LOCKED) sub ON t_a.id = sub.parent_id ORDER BY t_a.id, sub.cid LIMIT 4 FOR UPDATE SKIP LOCKED;
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Limit (actual rows=4 loops=1)
+   ->  LockRows (actual rows=4 loops=1)
+         ->  Sort (actual rows=4 loops=1)
+               Sort Key: t_a.id, sub.cid
+               Sort Method: quicksort
+               ->  YB Batched Nested Loop Join (actual rows=12 loops=1)
+                     Join Filter: (t_a.id = sub.parent_id)
+                     ->  Subquery Scan on sub (actual rows=12 loops=1)
+                           ->  Limit (actual rows=12 loops=1)
+                                 ->  LockRows (actual rows=12 loops=1)
+                                       ->  Sort (actual rows=12 loops=1)
+                                             Sort Key: t_b.ord
+                                             Sort Method: quicksort
+                                             ->  Seq Scan on t_b (actual rows=24 loops=1)
+                                                   Storage Table Read Requests: 1
+                                                   Storage Table Read Ops: 1
+                                                   Storage Table Rows Scanned: 24
+                     ->  Index Scan using t_a_pkey on t_a (actual rows=4 loops=1)
+                           Index Cond: (id = ANY (ARRAY[sub.parent_id, $3, $4, ..., $1025]))
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 1
+                           Storage Table Rows Scanned: 4
+ Storage Read Requests: 18
+ Storage Read Ops: 18
+ Storage Rows Scanned: 44
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(27 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_a.id, sub.cid FROM t_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 12 FOR UPDATE SKIP LOCKED) sub ON t_a.id = sub.parent_id ORDER BY t_a.id, sub.cid LIMIT 4 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+WITH locked_a AS (SELECT id FROM t_a ORDER BY ord LIMIT 6 FOR UPDATE SKIP LOCKED) SELECT locked_a.id, t_b.cid FROM locked_a JOIN t_b ON locked_a.id = t_b.parent_id ORDER BY locked_a.id, t_b.cid LIMIT 3 FOR UPDATE SKIP LOCKED;
+ id | cid 
+----+-----
+  1 |   1
+  1 |   2
+  1 |   3
+(3 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {3}
+(9 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH locked_a AS (SELECT id FROM t_a ORDER BY ord LIMIT 6 FOR UPDATE SKIP LOCKED) SELECT locked_a.id, t_b.cid FROM locked_a JOIN t_b ON locked_a.id = t_b.parent_id ORDER BY locked_a.id, t_b.cid LIMIT 3 FOR UPDATE SKIP LOCKED;
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   CTE locked_a
+     ->  Limit (actual rows=6 loops=1)
+           ->  LockRows (actual rows=6 loops=1)
+                 ->  Sort (actual rows=6 loops=1)
+                       Sort Key: t_a.ord
+                       Sort Method: quicksort
+                       ->  Seq Scan on t_a (actual rows=9 loops=1)
+                             Storage Table Read Requests: 1
+                             Storage Table Read Ops: 1
+                             Storage Table Rows Scanned: 9
+   ->  LockRows (actual rows=3 loops=1)
+         ->  Sort (actual rows=3 loops=1)
+               Sort Key: locked_a.id, t_b.cid
+               Sort Method: quicksort
+               ->  YB Batched Nested Loop Join (actual rows=18 loops=1)
+                     Join Filter: (locked_a.id = t_b.parent_id)
+                     ->  CTE Scan on locked_a (actual rows=6 loops=1)
+                     ->  Index Scan using t_b_parent_idx on t_b (actual rows=18 loops=1)
+                           Index Cond: (parent_id = ANY (ARRAY[locked_a.id, $4, $5, ..., $1026]))
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 1
+                           Storage Table Rows Scanned: 18
+                           Storage Index Read Requests: 1
+                           Storage Index Read Ops: 1
+                           Storage Index Rows Scanned: 18
+ Storage Read Requests: 12
+ Storage Read Ops: 12
+ Storage Rows Scanned: 54
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(31 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('WITH locked_a AS (SELECT id FROM t_a ORDER BY ord LIMIT 6 FOR UPDATE SKIP LOCKED) SELECT locked_a.id, t_b.cid FROM locked_a JOIN t_b ON locked_a.id = t_b.parent_id ORDER BY locked_a.id, t_b.cid LIMIT 3 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT sub_a.id, sub_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 6 FOR UPDATE SKIP LOCKED) sub_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 9 FOR UPDATE SKIP LOCKED) sub_b ON sub_a.id = sub_b.parent_id ORDER BY sub_a.id, sub_b.cid LIMIT 3 FOR UPDATE SKIP LOCKED;
+ id | cid 
+----+-----
+  1 |   1
+  1 |   2
+  1 |   3
+(3 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_a      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_b      | {STRONG_READ,STRONG_WRITE} |           | {9}
+(15 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT sub_a.id, sub_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 6 FOR UPDATE SKIP LOCKED) sub_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 9 FOR UPDATE SKIP LOCKED) sub_b ON sub_a.id = sub_b.parent_id ORDER BY sub_a.id, sub_b.cid LIMIT 3 FOR UPDATE SKIP LOCKED;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  LockRows (actual rows=3 loops=1)
+         ->  Sort (actual rows=3 loops=1)
+               Sort Key: sub_a.id, sub_b.cid
+               Sort Method: quicksort
+               ->  Merge Join (actual rows=9 loops=1)
+                     Merge Cond: (sub_a.id = sub_b.parent_id)
+                     ->  Sort (actual rows=4 loops=1)
+                           Sort Key: sub_a.id
+                           Sort Method: quicksort
+                           ->  Subquery Scan on sub_a (actual rows=6 loops=1)
+                                 ->  Limit (actual rows=6 loops=1)
+                                       ->  LockRows (actual rows=6 loops=1)
+                                             ->  Sort (actual rows=6 loops=1)
+                                                   Sort Key: t_a.ord
+                                                   Sort Method: quicksort
+                                                   ->  Seq Scan on t_a (actual rows=9 loops=1)
+                                                         Storage Table Read Requests: 1
+                                                         Storage Table Read Ops: 1
+                                                         Storage Table Rows Scanned: 9
+                     ->  Sort (actual rows=9 loops=1)
+                           Sort Key: sub_b.parent_id
+                           Sort Method: quicksort
+                           ->  Subquery Scan on sub_b (actual rows=9 loops=1)
+                                 ->  Limit (actual rows=9 loops=1)
+                                       ->  LockRows (actual rows=9 loops=1)
+                                             ->  Sort (actual rows=9 loops=1)
+                                                   Sort Key: t_b.ord
+                                                   Sort Method: quicksort
+                                                   ->  Seq Scan on t_b (actual rows=24 loops=1)
+                                                         Storage Table Read Requests: 1
+                                                         Storage Table Read Ops: 1
+                                                         Storage Table Rows Scanned: 24
+ Storage Read Requests: 17
+ Storage Read Ops: 17
+ Storage Rows Scanned: 48
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(38 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT sub_a.id, sub_b.cid FROM (SELECT id FROM t_a ORDER BY ord LIMIT 6 FOR UPDATE SKIP LOCKED) sub_a JOIN (SELECT cid, parent_id FROM t_b ORDER BY ord LIMIT 9 FOR UPDATE SKIP LOCKED) sub_b ON sub_a.id = sub_b.parent_id ORDER BY sub_a.id, sub_b.cid LIMIT 3 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+SELECT k FROM t_asc ORDER BY k FETCH FIRST 5 ROWS WITH TIES FOR UPDATE SKIP LOCKED;
+ERROR:  SKIP LOCKED and WITH TIES options cannot be used together
+SELECT DISTINCT k FROM t_asc FOR UPDATE SKIP LOCKED;
+ERROR:  FOR UPDATE is not allowed with DISTINCT clause
+SELECT k, count(*) FROM t_asc GROUP BY k FOR UPDATE SKIP LOCKED;
+ERROR:  FOR UPDATE is not allowed with GROUP BY clause
+SELECT k, count(*) FROM t_asc FOR UPDATE SKIP LOCKED;
+ERROR:  FOR UPDATE is not allowed with aggregate functions
+SELECT k FROM t_asc
+UNION
+SELECT k FROM t_asc
+FOR UPDATE SKIP LOCKED;
+ERROR:  FOR UPDATE is not allowed with UNION/INTERSECT/EXCEPT
+BEGIN;
+DECLARE cur CURSOR FOR SELECT * FROM t_asc FOR UPDATE SKIP LOCKED;
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation | mode | hash_cols | range_cols 
+----------+----------+------+-----------+------------
+(0 rows)
+
+CLOSE cur;
+ROLLBACK;
+BEGIN;
+DECLARE cur CURSOR FOR SELECT * FROM t_asc FOR UPDATE SKIP LOCKED;
+FETCH 1 FROM cur;
+ k | v 
+---+---
+ 1 | 1
+(1 row)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+(4 rows)
+
+CLOSE cur;
+ROLLBACK;
+BEGIN;
+DECLARE cur CURSOR FOR SELECT * FROM t_asc FOR UPDATE SKIP LOCKED;
+FETCH 4 FROM cur;
+ k | v 
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+ 4 | 4
+(4 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+(4 rows)
+
+CLOSE cur;
+ROLLBACK;
+BEGIN;
+DECLARE cur CURSOR FOR SELECT * FROM t_asc FOR UPDATE SKIP LOCKED;
+FETCH 0 FROM cur;
+ k | v 
+---+---
+(0 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation | mode | hash_cols | range_cols 
+----------+----------+------+-----------+------------
+(0 rows)
+
+CLOSE cur;
+ROLLBACK;
+BEGIN;
+DECLARE cur CURSOR FOR SELECT * FROM t_asc FOR UPDATE SKIP LOCKED;
+FETCH ALL FROM cur;
+ k  | v  
+----+----
+  1 |  1
+  2 |  2
+  3 |  3
+  4 |  4
+  5 |  5
+  6 |  6
+  7 |  7
+  8 |  8
+  9 |  9
+ 10 | 10
+ 11 | 11
+ 12 | 12
+ 13 | 13
+ 14 | 14
+ 15 | 15
+(15 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {10}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {11}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {12}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {13}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {14}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {15}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {5}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {6}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {7}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {8}
+ row      | t_asc    | {STRONG_READ,STRONG_WRITE} |           | {9}
+(15 rows)
+
+CLOSE cur;
+ROLLBACK;
+BEGIN;
+SELECT * FROM t_part ORDER BY a LIMIT 3 FOR UPDATE SKIP LOCKED;
+ a 
+---
+ 1
+ 2
+ 3
+(3 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation  |            mode            | hash_cols | range_cols 
+----------+-----------+----------------------------+-----------+------------
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {1}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {2}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {3}       | 
+(3 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_part ORDER BY a LIMIT 3 FOR UPDATE SKIP LOCKED;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  LockRows (actual rows=3 loops=1)
+         ->  Sort (actual rows=3 loops=1)
+               Sort Key: t_part.a
+               Sort Method: quicksort
+               ->  Append (actual rows=10 loops=1)
+                     ->  Seq Scan on t_part_lo t_part_1 (actual rows=5 loops=1)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 3
+                           Storage Table Rows Scanned: 5
+                     ->  Seq Scan on t_part_hi t_part_2 (actual rows=5 loops=1)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 3
+                           Storage Table Rows Scanned: 5
+ Storage Read Requests: 5
+ Storage Read Ops: 9
+ Storage Rows Scanned: 13
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(19 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT * FROM t_part ORDER BY a LIMIT 3 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT * FROM t_part ORDER BY a LIMIT 7 FOR UPDATE SKIP LOCKED;
+ a 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+(7 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation  |            mode            | hash_cols | range_cols 
+----------+-----------+----------------------------+-----------+------------
+ row      | t_part_hi | {STRONG_READ,STRONG_WRITE} | {6}       | 
+ row      | t_part_hi | {STRONG_READ,STRONG_WRITE} | {7}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {1}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {2}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {3}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {4}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {5}       | 
+(7 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_part ORDER BY a LIMIT 7 FOR UPDATE SKIP LOCKED;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Limit (actual rows=7 loops=1)
+   ->  LockRows (actual rows=7 loops=1)
+         ->  Sort (actual rows=7 loops=1)
+               Sort Key: t_part.a
+               Sort Method: quicksort
+               ->  Append (actual rows=10 loops=1)
+                     ->  Seq Scan on t_part_lo t_part_1 (actual rows=5 loops=1)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 3
+                           Storage Table Rows Scanned: 5
+                     ->  Seq Scan on t_part_hi t_part_2 (actual rows=5 loops=1)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 3
+                           Storage Table Rows Scanned: 5
+ Storage Read Requests: 9
+ Storage Read Ops: 13
+ Storage Rows Scanned: 17
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(19 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT * FROM t_part ORDER BY a LIMIT 7 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT * FROM t_part WHERE a < 6 ORDER BY a FOR UPDATE SKIP LOCKED;
+ a 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation  |            mode            | hash_cols | range_cols 
+----------+-----------+----------------------------+-----------+------------
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {1}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {2}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {3}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {4}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {5}       | 
+(5 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_part WHERE a < 6 ORDER BY a FOR UPDATE SKIP LOCKED;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ LockRows (actual rows=5 loops=1)
+   ->  Sort (actual rows=5 loops=1)
+         Sort Key: t_part_1.a
+         Sort Method: quicksort
+         ->  Seq Scan on t_part_lo t_part_1 (actual rows=5 loops=1)
+               Storage Filter: (a < 6)
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 3
+               Storage Table Rows Scanned: 5
+ Storage Read Requests: 6
+ Storage Read Ops: 8
+ Storage Rows Scanned: 10
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(14 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT * FROM t_part WHERE a < 6 ORDER BY a FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+   Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT * FROM t_part WHERE a < 6 ORDER BY a LIMIT 3 FOR UPDATE SKIP LOCKED;
+ a 
+---
+ 1
+ 2
+ 3
+(3 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation  |            mode            | hash_cols | range_cols 
+----------+-----------+----------------------------+-----------+------------
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {1}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {2}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {3}       | 
+(3 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_part WHERE a < 6 ORDER BY a LIMIT 3 FOR UPDATE SKIP LOCKED;
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  LockRows (actual rows=3 loops=1)
+         ->  Sort (actual rows=3 loops=1)
+               Sort Key: t_part_1.a
+               Sort Method: quicksort
+               ->  Seq Scan on t_part_lo t_part_1 (actual rows=5 loops=1)
+                     Storage Filter: (a < 6)
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 3
+                     Storage Table Rows Scanned: 5
+ Storage Read Requests: 4
+ Storage Read Ops: 6
+ Storage Rows Scanned: 8
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(15 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT * FROM t_part WHERE a < 6 ORDER BY a LIMIT 3 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT * FROM t_part_lo ORDER BY a FOR UPDATE SKIP LOCKED;
+ a 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation  |            mode            | hash_cols | range_cols 
+----------+-----------+----------------------------+-----------+------------
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {1}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {2}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {3}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {4}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {5}       | 
+(5 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_part_lo ORDER BY a FOR UPDATE SKIP LOCKED;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ LockRows (actual rows=5 loops=1)
+   ->  Sort (actual rows=5 loops=1)
+         Sort Key: a
+         Sort Method: quicksort
+         ->  Seq Scan on t_part_lo (actual rows=5 loops=1)
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 3
+               Storage Table Rows Scanned: 5
+ Storage Read Requests: 6
+ Storage Read Ops: 8
+ Storage Rows Scanned: 10
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(13 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT * FROM t_part_lo ORDER BY a FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+   Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT * FROM t_part ORDER BY a OFFSET 3 LIMIT 4 FOR UPDATE SKIP LOCKED;
+ a 
+---
+ 4
+ 5
+ 6
+ 7
+(4 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation  |            mode            | hash_cols | range_cols 
+----------+-----------+----------------------------+-----------+------------
+ row      | t_part_hi | {STRONG_READ,STRONG_WRITE} | {6}       | 
+ row      | t_part_hi | {STRONG_READ,STRONG_WRITE} | {7}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {1}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {2}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {3}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {4}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {5}       | 
+(7 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_part ORDER BY a OFFSET 3 LIMIT 4 FOR UPDATE SKIP LOCKED;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Limit (actual rows=4 loops=1)
+   ->  LockRows (actual rows=7 loops=1)
+         ->  Sort (actual rows=7 loops=1)
+               Sort Key: t_part.a
+               Sort Method: quicksort
+               ->  Append (actual rows=10 loops=1)
+                     ->  Seq Scan on t_part_lo t_part_1 (actual rows=5 loops=1)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 3
+                           Storage Table Rows Scanned: 5
+                     ->  Seq Scan on t_part_hi t_part_2 (actual rows=5 loops=1)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 3
+                           Storage Table Rows Scanned: 5
+ Storage Read Requests: 9
+ Storage Read Ops: 13
+ Storage Rows Scanned: 17
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(19 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT * FROM t_part ORDER BY a OFFSET 3 LIMIT 4 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SELECT t_part.a FROM t_part JOIN t_asc ON t_part.a = t_asc.k ORDER BY t_part.a LIMIT 5 FOR UPDATE OF t_part SKIP LOCKED;
+ a 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation  |            mode            | hash_cols | range_cols 
+----------+-----------+----------------------------+-----------+------------
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {1}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {2}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {3}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {4}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {5}       | 
+(5 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT t_part.a FROM t_part JOIN t_asc ON t_part.a = t_asc.k ORDER BY t_part.a LIMIT 5 FOR UPDATE OF t_part SKIP LOCKED;
+                                                 QUERY PLAN                                                  
+-------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   ->  LockRows (actual rows=5 loops=1)
+         ->  Result (actual rows=5 loops=1)
+               ->  YB Batched Nested Loop Join (actual rows=5 loops=1)
+                     Join Filter: (t_part.a = t_asc.k)
+                     Sort Keys: t_part.a
+                     ->  Index Scan using t_asc_pkey on t_asc (actual rows=15 loops=1)
+                           Storage Table Read Requests: 5
+                           Storage Table Read Ops: 5
+                           Storage Table Rows Scanned: 18
+                     ->  Append (actual rows=5 loops=2)
+                           ->  Index Scan using t_part_lo_pkey on t_part_lo t_part_1 (actual rows=2 loops=2)
+                                 Index Cond: (a = ANY (ARRAY[t_asc.k, $3, $4, ..., $1025]))
+                                 Storage Table Read Requests: 1
+                                 Storage Table Read Ops: 2
+                                 Storage Table Rows Scanned: 2
+                           ->  Index Scan using t_part_hi_pkey on t_part_hi t_part_2 (actual rows=5 loops=1)
+                                 Index Cond: (a = ANY (ARRAY[t_asc.k, $3, $4, ..., $1025]))
+                                 Storage Table Read Requests: 1
+                                 Storage Table Read Ops: 3
+                                 Storage Table Rows Scanned: 5
+ Storage Read Requests: 10
+ Storage Read Ops: 15
+ Storage Rows Scanned: 30
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(26 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT t_part.a FROM t_part JOIN t_asc ON t_part.a = t_asc.k ORDER BY t_part.a LIMIT 5 FOR UPDATE OF t_part SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+CREATE TABLE t_queue (id INT, status TEXT, ord INT, PRIMARY KEY (id ASC));
+INSERT INTO t_queue SELECT i, 'pending', i FROM generate_series(1, 10) AS i;
+BEGIN;
+SELECT id, status FROM t_queue ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED;
+ id | status  
+----+---------
+  1 | pending
+  2 | pending
+  3 | pending
+(3 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {3}
+(3 rows)
+
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT id, status FROM t_queue ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Limit (actual rows=3 loops=1)
+   ->  LockRows (actual rows=3 loops=1)
+         ->  Sort (actual rows=3 loops=1)
+               Sort Key: ord
+               Sort Method: quicksort
+               ->  Seq Scan on t_queue (actual rows=10 loops=1)
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 10
+ Storage Read Requests: 4
+ Storage Read Ops: 4
+ Storage Rows Scanned: 13
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(14 rows)
+
+SELECT * FROM yb_lockrows_max_read_aheads('SELECT id, status FROM t_queue ORDER BY ord LIMIT 3 FOR UPDATE SKIP LOCKED');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+         Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+WITH next AS (SELECT id FROM t_queue ORDER BY id LIMIT 3 FOR UPDATE SKIP LOCKED) UPDATE t_queue SET status = 'processing' WHERE id IN (SELECT id FROM next) RETURNING id, status;
+ id |   status   
+----+------------
+  1 | processing
+  2 | processing
+  3 | processing
+(3 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_queue  | {WEAK_READ,WEAK_WRITE}     |           | {1}
+ row      | t_queue  | {STRONG_READ}              |           | {1}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_queue  | {WEAK_READ,WEAK_WRITE}     |           | {2}
+ row      | t_queue  | {STRONG_READ}              |           | {2}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_queue  | {WEAK_READ,WEAK_WRITE}     |           | {3}
+ row      | t_queue  | {STRONG_READ}              |           | {3}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {3}
+(9 rows)
+
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH next AS (SELECT id FROM t_queue ORDER BY id LIMIT 3 FOR UPDATE SKIP LOCKED) UPDATE t_queue SET status = 'processing' WHERE id IN (SELECT id FROM next) RETURNING id, status;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Update on t_queue (actual rows=3 loops=1)
+   Storage Table Write Requests: 3
+   CTE next
+     ->  Limit (actual rows=3 loops=1)
+           ->  LockRows (actual rows=3 loops=1)
+                 ->  Index Scan using t_queue_pkey on t_queue t_queue_1 (actual rows=3 loops=1)
+                       Storage Table Read Requests: 1
+                       Storage Table Read Ops: 1
+                       Storage Table Rows Scanned: 3
+   ->  YB Batched Nested Loop Join (actual rows=3 loops=1)
+         Join Filter: (t_queue.id = next.id)
+         ->  HashAggregate (actual rows=3 loops=1)
+               Group Key: next.id
+               ->  CTE Scan on next (actual rows=3 loops=1)
+         ->  Index Scan using t_queue_pkey on t_queue (actual rows=3 loops=1)
+               Index Cond: (id = ANY (ARRAY[next.id, $4, $5, ..., $1026]))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 3
+ Storage Read Requests: 5
+ Storage Read Ops: 5
+ Storage Rows Scanned: 9
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(24 rows)
+
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SELECT * FROM yb_lockrows_max_read_aheads('WITH next AS (SELECT id FROM t_queue ORDER BY id LIMIT 3 FOR UPDATE SKIP LOCKED) UPDATE t_queue SET status = ''processing'' WHERE id IN (SELECT id FROM next) RETURNING id, status');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+WITH next AS (SELECT id FROM t_queue ORDER BY id LIMIT 3 FOR UPDATE SKIP LOCKED) DELETE FROM t_queue WHERE id IN (SELECT id FROM next) RETURNING id;
+ id 
+----
+  1
+  2
+  3
+(3 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {3}
+(6 rows)
+
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH next AS (SELECT id FROM t_queue ORDER BY id LIMIT 3 FOR UPDATE SKIP LOCKED) DELETE FROM t_queue WHERE id IN (SELECT id FROM next) RETURNING id;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Delete on t_queue (actual rows=3 loops=1)
+   Storage Table Write Requests: 3
+   CTE next
+     ->  Limit (actual rows=3 loops=1)
+           ->  LockRows (actual rows=3 loops=1)
+                 ->  Index Scan using t_queue_pkey on t_queue t_queue_1 (actual rows=3 loops=1)
+                       Storage Table Read Requests: 1
+                       Storage Table Read Ops: 1
+                       Storage Table Rows Scanned: 3
+   ->  YB Batched Nested Loop Join (actual rows=3 loops=1)
+         Join Filter: (t_queue.id = next.id)
+         ->  HashAggregate (actual rows=3 loops=1)
+               Group Key: next.id
+               ->  CTE Scan on next (actual rows=3 loops=1)
+         ->  Index Scan using t_queue_pkey on t_queue (actual rows=3 loops=1)
+               Index Cond: (id = ANY (ARRAY[next.id, $4, $5, ..., $1026]))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 3
+ Storage Read Requests: 5
+ Storage Read Ops: 5
+ Storage Rows Scanned: 9
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(24 rows)
+
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SELECT * FROM yb_lockrows_max_read_aheads('WITH next AS (SELECT id FROM t_queue ORDER BY id LIMIT 3 FOR UPDATE SKIP LOCKED) DELETE FROM t_queue WHERE id IN (SELECT id FROM next) RETURNING id');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+UPDATE t_queue SET status = 'processing' WHERE id IN (SELECT id FROM t_queue ORDER BY id LIMIT 5 FOR UPDATE SKIP LOCKED) RETURNING id, status;
+ id |   status   
+----+------------
+  1 | processing
+  2 | processing
+  3 | processing
+  4 | processing
+  5 | processing
+(5 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_queue  | {WEAK_READ,WEAK_WRITE}     |           | {1}
+ row      | t_queue  | {STRONG_READ}              |           | {1}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_queue  | {WEAK_READ,WEAK_WRITE}     |           | {2}
+ row      | t_queue  | {STRONG_READ}              |           | {2}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_queue  | {WEAK_READ,WEAK_WRITE}     |           | {3}
+ row      | t_queue  | {STRONG_READ}              |           | {3}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_queue  | {WEAK_READ,WEAK_WRITE}     |           | {4}
+ row      | t_queue  | {STRONG_READ}              |           | {4}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_queue  | {WEAK_READ,WEAK_WRITE}     |           | {5}
+ row      | t_queue  | {STRONG_READ}              |           | {5}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {5}
+(15 rows)
+
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) UPDATE t_queue SET status = 'processing' WHERE id IN (SELECT id FROM t_queue ORDER BY id LIMIT 5 FOR UPDATE SKIP LOCKED) RETURNING id, status;
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Update on t_queue (actual rows=5 loops=1)
+   Storage Table Write Requests: 5
+   ->  YB Batched Nested Loop Join (actual rows=5 loops=1)
+         Join Filter: (t_queue.id = "ANY_subquery".id)
+         ->  HashAggregate (actual rows=5 loops=1)
+               Group Key: "ANY_subquery".id
+               ->  Subquery Scan on "ANY_subquery" (actual rows=5 loops=1)
+                     ->  Limit (actual rows=5 loops=1)
+                           ->  LockRows (actual rows=5 loops=1)
+                                 ->  Index Scan using t_queue_pkey on t_queue t_queue_1 (actual rows=5 loops=1)
+                                       Storage Table Read Requests: 1
+                                       Storage Table Read Ops: 1
+                                       Storage Table Rows Scanned: 5
+         ->  Index Scan using t_queue_pkey on t_queue (actual rows=5 loops=1)
+               Index Cond: (id = ANY (ARRAY["ANY_subquery".id, $3, $4, ..., $1025]))
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
+               Storage Table Rows Scanned: 5
+ Storage Read Requests: 7
+ Storage Read Ops: 7
+ Storage Rows Scanned: 15
+ Storage Write Requests: 5
+ Storage Flush Requests: 1
+(23 rows)
+
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SELECT * FROM yb_lockrows_max_read_aheads('UPDATE t_queue SET status = ''processing'' WHERE id IN (SELECT id FROM t_queue ORDER BY id LIMIT 5 FOR UPDATE SKIP LOCKED) RETURNING id, status');
+            yb_lockrows_max_read_aheads            
+---------------------------------------------------
+                                 Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+WITH next AS (SELECT a FROM t_part ORDER BY a LIMIT 3 FOR UPDATE SKIP LOCKED) DELETE FROM t_part WHERE a IN (SELECT a FROM next) RETURNING a;
+ a 
+---
+ 1
+ 2
+ 3
+(3 rows)
+
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation  |            mode            | hash_cols | range_cols 
+----------+-----------+----------------------------+-----------+------------
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {1}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {1}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {1}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {1}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {2}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {2}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {2}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {2}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {3}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {3}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {3}       | 
+ row      | t_part_lo | {STRONG_READ,STRONG_WRITE} | {3}       | 
+(12 rows)
+
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) WITH next AS (SELECT a FROM t_part ORDER BY a LIMIT 3 FOR UPDATE SKIP LOCKED) DELETE FROM t_part WHERE a IN (SELECT a FROM next) RETURNING a;
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Delete on t_part (actual rows=3 loops=1)
+   Delete on t_part_lo t_part_4
+   Delete on t_part_hi t_part_5
+   Storage Table Write Requests: 3
+   CTE next
+     ->  Limit (actual rows=3 loops=1)
+           ->  LockRows (actual rows=3 loops=1)
+                 ->  Sort (actual rows=3 loops=1)
+                       Sort Key: t_part_1.a
+                       Sort Method: quicksort
+                       ->  Append (actual rows=10 loops=1)
+                             ->  Seq Scan on t_part_lo t_part_2 (actual rows=5 loops=1)
+                                   Storage Table Read Requests: 1
+                                   Storage Table Read Ops: 3
+                                   Storage Table Rows Scanned: 5
+                             ->  Seq Scan on t_part_hi t_part_3 (actual rows=5 loops=1)
+                                   Storage Table Read Requests: 1
+                                   Storage Table Read Ops: 3
+                                   Storage Table Rows Scanned: 5
+   ->  YB Batched Nested Loop Join (actual rows=3 loops=1)
+         Join Filter: (t_part.a = next.a)
+         ->  HashAggregate (actual rows=3 loops=1)
+               Group Key: next.a
+               ->  CTE Scan on next (actual rows=3 loops=1)
+         ->  Append (actual rows=3 loops=1)
+               ->  Index Scan using t_part_lo_pkey on t_part_lo t_part_4 (actual rows=3 loops=1)
+                     Index Cond: (a = ANY (ARRAY[next.a, $4, $5, ..., $1026]))
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 2
+                     Storage Table Rows Scanned: 3
+               ->  Index Scan using t_part_hi_pkey on t_part_hi t_part_5 (never executed)
+                     Index Cond: (a = ANY (ARRAY[next.a, $4, $5, ..., $1026]))
+ Storage Read Requests: 6
+ Storage Read Ops: 17
+ Storage Rows Scanned: 16
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(37 rows)
+
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SELECT * FROM yb_lockrows_max_read_aheads('WITH next AS (SELECT a FROM t_part ORDER BY a LIMIT 3 FOR UPDATE SKIP LOCKED) DELETE FROM t_part WHERE a IN (SELECT a FROM next) RETURNING a');
+ yb_lockrows_max_read_aheads 
+-----------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO t_queue SELECT id + 100, status, ord FROM t_queue ORDER BY id LIMIT 5 FOR UPDATE SKIP LOCKED;
+DO $$ BEGIN PERFORM pg_sleep(1.5); END $$;
+SELECT l.locktype, l.relation::regclass::text AS relation, l.mode, l.hash_cols, l.range_cols FROM yb_lock_status(null, null) l WHERE l.locktype = 'row' ORDER BY l.relation::regclass::text, l.hash_cols NULLS FIRST, l.range_cols NULLS FIRST;
+ locktype | relation |            mode            | hash_cols | range_cols 
+----------+----------+----------------------------+-----------+------------
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {1}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {101}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {102}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {103}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {104}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {105}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {2}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {3}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {4}
+ row      | t_queue  | {STRONG_READ,STRONG_WRITE} |           | {5}
+(10 rows)
+
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) INSERT INTO t_queue SELECT id + 100, status, ord FROM t_queue ORDER BY id LIMIT 5 FOR UPDATE SKIP LOCKED;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Insert on t_queue (actual rows=0 loops=1)
+   ->  Subquery Scan on "*SELECT*" (actual rows=5 loops=1)
+         ->  Limit (actual rows=5 loops=1)
+               ->  LockRows (actual rows=5 loops=1)
+                     ->  Index Scan using t_queue_pkey on t_queue t_queue_1 (actual rows=5 loops=1)
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 1
+                           Storage Table Rows Scanned: 5
+                           Storage Table Write Requests: 1
+ Storage Read Requests: 6
+ Storage Read Ops: 6
+ Storage Rows Scanned: 10
+ Storage Write Requests: 5
+ Storage Flush Requests: 2
+(14 rows)
+
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SELECT * FROM yb_lockrows_max_read_aheads('INSERT INTO t_queue SELECT id + 100, status, ord FROM t_queue ORDER BY id LIMIT 5 FOR UPDATE SKIP LOCKED');
+      yb_lockrows_max_read_aheads      
+---------------------------------------
+                     Max Read Ahead: N
+(1 row)
+
+ROLLBACK;
+DROP TABLE t_asc, t_multi, t_with_idx, t_part, t_a, t_b, t_queue;
+ROLLBACK;
+WARNING:  there is no transaction in progress
+DISCARD TEMP;

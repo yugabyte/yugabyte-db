@@ -50,7 +50,8 @@ public class TestDdlTransactionBlocks extends BasePgRegressTest {
     builder.addCommonTServerFlag("enable_object_locking_for_table_locks", "true");
     builder.addCommonTServerFlag("ysql_bypass_anonymous_savepoint_ddl_check", "false");
     builder.addCommonTServerFlag(
-        "allowed_preview_flags_csv", "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
+        "allowed_preview_flags_csv",
+        "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
     boolean enableSkipIntents = ThreadLocalRandom.current().nextBoolean();
     if (enableSkipIntents) {
       builder.addCommonTServerFlag(

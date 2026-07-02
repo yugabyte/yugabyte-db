@@ -169,14 +169,23 @@ tserver::ReadTimeManipulation GetActualReadTimeManipulator(
 
 DEPRECATE_FLAG(int32, pg_yb_session_timeout_ms, "02_2024");
 
-PgTxnManager::SerialNo::SerialNo()
-    : SerialNo(0, 0) {}
+PgTxnManager::SerialNo::SerialNo(std::atomic<uint64_t>& next_read_time_serial_no)
+    : next_read_time_serial_no_(next_read_time_serial_no),
+      txn_(0),
+      read_time_(0),
+      min_read_time_(0),
+      max_read_time_(0) {
+}
 
-PgTxnManager::SerialNo::SerialNo(uint64_t txn_serial_no, uint64_t read_time_serial_no)
-    : txn_(txn_serial_no),
-      read_time_(read_time_serial_no),
-      min_read_time_(read_time_),
-      max_read_time_(read_time_) {
+void PgTxnManager::SerialNo::Set(uint64_t txn_serial_no, uint64_t read_time_serial_no) {
+  txn_ = txn_serial_no;
+  read_time_ = min_read_time_ = max_read_time_ = read_time_serial_no;
+}
+
+uint64_t PgTxnManager::SerialNo::NextReadTimeSerialNo() {
+  // fetch_add returns the previous value, so the first allocated serial number is 1. This matches
+  // the historical behaviour where read time serial numbers started from 1.
+  return next_read_time_serial_no_.fetch_add(1, std::memory_order_acq_rel) + 1;
 }
 
 void PgTxnManager::SerialNo::IncTxn(
@@ -198,12 +207,12 @@ void PgTxnManager::SerialNo::IncTxn(
 }
 
 void PgTxnManager::SerialNo::IncReadTime() {
-  read_time_ = ++max_read_time_;
+  read_time_ = max_read_time_ = NextReadTimeSerialNo();
   VLOG(4) << "IncReadTime to " << max_read_time_;
 }
 
 void PgTxnManager::SerialNo::IncMaxReadTime() {
-  ++max_read_time_;
+  max_read_time_ = NextReadTimeSerialNo();
   VLOG(4) << "IncMaxReadTime to " << max_read_time_;
 }
 
@@ -239,8 +248,10 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
 #endif
 
 PgTxnManager::PgTxnManager(
-    PgClient* client, YbcPgCallbacks pg_callbacks, bool enable_table_locking)
+    PgClient* client, YbcPgCallbacks pg_callbacks, bool enable_table_locking,
+    std::atomic<uint64_t>& next_read_time_serial_no)
     : client_(client),
+      serial_no_(next_read_time_serial_no),
       pg_callbacks_(pg_callbacks),
       enable_table_locking_(enable_table_locking) {}
 
@@ -864,8 +875,7 @@ void PgTxnManager::DumpSessionState(YbcPgSessionState* session_data) {
 void PgTxnManager::RestoreSessionState(const YbcPgSessionState& session_data) {
   VLOG(2) << "RestoreSessionState: txn_serial_no=" << session_data.txn_serial_no
           << ", read_time_serial_no=" << session_data.read_time_serial_no;
-  serial_no_ =
-      SerialNo(session_data.txn_serial_no, session_data.read_time_serial_no);
+  serial_no_.Set(session_data.txn_serial_no, session_data.read_time_serial_no);
   active_sub_transaction_id_ = session_data.active_sub_transaction_id;
   VLOG_TXN_STATE(2);
 }
@@ -877,7 +887,9 @@ YbcReadPointHandle PgTxnManager::GetCurrentReadPoint() const {
 YbcReadPointHandle PgTxnManager::GetMaxReadPoint() const { return serial_no_.max_read_time(); }
 
 TxnReadPoint PgTxnManager::GetCurrentReadPointState() const {
-  return TxnReadPoint{serial_no_.txn(), serial_no_.read_time(), clamp_uncertainty_window_};
+  return TxnReadPoint{
+      serial_no_.txn(), serial_no_.read_time(), clamp_uncertainty_window_,
+      follower_read_staleness_ms_};
 }
 
 Status PgTxnManager::RestoreReadPoint(YbcReadPointHandle read_point) {
@@ -899,6 +911,7 @@ Status PgTxnManager::RestoreReadPoint(const TxnReadPoint& saved_read_point) {
     return Status::OK();
   }
   clamp_uncertainty_window_ = saved_read_point.is_clamped;
+  follower_read_staleness_ms_ = saved_read_point.follower_read_staleness_ms;
   return RestoreReadPoint(saved_read_point.read_time_serial_no);
 }
 
