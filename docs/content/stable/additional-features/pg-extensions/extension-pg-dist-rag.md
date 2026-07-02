@@ -30,14 +30,7 @@ In most implementations, that pipeline lives entirely outside the database. A Py
 
 Typically this infrastructure is built from scratch. At production scale, across diverse source types and formats, this can become a significant ongoing operational burden requiring hundreds to thousands of lines of code to write, test, deploy, and keep current.
 
-pg_dist_rag relocates this entire preprocessing pipeline inside YugabyteDB, managed entirely through SQL as a PostgreSQL extension. The extension introduces a small, focused set of functions:
-
-| Function | Description |
-| :--- | :--- |
-| dist_rag.create_source() | Register a document collection by URI (S3 bucket, URL, NFS path), with optional metadata tags for filtering and a secrets provider (AWS, GCP, Azure, HashiCorp Vault) for authenticated access. |
-| dist_rag.init_vector_index() | Create a named vector index backed by a pgvector table, specifying your AI provider and embedding dimensions. |
-| dist_rag.add_source_to_index() | Attach one or more sources to an index, with per-source chunking parameters. |
-| dist_rag.build_index() | Enqueue the full preprocessing pipeline for all documents in the index. |
+pg_dist_rag relocates this entire preprocessing pipeline inside YugabyteDB, managed entirely through SQL as a PostgreSQL extension using a set of functions to create sources, initialize a vector index, optionally add more sources, and build the index.
 
 The extension manages a work queue internally. Documents are processed asynchronously (parsed, chunked, and embedded using the configured provider) and results land directly in the pgvector-backed index table, queryable with standard SQL the moment each document completes.
 
@@ -48,30 +41,26 @@ INSERT INTO rag.pg_rag_source (source_uri, rag_index_name)
 VALUES ('s3://company-docs/engineering/', 'engineering_kb');
 ```
 
-pg_dist_rag is anchored in YugabyteDB's distributed SQL architecture. The same cluster that handles transactional workloads manages the ingestion pipeline: horizontally scalable, geo-distributed for data residency requirements, and resilient to node and availability zone failures. There is no separate pipeline service to deploy, no separate failure domain to monitor, and no data synchronization problem between your operational database and your vector store - they're the same system.
+pg_dist_rag is anchored in YugabyteDB's distributed SQL architecture. The same cluster that handles transactional workloads manages the ingestion pipeline: horizontally scalable, geo-distributed for data residency requirements, and resilient to node and availability zone failures. There is no separate pipeline service to deploy, no separate failure domain to monitor, and no data synchronization problem between your operational database and your vector store, they're the same system.
 
-### Disparate data sources, one platform
+### Data sources
 
-Real RAG applications don't read from a single clean source. They need to pull from S3 buckets, web URLs, internal file systems, and a growing range of document formats scattered across cloud storage, data warehouses, and internal systems.
-
-pg_dist_rag is designed as a unified data access broker. It currently supports ingestion of PDF, text, JSON, CSV, and markdown across diverse source locations (S3, HTTPS, NFS paths), with secrets for authenticated access managed via AWS, GCP, Azure, or HashiCorp Vault. An upcoming integration with pg_duckdb — the official PostgreSQL extension for DuckDB — will significantly expand the supported format surface: Parquet, Apache Iceberg, and Delta Lake, readable directly from S3, GCS, Azure Blob Storage, and R2, without any changes required to the SQL API.
+pg_dist_rag is designed as a unified data access broker. It currently supports ingestion of PDF, text, JSON, CSV, and markdown across diverse source locations (S3, HTTPS, NFS paths), with secrets for authenticated access managed via AWS, GCP, Azure, or HashiCorp Vault.
 
 For data that is too large or costly to move, YugabyteDB can query it in place, eliminating the data movement cost that often makes large-scale RAG pipelines expensive and operationally complex. The result is less data to move, less storage to manage, and a reduction in the operational cost of keeping multiple systems in sync.
 
-Parsing, chunking, and embedding are handled using a comprehensive tool stack — LangChain, plPython3u, and Unstructured.io — giving teams flexibility at every stage of the pipeline without having to integrate those tools themselves.
+Parsing, chunking, and embedding are handled using a comprehensive tool stack (LangChain, plPython3u, and Unstructured.io) giving teams flexibility at every stage of the pipeline without having to integrate those tools themselves.
 
-### Observability built in
+### Observability
 
-Two views surface pipeline state without any external tooling:
+Two views surface pipeline state, providing visibility into your embedding pipeline without any external tooling:
 
 - dist_rag.vector_index_pipeline_details gives a per-document breakdown: which pipeline step is active, how many chunks have been processed, how many embeddings persisted, and the last error message if processing failed.
 - dist_rag.pipeline_stats gives aggregate statistics per document per index: total chunks processed, total embeddings persisted, completion rate, and cumulative execution time.
 
-Teams that previously had no visibility into their embedding pipeline — or built custom monitoring dashboards to get it — get this for free as part of the extension.
-
 ### Multi-tenancy
 
-pg_dist_rag is multi-tenant capable. Each source carries an optional tenant_id, giving each tenant a fully isolated pipeline namespace. Teams building multi-tenant RAG applications — where one database cluster serves many customers' document collections — can use a single installation across all tenants without cross-tenant data leakage.
+pg_dist_rag is multi-tenant capable. Each source carries an optional tenant_id, giving each tenant a fully isolated pipeline namespace. Teams building multi-tenant RAG applications, where one database cluster serves many customers' document collections, can use a single installation across all tenants without cross-tenant data leakage.
 
 ### Core concepts
 
@@ -90,7 +79,9 @@ pg_dist_rag is multi-tenant capable. Each source carries an optional tenant_id, 
 - An OpenAI API key or another supported embedding provider, if you use hosted embedding generation.
 - Cloud credentials (for example, AWS S3) when reading documents from object storage.
 
-## Set up the RAG service
+## Set up pg_dist_rag
+
+### Start the RAG service
 
 pg_dist_rag relies on a Python RAG agent that runs on each YB-TServer. The agent polls the `dist_rag.work_queue` table, processes documents, and writes embeddings to dynamically created vector tables.
 
@@ -130,7 +121,7 @@ For URL-based sources, only the embedding provider key is typically required at 
 
 The RAG agent script is located at `python/ai/rag_agent/start_rag_agent.py`. A Python virtual environment with the agent dependencies must be available before the service starts.
 
-## Enable the extension
+### Enable the extension
 
 Install pgvector first, then create the pg_dist_rag extension:
 
@@ -143,7 +134,14 @@ This creates the `dist_rag` schema with tables, types, functions, and views for 
 
 ## Build a vector index
 
-The typical workflow has four steps: create sources, initialize a vector index, optionally add more sources, and build the index.
+The typical workflow has four steps: create sources, initialize a vector index, optionally add more sources, and build the index, all managed using the following four functions.
+
+| Function | Description |
+| :--- | :--- |
+| dist_rag.create_source() | Register a document collection by URI (S3 bucket, URL, NFS path), with optional metadata tags for filtering and a secrets provider (AWS, GCP, Azure, HashiCorp Vault) for authenticated access. |
+| dist_rag.init_vector_index() | Create a named vector index backed by a pgvector table, specifying your AI provider and embedding dimensions. |
+| dist_rag.add_source_to_index() | Attach one or more sources to an index, with per-source chunking parameters. |
+| dist_rag.build_index() | Enqueue the full preprocessing pipeline for all documents in the index. |
 
 ### 1. Create a source
 
@@ -329,10 +327,6 @@ FROM dist_rag.pipeline_stats
 WHERE index_name = 'engineering_kb';
 ```
 
-## Build a LangGraph RAG agent
-
-For a complete application example that queries a pg_dist_rag index from a self-correcting LangGraph agent, see the [YugabyteDB RAG LangGraph example](https://github.com/krishna-yb/langgraph/tree/examples/yugabytedb-rag/examples/rag). That sample uses the `langchain-yugabytedb` retriever to search a built index and generate answers with OpenAI.
-
 ## Schema reference
 
 ### Tables
@@ -368,6 +362,7 @@ For a complete application example that queries a pg_dist_rag index from a self-
 
 ## Learn more
 
+- [Build a LangGraph RAG agent](https://github.com/krishna-yb/langgraph/tree/examples/yugabytedb-rag/examples/rag) - application example that queries a pg_dist_rag index from a self-correcting LangGraph agent using the `langchain-yugabytedb` retriever to search a built index and generate answers using OpenAI
 - [pgvector extension](../extension-pgvector/)
 - [Develop applications with AI and YugabyteDB](../../../develop/ai/)
 - [pg_dist_rag extension README](https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/yb-extensions/pg_dist_rag/README.md)
