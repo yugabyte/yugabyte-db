@@ -2197,12 +2197,11 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
     VLOG_WITH_FUNC(2) << "Committed to disk: table " << table->id() << " repartition from "
                       << old_tablets.size() << " tablets to " << new_tablets.size() << " tablets";
 
-    // Commit to memory. Commit new tablets (addition) first since that doesn't break anything.
-    // Commit table next since new tablets are already committed and ready to be referenced. Commit
-    // old tablets (deletion) last since the table is not referencing them anymore.
+    // Release tablet locks before table lock otherwise we may deadlock with heartbeats.
+    // Note that in-mem table->tablet map has already been updated by this point.
     unlocker_new.Commit();
-    table_lock.Commit();
     unlocker_old.Commit();
+    table_lock.Commit();
     VLOG_WITH_FUNC(1) << "Committed to memory: table " << table->id() << " repartition from "
                       << old_tablets.size() << " tablets to " << new_tablets.size() << " tablets";
   }

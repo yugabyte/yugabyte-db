@@ -52,6 +52,7 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster_rpc_tasks.h"
@@ -198,6 +199,9 @@ TabletInfo::TabletInfo(const TableInfoPtr& table, TabletId tablet_id)
       table_(table),
       last_update_time_(MonoTime::Now()),
       last_time_with_valid_leader_(last_update_time_) {
+  if (tablet_id_ == kSysCatalogTabletId) {
+    mutable_metadata()->SetExcludeFromHeldTabletWriteLockCount();
+  }
 }
 
 TabletInfo::~TabletInfo() = default;

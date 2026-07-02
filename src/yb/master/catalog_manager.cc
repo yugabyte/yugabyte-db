@@ -2005,6 +2005,8 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
                                           const Schema& schema,
                                           const LeaderEpoch& epoch,
                                           YQLVirtualTable* vtable) {
+  TableCommitLockAssertSuppression no_table_commit_assert;
+
   std::unique_ptr<YQLVirtualTable> yql_storage(vtable);
 
   scoped_refptr<TableInfo> table = FindPtrOrNull(table_names_map_,
@@ -4450,6 +4452,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
                                    const LeaderEpoch& epoch) {
   DVLOG(3) << __PRETTY_FUNCTION__ << " Begin. " << orig_req->DebugString();
 
+  TableCommitLockAssertSuppression no_table_commit_assert;
+
   const bool is_pg_table = orig_req->table_type() == PGSQL_TABLE_TYPE;
   const bool is_pg_catalog_table = is_pg_table && orig_req->is_pg_catalog_table();
   if (!is_pg_catalog_table || !FLAGS_hide_pg_catalog_table_creation_logs) {
@@ -5514,9 +5518,11 @@ Status CatalogManager::AddTransactionStatusTablet(
   auto old_tablet_lock = VERIFY_RESULT(
       table->AddStatusTabletViaSplitPartition(old_tablet, left_partition, new_tablet));
   RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table, new_tablet, old_tablet));
-  write_lock.Commit();
+  // Release tablet locks before table lock otherwise we may deadlock with heartbeats.
+  // Note that in-mem datastructures have already been updated by this point.
   old_tablet_lock.Commit();
   new_tablet->mutable_metadata()->CommitMutation();
+  write_lock.Commit();
   TRACE("Wrote table to system table");
 
   // Increment transaction status version if needed.
