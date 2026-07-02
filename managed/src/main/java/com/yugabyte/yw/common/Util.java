@@ -144,6 +144,7 @@ public class Util {
   public static final String AZ = "AZ";
   public static final String GCS = "GCS";
   public static final String S3 = "S3";
+  public static final String OCI = "OCI";
   public static final String NFS = "NFS";
   public static final String HTTP = "HTTP";
 
