@@ -3414,6 +3414,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	if (yb_is_agg_pushdown)
 		ExplainPropertyBool("Partial Aggregate", true, es);
 
+	if (IsYugaByteEnabled() && es->yb_debug && planstate->instrument->yb_instr.max_read_ahead)
+		ExplainPropertyUInteger("Max Read Ahead", NULL, planstate->instrument->yb_instr.max_read_ahead, es);
+
 	/*
 	 * Prepare per-worker JIT instrumentation.  As with the overall JIT
 	 * summary, this is printed only if printing costs is enabled.

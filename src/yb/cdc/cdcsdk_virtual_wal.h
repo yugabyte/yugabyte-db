@@ -215,7 +215,8 @@ class CDCSDKVirtualWAL {
 
   Status UpdateRestartTimeIfRequired();
 
-  bool DeterminePubRefreshFromMasterRecord(const RecordInfo& record_info);
+  bool DeterminePubRefreshFromMasterRecord(
+      const RecordInfo& record_info, bool* explicit_alter_publication_detected);
 
   bool IsCatalogTableEligibleForCDC(const TableId& table_id) const;
 
@@ -366,6 +367,9 @@ class CDCSDKVirtualWAL {
 
   // The table ID of pg_replication_origin catalog.
   TableId pg_replication_origin_table_id_;
+
+  // The table ID of pg_publication catalog table for the database on which virtual WAL is polling.
+  TableId pg_publication_table_id_;
 
   // The list of publication OIDs that are being polled by the virtual WAL.
   std::unordered_set<uint32_t> publications_list_;

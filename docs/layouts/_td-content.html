@@ -53,6 +53,8 @@
     </div>
   </div>
 
+  {{- partial "version-banner.html" . -}}
+
   {{- if eq .Params.showRightNav false -}}
     {{- partial "contribute_list" . -}}
   {{- end -}}

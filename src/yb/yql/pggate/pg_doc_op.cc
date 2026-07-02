@@ -44,6 +44,8 @@
 
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
+DEFINE_test_flag(uint64, doc_op_next_result_prefetching_delay_ms, 0,
+                 "Delay before prefetching next portion of data.");
 
 namespace yb::pggate {
 namespace {
@@ -294,6 +296,7 @@ Status PgDocOp::FetchMoreResults() {
   // and set end_of_data_.
   // Prefetch next portion of data if needed.
   if (!(end_of_data_ || suppress_next_result_prefetching_)) {
+    AtomicFlagSleepMs(&FLAGS_TEST_doc_op_next_result_prefetching_delay_ms);
     RETURN_NOT_OK(SendRequest());
   }
 
@@ -1099,10 +1102,8 @@ bool PgDocReadOp::IsHashBatchingEnabled() {
   return *is_hash_batched_;
 }
 
-bool PgDocReadOp::IsBatchFlushRequired() const {
-  return exec_params_.work_mem > 0 &&
-         pgsql_op_arena_ &&
-         pgsql_op_arena_->UsedBytes() > (implicit_cast<size_t>(exec_params_.work_mem) * 1024);
+bool PgDocReadOp::IsBatchFlushRequired(size_t limit) const {
+  return limit > 0 && pgsql_op_arena_ && pgsql_op_arena_->UsedBytes() > limit;
 }
 
 // Collect hash expressions to prepare for generating permutations.
@@ -1152,13 +1153,19 @@ Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
           RSTATUS_DCHECK(it != end, IllegalState, "No more read ops available");
           return AsReadOp(*it++);
         };
+    size_t limit = 0;
+    if (exec_params_.work_mem > 0) {
+      limit = pgsql_op_arena_->UsedBytes() + (implicit_cast<size_t>(exec_params_.work_mem) * 1024);
+    }
+    VLOG(4) << "arena size limit: " << limit;
     for (; hash_permutations_->HasPermutation(); ) {
       if (VERIFY_RESULT(BindExprsToBatch(
               batches, hash_permutations_->NextPermutation(), make_lw_function(op_provider))) &&
-            IsBatchFlushRequired()) {
+          IsBatchFlushRequired(limit)) {
         break;
       }
     }
+    VLOG(4) << "arena size after bind: " << pgsql_op_arena_->UsedBytes();
   } else {
     for (auto it = pgsql_ops_.begin();
          it != pgsql_ops_.end() && hash_permutations_->HasPermutation(); ++it) {

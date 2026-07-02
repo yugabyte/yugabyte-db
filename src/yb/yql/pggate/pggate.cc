@@ -694,6 +694,12 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
 
 struct PgApiImpl::PgSharedData {
   std::atomic<uint64_t> next_perform_op_serial_no{0};
+  // Source of read time serial numbers for the current backend. For parallel query, the leader and
+  // all of its workers share the same PgSharedData (via MyProc->yb_shared_data in DSM), so this
+  // counter hands out globally unique read time serial numbers across them. This prevents two
+  // unrelated snapshots in different parallel workers (or the leader) from sharing the same
+  // read_time_serial_no in the shared pg_client_session's read point history.
+  std::atomic<uint64_t> next_read_time_serial_no{0};
 };
 
 static_assert(std::is_trivially_destructible_v<PgApiImpl::PgSharedData>);
@@ -725,6 +731,7 @@ PgApiImpl::PgSharedDataHolder::PgSharedDataHolder(
   if (is_owner_) {
     signed_data_ = new (aligned_placeholder) SignedPgSharedData{};
     CHECK(signed_data_->data.next_perform_op_serial_no.is_lock_free());
+    CHECK(signed_data_->data.next_read_time_serial_no.is_lock_free());
   } else {
     signed_data_ = pointer_cast<SignedPgSharedData*>(aligned_placeholder);
     CHECK_EQ(
@@ -774,7 +781,8 @@ PgApiImpl::PgApiImpl(
       // projecting as a single ysql backend. When object locking is enabled, only the leader worker
       // should acquire object locks and issue finish transaction rpcs to ensure correctness.
       enable_table_locking_(ShouldEnableTableLocks() && !is_parallel_worker_),
-      pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_, enable_table_locking_)),
+      pg_txn_manager_(new PgTxnManager(&pg_client_, pg_callbacks_, enable_table_locking_,
+          pg_shared_data_->next_read_time_serial_no)),
       pg_session_(PgSession::Make(
           pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
           wait_event_watcher_, buffering_settings_)),
@@ -2199,7 +2207,8 @@ Status PgApiImpl::SetTransactionIsolationLevel(int isolation) {
 }
 
 Status PgApiImpl::SetTransactionReadOnly(bool read_only) {
-  return pg_txn_manager_->SetReadOnly(read_only);
+  pg_txn_manager_->SetReadOnly(read_only);
+  return Status::OK();
 }
 
 Status PgApiImpl::SetEnableTracing(bool tracing) {
@@ -2207,7 +2216,8 @@ Status PgApiImpl::SetEnableTracing(bool tracing) {
 }
 
 Status PgApiImpl::UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms) {
-  return pg_txn_manager_->UpdateFollowerReadsConfig(enable_follower_reads, staleness_ms);
+  pg_txn_manager_->UpdateFollowerReadsConfig(enable_follower_reads, staleness_ms);
+  return Status::OK();
 }
 
 Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {

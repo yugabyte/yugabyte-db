@@ -35,7 +35,7 @@
 #include "yb/util/shmem/reserved_address_segment.h"
 #include "yb/util/shmem/shared_mem_allocator.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"

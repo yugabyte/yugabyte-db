@@ -222,6 +222,13 @@ class YBThreadPool : public TaskRecipient<ThreadPoolTask> {
   bool BusyWait(MonoTime deadline);
 
   size_t NumWorkers() const;
+
+  // Returns the cumulative number of worker threads ever created by this pool. Unlike NumWorkers(),
+  // this counter only grows, so it reflects how many new threads were spawned rather than how many
+  // are currently alive. Useful for verifying that the pool reuses threads instead of spawning a
+  // fresh one per task.
+  size_t TEST_NumWorkersCreated() const;
+
   bool Idle() const;
 
 #ifdef __linux__

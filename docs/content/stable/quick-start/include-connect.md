@@ -50,7 +50,7 @@ Type "help" for help.
 yugabyte=#
 ```
 
-To load sample data and explore an example using ysqlsh, follow the instructions in [Install the Retail Analytics sample database](/stable/sample-data/retail-analytics/#install-the-retail-analytics-sample-database).
+To load sample data and explore an example using ysqlsh, follow the instructions in [Install the Retail Analytics sample database](/stable/develop/sample-data/retail-analytics/#install-the-retail-analytics-sample-database).
 
 ### Monitor your cluster
 

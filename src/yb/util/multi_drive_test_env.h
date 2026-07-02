@@ -24,7 +24,7 @@
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/env.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 #include "yb/util/monotime.h"
 

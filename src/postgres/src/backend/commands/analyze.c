@@ -73,6 +73,7 @@
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb_internal_conn.h"
 
 
 /* Per-index data for ANALYZE */
@@ -722,7 +723,7 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 	 */
 	if (!inh && IsYBRelation(onerel) && va_cols == NIL &&
 		!yb_use_internal_auto_analyze_service_conn &&
-		!yb_is_internal_connection &&
+		!YbIsInternalConnBackendType(MyBackendType) &&
 		!yb_test_analyze_dont_reset_mutations)
 	{
 		YbcStatus	reset_status =

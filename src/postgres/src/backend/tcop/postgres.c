@@ -1725,9 +1725,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 				   const char *stmt_name,	/* name for prepared stmt */
 				   Oid *paramTypes, /* parameter types */
 				   int numParams,	/* number of parameters */
-				   CommandDest output_dest, /* where to send output */
-				   bool yb_parse_custom_parse_complete) /* do not send
-													 * ParseComplete */
+				   CommandDest yb_output_dest, /* where to send output */
+				   char yb_firstchar) /* 'p' or 'n' or 'P' */
 {
 	MemoryContext unnamed_stmt_context = NULL;
 	MemoryContext oldcontext;
@@ -1944,14 +1943,27 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	/*
 	 * Send ParseComplete.
 	 *
-	 * YB: Send a custom packet if a Parse was requested by Connection Manager
-	 * without the need for ParseComplete for packet protocol alignment.
+	 * YB: Send a custom packet as requested by Connection Manager.
 	 */
 
-	if (output_dest == DestRemote)
+	if (yb_output_dest == DestRemote)
 	{
-		if (YbIsClientYsqlConnMgr() && yb_parse_custom_parse_complete)
-			pq_putemptymessage('7');
+		if (YbIsClientYsqlConnMgr())
+		{
+			if (yb_firstchar == 'n')
+				pq_puttextmessage('6', stmt_name);
+			else if (yb_firstchar == 'p')
+				pq_putemptymessage('7');
+			else if (yb_firstchar == 'P')
+				pq_putemptymessage('1');
+			else
+			{
+				ereport(ERROR,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("unexpected message type %c for Parse sent by Connection Manager",
+							yb_firstchar)));
+			}
+		}
 		else
 			pq_putemptymessage('1');
 	}
@@ -5523,16 +5535,24 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 
 	if (!retry_data)
 	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "the retry data is missing");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
-			elog(LOG, "query layer retry isn't possible, retry data is missing");
+			elog(LOG, "%s", retry_err);
 		return false;
 	}
 
 	/* can only restart SELECT queries */
 	if (!retry_data->query_string)
 	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "the query string is missing");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
-			elog(LOG, "query layer retry isn't possible, query string is missing");
+			elog(LOG, "%s", retry_err);
 		return false;
 	}
 
@@ -5547,14 +5567,31 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		List	   *parsetree_list = yb_parse_query_silently(retry_data->query_string);
 
 		if (list_length(parsetree_list) == 0)
+		{
+			const char *retry_err = ("query layer retry isn't possible because "
+									 "the EXECUTE command could not be parsed");
+
+			edata->message = psprintf("%s (%s)", edata->message, retry_err);
+			if (yb_debug_log_internal_restarts)
+				elog(LOG, "%s", retry_err);
 			return false;
+		}
 		ExecuteStmt *execute_stmt = (ExecuteStmt *) linitial_node(RawStmt,
 																  parsetree_list)->stmt;
 		PreparedStatement *prepared_stmt = FetchPreparedStatement(execute_stmt->name,
 																  false /* throwError */ );
 
 		if (prepared_stmt == NULL)
+		{
+			const char *retry_err = ("query layer retry isn't possible because "
+									 "the prepared statement for the EXECUTE "
+									 "command could not be found");
+
+			edata->message = psprintf("%s (%s)", edata->message, retry_err);
+			if (yb_debug_log_internal_restarts)
+				elog(LOG, "%s", retry_err);
 			return false;
+		}
 		command_tag = prepared_stmt->plansource->commandTag;
 	}
 
@@ -5606,10 +5643,13 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 
 		if (!IsYBReadCommitted() && !opted_in)
 		{
+			const char *retry_err = psprintf("query layer retry isn't possible because "
+											 "retry of %s has not been validated.",
+											 GetCommandTagName(command_tag));
+
+			edata->message = psprintf("%s (%s)", edata->message, retry_err);
 			if (yb_debug_log_internal_restarts)
-				elog(LOG, "query layer retry isn't possible: retry of %s "
-					 "outside READ COMMITTED has not been validated",
-					 GetCommandTagName(command_tag));
+				elog(LOG, "%s", retry_err);
 			return false;
 		}
 
@@ -5636,10 +5676,13 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 
 		if (!rc_carveout && !opted_in)
 		{
+			const char *retry_err = psprintf("query layer retry isn't possible because "
+											 "retry of %s has not been validated.",
+											 GetCommandTagName(command_tag));
+
+			edata->message = psprintf("%s (%s)", edata->message, retry_err);
 			if (yb_debug_log_internal_restarts)
-				elog(LOG, "query layer retry isn't possible: %s is not in "
-					 "the default retriable set",
-					 GetCommandTagName(command_tag));
+				elog(LOG, "%s", retry_err);
 			return false;
 		}
 	}
@@ -5958,37 +6001,15 @@ yb_restart_transaction(int attempt, bool is_read_restart)
 		 */
 		YBCRecreateTransaction();
 
+		/*
+		 * YBCRestartWriteTransaction() above already rolled back any open
+		 * PG-side subtransactions, including the per-statement RC internal
+		 * subtxn. With the YB-side transaction recreated, re-register a fresh
+		 * RC internal subtxn so the subsequent retry attempt has the savepoint
+		 * the statement-undo path (yb_restart_current_stmt) expects.
+		 */
 		if (IsTransactionBlock() && IsYBReadCommitted())
-		{
-			/*
-			 * Each statement in a read committed transaction block (i.e., after BEGIN) registers an
-			 * internal sub-transaction to be able to undo and retry the statement for kConflict and
-			 * kReadRestart errors (see yb_restart_current_stmt()). This registration is done in
-			 * YBStartTransactionCommandInternal(). However, since we are retrying by surgically resetting
-			 * just the YB-side transaction state without resetting and retriggering the Pg-side
-			 * transaction state machine changes, we should explicitly make the sub-transaction changes
-			 * on Pg side i.e., by registsring a new internal sub transaction.
-			 */
-
-			/*
-			 * TODO(read committed): remove the below check once the feature
-			 * is GA
-			 */
-			Assert(!strcmp(GetCurrentTransactionName(),
-						   YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME));
-			RollbackAndReleaseCurrentSubTransaction();
-
-			/*
-			 * This creates a new PG side sub-txn and increments the sub-txn id.
-			 *
-			 * NOTE: this will result in a situation where the new YB side distributed transaction will
-			 * start with a sub transaction id that isn't 2 (which is the intial id for the internal
-			 * savepoint registered before the first statement in any RC transaction block). The id could
-			 * be much higher depending on how many statement level retries have already been done so far
-			 * using the same YB transaction (i.e., via yb_restart_current_stmt()).
-			 */
 			YbBeginInternalSubTransactionForReadCommittedStatement();
-		}
 
 		yb_maybe_sleep_on_txn_conflict(attempt);
 	}
@@ -7078,22 +7099,8 @@ PostgresMain(const char *dbname, const char *username)
 				}
 				break;
 
-			case 'n':			/* YB: no-op, return custom ParseComplete */
-				if (!YbIsClientYsqlConnMgr())
-					ereport(FATAL,
-							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("invalid frontend message type %d",
-									firstchar)));
-				if (whereToSendOutput == DestRemote)
-				{
-					/*
-					 * YB: Send a custom ParseComplete packet to indicate that the server
-					 * has received the no-op parse request.
-					 */
-					pq_putemptymessage('6');
-					pq_flush();
-				}
-				break;
+			case 'n':			/* YB: Force Parse, return YBForceParseComplete */
+				yb_switch_fallthrough();
 			case 'p':			/* YB: parse without ParseComplete */
 				if (!YbIsClientYsqlConnMgr())
 					ereport(FATAL,
@@ -7113,7 +7120,30 @@ PostgresMain(const char *dbname, const char *username)
 					/* Set statement_timestamp() */
 					SetCurrentStatementStartTimestamp();
 
+					/* YB: The stmt_name is read here for all of 'n'/'p'/'P'. */
 					stmt_name = pq_getmsgstring(&input_message);
+
+					if (firstchar == 'n')
+					{
+						/*
+						 * YB: If the prepared statement already exists on the backend,
+						 * parsing is a no-op: return YBForceParseComplete and skip re-parsing.
+						 * Otherwise fall through to (re-)create it and return
+						 * YBForceParseComplete.
+						 */
+						if (FetchPreparedStatement(stmt_name, false) != NULL)
+						{
+							if (whereToSendOutput == DestRemote)
+							{
+								pq_puttextmessage('6', stmt_name);
+								pq_flush();
+							}
+							break;
+						}
+						elog(DEBUG1, "prepared statement \"%s\" does not exist, creating it",
+							stmt_name);
+					}
+
 					query_string = pq_getmsgstring(&input_message);
 					numParams = pq_getmsgint(&input_message, 2);
 					if (numParams > 0)
@@ -7131,7 +7161,7 @@ PostgresMain(const char *dbname, const char *username)
 						exec_parse_message(query_string, stmt_name,
 										   paramTypes, numParams,
 										   whereToSendOutput,
-										   (firstchar == 'p')); /* YB: from
+										   firstchar); /* YB: from
 																 * yb_switch_fallthrough() */
 					}
 					PG_CATCH();
@@ -7286,7 +7316,7 @@ PostgresMain(const char *dbname, const char *username)
 												   NULL /* param_types */ ,
 												   0 /* num_params */ ,
 												   DestNone,
-												   false);	/* yb_parse_custom_parse_complete */
+												   'P');
 
 								/* 2. Redo the Bind step */
 								Portal		portal;

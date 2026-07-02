@@ -1,0 +1,7 @@
+title: TableType
+description: YSQL or YCQL table/namespace type.
+type: string
+enum:
+  - UNKNOWN
+  - YSQL
+  - YCQL

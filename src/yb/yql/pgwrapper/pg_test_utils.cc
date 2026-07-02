@@ -175,4 +175,14 @@ Result<uint64_t> GetPostgresAuthKey(ExternalDaemon* ts) {
   return shared_mem_manager.SharedData()->postgres_auth_key();
 }
 
+std::chrono::steady_clock::time_point NextDiscreteTimePoint(std::chrono::milliseconds step) {
+  using DurationType = decltype(step);
+  const auto now_count =
+      std::chrono::duration_cast<DurationType>(
+          std::chrono::steady_clock::now().time_since_epoch()).count();
+  const auto step_count = step.count();
+  return std::chrono::steady_clock::time_point{DurationType{
+      static_cast<int64_t>(std::ceil(static_cast<double>(now_count) / step_count) * step_count)}};
+}
+
 } // namespace yb::pgwrapper

@@ -89,6 +89,7 @@
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_logical_client_version.h"
 #include "catalog/yb_type.h"
+#include "commands/async.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/trigger.h"
@@ -130,6 +131,7 @@
 #include "storage/procarray.h"
 #include "tcop/pquery.h"
 #include "tcop/utility.h"
+#include "utils/acl.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
@@ -7134,6 +7136,12 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 		GUC_check_errdetail("Provided timestamp is in the future.");
 		return false;
 	}
+
+	if (value_ull != 0 && YbHasActiveOrPendingListen())
+	{
+		GUC_check_errmsg("yb_read_time cannot be set while LISTEN is active");
+		return false;
+	}
 	return true;
 }
 
@@ -7145,6 +7153,7 @@ assign_yb_read_time(const char *newval, void *extra)
 
 	elog(DEBUG1, "Setting yb_read_time to %s", newval);
 	parse_yb_read_time(newval, &value_ull, &is_ht_unit);
+
 	/*
 	 * Don't refresh the sys caches in case the read time value didn't change.
 	 */
@@ -7991,18 +8000,35 @@ YbSplitOptionsToPresplitString(YbOptSplit *split_options)
 }
 
 /*
- * Reconcile a statement's SPLIT clause and its yb_presplit reloption so that
- * both representations are kept in sync prior to relation creation.
+ * Reconcile a statement's SPLIT clause and its yb_presplit reloption prior
+ * to relation creation.
  *
- *   - If *split_options is set, attempt to serialize it into a yb_presplit
- *     entry appended to *options. If the SPLIT clause contains expressions
- *     that cannot be serialized, *split_options is left intact (so the
- *     relation is still created with the original clause) and no yb_presplit
- *     entry is added. It is an error if yb_presplit is already present in
- *     *options, since that would conflict with the SPLIT clause.
- *   - Otherwise, if a yb_presplit entry is present in *options, parse it back
- *     into *split_options so the relation is created with the persisted
- *     pre-split values (e.g., on pg_dump restore).
+ *   - If *split_options is set and yb_presplit is also in *options, the
+ *     user has specified both: the SPLIT clause governs the relation's
+ *     initial tablet layout, and the yb_presplit entry is persisted as-is
+ *     into pg_class.reloptions to serve as the user-recorded intent for
+ *     future operations (TRUNCATE/REFRESH/dump/restore).  The two are
+ *     allowed to disagree; the SPLIT clause "wins" for the immediate
+ *     layout, and the reloption "wins" for everything that later asks
+ *     "what did the user want?".  As a special case, an empty-string
+ *     yb_presplit is a "suppress auto-derive" sentinel: drop the entry so
+ *     it does not persist (ysql_dump --include-yb-metadata uses this on
+ *     CREATE statements for relations whose source had no yb_presplit but
+ *     for which the dump still emits a SPLIT clause to preserve the
+ *     current tablet count; without the sentinel, the auto-derive would
+ *     add yb_presplit=N to the restored relation and diverge from the
+ *     source).
+ *
+ *   - If *split_options is set and yb_presplit is not in *options, serialize
+ *     the SPLIT clause into a yb_presplit entry and append it to *options
+ *     so that the reloption tracks what the user just asked for.  If the
+ *     SPLIT clause contains expressions that cannot be serialized,
+ *     *split_options is left intact (so the relation is still created with
+ *     the original clause) and no yb_presplit entry is added.
+ *
+ *   - Otherwise, if a yb_presplit entry is present in *options, parse it
+ *     back into *split_options so the relation is created with the
+ *     persisted pre-split values (e.g., on pg_dump restore).
  *
  * Used by both CREATE TABLE and CREATE INDEX paths.
  */
@@ -8014,27 +8040,49 @@ YbSyncSplitOptionsAndPresplit(YbOptSplit **split_options, List **options)
 	if (*split_options)
 	{
 		char	   *presplit_str;
+		ListCell   *presplit_cell = NULL;
+		bool		presplit_is_sentinel = false;
 
-		/*
-		 * Error if yb_presplit already exists in options (e.g., from
-		 * WITH (yb_presplit=...) alongside SPLIT INTO/AT).
-		 */
 		foreach(lc, *options)
 		{
 			DefElem    *def = (DefElem *) lfirst(lc);
 
 			if (strcmp(def->defname, "yb_presplit") == 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DUPLICATE_OBJECT),
-						 errmsg("yb_presplit cannot be specified together with SPLIT INTO or SPLIT AT VALUES")));
+			{
+				char	   *val = defGetString(def);
+
+				presplit_cell = lc;
+				presplit_is_sentinel = (val != NULL && val[0] == '\0');
+				break;
+			}
+		}
+
+		if (presplit_cell != NULL)
+		{
+			if (presplit_is_sentinel)
+			{
+				/*
+				 * Drop the empty sentinel so it does not persist; the
+				 * SPLIT clause alone governs the relation's layout and no
+				 * yb_presplit reloption is recorded.
+				 */
+				*options = list_delete_cell(*options, presplit_cell);
+			}
+			/*
+			 * Otherwise keep both: the SPLIT clause governs the immediate
+			 * layout and the user-supplied yb_presplit is recorded as-is.
+			 */
+			return;
 		}
 
 		/*
-		 * If the split options contain expressions we can't serialize (e.g.
-		 * function calls), YbSplitOptionsToPresplitString returns NULL and we
-		 * skip storing yb_presplit.  *split_options is left intact so the
-		 * relation is still created with the original SPLIT clause; those
-		 * expressions are evaluated at creation time by
+		 * No yb_presplit in *options: auto-derive it from the SPLIT clause
+		 * so the reloption tracks what the user just asked for.  If the
+		 * split options contain expressions we can't serialize (e.g.
+		 * function calls), YbSplitOptionsToPresplitString returns NULL and
+		 * we skip storing yb_presplit.  *split_options is left intact so
+		 * the relation is still created with the original SPLIT clause;
+		 * those expressions are evaluated at creation time by
 		 * YBTransformPartitionSplitValue.
 		 */
 		presplit_str = YbSplitOptionsToPresplitString(*split_options);
@@ -8046,14 +8094,26 @@ YbSyncSplitOptionsAndPresplit(YbOptSplit **split_options, List **options)
 		return;
 	}
 
-	/* Derive split_options from yb_presplit if not already set. */
+	/*
+	 * Derive split_options from yb_presplit if not already set.  An empty
+	 * sentinel here (no SPLIT clause given) is meaningless -- nothing to
+	 * suppress -- so strip it to avoid persisting an empty value into
+	 * pg_class.reloptions.
+	 */
 	foreach(lc, *options)
 	{
 		DefElem    *def = (DefElem *) lfirst(lc);
 
 		if (strcmp(def->defname, "yb_presplit") == 0)
 		{
-			*split_options = YbParsePresplitString(defGetString(def));
+			char	   *val = defGetString(def);
+
+			if (val != NULL && val[0] == '\0')
+			{
+				*options = list_delete_cell(*options, lc);
+				return;
+			}
+			*split_options = YbParsePresplitString(val);
 			break;
 		}
 	}
@@ -8951,7 +9011,6 @@ YbInvalidationMessagesTableExists()
 }
 
 bool		yb_is_calling_internal_sql_for_ddl = false;
-bool		yb_is_internal_connection = false;
 char *
 YbGetPotentiallyHiddenOidText(Oid oid)
 {
@@ -9054,38 +9113,44 @@ YbCheckTserverResponseCacheForAuthGflags()
 		yb_enable_invalidation_messages;
 }
 
+/*
+ * Decide whether the current backend should serve its connection-auth catalog
+ * prefetch (pg_authid, pg_database, ...) from the tserver response cache.
+ *
+ * Treats connection manager auth backends and regular backends uniformly:
+ * when ysql_enable_read_request_cache_for_connection_auth is set (and the
+ * response cache + invalidation messages are available), both serve the
+ * prefetch from cache. Login profiles disable the cache because
+ * pg_yb_role_profile is written during login without bumping the catalog
+ * version (the cache would go stale); such backends fall back to the
+ * no-cache prefetch.
+ *
+ * Note this only governs the connection-auth prefetch. After authentication
+ * the backend still resolves the latest master catalog version and rebuilds
+ * its full catalog cache (and the shared relcache init file) from fresh data
+ * in RelationCacheInitializePhase3, so only the per-connection authentication
+ * lookup is served from the (version-keyed) cache.
+ */
 bool
 YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version)
 {
-	if (!(YbIsAuthBackend() || YbIsAuthPassthroughInProgress(MyProcPort)))
-		return false;
-	/*
-	 * We should only see auth backend or auth passthrough in progress if
-	 * connection manager is enabled.
-	 */
-	Assert(YbIsYsqlConnMgrEnabled());
-
 	if (!YbCheckTserverResponseCacheForAuthGflags())
 		return false;
 
 	/*
-	 * For now we do not allow using tserver response cache for auth processing
-	 * if login profile is enabled. This is because the login process itself
-	 * writes to pg_yb_role_profile table but this is not done under a DDL
-	 * statement context. As a result the catalog version isn't incremented
-	 * but the tserver response cache becomes stale. Newer login processing
-	 * will continue to use the stale cache which isn't right.
+	 * initdb and major-version-upgrade catalog restore run DDLs that do not
+	 * increment the catalog version, so cached responses could go stale -- the
+	 * same reason YbRunWithPrefetcher does not use the response cache for them.
 	 */
+	if (YBCIsInitDbModeEnvVarSet() || IsBinaryUpgrade)
+		return false;
+
 	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		return false;
 
-	/*
-	 * Tserver response cache requires a valid catalog version. Use the shared
-	 * memory catalog version as an approximation of the latest master catalog
-	 * version.
-	 */
 	if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
 		return false;
+
 	return true;
 }
 
@@ -9127,6 +9192,7 @@ string_list_compare(const ListCell *a, const ListCell *b)
  * The returned data structure is a row type with the following columns:
  * - tablet_id: text
  * - object_uuid: text
+ * - oid: oid (stable pg_class.oid for YSQL tables, NULL otherwise)
  * - namespace: text
  * - object_name: text
  * - type: text
@@ -9134,10 +9200,21 @@ string_list_compare(const ListCell *a, const ListCell *b)
  * - end_hash_code: int32
  * - leader: text
  * - replicas: text[]
+ * - start_range: text
+ * - end_range: text
+ * - tablet_attrs: json
+ * - tablet_state: text
  *
- * The start_hash_code and end_hash_code are the hash codes of the start and end
- * keys of the tablet for hash sharded tables. Leader is provided as a separate
- * column for simpler querying and self-explanatory access.
+ * For hash-partitioned tables (primary key contains at least one HASH column),
+ * start_hash_code (inclusive) and end_hash_code (exclusive) contain the
+ * partition bounds, while start_range and end_range are NULL. This includes
+ * tables with composite (HASH, ASC) primary keys -- only the hash boundaries
+ * are reported; the range component is not currently surfaced.
+ * For purely range-partitioned tables, start_hash_code and end_hash_code are
+ * NULL, and start_range/end_range contain the decoded range partition key
+ * boundaries.
+ * Leader is provided as a separate column for simpler querying.
+ * tablet_attrs is reserved for future use and is currently always NULL.
  */
 Datum
 yb_get_tablet_metadata(PG_FUNCTION_ARGS)
@@ -9147,7 +9224,7 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 	Tuplestorestate *tupstore;
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
-	static int	ncols = 9;
+	int ncols = YbGetNumberOfFunctionOutputColumns(F_YB_GET_TABLET_METADATA);
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -9179,6 +9256,17 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 	rsinfo->setResult = tupstore;
 	rsinfo->setDesc = tupdesc;
 
+	/*
+	 * Privilege gating: superusers and yb_db_admin members see real values
+	 * for every row. Other roles see real values only for rows whose table
+	 * lives in the current database and on which they hold SELECT (checked
+	 * per row below). The system 'transactions' tablet is always shown.
+	 */
+	const Oid	caller_uid = GetUserId();
+	const bool	is_privileged = superuser() || IsYbDbAdminUser(caller_uid);
+	const char *current_db = is_privileged ? NULL : get_database_name(MyDatabaseId);
+	static const char *const masked_placeholder = "<insufficient privilege>";
+
 	YbcPgGlobalTabletsDescriptor *tablets = NULL;
 	size_t		num_tablets = 0;
 
@@ -9194,26 +9282,130 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
+		/*
+		 * Decide whether this row's sensitive columns (relname and the range
+		 * bounds) should show real values or the masked placeholder. Always
+		 * unmasked for superusers and yb_db_admin members; for other users,
+		 * only when the row belongs to the current database and the user
+		 * holds SELECT on the underlying relation. The system 'transactions'
+		 * tablet is exempt -- its name is fixed and non-sensitive.
+		 *
+		 * YCQL and system tablets (other than 'transactions') are always
+		 * masked for unprivileged users: the type gate (table_type == "YSQL")
+		 * ensures they never enter the OID/ACL check branch, so show_real
+		 * stays false.
+		 */
+		Oid			pg_table_oid = tablet->pg_table_oid;
+		bool		show_real = is_privileged;
+
+		if (!is_privileged)
+		{
+			/*
+			 * Pass a non-NULL is_missing so a rewritten or orphaned relation (a
+			 * valid-looking OID with no live pg_class row) returns ACLCHECK_NO_PRIV
+			 * and gets masked, instead of erroring out the whole view query.
+			 */
+			bool		acl_is_missing = false;
+
+			if (strcmp(tablet_descriptor->namespace_name, "system") == 0 &&
+				strcmp(tablet_descriptor->table_name, "transactions") == 0)
+			{
+				show_real = true;
+			}
+			else if (current_db != NULL &&
+					 strcmp(tablet_descriptor->table_type, "YSQL") == 0 &&
+					 strcmp(tablet_descriptor->namespace_name, current_db) == 0 &&
+					 OidIsValid(pg_table_oid) &&
+					 pg_class_aclcheck_ext(pg_table_oid, caller_uid, ACL_SELECT,
+										   &acl_is_missing) == ACLCHECK_OK)
+			{
+				show_real = true;
+			}
+		}
+
 		values[0] = CStringGetTextDatum(tablet_descriptor->tablet_id);
 		values[1] = CStringGetTextDatum(tablet_descriptor->table_id);
-		values[2] = CStringGetTextDatum(tablet_descriptor->namespace_name);
-		values[3] = CStringGetTextDatum(tablet_descriptor->table_name);
-		values[4] = CStringGetTextDatum(tablet_descriptor->table_type);
+
+		/*
+		 * The stable PG table oid is computed by the master, which handles
+		 * table rewrites (where relfilenode diverges from the oid). It is
+		 * InvalidOid for non-YSQL tables and colocation parents, which surface
+		 * as NULL.
+		 */
+		if (OidIsValid(tablet->pg_table_oid))
+			values[2] = ObjectIdGetDatum(tablet->pg_table_oid);
+		else
+			nulls[2] = true;
+
+		values[3] = CStringGetTextDatum(tablet_descriptor->namespace_name);
+		values[4] = CStringGetTextDatum(show_real
+										? tablet_descriptor->table_name
+										: masked_placeholder);
+		values[5] = CStringGetTextDatum(tablet_descriptor->table_type);
 
 		if (tablet->is_hash_partitioned)
 		{
-			values[5] =
+			values[6] =
 				UInt16GetDatum(YBCDecodeMultiColumnHashLeftBound(tablet_descriptor->partition_key_start,
 																 tablet_descriptor->partition_key_start_len));	/* start_hash is
 																												 * inclusive */
-			values[6] =
+			values[7] =
 				UInt16GetDatum(YBCDecodeMultiColumnHashRightBound(tablet_descriptor->partition_key_end,
 																  tablet_descriptor->partition_key_end_len) + 1);	/* end_hash is exclusive */
+			nulls[10] = true;
+			nulls[11] = true;
 		}
 		else
 		{
-			nulls[5] = true;
 			nulls[6] = true;
+			nulls[7] = true;
+
+			if (!show_real && OidIsValid(pg_table_oid))
+			{
+				/*
+				 * Valid table but the caller lacks privilege: mask both
+				 * range bounds uniformly -- including edge tablets whose
+				 * value would have been NULL -- to prevent leaking the
+				 * table's tablet count and edge positions.
+				 */
+				values[10] = CStringGetTextDatum(masked_placeholder);
+				nulls[10] = false;
+				values[11] = CStringGetTextDatum(masked_placeholder);
+				nulls[11] = false;
+			}
+			else if (show_real)
+			{
+				char	   *start_range =
+					YBCDecodeRangePartitionKey(tablet_descriptor->partition_key_start,
+											   tablet_descriptor->partition_key_start_len);
+				if (start_range != NULL)
+				{
+					values[10] = CStringGetTextDatum(start_range);
+					pfree(start_range);
+				}
+				else
+					nulls[10] = true;
+
+				char	   *end_range =
+					YBCDecodeRangePartitionKey(tablet_descriptor->partition_key_end,
+											   tablet_descriptor->partition_key_end_len);
+				if (end_range != NULL)
+				{
+					values[11] = CStringGetTextDatum(end_range);
+					pfree(end_range);
+				}
+				else
+					nulls[11] = true;
+			}
+			else
+			{
+				/*
+				 * InvalidOid (e.g. colocation parent): no meaningful
+				 * partition bounds exist to mask, so leave ranges NULL.
+				 */
+				nulls[10] = true;
+				nulls[11] = true;
+			}
 		}
 
 		/* Convert replicas array to PostgreSQL text array */
@@ -9222,7 +9414,7 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			Assert(tablet->replicas != NULL);
 
 			/* The last replica is the leader. */
-			values[7] = CStringGetTextDatum(tablet->replicas[tablet->replicas_count - 1]);
+			values[8] = CStringGetTextDatum(tablet->replicas[tablet->replicas_count - 1]);
 
 			/* Convert char ** to List * */
 			List	   *replicas_list = NIL;
@@ -9235,13 +9427,21 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			 * with same replicas have same entries.
 			 */
 			list_sort(replicas_list, string_list_compare);
-			values[8] = PointerGetDatum(strlist_to_textarray(replicas_list));
+			values[9] = PointerGetDatum(strlist_to_textarray(replicas_list));
 		}
 		else
 		{
-			nulls[7] = true;
 			nulls[8] = true;
+			nulls[9] = true;
 		}
+
+		/* TODO(#30180): Populate tablet_attrs. */
+		nulls[12] = true;
+
+		if (tablet->tablet_state)
+			values[13] = CStringGetTextDatum(tablet->tablet_state);
+		else
+			nulls[13] = true;
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}

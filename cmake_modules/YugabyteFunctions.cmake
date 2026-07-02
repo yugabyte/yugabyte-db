@@ -128,6 +128,19 @@ function(ADD_LINKER_FLAGS FLAGS)
   _ADD_LINKER_FLAGS_MACRO("${FLAGS}")
 endfunction()
 
+# Opt a single shared library into macOS flat-namespace dynamic lookup, so that symbols it does not
+# resolve at link time are deferred to runtime. This is needed only for libraries that are loaded
+# into another binary which provides those symbols (the PostgreSQL-plugin family loaded into the
+# Postgres backend). It is a no-op off macOS, where shared libraries may have undefined symbols by
+# default. Note: flat dynamic lookup is incompatible with chained fixups, so such a library stays on
+# the legacy bind format and does not get the faster launch.
+function(yb_allow_flat_namespace_lookup TARGET_NAME)
+  if(APPLE)
+    target_link_options("${TARGET_NAME}" PRIVATE
+                        "SHELL:-undefined dynamic_lookup" "LINKER:-no_fixup_chains")
+  endif()
+endfunction()
+
 macro(_ADD_RPATH_ENTRY_MACRO RPATH_ENTRY)
   _ADD_LINKER_FLAGS_MACRO("-Wl,-rpath,${RPATH_ENTRY}")
 endmacro()
@@ -441,8 +454,14 @@ function(add_executable name)
     # libraries that need it.
     #
     # We need to ensure that all symbols from the tcmalloc library are retained. This is done
-    # differently depending on the OS.
-    target_link_libraries(${name} "${TCMALLOC_STATIC_LIB_LD_FLAGS}")
+    # differently depending on the OS. On macOS tcmalloc is a shared library that installs a malloc
+    # zone at load time, so we link it normally (TCMALLOC_STATIC_LIB_LD_FLAGS is empty there); on
+    # other platforms we force the whole static archive to be retained.
+    if(APPLE)
+      target_link_libraries(${name} tcmalloc)
+    else()
+      target_link_libraries(${name} "${TCMALLOC_STATIC_LIB_LD_FLAGS}")
+    endif()
     if("${YB_GOOGLE_TCMALLOC}" STREQUAL "1")
       target_link_libraries("${name}" absl)
     else()

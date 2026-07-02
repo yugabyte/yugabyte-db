@@ -1111,7 +1111,8 @@ def create_instance(args):
 
     if args.imdsv2required:
         vars["MetadataOptions"] = {"HttpTokens": "required",
-                                   "HttpEndpoint": "enabled"}
+                                   "HttpEndpoint": "enabled",
+                                   "InstanceMetadataTags": "enabled"}
 
     # Newer instance types have Credit Specification set to unlimited by default
     if is_burstable(instance):

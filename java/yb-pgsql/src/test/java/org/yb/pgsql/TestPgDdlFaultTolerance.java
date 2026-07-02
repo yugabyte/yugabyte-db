@@ -40,7 +40,11 @@ public class TestPgDdlFaultTolerance extends BasePgSQLTest {
     Map<String, String> flags = super.getTServerFlags();
     // Enabling table locks causes the test to fail with a failure to take the table lock.
     // The test looks for a specific error message. So let's just disble the table locks here.
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     flags.put("enable_object_locking_for_table_locks", "false");
+    flags.put("ysql_enable_concurrent_ddl", "false");
+    flags.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
+        (e, a) -> e + "," + a);
     flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
     return flags;
   }

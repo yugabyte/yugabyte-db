@@ -74,6 +74,7 @@ export enum CloudType {
   aws = 'aws',
   gcp = 'gcp',
   azu = 'azu',
+  oci = 'oci',
   docker = 'docker',
   onprem = 'onprem',
   kubernetes = 'kubernetes',
@@ -227,7 +228,9 @@ export enum NodeState {
   Removed = 'Removed',
   Adding = 'Adding',
   BeingDecommissioned = 'BeingDecommissioned',
-  Decommissioned = 'Decommissioned'
+  Decommissioned = 'Decommissioned',
+  InstanceStopping = 'InstanceStopping',
+  InstanceStopped = 'InstanceStopped'
 }
 
 // NodeDetails.java

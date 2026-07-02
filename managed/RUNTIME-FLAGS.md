@@ -103,6 +103,7 @@
 | "Max Size of each log message" | "yb.logs.max_msg_size" | "GLOBAL" | "We limit the length of each log line as sometimes we dump entire output of script. If you want to debug something specific and the script output isgetting truncated in application log then increase this limit" | "Bytes" |
 | "KMS Refresh Interval" | "yb.kms.refresh_interval" | "GLOBAL" | "Default refresh interval for the KMS providers." | "Duration" |
 | "Allow CipherTrust KMS" | "yb.kms.allow_ciphertrust" | "GLOBAL" | "Allow the usage of CipherTrust KMS." | "Boolean" |
+| "Allow OTLP Exporter in Telemetry Provider" | "yb.telemetry.allow_otlp" | "GLOBAL" | "Allow the usage of OTLP Exporter in Telemetry Provider." | "Boolean" |
 | "Skip connectivity validations while creating Telemetry Provider" | "yb.telemetry.skip_connectivity_validations" | "GLOBAL" | "Skip connectivity and permission validations while creating Telemetry Provider." | "Boolean" |
 | "Percentage of Hashicorp vault TTL to renew the token after" | "yb.kms.hcv_token_renew_percent" | "GLOBAL" | "HashiCorp Vault tokens expire when their TTL is reached. This setting renews the token after it has used the specified percentage of its original TTL. Default: 70%." | "Integer" |
 | "Start Master On Stop Node" | "yb.start_master_on_stop_node" | "GLOBAL" | "Auto-start master process on a similar available node on stopping a master node" | "Boolean" |
@@ -127,6 +128,7 @@
 | "Regex for match Yugabyte DB release .tar.gz files" | "yb.regex.release_pattern.ybdb" | "GLOBAL" | "Regex pattern used to find Yugabyte DB release .tar.gz files" | "String" |
 | "Regex for match Yugabyte DB release helm .tar.gz files" | "yb.regex.release_pattern.helm" | "GLOBAL" | "Regex pattern used to find Yugabyte DB helm .tar.gz files" | "String" |
 | "Enables extra logging" | "yb.logging.enable_task_failed_request_logs" | "GLOBAL" | "Enables extra logging for task params and request body" | "Boolean" |
+| "Enable gflags sensitive data API redaction" | "yb.api.enable_gflags_sensitive_data_redaction" | "GLOBAL" | "When true, API responses redact gflags sensitive data that is not covered by JsonPath (for example ldapbindpasswd in ysql_hba_conf_csv and audit additionalDetails). JsonPath based API redaction remains enabled." | "Boolean" |
 | "tmp directory path" | "yb.filepaths.tmpDirectory" | "GLOBAL" | "Path to the tmp directory to be used by YBA" | "String" |
 | "Customer UUID to use with Kubernentes Operator" | "yb.kubernetes.operator.customer_uuid" | "GLOBAL" | "Customer UUID to use with Kubernentes Operator, do not change once set" | "String" |
 | "Enable Kubernentes Operator" | "yb.kubernetes.operator.enabled" | "GLOBAL" | "Enable Kubernentes Operator, requires restart to take effect" | "Boolean" |

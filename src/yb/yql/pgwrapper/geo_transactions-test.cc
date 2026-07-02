@@ -32,6 +32,7 @@ DECLARE_bool(force_global_transactions);
 DECLARE_bool(use_tablespace_based_transaction_placement);
 DECLARE_bool(transaction_tables_use_preferred_zones);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(TEST_perform_ignore_pg_is_region_local);
 
@@ -331,7 +332,9 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
 class GeoTransactionsTestTableLocksDisabled : public GeoTransactionsTest {
  protected:
   void SetUp() override {
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
     GeoTransactionsTest::SetUp();
   }
@@ -997,7 +1000,9 @@ class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
 
   void SetUp() override {
     // These tests are failing when table-level locks are enabled due to #28317.
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
     GeoTransactionsTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;

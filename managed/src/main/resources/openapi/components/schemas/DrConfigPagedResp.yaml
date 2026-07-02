@@ -1,0 +1,6 @@
+title: DrConfigPagedResp
+description: Paged list response for active disaster recovery configurations.
+type: object
+x-data-container: PaginationResp
+x-data-item: DrConfig
+x-data-entities-description: Disaster recovery configurations for this page.

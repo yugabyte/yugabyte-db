@@ -30,7 +30,7 @@
 #include <vector>
 
 #include "yb/rocksdb/listener.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/write_batch_base.h"
 

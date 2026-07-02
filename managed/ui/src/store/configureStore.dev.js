@@ -13,9 +13,10 @@ export default function configureStore(initialState) {
   const store = finalCreateStore(reducer, initialState);
 
   if (import.meta.hot) {
-    import.meta.hot.accept('../reducers', (newModule) => {
-      const nextReducer = newModule.default;
-      store.replaceReducer(nextReducer);
+    import.meta.hot.accept('/src/reducers', (newModule) => {
+      if (newModule?.default) {
+        store.replaceReducer(newModule.default);
+      }
     });
   }
 

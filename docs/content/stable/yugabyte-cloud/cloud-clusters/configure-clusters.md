@@ -15,9 +15,9 @@ YugabyteDB Aeon supports both horizontal and vertical scaling of clusters. If yo
 
 You can scale the following cluster properties:
 
-- Number of nodes (horizontal).
-- Number of vCPUs per node (vertical).
-- Disk size per node.
+- Number of nodes (horizontal)
+- Number of vCPUs per node (vertical)
+- Disk size per node
 - IOPS (AWS clusters only)
 
 Cluster edit operations are performed using the **Edit Infrastructure** option under **Regions** on the cluster **Settings > Infrastructure** tab.

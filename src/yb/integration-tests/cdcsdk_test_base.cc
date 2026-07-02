@@ -378,7 +378,8 @@ void CDCSDKTestBase::InitCreateStreamRequest(
     const CDCCheckpointType& checkpoint_type,
     const CDCRecordType& record_type,
     const std::string& namespace_name,
-    CDCSDKDynamicTablesOption dynamic_tables_option) {
+    CDCSDKDynamicTablesOption dynamic_tables_option,
+    const std::vector<TableId>& bound_table_ids) {
   create_req->set_namespace_name(namespace_name);
   create_req->set_checkpoint_type(checkpoint_type);
   create_req->set_record_type(record_type);
@@ -386,6 +387,13 @@ void CDCSDKTestBase::InitCreateStreamRequest(
   create_req->set_source_type(CDCSDK);
   create_req->mutable_cdcsdk_stream_create_options()->set_cdcsdk_dynamic_tables_option(
       dynamic_tables_option);
+  if (!bound_table_ids.empty()) {
+    auto* bound =
+        create_req->mutable_cdcsdk_stream_create_options()->mutable_bound_table_ids();
+    for (const auto& id : bound_table_ids) {
+      bound->add_table_ids(id);
+    }
+  }
 }
 
 // This creates a DB stream on the database identified by `namespace_name`.
@@ -489,14 +497,17 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStream(
     CDCSDKSnapshotOption snapshot_option,
     CDCCheckpointType checkpoint_type,
     CDCRecordType record_type,
-    std::string namespace_name) {
+    std::string namespace_name,
+    const std::vector<TableId>& bound_table_ids) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
 
-  InitCreateStreamRequest(&req, checkpoint_type, record_type, namespace_name);
+  InitCreateStreamRequest(
+      &req, checkpoint_type, record_type, namespace_name,
+      CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED, bound_table_ids);
   req.set_cdcsdk_consistent_snapshot_option(snapshot_option);
 
   RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));

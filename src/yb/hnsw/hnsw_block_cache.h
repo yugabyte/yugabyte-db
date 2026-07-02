@@ -106,6 +106,12 @@ class BlockCache {
       rocksdb::Cache& block_cache);
   ~BlockCache();
 
+  // The underlying RocksDB block cache. Exposed so callers can reserve space in it (see
+  // vector_index::BlockCacheReservation / IndexWrapperBase::ReserveBlockCacheSpace).
+  rocksdb::Cache& cache() const {
+    return block_cache_;
+  }
+
   Env& env() const {
     return env_;
   }

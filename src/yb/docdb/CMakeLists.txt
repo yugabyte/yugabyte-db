@@ -38,6 +38,8 @@ set(DOCDB_SHARED_DEPS
         yb_util
         yb_common
         docdb_proto
+        yb_dockv
+        yb_util_shmem
         )
 
 ADD_YB_LIBRARY(yb_docdb_shared
@@ -147,6 +149,7 @@ target_link_libraries(yb_docdb_test_common
 
 set(YB_TEST_LINK_LIBS yb_common_test_util yb_docdb_test_common ${YB_MIN_TEST_LIBS})
 
+ADD_YB_TEST(bounded_rocksdb_iterator-test)
 ADD_YB_TEST(doc_operation-test)
 ADD_YB_TEST(docdb_filter_policy-test)
 ADD_YB_TEST(docdb-perf-test)

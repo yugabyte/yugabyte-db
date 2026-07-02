@@ -555,8 +555,8 @@ public class XClusterConfig extends Model {
     update();
   }
 
-  private void addNamespaceConfig(XClusterNamespaceConfig namespaceConfig) {
-    if (!this.getNamespaces().add(namespaceConfig)) {
+  public void addNamespaceConfig(XClusterNamespaceConfig namespaceConfig) {
+    if (!getNamespaces().add(namespaceConfig)) {
       log.debug(
           "Namespace with id {} already exists in xCluster config ({})",
           namespaceConfig.getSourceNamespaceId(),

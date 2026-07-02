@@ -43,6 +43,8 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import java.lang.reflect.Method;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Optional;
@@ -54,6 +56,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -832,5 +835,46 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     assertThat(universeTasks.isArray(), is(true));
     JsonNode taskJson = universeTasks.get(0);
     assertThat(taskJson.get("userEmail").asText(), equalTo(CustomerTask.BACKGROUND_TASK_USER));
+  }
+
+  // PLAT-21392: retry/abort authz must locate the universe at "taskParams.universeUUID"
+  // (where TaskInfo actually stores it), not "details.universeUUID" -- TaskInfo.details is a
+  // TaskDetails (timing/version/error/runtimeInfo) with no universeUUID. With the wrong path,
+  // AuthorizationHandler (SourceType.DB) resolves a null resource and checkResourcePermission
+  // then passes only for allowAll (Super Admin) roles, wrongly denying resource-scoped Universe
+  // Admins a retry/abort of a failed universe task (e.g. a failed GFlagsUpgrade).
+  @Test
+  public void testRetryAndAbortResolveUniverseFromTaskParams() throws Exception {
+    UUID universeUUID = UUID.randomUUID();
+    TaskInfo taskInfo = new TaskInfo(TaskType.UpgradeUniverse, null);
+    taskInfo.setUuid(UUID.randomUUID());
+    taskInfo.setOwner("");
+    taskInfo.setTaskParams(Json.newObject().put("universeUUID", universeUUID.toString()));
+
+    // Mirror AuthorizationHandler's SourceType.DB serialization of the entity.
+    JsonNode serialized = new ObjectMapper().convertValue(taskInfo, JsonNode.class);
+
+    for (String methodName : new String[] {"retryTask", "abortTask"}) {
+      Method method =
+          CustomerTaskController.class.getMethod(
+              methodName, UUID.class, UUID.class, Http.Request.class);
+      AuthzPath authzPath = method.getAnnotation(AuthzPath.class);
+      assertThat("Missing @AuthzPath on " + methodName, authzPath, notNullValue());
+      String path = authzPath.value()[0].resourceLocation().path();
+
+      // The annotated path must resolve to the task's universeUUID on a real TaskInfo.
+      JsonNode node = serialized;
+      for (String segment : path.split("\\.")) {
+        assertThat(
+            methodName + " authz resource path '" + path + "' does not resolve on TaskInfo",
+            node,
+            notNullValue());
+        node = node.get(segment);
+      }
+      assertThat(
+          methodName + " authz resource path '" + path + "' must resolve to universeUUID",
+          node == null ? null : node.asText(),
+          equalTo(universeUUID.toString()));
+    }
   }
 }

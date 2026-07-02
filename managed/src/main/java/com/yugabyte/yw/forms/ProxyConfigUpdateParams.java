@@ -23,15 +23,9 @@ public class ProxyConfigUpdateParams extends UpgradeTaskParams {
       cluster.validateProxyConfig(cluster.userIntent, universe.getNodesInCluster(cluster.uuid));
       UserIntent curIntent = universe.getCluster(cluster.uuid).userIntent;
       UserIntent newIntent = cluster.userIntent;
-      Map<UUID, ProxyConfig> curProxyOverrides = null;
-      Map<UUID, ProxyConfig> newProxyOverrides = null;
-      if (curIntent.getUserIntentOverrides() != null) {
-        curProxyOverrides = curIntent.getUserIntentOverrides().getAZProxyConfigMap();
-      }
-      if (newIntent.getUserIntentOverrides() != null) {
-        newProxyOverrides = newIntent.getUserIntentOverrides().getAZProxyConfigMap();
-      }
-      if (ObjectUtils.notEqual(newIntent.getProxyConfig(), curIntent.getProxyConfig())
+      Map<UUID, ProxyConfig> curProxyOverrides = curIntent.getAZProxyConfigMap();
+      Map<UUID, ProxyConfig> newProxyOverrides = newIntent.getAZProxyConfigMap();
+      if (areBaseProxyConfigsDifferent(curIntent, newIntent)
           || ObjectUtils.notEqual(curProxyOverrides, newProxyOverrides)) {
         changed = true;
       }
@@ -39,6 +33,14 @@ public class ProxyConfigUpdateParams extends UpgradeTaskParams {
     if (!changed) {
       throw new PlatformServiceException(BAD_REQUEST, "No changes made to proxy config");
     }
+  }
+
+  private boolean areBaseProxyConfigsDifferent(UserIntent curIntent, UserIntent newIntent) {
+    if (curIntent.isMulticloudSupport()) {
+      return ObjectUtils.notEqual(
+          newIntent.getProviderProxyConfigs(), curIntent.getProviderProxyConfigs());
+    }
+    return ObjectUtils.notEqual(newIntent.getProxyConfig(), curIntent.getProxyConfig());
   }
 
   public static class Converter extends BaseConverter<ProxyConfigUpdateParams> {}

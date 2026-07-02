@@ -19,7 +19,7 @@
 #include <functional>
 #include <vector>
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 #include "yb/common/vector_types.h"
 

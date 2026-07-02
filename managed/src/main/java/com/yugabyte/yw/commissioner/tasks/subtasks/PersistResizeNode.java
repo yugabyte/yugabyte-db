@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -80,52 +81,68 @@ public class PersistResizeNode extends UniverseTaskBase {
               Set<NodeDetails> nodesInCluster =
                   universe.getUniverseDetails().getNodesInCluster(cluster.uuid);
 
+              Date now = new Date();
               UserIntent userIntent = cluster.userIntent;
               UserIntent newUserIntent = taskParams().newUserIntent;
-              Date now = new Date();
+
               for (NodeDetails nodeDetails : nodesInCluster) {
                 DeviceInfo oldDeviceInfo = userIntent.getDeviceInfoForNode(nodeDetails);
                 DeviceInfo newDeviceInfo = newUserIntent.getDeviceInfoForNode(nodeDetails);
                 if (!Objects.equals(newDeviceInfo, oldDeviceInfo)) {
                   nodeDetails.lastVolumeUpdateTime = now;
                 }
+                nodeDetails.disksAreMountedByUUID = true;
               }
-              if (!taskParams().onlyPersistDeviceInfo) {
-                userIntent.instanceType = newUserIntent.instanceType;
-                userIntent.setUserIntentOverrides(newUserIntent.getUserIntentOverrides());
-                userIntent.setCgroupSize(newUserIntent.getCgroupSize());
-                userIntent.masterInstanceType = newUserIntent.masterInstanceType;
-              }
-              DeviceInfo oldDeviceInfo = userIntent.deviceInfo.clone();
-              userIntent.deviceInfo.volumeSize = newUserIntent.deviceInfo.volumeSize;
-              userIntent.deviceInfo.diskIops = newUserIntent.deviceInfo.diskIops;
-              userIntent.deviceInfo.throughput = newUserIntent.deviceInfo.throughput;
-              DeviceInfo oldMasterDeviceInfo = null;
-              if (userIntent.masterDeviceInfo != null) {
-                oldMasterDeviceInfo = userIntent.masterDeviceInfo.clone();
-              }
-              if (newUserIntent.masterDeviceInfo != null || userIntent.masterDeviceInfo != null) {
-                userIntent.masterDeviceInfo.volumeSize = newUserIntent.masterDeviceInfo.volumeSize;
-                userIntent.masterDeviceInfo.diskIops = newUserIntent.masterDeviceInfo.diskIops;
-                userIntent.masterDeviceInfo.throughput = newUserIntent.masterDeviceInfo.throughput;
+              if (userIntent.isMulticloudSupport()) {
+                Util.mergeProviderSpecifications(
+                    userIntent,
+                    newUserIntent,
+                    ctx -> {
+                      if (shouldMerge(ctx.getServerType(), ctx.getAzUUID())) {
+                        ctx.getCurrent()
+                            .setDeviceInfo(
+                                mergeDeviceInfos(
+                                    ctx.getCurrent().getDeviceInfo(),
+                                    ctx.getTarget().getDeviceInfo()));
+                        if (!taskParams().onlyPersistDeviceInfo) {
+                          ctx.getCurrent().setInstanceType(ctx.getTarget().getInstanceType());
+                          ctx.getCurrent().setCgroupSize(ctx.getTarget().getCgroupSize());
+                        }
+                      }
+                    });
               } else {
-                userIntent.masterDeviceInfo = newUserIntent.masterDeviceInfo;
-              }
-              if (!Objects.equals(oldMasterDeviceInfo, userIntent.masterDeviceInfo)) {
-                nodesInCluster.stream()
-                    .filter(n -> n.isMaster)
-                    .forEach(node -> node.lastVolumeUpdateTime = now);
-              }
+                if (!taskParams().onlyPersistDeviceInfo) {
+                  userIntent.instanceType = newUserIntent.instanceType;
+                  userIntent.setUserIntentOverrides(newUserIntent.getUserIntentOverrides());
+                  userIntent.setCgroupSize(newUserIntent.getCgroupSize());
+                  userIntent.masterInstanceType = newUserIntent.masterInstanceType;
+                }
+                userIntent.deviceInfo.volumeSize = newUserIntent.deviceInfo.volumeSize;
+                userIntent.deviceInfo.diskIops = newUserIntent.deviceInfo.diskIops;
+                userIntent.deviceInfo.throughput = newUserIntent.deviceInfo.throughput;
+                if (newUserIntent.masterDeviceInfo != null || userIntent.masterDeviceInfo != null) {
+                  userIntent.masterDeviceInfo.volumeSize =
+                      newUserIntent.masterDeviceInfo.volumeSize;
+                  userIntent.masterDeviceInfo.diskIops = newUserIntent.masterDeviceInfo.diskIops;
+                  userIntent.masterDeviceInfo.throughput =
+                      newUserIntent.masterDeviceInfo.throughput;
+                } else {
+                  userIntent.masterDeviceInfo = newUserIntent.masterDeviceInfo;
+                }
 
-              // Update AZ volume overrides
-              Set<UUID> azUUIDs = cluster.placementInfo.getAllAZUUIDs();
-              userIntent.updateAZVolumeOverrides(
-                  newUserIntent, azUUIDs, taskParams().skipMasterAZs, true /* isDedicatedMaster */);
-              userIntent.updateAZVolumeOverrides(
-                  newUserIntent,
-                  azUUIDs,
-                  taskParams().skipTserverAZs,
-                  false /* isDedicatedMaster */);
+                // Update AZ volume overrides
+                Set<UUID> azUUIDs = cluster.placementInfo.getAllAZUUIDs();
+                userIntent.updateAZVolumeOverrides(
+                    newUserIntent,
+                    azUUIDs,
+                    taskParams().skipMasterAZs,
+                    true /* isDedicatedMaster */);
+                userIntent.updateAZVolumeOverrides(
+                    newUserIntent,
+                    azUUIDs,
+                    taskParams().skipTserverAZs,
+                    false /* isDedicatedMaster */);
+              }
 
               for (NodeDetails nodeDetails : nodesInCluster) {
                 nodeDetails.disksAreMountedByUUID = true;
@@ -143,5 +160,26 @@ public class PersistResizeNode extends UniverseTaskBase {
       LOG.warn(msg, e.getMessage());
       throw new RuntimeException(msg, e);
     }
+  }
+
+  private boolean shouldMerge(ServerType serverType, UUID azUUID) {
+    Set<UUID> skipAZs =
+        serverType == ServerType.TSERVER ? taskParams().skipTserverAZs : taskParams().skipMasterAZs;
+    return skipAZs == null || !skipAZs.contains(azUUID);
+  }
+
+  private DeviceInfo mergeDeviceInfos(DeviceInfo current, DeviceInfo newDevice) {
+    if (current == null && newDevice == null) {
+      return null;
+    }
+    if (current == null) {
+      return newDevice.clone();
+    }
+    if (newDevice != null) {
+      current.volumeSize = newDevice.volumeSize;
+      current.diskIops = newDevice.diskIops;
+      current.throughput = newDevice.throughput;
+    }
+    return current;
   }
 }

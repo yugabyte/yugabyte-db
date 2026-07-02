@@ -111,6 +111,7 @@
 #include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/tablet_validator.h"
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 
 #include "yb/util/cgroups.h"
@@ -1905,7 +1906,8 @@ Status TSTabletManager::DeleteTablet(
     tablet::ShouldAbortActiveTransactions should_abort_active_txns,
     const std::optional<int64_t>& cas_config_opid_index_less_or_equal, bool hide_only,
     bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code,
-    std::optional<TransactionId>&& exclude_aborting_txn_id) {
+    std::optional<TransactionId>&& exclude_aborting_txn_id,
+    DeleteTabletResponsePB* resp) {
   TEST_PAUSE_IF_FLAG(TEST_pause_delete_tablet);
 
   if (delete_type != TABLET_DATA_DELETED && delete_type != TABLET_DATA_TOMBSTONED) {
@@ -1985,8 +1987,18 @@ Status TSTabletManager::DeleteTablet(
   }
 
   RaftGroupMetadataPtr meta = tablet_peer->tablet_metadata();
+
+  // Add tablet metadata that is common to all delete paths.
+  if (resp != nullptr) {
+    resp->set_table_name(meta->table_name());
+    resp->set_prev_data_state(data_state);
+  }
+
   if (hide_only) {
     meta->SetHidden(true);
+    if (resp != nullptr) {
+      resp->set_final_data_state(meta->tablet_data_state());
+    }
     return meta->Flush();
   }
   RETURN_NOT_OK(tablet_peer->Shutdown(
@@ -1994,6 +2006,25 @@ Status TSTabletManager::DeleteTablet(
       std::move(exclude_aborting_txn_id)));
 
   auto last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
+
+  // Record the directories this delete is about to touch (before any removal)
+  // The set mirrors the directories handled by RaftGroupMetadata::DeleteTabletData
+  // and Log::DeleteOnDiskData (wal).
+
+  if (resp != nullptr) {
+    std::vector<std::string> tracked_dirs;
+    tracked_dirs.push_back(meta->rocksdb_dir());
+    tracked_dirs.push_back(meta->intents_rocksdb_dir());
+    tracked_dirs.push_back(meta->wal_dir());
+    tracked_dirs.push_back(meta->snapshots_dir());
+    for (const auto& info : meta->GetAllColocatedVectorIndexes()) {
+      tracked_dirs.push_back(
+          meta->vector_index_dir(info->index_info->vector_idx_options()));
+    }
+    for (const auto& path : tracked_dirs) {
+      resp->add_directories()->set_path(path);
+    }
+  }
 
   if (!keep_data) {
     Status s = DeleteTabletData(meta,
@@ -2011,6 +2042,15 @@ Status TSTabletManager::DeleteTablet(
     }
 
     tablet_peer->status_listener()->StatusMessage("Deleted tablet blocks from disk");
+  }
+
+  // Check that the directories were actually deleted.
+  if (resp != nullptr) {
+    auto* env = fs_manager_->env();
+    for (auto& dir : *resp->mutable_directories()) {
+      dir.set_still_present_after(!dir.path().empty() && env->FileExists(dir.path()));
+    }
+    resp->set_final_data_state(meta->tablet_data_state());
   }
 
   // We only remove DELETED tablets from the tablet map.

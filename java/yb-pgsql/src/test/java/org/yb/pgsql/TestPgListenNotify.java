@@ -144,6 +144,71 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
+   * Verifies that LISTEN/NOTIFY and yb_read_time cannot coexist in a session.
+   *
+   * Scenario:
+   *   1. LISTEN succeeds when yb_read_time is unset.
+   *   2. LISTEN is rejected after yb_read_time is set in autocommit mode.
+   *   3. yb_read_time cannot be set to a nonzero value while listening in autocommit mode.
+   *   4. LISTEN is rejected when yb_read_time is set inside an open transaction.
+   *   5. yb_read_time cannot be set when LISTEN is pending inside a transaction.
+   *   6. SET yb_read_time TO 0 is allowed while listening.
+   *   7. yb_read_time cannot be set when LISTEN was issued in a committed subtransaction.
+   */
+  @Test
+  public void testDisallowListenWithYbReadTime() throws Exception {
+    try (Connection conn = getConnectionBuilder().connect();
+         Statement stmt = conn.createStatement()) {
+      long t1 = getSingleRow(stmt,
+          "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint").getLong(0);
+
+      // 1. LISTEN succeeds when yb_read_time is unset.
+      stmt.execute("LISTEN " + CHANNEL);
+      stmt.execute("UNLISTEN *");
+
+      // 2. LISTEN is rejected after yb_read_time is set in autocommit mode.
+      stmt.execute("SET yb_read_time TO " + t1);
+      assertExecuteFails(stmt, "LISTEN " + CHANNEL,
+          "LISTEN is not allowed in a time travel session");
+      stmt.execute("SET yb_read_time TO 0");
+
+      // 3. yb_read_time cannot be set to a nonzero value while listening in autocommit mode.
+      stmt.execute("LISTEN " + CHANNEL);
+      assertExecuteFails(stmt, "SET yb_read_time TO " + t1,
+          "yb_read_time cannot be set while LISTEN is active");
+      stmt.execute("UNLISTEN *");
+
+      // 4. LISTEN is rejected when yb_read_time is set inside an open transaction.
+      stmt.execute("BEGIN");
+      stmt.execute("SET yb_read_time TO " + t1);
+      assertExecuteFails(stmt, "LISTEN " + CHANNEL,
+          "LISTEN is not allowed in a time travel session");
+      stmt.execute("ROLLBACK");
+
+      // 5. yb_read_time cannot be set when LISTEN is pending inside a transaction.
+      stmt.execute("BEGIN");
+      stmt.execute("LISTEN " + CHANNEL);
+      assertExecuteFails(stmt, "SET yb_read_time TO " + t1,
+          "yb_read_time cannot be set while LISTEN is active");
+      stmt.execute("ROLLBACK");
+
+      // 6. SET yb_read_time TO 0 is allowed while listening.
+      stmt.execute("LISTEN " + CHANNEL);
+      stmt.execute("SET yb_read_time TO 0");
+      stmt.execute("UNLISTEN *");
+
+      // 7. yb_read_time cannot be set when LISTEN was issued in a committed subtransaction.
+      stmt.execute("BEGIN");
+      stmt.execute("SAVEPOINT sp1");
+      stmt.execute("LISTEN " + CHANNEL);
+      stmt.execute("RELEASE SAVEPOINT sp1");
+      assertExecuteFails(stmt, "SET yb_read_time TO " + t1,
+          "yb_read_time cannot be set while LISTEN is active");
+      stmt.execute("ROLLBACK");
+    }
+  }
+
+  /**
    * Validates that LISTEN/NOTIFY continues to work after the only listening backend is killed
    * with SIGKILL.
    *
@@ -821,6 +886,18 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       }
 
       waitForNotification(listenerConn, CHANNEL, PAYLOAD);
+    }
+  }
+
+  private void assertExecuteFails(Statement stmt, String sql, String expectedMessage)
+      throws Exception {
+    try {
+      stmt.execute(sql);
+      fail("Expected failure for: " + sql);
+    } catch (SQLException e) {
+      assertTrue("Error for '" + sql + "' should contain '" + expectedMessage + "' but was: "
+          + e.getMessage(),
+          e.getMessage().contains(expectedMessage));
     }
   }
 

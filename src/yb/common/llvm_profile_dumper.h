@@ -16,7 +16,7 @@
 #include <mutex>
 #include <condition_variable>
 #include "yb/gutil/ref_counted.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/gutil/thread_annotations.h"
 
 namespace yb {

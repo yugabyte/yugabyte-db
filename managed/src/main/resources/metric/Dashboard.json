@@ -13934,7 +13934,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Raft Leader",
-      "expr" : "sum(is_raft_leader{node_prefix=~\"$dbcluster\"})",
+      "expr" : "sum(sum by (saved_name, exported_instance)(is_raft_leader{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}))",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -15516,7 +15516,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Live Tablet Peers",
-      "expr" : "sum(avg_over_time(ts_live_tablet_peers{node_prefix=~\"$dbcluster\"}))",
+      "expr" : "sum(avg_over_time(ts_live_tablet_peers{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))",
       "refId" : "A"
     } ],
     "gridPos" : {

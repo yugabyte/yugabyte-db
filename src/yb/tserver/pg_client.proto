@@ -860,7 +860,6 @@ message PgPerformOptionsPB {
   bool use_xcluster_database_consistency = 15;
   uint32 active_sub_transaction_id = 16;
   CachingInfoPB caching_info = 17;
-  bool read_from_followers = 18;
   bool trace_requested = 19;
   bool yb_non_ddl_txn_for_sys_tables_allowed = 21;
   int64 pg_txn_start_us = 22;
@@ -883,6 +882,8 @@ message PgPerformOptionsPB {
   uint32 xrepl_origin_id = 31;
 
   bool is_using_table_locks = 32;
+
+  OptionalUint32PB follower_read_staleness_ms = 33;
 }
 
 message PgPerformRequestPB {

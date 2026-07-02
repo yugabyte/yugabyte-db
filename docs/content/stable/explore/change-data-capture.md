@@ -56,11 +56,10 @@ To set up pg_recvlogical, create and start the local cluster by running the foll
 ```sh
 ./bin/yugabyted start \
   --advertise_address=127.0.0.1 \
-  --base_dir="${HOME}/var/node1" \
-  --tserver_flags="cdcsdk_publication_list_refresh_interval_secs=120"
+  --base_dir="${HOME}/var/node1"
 ```
 
-Any changes to the publication after slot creation will be reflected in the polling list only after the virtual WAL has refreshed its publication list. Data written between table creation and when the table is added to the virtual WAL's publication list won't be delivered as part of the streaming records. By default, the publication list is refreshed every 15 minutes, but you can reduce this interval by setting the `cdcsdk_publication_list_refresh_interval_secs` flag. In this example, the interval has been changed to 2 minutes (120 seconds). For more information, refer to [YugabyteDB semantics](../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#yugabytedb-semantics).
+Changes to a publication after slot creation are reflected in the replication stream at the correct commit time starting in v2026.1 when [implicit publication changes](../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#implicit-publication-changes) is enabled (the default). For more information, refer to [Adding tables to publication](../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#adding-tables-to-publication).
 
 ### Create tables
 
@@ -168,7 +167,7 @@ table public.projects: INSERT: project_id[integer]:1 name[character varying]:'Pr
 COMMIT 3
 ```
 
-YugabyteDB semantics are different from PostgreSQL when it comes to streaming added tables to a publication. Refer to [YugabyteDB semantics](../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#yugabytedb-semantics) for more details.
+Starting in v2026.1, when you add tables to a publication after slot creation, changes are reflected in the replication stream at the correct commit time. For more information, refer to [Adding tables to publication](../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#adding-tables-to-publication).
 
 ## Try it out with LSN type HYBRID_TIME
 

@@ -330,7 +330,12 @@ export const HelmOverridesModal: FC<HelmOverridesModalProps> = ({
               marginLeft: '410px'
             }}
           >
-            <YBRedesignedButton variant="secondary" size="large" data-testid="HelmOverrides-Cancel">
+            <YBRedesignedButton
+              variant="secondary"
+              size="large"
+              data-testid="HelmOverrides-Cancel"
+              onClick={onHide}
+            >
               {t('common.cancel')}
             </YBRedesignedButton>
             <YBRedesignedButton
@@ -479,7 +484,7 @@ export const NodeOverridesModal: FC<NodeOverridesModalProps> = ({
     fetchNodeDetails(universeId, nodeId)
   );
 
-  const nodeDetails = (data as unknown) as Record<string, any>;
+  const nodeDetails = data as unknown as Record<string, any>;
 
   const renderAppliedOverrides = () => {
     const appliedOverides = nodeDetails?.data?.kubernetesOverrides ?? '';

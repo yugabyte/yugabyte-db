@@ -47,6 +47,7 @@ export const PROVIDER_TYPES = [
   { code: 'docker', name: 'Docker Localhost', label: 'Docker' },
   { code: 'azu', name: 'Azure', label: 'Microsoft Azure' },
   { code: 'gcp', name: 'Google', label: 'Google Cloud' },
+  { code: 'oci', name: 'OCI', label: 'Oracle Cloud Infrastructure' },
   { code: 'onprem', name: 'On Premises', label: 'On-Premises Datacenter' },
   { code: 'kubernetes', name: 'Kubernetes', label: 'Kubernetes' },
   { code: 'cloud-1', name: 'Cloud-1', label: 'Cloud-1' },

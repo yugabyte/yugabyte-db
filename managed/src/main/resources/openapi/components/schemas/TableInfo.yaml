@@ -1,0 +1,55 @@
+title: TableInfo
+description: YugabyteDB table metadata.
+type: object
+properties:
+  table_id:
+    description: Table ID.
+    type: string
+    readOnly: true
+  table_uuid:
+    description: Table UUID.
+    type: string
+    format: uuid
+    readOnly: true
+  keyspace:
+    description: Keyspace name.
+    type: string
+    readOnly: true
+  table_type:
+    $ref: "./TableType.yaml"
+    readOnly: true
+  table_name:
+    description: Table name.
+    type: string
+    readOnly: true
+  relation_type:
+    $ref: "./TableRelationType.yaml"
+    readOnly: true
+  size_bytes:
+    description: SST size in bytes.
+    type: number
+    format: double
+    readOnly: true
+  wal_size_bytes:
+    description: WAL size in bytes.
+    type: number
+    format: double
+    readOnly: true
+  index_table:
+    description: Whether this row describes an index table.
+    type: boolean
+    readOnly: true
+  index_table_ids:
+    description: Index table IDs when this is a main table.
+    type: array
+    items:
+      type: string
+    readOnly: true
+  pg_schema_name:
+    description: PostgreSQL schema name for YSQL tables.
+    type: string
+    readOnly: true
+  colocated:
+    description: Whether the table is colocated.
+    type: boolean
+    readOnly: true

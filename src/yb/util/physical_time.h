@@ -18,7 +18,7 @@
 #include <mutex>
 
 #include "yb/util/locks.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

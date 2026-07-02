@@ -20,7 +20,7 @@
 #include "yb/server/server_base_options.h"
 
 #include "yb/util/net/net_util.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

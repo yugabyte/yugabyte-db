@@ -4,7 +4,10 @@ package com.yugabyte.yw.forms;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Map;
+import java.util.UUID;
 import java.util.function.Consumer;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.commons.lang3.StringUtils;
 
@@ -28,15 +31,26 @@ public class AdditionalServicesStateData {
     @ApiModelProperty private String preferPattern;
   }
 
+  @Data
+  @ApiModel
+  @AllArgsConstructor
+  public static class PerProviderState {
+    @ApiModelProperty private EarlyoomConfig config;
+
+    @ApiModelProperty private boolean earlyoomEnabled;
+  }
+
   @ApiModelProperty("Configuration for earlyoom service.")
   private EarlyoomConfig earlyoomConfig;
 
   @ApiModelProperty private boolean earlyoomEnabled;
 
+  @ApiModelProperty("Configuration per provider")
+  private Map<UUID, PerProviderState> perProviderConfig;
+
   /**
    * Parse earlyoom config from command line args used for configuration.
    *
-   * @param enabled Whether earlyoom enabled or not now.
    * @param args Command line args used for earlyoom configuration.
    * @param ignoreErrors Whether to ignore errors during conversion (use default values instead)
    * @return
