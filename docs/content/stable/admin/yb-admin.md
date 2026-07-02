@@ -788,6 +788,83 @@ yb-admin \
 
 A new backfill job is created for all the `DEFERRED` indexes of the table. The command does not have any output.
 
+#### get_table_hash
+
+Computes an XOR hash and row count over the data in a table, tablet by tablet. Use this to verify data consistency across clusters in an xCluster deployment by comparing hash values at the same hybrid timestamp.
+
+For colocated databases, pass a child table's `table_id` to scope the hash to a single colocated table. To hash all colocated tables sharing a tablet together, pass the colocation parent table ID, which is visible in [`list_tables`](#list-tables) when system tables are included.
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <master-addresses> \
+    get_table_hash <table_id> \
+    [<read_ht>] [<start_key_hex>] [<end_key_hex>]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *table_id*: UUID of the table to hash. Obtain this from [`list_tables`](#list-tables). For a colocated database, pass the child table UUID to scope the hash to one table, or the colocation parent table UUID to hash all colocated tables in the tablet.
+* *read_ht* (optional): Hybrid timestamp at which to read, as a 64-bit integer. Defaults to the current time. Use the same value on both clusters when comparing hashes for xCluster consistency checks.
+* *start_key_hex* (optional): Inclusive lower bound of the partition-key range to hash, hex-encoded using the same encoding as the `partition_key_start` values shown by [`list_tablets`](#list-tablets). Pass an empty string (`""`) to leave this side unbounded.
+* *end_key_hex* (optional): Exclusive upper bound of the partition-key range, hex-encoded. Pass an empty string (`""`) to leave this side unbounded.
+
+**Notes**
+
+- Key range arguments (`start_key_hex` / `end_key_hex`) require a concrete child table ID. Using them with a colocation parent table ID returns an error.
+- For hash-partitioned tables, each bound must be a valid 2-byte hash-partition key.
+- `start_key_hex` must be strictly less than `end_key_hex` when both are specified.
+- When running with a mixed-version cluster, key-range and per-table colocated scoping require a version-matched yb-admin. An older tserver ignores these arguments and scans the full table.
+
+**Example: Hash a full table**
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    get_table_hash 000030af000030008000000000004000
+```
+
+```output
+Processing 3 tablets for table 000030af000030008000000000004000
+Read HT: { physical: 1748000000000000 }
+Tablet ID: cea3aaac2f10460a880b0b4a2a4b652a
+    Row count: 100
+    XOR hash: 3825474321
+
+Tablet ID: e509cf8eedba410ba3b60c7e9138d479
+    Row count: 98
+    XOR hash: 2910384756
+
+Tablet ID: f1a234b5c6d7e8f9a0b1c2d3e4f5a6b7
+    Row count: 102
+    XOR hash: 1029384756
+
+Total row count: 300
+Total XOR hash: 1847263849
+```
+
+**Example: Hash a partition-key range**
+
+Use this to narrow down where data diverged across clusters. Obtain `partition_key_start` and `partition_key_end` values from [`list_tablets`](#list-tablets) and pass the relevant sub-range. The range is logical and cluster-independent — each cluster resolves it against its own tablet boundaries.
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    get_table_hash 000030af000030008000000000004000 0 "" 8000
+```
+
+This hashes the lower half of the hash-partition space (unbounded start through `0x8000` exclusive).
+
+**Example: Hash a single colocated table**
+
+Pass the child colocated table's UUID (not the colocation parent) to scope the hash to that table alone:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    get_table_hash 000033e8000030008000000000000000
+```
+
 ---
 
 ### Backup and snapshot commands
