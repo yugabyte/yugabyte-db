@@ -52530,6 +52530,9 @@
       "name" : "Node instances"
     },
     {
+      "name" : "PA Proxy"
+    },
+    {
       "name" : "PITR management"
     },
     {
