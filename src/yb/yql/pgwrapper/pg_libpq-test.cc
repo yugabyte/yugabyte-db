@@ -4891,6 +4891,87 @@ TEST_P(PgRangeTest, PgRangeCatalogCacheTest) {
   }
 };
 
+class PgAuthMembersTest : public PgLibPqTest,
+      public ::testing::WithParamInterface<bool> {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    const bool is_pg_auth_members_preloaded = GetParam();
+    if (is_pg_auth_members_preloaded) {
+      options->extra_tserver_flags.push_back(
+          "--ysql_catalog_preload_additional_table_list=pg_auth_members");
+    }
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgAuthMembersTest,
+                        ::testing::Values(false, true));
+
+TEST_P(PgAuthMembersTest, PgAuthMembersCatalogCacheTest) {
+  const bool is_pg_auth_members_preloaded = GetParam();
+  auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+
+  ASSERT_OK(conn.Execute("CREATE ROLE parent_role"));
+  ASSERT_OK(conn.Execute("CREATE ROLE member_role LOGIN"));
+  ASSERT_OK(conn.Execute("GRANT parent_role TO member_role"));
+  ASSERT_OK(conn.Execute("CREATE TABLE granted_table (k INT)"));
+  ASSERT_OK(conn.Execute("GRANT SELECT ON granted_table TO parent_role"));
+  WaitForCatalogVersionToPropagate();
+
+  auto start_table = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_auth_members"));
+  auto start_list = ASSERT_RESULT(GetCatCacheListMissMetric("pg_auth_members"));
+
+  // A fresh backend as a non-superuser member role. pg_has_role() and the
+  // privilege check on granted_table both go through roles_is_member_of(),
+  // which does an AUTHMEMMEMROLE list lookup for each role in the
+  // membership closure.
+  auto conn2 = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "member_role"));
+  ASSERT_TRUE(ASSERT_RESULT(conn2.FetchRow<bool>(
+      "SELECT pg_has_role('parent_role', 'MEMBER')")));
+  // SELECT is allowed only via membership in parent_role.
+  ASSERT_OK(conn2.Fetch("SELECT * FROM granted_table"));
+
+  auto end_table = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_auth_members"));
+  auto end_list = ASSERT_RESULT(GetCatCacheListMissMetric("pg_auth_members"));
+
+  LOG(INFO) << "pg_auth_members cache misses: " << start_table << " -> "
+            << end_table << ", list misses: " << start_list << " -> "
+            << end_list;
+
+  if (is_pg_auth_members_preloaded) {
+    ASSERT_EQ(end_table, start_table);
+    ASSERT_EQ(end_list, start_list);
+  } else {
+    ASSERT_GT(end_table, start_table);
+    ASSERT_GT(end_list, start_list);
+  }
+
+  // Role-membership DDL must invalidate the preloaded cache: both an existing
+  // backend (via cache refresh) and a fresh backend (via a new preload) must
+  // see the membership change.
+  ASSERT_OK(conn.Execute("REVOKE parent_role FROM member_role"));
+  WaitForCatalogVersionToPropagate();
+
+  ASSERT_FALSE(ASSERT_RESULT(conn2.FetchRow<bool>(
+      "SELECT pg_has_role('parent_role', 'MEMBER')")));
+  ASSERT_NOK_STR_CONTAINS(conn2.Fetch("SELECT * FROM granted_table"),
+                          "permission denied");
+
+  auto conn3 = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "member_role"));
+  ASSERT_FALSE(ASSERT_RESULT(conn3.FetchRow<bool>(
+      "SELECT pg_has_role('parent_role', 'MEMBER')")));
+  ASSERT_NOK_STR_CONTAINS(conn3.Fetch("SELECT * FROM granted_table"),
+                          "permission denied");
+
+  // And the membership must be visible again after a re-GRANT (the
+  // fully-loaded cache must not keep serving the stale absence).
+  ASSERT_OK(conn.Execute("GRANT parent_role TO member_role"));
+  WaitForCatalogVersionToPropagate();
+
+  ASSERT_TRUE(ASSERT_RESULT(conn2.FetchRow<bool>(
+      "SELECT pg_has_role('parent_role', 'MEMBER')")));
+  ASSERT_OK(conn2.Fetch("SELECT * FROM granted_table"));
+}
+
 class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
