@@ -504,6 +504,15 @@ Status TSManager::RemoveTabletServer(
   return Status::OK();
 }
 
+void TSManager::MarkTServersForLeaderBlacklistNotification() {
+  SharedLock<decltype(map_lock_)> l(map_lock_);
+  for (const auto& [id, desc] : servers_by_id_) {
+    if (desc->IsLive()) {
+      desc->inc_pending_leader_drain_notification();
+    }
+  }
+}
+
 Status TSManager::ValidateAllTserverVersions(ValidateVersionInfoOp op) const {
   if (FLAGS_skip_tserver_version_checks) {
     return Status::OK();

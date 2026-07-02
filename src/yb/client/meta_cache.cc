@@ -668,7 +668,7 @@ bool RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
   return found;
 }
 
-void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
+bool RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
   bool found = false;
   std::lock_guard lock(mutex_);
   for (auto& replica : replicas_) {
@@ -678,8 +678,7 @@ void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
     }
   }
   VLOG_WITH_PREFIX(3) << "Latest replicas: " << ReplicasAsStringUnlocked();
-  DCHECK(found) << "Tablet " << tablet_id_ << ": Specified server not found: "
-                << server->ToString() << ". Replicas: " << ReplicasAsStringUnlocked();
+  return found;
 }
 
 std::string RemoteTablet::current_leader_uuid() const {
@@ -2467,6 +2466,23 @@ void MetaCache::MarkTSFailed(RemoteTabletServer* ts,
     // We just loop on all tablets; if a tablet does not have a replica on this
     // TS, MarkReplicaFailed() returns false and we ignore the return value.
     tablet.second->MarkReplicaFailed(ts, ts_status);
+  }
+}
+
+void MetaCache::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {
+  SharedLock<decltype(mutex_)> lock(mutex_);
+
+  for (const auto& uuid : ts_uuids) {
+    auto it = ts_cache_.find(uuid);
+    if (it == ts_cache_.end()) {
+      continue;
+    }
+    auto* ts = it->second.get();
+    LOG_WITH_PREFIX_AND_FUNC(INFO)
+        << "Marking replicas on leader-blacklisted tserver " << ts->ToString() << " as followers.";
+    for (const auto& tablet : tablets_by_id_) {
+      tablet.second->MarkTServerAsFollower(ts);
+    }
   }
 }
 

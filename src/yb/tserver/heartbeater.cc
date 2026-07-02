@@ -453,6 +453,17 @@ Status HeartbeatPoller::TryHeartbeat() {
 
     RETURN_NOT_OK(server_.XClusterHandleMasterHeartbeatResponse(resp));
 
+    if (resp.leader_blacklisted_tservers_with_no_leaders_size() > 0) {
+      // Mark the tservers as followers if they are leader-blacklisted. When the tserver gets
+      // removed from the blacklist, we don't receive any reset signal from the master. The
+      // meta cache would eventually figure out when a peer sends the latest consensus config
+      // or it makes a GatTabletLocations call to the master.
+      std::vector<std::string> blacklisted_uuids(
+          resp.leader_blacklisted_tservers_with_no_leaders().begin(),
+          resp.leader_blacklisted_tservers_with_no_leaders().end());
+      server_.MarkTServersAsFollowers(blacklisted_uuids);
+    }
+
     // At this point we know resp is a successful heartbeat response from the master so set it as
     // the last heartbeat response. This invalidates resp so we should use last_hb_response_ instead
     // below (hence using the nested scope for resp until here).
