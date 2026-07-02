@@ -77,7 +77,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
             app.injector().instanceOf(RuntimeConfGetter.class),
             mockAWSUtil,
             mockAZUtil,
-            mockGCPUtil));
+            mockGCPUtil,
+            mockOCIUtil));
     // These AWS-util stubs are only exercised by the S3 create/edit validation tests. Under the
     // shared embedded-Postgres infra, test execution ordering can leave them unused by any method
     // in

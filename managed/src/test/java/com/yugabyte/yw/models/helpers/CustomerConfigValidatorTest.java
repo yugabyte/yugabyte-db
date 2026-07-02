@@ -102,7 +102,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             app.injector().instanceOf(RuntimeConfGetter.class),
             mockAWSUtil,
             mockAZUtil,
-            mockGCPUtil);
+            mockGCPUtil,
+            mockOCIUtil);
     when(mockStorageUtilFactory.getCloudUtil("AZ")).thenReturn(mockAZUtil);
     doCallRealMethod().when(mockAWSUtil).getRegionLocationsMap(any());
     doCallRealMethod().when(mockGCPUtil).getRegionLocationsMap(any());
