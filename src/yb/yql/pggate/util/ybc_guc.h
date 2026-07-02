@@ -336,6 +336,8 @@ extern bool yb_disable_ddl_transaction_block_for_read_committed;
 
 extern bool yb_allow_dockey_bounds;
 
+extern bool yb_dump_presplit_in_create;
+
 extern bool yb_ignore_read_time_in_walsender;
 
 extern bool yb_disable_pg_snapshot_mgmt_in_repeatable_read;

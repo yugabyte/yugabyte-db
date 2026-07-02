@@ -300,7 +300,7 @@ public class XClusterUniverseService {
       UUID sourceUniverseUuid,
       boolean ignoreErrors)
       throws Exception {
-    log.debug(
+    log.trace(
         "XClusterUniverseService.isBootstrapRequired is called with xClusterConfig={}, "
             + "tableIds={}, and universeUuid={}",
         xClusterConfig,
@@ -351,7 +351,7 @@ public class XClusterUniverseService {
             XClusterConfigTaskBase.supportsMultipleTablesWithIsBootstrapRequired(sourceUniverse)
                 ? IS_BOOTSTRAP_REQUIRED_RPC_PARTITION_SIZE
                 : 1;
-        log.info("Partition size used for isBootstrapRequiredParallel is {}", partitionSize);
+        log.debug("Partition size used for isBootstrapRequiredParallel is {}", partitionSize);
 
         // Partition the tableIdStreamIdMap.
         List<Map<String, String>> tableIdStreamIdMapPartitions = new ArrayList<>();
@@ -365,7 +365,7 @@ public class XClusterUniverseService {
             partition.put(entry.getKey(), entry.getValue());
           }
         }
-        log.debug("Partitioned the tableIds to {}", tableIdStreamIdMapPartitions);
+        log.trace("Partitioned the tableIds to {}", tableIdStreamIdMapPartitions);
 
         // Make the requests for all the partitions in parallel.
         List<Future<Map<String, Boolean>>> fs = new ArrayList<>();
@@ -387,7 +387,7 @@ public class XClusterUniverseService {
                     while (iterationNumber < IS_BOOTSTRAP_REQUIRED_RPC_MAX_RETRIES_NUMBER
                         && Objects.isNull(resp)) {
                       try {
-                        log.debug(
+                        log.trace(
                             "Running IsBootstrapRequired RPC for tableIdStreamIdPartition {}",
                             tableIdStreamIdPartition);
                         resp = client.isBootstrapRequired(tableIdStreamIdPartition);
@@ -508,7 +508,7 @@ public class XClusterUniverseService {
   public List<ReplicationStatusPB> getReplicationStatus(XClusterConfig xClusterConfig) {
     log.debug(
         "XClusterUniverseService.getReplicationStatus is called with xClusterConfig={}",
-        xClusterConfig);
+        xClusterConfig.getUuid());
 
     Set<String> streamIds =
         xClusterConfig.getTableDetails().stream()
@@ -536,7 +536,7 @@ public class XClusterUniverseService {
                 xClusterConfig.getReplicationGroupName(), xClusterConfig, resp.errorMessage()));
       }
       List<ReplicationStatusPB> statuses = resp.getStatuses();
-      log.debug(
+      log.trace(
           "GetReplicationStatus RPC call with {} returned {}",
           xClusterConfig.getReplicationGroupName(),
           statuses);
@@ -636,7 +636,7 @@ public class XClusterUniverseService {
             .collect(
                 Collectors.toMap(
                     StreamEntryPB::getProducerTableId, StreamEntryPB::getConsumerTableId));
-    log.debug(
+    log.trace(
         "XClusterUniverseService.getSourceTableIdTargetTableIdMap: "
             + "sourceTableIdTargetTableIdMap is {}",
         sourceTableIdTargetTableIdMap);

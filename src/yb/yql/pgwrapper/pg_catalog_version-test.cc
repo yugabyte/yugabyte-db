@@ -114,16 +114,29 @@ class PgCatalogVersionTest : public LibPqTestBase {
     LOG(INFO) << "Restart the cluster with --ysql_yb_enable_invalidation_messages=" << mode_str;
     cluster_->Shutdown();
     for (size_t i = 0; i != cluster_->num_masters(); ++i) {
-      cluster_->master(i)->mutable_flags()->push_back(
-          Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
-      cluster_->master(i)->mutable_flags()->push_back("--log_ysql_catalog_versions=true");
+      auto* flags = cluster_->master(i)->mutable_flags();
+      flags->push_back(Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
+      flags->push_back("--log_ysql_catalog_versions=true");
+      // Object locking (and therefore concurrent DDL) requires invalidation messages, enforced by
+      // the cross-flag validators in common_flags.cc. So whenever invalidation messages are off,
+      // object locking and concurrent DDL must be off too, otherwise the daemons FATAL at startup.
+      if (!mode) {
+        flags->push_back("--enable_object_locking_for_table_locks=false");
+        flags->push_back("--ysql_enable_concurrent_ddl=false");
+        AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+      }
     }
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-      cluster_->tablet_server(i)->mutable_flags()->push_back(
-          Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
-      cluster_->tablet_server(i)->mutable_flags()->push_back("--log_ysql_catalog_versions=true");
+      auto* flags = cluster_->tablet_server(i)->mutable_flags();
+      flags->push_back(Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
+      flags->push_back("--log_ysql_catalog_versions=true");
+      if (!mode) {
+        flags->push_back("--enable_object_locking_for_table_locks=false");
+        flags->push_back("--ysql_enable_concurrent_ddl=false");
+        AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+      }
       for (const auto& flag : extra_tserver_flags) {
-        cluster_->tablet_server(i)->mutable_flags()->push_back(flag);
+        flags->push_back(flag);
       }
     }
     ASSERT_OK(cluster_->Restart());
@@ -3796,6 +3809,12 @@ class PgCatalogVersionMasterCacheTest : public PgCatalogVersionTest {
     // cache is not exercised. Disable object locking to avoid this.
     options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent (and allow-list the
+    // preview flag so its non-default value is permitted).
+    options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_master_flags, "ysql_enable_concurrent_ddl");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   }
 };
 

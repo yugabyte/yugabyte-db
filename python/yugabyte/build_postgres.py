@@ -45,6 +45,7 @@ from yugabyte_pycommon import (  # type: ignore
 from yugabyte.tool_base import YbBuildToolBase
 from yugabyte.common_util import (
     YB_SRC_ROOT,
+    build_machine_dirs_to_strip,
     get_build_type_from_build_root,
     get_bool_env_var,
     get_absolute_path_aliases,
@@ -66,6 +67,7 @@ from yugabyte.file_util import mkdir_p
 from yugabyte.string_util import compute_sha256
 from yugabyte.timestamp_saver import TimestampSaver
 from yugabyte.common_util import get_target_arch
+from yugabyte.sanitize_pg_compiler_config import assert_sanitized
 
 
 ALLOW_REMOTE_COMPILATION = True
@@ -410,6 +412,22 @@ class PostgresBuilder(YbBuildToolBase):
         self.set_env_var('YB_PG_BUILD_STEP', step)
         self.set_env_var('YB_THIRDPARTY_DIR', self.thirdparty_dir)
         self.set_env_var('YB_SRC_ROOT', YB_SRC_ROOT)
+
+        # src/common/Makefile uses this command to strip build-machine-private switches from the
+        # flags it bakes into the pg_config binary so that an installed package does not hand them
+        # to external extension builds.  The --build-machine-dir arguments are the absolute
+        # directory prefixes that exist only on the build machine, so the sanitizer drops includes
+        # under them.
+        sanitize_pg_compiler_config_script = os.path.join(
+            YB_SRC_ROOT, 'python', 'yugabyte', 'sanitize_pg_compiler_config.py')
+        build_machine_dirs = build_machine_dirs_to_strip(
+            self.thirdparty_dir, self.build_root)
+        build_machine_dir_args = ' '.join(
+            f'--build-machine-dir {build_machine_dir}'
+            for build_machine_dir in build_machine_dirs)
+        self.set_env_var(
+            'YB_PG_COMPILER_CONFIG_SANITIZER',
+            f'{sys.executable} {sanitize_pg_compiler_config_script} {build_machine_dir_args}')
 
         env_var_to_cmake_cache_mapping = {
             'CFLAGS': 'POSTGRES_FINAL_C_FLAGS',
@@ -1014,6 +1032,28 @@ class PostgresBuilder(YbBuildToolBase):
             return "all steps in {}".format(BUILD_STEPS)
         return "the '%s' step" % (self.args.step)
 
+    def verify_pg_config_sanitized(self) -> None:
+        # End-to-end guard that the compiler-flag sanitizer actually produced a clean pg_config:
+        # that the YB_PG_COMPILER_CONFIG_SANITIZER wiring did not silently regress (e.g. the env-var
+        # gate in src/common/Makefile breaking), which would otherwise pass the build with
+        # unsanitized flags.  It lives here, run on every build, because build_postgres.py already
+        # has the pg_config path and the exact build-machine-dir set (no context to duplicate) and
+        # it then also fires in dev builds: the cost is one pg_config call.  TODO(jason): it might
+        # be worth converting this to a unit test once jenkins supports Python testing.
+        build_machine_dirs = build_machine_dirs_to_strip(self.thirdparty_dir, self.build_root)
+
+        def pg_config(key: str) -> str:
+            return run_program([self.pg_config_path, '--' + key]).stdout.strip()
+
+        # pg_config exposes only --cc, not --cxx (true in upstream PostgreSQL too), so CC is the
+        # only compiler command checkable on this surface; the installed Makefile.global's CXX line
+        # is verified separately in library_packager.
+        assert_sanitized(
+            'pg_config',
+            {'--cc': pg_config('cc')},
+            {f'--{key}': pg_config(key) for key in ('cflags', 'cppflags')},
+            build_machine_dirs)
+
     def build_postgres(self) -> None:
         start_time_sec = time.time()
         if self.args.clean:
@@ -1067,6 +1107,8 @@ class PostgresBuilder(YbBuildToolBase):
                              time.time() - make_start_time_sec)
 
         if self.should_make:
+            if os.path.exists(self.pg_config_path):
+                self.verify_pg_config_sanitized()
             # Guard against the code having changed while we were building it.
             final_build_stamp_no_env = self.get_build_stamp(include_env_vars=False)
             if final_build_stamp_no_env == initial_build_stamp_no_env:

@@ -1004,8 +1004,21 @@ TEST_F(PgReadTimeTest, ReadTimeAfterParallelExecution) {
   ASSERT_OK(conn.Execute("SET parallel_tuple_cost = 0"));
   ASSERT_OK(conn.Execute("SET yb_parallel_range_rows = 1"));
   ASSERT_OK(conn.Execute("SET yb_enable_cbo = on"));
-  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 SET (parallel_workers = 2)", kTable));
+  // Zeroing the parallel costs above does not reliably force a parallel plan, so force it
+  // explicitly.
+  ASSERT_OK(conn.Execute("SET yb_test_force_parallel = force"));
   ASSERT_OK(conn.ExecuteFormat("ANALYZE $0", kTable));
+
+  // Verifies a serial read picks its read time on docdb. Since the session forces parallelism
+  // above, the verification read must disable it (max_parallel_workers_per_gather = 0): a parallel
+  // read would pick its read time on the query layer instead and the metric would not increment.
+  const auto check_serial_read_picks_read_time_on_docdb = [this, &conn, kTable]() {
+    ASSERT_OK(conn.Execute("SET max_parallel_workers_per_gather = 0"));
+    CheckReadTimePickedOnDocdb([&conn, kTable]() {
+      ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k = 1", kTable));
+    });
+    ASSERT_OK(conn.Execute("SET max_parallel_workers_per_gather = 2"));
+  };
 
   {
     // Test to ensure that after parallel execution ends, the next non-parallel read in the
@@ -1020,10 +1033,7 @@ TEST_F(PgReadTimeTest, ReadTimeAfterParallelExecution) {
     ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
     ASSERT_OK(conn.FetchFormat("SELECT count(*) FROM $0", kTable));
 
-    CheckReadTimePickedOnDocdb(
-        [&conn, kTable]() {
-          ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k = 1", kTable));
-        });
+    check_serial_read_picks_read_time_on_docdb();
 
     ASSERT_OK(conn.CommitTransaction());
   }
@@ -1054,10 +1064,7 @@ TEST_F(PgReadTimeTest, ReadTimeAfterParallelExecution) {
     ASSERT_OK(conn.RollbackTransaction());
 
     // After the failed parallel execution, verify the next read still picks read time on docdb.
-    CheckReadTimePickedOnDocdb(
-        [&conn, kTable]() {
-          ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k = 1", kTable));
-        });
+    check_serial_read_picks_read_time_on_docdb();
 
     // Same test as above, but the failing parallel query runs after SAVEPOINT; rolling back to the
     // savepoint recovers the transaction. The next read should still pick read time on docdb.
@@ -1070,10 +1077,7 @@ TEST_F(PgReadTimeTest, ReadTimeAfterParallelExecution) {
 
     ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp_par_fail"));
 
-    CheckReadTimePickedOnDocdb(
-        [&conn, kTable]() {
-          ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k = 1", kTable));
-        });
+    check_serial_read_picks_read_time_on_docdb();
 
     ASSERT_OK(conn.CommitTransaction());
   }

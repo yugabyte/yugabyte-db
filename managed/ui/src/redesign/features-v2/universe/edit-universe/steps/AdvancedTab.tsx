@@ -116,16 +116,18 @@ export const NetworkPortsContent = () => {
                 {pg.name}
               </Typography>
             </Box>
-            {pg.PORTS_LIST.map((item) => (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '200px' }}>
-                <Typography variant="button" sx={{ color: '#6D7C88' }}>
-                  {t(item.id)}
-                </Typography>
-                <Typography variant="body2" sx={{ color: '#0B1117' }}>
-                  {communicationPorts[mapPortsKeys(item.id)]}
-                </Typography>
-              </Box>
-            ))}
+            {pg.PORTS_LIST.map((item) => {
+              return (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '200px' }}>
+                  <Typography variant="button" sx={{ color: '#6D7C88' }}>
+                    {t(item.id)}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#0B1117' }}>
+                    {communicationPorts[mapPortsKeys()[item.id]]}
+                  </Typography>
+                </Box>
+              );
+            })}
           </Box>
         );
       })}
@@ -169,7 +171,9 @@ export const AdvancedTab = () => {
     <Box sx={{ width: '100%' }}>
       <YBTabs value={selectedTab} onChange={(_event, newValue) => setSelectedTab(newValue)}>
         <YBTab value={AdvancedTabs.PROXY} label={'Proxy Settings'} />
-        <YBTab value={AdvancedTabs.OTHER} label={'Other Advanced Settings'} />
+        {providerCode !== CloudType.kubernetes && (
+          <YBTab value={AdvancedTabs.OTHER} label={'Other Advanced Settings'} />
+        )}
       </YBTabs>
       {selectedTab === AdvancedTabs.PROXY && (
         <StyledPanel sx={{ marginTop: '24px' }}>

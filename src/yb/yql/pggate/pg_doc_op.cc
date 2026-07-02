@@ -44,6 +44,8 @@
 
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
+DEFINE_test_flag(uint64, doc_op_next_result_prefetching_delay_ms, 0,
+                 "Delay before prefetching next portion of data.");
 
 namespace yb::pggate {
 namespace {
@@ -294,6 +296,7 @@ Status PgDocOp::FetchMoreResults() {
   // and set end_of_data_.
   // Prefetch next portion of data if needed.
   if (!(end_of_data_ || suppress_next_result_prefetching_)) {
+    AtomicFlagSleepMs(&FLAGS_TEST_doc_op_next_result_prefetching_delay_ms);
     RETURN_NOT_OK(SendRequest());
   }
 

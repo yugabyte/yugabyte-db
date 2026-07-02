@@ -8000,18 +8000,35 @@ YbSplitOptionsToPresplitString(YbOptSplit *split_options)
 }
 
 /*
- * Reconcile a statement's SPLIT clause and its yb_presplit reloption so that
- * both representations are kept in sync prior to relation creation.
+ * Reconcile a statement's SPLIT clause and its yb_presplit reloption prior
+ * to relation creation.
  *
- *   - If *split_options is set, attempt to serialize it into a yb_presplit
- *     entry appended to *options. If the SPLIT clause contains expressions
- *     that cannot be serialized, *split_options is left intact (so the
- *     relation is still created with the original clause) and no yb_presplit
- *     entry is added. It is an error if yb_presplit is already present in
- *     *options, since that would conflict with the SPLIT clause.
- *   - Otherwise, if a yb_presplit entry is present in *options, parse it back
- *     into *split_options so the relation is created with the persisted
- *     pre-split values (e.g., on pg_dump restore).
+ *   - If *split_options is set and yb_presplit is also in *options, the
+ *     user has specified both: the SPLIT clause governs the relation's
+ *     initial tablet layout, and the yb_presplit entry is persisted as-is
+ *     into pg_class.reloptions to serve as the user-recorded intent for
+ *     future operations (TRUNCATE/REFRESH/dump/restore).  The two are
+ *     allowed to disagree; the SPLIT clause "wins" for the immediate
+ *     layout, and the reloption "wins" for everything that later asks
+ *     "what did the user want?".  As a special case, an empty-string
+ *     yb_presplit is a "suppress auto-derive" sentinel: drop the entry so
+ *     it does not persist (ysql_dump --include-yb-metadata uses this on
+ *     CREATE statements for relations whose source had no yb_presplit but
+ *     for which the dump still emits a SPLIT clause to preserve the
+ *     current tablet count; without the sentinel, the auto-derive would
+ *     add yb_presplit=N to the restored relation and diverge from the
+ *     source).
+ *
+ *   - If *split_options is set and yb_presplit is not in *options, serialize
+ *     the SPLIT clause into a yb_presplit entry and append it to *options
+ *     so that the reloption tracks what the user just asked for.  If the
+ *     SPLIT clause contains expressions that cannot be serialized,
+ *     *split_options is left intact (so the relation is still created with
+ *     the original clause) and no yb_presplit entry is added.
+ *
+ *   - Otherwise, if a yb_presplit entry is present in *options, parse it
+ *     back into *split_options so the relation is created with the
+ *     persisted pre-split values (e.g., on pg_dump restore).
  *
  * Used by both CREATE TABLE and CREATE INDEX paths.
  */
@@ -8023,27 +8040,49 @@ YbSyncSplitOptionsAndPresplit(YbOptSplit **split_options, List **options)
 	if (*split_options)
 	{
 		char	   *presplit_str;
+		ListCell   *presplit_cell = NULL;
+		bool		presplit_is_sentinel = false;
 
-		/*
-		 * Error if yb_presplit already exists in options (e.g., from
-		 * WITH (yb_presplit=...) alongside SPLIT INTO/AT).
-		 */
 		foreach(lc, *options)
 		{
 			DefElem    *def = (DefElem *) lfirst(lc);
 
 			if (strcmp(def->defname, "yb_presplit") == 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DUPLICATE_OBJECT),
-						 errmsg("yb_presplit cannot be specified together with SPLIT INTO or SPLIT AT VALUES")));
+			{
+				char	   *val = defGetString(def);
+
+				presplit_cell = lc;
+				presplit_is_sentinel = (val != NULL && val[0] == '\0');
+				break;
+			}
+		}
+
+		if (presplit_cell != NULL)
+		{
+			if (presplit_is_sentinel)
+			{
+				/*
+				 * Drop the empty sentinel so it does not persist; the
+				 * SPLIT clause alone governs the relation's layout and no
+				 * yb_presplit reloption is recorded.
+				 */
+				*options = list_delete_cell(*options, presplit_cell);
+			}
+			/*
+			 * Otherwise keep both: the SPLIT clause governs the immediate
+			 * layout and the user-supplied yb_presplit is recorded as-is.
+			 */
+			return;
 		}
 
 		/*
-		 * If the split options contain expressions we can't serialize (e.g.
-		 * function calls), YbSplitOptionsToPresplitString returns NULL and we
-		 * skip storing yb_presplit.  *split_options is left intact so the
-		 * relation is still created with the original SPLIT clause; those
-		 * expressions are evaluated at creation time by
+		 * No yb_presplit in *options: auto-derive it from the SPLIT clause
+		 * so the reloption tracks what the user just asked for.  If the
+		 * split options contain expressions we can't serialize (e.g.
+		 * function calls), YbSplitOptionsToPresplitString returns NULL and
+		 * we skip storing yb_presplit.  *split_options is left intact so
+		 * the relation is still created with the original SPLIT clause;
+		 * those expressions are evaluated at creation time by
 		 * YBTransformPartitionSplitValue.
 		 */
 		presplit_str = YbSplitOptionsToPresplitString(*split_options);
@@ -8055,14 +8094,26 @@ YbSyncSplitOptionsAndPresplit(YbOptSplit **split_options, List **options)
 		return;
 	}
 
-	/* Derive split_options from yb_presplit if not already set. */
+	/*
+	 * Derive split_options from yb_presplit if not already set.  An empty
+	 * sentinel here (no SPLIT clause given) is meaningless -- nothing to
+	 * suppress -- so strip it to avoid persisting an empty value into
+	 * pg_class.reloptions.
+	 */
 	foreach(lc, *options)
 	{
 		DefElem    *def = (DefElem *) lfirst(lc);
 
 		if (strcmp(def->defname, "yb_presplit") == 0)
 		{
-			*split_options = YbParsePresplitString(defGetString(def));
+			char	   *val = defGetString(def);
+
+			if (val != NULL && val[0] == '\0')
+			{
+				*options = list_delete_cell(*options, lc);
+				return;
+			}
+			*split_options = YbParsePresplitString(val);
 			break;
 		}
 	}

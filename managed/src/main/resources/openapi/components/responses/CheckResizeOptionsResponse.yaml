@@ -1,0 +1,5 @@
+description: Resize options check success
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/CheckResizeOptionsResp.yaml"

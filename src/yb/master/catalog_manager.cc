@@ -1099,7 +1099,10 @@ CatalogManager::CatalogManager(Master* master, SysCatalogTable* sys_catalog)
       tasks_tracker_(new TasksTracker(IsUserInitiated::kFalse)),
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
       encryption_manager_(new EncryptionManager()),
-      tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)) {
+      tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
+      cdc_stream_alter_table_throttler_([this]() -> uint64_t {
+        return GetCDCStreamAlterTableRpcLimit();
+      }) {
   RWCLock::SetConflictingMutex(&mutex_);
   InitMasterFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
@@ -8078,6 +8081,15 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
                                   AlterTableResponsePB* resp,
                                   rpc::RpcContext* rpc,
                                   const LeaderEpoch& epoch) {
+  return AlterTableWithBatchTracker(req, resp, rpc, epoch, /*cdc_alter_batch_tracker=*/nullptr);
+}
+
+Status CatalogManager::AlterTableWithBatchTracker(
+    const AlterTableRequestPB* req,
+    AlterTableResponsePB* resp,
+    rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch,
+    std::shared_ptr<AlterTableBatchTracker> cdc_alter_batch_tracker) {
   LOG_WITH_PREFIX(INFO) << "Servicing " << __func__ << " request from " << RequestorString(rpc)
                         << ": " << req->ShortDebugString();
 
@@ -8275,7 +8287,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   if (!has_changes) {
     if (req->has_force_send_alter_request() && req->force_send_alter_request()) {
-      RETURN_NOT_OK(SendAlterTableRequest(table, epoch, req));
+      RETURN_NOT_OK(SendAlterTableRequest(table, epoch, req, cdc_alter_batch_tracker));
     }
     // Skip empty requests...
     return Status::OK();
@@ -8370,7 +8382,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   }
 
   RETURN_NOT_OK(UpdateSysCatalogWithNewSchema(
-    table, ddl_log_entries, namespace_id, new_table_name, epoch, resp));
+      table, ddl_log_entries, namespace_id, new_table_name, epoch, resp));
   // Update the in-memory state.
   TRACE("Committing in-memory state");
   VLOG_WITH_FUNC(3) << "SysTablesEntryPB for " << table->id()
@@ -8392,7 +8404,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   if (schedule_ysql_txn_verifier) {
     RETURN_NOT_OK(ScheduleYsqlTxnVerification(table, txn, epoch));
   }
-  RETURN_NOT_OK(SendAlterTableRequest(table, epoch, req));
+  RETURN_NOT_OK(SendAlterTableRequest(table, epoch, req, cdc_alter_batch_tracker));
 
   // Increment transaction status version if needed.
   if (table->GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
@@ -11409,7 +11421,8 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
 
 Status CatalogManager::SendAlterTableRequest(
     const scoped_refptr<TableInfo>& table, const LeaderEpoch& epoch,
-    const AlterTableRequestPB* req) {
+    const AlterTableRequestPB* req,
+    std::shared_ptr<AlterTableBatchTracker> cdc_alter_batch_tracker) {
   bool is_ysql_table_with_transaction_metadata =
       table->GetTableType() == TableType::PGSQL_TABLE_TYPE &&
       req != nullptr &&
@@ -11437,12 +11450,14 @@ Status CatalogManager::SendAlterTableRequest(
     txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req->transaction().transaction_id()));
   }
 
-  return SendAlterTableRequestInternal(table, txn_id, epoch, req);
+  return SendAlterTableRequestInternal(
+      table, txn_id, epoch, req, std::move(cdc_alter_batch_tracker));
 }
 
 Status CatalogManager::SendAlterTableRequestInternal(
     const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch,
-    const AlterTableRequestPB* req) {
+    const AlterTableRequestPB* req,
+    std::shared_ptr<AlterTableBatchTracker> cdc_alter_batch_tracker) {
   for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
     std::shared_ptr<AsyncAlterTable> call;
 
@@ -11460,10 +11475,11 @@ Status CatalogManager::SendAlterTableRequestInternal(
       }
       call = std::make_shared<AsyncAlterTable>(
           master_, AsyncTaskPool(), tablet, table, txn_id, epoch, stream_id,
-          req->cdc_sdk_require_history_cutoff());
+          req->cdc_sdk_require_history_cutoff(), GetCDCStreamAlterTableThrottler(),
+          cdc_alter_batch_tracker);
     } else {
-      call =
-          std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table, txn_id, epoch);
+      call = std::make_shared<AsyncAlterTable>(
+          master_, AsyncTaskPool(), tablet, table, txn_id, epoch, cdc_alter_batch_tracker);
     }
     table->AddTask(call);
     if (PREDICT_FALSE(FLAGS_TEST_slowdown_alter_table_rpcs_ms > 0)) {
@@ -14655,12 +14671,6 @@ void PopulateTabletMetadata(
     if (auto pg_table_oid = table_lock->GetPgTableOid(table->id()); pg_table_oid.ok()) {
       tablet_metadata->set_pg_table_oid(*pg_table_oid);
     }
-  }
-
-  // Returns a non-OK Result for YCQL/system tables, which have no PG OID -- leave pg_table_oid
-  // unset there.
-  if (auto pg_table_oid = table->GetPgTableOid(); pg_table_oid.ok()) {
-    tablet_metadata->set_pg_table_oid(*pg_table_oid);
   }
 
   std::string leader_address;

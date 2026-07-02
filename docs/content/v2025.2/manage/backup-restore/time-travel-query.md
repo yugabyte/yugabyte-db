@@ -4,7 +4,7 @@ headerTitle: Time travel query
 linkTitle: Time travel query
 description: Read data at a specific point in time for data recovery and analysis.
 tags:
-  feature: tech-preview
+  feature: early-access
 menu:
   v2025.2:
     identifier: time-travel-query

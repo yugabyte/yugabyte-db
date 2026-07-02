@@ -179,8 +179,8 @@ CREATE TABLE public.t (
     v text,
     CONSTRAINT t_pkey PRIMARY KEY((k) HASH)
 )
+WITH (yb_presplit='3')
 SPLIT INTO 3 TABLETS;
-ALTER TABLE public.t SET (yb_presplit='3');
 
 
 \if :use_roles
@@ -253,8 +253,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16389'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16389'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY t_v_idx ON public.t USING lsm (v HASH) SPLIT INTO 3 TABLETS;
-ALTER INDEX public.t_v_idx SET (yb_presplit='3');
+CREATE INDEX NONCONCURRENTLY t_v_idx ON public.t USING lsm (v HASH) WITH (yb_presplit='3') SPLIT INTO 3 TABLETS;
 
 
 --

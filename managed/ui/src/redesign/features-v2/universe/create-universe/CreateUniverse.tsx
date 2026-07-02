@@ -41,8 +41,10 @@ const CreateUniverseRoot = styled('div')(() => ({
     backgroundColor: '#fff !important',
     display: 'flex',
     height: '100vh',
-    width: '100vw',
-    flexDirection: 'column'
+    width: '100%',
+    flexDirection: 'column',
+    position: 'relative',
+    overflow: 'hidden'
   }
 }));
 
@@ -80,7 +82,7 @@ export function CreateUniverse() {
   if (isLoading) return <YBLoadingCircleIcon />;
 
   return (
-    <CreateUniverseRoot>
+    <CreateUniverseRoot className="create-universe-root">
       <AuthenticatedArea simpleMode>
         <CreateUniverseContext.Provider
           value={[...restoreContextData, {}] as unknown as createUniverseFormProps}
@@ -104,36 +106,50 @@ export function CreateUniverse() {
             />
           </CreateHeader>
           {/* Body */}
-          <Grid container spacing={{ xs: 3, md: 3, lg: 3, xl: 6 }} minHeight={'100%'}>
-            <Grid sx={{ borderRight: '1px solid #E9EEF2', minHeight: '100vh' }} size="auto">
-              <YBMultiLevelStepper dataTestId="stepper" activeStep={activeStep} steps={steps} />
-            </Grid>
-            <Grid container direction={'column'} size="grow" spacing={0}>
-              <Grid size="auto">
-                <CreateUniverseBreadCrumb />
+          <Box sx={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
+            <Grid
+              container
+              spacing={{ xs: 3, md: 3, lg: 3, xl: 6 }}
+              sx={{ flex: 1, minHeight: 0, width: '100%', flexWrap: 'nowrap' }}
+            >
+              <Grid
+                sx={{ borderRight: '1px solid #E9EEF2', overflowY: 'auto', flexShrink: 0 }}
+                size="auto"
+              >
+                <YBMultiLevelStepper dataTestId="stepper" activeStep={activeStep} steps={steps} />
               </Grid>
-              <Grid container>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    maxWidth: '1024px',
-                    minWidth: '856px',
-                    width: '100%',
-                    gap: 3,
-                    mr: 1
-                  }}
-                >
-                  <SwitchCreateUniverseSteps ref={currentStepRef} />
-                  {/* Footer */}
-                  <Grid
-                    container
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="space-between"
-                    direction="row"
-                    sx={{ mb: 3 }}
+              <Grid
+                container
+                direction={'column'}
+                size="grow"
+                spacing={0}
+                sx={{ flex: 1, minHeight: 0, minWidth: 0 }}
+              >
+                <Grid size="auto">
+                  <CreateUniverseBreadCrumb />
+                </Grid>
+                <Grid size="grow" sx={{ minHeight: 0, overflowY: 'auto' }}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      maxWidth: '1024px',
+                      minWidth: '856px',
+                      width: '100%',
+                      gap: 3,
+                      mr: 1,
+                      pb: 3
+                    }}
                   >
+                    <SwitchCreateUniverseSteps ref={currentStepRef} />
+                    {/* Footer */}
+                    <Grid
+                      container
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="space-between"
+                      direction="row"
+                    >
                     <YBButton
                       variant="secondary"
                       size="large"
@@ -167,11 +183,12 @@ export function CreateUniverse() {
                         {getButtonLabel(resilienceType, activeStep)}
                       </YBButton>
                     </Grid>
-                  </Grid>
-                </Box>
+                    </Grid>
+                  </Box>
+                </Grid>
               </Grid>
             </Grid>
-          </Grid>
+          </Box>
         </CreateUniverseContext.Provider>
       </AuthenticatedArea>
     </CreateUniverseRoot>

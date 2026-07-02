@@ -152,6 +152,8 @@ int yb_fk_references_cache_limit = 65535;
 
 bool yb_allow_dockey_bounds = true;
 
+bool yb_dump_presplit_in_create = true;
+
 bool yb_xcluster_target_ddl_bypass = false;
 
 bool yb_ignore_read_time_in_walsender = false;
