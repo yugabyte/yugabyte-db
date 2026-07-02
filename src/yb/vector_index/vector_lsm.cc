@@ -1609,7 +1609,13 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
       std::this_thread::sleep_for(FLAGS_TEST_vector_index_delay_saving_first_chunk_ms * 1ms);
     }
 
+    // Measures the time to serialize and write a single vector index chunk file to disk.
+    const auto flush_start = MonoTime::Now();
     saved = VERIFY_RESULT(SaveIndexToFile(*chunk->index, serial_no));
+    if (metrics_) {
+      metrics_->flush_write_bytes->IncrementBy(saved.first->size_on_disk());
+      metrics_->flush_us->Increment((MonoTime::Now() - flush_start).ToMicroseconds());
+    }
     if (TEST_sleep_after_saving_chunk) {
       SleepFor(TEST_sleep_after_saving_chunk);
     }
@@ -2608,16 +2614,20 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   RSTATUS_DCHECK(!scope.empty(), InvalidArgument, "Compaction scope must be specified");
   VLOG_WITH_PREFIX(2) << "Picked chunks: " << AsString(scope);
 
+  // Measures the time of the whole compaction operation: merging the input chunks,
+  // writing the merged chunk to disk, updating the manifest, swapping the in-memory chunk
+  // collection and triggering obsolete file cleanup.
+  const auto compact_start = MonoTime::Now();
   auto merged_chunk = VERIFY_RESULT(DoCompactChunks(scope.chunks(), suspender));
 
+  uint64_t compact_read_bytes = 0;
+  uint64_t compact_write_bytes = 0;
   if (metrics_) {
-    uint64_t read_bytes = 0;
     for (const auto& chunk : scope.chunks()) {
-      read_bytes += chunk->file_size();
+      compact_read_bytes += chunk->file_size();
     }
-    metrics_->compact_read_bytes->IncrementBy(read_bytes);
     // TODO(vector_index): include metadata file update in write metrics.
-    metrics_->compact_write_bytes->IncrementBy(merged_chunk->file_size());
+    compact_write_bytes = merged_chunk->file_size();
   }
 
   // A new chunk must be in a manifested state to put into the immutable chunks collection to
@@ -2677,6 +2687,12 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   // Mark input chunks as obsolete and maybe delete corresponding files.
   scope.Compacted();
   TriggerObsoleteChunksCleanup(/* async = */ false);
+
+  if (metrics_) {
+    metrics_->compact_read_bytes->IncrementBy(compact_read_bytes);
+    metrics_->compact_write_bytes->IncrementBy(compact_write_bytes);
+    metrics_->compact_us->Increment((MonoTime::Now() - compact_start).ToMicroseconds());
+  }
 
   LOG_WITH_PREFIX(INFO) << "Vector index compaction done";
   return Status::OK();
