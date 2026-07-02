@@ -15,7 +15,7 @@ type: docs
 
 {{<tags/feature/tp idea="2537">}}The [pg_dist_rag](https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/yb-extensions/pg_dist_rag/README.md) PostgreSQL extension manages Retrieval-Augmented Generation (RAG) pipelines from SQL. It registers document sources (such as S3 buckets or URLs), coordinates distributed preprocessing and embedding generation, and stores vectors in [pgvector](../extension-pgvector/) indexes backed by YugabyteDB.
 
-With pg_dist_rag, you can:
+With pg_dist_rag, you can do the following:
 
 - Point a vector index at a document source instead of building custom ETL pipelines.
 - Chunk documents and generate embeddings using a configured AI provider.
@@ -36,15 +36,34 @@ pg_dist_rag relies on a Python RAG agent that runs on each YB-TServer. The agent
 Before you enable the extension, start the RAG agent service on all YB-TServers:
 
 1. Set the `enable_pg_dist_rag_service` [yb-tserver](../../../reference/configuration/yb-tserver/) flag to true.
-1. Optionally set the `pg_dist_rag_conf_csv` flag to supply service-level credentials and configuration.
+1. Optionally set the `pg_dist_rag_conf_csv` flag to supply service-level credentials and configuration for the RAG agent. Parameters use the format `<key>=<value>`, separated by commas. If a value contains a comma or double quote, wrap the entire parameter in double quotes.
 
-Supported `pg_dist_rag_conf_csv` keys include `AWS_S3_BUCKET_NAME`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `OPENAI_API_KEY`, and `SCRIPT_PATH`. The database connection string is constructed automatically from the local PostgreSQL instance.
+`pg_dist_rag_conf_csv` does not choose your document source type. Sources are registered separately with `dist_rag.create_source`, using either an `s3://` URI or an `https://` URL. Include the AWS keys only when reading from S3; URL sources do not use them. Set `OPENAI_API_KEY` when using the `OPENAI` embedding provider, regardless of source type.
 
-For example, to create a single-node cluster with the RAG service using [yugabyted](../../../reference/configuration/yugabyted/):
+| Key | Applies to | Description |
+| :-- | :--------- | :---------- |
+| `AWS_S3_BUCKET_NAME` | S3 sources | Default S3 bucket name passed to the RAG agent as the `AWS_S3_BUCKET_NAME` environment variable. |
+| `AWS_REGION` | S3 sources | AWS region for S3 API calls (for example, `us-east-1`). Passed to the agent as the `AWS_REGION` environment variable. |
+| `AWS_ACCESS_KEY_ID` | S3 sources | AWS access key ID for S3 authentication. Optional if the host uses instance or profile credentials. Passed to the agent as the `AWS_ACCESS_KEY_ID` environment variable. |
+| `AWS_SECRET_ACCESS_KEY` | S3 sources | AWS secret access key for S3 authentication. Passed to the agent as the `AWS_SECRET_ACCESS_KEY` environment variable. |
+| `OPENAI_API_KEY` | All sources (when using `OPENAI`) | OpenAI API key for embedding generation. Passed to the agent as the `OPENAI_API_KEY` environment variable. |
+| `SCRIPT_PATH` | Service setup | Path to the RAG agent startup script (`start_rag_agent.py`). Defaults to `python/ai/rag_agent/start_rag_agent.py` under the YugabyteDB root directory. |
+
+The database connection string is constructed automatically from the local PostgreSQL instance and passed to the agent as `YUGABYTEDB_CONNECTION_STRING`; it is not configured through `pg_dist_rag_conf_csv`.
+
+For example, to create a single-node cluster with the RAG service and S3 document sources using [yugabyted](../../../reference/configuration/yugabyted/):
 
 ```sh
 ./bin/yugabyted start \
   --tserver_flags "enable_pg_dist_rag_service=true,pg_dist_rag_conf_csv=OPENAI_API_KEY=sk-proj-example,AWS_S3_BUCKET_NAME=my-bucket,AWS_REGION=us-east-1" \
+  --ui false
+```
+
+For URL-based sources, only the embedding provider key is typically required at startup:
+
+```sh
+./bin/yugabyted start \
+  --tserver_flags "enable_pg_dist_rag_service=true,pg_dist_rag_conf_csv=OPENAI_API_KEY=sk-proj-example" \
   --ui false
 ```
 
@@ -142,7 +161,7 @@ The `r_embedding_model_params` JSONB must include a `"dimensions"` key with a po
 
 ### 3. Add a source to an existing index
 
-Attach additional sources to an already-created vector index, optionally with custom chunking parameters.
+Use `add_source_to_index()` to attach additional sources to an already-created vector index, optionally with custom chunking parameters.
 
 ```sql
 SELECT dist_rag.add_source_to_index(
@@ -160,7 +179,9 @@ Provide exactly one of `r_index_id` or `r_index_name`:
 
 ```sql
 SELECT dist_rag.build_index(r_index_id := '<index_uuid>');
+```
 
+```sql
 SELECT dist_rag.build_index(r_index_name := 'my_knowledge_base');
 ```
 
