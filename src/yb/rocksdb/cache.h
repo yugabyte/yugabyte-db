@@ -40,7 +40,7 @@
 #include <memory>
 
 #include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 
 #include "yb/util/slice.h"
 
@@ -150,6 +150,13 @@ class Cache {
   // greater than new capacity, the implementation will do its best job to
   // purge the released entries from the cache in order to lower the usage
   virtual void SetCapacity(size_t capacity) = 0;
+
+  // Reserves `bytes` of cache space without storing an actual entry: it reduces the capacity
+  // available to real entries (spread across shards), evicting as needed. Used to account
+  // out-of-cache memory (e.g. a vector index chunk) within the cache budget so it does not grow
+  // total memory consumption. ReleaseSpace returns the reserved bytes. Default: no-op.
+  virtual void ConsumeSpace(size_t bytes) {}
+  virtual void ReleaseSpace(size_t bytes) {}
 
   // Set whether to return error on insertion when cache reaches its full
   // capacity.

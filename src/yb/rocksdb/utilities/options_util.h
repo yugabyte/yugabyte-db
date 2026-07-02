@@ -28,7 +28,7 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 
 namespace rocksdb {
 // Constructs the DBOptions and ColumnFamilyDescriptors by loading the

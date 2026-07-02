@@ -35,8 +35,6 @@ class PgConcurrentDDLsTest : public LibPqTestBase {
         "--enable_object_locking_for_table_locks=true");
     opts->extra_tserver_flags.emplace_back(
         "--ysql_yb_ddl_transaction_block_enabled=true");
-    opts->extra_tserver_flags.emplace_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=20000");
     opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
     AppendFlagToAllowedPreviewFlagsCsv(
         opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
@@ -144,6 +142,55 @@ TEST_F(PgConcurrentDDLsTest, WholerowRaceCondition) {
 
   thread_holder.Stop();
   thread_holder.JoinAll();
+}
+
+// Test for #32080.
+//
+// When object locking is enabled, the catalog version mismatch check is not required
+// since object locking and invalidation messages ensure that any concurrent DML/ DDL
+// reads the latest data.
+//
+// Before the fix, a concurrent transaction will result in a  MISMATCHED_SCHEMA ("the
+// catalog snapshot used for this transaction has been invalidated") error.
+TEST_F(PgConcurrentDDLsTest, CatalogVersionCheckDisabled) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE ctas_src (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO ctas_src SELECT s, s FROM generate_series(1, 2000) AS s"));
+
+  // An entirely unrelated table + index. Only the index will be renamed.
+  ASSERT_OK(conn.Execute("CREATE TABLE unrelated (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX unrelated_idx ON unrelated(v)"));
+
+  // Delay every transactional read so the paginated scan reliably spans the
+  // concurrent index rename.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_transactional_read_delay_ms", "800"));
+
+  TestThreadHolder thread_holder;
+  Status victim_status;
+  thread_holder.AddThreadFunctor([this, &victim_status] {
+    auto victim_conn = ASSERT_RESULT(Connect());
+    // Small fetch limit => the CTAS source scan issues many read RPCs over time, each
+    // carrying the catalog version pinned when the scan began.
+    ASSERT_OK(victim_conn.Execute("SET yb_fetch_row_limit = 100"));
+    victim_status =
+        victim_conn.Execute("CREATE TABLE ctas_dst AS SELECT * FROM ctas_src");
+    LOG(INFO) << "CTAS returned status: " << victim_status;
+  });
+
+  // Let the scan get a few read RPCs in, then bump the catalog version with a breaking
+  // ALTER INDEX ... RENAME on the unrelated index.
+  SleepFor(2s);
+  LOG(INFO) << "Renaming unrelated index concurrently with the scan";
+  ASSERT_OK(conn.Execute("ALTER INDEX unrelated_idx RENAME TO unrelated_idx_renamed"));
+
+  thread_holder.JoinAll();
+
+  // Renaming an unrelated index must not abort the scan: with object locking the
+  // catalog-version (last breaking version) check is disabled.
+  ASSERT_OK(victim_status);
 }
 
 TEST_F(PgConcurrentDDLsTest, ConcurrentCreateIndex) {
@@ -595,7 +642,8 @@ TEST_F(PgDdlTransactionWithoutConcurrentDDLSupportTest, ParallelDdlTransactionBl
 // instead of internal error YB003.
 // See https://github.com/yugabyte/yugabyte-db/issues/31736
 
-TEST_F(PgDdlTransactionWithoutConcurrentDDLSupportTest, TestReportProperSerializationErrorInRepeatableRead) {
+TEST_F(PgDdlTransactionWithoutConcurrentDDLSupportTest,
+       TestReportProperSerializationErrorInRepeatableRead) {
   auto conn0 = ASSERT_RESULT(Connect());
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());

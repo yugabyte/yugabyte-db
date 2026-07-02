@@ -297,7 +297,7 @@ public class XClusterScheduler {
 
       // Try to acquire the lock without blocking
       if (!XCLUSTER_CONFIG_LOCK.tryLock(xClusterConfig.getUuid())) {
-        log.info(
+        log.debug(
             "Could not acquire lock for xCluster config {}, skipping sync, reporting stale data.",
             xClusterConfig.getUuid());
         return;
@@ -318,7 +318,7 @@ public class XClusterScheduler {
       log.debug("Skipping scheduler for follower platform");
       return;
     }
-    log.info("Running xCluster Sync Scheduler...");
+    log.debug("Running xCluster Sync Scheduler...");
     try {
       List<XClusterConfig> xClusterConfigs = XClusterConfig.getAllXClusterConfigs();
       xClusterConfigs.stream()
@@ -445,7 +445,7 @@ public class XClusterScheduler {
       log.debug("Skipping scheduler for follower platform");
       return;
     }
-    log.info("Running xCluster Master Address Sync Scheduler...");
+    log.debug("Running xCluster Master Address Sync Scheduler...");
     try {
       List<XClusterConfig> xClusterConfigs = XClusterConfig.getAllXClusterConfigs();
       xClusterConfigs.stream()
@@ -527,7 +527,7 @@ public class XClusterScheduler {
       log.debug("Skipping scheduler for follower platform");
       return;
     }
-    log.info("Running xCluster Metrics Scheduler...");
+    log.debug("Running xCluster Metrics Scheduler...");
     try {
       List<XClusterConfig> xClusterConfigs = XClusterConfig.getAllXClusterConfigs();
       List<Metric> metricsList = new ArrayList<>();

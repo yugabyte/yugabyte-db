@@ -87,6 +87,10 @@ Build options:
     Only build Java code
   --resolve-java-dependencies
     Force Maven to download all Java dependencies to the local repository
+  --no-scoped-java-build, --full-java-build
+    When building for a single Java test, build all Java modules instead of just the test's module
+    and its dependencies. By default the build is scoped to the test's module (using "mvn -pl
+    <module> --also-make"), which avoids building unrelated modules.
 
   --build-yugabyted-ui
     Build yugabyted-ui. If specified with --cmake-only, it won't be built.
@@ -378,6 +382,10 @@ set_default_yb_build_args() {
 
   resolve_java_dependencies=false
 
+  # When building for a single Java test, scope the Maven build to that test's module (and its
+  # dependencies) instead of building the whole reactor. Disabled with --no-scoped-java-build.
+  scope_java_build_to_test_module=true
+
   run_cmake_unit_tests=false
 
   run_shellcheck=false
@@ -525,6 +533,9 @@ parse_yb_build_cmd_line() {
       ;;
       --skip-java-build|--skip-java|--sjb|--sj|--no-java|--nj)
         build_java=false
+      ;;
+      --no-scoped-java-build|--full-java-build)
+        scope_java_build_to_test_module=false
       ;;
       --run-java-tests|--java-tests)
         run_java_tests=true

@@ -220,6 +220,9 @@ typedef struct Plan
 
 	/* YB: Is this node forced using a UID? */
 	bool		ybHasHintedUid;
+
+	/* YB: Is this node able (and allowed) to apply read ahead optimization? */
+	bool		ybReadAheadCapable;
 } Plan;
 
 /* ----------------

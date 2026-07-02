@@ -6,6 +6,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
@@ -60,13 +61,32 @@ public class ConfigureDBApisKubernetes extends KubernetesUpgradeTaskBase {
           // Reset password to default before disable.
           createResetAPIPasswordTask(taskParams(), getTaskSubGroupType());
 
+          // Build the post-toggle universe state (intent not yet persisted in DB). The K8s rolling
+          // restart brings each tserver back up with the target connection-pooling/auth settings,
+          // so the YSQL readiness probe must use this state to choose the right port instead of the
+          // stale persisted intent (PLAT-21282).
+          Universe targetUniverseState = getUniverse();
+          targetUniverseState
+              .getUniverseDetails()
+              .clusters
+              .forEach(
+                  cluster -> {
+                    cluster.userIntent.enableYSQL = taskParams().enableYSQL;
+                    cluster.userIntent.enableYSQLAuth = taskParams().enableYSQLAuth;
+                    cluster.userIntent.enableConnectionPooling =
+                        taskParams().enableConnectionPooling;
+                    cluster.userIntent.enableYCQL = taskParams().enableYCQL;
+                    cluster.userIntent.enableYCQLAuth = taskParams().enableYCQLAuth;
+                  });
+
           createUpgradeTask(
               universe,
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
               true /* upgradeMasters */,
               true /* upgradeTservers */,
               universe.isYbcEnabled(),
-              confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion));
+              confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion),
+              UpgradeContext.builder().targetUniverseState(targetUniverseState).build());
 
           // Now update Universe state in DB.
           // Update custom communication ports in universe and node details

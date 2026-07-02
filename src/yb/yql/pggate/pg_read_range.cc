@@ -21,7 +21,6 @@
 
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
-#include "yb/yql/pggate/util/pg_tuple.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 
 namespace yb::pggate {
@@ -80,23 +79,12 @@ void PgReadRange::SetHashCodeBound(uint16_t hash_code, bool is_inclusive, bool i
       --hash_code;
     }
   }
-  if (is_lower) {
-    SetLowerBound(HashCodeToBound(hash_code, true /* is_lower */), false /* is_inclusive */);
-  } else {
-    SetUpperBound(HashCodeToBound(hash_code, false /* is_lower */), false /* is_inclusive */);
-  }
-  ComputeEmpty();
+  SetBound(HashCodeToBound(hash_code, is_lower), false /* is_inclusive */, is_lower);
 }
 
 template <class T>
 void PgReadRange::SetDocKeyBound(const T& doc_key, bool is_inclusive, bool is_lower) {
-  auto bound = ToKeyBytes(doc_key);
-  if (is_lower) {
-    SetLowerBound(std::move(bound), is_inclusive);
-  } else {
-    SetUpperBound(std::move(bound), is_inclusive);
-  }
-  ComputeEmpty();
+  SetBound(ToKeyBytes(doc_key), is_inclusive, is_lower);
 }
 
 void PgReadRange::SetPartitionBounds(size_t partition) {

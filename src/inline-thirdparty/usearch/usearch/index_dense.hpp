@@ -787,37 +787,44 @@ class index_dense_gt {
      *  actual heap footprint reported by an external accountant can be larger (the arena
      *  sequence rounds up to 8 MB, 24 MB, 56 MB, ... for `memory_mapping_allocator_gt`).
      */
-    std::size_t estimate_num_vectors_for_bytes(std::size_t bytes_limit) const noexcept {
-        if (bytes_limit == 0) {
-            return 0;
-        }
-
-        // `index_dense_gt` stores each vector's coordinates in a separate tape allocator.
+    // Average per-vector heap cost of this index. Used to convert between a byte budget and a
+    // vector count in both directions.
+    //
+    // `index_dense_gt` stores each vector's coordinates in a separate tape allocator, keeps a
+    // pointer per vector in `vectors_lookup_`, plus a node entry per vector in the underlying
+    // `typed_` index `nodes_` buffer (which holds a `node_t == byte_t*`). For each node usearch
+    // allocates `node_head + neighbors_base + level * neighbors` per level. `memory_usage_per_node(0)`
+    // returns `node_head + neighbors_base`, and the expected number of additional levels is governed
+    // by the geometric distribution with parameter `inverse_log_connectivity` (see
+    // `index_gt::choose_random_level_`).
+    double per_vector_bytes_estimate() const noexcept {
         const std::size_t bytes_per_vector_data = bytes_per_vector();
-
-        // `index_dense_gt` also keeps a pointer per vector in `vectors_lookup_`, plus a node
-        // entry per vector in the underlying `typed_` index `nodes_` buffer (which holds a
-        // `node_t == byte_t*`).
         const std::size_t bytes_per_vector_lookup = sizeof(byte_t*);
         const std::size_t bytes_per_node_handle = sizeof(byte_t*);
-
-        // For each node usearch allocates `node_head + neighbors_base + level * neighbors` per
-        // level. `memory_usage_per_node(0)` returns `node_head + neighbors_base`, and the
-        // expected number of additional levels is governed by the geometric distribution with
-        // parameter `inverse_log_connectivity` (see `index_gt::choose_random_level_`).
         const double level0_bytes = static_cast<double>(typed_->memory_usage_per_node(0));
         const double avg_node_bytes =
             level0_bytes +
             static_cast<double>(typed_->neighbors_bytes()) * typed_->inverse_log_connectivity();
+        return static_cast<double>(bytes_per_vector_data + bytes_per_vector_lookup +
+                                   bytes_per_node_handle) +
+               avg_node_bytes;
+    }
 
-        const double per_vector_bytes =
-            static_cast<double>(bytes_per_vector_data + bytes_per_vector_lookup +
-                                bytes_per_node_handle) +
-            avg_node_bytes;
+    std::size_t estimate_num_vectors_for_bytes(std::size_t bytes_limit) const noexcept {
+        if (bytes_limit == 0) {
+            return 0;
+        }
+        const double per_vector_bytes = per_vector_bytes_estimate();
         if (per_vector_bytes <= 0) {
             return 0;
         }
         return static_cast<std::size_t>(static_cast<double>(bytes_limit) / per_vector_bytes);
+    }
+
+    // Inverse of estimate_num_vectors_for_bytes: the byte budget required to hold num_vectors.
+    std::size_t estimate_bytes_for_num_vectors(std::size_t num_vectors) const noexcept {
+        return static_cast<std::size_t>(
+            static_cast<double>(num_vectors) * per_vector_bytes_estimate());
     }
 
     static constexpr std::size_t any_thread() { return std::numeric_limits<std::size_t>::max(); }

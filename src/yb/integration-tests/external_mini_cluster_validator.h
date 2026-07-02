@@ -12,7 +12,9 @@
 //
 #pragma once
 
-#include "yb/util/status.h"
+#include <string>
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

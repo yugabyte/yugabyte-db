@@ -215,7 +215,9 @@ describe('getInferredOutageCount', () => {
       r1: [{ name: '', uuid: '', nodeCount: 1, preffered: 3 }]
     };
 
-    expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 5, availabilityZones as any)).toBe(0);
+    expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 5, availabilityZones as any)).toBe(
+      0
+    );
   });
 
   it('uses RF cap for valid NODE_LEVEL placement at RF node count', () => {
@@ -227,7 +229,9 @@ describe('getInferredOutageCount', () => {
       r1: [{ name: '', uuid: '', nodeCount: 1, preffered: 3 }]
     };
 
-    expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 5, availabilityZones as any)).toBe(2);
+    expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 5, availabilityZones as any)).toBe(
+      2
+    );
   });
 
   it('uses RF cap for valid NODE_LEVEL placement above RF', () => {
@@ -239,7 +243,9 @@ describe('getInferredOutageCount', () => {
       r1: [{ name: '', uuid: '', nodeCount: 2, preffered: 3 }]
     };
 
-    expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 5, availabilityZones as any)).toBe(2);
+    expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 5, availabilityZones as any)).toBe(
+      2
+    );
   });
 
   it('keeps RF-based outage count for non-node-level resilience', () => {
@@ -250,16 +256,18 @@ describe('getInferredOutageCount', () => {
       ]
     };
 
-    expect(
-      getInferredOutageCount(FaultToleranceType.AZ_LEVEL, 5, availabilityZones as any)
-    ).toBe(2);
+    expect(getInferredOutageCount(FaultToleranceType.AZ_LEVEL, 5, availabilityZones as any)).toBe(
+      2
+    );
   });
 
   it('returns 0 for RF=1 sanity case', () => {
     const availabilityZones = {
       r0: [{ name: '', uuid: '', nodeCount: 1, preffered: 1 }]
     };
-    expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 1, availabilityZones as any)).toBe(0);
+    expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 1, availabilityZones as any)).toBe(
+      0
+    );
   });
 });
 
@@ -275,7 +283,10 @@ describe('inferResilience', () => {
   });
 
   it('returns null when regions exceed RF', () => {
-    const resilience = expertBase([makeRegion('r0', 1), makeRegion('r1', 1), makeRegion('r2', 1)], 2);
+    const resilience = expertBase(
+      [makeRegion('r0', 1), makeRegion('r1', 1), makeRegion('r2', 1)],
+      2
+    );
     const out = inferResilience(resilience as any, {
       availabilityZones: {
         r0: [{ name: '', uuid: '', nodeCount: 1, preffered: 1 }],
@@ -289,7 +300,10 @@ describe('inferResilience', () => {
   });
 
   it('returns REGION_LEVEL when regions equal RF', () => {
-    const resilience = expertBase([makeRegion('r0', 2), makeRegion('r1', 2), makeRegion('r2', 2)], 3);
+    const resilience = expertBase(
+      [makeRegion('r0', 2), makeRegion('r1', 2), makeRegion('r2', 2)],
+      3
+    );
     const out = inferResilience(resilience as any, {
       availabilityZones: {
         r0: [{ name: '', uuid: '', nodeCount: 1, preffered: 1 }],
@@ -369,11 +383,9 @@ const minimalOtherAdvanced = (): OtherAdvancedProps => ({
   nodeExporterPort: 9300,
   ybControllerrRpcPort: 7200,
   instanceTags: [],
-  useTimeSync: false,
   awsArnString: '',
   useSystemd: true,
-  accessKeyCode: '',
-  enableExposingService: false
+  accessKeyCode: ''
 });
 
 describe('effectiveUseDedicatedNodes', () => {

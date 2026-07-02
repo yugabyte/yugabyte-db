@@ -117,6 +117,10 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_consistent_replication_from_hash_
     "Enable consumption of consistent changes via replication slots from "
     "a hash range of a table.");
 
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_slot_exclusive_lock, false,
+    "Acquire a cluster-wide exclusive advisory lock while a replication slot is "
+    "in use so that only one consumer can use it at a time across the universe.");
+
 DEFINE_NON_RUNTIME_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication, true,
     "When set to true, modifications to publication will be reflected implicitly. "
     "This replaces the previous mechanism of periodic publication refresh with PG "
@@ -155,6 +159,8 @@ DEFINE_test_flag(bool, check_catalog_version_overflow, false,
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidation_messages, true,
     "True to enable invalidation messages");
+DEFINE_validator(ysql_yb_enable_invalidation_messages,
+    FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 
 // Keep in sync with the same definition in ybc_guc.h
 #ifdef NDEBUG
@@ -240,6 +246,7 @@ DEFINE_validator(ysql_enable_concurrent_ddl,
 
 DEFINE_validator(enable_object_locking_for_table_locks,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_enable_invalidation_messages),
     FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(refresh_waiter_timeout_ms),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
     FLAG_DELAYED_COND_VALIDATOR(
@@ -368,6 +375,9 @@ DEFINE_RUNTIME_bool(ysql_enable_auto_analyze, false,
     "which have changed more than a configurable threshold.");
 
 DEFINE_NON_RUNTIME_bool(enable_qos, false, "Enable the QoS feature.");
+
+DEFINE_NON_RUNTIME_bool(is_yb_managed, false,
+  "If true instance is running in a YugabyteDB managed environment (YBM)");
 
 namespace yb {
 

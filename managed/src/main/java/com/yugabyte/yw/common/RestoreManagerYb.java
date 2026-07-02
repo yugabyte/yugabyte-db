@@ -56,7 +56,7 @@ public class RestoreManagerYb extends DevopsBase {
     UserIntent userIntent = primaryCluster.userIntent;
     Provider provider = Provider.get(region.getProvider().getUuid());
 
-    String accessKeyCode = userIntent.accessKeyCode;
+    String accessKeyCode = userIntent.getAccessKeyCodeForProvider(provider.getUuid());
     AccessKey accessKey = AccessKey.get(region.getProvider().getUuid(), accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
     Map<String, String> extraVars = CloudInfoInterface.fetchEnvVars(region.getProvider());
@@ -76,17 +76,15 @@ public class RestoreManagerYb extends DevopsBase {
       // Populate the map so that we use the correct SSH Keys for the different
       // nodes in different clusters.
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
-        UserIntent clusterUserIntent = cluster.userIntent;
-        Provider clusterProvider =
-            Provider.getOrBadRequest(UUID.fromString(clusterUserIntent.provider));
-        AccessKey accessKeyForCluster =
-            AccessKey.getOrBadRequest(clusterProvider.getUuid(), clusterUserIntent.accessKeyCode);
         Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
         for (NodeDetails nodeInCluster : nodesInCluster) {
+          UUID providerUUID = cluster.getProviderUUIDForNode(nodeInCluster);
+          String nodeAccessKeyCode = userIntent.getAccessKeyCodeForProvider(providerUUID);
+          AccessKey accessKeyForNode = AccessKey.getOrBadRequest(providerUUID, nodeAccessKeyCode);
           if (nodeInCluster.cloudInfo.private_ip != null
               && !nodeInCluster.cloudInfo.private_ip.equals("null")) {
             ipToSshKeyPath.put(
-                nodeInCluster.cloudInfo.private_ip, accessKeyForCluster.getKeyInfo().privateKey);
+                nodeInCluster.cloudInfo.private_ip, accessKeyForNode.getKeyInfo().privateKey);
           }
         }
       }

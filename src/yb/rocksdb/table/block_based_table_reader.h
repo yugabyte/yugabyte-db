@@ -32,7 +32,7 @@
 #include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/table/table_reader.h"
 
 #include "yb/util/strongly_typed_bool.h"

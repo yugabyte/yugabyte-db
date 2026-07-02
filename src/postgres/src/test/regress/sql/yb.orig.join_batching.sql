@@ -1434,3 +1434,16 @@ WHERE t3.c_vc_key  = t2.c_vc
 RESET yb_bnl_enable_hashing;
 
 DROP TABLE repro31724;
+
+-- Test BNL on a table with a large number of tablets
+CREATE TABLE t_multi_tablet(h1 bigint, h2 bigint, v text, primary key((h1, h2) hash)) split into 48 tablets;
+INSERT INTO t_multi_tablet SELECT i, j, 'Value(' || i::text || ', ' || j::text || ')' FROM generate_series(1, 100) i, generate_series(1, 100) j;
+
+SET yb_bnl_batch_size = 1024;
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF, SUMMARY OFF)
+SELECT t.* FROM generate_series(1, 1000) i, t_multi_tablet t WHERE h1 = 1 AND h2 = i;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF, SUMMARY OFF)
+SELECT t.* FROM generate_series(1, 100) i, generate_series(1, 100) j, t_multi_tablet t WHERE h1 = i AND h2 = j;
+
+DROP TABLE t_multi_tablet;

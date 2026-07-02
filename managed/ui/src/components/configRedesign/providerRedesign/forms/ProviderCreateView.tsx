@@ -10,6 +10,7 @@ import { AZUProviderCreateForm } from './azu/AZUProviderCreateForm';
 import { CreateInfraProvider } from '../InfraProvider';
 import { GCPProviderCreateForm } from './gcp/GCPProviderCreateForm';
 import { K8sProviderCreateForm } from './k8s/K8sProviderCreateForm';
+import { OCIProviderCreateForm } from './oci/OCIProviderCreateForm';
 import { KubernetesProviderType, ProviderCode, CloudVendorProviders } from '../constants';
 import { OnPremProviderCreateForm } from './onPrem/OnPremProviderCreateForm';
 import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
@@ -42,6 +43,10 @@ export const ProviderCreateView = (props: ProviderCreateViewProps) => {
     case ProviderCode.AZU:
       return (
         <AZUProviderCreateForm onBack={handleOnBack} createInfraProvider={createInfraProvider} />
+      );
+    case ProviderCode.OCI:
+      return (
+        <OCIProviderCreateForm onBack={handleOnBack} createInfraProvider={createInfraProvider} />
       );
     case ProviderCode.KUBERNETES:
       return (

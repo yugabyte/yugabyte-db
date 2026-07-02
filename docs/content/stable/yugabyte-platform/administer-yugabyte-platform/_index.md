@@ -43,6 +43,12 @@ For information on configuring alerts, health checks, and diagnostics reporting 
     icon="fa-thin fa-clone">}}
 
   {{<index/item
+    title="Operator high availability"
+    body="Synchronize Kubernetes Operator resources during YBA failover and failback."
+    href="operator-high-availability/"
+    icon="fa-thin fa-arrows-rotate">}}
+
+  {{<index/item
     title="Manage runtime configuration settings"
     body="Customize YugabyteDB Anywhere by changing default settings for the application, universes, and providers."
     href="manage-runtime-config/"

@@ -115,6 +115,31 @@
           sourceType: endpoint
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
+/ybc/gflags-metadata:
+  get:
+    operationId: listYbcGflagsMetadata
+    summary: List YBC Gflags metadata
+    description: Get list of all YBC gflags and related metadata.
+    tags:
+      - Backup and Restore
+    responses:
+      '200':
+        $ref: "../components/responses/YbcGflagsResp.yaml"
+      '404':
+        description: Not found
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/backups/page':
   parameters:
     - name: cUUID
@@ -156,31 +181,6 @@
           sourceType: endpoint
         checkOnlyPermission: true
     x-yba-api-since: 2026.2.0.0
-    x-yba-api-visibility: preview
-/ybc/gflags-metadata:
-  get:
-    operationId: listYbcGflagsMetadata
-    summary: List YBC Gflags metadata
-    description: Get list of all YBC gflags and related metadata.
-    tags:
-      - Backup and Restore
-    responses:
-      '200':
-        $ref: "../components/responses/YbcGflagsResp.yaml"
-      '404':
-        description: Not found
-    security:
-      - apiKeyAuth: []
-    x-yba-api-audit:
-      noAudit: true
-    x-yba-api-authz:
-      - requiredPermission:
-          resourceType: other
-          action: read
-        resourceLocation:
-          path: customers
-          sourceType: endpoint
-    x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/auto-yba-backups':
   parameters:
@@ -412,6 +412,182 @@
           path: customers
           sourceType: endpoint
         checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/dr-configs/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListDrConfigs
+    summary: List disaster recovery configurations.
+    description: |
+      Returns disaster recovery configurations for the specified universe (as source or target)
+      with pagination.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Disaster Recovery
+    requestBody:
+      $ref: "../components/requestBodies/DrConfigPagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/DrConfigPagedResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: READ
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/dr-configs/{drUUID}/tables/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: drUUID
+      in: path
+      description: DR config UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListDrConfigTables
+    summary: List DR config table replication details.
+    description: |
+      Returns paginated table replication details for the specified DR config.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Disaster Recovery
+    requestBody:
+      $ref: "../components/requestBodies/DrConfigTableDetailPagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/DrConfigTableDetailPagedResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: READ
+        resourceLocation:
+          path: source_universe_uuid
+          sourceType: db
+          dbClass: com.yugabyte.yw.models.XClusterConfig.class
+          identifier: dr-configs
+          columnName: dr_config_uuid
+      - requiredPermission:
+          resourceType: universe
+          action: READ
+        resourceLocation:
+          path: target_universe_uuid
+          sourceType: db
+          dbClass: com.yugabyte.yw.models.XClusterConfig.class
+          identifier: dr-configs
+          columnName: dr_config_uuid
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/dr-configs/{drUUID}/databases/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: drUUID
+      in: path
+      description: DR config UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListDrConfigDatabases
+    summary: List DR config database replication details.
+    description: |
+      Returns paginated database replication details for the specified DB-scoped DR config.
+      WARNING: This is a preview API that could change.
+    tags:
+      - Disaster Recovery
+    requestBody:
+      $ref: "../components/requestBodies/DrConfigDbDetailPagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/DrConfigDbDetailPagedResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: READ
+        resourceLocation:
+          path: source_universe_uuid
+          sourceType: db
+          dbClass: com.yugabyte.yw.models.XClusterConfig.class
+          identifier: dr-configs
+          columnName: dr_config_uuid
+      - requiredPermission:
+          resourceType: universe
+          action: READ
+        resourceLocation:
+          path: target_universe_uuid
+          sourceType: db
+          dbClass: com.yugabyte.yw.models.XClusterConfig.class
+          identifier: dr-configs
+          columnName: dr_config_uuid
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/kms-configs/page':
@@ -2761,6 +2937,63 @@
         checkOnlyPermission: false
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/proxy-config':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: updateProxyConfig
+    summary: Update proxy configuration
+    description: |
+      Queues a task to update HTTP/HTTPS proxy settings for nodes in the universe.
+      Supports universe-level proxy_config and per-availability-zone overrides via
+      az_networking.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseUpdateProxyConfigReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Customer or Universe or Cluster not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpdateProxyConfig
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.2.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/resize-nodes':
   parameters:
     - name: cUUID
@@ -2856,6 +3089,59 @@
         checkOnlyPermission: false
     x-yba-api-since: 2026.1.2.0
     x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/check-resize-capabilities':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: checkResizeOptions
+    summary: Check available resize options for cluster node settings
+    description: |
+      Given proposed node settings for a cluster, returns which operations can be used to apply
+      them. Possible values are FULL_MOVE (edit universe with full node replacement),
+      SMART_RESIZE (in-place instance resize in rolling fashion)
+      and SMART_RESIZE_NON_RESTART (in-place disk update without restart).
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/CheckResizeOptionsReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/CheckResizeOptionsResponse.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: READ
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 /yba-info:
   get:
     operationId: GetYBAInstanceInfo

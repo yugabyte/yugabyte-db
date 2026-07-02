@@ -74,6 +74,7 @@ class CountingVectorIndex : public DocVectorIndex {
   }
   Status Destroy() override { LOG(FATAL) << "Unexpected call"; }
   Result<size_t> TotalEntries() const override { LOG(FATAL) << "Unexpected call"; }
+  uint64_t OnDiskSize() const override { LOG(FATAL) << "Unexpected call"; }
   void StartShutdown() override { LOG(FATAL) << "Unexpected call"; }
   void CompleteShutdown() override { LOG(FATAL) << "Unexpected call"; }
   bool TEST_HasBackgroundInserts() const override { LOG(FATAL) << "Unexpected call"; }

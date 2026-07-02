@@ -1,0 +1,8 @@
+title: DrConfig
+description: Disaster recovery configuration.
+type: object
+properties:
+  spec:
+    $ref: "./DrConfigSpec.yaml"
+  info:
+    $ref: "./DrConfigInfo.yaml"

@@ -213,8 +213,7 @@ public class Commissioner {
         String taskParamsString = taskParams.toString();
         redactedTaskParams = RedactingService.redactSensitiveInfoInString(taskParamsString);
         log.debug(
-            "JSON serialization failed for task params, using string redaction: {}",
-            jsonException.getMessage());
+            "JSON serialization failed for task params, using string redaction: ", jsonException);
       }
 
       String msg =
@@ -375,6 +374,11 @@ public class Commissioner {
     // Add metricsExportConfig from the task details if it is present.
     if (taskInfo.getTaskParams().has("metricsExportConfig")) {
       details.set("metricsExportConfig", taskInfo.getTaskParams().get("metricsExportConfig"));
+    }
+    // Add modifiedExportTypes (telemetry export configure task) so the UI can show which
+    // telemetry config types are being modified while the task is in progress.
+    if (taskInfo.getTaskParams().has("modifiedExportTypes")) {
+      details.set("modifiedExportTypes", taskInfo.getTaskParams().get("modifiedExportTypes"));
     }
 
     responseJson.set("details", details);

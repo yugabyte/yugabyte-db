@@ -136,9 +136,6 @@ std::string BuildConnectionString(const PGConnSettings& settings, bool mask_pass
   if (!settings.replication.empty()) {
     result += Format(" replication=$0", PqEscapeStringConn(settings.replication));
   }
-  if (settings.yb_auto_analyze) {
-    result += Format(" yb_auto_analyze=true");
-  }
   if (!settings.yb_internal_conn_kind.empty()) {
     result += Format(
         " yb_internal_conn_kind=$0", PqEscapeStringConn(settings.yb_internal_conn_kind));
@@ -1003,8 +1000,9 @@ PGConnPerf::~PGConnPerf() {
 
 PGConnBuilder CreateInternalPGConnBuilder(
     const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
-    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline,
-    bool yb_auto_analyze, std::string_view yb_internal_conn_kind) {
+    std::string_view user, uint64_t postgres_auth_key,
+    const std::optional<CoarseTimePoint>& deadline,
+    std::string_view yb_internal_conn_kind) {
   size_t connect_timeout = 0;
   if (deadline && *deadline != CoarseTimePoint::max()) {
     // By default, connect_timeout is 0, meaning infinite. 1 is automatically converted to 2, so set
@@ -1019,10 +1017,9 @@ PGConnBuilder CreateInternalPGConnBuilder(
       {.host = PgDeriveSocketDir(pgsql_proxy_bind_address),
        .port = pgsql_proxy_bind_address.port(),
        .dbname = database_name,
-       .user = "postgres",
+       .user = std::string(user),
        .password = UInt64ToString(postgres_auth_key),
        .connect_timeout = connect_timeout,
-       .yb_auto_analyze = yb_auto_analyze,
        .yb_internal_conn_kind = std::string(yb_internal_conn_kind)});
 }
 

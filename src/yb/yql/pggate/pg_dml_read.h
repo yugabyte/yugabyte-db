@@ -24,7 +24,6 @@
 #include "yb/docdb/docdb_fwd.h"
 
 #include "yb/util/result.h"
-#include "yb/util/status.h"
 #include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/pg_dml.h"
@@ -103,15 +102,19 @@ class PgDmlRead : public PgDml {
       const Slice lower_bound, bool lower_bound_inclusive, const Slice upper_bound,
       bool upper_bound_inclusive);
 
-  // Add a lower bound to the scan. If a lower bound has already been added
-  // this call will set the lower bound to the stricter of the two bounds.
-  Status AddRowLowerBound(
-      YbcPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
-
-  // Add an upper bound to the scan. If an upper bound has already been added
-  // this call will set the upper bound to the stricter of the two bounds.
-  Status AddRowUpperBound(
-      YbcPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
+  // Set the row values as the lower or upper bound of the scan.
+  // The col_values must provide the values for the relation's key, including the hash code,
+  // in the order of the key columns. The col_values can be a prefix of the full key.
+  // If value for a key column is missing, nullptr values are allowed, but ineffective, as well as
+  // the subsequent values. Prefer shorter col_values.
+  // The values are not required to make a valid key, meaning the hash code does not have to be
+  // the result of yb_hash_code calculated on the hash key values.
+  // The is_inclusive flag is only effective if the col_values make a full valid key, a prefix is
+  // effectively inclusive.
+  // The col_values must contain at least one key column value, for bare hash code bounds use the
+  // BindHashCode method.
+  Status AddRowLowerBound(std::span<PgExpr*> col_values, bool is_inclusive);
+  Status AddRowUpperBound(std::span<PgExpr*> col_values, bool is_inclusive);
 
   Status SetMergeSortKeys(int num_keys, const YbcSortKey* sort_keys);
 
@@ -175,9 +178,7 @@ class PgDmlRead : public PgDml {
   Result<std::unique_ptr<YbctidProvider>> BuildYbctidsFromKeyBinds();
 
   Status SubstituteKeyBindsWithYbctids();
-  Result<dockv::DocKey> EncodeRowKeyForBound(
-      YbcPgStatement handle, size_t n_col_values, PgExpr** col_values, bool for_lower_bound);
-
+  Status AddRowBound(std::span<PgExpr*> col_values, bool is_inclusive, bool is_lower);
   Status InitDocOp(const YbcPgExecParameters* params);
 
   // Check if the column at specified position participates in merge sort

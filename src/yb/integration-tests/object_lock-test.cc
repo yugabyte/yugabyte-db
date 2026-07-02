@@ -53,6 +53,7 @@ using namespace std::chrono_literals;
 
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_skip_launch_release_request);

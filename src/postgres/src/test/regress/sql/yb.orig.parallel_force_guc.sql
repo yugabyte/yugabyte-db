@@ -6,7 +6,6 @@ CREATE DATABASE pctest colocation = true;
 \c pctest
 
 set yb_enable_cbo = on;
-set yb_test_force_parallel = force;
 
 -- set smaller parallel interval to produce more ranges
 set yb_parallel_range_size to 1024;
@@ -26,14 +25,29 @@ CREATE TABLE pctest1(k int primary key, a int, b int, c int, d text)
     WITH (colocation = true);
 CREATE TABLE pctest2(k int primary key, a int, b int, c int, d text)
     WITH (colocation = true);
-CREATE UNIQUE INDEX ON pctest1(a);
-CREATE INDEX ON pctest1(c);
-CREATE INDEX ON pctest2(b);
+CREATE UNIQUE INDEX NONCONCURRENTLY ON pctest1(a);
+CREATE INDEX NONCONCURRENTLY ON pctest1(c);
+CREATE INDEX NONCONCURRENTLY ON pctest2(b);
+-- Populate with enlarged, mutually-uncorrelated columns using a fixed seed so
+-- the data is reproducible.  k is the PK (1..N); a is a random permutation of
+-- 1..N (unique index); b and c are independent random draws.  The old
+-- deterministic formulas (c = k%50 vs k%10) made columns functionally dependent
+-- on k, badly under-estimating the k=k AND c=c join, and the tiny sizes left
+-- plan totals dominated by parallel_setup_cost so choices fell inside the fuzz
+-- band.  Larger, uncorrelated data makes the cost-based choices meaningful.
+SELECT setseed(0.4321);
 INSERT INTO pctest1
-    SELECT i, 400 - i, i/3, i%50, 'Value' || i::text FROM generate_series(1, 400) i;
+    SELECT i, a, (random() * 133)::int, (random() * 49)::int, 'Value' || i::text
+    FROM (SELECT i, row_number() OVER (ORDER BY random()) AS a
+          FROM generate_series(1, 4000) i) t;
+SELECT setseed(0.8765);
 INSERT INTO pctest2
-    SELECT i, 100 + i, i/5, i%10, 'Other value ' || i::text FROM generate_series(1, 100) i;
+    SELECT i, a, (random() * 200)::int, (random() * 49)::int, 'Other value ' || i::text
+    FROM (SELECT i, row_number() OVER (ORDER BY random()) AS a
+          FROM generate_series(1, 1000) i) t;
 ANALYZE pctest1, pctest2;
+
+set yb_test_force_parallel = force;
 
 -- Parallel sequential scan
 EXPLAIN (costs off)
@@ -52,8 +66,8 @@ SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY b DESC;
 
 -- with grouping
 EXPLAIN (costs off)
-SELECT b, count(*) FROM pctest1 WHERE d LIKE 'Value9%' GROUP BY b;
-SELECT b, count(*) FROM pctest1 WHERE d LIKE 'Value9%' GROUP BY b;
+SELECT b, count(*) FROM pctest1 WHERE d LIKE 'Value99%' GROUP BY b;
+SELECT b, count(*) FROM pctest1 WHERE d LIKE 'Value99%' GROUP BY b;
 
 -- Parallel index scan
 EXPLAIN (costs off)
@@ -261,8 +275,10 @@ SELECT count(*) FROM pctest_h1 WHERE k > 123;
 SELECT count(*) FROM pctest_h1 WHERE k > 123;
 
 -- index only
+/*+ IndexOnlyScan(pctest_h1) */
 EXPLAIN (costs off)
 SELECT a FROM pctest_h1 WHERE a < 10;
+/*+ IndexOnlyScan(pctest_h1) */
 SELECT a FROM pctest_h1 WHERE a < 10;
 
 -- with grouping
@@ -421,7 +437,9 @@ SELECT * FROM
      WHERE pctest_h1.k = pctest_h2.k AND pctest_h1.b = pctest_h2.b) s2 ON s1.b = s2.c;
 
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
+/*+ IndexOnlyScan(pctest_h3) */
 EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest_h3 WHERE a > 123;
+/*+ IndexOnlyScan(pctest_h3) */
 SELECT count(*), max(a), min(a) FROM pctest_h3 WHERE a > 123;
 
 -- conditions on yb_hash_code()

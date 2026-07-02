@@ -144,6 +144,12 @@ extern bool yb_enable_pg_export_snapshot;
 extern bool yb_enable_replication_slot_consumption;
 
 /*
+ * Guc variable that enables the query API (pull model) for logical replication
+ * via pg_logical_slot_get/peek_changes and their binary variants.
+ */
+extern bool yb_enable_replication_slot_query_api;
+
+/*
  * GUC variable that enables ALTER TABLE rewrite operations.
  */
 extern bool yb_enable_alter_table_rewrite;
@@ -173,6 +179,12 @@ extern char* yb_default_replica_identity;
  * of table.
  */
 extern bool yb_enable_consistent_replication_from_hash_range;
+
+/*
+ * GUC variable that enables acquiring a cluster-wide exclusive advisory lock while a replication
+ * slot is in use, so that only one consumer can use it at a time across the universe.
+ */
+extern bool yb_enable_replication_slot_exclusive_lock;
 
 /*
  * GUC variable that enables streaming tables without primary key to CDCSDK logical replication
@@ -324,6 +336,8 @@ extern bool yb_disable_ddl_transaction_block_for_read_committed;
 
 extern bool yb_allow_dockey_bounds;
 
+extern bool yb_dump_presplit_in_create;
+
 extern bool yb_ignore_read_time_in_walsender;
 
 extern bool yb_disable_pg_snapshot_mgmt_in_repeatable_read;
@@ -347,7 +361,7 @@ extern bool yb_xcluster_target_ddl_bypass;
 extern bool yb_use_cluster_config_for_geolocation_costing;
 
 #ifdef __cplusplus
-} // extern "C"
+}  // extern "C"
 #endif
 
 #endif  // YB_YQL_PGGATE_UTIL_YBC_GUC_H

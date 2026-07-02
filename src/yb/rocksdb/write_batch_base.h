@@ -25,7 +25,7 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/slice.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 
 namespace rocksdb {
 

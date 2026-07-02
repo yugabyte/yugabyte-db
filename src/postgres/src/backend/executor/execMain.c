@@ -113,6 +113,11 @@ static void EvalPlanQualStart(EPQState *epqstate, Plan *planTree);
 
 /* end of local decls */
 
+static bool
+YbIsReadAheadAllowed()
+{
+	return XactIsoLevel != XACT_SERIALIZABLE;
+}
 
 /* ----------------------------------------------------------------
  *		ExecutorStart
@@ -139,6 +144,12 @@ static void EvalPlanQualStart(EPQState *epqstate, Plan *planTree);
 void
 ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
+	/*
+	 * Disable skip intents if this query has a modifying CTE. We must do this
+	 * before execution starts because the write might occur before any read.
+	 */
+	YbDisableSkipIntentsIfModifyingCTE(queryDesc);
+
 	/*
 	 * In some cases (e.g. an EXECUTE statement or an execute message with the
 	 * extended query protocol) the query_id won't be reported, so do it now.
@@ -270,6 +281,8 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	estate->es_top_eflags = eflags;
 	estate->es_instrument = queryDesc->instrument_options;
 	estate->es_jit_flags = queryDesc->plannedstmt->jitFlags;
+
+	estate->yb_read_ahead_allowed = IsYugaByteEnabled() && YbIsReadAheadAllowed();
 
 	/*
 	 * Set up an AFTER-trigger statement context, unless told not to, or

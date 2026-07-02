@@ -30,11 +30,13 @@ import com.yugabyte.yba.v2.client.models.ClusterSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec.ClusterTypeEnum;
 import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
 import com.yugabyte.yba.v2.client.models.ClusterStorageSpec.StorageTypeEnum;
+import com.yugabyte.yba.v2.client.models.CommunicationPortsSpec;
 import com.yugabyte.yba.v2.client.models.PlacementAZ;
 import com.yugabyte.yba.v2.client.models.PlacementCloud;
 import com.yugabyte.yba.v2.client.models.PlacementRegion;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseEditSpec;
+import com.yugabyte.yba.v2.client.models.UniverseNetworkingSpec;
 import com.yugabyte.yba.v2.client.models.UniverseSpec;
 import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.commissioner.Common;
@@ -337,6 +339,33 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .instanceTags(Map.of("tag1", "value1", "tag2", "value2"));
     UniverseEditSpec universeEditSpec =
         new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
+    // run the edit universe
+    runEditUniverseV2(universeEditSpec);
+  }
+
+  @Test
+  public void testEditUniverseV2CommunicationPorts() throws ApiException {
+    UniverseApi api = new UniverseApi();
+    // payload for editing the Universe instance type
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+    ClusterEditSpec clusterEditSpec = new ClusterEditSpec().uuid(primaryClusterSpec.getUuid());
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .clusters(List.of(clusterEditSpec))
+            .networkingSpec(
+                new UniverseNetworkingSpec()
+                    .assignPublicIp(universeSpec.getNetworkingSpec().getAssignPublicIp())
+                    .assignStaticPublicIp(
+                        universeSpec.getNetworkingSpec().getAssignStaticPublicIp())
+                    .enableIpv6(universeSpec.getNetworkingSpec().getEnableIpv6())
+                    .communicationPorts(
+                        new CommunicationPortsSpec().masterHttpPort(1234).tserverHttpPort(5678)));
     // run the edit universe
     runEditUniverseV2(universeEditSpec);
   }

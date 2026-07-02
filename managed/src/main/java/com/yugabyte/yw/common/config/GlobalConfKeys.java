@@ -579,7 +579,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow OTLP Exporter in Telemetry Provider",
           "Allow the usage of OTLP Exporter in Telemetry Provider.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> telemetrySkipConnectivityValidations =
       new ConfKeyInfo<>(
           "yb.telemetry.skip_connectivity_validations",
@@ -1015,6 +1015,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Enables extra logging",
           "Enables extra logging for task params and request body",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableGFlagsSensitiveDataApiRedaction =
+      new ConfKeyInfo<>(
+          "yb.api.enable_gflags_sensitive_data_redaction",
+          ScopeType.GLOBAL,
+          "Enable gflags sensitive data API redaction",
+          "When true, API responses redact gflags sensitive data that is not covered by JsonPath "
+              + "(for example ldapbindpasswd in ysql_hba_conf_csv and audit additionalDetails). "
+              + "JsonPath based API redaction remains enabled.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> applicationLogFileNamePrefix =

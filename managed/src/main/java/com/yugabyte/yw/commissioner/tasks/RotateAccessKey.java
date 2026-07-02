@@ -83,7 +83,8 @@ public class RotateAccessKey extends UniverseTaskBase {
         AccessKey clusterAccessKey =
             StringUtils.isBlank(cluster.userIntent.accessKeyCode)
                 ? null
-                : AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
+                : AccessKey.getOrBadRequest(
+                    providerUUID, cluster.userIntent.getAccessKeyCodeForProvider(providerUUID));
         String sudoSSHUser = provider.getDetails().sshUser;
         if (sudoSSHUser == null) {
           sudoSSHUser =
@@ -182,7 +183,8 @@ public class RotateAccessKey extends UniverseTaskBase {
                   sudoSSHUser)
               .setSubTaskGroupType(subtaskGroupType);
         }
-        createUpdateUniverseAccessKeyTask(universeUUID, cluster.uuid, newAccessKey.getKeyCode())
+        createUpdateUniverseAccessKeyTask(
+                universeUUID, providerUUID, cluster.uuid, newAccessKey.getKeyCode())
             .setSubTaskGroupType(subtaskGroupType);
       }
       getRunnableTask().runSubTasks();
@@ -236,13 +238,14 @@ public class RotateAccessKey extends UniverseTaskBase {
   }
 
   public SubTaskGroup createUpdateUniverseAccessKeyTask(
-      UUID universeUUID, UUID clusterUUID, String newAccessKeyCode) {
+      UUID universeUUID, UUID providerUUID, UUID clusterUUID, String newAccessKeyCode) {
     SubTaskGroup subTaskGroup =
         createSubTaskGroup("UpdateUniverseAccessKey", SubTaskGroupType.RotateAccessKey);
     UpdateUniverseAccessKey.Params params = new UpdateUniverseAccessKey.Params();
     params.newAccessKeyCode = newAccessKeyCode;
     params.setUniverseUUID(universeUUID);
     params.clusterUUID = clusterUUID;
+    params.providerUUID = providerUUID;
     UpdateUniverseAccessKey task = createTask(UpdateUniverseAccessKey.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
