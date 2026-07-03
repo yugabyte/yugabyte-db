@@ -20,10 +20,13 @@ import static org.mockito.Mockito.when;
 
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
+import com.yugabyte.yba.v2.client.models.AvailabilityZoneNodeSpec;
 import com.yugabyte.yba.v2.client.models.CheckResizeOptionsResp;
 import com.yugabyte.yba.v2.client.models.CheckResizeOptionsSpec;
 import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec;
+import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
+import com.yugabyte.yba.v2.client.models.PerProcessNodeSpec;
 import com.yugabyte.yba.v2.client.models.ResizeUpdateOption;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseDeleteSpec;
@@ -40,13 +43,18 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -278,6 +286,87 @@ public class UniverseApiControllerTest extends UniverseTestBase {
     UniverseDefinitionTaskParams v1CreateParams = v1CreateParamsCapture.getValue();
 
     // validate that the Universe create params matches properties specified in the createSpec
+    validateUniverseCreateSpec(universeCreateSpec, v1CreateParams);
+  }
+
+  @Test
+  public void testCreateUniverseV2WithAzPerProcessOverrides() throws ApiException, IOException {
+    UniverseApi api = new UniverseApi();
+    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
+    ClusterNodeSpec nodeSpec = universeCreateSpec.getSpec().getClusters().get(0).getNodeSpec();
+    nodeSpec.setDedicatedNodes(true);
+
+    PerProcessNodeSpec clusterMasterSpec = new PerProcessNodeSpec();
+    clusterMasterSpec.setInstanceType("c5.4xlarge");
+    nodeSpec.setMaster(clusterMasterSpec);
+
+    PerProcessNodeSpec clusterTserverSpec = new PerProcessNodeSpec();
+    clusterTserverSpec.setInstanceType("c5.2xlarge");
+    nodeSpec.setTserver(clusterTserverSpec);
+
+    UUID azUUID =
+        AvailabilityZone.getAZsForRegion(Region.getByProvider(providerUuid).get(0).getUuid())
+            .get(0)
+            .getUuid();
+
+    AvailabilityZoneNodeSpec azSpec = new AvailabilityZoneNodeSpec();
+    PerProcessNodeSpec azMasterSpec = new PerProcessNodeSpec();
+    azMasterSpec.setStorageSpec(new ClusterStorageSpec().volumeSize(50).numVolumes(1));
+    azSpec.setMaster(azMasterSpec);
+
+    PerProcessNodeSpec azTserverSpec = new PerProcessNodeSpec();
+    azTserverSpec.setStorageSpec(
+        new ClusterStorageSpec().volumeSize(300).diskIops(4000).numVolumes(2));
+    azSpec.setTserver(azTserverSpec);
+
+    Map<String, AvailabilityZoneNodeSpec> azNodeSpec = new HashMap<>();
+    azNodeSpec.put(azUUID.toString(), azSpec);
+    nodeSpec.setAzNodeSpec(azNodeSpec);
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
+    when(mockGFlagsValidation.getGFlagDetails(anyString(), anyString(), anyString()))
+        .thenReturn(Optional.empty());
+    YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
+    assertThat(createTask.getTaskUuid(), is(fakeTaskUUID));
+    ArgumentCaptor<UniverseDefinitionTaskParams> v1CreateParamsCapture =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), v1CreateParamsCapture.capture());
+    UniverseDefinitionTaskParams v1CreateParams = v1CreateParamsCapture.getValue();
+
+    UserIntent userIntent = v1CreateParams.getPrimaryCluster().userIntent;
+    assertThat(userIntent.dedicatedNodes, is(true));
+    assertThat(userIntent.getUserIntentOverrides(), is(notNullValue()));
+    assertThat(userIntent.getUserIntentOverrides().getAzOverrides(), is(notNullValue()));
+
+    AZOverrides azOverrides = userIntent.getUserIntentOverrides().getAzOverrides().get(azUUID);
+    assertThat(azOverrides, is(notNullValue()));
+    assertThat(azOverrides.getPerProcess(), is(notNullValue()));
+    assertThat(azOverrides.getPerProcess().get(ServerType.MASTER), is(notNullValue()));
+    assertThat(azOverrides.getPerProcess().get(ServerType.TSERVER), is(notNullValue()));
+    assertEquals(
+        Integer.valueOf(50),
+        azOverrides.getPerProcess().get(ServerType.MASTER).getDeviceInfo().volumeSize);
+    assertEquals(
+        Integer.valueOf(300),
+        azOverrides.getPerProcess().get(ServerType.TSERVER).getDeviceInfo().volumeSize);
+    assertEquals(
+        Integer.valueOf(4000),
+        azOverrides.getPerProcess().get(ServerType.TSERVER).getDeviceInfo().diskIops);
+
+    NodeDetails azMasterNode = new NodeDetails();
+    azMasterNode.azUuid = azUUID;
+    azMasterNode.dedicatedTo = ServerType.MASTER;
+    assertEquals("c5.4xlarge", userIntent.getInstanceTypeForNode(azMasterNode));
+
+    NodeDetails azTserverNode = new NodeDetails();
+    azTserverNode.azUuid = azUUID;
+    azTserverNode.dedicatedTo = ServerType.TSERVER;
+    assertEquals("c5.2xlarge", userIntent.getInstanceTypeForNode(azTserverNode));
+    assertEquals(Integer.valueOf(300), userIntent.getDeviceInfoForNode(azTserverNode).volumeSize);
+
     validateUniverseCreateSpec(universeCreateSpec, v1CreateParams);
   }
 
