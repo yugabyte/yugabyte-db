@@ -18,9 +18,7 @@
           <div class="content-child">
             <div>
               <main class="content-area">
-                {{- if and (not .Site.Params.ui.breadcrumb_disable) (not .Params.breadcrumbDisable) -}}
-                  {{- partial "breadcrumb.html" . -}}
-                {{- end -}}
+                {{- partial "docs-page-header-bar.html" . -}}
                 {{- block "main" . -}}{{- end -}}
               </main>
               {{- if ne .Params.showRightNav false -}}

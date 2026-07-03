@@ -1,0 +1,116 @@
+:root {
+  --docs-sticky-header-top: 132px;
+  --docs-page-header-bar-padding-y: 8px;
+  --docs-page-header-bar-line-height: 22px;
+}
+
+@media (max-width: 991px) {
+  :root {
+    --docs-sticky-header-top: 81px;
+  }
+}
+
+@media (max-width: 767px) {
+  :root {
+    --docs-sticky-header-top: 127px;
+  }
+}
+
+.docs-page-header-bar {
+  position: sticky;
+  top: var(--docs-sticky-header-top);
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: calc(var(--docs-page-header-bar-line-height) + (2 * var(--docs-page-header-bar-padding-y)));
+  margin-bottom: 16px;
+  padding: var(--docs-page-header-bar-padding-y) 0;
+  background: #fff;
+  border-bottom: 1px solid #e9eef2;
+
+  .td-breadcrumbs {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-bottom: 0;
+    padding-right: 0;
+    display: flex;
+    align-items: center;
+
+    ol.breadcrumb {
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .breadcrumb-item {
+      line-height: var(--docs-page-header-bar-line-height);
+    }
+  }
+
+  .header-version-dropdown {
+    flex: 0 0 auto;
+    margin: 0;
+    width: auto;
+    display: flex;
+    align-items: center;
+
+    .dropdown {
+      display: flex;
+      align-items: center;
+    }
+
+    .dropdown-toggle {
+      min-height: var(--docs-page-header-bar-line-height);
+      height: var(--docs-page-header-bar-line-height);
+      padding-top: 0;
+      padding-bottom: 0;
+      line-height: var(--docs-page-header-bar-line-height);
+
+      .tag.release {
+        top: 0;
+      }
+    }
+  }
+
+  &--version-only,
+  &:not(:has(.td-breadcrumbs)),
+  &:has(.td-breadcrumbs .breadcrumb-item:only-child):has(.header-version-dropdown) {
+    justify-content: flex-end;
+
+    .td-breadcrumbs {
+      display: none;
+    }
+  }
+
+  &:has(.td-breadcrumbs .breadcrumb-item:only-child):not(:has(.header-version-dropdown)) {
+    display: none;
+  }
+
+  @media (max-width: 767px) {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+
+    .td-breadcrumbs {
+      flex: 1 1 100%;
+      width: 100%;
+    }
+
+    .header-version-dropdown {
+      flex: 0 0 auto;
+      margin-left: auto;
+    }
+
+    &--version-only,
+    &:not(:has(.td-breadcrumbs)),
+    &:has(.td-breadcrumbs .breadcrumb-item:only-child):has(.header-version-dropdown) {
+      .header-version-dropdown {
+        margin-left: auto;
+      }
+    }
+  }
+}
