@@ -30,26 +30,25 @@ In most implementations, that pipeline lives entirely outside the database. A Py
 
 Typically this infrastructure is built from scratch. At production scale, across diverse source types and formats, this can become a significant ongoing operational burden requiring hundreds to thousands of lines of code to write, test, deploy, and keep current.
 
-pg_dist_rag relocates this entire preprocessing pipeline inside YugabyteDB, managed entirely through SQL as a PostgreSQL extension using a set of functions to create sources, initialize a vector index, optionally add more sources, and build the index.
+pg_dist_rag manages this pipeline through SQL inside the YugabyteDB database; compute-heavy preprocessing runs in decoupled RAG workers, isolated from the database process.
 
 The extension manages a work queue internally. Documents are processed asynchronously (parsed, chunked, and embedded using the configured provider) and results land directly in the pgvector-backed index table, queryable with standard SQL the moment each document completes.
 
-A typical "Hello RAG" implementation requires over 100 lines of Python to handle a single directory of documents. With pg_dist_rag, the equivalent is a single SQL insert:
+A typical "Hello RAG" implementation requires over 100 lines of Python to handle a single directory of documents. With pg_dist_rag, the equivalent is a single function call:
 
 ```sql
-INSERT INTO rag.pg_rag_source (source_uri, rag_index_name)
-VALUES ('s3://company-docs/engineering/', 'engineering_kb');
+SELECT dist_rag.create_source('s3://company-docs/engineering/');
 ```
 
-pg_dist_rag is anchored in YugabyteDB's distributed SQL architecture. The same cluster that handles transactional workloads manages the ingestion pipeline: horizontally scalable, geo-distributed for data residency requirements, and resilient to node and availability zone failures. There is no separate pipeline service to deploy, no separate failure domain to monitor, and no data synchronization problem between your operational database and your vector store, they're the same system.
+pg_dist_rag is anchored in YugabyteDB's distributed SQL architecture. The same cluster that handles transactional workloads manages the ingestion pipeline: horizontally scalable, geo-distributed for data residency requirements, and resilient to node and availability zone failures.
 
 ### Data sources
 
-pg_dist_rag is designed as a unified data access broker. It currently supports ingestion of PDF, text, JSON, CSV, and markdown across diverse source locations (S3, HTTPS, NFS paths), with secrets for authenticated access managed via AWS, GCP, Azure, or HashiCorp Vault.
+pg_dist_rag is designed as a unified data access broker. It currently supports ingestion of PDF, text, JSON, CSV, HTML, XML, and markdown, as well as S3 source locations; S3 and OpenAI credentials are stored as RAG worker environment variables.
 
 For data that is too large or costly to move, YugabyteDB can query it in place, eliminating the data movement cost that often makes large-scale RAG pipelines expensive and operationally complex. The result is less data to move, less storage to manage, and a reduction in the operational cost of keeping multiple systems in sync.
 
-Parsing, chunking, and embedding are handled using a comprehensive tool stack (LangChain, plPython3u, and Unstructured.io) giving teams flexibility at every stage of the pipeline without having to integrate those tools themselves.
+Parsing, chunking, and embedding are handled using a comprehensive tool stack (LangChain and Unstructured.io) giving teams flexibility at every stage of the pipeline without having to integrate those tools themselves.
 
 ### Observability
 
@@ -70,27 +69,30 @@ pg_dist_rag is multi-tenant capable. Each source carries an optional tenant_id, 
 | Vector index | A named index that stores embeddings for documents from one or more sources. Each index has a backing table with an HNSW vector index. |
 | Document | An individual file tracked under a source and processed through the pipeline. |
 | Pipeline | The workflow that chunks a document and generates embeddings for each chunk. |
-| Work queue | Internal task queue (`dist_rag.work_queue`) that coordinates source creation and document preprocessing across nodes. |
+| Work queue | Internal task queue (`dist_rag.work_queue`) that coordinates source creation and document preprocessing across RAG workers. |
 
 ## Prerequisites
 
 - YugabyteDB {{<release "2025.2">}} or later.
 - The [pgvector](../extension-pgvector/) extension (`vector` type support).
-- An OpenAI API key or another supported embedding provider, if you use hosted embedding generation.
+- An OpenAI API key.
 - Cloud credentials (for example, AWS S3) when reading documents from object storage.
+- A VM for RAG workers with
+  - network connectivity to the YugabyteDB database (port 5433), S3, and the embedding API.
+  - Python 3.11.
 
 ## Set up pg_dist_rag
 
 ### Start the RAG service
 
-pg_dist_rag relies on a Python RAG agent that runs on each YB-TServer. The agent polls the `dist_rag.work_queue` table, processes documents, and writes embeddings to dynamically created vector tables.
+pg_dist_rag relies on a Python RAG agent that runs on a separate node. The agent polls the `dist_rag.work_queue` table, processes documents, and writes embeddings to dynamically created vector tables.
 
 Before you enable the extension, start the RAG agent service on all YB-TServers:
 
 1. Set the `enable_pg_dist_rag_service` [yb-tserver](../../../reference/configuration/yb-tserver/) flag to true.
 1. Optionally set the `pg_dist_rag_conf_csv` flag to supply service-level credentials and configuration for the RAG agent. Parameters use the format `<key>=<value>`, separated by commas. If a value contains a comma or double quote, wrap the entire parameter in double quotes.
 
-`pg_dist_rag_conf_csv` does not choose your document source type. Sources are registered separately with `dist_rag.create_source`, using either an `s3://` URI or an `https://` URL. Include the AWS keys only when reading from S3; URL sources do not use them. Set `OPENAI_API_KEY` when using the `OPENAI` embedding provider, regardless of source type.
+`pg_dist_rag_conf_csv` does not choose your document source type. Sources are registered separately with `dist_rag.create_source`, using either an `s3://` URI. Include the AWS keys only when reading from S3; URL sources do not use them. Set `OPENAI_API_KEY` when using the `OPENAI` embedding provider, regardless of source type.
 
 | Key | Applies to | Description |
 | :-- | :--------- | :---------- |
@@ -100,8 +102,6 @@ Before you enable the extension, start the RAG agent service on all YB-TServers:
 | `AWS_SECRET_ACCESS_KEY` | S3 sources | AWS secret access key for S3 authentication. Passed to the agent as the `AWS_SECRET_ACCESS_KEY` environment variable. |
 | `OPENAI_API_KEY` | All sources (when using `OPENAI`) | OpenAI API key for embedding generation. Passed to the agent as the `OPENAI_API_KEY` environment variable. |
 | `SCRIPT_PATH` | Service setup | Path to the RAG agent startup script (`start_rag_agent.py`). Defaults to `python/ai/rag_agent/start_rag_agent.py` under the YugabyteDB root directory. |
-
-The database connection string is constructed automatically from the local PostgreSQL instance and passed to the agent as `YUGABYTEDB_CONNECTION_STRING`; it is not configured through `pg_dist_rag_conf_csv`.
 
 For example, to create a single-node cluster with the RAG service and S3 document sources using [yugabyted](../../../reference/configuration/yugabyted/):
 
@@ -138,7 +138,7 @@ The typical workflow has four steps: create sources, initialize a vector index, 
 
 | Function | Description |
 | :--- | :--- |
-| dist_rag.create_source() | Register a document collection by URI (S3 bucket, URL, NFS path), with optional metadata tags for filtering and a secrets provider (AWS, GCP, Azure, HashiCorp Vault) for authenticated access. |
+| dist_rag.create_source() | Register a document collection by URI (S3 bucket), with optional metadata tags for filtering. |
 | dist_rag.init_vector_index() | Create a named vector index backed by a pgvector table, specifying your AI provider and embedding dimensions. |
 | dist_rag.add_source_to_index() | Attach one or more sources to an index, with per-source chunking parameters. |
 | dist_rag.build_index() | Enqueue the full preprocessing pipeline for all documents in the index. |
@@ -152,22 +152,12 @@ Register a document source URI. This also queues a `CREATE_SOURCE` task in the w
 SELECT dist_rag.create_source(
   r_source_uri := 's3://my-bucket/documents/'
 );
-
--- With metadata and cloud secrets provider
-SELECT dist_rag.create_source(
-  r_source_uri := 's3://my-bucket/documents/',
-  r_metadata := '{"language": "english", "type": "documentation"}'::jsonb,
-  r_secrets_provider := 'AWS',
-  r_secrets_provider_params := '{"api_key": "secret123", "region": "us-east-1"}'::jsonb
-);
 ```
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
 | `r_source_uri` | `TEXT` | *(required)* | URI of the document source. |
 | `r_metadata` | `JSONB` | `'{}'` | Arbitrary metadata for filtering. |
-| `r_secrets_provider` | `secrets_provider_enum` | `'LOCAL'` | One of `LOCAL`, `AWS`, `GCP`, `AZURE`, `HASHICORP_VAULT`. |
-| `r_secrets_provider_params` | `JSONB` | `'{}'` | Provider-specific credentials and configuration. |
 | `r_tenant_id` | `UUID` | `NULL` | Optional tenant identifier for multi-tenant isolation. |
 
 Returns a `UUID` source ID.
@@ -197,7 +187,7 @@ SELECT dist_rag.init_vector_index(
 | `r_index_name` | `VARCHAR(50)` | `'pg_rag_default_store'` | Unique name for the index and its backing table. |
 | `r_sources` | `UUID[]` | `ARRAY[]::UUID[]` | Source IDs to associate with the index. |
 | `r_chunk_params` | `JSONB` | `'{}'` | Chunking configuration for all attached sources. |
-| `r_ai_provider` | `ai_provider_enum` | `'OPENAI'` | One of `OPENAI`, `LOCAL`, `AWS_BEDROCK`. |
+| `r_ai_provider` | `ai_provider_enum` | `'OPENAI'` | `OPENAI`. |
 | `r_embedding_model_params` | `JSONB` | `'{}'` | Embedding model configuration. Must include a `"dimensions"` key (for example, `{"dimensions": 1536}`). |
 | `r_index_options` | `JSONB` | `'{"distance_metric": "cosine", "m": 16, "ef_construction": 64}'` | HNSW index options. `distance_metric` can be `cosine`, `l2`, or `ip`. |
 | `r_schema_name` | `VARCHAR(50)` | `'public'` | Schema for the backing vector table. The schema must already exist. |
@@ -216,13 +206,13 @@ Use `add_source_to_index()` to attach additional sources to an already-created v
 SELECT dist_rag.add_source_to_index(
   r_index_id := '<index_uuid>',
   r_source_id := '<source_uuid>',
-  r_chunk_params := '{"chunk_size": 512, "overlap": 50, "strategy": "recursive"}'::jsonb
+  r_chunk_params := '{"chunk_size": 512, "chunk_overlap": 50, "strategy": "recursive"}'::jsonb
 );
 ```
 
 ### 4. Build the index
 
-Kick off preprocessing for all documents across all sources in an index. Each document gets a `PREPROCESS` task queued in the work queue. RAG agent workers on each node claim tasks from the queue and process documents in parallel.
+Kick off preprocessing for all documents across all sources in an index. Each document gets a `PREPROCESS` task queued in the work queue. RAG agent workers claim tasks from the queue and process documents in parallel.
 
 Provide exactly one of `r_index_id` or `r_index_name`:
 
@@ -296,14 +286,8 @@ CREATE EXTENSION IF NOT EXISTS pg_dist_rag;
 
 -- Create document sources
 SELECT dist_rag.create_source(
-  r_source_uri := 'https://docs.example.com/api-reference/'
-) AS api_source_id;
-
-SELECT dist_rag.create_source(
   r_source_uri := 's3://company-docs/engineering/',
   r_metadata := '{"team": "engineering", "access": "internal"}'::jsonb,
-  r_secrets_provider := 'AWS',
-  r_secrets_provider_params := '{"region": "us-east-1"}'::jsonb
 ) AS eng_source_id;
 
 -- Initialize a vector index with both sources
@@ -346,7 +330,7 @@ WHERE index_name = 'engineering_kb';
 | :--- | :----- |
 | `secrets_provider_enum` | `LOCAL`, `AWS`, `GCP`, `AZURE`, `HASHICORP_VAULT` |
 | `create_source_status_enum` | `QUEUED`, `IN_PROGRESS`, `COMPLETED`, `FAILED` |
-| `ai_provider_enum` | `OPENAI`, `LOCAL`, `AWS_BEDROCK` |
+| `ai_provider_enum` | `OPENAI` |
 | `index_build_status` | `INIT`, `IN_PROGRESS`, `NOT_STARTED` |
 | `document_processing_status_enum` | `NOT_STARTED`, `QUEUED`, `PROCESSING`, `COMPLETED`, `FAILED`, `RETRY` |
 | `pipeline_status_enum` | `PROCESSING`, `COMPLETED`, `FAILED` |
