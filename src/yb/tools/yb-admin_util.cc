@@ -12,6 +12,8 @@
 
 #include "yb/tools/yb-admin_util.h"
 
+#include <algorithm>
+
 #include "yb/common/snapshot.h"
 
 #include "yb/util/result.h"
@@ -20,6 +22,46 @@ namespace yb {
 namespace tools {
 
 using std::string;
+using master::ListTabletServersResponsePB;
+
+namespace {
+
+const std::string kEmptyHost;
+
+int GetTabletServerAliveRank(const ListTabletServersResponsePB::Entry& server) {
+  if (!server.has_alive()) {
+    return 2;
+  }
+  return server.alive() ? 0 : 1;
+}
+
+bool CompareListTabletServersEntries(
+    const ListTabletServersResponsePB::Entry& a,
+    const ListTabletServersResponsePB::Entry& b) {
+  const int alive_rank_diff = GetTabletServerAliveRank(a) - GetTabletServerAliveRank(b);
+  if (alive_rank_diff != 0) {
+    return alive_rank_diff < 0;
+  }
+
+  const auto& a_addresses = a.registration().common().private_rpc_addresses();
+  const auto& b_addresses = b.registration().common().private_rpc_addresses();
+
+  const std::string& a_host = a_addresses.empty() ? kEmptyHost : a_addresses.Get(0).host();
+  const std::string& b_host = b_addresses.empty() ? kEmptyHost : b_addresses.Get(0).host();
+  if (a_host != b_host) {
+    return a_host < b_host;
+  }
+
+  const uint32_t a_port = a_addresses.empty() ? 0 : a_addresses.Get(0).port();
+  const uint32_t b_port = b_addresses.empty() ? 0 : b_addresses.Get(0).port();
+  if (a_port != b_port) {
+    return a_port < b_port;
+  }
+
+  return a.instance_id().permanent_uuid() < b.instance_id().permanent_uuid();
+}
+
+}  // namespace
 
 string SnapshotIdToString(const SnapshotId& snapshot_id) {
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
@@ -35,6 +77,14 @@ SnapshotId StringToSnapshotId(const string& str) {
   }
   // If conversion into TxnSnapshotId failed.
   return SnapshotId(str);
+}
+
+void SortListTabletServerEntries(
+    google::protobuf::RepeatedPtrField<ListTabletServersResponsePB::Entry>* servers) {
+  if (servers == nullptr || servers->empty()) {
+    return;
+  }
+  std::sort(servers->begin(), servers->end(), CompareListTabletServersEntries);
 }
 
 }  // namespace tools

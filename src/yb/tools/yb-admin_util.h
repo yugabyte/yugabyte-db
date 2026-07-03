@@ -16,6 +16,7 @@
 #include <utility>
 
 #include "yb/common/entity_ids_types.h"
+#include "yb/master/master_cluster.pb.h"
 
 namespace yb {
 namespace tools {
@@ -23,6 +24,9 @@ namespace tools {
 std::string SnapshotIdToString(const SnapshotId& snapshot_id);
 
 SnapshotId StringToSnapshotId(const std::string& str);
+
+void SortListTabletServerEntries(
+    google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry>* servers);
 
 }  // namespace tools
 }  // namespace yb
