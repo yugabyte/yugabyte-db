@@ -30,8 +30,10 @@ Ensure the node is accessible to YugabyteDB Anywhere over ports 9070 and 443. Se
 You can verify from the YugabyteDB Anywhere host using the following command during a retry:
 
 ```sh
-curl --connect-timeout 10 telnet://<node-fqdn>:9070
+nc -zv -w 10 <node-fqdn> 9070
 ```
+
+If the command times out after 10 seconds with no response, the port is likely blocked by a firewall or security group; check that the ports are open. If you instead see "Connection refused," the port is reachable but the node agent service isn't running or listening on 9070.
 
 ## Handle alerts
 
