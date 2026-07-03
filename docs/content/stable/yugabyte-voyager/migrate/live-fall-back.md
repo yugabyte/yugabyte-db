@@ -347,8 +347,6 @@ Configure the yugabyted UI as follows:
 
 ## Assess migration
 
-This step applies to PostgreSQL migrations only.
-
 Assess migration analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB.
 
 You run assessments using the `yb-voyager assess-migration` command as follows:
@@ -378,7 +376,7 @@ yb-voyager assess-migration --config-file <path-to-config-file>
 
   {{% tab header="Without source database connectivity" %}}
 
-PostgreSQL only. In situations where direct access to the source database is restricted, there is an alternative approach. Voyager includes packages with scripts for PostgreSQL at `/etc/yb-voyager/gather-assessment-metadata`.
+In situations where direct access to the source database is restricted, there is an alternative approach. Voyager includes packages with scripts for PostgreSQL at `/etc/yb-voyager/gather-assessment-metadata`.
 
 You can perform the following steps with these scripts:
 
@@ -435,12 +433,7 @@ To begin, export the schema from the source database. Once exported, analyze the
 
 #### Export schema
 
-The `yb-voyager export schema` command extracts the schema from the source database, and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories.
-
-**For PostgreSQL migrations**:
-
-- Recommended schema optimizations from the [assess migration](#assess-migration) report are applied to ensure YugabyteDB compatibility and optimal performance.
-- A **Schema Optimization Report**, with details and an explanation of every change, is generated for your review.
+The `yb-voyager export schema` command extracts the schema from the source database, and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories. Recommended schema optimizations from the [assess migration](#assess-migration) report are applied to ensure YugabyteDB compatibility and optimal performance. A **Schema Optimization Report**, with details and an explanation of every change, is generated for your review.
 
 The `db-schema` key inside the `source` section parameters (configuration file), or the `--source-db-schema` flag (CLI), is used to specify the schema(s) to migrate from the source database.
 
