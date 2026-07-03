@@ -532,6 +532,12 @@ class PerTableLoadState {
   // List of tablet ids that have been added to a new tablet server.
   std::set<TabletId> tablets_added_;
 
+  // Prototype (follow-table index): for a follow-table index table, maps each index tablet id
+  // to the set of tservers currently hosting the matching base tablet. Used as a soft
+  // co-placement preference when choosing replica moves (see GetTabletToMove). Empty for
+  // tables that do not follow a base table.
+  std::unordered_map<TabletId, std::set<TabletServerId>> follow_table_preferred_ts_;
+
   // Number of leaders per each tablet server to balance below.
   const int leader_balance_threshold_ = 0;
 

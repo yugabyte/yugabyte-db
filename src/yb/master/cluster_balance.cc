@@ -129,6 +129,7 @@ DEFINE_test_flag(int32, load_balancer_wait_after_count_pending_tasks_ms, 0,
 
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
+DECLARE_bool(ysql_yb_enable_follow_table_index);
 
 DEPRECATE_FLAG(bool, load_balancer_count_move_as_add, "03_2025");
 
@@ -909,6 +910,31 @@ Status ClusterLoadBalancer::AnalyzeTablets(const TableInfoPtr& table) {
     }
   }
 
+  // Prototype (follow-table index): if this table follows a base table, record for each index
+  // tablet the tservers that currently host the matching base tablet. GetTabletToMove uses this
+  // as a soft co-placement preference so index tablets drift toward their base tablet's nodes
+  // over successive balancer passes. Best-effort: any lookup failure just leaves the entry empty.
+  if (FLAGS_ysql_yb_enable_follow_table_index) {
+    TableId base_table_id;
+    {
+      auto l = table->LockForRead();
+      if (l->pb.follow_table_mode() != FOLLOW_TABLE_NONE) {
+        base_table_id = l->indexed_table_id();
+      }
+    }
+    if (!base_table_id.empty()) {
+      for (const auto& tablet : tablets) {
+        std::string partition_key_start =
+            tablet->LockForRead()->pb.partition().partition_key_start();
+        auto preferred =
+            catalog_manager_->GetFollowTablePreferredReplicas(base_table_id, partition_key_start);
+        if (preferred.ok() && !preferred->empty()) {
+          state_->follow_table_preferred_ts_[tablet->id()] = std::move(*preferred);
+        }
+      }
+    }
+  }
+
   return Status::OK();
 }
 
@@ -1228,6 +1254,11 @@ Result<std::optional<TabletId>> ClusterLoadBalancer::GetTabletToMove(
 
     std::optional<TableId> result;
     auto chosen_tablet_ci_similarity = CatalogManagerUtil::NO_MATCH;
+    // Prototype (follow-table index): whether the currently-chosen tablet wants to be on to_ts
+    // because to_ts hosts its matching base tablet. This is the primary tiebreak (ahead of cloud
+    // info similarity) so a follower index tablet is preferred for a move that co-locates it with
+    // its base; it never forces a move or bypasses placement checks (soft preference).
+    bool chosen_prefers_to_ts = false;
     for (const TabletId& tablet_id : tablets) {
       // TODO(#15853): this should be augmented as well to allow dropping by one replica, if still
       // leaving us with more than the minimum.
@@ -1262,12 +1293,28 @@ Result<std::optional<TabletId>> ClusterLoadBalancer::GetTabletToMove(
         ci_similarity = CatalogManagerUtil::ComputeCloudInfoSimilarity(leader_ci, to_ts_ci);
       }
 
-      if (result && ci_similarity <= chosen_tablet_ci_similarity) {
-        continue;
+      // Prototype (follow-table index): does this tablet prefer to_ts for base co-placement?
+      bool prefers_to_ts = false;
+      {
+        auto ft_it = state_->follow_table_preferred_ts_.find(tablet_id);
+        if (ft_it != state_->follow_table_preferred_ts_.end() && ft_it->second.count(to_ts)) {
+          prefers_to_ts = true;
+        }
+      }
+
+      if (result) {
+        // Co-placement preference is the primary key; cloud info similarity is the tiebreak.
+        if (prefers_to_ts < chosen_prefers_to_ts) {
+          continue;
+        }
+        if (prefers_to_ts == chosen_prefers_to_ts && ci_similarity <= chosen_tablet_ci_similarity) {
+          continue;
+        }
       }
       // This is the best tablet to move, so far.
       result = tablet_id;
       chosen_tablet_ci_similarity = ci_similarity;
+      chosen_prefers_to_ts = prefers_to_ts;
     }
 
     // If there is any tablet we can move from this drive, choose it and return.

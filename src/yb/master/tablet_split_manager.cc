@@ -265,6 +265,18 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
         *table);
   }
 
+  // Prototype: a follow-table index (SPLIT FOLLOWING TABLE) never splits on its own
+  // SST size. Its tablet splits are driven to match the base table by the follow-table
+  // split reconciler, which issues them as manual/forced splits. ignore_disabled_lists is
+  // set exactly for such forced splits, so we exclude the follow-table index only from the
+  // automatic (non-forced) candidate path and let the reconciler's forced split through.
+  if (!ignore_disabled_lists && table_lock->pb.follow_table_mode() != FOLLOW_TABLE_NONE) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Independent tablet splitting is disabled for follow-table indexes, table: $0",
+        *table);
+  }
+
   if (!ignore_vector_indexes_validation &&
       !FLAGS_enable_tablet_split_of_tables_with_vector_index) {
     for (const auto& index : table_lock->pb.indexes()) {

@@ -3691,6 +3691,101 @@ Status CatalogManager::SplitTablet(
   return SplitTablet(tablet, is_manual_split, split_factor, epoch);
 }
 
+Status CatalogManager::ReconcileFollowTableIndexSplits(
+    const std::vector<TableInfoPtr>& tables, const LeaderEpoch& epoch) {
+  if (!FLAGS_ysql_yb_enable_follow_table_index) {
+    return Status::OK();
+  }
+  for (const auto& table : tables) {
+    TableId base_table_id;
+    PartitionSchemaPB index_partition_schema_pb;
+    {
+      auto l = table->LockForRead();
+      if (l->pb.follow_table_mode() == FOLLOW_TABLE_NONE || !l->is_running()) {
+        continue;
+      }
+      base_table_id = l->indexed_table_id();
+      index_partition_schema_pb = l->pb.partition_schema();
+    }
+    if (base_table_id.empty()) {
+      continue;
+    }
+    auto base_table = GetTableInfo(base_table_id);
+    if (!base_table) {
+      continue;
+    }
+
+    auto index_tablets_res = table->GetTablets(GetTabletsMode::kOrderByPartitions);
+    auto base_tablets_res = base_table->GetTablets(GetTabletsMode::kOrderByPartitions);
+    if (!index_tablets_res.ok() || !base_tablets_res.ok()) {
+      continue;
+    }
+    const auto& index_tablets = *index_tablets_res;
+    const auto& base_tablets = *base_tablets_res;
+
+    // Boundaries (partition_key_start) the index tablets already have.
+    std::set<std::string> index_starts;
+    for (const auto& t : index_tablets) {
+      index_starts.insert(t->LockForRead()->pb.partition().partition_key_start());
+    }
+
+    // For each interior base boundary the index still lacks, force a matching 2-way split
+    // on the index tablet covering that hash range. At most one split per index tablet per
+    // pass keeps this idempotent and eventually convergent across passes.
+    std::set<std::string> queued_index_tablets;
+    for (const auto& base_tablet : base_tablets) {
+      std::string boundary = base_tablet->LockForRead()->pb.partition().partition_key_start();
+      if (boundary.empty() || index_starts.count(boundary)) {
+        continue;  // first tablet (no interior boundary) or index already split here.
+      }
+
+      // Find the index tablet whose range [start, end) covers 'boundary'. Locks are taken
+      // and released per tablet: we must not hold any tablet lock across DoSplitTablet, which
+      // acquires mutex_ (the required lock order is mutex_ -> table -> tablet).
+      TabletInfoPtr covering;
+      for (const auto& it : index_tablets) {
+        std::string s, e;
+        {
+          auto il = it->LockForRead();
+          s = il->pb.partition().partition_key_start();
+          e = il->pb.partition().partition_key_end();
+        }
+        if (s <= boundary && (e.empty() || boundary < e)) {
+          covering = it;
+          break;
+        }
+      }
+      if (!covering || !queued_index_tablets.insert(covering->tablet_id()).second) {
+        continue;
+      }
+
+      auto encoded = PartitionSchema::GetEncodedPartitionKey(boundary, index_partition_schema_pb);
+      if (!encoded.ok()) {
+        LOG(WARNING) << "Follow-table reconciler: failed to encode split key for index "
+                     << table->id() << ": " << encoded.status();
+        continue;
+      }
+      std::vector<std::string> split_partition_keys{boundary};
+      std::vector<std::string> split_encoded_keys{*encoded};
+      // Forced (manual) split so it is not rejected by the follow-table exclusion in
+      // ValidateSplitCandidateTable, and split at the base's exact boundary rather than the
+      // index tablet's own mid-point so boundaries converge to match the base.
+      auto s = DoSplitTablet(
+          covering, split_encoded_keys, split_partition_keys, ManualSplit::kTrue, epoch);
+      if (s.ok()) {
+        LOG(INFO) << "Follow-table reconciler: queued split of index tablet "
+                  << covering->tablet_id() << " (index " << table->id()
+                  << ") to match base table " << base_table_id << " boundary.";
+      } else {
+        WARN_NOT_OK(s, Format("Follow-table reconciler: split of index tablet $0 (index $1) "
+                              "to match base boundary failed",
+                              covering->tablet_id(), table->id()));
+      }
+    }
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::XReplValidateSplitCandidateTable(const TableId& table_id) const {
   SharedLock lock(mutex_);
   return XReplValidateSplitCandidateTableUnlocked(table_id);
@@ -12096,6 +12191,32 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
   RETURN_NOT_OK(InitializeTableLoadState(table_id, ts_descs, &table_load_state));
   table_load_state.SortLoad();
 
+  // Prototype (follow-table index): if this table follows a base table, precompute for each
+  // tablet the tservers hosting the matching base tablet, to use as a soft placement
+  // preference below. Do this BEFORE taking tablet write locks so the catalog mutex (acquired
+  // by GetTableInfo/GetFollowTablePreferredReplicas) is taken in the documented order
+  // (mutex_ -> table -> tablet). Empty for non-following tables.
+  std::unordered_map<TabletId, std::set<TabletServerId>> follow_preferred_by_tablet;
+  if (FLAGS_ysql_yb_enable_follow_table_index) {
+    TableId base_table_id;
+    if (auto index_table = GetTableInfo(table_id)) {
+      auto l = index_table->LockForRead();
+      if (l->pb.follow_table_mode() != FOLLOW_TABLE_NONE) {
+        base_table_id = l->indexed_table_id();
+      }
+    }
+    if (!base_table_id.empty()) {
+      for (const TabletInfoPtr& tablet : tablets) {
+        std::string partition_key_start =
+            tablet->LockForRead()->pb.partition().partition_key_start();
+        auto pref = GetFollowTablePreferredReplicas(base_table_id, partition_key_start);
+        if (pref.ok() && !pref->empty()) {
+          follow_preferred_by_tablet[tablet->tablet_id()] = std::move(*pref);
+        }
+      }
+    }
+  }
+
   // Take write locks on all tablets to be processed, and ensure that they are
   // unlocked at the end of this scope.
   for (const TabletInfoPtr& tablet : tablets) {
@@ -12147,7 +12268,8 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
     // NOTE: if we fail to select replicas on the first pass (due to
     // insufficient Tablet Servers being online), we will still try
     // again unless the tablet/table creation is cancelled.
-    s = SelectReplicasForTablet(ts_descs, tablet, &table_load_state, global_load_state);
+    s = SelectReplicasForTablet(
+        ts_descs, tablet, &table_load_state, global_load_state, follow_preferred_by_tablet);
     if (!s.ok()) {
       LOG_WITH_FUNC(INFO) << "Select replicas for tablet " << tablet->id() << " failed: " << s;
       s = s.CloneAndPrepend(Substitute(
@@ -12267,7 +12389,8 @@ Status CatalogManager::SelectProtegeForTablet(
 
 Status CatalogManager::SelectReplicasForTablet(
     const TSDescriptorVector& ts_descs, const TabletInfoPtr& tablet,
-    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
+    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state,
+    const std::unordered_map<TabletId, std::set<TabletServerId>>& follow_preferred_by_tablet) {
   auto table_guard = tablet->table()->LockForRead();
 
   if (!table_guard->pb.IsInitialized()) {
@@ -12284,8 +12407,19 @@ Status CatalogManager::SelectReplicasForTablet(
   VLOG_WITH_FUNC(3) << "Committed consensus state: " << AsString(cstate);
   consensus::RaftConfigPB* config = cstate->mutable_config();
 
+  // Prototype (follow-table index): if the caller precomputed a base-tablet host set for this
+  // tablet (done before tablet locks are held, so the catalog mutex was taken in the correct
+  // order), use it as a soft co-placement preference. Absent/empty => normal placement.
+  const std::set<TabletServerId>* preferred_replicas = nullptr;
+  auto pref_it = follow_preferred_by_tablet.find(tablet->tablet_id());
+  if (pref_it != follow_preferred_by_tablet.end()) {
+    preferred_replicas = &pref_it->second;
+  }
+  static const std::set<TabletServerId> kNoPreference;
+
   RETURN_NOT_OK(HandlePlacementUsingReplicationInfo(
-      replication_info, ts_descs, config, per_table_state, global_state));
+      replication_info, ts_descs, config, per_table_state, global_state,
+      preferred_replicas ? *preferred_replicas : kNoPreference));
 
   LOG_WITH_FUNC(INFO)
       << "Initial tserver uuids for tablet " << tablet->tablet_id() << " [table_id="
@@ -12327,7 +12461,8 @@ Status CatalogManager::HandlePlacementUsingReplicationInfo(
     const TSDescriptorVector& all_ts_descs,
     consensus::RaftConfigPB* config,
     CMPerTableLoadState* per_table_state,
-    CMGlobalLoadState* global_state) {
+    CMGlobalLoadState* global_state,
+    const set<TabletServerId>& preferred_replicas) {
   // Validate if we have enough tservers to put the replicas.
   ValidateReplicationInfoRequestPB req;
   req.mutable_replication_info()->CopyFrom(replication_info);
@@ -12336,9 +12471,11 @@ Status CatalogManager::HandlePlacementUsingReplicationInfo(
 
   TSDescriptorVector ts_descs;
   GetTsDescsFromPlacementInfo(replication_info.live_replicas(), all_ts_descs, &ts_descs);
+  // Prototype (follow-table index): the base-tablet co-placement preference applies only
+  // to the live (VOTER) replicas; read replicas keep normal placement.
   RETURN_NOT_OK(HandlePlacementUsingPlacementInfo(
       replication_info.live_replicas(), ts_descs, PeerMemberType::VOTER,
-      config, per_table_state, global_state));
+      config, per_table_state, global_state, preferred_replicas));
   for (int i = 0; i < replication_info.read_replicas_size(); i++) {
     GetTsDescsFromPlacementInfo(replication_info.read_replicas(i), all_ts_descs, &ts_descs);
     RETURN_NOT_OK(HandlePlacementUsingPlacementInfo(
@@ -12353,7 +12490,9 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
                                                          PeerMemberType member_type,
                                                          consensus::RaftConfigPB* config,
                                                          CMPerTableLoadState* per_table_state,
-                                                         CMGlobalLoadState* global_state) {
+                                                         CMGlobalLoadState* global_state,
+                                                         const set<TabletServerId>&
+                                                             preferred_replicas) {
   size_t nreplicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
   size_t ntservers = ts_descs.size();
   // Keep track of servers we've already selected, so that we don't attempt to
@@ -12365,7 +12504,7 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
     // We cannot put more than ntservers replicas.
     nreplicas = min(nreplicas, ntservers);
     SelectReplicas(ts_descs, nreplicas, config, &already_selected_ts, member_type,
-                   per_table_state, global_state);
+                   per_table_state, global_state, preferred_replicas);
   } else {
     // TODO(bogdan): move to separate function
     //
@@ -12386,7 +12525,7 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
       size_t num_replicas = min(min_num_replicas, available_ts_descs_size);
       min_replica_count_sum += min_num_replicas;
       SelectReplicas(available_ts_descs, num_replicas, config, &already_selected_ts, member_type,
-                     per_table_state, global_state);
+                     per_table_state, global_state, preferred_replicas);
     }
 
     size_t replicas_left = nreplicas - min_replica_count_sum;
@@ -12399,7 +12538,7 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
       // requested placements and checked individually per placement info, if we could cover the
       // minimums.
       SelectReplicas(all_allowed_ts, replicas_left, config, &already_selected_ts, member_type,
-                     per_table_state, global_state);
+                     per_table_state, global_state, preferred_replicas);
     }
   }
   return Status::OK();
@@ -12597,7 +12736,20 @@ void CatalogManager::StartElectionIfReady(
 shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
     const TSDescriptorVector& ts_descs,
     set<TabletServerId>* excluded,
-    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
+    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state,
+    const set<TabletServerId>& preferred_replicas) {
+  // Prototype (follow-table index): soft co-placement. If any preferred tserver (a host
+  // of the matching base tablet) is allowed for this tablet and not already chosen, pick
+  // it before considering load. This is a preference, not a constraint: when no preferred
+  // tserver qualifies we fall through to normal load-based selection below.
+  if (!preferred_replicas.empty()) {
+    for (const auto& ts : ts_descs) {
+      const auto& uuid = ts->permanent_uuid();
+      if (preferred_replicas.count(uuid) && !excluded->count(uuid)) {
+        return ts;
+      }
+    }
+  }
   shared_ptr<TSDescriptor> found_ts;
   for (const auto& sorted_load : per_table_state->sorted_replica_load_) {
     // Don't consider a tserver that has already been considered for this tablet.
@@ -12618,15 +12770,44 @@ shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
   return found_ts;
 }
 
+Result<std::set<TabletServerId>> CatalogManager::GetFollowTablePreferredReplicas(
+    const TableId& base_table_id, const std::string& partition_key_start) {
+  std::set<TabletServerId> preferred;
+  if (base_table_id.empty()) {
+    return preferred;
+  }
+  auto base_table = GetTableInfo(base_table_id);
+  if (!base_table) {
+    return preferred;
+  }
+  // Identical hash key => identical encoded partition-key space, so the base tablet that
+  // starts at the same partition_key_start covers exactly this index tablet's hash range.
+  auto base_tablets = VERIFY_RESULT(base_table->GetTablets(GetTabletsMode::kOrderByPartitions));
+  for (const auto& base_tablet : base_tablets) {
+    if (base_tablet->LockForRead()->pb.partition().partition_key_start() != partition_key_start) {
+      continue;
+    }
+    auto replicas = base_tablet->GetReplicaLocations();
+    if (replicas) {
+      for (const auto& entry : *replicas) {
+        preferred.insert(entry.first);
+      }
+    }
+    break;
+  }
+  return preferred;
+}
+
 void CatalogManager::SelectReplicas(
     const TSDescriptorVector& ts_descs, size_t nreplicas, consensus::RaftConfigPB* config,
     set<TabletServerId>* already_selected_ts, PeerMemberType member_type,
-    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state) {
+    CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state,
+    const set<TabletServerId>& preferred_replicas) {
   DCHECK_LE(nreplicas, ts_descs.size());
 
   for (size_t i = 0; i < nreplicas; ++i) {
     shared_ptr<TSDescriptor> ts = SelectReplica(
-        ts_descs, already_selected_ts, per_table_state, global_state);
+        ts_descs, already_selected_ts, per_table_state, global_state, preferred_replicas);
     InsertOrDie(already_selected_ts, ts->permanent_uuid());
     // Update the load state at global and table level.
     per_table_state->per_ts_replica_load_[ts->permanent_uuid()]++;

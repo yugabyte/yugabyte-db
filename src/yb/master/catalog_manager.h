@@ -1041,12 +1041,17 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Loops through the table's placement infos and populates the corresponding config from
   // each placement.
+  // Prototype (follow-table index): 'preferred_replicas', when non-empty, is a soft
+  // preference for tservers hosting the matching base tablet. Replica selection favors
+  // these tservers but falls back to normal load-based selection when they are
+  // unavailable or would violate placement constraints.
   Status HandlePlacementUsingReplicationInfo(
       const ReplicationInfoPB& replication_info,
       const TSDescriptorVector& all_ts_descs,
       consensus::RaftConfigPB* config,
       CMPerTableLoadState* per_table_state,
-      CMGlobalLoadState* global_state);
+      CMGlobalLoadState* global_state,
+      const std::set<TabletServerId>& preferred_replicas = {});
 
   // Handles the config creation for a given placement.
   Status HandlePlacementUsingPlacementInfo(const PlacementInfoPB& placement_info,
@@ -1054,7 +1059,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                            consensus::PeerMemberType member_type,
                                            consensus::RaftConfigPB* config,
                                            CMPerTableLoadState* per_table_state,
-                                           CMGlobalLoadState* global_state);
+                                           CMGlobalLoadState* global_state,
+                                           const std::set<TabletServerId>& preferred_replicas = {});
 
   // Populates ts_descs with all tservers belonging to a certain placement.
   void GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
@@ -2160,7 +2166,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::shared_ptr<TSDescriptor> SelectReplica(
       const TSDescriptorVector& ts_descs,
       std::set<TabletServerId>* excluded,
-      CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state);
+      CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state,
+      const std::set<TabletServerId>& preferred_replicas = {});
+
+  // Prototype (follow-table index): returns the set of tserver uuids currently hosting
+  // the base table's tablet whose hash partition range starts at 'partition_key_start'.
+  // Empty if the base table/tablet cannot be found or its replicas are unknown; used as
+  // a soft placement preference so a follower index tablet co-locates with its base.
+  Result<std::set<TabletServerId>> GetFollowTablePreferredReplicas(
+      const TableId& base_table_id, const std::string& partition_key_start);
 
   // Select and assign a tablet server as the protege 'config'. This protege is selected from the
   // set of tservers in 'global_state' that have the lowest current protege load.
@@ -2174,9 +2188,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // servers to select the N replicas, return Status::InvalidArgument.
   //
   // This method is called by "ProcessPendingAssignmentsPerTable()".
+  // 'follow_preferred_by_tablet' (prototype, follow-table index) maps a tablet id to the
+  // tservers hosting the matching base tablet; it is precomputed by the caller before any
+  // tablet locks are taken (so the catalog mutex is acquired in the correct order) and used
+  // as a soft placement preference for that tablet's replicas.
   Status SelectReplicasForTablet(
       const TSDescriptorVector& ts_descs, const TabletInfoPtr& tablet,
-      CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state);
+      CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state,
+      const std::unordered_map<TabletId, std::set<TabletServerId>>& follow_preferred_by_tablet =
+          {});
 
   // Select N Replicas from the online tablet servers that have been chosen to respect the
   // placement information provided. Populate the consensus configuration object with choices and
@@ -2190,7 +2210,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       std::set<TabletServerId>* already_selected_ts,
       consensus::PeerMemberType member_type,
       CMPerTableLoadState* per_table_state,
-      CMGlobalLoadState* global_state);
+      CMGlobalLoadState* global_state,
+      const std::set<TabletServerId>& preferred_replicas = {});
 
   void HandleAssignPreparingTablet(const TabletInfoPtr& tablet,
                                    DeferredAssignmentActions* deferred);
@@ -2383,6 +2404,14 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TabletInfoPtr& source_tablet_info,
       const std::vector<docdb::DocKeyHash>& split_hash_codes, ManualSplit is_manual_split,
       const LeaderEpoch& epoch);
+
+  // Prototype (follow-table index): for each follow-table index in 'tables', diff its tablet
+  // partition boundaries against its base table's and force a matching split on the index
+  // tablet for each base boundary the index still lacks. Idempotent and eventually
+  // convergent (at most one split per index tablet per pass). Invoked from the background
+  // splitting loop. No-op unless the follow-table feature flag is enabled.
+  Status ReconcileFollowTableIndexSplits(
+      const std::vector<TableInfoPtr>& tables, const LeaderEpoch& epoch);
 
   int64_t leader_ready_term() const override {
     return leader_ready_term_.load();
