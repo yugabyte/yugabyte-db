@@ -59,6 +59,8 @@ import { EditConnectionPoolModal } from '../../../redesign/features/universe/uni
 import { EditMultiTenancyModal } from '../../../redesign/features/universe/universe-actions/edit-multi-tenancy/EditMultiTenancyModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import { EditUniverse } from '@app/redesign/features-v2/universe/edit-universe';
+import { EditUniverseTabs } from '@app/redesign/features-v2/universe/edit-universe/EditUniverseContext';
+import { getEditUniverseSettingsRoute } from '@app/redesign/features-v2/universe/edit-universe/editUniverseTabUtils';
 import { UpgradeLinuxVersionModal } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/UpgradeLinuxVersionModal';
 import { DBUpgradeModal as LegacyDbUpgradeModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBUpgradeModal';
 import { DbUpgradeModal } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeModal';
@@ -709,7 +711,12 @@ class UniverseDetail extends Component {
       : 'overview';
     // Check if the pathname contains "performance" to determine if we should show the performance tab
     const isPerfAdvisorPath = location?.pathname?.includes(PERF_ADVISOR_PATH);
-    const activeTab = isPerfAdvisorPath ? PERF_ADVISOR_PATH : tab || defaultTab;
+    const isSettingsPath = location?.pathname?.includes('/settings');
+    const activeTab = isPerfAdvisorPath
+      ? PERF_ADVISOR_PATH
+      : isSettingsPath || tab === 'settings'
+        ? 'settings'
+        : tab || defaultTab;
     const tabElements = [
       //common tabs for every universe
       ...[
@@ -1247,7 +1254,7 @@ class UniverseDetail extends Component {
                             >
                               <span>
                                 <YBMenuItem
-                                  to={`/universes/${uuid}/settings?tab=placement`}
+                                  to={getEditUniverseSettingsRoute(uuid, EditUniverseTabs.PLACEMENT)}
                                   availability={getFeatureState(
                                     currentCustomer.data.features,
                                     'universes.details.overview.editUniverse'
@@ -1281,7 +1288,7 @@ class UniverseDetail extends Component {
                             >
                               <span>
                                 <YBMenuItem
-                                  to={`/universes/${uuid}/settings?tab=hardware`}
+                                  to={getEditUniverseSettingsRoute(uuid, EditUniverseTabs.HARDWARE)}
                                   availability={getFeatureState(
                                     currentCustomer.data.features,
                                     'universes.details.overview.editUniverse'

@@ -3,23 +3,23 @@ import { EditUniverseTabs } from './EditUniverseContext';
 import {
   getEditUniverseSettingsRoute,
   isValidEditUniverseTab,
-  parseEditUniverseTabFromQuery
+  parseEditUniverseTabFromPath
 } from './editUniverseTabUtils';
 
 const UNIVERSE_UUID = '11111111-1111-1111-1111-111111111111';
 
-describe('parseEditUniverseTabFromQuery', () => {
-  it('returns the tab when query value is valid', () => {
-    expect(parseEditUniverseTabFromQuery('placement')).toBe(EditUniverseTabs.PLACEMENT);
-    expect(parseEditUniverseTabFromQuery('hardware')).toBe(EditUniverseTabs.HARDWARE);
+describe('parseEditUniverseTabFromPath', () => {
+  it('returns the tab when path segment is valid', () => {
+    expect(parseEditUniverseTabFromPath('placement')).toBe(EditUniverseTabs.PLACEMENT);
+    expect(parseEditUniverseTabFromPath('hardware')).toBe(EditUniverseTabs.HARDWARE);
   });
 
-  it('returns general when query value is missing', () => {
-    expect(parseEditUniverseTabFromQuery(undefined)).toBe(EditUniverseTabs.GENERAL);
+  it('returns general when path segment is missing', () => {
+    expect(parseEditUniverseTabFromPath(undefined)).toBe(EditUniverseTabs.GENERAL);
   });
 
-  it('returns general when query value is invalid', () => {
-    expect(parseEditUniverseTabFromQuery('foo')).toBe(EditUniverseTabs.GENERAL);
+  it('returns general when path segment is invalid', () => {
+    expect(parseEditUniverseTabFromPath('foo')).toBe(EditUniverseTabs.GENERAL);
   });
 });
 
@@ -35,15 +35,15 @@ describe('isValidEditUniverseTab', () => {
 });
 
 describe('getEditUniverseSettingsRoute', () => {
-  it('builds settings route without tab query param', () => {
+  it('builds settings route with general tab by default', () => {
     expect(getEditUniverseSettingsRoute(UNIVERSE_UUID)).toBe(
-      `/universes/${UNIVERSE_UUID}/settings`
+      `/universes/${UNIVERSE_UUID}/settings/general`
     );
   });
 
-  it('builds settings route with tab query param', () => {
+  it('builds settings route with the requested tab path segment', () => {
     expect(getEditUniverseSettingsRoute(UNIVERSE_UUID, EditUniverseTabs.PLACEMENT)).toBe(
-      `/universes/${UNIVERSE_UUID}/settings?tab=placement`
+      `/universes/${UNIVERSE_UUID}/settings/placement`
     );
   });
 });

@@ -15,8 +15,9 @@ import {
 import { SwitchEditUniverseTabs } from './SwitchEditUniverseTabs';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import {
+  getEditUniverseSettingsRoute,
   isValidEditUniverseTab,
-  parseEditUniverseTabFromQuery
+  parseEditUniverseTabFromPath
 } from './editUniverseTabUtils';
 
 const { Grid, styled } = mui;
@@ -31,40 +32,32 @@ const TabItem = styled(YBTab)(({ theme }) => ({
 
 const EditUniverseComponent: FC<EditUniverseProps & WithRouterProps> = ({
   universeUUID,
+  params,
   location
 }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.tabs' });
 
-  const queryTab = location?.query?.tab as string | undefined;
-  const selectedTab = useMemo(
-    () => parseEditUniverseTabFromQuery(queryTab),
-    [queryTab]
-  );
+  const pathTab = params?.settingsTab as string | undefined;
+  const selectedTab = useMemo(() => parseEditUniverseTabFromPath(pathTab), [pathTab]);
 
   useEffect(() => {
-    if (!location) return;
+    if (!universeUUID || !location) return;
 
-    if (!isValidEditUniverseTab(queryTab)) {
-      browserHistory.replace({
-        ...location,
-        query: {
-          ...location.query,
-          tab: EditUniverseTabs.GENERAL
-        }
-      });
+    const settingsBasePath = `/universes/${universeUUID}/settings`;
+    if (!location.pathname.startsWith(settingsBasePath)) {
+      return;
     }
-  }, [location, queryTab]);
+
+    const isBareSettingsRoute = location.pathname === settingsBasePath;
+    if (isBareSettingsRoute || !pathTab || !isValidEditUniverseTab(pathTab)) {
+      browserHistory.replace(getEditUniverseSettingsRoute(universeUUID, EditUniverseTabs.GENERAL));
+    }
+  }, [pathTab, universeUUID, location?.pathname]);
 
   const handleTabChange = (_event: unknown, newValue: EditUniverseTabs) => {
-    if (newValue === selectedTab || !location) return;
+    if (newValue === selectedTab) return;
 
-    browserHistory.push({
-      ...location,
-      query: {
-        ...location.query,
-        tab: newValue
-      }
-    });
+    browserHistory.push(getEditUniverseSettingsRoute(universeUUID, newValue));
   };
 
   const { data: universeData, isLoading, isSuccess } = useGetUniverse(universeUUID);

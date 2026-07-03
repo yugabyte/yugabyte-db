@@ -281,6 +281,7 @@ export default (store) => {
           <Route path="/universes/:uuid/replication/:replicationUUID" component={Replication} />
           <Route path="/universes/:uuid/recovery/:drConfigUuid" component={DrPanel} />
           <Route path="/universes/:uuid/perfAdvisor/**" component={UniverseDetail} />
+          <Route path="/universes/:uuid/settings/:settingsTab" component={UniverseDetail} />
           <Route path="/universes/:uuid/:mode/:type" component={UniverseNewView} />
           {/* </Route> */}
           <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
