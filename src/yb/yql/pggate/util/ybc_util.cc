@@ -26,6 +26,7 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/stringprintf.h"
@@ -915,6 +916,31 @@ uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t ke
   yb::Slice slice(partition_key, key_len);
   return CHECK_RESULT(
       dockv::PartitionSchema::DecodePartitionKeyEndAsHashRightBoundInclusive(slice));
+}
+
+// Decodes a range-sharded tablet's partition key into a string of the form
+// "[v1, v2, ...]". Values are rendered in DocDB representation via
+// KeyEntryValue::ToString() -- i.e., types like timestamp, date, numeric, and
+// uuid appear in their internal/encoded form rather than the PostgreSQL output
+// representation (e.g., timestamps as int64 microseconds since epoch, not 'YYYY-MM-DD
+// HH:MM:SS'). This matches what the master UI's tablet listing showcases.
+// Memory is allocated via palloc; the caller owns the returned buffer.
+// Returns nullptr for empty keys or on decode failure.
+char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
+  if (partition_key == nullptr || key_len == 0) {
+    return nullptr;
+  }
+
+  yb::Slice slice(partition_key, key_len);
+  dockv::DocKey doc_key;
+  auto decode_result = doc_key.DecodeFrom(
+      slice, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue);
+  if (!decode_result.ok()) {
+    LOG(WARNING) << "Failed to decode range partition key: " << decode_result.status();
+    return nullptr;
+  }
+
+  return YBCPAllocStdString(ToString(doc_key.range_group()));
 }
 
 bool YBCIsObjectLockingEnabled() {

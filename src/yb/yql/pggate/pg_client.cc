@@ -556,7 +556,6 @@ struct PerformData : public PgClientData<tserver::LWPgPerformRequestPB,
       } else {
         operations[i]->set_response(&op_response);
       }
-      metrics.RecordRequestMetrics(op_response.metrics(), operations[i]->is_read());
       ++i;
     }
     return Status::OK();
@@ -606,6 +605,7 @@ Status DoProcessResponse(
     result.catalog_read_time = ReadHybridTime::FromPB(data.resp.catalog_read_time());
   }
   result.used_in_txn_limit = HybridTime::FromPB(data.resp.used_in_txn_limit_ht());
+  result.operations = std::move(data.operations);
   return Status::OK();
 }
 
@@ -850,6 +850,17 @@ class PgClient::Impl : public BigDataFetcher {
     RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::QueryAutoAnalyze,
         req, resp, PggateRPC::kQueryAutoAnalyze));
     return resp;
+  }
+
+  Status ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id) {
+    tserver::PgResetAutoAnalyzeMutationCountersRequestPB req;
+    tserver::PgResetAutoAnalyzeMutationCountersResponsePB resp;
+    req.set_database_oid(table_id.database_oid);
+    req.set_table_relfilenode_oid(table_id.object_oid);
+    RETURN_NOT_OK(DoSyncRPC(
+        &PgClientServiceProxy::ResetAutoAnalyzeMutationCounters, req, resp,
+        PggateRPC::kResetAutoAnalyzeMutationCounters));
+    return ResponseStatus(resp);
   }
 
   Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode) {
@@ -2092,6 +2103,10 @@ Result<tserver::PgListClonesResponsePB> PgClient::ListDatabaseClones() {
 
 Result<tserver::PgQueryAutoAnalyzeResponsePB> PgClient::QueryAutoAnalyze(PgOid db_oid) {
     return impl_->QueryAutoAnalyze(db_oid);
+}
+
+Status PgClient::ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id) {
+  return impl_->ResetAutoAnalyzeMutationCounters(table_id);
 }
 
 

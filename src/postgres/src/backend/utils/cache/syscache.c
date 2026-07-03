@@ -1533,16 +1533,16 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 			SetCatCacheTuple(idx_cache, ntp, RelationGetDescr(relation));
 
 		/*
-		 * In minimal preload mode the scan above only includes system rows,
-		 * so any cached list built here would be missing user-defined
-		 * entries. Most kinds skip list preloading in that mode and let
-		 * SearchCatCacheList rebuild on demand from a full scan. The
-		 * relcache-init builder is the exception (see yb_internal_conn.c):
-		 * it opts in via preload_lists_in_minimal_mode so list-keyed catcache
-		 * lookups go through the populated list caches as it builds the
-		 * relcache init file.
+		 * In minimal-preload mode preload only the pg_rewrite (RULERELNAME)
+		 * list, which is safe to preload because we throw it away when we
+		 * are done preloading the corresponding relcache entry. The other
+		 * catcache lists are unsafe to preload in minimal mode because they
+		 * may be incomplete. The relcache-init builder is the exception (see
+		 * yb_internal_conn.c): it opts in via preload_lists_in_minimal_mode
+		 * so YbShouldPreloadCatcacheLists() returns true and list-keyed
+		 * catcache lookups go through the populated list caches.
 		 */
-		if (!YbShouldPreloadCatcacheLists())
+		if (cache_id != RULERELNAME && !YbShouldPreloadCatcacheLists())
 			continue;
 
 		bool		is_add_to_list_required = true;

@@ -3325,6 +3325,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_replication_origin_shared", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("Enable shared replication origin write tagging."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_replication_origin_shared,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_ddl_transaction_block_enabled", PGC_POSTMASTER, DEVELOPER_OPTIONS,
 			gettext_noop("If true, DDL operations in YSQL will execute within "
 						 "the active transaction block instead of their "
@@ -3719,6 +3730,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_analyze_dont_reset_mutations", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("[Test Only GUC] - When set, a manual ANALYZE does not reset the "
+						 "auto-analyze mutation counters, reverting to the pre-reset behavior."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_analyze_dont_reset_mutations,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_user_ddls_preempt_auto_analyze", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("If object locking is off (i.e., "
 						 "enable_object_locking_for_table_locks=false), concurrent DDLs might face a "
@@ -4020,7 +4043,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_pg_stat_statements_docdb_metrics,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 

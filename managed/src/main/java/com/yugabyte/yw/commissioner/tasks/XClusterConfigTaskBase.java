@@ -1267,7 +1267,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                 targetTablesInfoList.stream()
                     .filter(tableInfo -> tableInfo.getTableType().equals(tableType))
                     .collect(Collectors.toList()));
-    log.debug("targetNamespaceNameTablesInfoListMap is {}", targetNamespaceNameTablesInfoListMap);
+    log.trace("targetNamespaceNameTablesInfoListMap is {}", targetNamespaceNameTablesInfoListMap);
 
     groupByNamespaceName(requestedSourceTablesInfoList)
         .forEach(
@@ -1556,7 +1556,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           client.getTablesList(
               null /* nameFilter */, false /* excludeSystemTables */, null /* namespace */);
       tableInfoList = listTablesResponse.getTableInfoList();
-      log.debug(
+      log.trace(
           "getTableInfoList for universe {} returned {}",
           universe.getUniverseUUID(),
           tableInfoList);
@@ -2172,7 +2172,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       log.warn(
           "The target universe for the xCluster config {} is not found; ignoring gathering"
               + " replication stream statuses",
-          xClusterConfig);
+          xClusterConfig.getUuid());
       return;
     }
 
@@ -2630,7 +2630,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
     MoreExecutors.shutdownAndAwaitTermination(executorService, timeoutMs, TimeUnit.MILLISECONDS);
     if (confGetter.getGlobalConf(GlobalConfKeys.xClusterTableStatusLoggingEnabled)) {
-      log.info(
+      log.trace(
           "Replication cluster data collected for xCluster config {}: {}",
           xClusterConfig.getUuid(),
           data);

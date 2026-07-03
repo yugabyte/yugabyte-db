@@ -52,7 +52,7 @@ export const RegionsField = ({ disabled }: RegionsFieldProps): ReactElement => {
   // reset selected regions on provider change
   useUpdateEffect(() => {
     setValue(REGIONS_FIELD, []);
-  }, [provider]);
+  }, [provider?.uuid]);
 
   return (
     <Box display="flex" width="100%" flexDirection={'row'} data-testid="RegionsField-Container">

@@ -661,7 +661,8 @@ class YBClient {
           CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
       uint64_t* consistent_snapshot_time_out = nullptr,
       const std::optional<ReplicationSlotLsnType>& lsn_type = std::nullopt,
-      const std::optional<ReplicationSlotOrderingMode>& ordering_mode = std::nullopt);
+      const std::optional<ReplicationSlotOrderingMode>& ordering_mode = std::nullopt,
+      const std::vector<TableId>& bound_table_ids = {});
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(
@@ -1120,6 +1121,8 @@ class YBClient {
   void ClearAllMetaCachesOnServer();
 
   Status ClearMetacache(const std::string& namespace_id);
+
+  void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
 
   // Uses the TabletConsensusInfo piggybacked from a response to
   // refresh a RemoteTablet in metacache. Returns true if the

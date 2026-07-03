@@ -95,6 +95,8 @@
 #include "common/ip.h"
 #include "common/pg_yb_common.h"
 #include "common/pg_yb_param_status_flags.h"
+#include "executor/execdesc.h"
+#include "executor/spi.h"
 #include "executor/ybExpr.h"
 #include "fmgr.h"
 #include "funcapi.h"
@@ -119,6 +121,8 @@
 #endif
 #include "storage/procarray.h"
 #include "tcop/utility.h"
+#include "utils/acl.h"
+#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
@@ -2472,6 +2476,8 @@ bool		yb_force_catalog_update_on_next_ddl = false;
 
 bool		yb_test_fail_all_drops = false;
 
+bool		yb_test_analyze_dont_reset_mutations = false;
+
 bool		yb_test_invalidate_relcache_in_planner = false;
 
 bool		yb_test_fail_next_inc_catalog_version = false;
@@ -2509,6 +2515,8 @@ int			yb_test_reset_retry_counts = -1;
 bool		yb_enable_ddl_atomicity_infra = true;
 bool		yb_ddl_rollback_enabled = false;
 
+bool		yb_enable_replication_origin_shared = true;
+
 bool		yb_use_hash_splitting_by_default = true;
 
 bool		yb_xcluster_automatic_mode_target_ddl = false;
@@ -2519,7 +2527,7 @@ bool		yb_user_ddls_preempt_auto_analyze = true;
 
 bool		yb_enable_pg_stat_statements_rpc_stats = true;
 
-bool		yb_enable_pg_stat_statements_docdb_metrics = false;
+bool		yb_enable_pg_stat_statements_docdb_metrics = true;
 
 const char *
 YBDatumToString(Datum datum, Oid typid)
@@ -4618,13 +4626,6 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 									context, params, queryEnv,
 									dest, qc);
 
-		/*
-		 * YB: Account for stats collected during the execution of utility command
-		 * Only refresh stats at the last level of nesting
-		 */
-		if (YBGetDdlNestingLevel() == 1)
-			YbRefreshSessionStatsDuringExecution();
-
 		if (is_ddl)
 		{
 			CheckAlterDatabaseDdl(pstmt);
@@ -4748,6 +4749,84 @@ void
 YBFlushBufferedOperations(YbcFlushDebugContext *debug_context)
 {
 	HandleYBStatus(YBCPgFlushBufferedOperations(debug_context));
+}
+
+typedef struct YbQueryState
+{
+	unsigned int executor_operation_nesting_level;
+	unsigned int utility_operation_nesting_level;
+} YbQueryState;
+
+static YbQueryState query_state = {0};
+static YbInstrumentation last_utility_yb_instr = {0};
+
+static void
+YBClearLastUtilityStats(void)
+{
+	memset(&last_utility_yb_instr, 0, sizeof(last_utility_yb_instr));
+}
+
+void
+YBOnExecutorOperationBegin()
+{
+	if (query_state.executor_operation_nesting_level == 0 &&
+		query_state.utility_operation_nesting_level == 0)
+		YBClearLastUtilityStats();
+	query_state.executor_operation_nesting_level++;
+}
+
+void
+YBOnExecutorOperationEnd(struct QueryDesc *queryDesc)
+{
+	Assert(query_state.executor_operation_nesting_level > 0);
+	if (IsYugaByteEnabled() &&
+		YBIsTopLevelExecutorOperation() &&
+		!queryDesc->yb_skip_finish_capture)
+		YbUpdateSessionStats(&queryDesc->yb_query_stats->yb_instr);
+
+	query_state.executor_operation_nesting_level--;
+}
+
+bool
+YBIsTopLevelExecutorOperation()
+{
+	return query_state.executor_operation_nesting_level == 1 &&
+		query_state.utility_operation_nesting_level == 0;
+}
+
+void
+YBOnUtilityOperationBegin()
+{
+	if (query_state.utility_operation_nesting_level == 0)
+		YBClearLastUtilityStats();
+	query_state.utility_operation_nesting_level++;
+}
+
+void
+YBOnUtilityOperationEnd()
+{
+	Assert(query_state.utility_operation_nesting_level > 0);
+
+	if (query_state.utility_operation_nesting_level == 1 &&
+		query_state.executor_operation_nesting_level == 0)
+		YbUpdateSessionStats(&last_utility_yb_instr);
+
+	query_state.utility_operation_nesting_level--;
+}
+
+void
+YBResetOperationTracking()
+{
+	memset(&query_state, 0, sizeof(query_state));
+	YBClearLastUtilityStats();
+}
+
+YbInstrumentation *
+YBGetUtilityOperationStats()
+{
+	if (!IsYugaByteEnabled())
+		return NULL;
+	return &last_utility_yb_instr;
 }
 
 bool
@@ -8664,9 +8743,16 @@ string_list_compare(const ListCell *a, const ListCell *b)
  * - tablet_attrs: json
  * - tablet_state: text
  *
- * The start_hash_code and end_hash_code are the hash codes of the start and end
- * keys of the tablet for hash sharded tables. Leader is provided as a separate
- * column for simpler querying and self-explanatory access.
+ * For hash-partitioned tables (primary key contains at least one HASH column),
+ * start_hash_code (inclusive) and end_hash_code (exclusive) contain the
+ * partition bounds, while start_range and end_range are NULL. This includes
+ * tables with composite (HASH, ASC) primary keys -- only the hash boundaries
+ * are reported; the range component is not currently surfaced.
+ * For purely range-partitioned tables, start_hash_code and end_hash_code are
+ * NULL, and start_range/end_range contain the decoded range partition key
+ * boundaries.
+ * Leader is provided as a separate column for simpler querying.
+ * tablet_attrs is reserved for future use and is currently always NULL.
  */
 Datum
 yb_get_tablet_metadata(PG_FUNCTION_ARGS)
@@ -8708,6 +8794,17 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 	rsinfo->setResult = tupstore;
 	rsinfo->setDesc = tupdesc;
 
+	/*
+	 * Privilege gating: superusers and yb_db_admin members see real values
+	 * for every row. Other roles see real values only for rows whose table
+	 * lives in the current database and on which they hold SELECT (checked
+	 * per row below). The system 'transactions' tablet is always shown.
+	 */
+	const Oid	caller_uid = GetUserId();
+	const bool	is_privileged = superuser() || IsYbDbAdminUser(caller_uid);
+	const char *current_db = is_privileged ? NULL : get_database_name(MyDatabaseId);
+	static const char *const masked_placeholder = "<insufficient privilege>";
+
 	YbcPgGlobalTabletsDescriptor *tablets = NULL;
 	size_t		num_tablets = 0;
 
@@ -8722,6 +8819,47 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
+
+		/*
+		 * Decide whether this row's sensitive columns (relname and the range
+		 * bounds) should show real values or the masked placeholder. Always
+		 * unmasked for superusers and yb_db_admin members; for other users,
+		 * only when the row belongs to the current database and the user
+		 * holds SELECT on the underlying relation. The system 'transactions'
+		 * tablet is exempt -- its name is fixed and non-sensitive.
+		 *
+		 * YCQL and system tablets (other than 'transactions') are always
+		 * masked for unprivileged users: the type gate (table_type == "YSQL")
+		 * ensures they never enter the OID/ACL check branch, so show_real
+		 * stays false.
+		 */
+		Oid			pg_table_oid = tablet->pg_table_oid;
+		bool		show_real = is_privileged;
+
+		if (!is_privileged)
+		{
+			/*
+			 * Pass a non-NULL is_missing so a rewritten or orphaned relation (a
+			 * valid-looking OID with no live pg_class row) returns ACLCHECK_NO_PRIV
+			 * and gets masked, instead of erroring out the whole view query.
+			 */
+			bool		acl_is_missing = false;
+
+			if (strcmp(tablet_descriptor->namespace_name, "system") == 0 &&
+				strcmp(tablet_descriptor->table_name, "transactions") == 0)
+			{
+				show_real = true;
+			}
+			else if (current_db != NULL &&
+					 strcmp(tablet_descriptor->table_type, "YSQL") == 0 &&
+					 strcmp(tablet_descriptor->namespace_name, current_db) == 0 &&
+					 OidIsValid(pg_table_oid) &&
+					 pg_class_aclcheck_ext(pg_table_oid, caller_uid, ACL_SELECT,
+										   &acl_is_missing) == ACLCHECK_OK)
+			{
+				show_real = true;
+			}
+		}
 
 		values[0] = CStringGetTextDatum(tablet_descriptor->tablet_id);
 		values[1] = CStringGetTextDatum(tablet_descriptor->table_id);
@@ -8738,7 +8876,9 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			nulls[2] = true;
 
 		values[3] = CStringGetTextDatum(tablet_descriptor->namespace_name);
-		values[4] = CStringGetTextDatum(tablet_descriptor->table_name);
+		values[4] = CStringGetTextDatum(show_real
+										? tablet_descriptor->table_name
+										: masked_placeholder);
 		values[5] = CStringGetTextDatum(tablet_descriptor->table_type);
 
 		if (tablet->is_hash_partitioned)
@@ -8750,11 +8890,60 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			values[7] =
 				UInt16GetDatum(YBCDecodeMultiColumnHashRightBound(tablet_descriptor->partition_key_end,
 																  tablet_descriptor->partition_key_end_len) + 1);	/* end_hash is exclusive */
+			nulls[10] = true;
+			nulls[11] = true;
 		}
 		else
 		{
 			nulls[6] = true;
 			nulls[7] = true;
+
+			if (!show_real && OidIsValid(pg_table_oid))
+			{
+				/*
+				 * Valid table but the caller lacks privilege: mask both
+				 * range bounds uniformly -- including edge tablets whose
+				 * value would have been NULL -- to prevent leaking the
+				 * table's tablet count and edge positions.
+				 */
+				values[10] = CStringGetTextDatum(masked_placeholder);
+				nulls[10] = false;
+				values[11] = CStringGetTextDatum(masked_placeholder);
+				nulls[11] = false;
+			}
+			else if (show_real)
+			{
+				char	   *start_range =
+					YBCDecodeRangePartitionKey(tablet_descriptor->partition_key_start,
+											   tablet_descriptor->partition_key_start_len);
+				if (start_range != NULL)
+				{
+					values[10] = CStringGetTextDatum(start_range);
+					pfree(start_range);
+				}
+				else
+					nulls[10] = true;
+
+				char	   *end_range =
+					YBCDecodeRangePartitionKey(tablet_descriptor->partition_key_end,
+											   tablet_descriptor->partition_key_end_len);
+				if (end_range != NULL)
+				{
+					values[11] = CStringGetTextDatum(end_range);
+					pfree(end_range);
+				}
+				else
+					nulls[11] = true;
+			}
+			else
+			{
+				/*
+				 * InvalidOid (e.g. colocation parent): no meaningful
+				 * partition bounds exist to mask, so leave ranges NULL.
+				 */
+				nulls[10] = true;
+				nulls[11] = true;
+			}
 		}
 
 		/* Convert replicas array to PostgreSQL text array */
@@ -8784,9 +8973,7 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			nulls[9] = true;
 		}
 
-		/* TODO (#28172): start_range, end_range, tablet_attrs are populated in a follow-up change. */
-		nulls[10] = true;
-		nulls[11] = true;
+		/* TODO(#30180): Populate tablet_attrs. */
 		nulls[12] = true;
 
 		if (tablet->tablet_state)

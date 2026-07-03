@@ -529,8 +529,6 @@ func (pc *ProvisionCommand) populateSudoCheck(f *os.File) {
 	fmt.Fprintf(f, "SUDO_ACCESS=\"false\"\n")
 	fmt.Fprintf(f, "if [ $(id -u) = 0 ]; then\n")
 	fmt.Fprintf(f, "  SUDO_ACCESS=\"true\"\n")
-	fmt.Fprintf(f, "elif sudo -n pwd >/dev/null 2>&1; then\n")
-	fmt.Fprintf(f, "  SUDO_ACCESS=\"true\"\n")
 	fmt.Fprintf(f, "fi\n")
 }
 

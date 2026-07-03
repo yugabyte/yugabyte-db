@@ -79,6 +79,7 @@ struct PerformResult {
   Status status;
   ReadHybridTime catalog_read_time;
   rpc::CallResponsePtr response;
+  PgsqlOps operations;
   HybridTime used_in_txn_limit;
 
   std::string ToString() const {
@@ -202,6 +203,8 @@ class PgClient {
   Result<tserver::PgListClonesResponsePB> ListDatabaseClones();
 
   Result<tserver::PgQueryAutoAnalyzeResponsePB> QueryAutoAnalyze(PgOid db_oid);
+
+  Status ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 

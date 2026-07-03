@@ -36,6 +36,7 @@
 #include "yb/tablet/restore_util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
@@ -725,7 +726,7 @@ Status TabletSnapshots::DoCreateCheckpoint(
 
   // Vector indexes checkpoint must be created after rocksdb checkpoint
   // to be in sync with the flushed data.
-  if (auto vector_indexes = VectorIndexesList(); vector_indexes != nullptr) {
+  if (auto vector_indexes = VectorIndexesList()) {
     for (const auto& vector_index : *vector_indexes) {
       const auto storage_name = docdb::GetVectorIndexStorageName(vector_index->options());
       const auto checkpoint_dir = create_checkpoint_in == CreateCheckpointIn::kSubDir

@@ -4041,11 +4041,22 @@ YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
 							DestReceiver *dest,
 							QueryCompletion *qc)
 {
-	if (IsYugaByteEnabled() &&
+	bool		track_utility = IsYugaByteEnabled() &&
 		!(IsA(pstmt->utilityStmt, ExecuteStmt) ||
 		  IsA(pstmt->utilityStmt, PrepareStmt) ||
-		  IsA(pstmt->utilityStmt, DeallocateStmt) ||
-		  IsA(pstmt->utilityStmt, ExplainStmt)))
+		  IsA(pstmt->utilityStmt, DeallocateStmt));
+	/*
+	 * EXPLAIN is excluded: EXPLAIN ANALYZE's inner executor already wraps
+	 * buffering inside its measured timer, so wrapping again here would
+	 * defer the flush past that timer.
+	 */
+	bool		wrap_buffering = track_utility &&
+		!IsA(pstmt->utilityStmt, ExplainStmt);
+
+	if (track_utility)
+		YBOnUtilityOperationBegin();
+
+	if (wrap_buffering)
 	{
 		YBBeginOperationsBuffering();
 		standard_ProcessUtility(pstmt, queryString, readOnlyTree, context,
@@ -4055,4 +4066,7 @@ YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
 	else
 		standard_ProcessUtility(pstmt, queryString, readOnlyTree, context,
 								params, queryEnv, dest, qc);
+
+	if (track_utility)
+		YBOnUtilityOperationEnd();
 }

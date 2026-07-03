@@ -980,7 +980,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
   }
 
   // Set the initial opid_index for a RaftConfigPB to -1.
-  config.set_opid_index(consensus::kInvalidOpIdIndex);
+  config.set_committed_op_index(consensus::kInvalidOpIdIndex);
 
   scoped_refptr<TransitionInProgressDeleter> deleter =
       VERIFY_RESULT(StartTabletStateTransitionForCreation(tablet_id));
@@ -1369,7 +1369,7 @@ Status TSTabletManager::DoApplyCloneTablet(
   // Set op_id of the raft config to the same as we would for a fresh tablet. This is required
   // because a change config will use the current op id of 0 (since the tablet has no data). If the
   // committed config has a higher op id, the change config fails.
-  committed_raft_config->set_opid_index(consensus::kInvalidOpIdIndex);
+  committed_raft_config->set_committed_op_index(consensus::kInvalidOpIdIndex);
 
   // State transition for clone target could be already registered because it is remote
   // bootstrapping from an existing quorum. We would ideally avoid this by passing
@@ -1695,12 +1695,14 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   TEST_PAUSE_IF_FLAG(TEST_pause_before_remote_bootstrap);
 
   // Download and persist the remote superblock in TABLET_DATA_COPYING state.
-  RETURN_NOT_OK(rb_client->Start(bootstrap_peer_uuid,
-                                 &server_->proxy_cache(),
-                                 bootstrap_peer_addr,
-                                 tablet_leader_peer_conn_info,
-                                 &meta,
-                                 this));
+  RETURN_NOT_OK(rb_client->Start(
+      bootstrap_peer_uuid,
+      &server_->proxy_cache(),
+      bootstrap_peer_addr,
+      tablet_leader_peer_conn_info,
+      req.has_pending_config_op_id() ? OpId::FromPB(req.pending_config_op_id()) : OpId(),
+      &meta,
+      this));
 
   // From this point onward, the superblock is persisted in TABLET_DATA_COPYING
   // state, and we need to tombstone the tablet if additional steps prior to
@@ -1913,12 +1915,25 @@ Status TSTabletManager::DeleteTablet(
       return consensus_result.status();
     }
     RaftConfigPB committed_config = consensus_result.get()->CommittedConfig();
-    if (committed_config.opid_index() > *cas_config_opid_index_less_or_equal) {
+    if (committed_config.committed_op_index() > *cas_config_opid_index_less_or_equal) {
       *error_code = TabletServerErrorPB::CAS_FAILED;
+      // The master sent DeleteTablet with a stale cas_config_opid_index_less_or_equal: its
+      // in-memory view of this tablet's committed config was behind ours. This happens, for
+      // example, when the master computed the CAS from prev_cstate in its eviction loop but
+      // the target replica had already applied a newer config via WAL replay during remote
+      // bootstrap. Re-mark the tablet dirty so the next heartbeat re-reports our current
+      // consensus state; the master will then re-evaluate eviction with up-to-date data and
+      // (if still warranted) re-issue DeleteTablet with a fresh CAS. Without this, the
+      // master gives up on a single-shot CAS_FAILED and the replica wedges until something
+      // else dirties the tablet.
+      MarkTabletDirty(
+          tablet_id,
+          std::make_shared<consensus::StateChangeContext>(
+              consensus::StateChangeReason::DELETE_TABLET_CAS_FAILED));
       return STATUS(IllegalState, Substitute("Request specified cas_config_opid_index_less_or_equal"
                                              " of $0 but the committed config has opid_index of $1",
                                              *cas_config_opid_index_less_or_equal,
-                                             committed_config.opid_index()));
+                                             committed_config.committed_op_index()));
     }
   }
 
@@ -2842,8 +2857,13 @@ void TSTabletManager::CreateReportedTabletPB(const TabletPeerPtr& tablet_peer,
   // We cannot get consensus state information unless the TabletPeer is running.
   auto consensus_result = tablet_peer->GetConsensus();
   if (consensus_result) {
+    auto consensus = *consensus_result;
     *reported_tablet->mutable_committed_consensus_state() =
-        consensus_result.get()->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
+        consensus->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
+    OpId pending_config_op_id = consensus->GetPendingConfigOpId();
+    if (pending_config_op_id.is_valid_not_empty()) {
+      pending_config_op_id.ToPB(reported_tablet->mutable_pending_config_op_id());
+    }
   }
 
   // Set the hide status of the tablet.

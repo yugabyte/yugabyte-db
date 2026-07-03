@@ -754,6 +754,12 @@ extern bool yb_force_catalog_update_on_next_ddl;
 extern bool yb_test_fail_all_drops;
 
 /*
+ * If set to true, a manual ANALYZE does not reset the auto-analyze mutation
+ * counters, reverting to the pre-reset behavior. Test only.
+ */
+extern bool yb_test_analyze_dont_reset_mutations;
+
+/*
  * If set to true, force invalidation of every base relation's index relcache
  * entries between add_base_rels_to_query() and make_one_rel() in
  * query_planner().  Used by tests to deterministically expose lazy-loading
@@ -857,6 +863,9 @@ extern int	yb_test_reset_retry_counts;
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
 */
 extern bool yb_enable_ddl_atomicity_infra;
+
+/* Enable shared replication origin write tagging. */
+extern bool yb_enable_replication_origin_shared;
 
 /*
  * Allow to return to the client SQL status codes defined by YugabyteDB (YBxxx).
@@ -1065,6 +1074,30 @@ extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
 extern void YBFlushBufferedOperations(YbcFlushDebugContext *debug_context);
 extern void YBAdjustOperationsBuffering(int multiple);
+
+struct QueryDesc;
+/* Called at the start of every ExecutorRun and ExecutorFinish. */
+extern void YBOnExecutorOperationBegin();
+/*
+ * Called at the end of every ExecutorRun and ExecutorFinish. At the top
+ * level, saves DocDB stats onto queryDesc for pg_stat_statements.
+ */
+extern void YBOnExecutorOperationEnd(struct QueryDesc *queryDesc);
+/* True for the outermost ExecutorRun/ExecutorFinish. */
+extern bool YBIsTopLevelExecutorOperation();
+
+/* Called at the start of every tracked ProcessUtility call. */
+extern void YBOnUtilityOperationBegin();
+/*
+ * Called at the end of every tracked ProcessUtility call. At the top
+ * level, saves DocDB stats into the YBGetUtilityOperationStats() slot.
+ */
+extern void YBOnUtilityOperationEnd();
+/* DocDB stats from the last top-level utility (for pg_stat_statements). */
+extern YbInstrumentation *YBGetUtilityOperationStats();
+
+/* Resets executor/utility nesting counters and stats after a failed transaction. */
+extern void YBResetOperationTracking();
 
 bool		YBEnableTracing();
 bool		YBReadFromFollowersEnabled();

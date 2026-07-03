@@ -11,6 +11,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gmock/gmock.h>
+
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
 #include "yb/client/ql-dml-test-base.h"
@@ -3818,6 +3820,149 @@ TEST_F_EX(
         (1 row)
       )#"
   ));
+}
+
+// Starts each base table with a single hash tablet so that we can drive
+// deterministic manual tablet splits, and disables auto-splitting so that the
+// only splits that happen during the test are the ones we trigger explicitly.
+class YBBackupTestVectorIndexOneTablet : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--enable_automatic_tablet_splitting=false");
+    options->extra_tserver_flags.push_back("--ysql_num_tablets=1");
+    options->extra_tserver_flags.push_back("--ycql_num_tablets=1");
+  }
+
+  string default_db_ = "yugabyte";
+};
+
+// While doing a restore the import snapshot meta handler might have to repartition a table. If this
+// table has a vector index, ImportSnapshotMeta must update the list of tablets of each child vector
+// index, and not just the indexed table. This test verifies this case.
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(VectorIndexBackupRestoreWithSplitAndDdl),
+    YBBackupTestVectorIndexOneTablet) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "yb_backup.py does not support vector indexes for this scenario.";
+  }
+
+  const std::string kTableName = "test_tbl";
+  const std::string kIndexName = "vec_idx";
+  constexpr int kNumRows = 200;
+  const std::string kQueryVector = "[1, 2, 3]";
+  constexpr int kTopK = 5;
+  const std::string kSourceDB = "yugabyte";
+  const std::string kTargetDB = "restored_db";
+
+  // Step 1: Create table DDLs and populate rows.
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kSourceDB));
+    ASSERT_OK(conn.Execute("CREATE EXTENSION IF NOT EXISTS vector"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (id int PRIMARY KEY, vec vector(3), label text)", kTableName));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX $0 ON $1 USING ybhnsw (vec vector_l2_ops)", kIndexName, kTableName));
+
+    for (int i = 1; i <= kNumRows; ++i) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0 VALUES ($1, '[$1, $2, $3]', 'label_$1')",
+          kTableName, i, i + 1, i + 2));
+    }
+
+    // Sanity-check the vector index returns rows pre-backup.
+    auto pre_result = ASSERT_RESULT(conn.FetchAllAsString(
+        Format("SELECT id FROM $0 ORDER BY vec <-> '$1' LIMIT $2",
+               kTableName, kQueryVector, kTopK)));
+    LOG(INFO) << "Pre-backup vector query result: " << pre_result;
+    ASSERT_FALSE(pre_result.empty());
+  }
+
+  // Step 2: Flush and manually split the base table twice so that
+  // it ends up with three tablets whose partition boundaries do NOT match the
+  // master's default 3-way uniform split. The first split divides the lone
+  // initial tablet in half (boundary near 0x8000); the second split divides
+  // the lower half again (boundary near 0x4000), producing a 3-tablet layout
+  // at roughly [, 0x4000), [0x4000, 0x8000), [0x8000, ). The default 3-way
+  // uniform layout would be [, 0x5555), [0x5555, 0xAAAA), [0xAAAA, ), so the
+  // import-time partition comparison will mismatch and RepartitionTable will
+  // run on restore.
+  ASSERT_OK(cluster_->WaitForAllIntentsApplied(10s));
+  auto table_id = ASSERT_RESULT(GetTableId(kTableName, "pre-split"));
+  auto index_id = ASSERT_RESULT(GetTableId(kIndexName, "pre-split"));
+  // YSQL doesn't support FlushTables with add_indexes=true (catalog_manager
+  // rejects "Getting indexes for YSQL table is not supported"); flush the
+  // base table and the vector index separately instead.
+  ASSERT_OK(client_->FlushTables({table_id}));
+  ASSERT_OK(client_->FlushTables({index_id}));
+
+  auto tablets =
+      ASSERT_RESULT(test_admin_client_->GetTabletLocations(kSourceDB, kTableName));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 1);
+
+  // First split: 1 -> 2 tablets.
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      kSourceDB, kTableName, /* wait_for_parent_deletion = */ true,
+      tablets[0].tablet_id()));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(kSourceDB, kTableName));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 2);
+
+  // Pick the tablet with the lowest partition_key_start to split next so that
+  // the resulting boundaries are deterministic regardless of the order in
+  // which GetTabletLocations returns tablets.
+  std::sort(tablets.begin(), tablets.end(),
+            [](const auto& a, const auto& b) {
+              return a.partition().partition_key_start() <
+                     b.partition().partition_key_start();
+            });
+
+  // Second split on the lower half: 2 -> 3 tablets with non-uniform boundaries.
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      kSourceDB, kTableName, /* wait_for_parent_deletion = */ true,
+      tablets[0].tablet_id()));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(kSourceDB, kTableName));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 3);
+
+  // Step 3: Create backup of the database.
+  const std::string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace",
+       Format("ysql.$0", kSourceDB), "create"}));
+
+  // Step 4: Restore the database from the backup.
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace",
+       Format("ysql.$0", kTargetDB), "restore"}));
+
+  auto restored_db_conn = ASSERT_RESULT(cluster_->ConnectToDB(kTargetDB));
+  // Step 5: Verify db and tables are present.
+  ASSERT_EQ(
+      ASSERT_RESULT(restored_db_conn.FetchRow<int64_t>(Format(
+          "SELECT count(*) FROM pg_class WHERE relname = '$0' AND relkind = 'r'", kTableName))),
+      1);
+
+  // Step 6a: Row counts match what was backed up.
+  ASSERT_EQ(
+      ASSERT_RESULT(
+          restored_db_conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", kTableName))),
+      kNumRows);
+
+  // Step 6b: Schema matches what was backed up (id, vec, label).
+  auto column_names = ASSERT_RESULT(restored_db_conn.FetchRows<std::string>(Format(
+      "SELECT column_name FROM information_schema.columns "
+      "WHERE table_name = '$0' ORDER BY ordinal_position",
+      kTableName)));
+  EXPECT_THAT(column_names, testing::UnorderedElementsAre("id", "vec", "label"));
+
+  // Step 6c: Vector index queries should still work after restore.
+  auto post_result = ASSERT_RESULT(restored_db_conn.FetchRows<std::string>(Format(
+      "SELECT label FROM $0 ORDER BY vec <-> '$1' LIMIT $2", kTableName, kQueryVector, kTopK)));
+  ASSERT_FALSE(post_result.empty()) << "Vector index query returned no rows after restore";
+  ASSERT_EQ(post_result.size(), kTopK)
+      << "Expected " << kTopK << " rows from vector index query, got: " << post_result.size();
 }
 
 TEST_F(

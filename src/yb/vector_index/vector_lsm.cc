@@ -117,7 +117,6 @@ namespace {
 
 YB_DEFINE_ENUM(ImmutableChunkState, (kInMemory)(kOnDisk)(kInManifest));
 YB_DEFINE_ENUM(CompactionState, (kNone)(kCompacting)(kCompacted));
-YB_DEFINE_ENUM(CompactionType, (kBackground)(kManual));
 YB_DEFINE_ENUM(ManifestUpdateType, (kFull)(kActual));
 
 // While mutable chunk is running, this value is added to num_tasks.
@@ -194,6 +193,7 @@ bool ContainsTask(const Tasks& tasks, CompactionType type) {
 
 } // namespace
 
+MonoDelta TEST_sleep_after_saving_chunk;
 MonoDelta TEST_sleep_during_flush;
 MonoDelta TEST_sleep_on_merged_chunk_populated;
 
@@ -846,13 +846,11 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
   CompactionTask(
       LSM& lsm,
       CompactionType compaction_type = CompactionType::kBackground,
-      CompactionScope&& compaction_scope = {},
       StdStatusCallback&& callback = {})
       : Base(lsm.options_.compaction_token->context()),
         lsm_(lsm),
         log_prefix_(Format("$0[TASK $1] ", lsm.LogPrefix(), SerialNo())),
         compaction_type_(compaction_type),
-        compaction_scope_(std::move(compaction_scope)),
         callback_(std::move(callback)),
         priority_(CalculatePriority()) {
   }
@@ -879,6 +877,8 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
 
  private:
   void Run(const Status& ready, PriorityThreadPoolSuspender* suspender) override {
+    TEST_SYNC_POINT("VectorLSM::CompactionTask::Run:Start");
+
     // Remember current serial_no to track possible changes in immutable chunks.
     const auto last_serial_no = lsm_.LastSerialNo();
 
@@ -921,16 +921,10 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     return result;
   }
 
-  void EnsureCompactionScope() {
-    if (compaction_type_ == CompactionType::kBackground && compaction_scope_.empty()) {
-      compaction_scope_ = lsm_.PickChunksForCompaction();
-    }
-  }
-
   Status DoRun(PriorityThreadPoolSuspender* suspender) {
-    EnsureCompactionScope();
+    auto scope = lsm_.PickChunksForCompaction(compaction_type_);
 
-    if (compaction_scope_.empty()) {
+    if (scope.empty()) {
       LOG_WITH_PREFIX(INFO) << "Nothing to compact";
       return Status::OK();
     }
@@ -940,7 +934,7 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
       .type = compaction_type(),
     };
 
-    return lsm_.DoCompact(context, std::move(compaction_scope_), suspender);
+    return lsm_.DoCompact(context, std::move(scope), suspender);
   }
 
   void Completed(const Status& status, uint64_t last_serial_no) {
@@ -961,7 +955,6 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
   LSM& lsm_;
   std::string log_prefix_;
   CompactionType    compaction_type_;
-  CompactionScope   compaction_scope_;
   StdStatusCallback callback_;
   std::atomic<int>  priority_;
 };
@@ -980,6 +973,8 @@ VectorLSM<Vector, DistanceResult>::~VectorLSM() {
   // Clear an always-set field, so an in-flight compaction task that still dereferences this
   // VectorLSM observes the destruction via the check in LastSerialNo().
   options_.thread_pool = nullptr;
+
+  TEST_SYNC_POINT("VectorLSM::~VectorLSM:Destroyed");
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1003,6 +998,8 @@ bool VectorLSM<Vector, DistanceResult>::IsShuttingDown() const {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::StartShutdown() {
+  TEST_SYNC_POINT("VectorLSM::StartShutdown:Begin");
+
   auto scope = shutdown_controller_.StartShutdown();
   if (!scope) {
     LOG_IF_WITH_PREFIX(DFATAL, !scope.status().IsShutdownInProgress()) << scope.status();
@@ -1055,6 +1052,8 @@ void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
   // Remove not started compaction tasks from the thread pool.
   options_.compaction_token->Remove(this);
 
+  TEST_SYNC_POINT("VectorLSM::CompleteShutdown:Waiting");
+
   // Prioritize remaining compaction tasks and wait for compactions to be completed.
   {
     // TODO(vector_index): probably options_.compaction_token->PrioritizeTask() should
@@ -1063,7 +1062,13 @@ void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
     for (auto* task : compaction_tasks_) {
       task->UpdatePriority();
     }
-    WaitForCompactionTasksDone(lock);
+    // Wait not only for the registered tasks, but also for any in-flight manual compaction
+    // registration to resolve. A manual compaction may set has_pending_manual_compaction_ and pass
+    // the running check before shutdown started, then register its task after this point. Waiting
+    // for the flag to clear guarantees such a registration either inserts a task (which is then
+    // waited for here) or observes the shutdown and abandons it, so no task can be registered on a
+    // VectorLSM that has already completed shutdown.
+    WaitForCompactionTasksDone(lock, /* wait_for_no_pending_manual= */ true);
   }
 
   // Wait for obsolete files deletions if any.
@@ -1567,7 +1572,7 @@ Result<WritableFile*> VectorLSM<Vector, DistanceResult>::RollManifest() {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 auto VectorLSM<Vector, DistanceResult>::SaveIndexToFile(VectorIndex& index, uint64_t serial_no) ->
-    Result<std::pair<VectorLSMFileMetaDataPtr, VectorIndexPtr>> {
+    Result<SaveIndexToFileResult> {
   VLOG_WITH_PREFIX(1) << Format(
       "Saving vector index on disk, serial_no: $0, num entries: $1",
       serial_no, index.Size());
@@ -1588,7 +1593,7 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& chunk) {
   VLOG_WITH_PREFIX_AND_FUNC(3) << AsString(*chunk);
 
-  VectorIndexPtr new_index;
+  SaveIndexToFileResult saved;
   if (chunk->index) {
     LOG_IF(DFATAL, chunk->file.get())
         << "Chunk is already saved to "
@@ -1599,7 +1604,10 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
       std::this_thread::sleep_for(FLAGS_TEST_vector_index_delay_saving_first_chunk_ms * 1ms);
     }
 
-    std::tie(chunk->file, new_index) = VERIFY_RESULT(SaveIndexToFile(*chunk->index, serial_no));
+    saved = VERIFY_RESULT(SaveIndexToFile(*chunk->index, serial_no));
+    if (TEST_sleep_after_saving_chunk) {
+      SleepFor(TEST_sleep_after_saving_chunk);
+    }
   }
 
   WritableFile* manifest_file = nullptr;
@@ -1607,10 +1615,12 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
   const bool stopping = !shutdown_controller_.IsRunning();
   {
     std::lock_guard lock(mutex_);
-    if (new_index) {
+    chunk->file = std::move(saved.first);
+    if (saved.second) {
       VLOG_WITH_PREFIX_AND_FUNC(3)
-          << "Update index: " << AsString(*chunk) << " => " << AsString(new_index->IndexStatsStr());
-      chunk->index = new_index;
+          << "Update index: " << AsString(*chunk) << " => "
+          << AsString(saved.second->IndexStatsStr());
+      chunk->index = std::move(saved.second);
     }
     chunk->state = ImmutableChunkState::kOnDisk;
     if (stopping && FLAGS_TEST_vector_index_skip_manifest_update_during_shutdown) {
@@ -1852,6 +1862,16 @@ size_t VectorLSM<Vector, DistanceResult>::NumSavedImmutableChunks() const {
   return std::ranges::count_if(
       immutable_chunks_,
       [](auto&& chunk) { return chunk->IsInManifest() || chunk->IsOnDisk(); });
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+uint64_t VectorLSM<Vector, DistanceResult>::OnDiskSize() const {
+  SharedLock lock(mutex_);
+  uint64_t result = 0;
+  for (const auto& chunk : immutable_chunks_) {
+    result += chunk->file_size();
+  }
+  return result;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2252,7 +2272,11 @@ VectorLSM<Vector, DistanceResult>::PickChunksBySizeRatio() const {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 typename VectorLSM<Vector, DistanceResult>::CompactionScope
-VectorLSM<Vector, DistanceResult>::PickChunksForCompaction() const {
+VectorLSM<Vector, DistanceResult>::PickChunksForCompaction(CompactionType type) const {
+  if (type == CompactionType::kManual) {
+    return PickChunksForFullCompaction();
+  }
+
   SharedLock lock(mutex_);
   if (auto chunks = PickChunksBySizeAmplification(); !chunks.empty()) {
     return chunks;
@@ -2646,39 +2670,72 @@ Result<std::unique_ptr<typename VectorLSM<Vector, DistanceResult>::CompactionTas
 VectorLSM<Vector, DistanceResult>::RegisterManualCompaction(StdStatusCallback callback) {
   DCHECK(callback) << "Compaction callback must be specified";
 
-  // Check running compactions, only one task for manual compaction is allowed at a time.
-  {
-    UniqueLock lock(compaction_tasks_mutex_);
-    if (has_pending_manual_compaction_ ||
-        ContainsTask(compaction_tasks_, CompactionType::kManual)) {
-      return STATUS(ServiceUnavailable, "Vector index manual compaction already in progress");
-    }
-    has_pending_manual_compaction_ = true; // Prevents adding background compaction tasks.
-
-    // Let's wait for ongoing background compactions completion to be able to pick all the
-    // chunks for the manual compaction. No other tasks are expected in compaction_tasks_.
-    if (!compaction_tasks_.empty()) {
-      WaitForCompactionTasksDone(lock);
-    }
-  }
+  TEST_SYNC_POINT("VectorLSM::RegisterManualCompaction:Start");
 
   // TODO(vector_index): do we need to trigger sync flush?
   // TODO(vector_index): do we need to wait for updates_queue_ is empty to grab more chunk
   // for a manual compaction, even without explicit flush being triggered here?
+  auto task = std::make_unique<CompactionTask>(*this, CompactionType::kManual, std::move(callback));
 
-  // Pick files for manual compaction -- it's required to do while has_pending_manual_compaction_
-  // is set, otherwise background compaction won't allow to pick all the manifested chunks.
-  auto task = std::make_unique<CompactionTask>(
-      *this, CompactionType::kManual, PickChunksForFullCompaction(), std::move(callback));
-  Register(*task);
+  // Check running compactions, only one task for manual compaction is allowed at a time.
+  UniqueLock lock(compaction_tasks_mutex_);
 
-  // Release pending manual compaction state.
-  {
-    std::lock_guard lock(compaction_tasks_mutex_);
+  // Bail out if shutdown has already started: CompleteShutdown() must not race a manual
+  // compaction registration that would otherwise outlive the VectorLSM.
+  RETURN_NOT_OK(RUNNING_STATUS());
+  if (has_pending_manual_compaction_ ||
+      ContainsTask(compaction_tasks_, CompactionType::kManual)) {
+    return STATUS(ServiceUnavailable, "Vector index manual compaction already in progress");
+  }
+  has_pending_manual_compaction_ = true; // Prevents adding background compaction tasks.
+  auto se = ScopeExit([this, &lock]() NO_THREAD_SAFETY_ANALYSIS {
+    // Release the pending state and notify shutdown, which may be waiting for it to clear.
     has_pending_manual_compaction_ = false;
+    lock.unlock();
+    compaction_tasks_cv_.notify_all();
+  });
+
+  // Let's wait for ongoing background compactions completion to be able to pick all the
+  // chunks for the manual compaction. No other tasks are expected in compaction_tasks_.
+  if (!compaction_tasks_.empty()) {
+    WaitForCompactionTasksDone(lock);
   }
 
-  return std::move(task);
+  TEST_SYNC_POINT("VectorLSM::RegisterManualCompaction:BeforeRegister");
+
+  // Shutdown may have started while picking chunks (lock was released above). RegisterUnlocked
+  // refuses to register on a shutting-down VectorLSM and hands the task back to be abandoned, so
+  // it cannot outlive the object. CompleteShutdown() waits for has_pending_manual_compaction_ to
+  // clear, so it cannot have completed before this point.
+  RETURN_NOT_OK(RegisterUnlocked(*task));
+  return task;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Result<typename VectorLSM<Vector, DistanceResult>::CompactionTaskPtr>
+VectorLSM<Vector, DistanceResult>::CreateBackgroundCompactionTask(CompactionTask* finished_task) {
+  std::lock_guard lock(compaction_tasks_mutex_);
+
+  // Retire the finished task and register its successor atomically, so the finished task is not
+  // counted as a running background compaction while shutdown is waiting for it to complete.
+  if (finished_task) {
+    RemoveTaskUnlocked(*finished_task);
+  }
+  if (has_pending_manual_compaction_ ||
+      ContainsTask(compaction_tasks_, CompactionType::kBackground)) {
+    VLOG_WITH_PREFIX(2) << "Skipping background compaction due to another compaction is running";
+    return CompactionTaskPtr();
+  }
+
+  // TODO(vector_index): None of approaches for picking chunks is checked at this point, which
+  // leads to a possibility of unnecessary compaction attempts by creating and submitting
+  // a CompactionTask which will do nothing. Alternative way is to try to pick chunks for
+  // compaction and in case of success create and submit the task -- but it is better to not
+  // setup picked chunks for the compaction task letting it pick large scope on execution.
+  auto task = std::make_unique<CompactionTask>(*this);
+  VLOG_WITH_PREFIX(2) << "Created background compaction task: " << task->ToString();
+  RETURN_NOT_OK(RegisterUnlocked(*task));
+  return task;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2687,7 +2744,7 @@ void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction(
   auto se = ScopeExit([this, &finished_task] {
     if (finished_task) {
       std::lock_guard lock(compaction_tasks_mutex_);
-      RemoveFinishedTaskUnlocked(*finished_task);
+      RemoveTaskUnlocked(*finished_task);
     }
   });
 
@@ -2726,32 +2783,19 @@ void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction(
     return;
   }
 
-  // Check there's no running background compactions.
-  CompactionTaskPtr task;
-  {
-    std::lock_guard lock(compaction_tasks_mutex_);
-    if (finished_task) {
-      RemoveFinishedTaskUnlocked(*finished_task);
-      finished_task = nullptr;
-    }
-    if (has_pending_manual_compaction_ ||
-        ContainsTask(compaction_tasks_, CompactionType::kBackground)) {
-      VLOG_WITH_PREFIX(2) << "Skipping background compaction due to another compaction is running";
-      return;
-    }
+  // CreateBackgroundCompactionTask retires the finished task itself, so clear it here to stop the
+  // scope guard from removing it a second time.
+  auto task = CreateBackgroundCompactionTask(std::exchange(finished_task, nullptr));
 
-    // TODO(vector_index): None of approaches for picking chunks is checked at this point, which
-    // leads to a possibility of unnecessary compaction attempts by creating and submitting
-    // a CompactionTask which will do nothing. Alternative way is to try to pick chunks for
-    // compaction and in case of success create and submit the task -- but it is better to not
-    // setup picked chunks for the compaction task letting it pick large scope on execution.
-    task = std::make_unique<CompactionTask>(*this);
-    VLOG_WITH_PREFIX(2) << "Created background compaction task: " << task->ToString();
-    RegisterUnlocked(*task);
+  // Nothing to submit if shutting down (non-OK) or no background compaction is needed (null task).
+  if (!task.ok() || !*task) {
+    LOG_IF_WITH_PREFIX(INFO, !task.ok())
+        << "Not scheduling background compaction: " << task.status();
+    return;
   }
 
   // TODO(vector_index): figure out what to do with bad status.
-  [[maybe_unused]] auto status = SubmitTask(std::move(task));
+  WARN_NOT_OK(SubmitTask(std::move(*task)), "Failed to submit background compaction task");
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2809,28 +2853,32 @@ Status VectorLSM<Vector, DistanceResult>::WaitForCompaction() {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-void VectorLSM<Vector, DistanceResult>::RegisterUnlocked(CompactionTask& task) {
+Status VectorLSM<Vector, DistanceResult>::RegisterUnlocked(CompactionTask& task) {
+  // thread_pool is always set on an opened VectorLSM and cleared in the destructor, so a null value
+  // here means a compaction task is being registered on a destroyed VectorLSM.
+  DCHECK_ONLY_NOTNULL(options_.thread_pool);
+
+  // Do not register a task once shutdown has started -- it could outlive the VectorLSM. Callers
+  // hold compaction_tasks_mutex_, which CompleteShutdown() also takes, so the state observed here
+  // is consistent with the shutdown wait, and the caller gets the task back to abandon it.
+  RETURN_NOT_OK(RUNNING_STATUS());
+
   // Sanity check.
   DCHECK(!compaction_tasks_.contains(&task));
 
   compaction_tasks_.insert(&task);
   compaction_tasks_cv_.notify_all();
-}
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-void VectorLSM<Vector, DistanceResult>::Register(CompactionTask& task) {
-  std::lock_guard lock(compaction_tasks_mutex_);
-  return RegisterUnlocked(task);
+  return Status::OK();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::Deregister(CompactionTask& task) {
   std::lock_guard lock(compaction_tasks_mutex_);
-  RemoveFinishedTaskUnlocked(task);
+  RemoveTaskUnlocked(task);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-void VectorLSM<Vector, DistanceResult>::RemoveFinishedTaskUnlocked(CompactionTask& task) {
+void VectorLSM<Vector, DistanceResult>::RemoveTaskUnlocked(CompactionTask& task) {
   // Sanity check.
   DCHECK(compaction_tasks_.contains(&task));
 
@@ -2853,10 +2901,14 @@ Status VectorLSM<Vector, DistanceResult>::SubmitTask(CompactionTaskPtr task) {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 template<typename Lock>
-void VectorLSM<Vector, DistanceResult>::WaitForCompactionTasksDone(Lock& lock) {
+void VectorLSM<Vector, DistanceResult>::WaitForCompactionTasksDone(
+    Lock& lock, bool wait_for_no_pending_manual) {
   DCHECK_EQ(lock.mutex(), &compaction_tasks_mutex_);
   compaction_tasks_cv_.wait(
-      lock, [this]() NO_THREAD_SAFETY_ANALYSIS { return compaction_tasks_.empty(); });
+      lock, [this, wait_for_no_pending_manual]() NO_THREAD_SAFETY_ANALYSIS {
+        return compaction_tasks_.empty() &&
+               (!wait_for_no_pending_manual || !has_pending_manual_compaction_);
+      });
 }
 
 YB_INSTANTIATE_TEMPLATE_FOR_ALL_VECTOR_AND_DISTANCE_RESULT_TYPES(VectorLSM);

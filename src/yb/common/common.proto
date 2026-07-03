@@ -797,6 +797,11 @@ message CDCSDKStreamCreateOptionsPB {
   optional ReplicationSlotLsnType lsn_type = 12 [default = ReplicationSlotLsnType_SEQUENCE];
   optional ReplicationSlotOrderingMode ordering_mode =
     13 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
+  optional CDCSDKBoundTableIds bound_table_ids = 14;
+}
+
+message CDCSDKBoundTableIds {
+  repeated string table_ids = 1;
 }
 
 message TserverMetricsInfoPB {
