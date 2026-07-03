@@ -4,11 +4,14 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
@@ -27,6 +30,8 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.UUID;
 import org.junit.Before;
@@ -163,5 +168,77 @@ public class ProvisionUniverseNodesTest extends CommissionerBaseTest {
     UUID retryTaskUUID = retryTask.getTaskUUID();
     assertNotEquals(taskUUID, retryTaskUUID);
     waitForTask(retryTaskUUID);
+  }
+
+  @Test
+  public void testStopSubtasksCreatedWhenNodesLive() {
+    // Nodes start Live, so the stop block (stop process and marking the node Stopped) must be
+    // created before re-provisioning.
+    ProvisionUniverseNodesParams params = createTaskParams();
+    params.expectedUniverseVersion = -1;
+    params.sleepAfterMasterRestartMillis = 5;
+    params.sleepAfterTServerRestartMillis = 5;
+    params.skipNodeChecks = true;
+    TaskInfo taskInfo = submitTask(params);
+
+    assertTrue(
+        "A stop AnsibleClusterServerCtl should be created when nodes are Live",
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                t ->
+                    t.getTaskType() == TaskType.AnsibleClusterServerCtl
+                        && "stop".equals(getStringParam(t, "command"))));
+    assertTrue(
+        "Nodes should be marked Stopped before re-provisioning",
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                t ->
+                    t.getTaskType() == TaskType.SetNodeState
+                        && NodeState.Stopped.name().equals(getStringParam(t, "state"))));
+  }
+
+  @Test
+  public void testStopSubtasksSkippedWhenNodesNotLive() {
+    // Simulate a retry where a previous attempt already moved the nodes past Live and removed the
+    // node agent as part of re-provisioning. The stop block must be skipped so the task stays
+    // idempotent (the node agent is mandatory and re-issuing the stop would fail).
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        universe -> {
+          for (NodeDetails node : universe.getNodes()) {
+            node.state = NodeState.Reprovisioning;
+          }
+        });
+
+    ProvisionUniverseNodesParams params = createTaskParams();
+    params.expectedUniverseVersion = -1;
+    params.sleepAfterMasterRestartMillis = 5;
+    params.sleepAfterTServerRestartMillis = 5;
+    params.skipNodeChecks = true;
+    TaskInfo taskInfo = submitTask(params);
+
+    assertFalse(
+        "A stop AnsibleClusterServerCtl should be skipped when nodes are not Live",
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                t ->
+                    t.getTaskType() == TaskType.AnsibleClusterServerCtl
+                        && "stop".equals(getStringParam(t, "command"))));
+    assertFalse(
+        "Nodes should not be re-marked Stopped when they are not Live",
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                t ->
+                    t.getTaskType() == TaskType.SetNodeState
+                        && NodeState.Stopped.name().equals(getStringParam(t, "state"))));
+    // Re-provisioning must still proceed for the node.
+    assertTrue(
+        "Re-provisioning (SetupYNP) should still be created",
+        taskInfo.getSubTasks().stream().anyMatch(t -> t.getTaskType() == TaskType.SetupYNP));
+  }
+
+  private static String getStringParam(TaskInfo taskInfo, String field) {
+    JsonNode params = taskInfo.getTaskParams();
+    return (params != null && params.hasNonNull(field)) ? params.get(field).textValue() : null;
   }
 }
