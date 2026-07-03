@@ -4437,6 +4437,50 @@ bool EnableTableOwnedVectorReverseMapping() {
       : FLAGS_enable_table_owned_vector_reverse_mapping;
 }
 
+// Prototype: an index is eligible to follow its base table (SPLIT FOLLOWING TABLE)
+// only when it shares the base table's HASH key. Both must be hash-partitioned with
+// the same number of hash key columns; that guarantees a compatible (uint16) encoded
+// partition-key space, so a base split key can be reused verbatim on the index -- the
+// property every later following phase relies on.
+//
+// The stronger semantic property (each index hash column is exactly the base table's
+// corresponding hash key column, in order, so a row and its index entry hash into the
+// same bucket) is checked here only for YCQL, where IndexInfoPB.indexed_hash_column_ids
+// is populated. For YSQL that field is not populated at the master (index maintenance
+// lives in the PG layer), so exact column identity is trusted from the user's explicit
+// opt-in for now and re-verified when partition following compares live ranges in a
+// later phase. Returns OK when eligible, else InvalidArgument explaining why.
+Status ValidateFollowTableEligibility(
+    const IndexInfoPB& index_info, const Schema& index_schema, const Schema& base_schema) {
+  const size_t base_hash_count = base_schema.num_hash_key_columns();
+  const size_t index_hash_count = index_schema.num_hash_key_columns();
+  SCHECK_GT(
+      base_hash_count, 0U, InvalidArgument,
+      "SPLIT FOLLOWING TABLE requires a hash-partitioned base table");
+  SCHECK_GT(
+      index_hash_count, 0U, InvalidArgument,
+      "SPLIT FOLLOWING TABLE requires a hash-partitioned index");
+  SCHECK_EQ(
+      index_hash_count, base_hash_count, InvalidArgument,
+      "SPLIT FOLLOWING TABLE requires the index and base table to have the same number of "
+      "HASH key columns");
+
+  // YCQL: strict column-identity check when the base column mapping is available.
+  if (static_cast<size_t>(index_info.indexed_hash_column_ids_size()) == base_hash_count) {
+    for (size_t i = 0; i < base_hash_count; ++i) {
+      if (ColumnId(static_cast<ColumnIdRep>(
+              index_info.indexed_hash_column_ids(narrow_cast<int>(i)))) !=
+          base_schema.column_id(i)) {
+        return STATUS(
+            InvalidArgument,
+            "SPLIT FOLLOWING TABLE requires the index HASH key to match the base table's HASH "
+            "key in order");
+      }
+    }
+  }
+  return Status::OK();
+}
+
 } // namespace
 
 // Create a new table.
@@ -4525,6 +4569,22 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(req.schema(), &schema));
   RETURN_NOT_OK(ValidateCreateTableSchema(schema, resp));
+
+  // Prototype: validate a follow-table index (SPLIT FOLLOWING TABLE). This is the
+  // authoritative gate; PostgreSQL also rejects early when the GUC is off. The index
+  // must share its base table's HASH key (see ValidateFollowTableEligibility). Later
+  // phases (partition/placement/split following) key off the persisted mode.
+  if (req.follow_table_mode() != FOLLOW_TABLE_NONE) {
+    SCHECK(
+        FLAGS_ysql_yb_enable_follow_table_index, InvalidArgument,
+        "SPLIT FOLLOWING TABLE is not enabled "
+        "(set --ysql_yb_enable_follow_table_index=true)");
+    SCHECK(
+        IsIndex(req), InvalidArgument,
+        "SPLIT FOLLOWING TABLE is only valid for a secondary index");
+    auto base_schema = VERIFY_RESULT(indexed_table->GetSchema());
+    RETURN_NOT_OK(ValidateFollowTableEligibility(req.index_info(), schema, base_schema));
+  }
 
   // Pre-colocation GA colocated tables in a legacy colocated database are colocated via database,
   // but after GA, colocated tables are colocated via tablegroups.
@@ -4633,6 +4693,26 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // non-parent table. Such tables will reuse tablets of their respective colocation group.
   bool joining_colocation_group =
       colocated && !IsColocationParentTableId(req.table_id());
+
+  // Prototype: creation-time partition following. When this index follows its base table
+  // (SPLIT FOLLOWING TABLE), inherit the base table's current tablet split boundaries 1:1
+  // instead of synthesizing new ones. The index keeps its own hash partition_schema (which
+  // matches the base's by the eligibility check), so the base's encoded partition ranges
+  // apply verbatim. Populating CreateTableRequestPB.partitions routes creation through the
+  // existing explicit-partitions branch of CreatePartitions (the same path backup/restore
+  // uses to reproduce a table's partitioning) -- no colocation machinery involved.
+  if (req.follow_table_mode() != FOLLOW_TABLE_NONE) {
+    auto base_tablets =
+        VERIFY_RESULT(indexed_table->GetTablets(GetTabletsMode::kOrderByPartitions));
+    req.clear_partitions();
+    for (const auto& base_tablet : base_tablets) {
+      *req.add_partitions() = base_tablet->LockForRead()->pb.partition();
+    }
+    req.set_num_tablets(req.partitions_size());
+    LOG(INFO) << "Follow-table index " << req.name() << " inheriting "
+              << req.partitions_size() << " partition(s) from base table "
+              << req.indexed_table_id();
+  }
 
   int num_tablets = VERIFY_RESULT(
       CalculateNumTabletsForTableCreation(req, schema, replication_info.live_replicas()));
@@ -4805,6 +4885,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         req, schema, partition_schema, namespace_id, namespace_name, partitions, colocated,
         IsSystemObject::kFalse, &index_info, joining_colocation_group ? nullptr : &tablets, resp,
         &table, &indexed_table));
+
+    // Prototype: persist the follow-table mode on the index's metadata so later phases
+    // (partition/placement/split following) can identify follower indexes.
+    if (req.follow_table_mode() != FOLLOW_TABLE_NONE) {
+      table->mutable_metadata()->mutable_dirty()->pb.set_follow_table_mode(
+          req.follow_table_mode());
+    }
 
     // Section is executed when a table is either the parent table or a user table in a colocation
     // group.

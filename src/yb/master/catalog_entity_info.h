@@ -731,6 +731,11 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool is_unique_index() const;
   bool is_vector_index() const;
 
+  // Prototype: how this index follows its base table's tablet split mapping and
+  // placement (SPLIT FOLLOWING TABLE). FOLLOW_TABLE_NONE for a normal index/table.
+  YbFollowTableMode follow_table_mode() const;
+  bool follows_table() const { return follow_table_mode() != FOLLOW_TABLE_NONE; }
+
   void set_is_system() { is_system_ = true; }
   bool is_system() const { return is_system_; }
 

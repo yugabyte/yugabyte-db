@@ -1407,6 +1407,20 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"yb_enable_follow_table_index", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Prototype: enables 'CREATE INDEX ... SPLIT FOLLOWING TABLE'."),
+			gettext_noop("When true, a hash-partitioned secondary index whose hash key "
+						 "matches its base table's may be created with SPLIT FOLLOWING "
+						 "TABLE, making the index eventually track the base table's tablet "
+						 "split boundaries and placement. When false, that syntax is "
+						 "rejected."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_follow_table_index,
+		false,
+		NULL, NULL, NULL
+	},
+	{
 		{"yb_prefer_bnl", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("If enabled, planner will force a preference of batched"
 						 " nested loop join plans over classic nested loop"

@@ -1169,6 +1169,22 @@ CreateIndexHandleSplitOptions(YbcPgStatement handle,
 				break;
 			}
 
+		case FOLLOW_TABLE:
+			/*
+			 * YB: SPLIT FOLLOWING TABLE. The index derives its partitioning and
+			 * placement from the base table at the master. Require HASH columns
+			 * (following is only meaningful for a hash-partitioned index) and
+			 * mark the create request as a follow-table request. Eligibility
+			 * (matching the base table's hash key) is validated at the master.
+			 */
+			if (!(coloptions[0] & INDOPTION_HASH))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("HASH columns must be present to follow the base table's split")));
+
+			HandleYBStatus(YBCPgCreateIndexSetFollowTable(handle));
+			break;
+
 		default:
 			ereport(ERROR, (errmsg("illegal memory state for SPLIT options")));
 			break;

@@ -374,6 +374,13 @@ DEFINE_RUNTIME_bool(ysql_enable_auto_analyze, false,
     "Enable Auto Analyze to automatically trigger ANALYZE for updating table statistics of tables "
     "which have changed more than a configurable threshold.");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_follow_table_index, false,
+    "Prototype: enable follow-table secondary indexes. When true, a hash-partitioned "
+    "secondary index whose hash key matches its base table's may be created with "
+    "'CREATE INDEX ... SPLIT FOLLOWING TABLE', which makes the index eventually track the "
+    "base table's tablet split boundaries and placement. When false, that syntax is "
+    "rejected. Defaults to false.");
+
 DEFINE_NON_RUNTIME_bool(enable_qos, false, "Enable the QoS feature.");
 
 DEFINE_NON_RUNTIME_bool(is_yb_managed, false,

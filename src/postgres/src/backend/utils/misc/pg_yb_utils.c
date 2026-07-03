@@ -2299,6 +2299,12 @@ bool		yb_enable_replication_origin_shared = true;
 
 bool		yb_use_hash_splitting_by_default = true;
 
+/*
+ * Prototype: gates the 'SPLIT FOLLOWING TABLE' CREATE INDEX syntax. Mirrors the gflag
+ * --ysql_yb_enable_follow_table_index in common_flags.cc.
+ */
+bool		yb_enable_follow_table_index = false;
+
 bool		yb_xcluster_automatic_mode_target_ddl = false;
 
 bool		yb_enable_extended_sql_codes = false;

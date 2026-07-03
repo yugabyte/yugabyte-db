@@ -210,6 +210,13 @@ Status PgCreateTable::Exec(
     if (req_.skip_index_backfill()) {
       table_creator->skip_index_backfill(true);
     }
+    // Prototype: forward the follow-table mode (SPLIT FOLLOWING TABLE) to the master.
+    // req_ carries a proto3 mirror enum (tserver::YbFollowTableMode); map it to the
+    // proto2 master::YbFollowTableMode expected by the master. Integer values match.
+    if (req_.follow_table_mode() != YbFollowTableMode::FOLLOW_TABLE_NONE) {
+      table_creator->follow_table_mode(
+          static_cast<master::YbFollowTableMode>(req_.follow_table_mode()));
+    }
   }
 
   // If the table was created in the xCluster DDL replication extension.

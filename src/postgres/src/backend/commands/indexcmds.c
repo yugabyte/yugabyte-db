@@ -1256,6 +1256,21 @@ DefineIndex(Oid relationId,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("cannot use TABLEGROUP with SPLIT")));
+
+			/*
+			 * YB: 'SPLIT FOLLOWING TABLE' is a prototype feature gated by the
+			 * yb_enable_follow_table_index GUC (mirrors the master gflag
+			 * --ysql_yb_enable_follow_table_index). Reject early with a friendly
+			 * error when the feature is disabled; the master enforces this
+			 * authoritatively as well.
+			 */
+			if (stmt->split_options->split_type == FOLLOW_TABLE &&
+				!yb_enable_follow_table_index)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("SPLIT FOLLOWING TABLE is not enabled"),
+						 errhint("Set yb_enable_follow_table_index to true to use "
+								 "follow-table indexes.")));
 		}
 
 		colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
@@ -1424,8 +1439,14 @@ DefineIndex(Oid relationId,
 	 * YB: Keep the SPLIT clause and the yb_presplit reloption in sync so that
 	 * the index is created with the right pre-split values and yb_presplit is
 	 * persisted for REINDEX and dump/restore.
+	 *
+	 * SPLIT FOLLOWING TABLE carries no num_tablets/split_points to synchronize
+	 * (the index derives its partitioning from the base table at the master),
+	 * so it is excluded here and rides the split_options plumbing untouched.
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() &&
+		!(stmt->split_options &&
+		  stmt->split_options->split_type == FOLLOW_TABLE))
 		YbSyncSplitOptionsAndPresplit(&stmt->split_options, &stmt->options);
 
 	/*
