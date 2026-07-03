@@ -190,15 +190,11 @@ function getDocsPageHeaderOffset() {
     }
   }
 
-  return Math.ceil(offset);
+  return Math.max(0, Math.ceil(offset));
 }
 
 function updateDocsPageHeaderBarOffset() {
   const offset = getDocsPageHeaderOffset();
-  if (!offset) {
-    return;
-  }
-
   document.documentElement.style.setProperty(
     '--docs-sticky-header-top',
     `${offset}px`,
