@@ -1,0 +1,122 @@
+name: Run hypopg tests
+
+on:
+  push:
+    branches:
+      - REL1_STABLE
+  pull_request:
+    branches:
+      - REL1_STABLE
+
+env:
+  DATADIR: /dev/shm/data
+  LOGFILE: /dev/shm/data/logfile
+
+jobs:
+  hypopg_tests:
+    name: hypopg tests
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        postgres_major_version: [
+          "10",
+          "11",
+          "12",
+          "13",
+          "14",
+          "15",
+          "16",
+          "17",
+          "18",
+          "19beta"
+        ]
+        os: ["ubuntu-22.04"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up prerequisites and environment
+      run: |
+        echo "*********** ENVIRONMENT ************"
+        if [[ "${{ matrix.postgres_major_version }}" == *"devel" ]]; then
+          pg_major=$( echo "${{ matrix.postgres_major_version }}" | grep -Eo "[0-9]+")
+          devel="yes"
+          beta="no"
+        elif [[ "${{ matrix.postgres_major_version }}" == *"beta" ]]; then
+          pg_major=$( echo "${{ matrix.postgres_major_version }}" | grep -Eo "[0-9]+")
+          devel="no"
+          beta="yes"
+        else
+          pg_major="${{ matrix.postgres_major_version }}"
+          devel="no"
+          beta="no"
+        fi
+
+        export PG_MAJOR_VERSION=${pg_major}
+        echo "PG_MAJOR_VERSION=$PG_MAJOR_VERSION" >> $GITHUB_ENV
+        echo "MAKEFLAGS=$MAKEFLAGS -j $(grep -c ^processor /proc/cpuinfo)" >> $GITHUB_ENV
+        echo ""
+
+        echo "************ CLEAN IMAGE ***********"
+        sudo apt remove -y '^postgres.*' '^libpq.*'
+        echo ""
+
+        echo "********* REPOSITORY SET UP ********"
+        sudo apt-get install -y wget gnupg
+
+        if [[ "${devel}" == "yes" ]]; then
+          sudo add-apt-repository "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg-snapshot main ${PG_MAJOR_VERSION}"
+        elif [[ "${beta}" == "yes" ]]; then
+          sudo sh -c "echo \"deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main ${PG_MAJOR_VERSION}\" > /etc/apt/sources.list.d/pgdg.list"
+        else
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+        fi
+
+        # pin the pgdg repository with higher priority than the OS (500)
+        echo "Package: *" | sudo tee /etc/apt/preferences.d/pgdg.pref
+        echo "Pin: release o=apt.postgresql.org" | sudo tee -a /etc/apt/preferences.d/pgdg.pref
+        echo "Pin-Priority: 800" | sudo tee -a /etc/apt/preferences.d/pgdg.pref
+
+        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+        sudo apt-get update -y -qq --fix-missing
+
+        echo ""
+        echo "******** INSTALL POSTGRES **********"
+        sudo apt-get install -y \
+          postgresql-$PG_MAJOR_VERSION \
+          postgresql-server-dev-$PG_MAJOR_VERSION \
+          postgresql-contrib-$PG_MAJOR_VERSION
+        echo ""
+
+        echo "******* INSTALL DEPENDENCIES *******"
+        sudo apt-get install -y \
+          gcc \
+          make \
+          build-essential \
+          pkg-config
+        echo ""
+
+        echo "********** READJUST PATH ***********"
+        export PATH=$(pg_config --bindir):$PATH
+        echo "PATH=$PATH" >> $GITHUB_ENV
+        cat $GITHUB_ENV
+        echo ""
+
+    - name: Start a postgres ${{ matrix.postgres_major_version }} server
+      run: |
+        sudo chmod a+rwx /var/run/postgresql/
+        pg_ctl -D $DATADIR initdb
+        pg_ctl -D $DATADIR -l $LOGFILE start || cat $LOGFILE
+        psql -c 'select 1 as ok' postgres
+
+    - name: Build and install hypopg for postgres ${{ matrix.postgres_major_version }}
+      run: |
+        make
+        sudo make install
+
+    - name: Run hypopg tests for postgres ${{ matrix.postgres_major_version }}
+      run: make installcheck || ( errcode=$?; cat regression.diffs && exit $errcode )
+
+    - name: Stop the running postgres ${{ matrix.postgres_major_version }} server
+      run: pg_ctl -D $DATADIR stop

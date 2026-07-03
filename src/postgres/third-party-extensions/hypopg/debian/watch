@@ -1,3 +1,0 @@
-version=4
-opts="uversionmangle=s/(beta)/~$1/" \
-https://github.com/hypopg/hypopg/tags .*/(.*).tar.gz

@@ -8,7 +8,7 @@
  * This program is open source, licensed under the PostgreSQL license.
  * For license terms, see the LICENSE file.
  *
- * Copyright (C) 2015-2024: Julien Rouhaud
+ * Copyright (C) 2015-2026: Julien Rouhaud
  *
  *-------------------------------------------------------------------------
  */
@@ -31,6 +31,9 @@
 #endif
 #include "executor/spi.h"
 #include "miscadmin.h"
+#if PG_VERSION_NUM >= 190000
+#include "optimizer/pathnode.h"
+#endif
 #include "utils/elog.h"
 
 #include "include/hypopg.h"
@@ -95,11 +98,18 @@ static ExecutorEnd_hook_type prev_ExecutorEnd_hook = NULL;
 
 
 static Oid hypo_get_min_fake_oid(void);
+#if PG_VERSION_NUM < 190000
 static void hypo_get_relation_info_hook(PlannerInfo *root,
 										Oid relationObjectId,
 										bool inhparent,
 										RelOptInfo *rel);
 static get_relation_info_hook_type prev_get_relation_info_hook = NULL;
+#else
+static void hypo_build_simple_rel_hook(PlannerInfo *root,
+										RelOptInfo *rel,
+										RangeTblEntry *rte);
+static build_simple_rel_hook_type prev_build_simple_rel_hook = NULL;
+#endif
 
 static bool hypo_index_match_table(hypoIndex *entry, Oid relid);
 static bool hypo_is_simple_explain(Node *node);
@@ -114,8 +124,13 @@ _PG_init(void)
 	prev_ExecutorEnd_hook = ExecutorEnd_hook;
 	ExecutorEnd_hook = hypo_executorEnd_hook;
 
+#if PG_VERSION_NUM < 190000
 	prev_get_relation_info_hook = get_relation_info_hook;
 	get_relation_info_hook = hypo_get_relation_info_hook;
+#else
+	prev_build_simple_rel_hook = build_simple_rel_hook;
+	build_simple_rel_hook = hypo_build_simple_rel_hook;
+#endif
 
 	prev_explain_get_index_name_hook = explain_get_index_name_hook;
 	explain_get_index_name_hook = hypo_explain_get_index_name_hook;
@@ -494,12 +509,23 @@ hypo_get_min_fake_oid(void)
  * This function will execute the "hypo_injectHypotheticalIndex" for every
  * hypothetical index found for each relation if the isExplain flag is setup.
  */
+#if PG_VERSION_NUM < 190000
 static void
 hypo_get_relation_info_hook(PlannerInfo *root,
 							Oid relationObjectId,
 							bool inhparent,
 							RelOptInfo *rel)
 {
+#else
+static void
+hypo_build_simple_rel_hook(PlannerInfo *root,
+						   RelOptInfo *rel,
+						   RangeTblEntry *rte)
+{
+	Oid		relationObjectId = rte->relid;
+	bool	inhparent = rte->inh;
+#endif
+
 	if (isExplain && hypo_is_enabled)
 	{
 		Relation	relation;
@@ -538,8 +564,13 @@ hypo_get_relation_info_hook(PlannerInfo *root,
 		table_close(relation, AccessShareLock);
 	}
 
+#if PG_VERSION_NUM < 190000
 	if (prev_get_relation_info_hook)
 		prev_get_relation_info_hook(root, relationObjectId, inhparent, rel);
+#else
+	if (prev_build_simple_rel_hook)
+		prev_build_simple_rel_hook(root, rel, rte);
+#endif
 }
 
 /*

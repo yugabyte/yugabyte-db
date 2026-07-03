@@ -1,6 +1,26 @@
 Changelog
 =========
 
+2026-06-20 version 1.4.3:
+-------------------------
+
+  **Miscellaneous**:
+
+  - Fix compatibility with PostgreSQL 19 (Julien Rouhaud)
+
+  **Bug fixes**:
+
+  - Fix long standing Int8GetDatum bugs (Julien Rouhaud)
+
+2025-06-29 version 1.4.2:
+-------------------------
+
+  **Miscellaneous**:
+
+  - Fix compatibility with PostgreSQL 18 (Georgy Shelkovy)
+  - Comment and adjust index size estimation (Stefan Halfpap)
+  - Documentation proofreading (Matthew D'Angelo)
+
 2024-04-28 version 1.4.1:
 -------------------------
 

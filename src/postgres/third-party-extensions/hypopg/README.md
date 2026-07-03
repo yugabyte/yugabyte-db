@@ -3,13 +3,13 @@ HypoPG
 
 HypoPG is a PostgreSQL extension adding support for hypothetical indexes.
 
-An hypothetical -- or virtual -- index is an index that doesn't really exists, and
+A hypothetical -- or virtual -- index is an index that doesn't really exist, and
 thus doesn't cost CPU, disk or any resource to create.  They're useful to know
 if specific indexes can increase performance for problematic queries, since
 you can know if PostgreSQL will use these indexes or not without having to
 spend resources to create them.
 
-For more thorough informations, please consult the [official
+For more thorough information, please consult the [official
 documentation](https://hypopg.readthedocs.io).
 
 For other general information, you can also consult [this blog

@@ -8,7 +8,7 @@
  * This program is open source, licensed under the PostgreSQL license.
  * For license terms, see the LICENSE file.
  *
- * Copyright (C) 2015-2024: Julien Rouhaud
+ * Copyright (C) 2015-2026: Julien Rouhaud
  *
  *-------------------------------------------------------------------------
  */
@@ -68,6 +68,9 @@
 #include "utils/ruleutils.h"
 #endif
 #include "utils/syscache.h"
+#if PG_VERSION_NUM >= 190000
+#include "utils/tuplestore.h"
+#endif
 
 #include "include/hypopg.h"
 #include "include/hypopg_index.h"
@@ -78,6 +81,11 @@
 #if PG_VERSION_NUM >= 90600
 /* this will be updated, when needed, by hypo_discover_am */
 static Oid	BLOOM_AM_OID = InvalidOid;
+#endif
+
+#if PG_VERSION_NUM < 180000
+#define CompareType int16
+#define COMPARE_LT BTLessStrategyNumber
 #endif
 
 /*--- Variables exported ---*/
@@ -134,7 +142,7 @@ hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 	Oid			oid;
 
 #if PG_VERSION_NUM >= 90600
-	IndexAmRoutine *amroutine;
+	const IndexAmRoutine *amroutine;
 	amoptions_function amoptions;
 #else
 	RegProcedure amoptions;
@@ -167,7 +175,6 @@ hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 		elog(ERROR, "hypothetical index is not supported on temp table");
 
 #if PG_VERSION_NUM >= 90600
-
 	/*
 	 * Since 9.6, AM informations are available through an amhandler function,
 	 * returning an IndexAmRoutine containing what's needed.
@@ -188,8 +195,8 @@ hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 #if PG_VERSION_NUM >= 110000
 	entry->amcanparallel = amroutine->amcanparallel;
 	entry->amcaninclude = amroutine->amcaninclude;
-#endif
-#else
+#endif			/* pg 11+ */
+#else			/* pg 9.6- */
 	/* Up to 9.5, all information is available in the pg_am tuple */
 	entry->amcostestimate = ((Form_pg_am) GETSTRUCT(tuple))->amcostestimate;
 	entry->amcanreturn = ((Form_pg_am) GETSTRUCT(tuple))->amcanreturn;
@@ -203,7 +210,7 @@ hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 	entry->amcanmulticol = ((Form_pg_am) GETSTRUCT(tuple))->amcanmulticol;
 	amoptions = ((Form_pg_am) GETSTRUCT(tuple))->amoptions;
 	entry->amcanorder = ((Form_pg_am) GETSTRUCT(tuple))->amcanorder;
-#endif
+#endif			/* pg 9.6- */
 
 	ReleaseSysCache(tuple);
 	entry->indexname = palloc0(NAMEDATALEN);
@@ -596,7 +603,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 					/*
 					 * Generated index name will have _expr instead of attname
 					 * in generated index name, and error message will also be
-					 * slighty different in case on unexisting column from a
+					 * slightly different in case on unexisting column from a
 					 * simple attribute, but that's how ComputeIndexAttrs()
 					 * proceed.
 					 */
@@ -677,7 +684,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 									  entry->relam);
 #endif
 			entry->opclass[attn] = opclass;
-			/* setup the opfamily */
+			/* set up the opfamily */
 			entry->opfamily[attn] = get_opclass_family(opclass);
 
 			entry->opcintype[attn] = get_opclass_input_type(opclass);
@@ -766,7 +773,6 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 						 errmsg("hypopg: index creation on system columns is not supported")));
 		}
 
-
 #if PG_VERSION_NUM >= 110000
 		attn = nkeycolumns;
 		foreach(lc, node->indexIncludingParams)
@@ -835,7 +841,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 			attn++;
 		}
 		Assert(attn == (nkeycolumns + ninccolumns));
-#endif
+#endif			/* pg 11+ */
 
 		/*
 		 * Also check for system columns used in expressions or predicates.
@@ -876,7 +882,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 								 " of an MD5 hash of the value, or use full text "
 								 "indexing\n(which is not yet supported by hypopg)."
 								 )));
-			/* Warn about posssible error with a 80% avg size */
+			/* Warn about possible error with an 80% avg size */
 			else if (ind_avg_width >= HYPO_BTMaxItemSize * .8)
 				ereport(WARNING,
 						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
@@ -924,7 +930,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 			Oid			ltopr;
 			Oid			btopfamily;
 			Oid			btopcintype;
-			int16		btstrategy;
+			CompareType	btstrategy;
 
 			ltopr = get_opfamily_member(entry->opfamily[attn],
 										entry->opcintype[attn],
@@ -936,7 +942,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 										   &btopcintype,
 										   &btstrategy) &&
 				btopcintype == entry->opcintype[attn] &&
-				btstrategy == BTLessStrategyNumber)
+				btstrategy == COMPARE_LT)
 			{
 				/* Successful mapping */
 				entry->sortopfamily[attn] = btopfamily;
@@ -1029,8 +1035,8 @@ hypo_index_pfree(hypoIndex * entry)
  * specified relation.  This function also assume that the specified entry
  * already contains every needed information, so we just basically need to copy
  * it from the hypoIndex to the new IndexOptInfo.  Every specific handling is
- * done at store time (ie.  hypo_index_store_parsetree).  The only exception is
- * the size estimation, recomputed verytime, as it needs up to date statistics.
+ * done at store time (i.e., hypo_index_store_parsetree).  The only exception is
+ * the size estimation, recomputed every time, as it needs up-to-date statistics.
  */
 void
 hypo_injectHypotheticalIndex(PlannerInfo *root,
@@ -1299,7 +1305,7 @@ hypopg(PG_FUNCTION_ARGS)
 		values[i++] = CStringGetTextDatum(entry->indexname);
 		values[i++] = ObjectIdGetDatum(entry->oid);
 		values[i++] = ObjectIdGetDatum(entry->relid);
-		values[i++] = Int8GetDatum(entry->ncolumns);
+		values[i++] = Int32GetDatum(entry->ncolumns);
 		values[i++] = BoolGetDatum(entry->unique);
 		values[i++] = PointerGetDatum(buildint2vector(entry->indexkeys, entry->ncolumns));
 		values[i++] = PointerGetDatum(buildoidvector(entry->indexcollations, entry->ncolumns));
@@ -1425,7 +1431,7 @@ hypopg_create_index(PG_FUNCTION_ARGS)
 }
 
 /*
- * SQL wrapper to drop an hypothetical index.
+ * SQL wrapper to drop a hypothetical index.
  */
 Datum
 hypopg_drop_index(PG_FUNCTION_ARGS)
@@ -1468,10 +1474,10 @@ hypopg_relation_size(PG_FUNCTION_ARGS)
 }
 
 /*
- * Deparse an hypoIndex, indentified by its indexid to the actual CREATE INDEX
+ * Deparse an hypoIndex, identified by its indexid to the actual CREATE INDEX
  * command.
  *
- * Heavilty inspired on pg_get_indexdef_worker()
+ * Heavily inspired on pg_get_indexdef_worker()
  */
 
 Datum
@@ -1604,7 +1610,7 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 		}
 		appendStringInfo(&buf, ")");
 	}
-#endif
+#endif			/* pg 11+ */
 
 	if (entry->options)
 	{
@@ -1825,7 +1831,7 @@ hypo_hideIndexes(RelOptInfo *rel)
 			else
 				prev = lc;
 		}
-#endif
+#endif			/* pg 13- */
 	}
 }
 
@@ -1833,7 +1839,7 @@ hypo_hideIndexes(RelOptInfo *rel)
  * ending \0
  */
 static void
-hypo_set_indexname(hypoIndex * entry, char *indexname)
+hypo_set_indexname(hypoIndex *entry, char *indexname)
 {
 	char		oid[13];		/* store <oid>, oid is an unsigned int32, so it
 								 * shouldn't be more than 4B, so 10 digits.
@@ -1920,7 +1926,7 @@ hypo_estimate_index(hypoIndex * entry, RelOptInfo *rel)
 #if PG_VERSION_NUM >= 90600
 	int			bloomLength = 5;
 #endif
-	int			additional_bloat = 20;
+	int			additional_bloat = 30;
 	ListCell   *lc;
 
 	for (i = 0; i < entry->ncolumns; i++)
@@ -1928,7 +1934,7 @@ hypo_estimate_index(hypoIndex * entry, RelOptInfo *rel)
 
 	if (entry->indpred == NIL)
 	{
-		/* No predicate, as much tuples as estmated on its relation */
+		/* No predicate, as much tuples as estimated on its relation */
 		entry->tuples = rel->tuples;
 	}
 	else
@@ -1968,7 +1974,7 @@ hypo_estimate_index(hypoIndex * entry, RelOptInfo *rel)
 
 		/*
 		 * allocate simple_rel_arrays and simple_rte_arrays. This function
-		 * will also setup simple_rte_arrays with the previous rte.
+		 * will also set up simple_rte_arrays with the previous rte.
 		 */
 		setup_simple_rel_arrays(root);
 		/* also add our table info */
@@ -2008,28 +2014,41 @@ hypo_estimate_index(hypoIndex * entry, RelOptInfo *rel)
 	if (entry->relam == BTREE_AM_OID)
 	{
 		/* -------------------------------
-		 * quick estimating of index size:
+		 * Rough approximation of an index size:
+		 * The code only estimates leaf pages, not the internal pages and meta pages.
+		 * Further, NULL values and index de-duplication are not considered.
 		 *
-		 * sizeof(PageHeader) : 24 (1 per page)
-		 * sizeof(BTPageOpaqueData): 16 (1 per page)
-		 * sizeof(IndexTupleData): 8 (1 per tuple, referencing heap)
-		 * sizeof(ItemIdData): 4 (1 per tuple, storing the index item)
-		 * default fillfactor: 90%
-		 * no NULL handling
-		 * fixed additional bloat: 20%
+		 * Therefore, we account for an additional bloat of 30%
+		 * Note, overestimating the index size is usually better than underestimating the size.
+		 * For example, if the hypothetical index is redundant, we do not want the planner to choose it
+		 * just because it's slightly smaller than the existing index and thus looks slightly cheaper to use.
 		 *
-		 * I'll also need to read more carefully nbtree code to check if
-		 * this is accurate enough.
+		 * Estimated size per B-tree tuple
+		 *   sizeof(IndexTupleData): 8 (referencing heap)
+		 *   sizeof(ItemIdData): 4 (storing the index item)
+		 *   ind_avg_width: the actual data size based on each key's average attribute width
+		 *
+		 * Additionally, the following data is present once per page:
+		 *   sizeof(PageHeader) : 24 (1 per page)
+		 *   sizeof(BTPageOpaqueData): 16 (1 per page)
+		 *
+		 * Finally, account for:
+		 *   the index pages' default fillfactor for tuple data: 90%
+		 *   fixed additional bloat to account for potential underestimations caused by simplifications: 30%
+		 *
+		 *
+		 * Future versions might better estimate the stored index data based on PostgreSQL's B-tree implementation
 		 *
 		 */
-		line_size = ind_avg_width +
-			+(sizeof(IndexTupleData) * entry->ncolumns)
-			+ MAXALIGN(sizeof(ItemIdData) * entry->ncolumns);
+		line_size = ind_avg_width + MAXALIGN(sizeof(IndexTupleData)) + sizeof(ItemIdData);
 
 		usable_page_size = BLCKSZ - SizeOfPageHeaderData - sizeof(BTPageOpaqueData);
-		bloat_factor = (200.0
-						- (fillfactor == 0 ? BTREE_DEFAULT_FILLFACTOR : fillfactor)
-						+ additional_bloat) / 100;
+		if (fillfactor == 0) {
+			/* Set PostgreSQL's default fillfactor (90) because the user has not specified one during index creation */
+			fillfactor = BTREE_DEFAULT_FILLFACTOR;
+		}
+		/* Set the bloat factor based on the reduced formula: (100.0 / fillfactor) * ((100.0 + additional_bloat) / 100.0); */
+		bloat_factor = (100.0 + additional_bloat) / fillfactor;
 
 		entry->pages = (BlockNumber) (entry->tuples * line_size * bloat_factor / usable_page_size);
 #if PG_VERSION_NUM >= 90300
@@ -2090,7 +2109,7 @@ hypo_estimate_index(hypoIndex * entry, RelOptInfo *rel)
 
 		entry->pages += data_size;
 	}
-#endif
+#endif			/* pg 9.5+ */
 #if PG_VERSION_NUM >= 90600
 	else if (entry->relam == BLOOM_AM_OID)
 	{
@@ -2220,7 +2239,7 @@ hypo_estimate_index(hypoIndex * entry, RelOptInfo *rel)
 	/* Simply add all computed pages, plus one extra block for the meta page */
 	entry->pages = num_buckets + num_overflow + num_bitmap + 1;
 	}
-#endif
+#endif			/* pg 10+ */
 	/* pages and tree_height don't apply to LSM index. */
 	else if (entry->relam == LSM_AM_OID)
 		;
@@ -2339,7 +2358,7 @@ hypo_can_return(hypoIndex * entry, Oid atttype, int i, char *amname)
 										ObjectIdGetDatum(entry->opfamily[i]),
 										ObjectIdGetDatum(entry->opcintype[i]),
 										ObjectIdGetDatum(entry->opcintype[i]),
-										Int8GetDatum(GIST_FETCH_PROC));
+										Int16GetDatum(GIST_FETCH_PROC));
 
 				if (!HeapTupleIsValid(tuple))
 					return false;
@@ -2364,7 +2383,7 @@ hypo_can_return(hypoIndex * entry, Oid atttype, int i, char *amname)
 										ObjectIdGetDatum(entry->opfamily[i]),
 										ObjectIdGetDatum(entry->opcintype[i]),
 										ObjectIdGetDatum(entry->opcintype[i]),
-										Int8GetDatum(SPGIST_CONFIG_PROC));
+										Int16GetDatum(SPGIST_CONFIG_PROC));
 
 				/* just in case */
 				if (!HeapTupleIsValid(tuple))
@@ -2421,5 +2440,5 @@ hypo_discover_am(char *amname, Oid oid)
 	/* Is it the bloom access method? */
 	if (strcmp(amname, "bloom") == 0)
 		BLOOM_AM_OID = oid;
-#endif
+#endif			/* pg9.6+ */
 }

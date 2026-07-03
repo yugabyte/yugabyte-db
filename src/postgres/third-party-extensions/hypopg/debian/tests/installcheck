@@ -1,5 +1,0 @@
-#!/bin/sh
-
-set -eu
-
-pg_buildext installcheck
