@@ -6643,9 +6643,9 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     }
   }
 
-  if (db_options.db_paths.size() > 4) {
-    return STATUS(NotSupported,
-        "More than four DB paths are not supported yet. ");
+  if (db_options.db_paths.size() > kMaxPathId + 1) {
+    return STATUS(NotSupported, yb::Format(
+        "More than $0 DB paths are not supported yet. ", kMaxPathId + 1));
   }
 
   *dbptr = nullptr;

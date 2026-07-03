@@ -2038,6 +2038,12 @@ Status TSTabletManager::DeleteTablet(
     tracked_dirs.push_back(meta->intents_rocksdb_dir());
     tracked_dirs.push_back(meta->wal_dir());
     tracked_dirs.push_back(meta->snapshots_dir());
+    // Tiered storage: include each non-home tier disk's per-tablet dir (slot 0 == rocksdb_dir).
+    for (const auto& tp : meta->tier_paths()) {
+      if (tp.path != meta->rocksdb_dir()) {
+        tracked_dirs.push_back(tp.path);
+      }
+    }
     for (const auto& info : meta->GetAllColocatedVectorIndexes()) {
       tracked_dirs.push_back(
           meta->vector_index_dir(info->index_info->vector_idx_options()));
