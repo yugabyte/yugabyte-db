@@ -104,6 +104,9 @@ class VectorLSM {
   using Options = VectorLSMOptions<Vector, DistanceResult>;
   using VectorIndex = VectorIndexIf<Vector, DistanceResult>;
   using VectorIndexPtr = VectorIndexIfPtr<Vector, DistanceResult>;
+  // Pair of the saved chunk file metadata and the (possibly reopened) index, as
+  // produced by SaveIndexToFile.
+  using SaveIndexToFileResult = std::pair<VectorLSMFileMetaDataPtr, VectorIndexPtr>;
   using SearchResults = typename VectorIndex::SearchResult;
   using InsertEntry = VectorLSMInsertEntry<Vector>;
   using InsertEntries = std::vector<InsertEntry>;
@@ -142,6 +145,9 @@ class VectorLSM {
 
   size_t NumImmutableChunks() const EXCLUDES(mutex_);
   size_t NumSavedImmutableChunks() const EXCLUDES(mutex_);
+
+  // Returns the total size in bytes of the immutable chunk files currently on disk.
+  uint64_t OnDiskSize() const EXCLUDES(mutex_);
 
   Env* TEST_GetEnv() const;
   bool TEST_HasBackgroundInserts() const;
@@ -198,8 +204,7 @@ class VectorLSM {
   // Actual implementation for SaveChunk, to have ability simply return Status in case of failure.
   Status DoSaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
 
-  Result<std::pair<VectorLSMFileMetaDataPtr, VectorIndexPtr>> SaveIndexToFile(
-      VectorIndex& index, uint64_t serial_no);
+  Result<SaveIndexToFileResult> SaveIndexToFile(VectorIndex& index, uint64_t serial_no);
 
   // The argument `chunk` must be the very first chunk from `updates_queue_`.
   Status UpdateManifest(WritableFile& manifest_file, ImmutableChunkPtr chunk) EXCLUDES(mutex_);

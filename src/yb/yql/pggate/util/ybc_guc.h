@@ -254,6 +254,7 @@ extern int yb_reorderbuffer_max_changes_in_memory;
  * Allows for customizing the maximum size of a batch of explicit row lock operations.
  */
 extern int yb_explicit_row_locking_batch_size;
+extern int yb_explicit_row_lock_skip_locked_max_read_ahead;
 
 /*
  * Ease transition to YSQL by reducing read restart errors for new apps.

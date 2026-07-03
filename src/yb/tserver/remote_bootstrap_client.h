@@ -81,6 +81,7 @@ class RemoteBootstrapClient : public RemoteClientBase {
                rpc::ProxyCache* proxy_cache,
                const HostPort& bootstrap_peer_addr,
                const ServerRegistrationPB& tablet_leader_conn_info,
+               const OpId& pending_config_op_id_from_rbs,
                scoped_refptr<tablet::RaftGroupMetadata>* metadata,
                TSTabletManager* ts_manager = nullptr);
 
@@ -162,6 +163,7 @@ class RemoteBootstrapClient : public RemoteClientBase {
   tablet::TabletStatusListener* status_listener_ = nullptr;
   tablet::RaftGroupReplicaSuperBlockPB new_superblock_;
   std::unique_ptr<consensus::ConsensusStatePB> remote_committed_cstate_;
+  OpId pending_config_op_id_from_rbs_;
   tablet::TabletDataState remote_tablet_data_state_;
 
   std::vector<uint64_t> wal_seqnos_;

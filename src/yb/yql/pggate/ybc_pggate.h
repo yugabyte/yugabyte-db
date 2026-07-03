@@ -780,6 +780,13 @@ bool YBCPgIsDdlModeWithRegularTransactionBlock();
 bool YBCCurrentTransactionUsesFastPath();
 bool YBCIsLegacyModeForCatalogOps();
 
+// Effective per-RPC response byte cap that pggate applies when the executor
+// doesn't request a smaller limit.  Equals
+// FLAGS_rpc_max_message_size * FLAGS_max_buffer_size_to_rpc_limit_ratio.
+// Used by the cost model to size parallel base-table fetch pages, where
+// yb_fetch_size_limit is forced to 0 at runtime.
+uint64_t YBCGetMaxRpcResponseSize();
+
 // System validation -------------------------------------------------------------------------------
 // Validate whether placement information is theoretically valid. If check_satisfiable is true,
 // also check whether the current set of tservers can satisfy the requested placement.
@@ -855,8 +862,12 @@ void YBCNotifyDeferredTriggersProcessingStarted();
 // Explicit Row-level Locking.
 YbcPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
     YbcPgOid table_relfilenode_oid, uint64_t ybctid, YbcPgOid database_oid,
-    const YbcPgExplicitRowLockParams *params, YbcPgTableLocalityInfo locality_info);
+    const YbcPgExplicitRowLockParams *params, YbcPgTableLocalityInfo locality_info,
+    const YbcIsExplicitlyLockedRowSkippedCheckHandle *handle);
 YbcPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents();
+YbcPgExplicitRowLockStatus YBCIsExplicitlyLockedRowSkipped(
+    YbcIsExplicitlyLockedRowSkippedCheckHandle handle, bool* result);
+YbcIsExplicitlyLockedRowSkippedCheckHandle YBCAcquireExplicitlyLockedRowSkippedCheckHandle();
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
 YbcStatus YBCPgAddInsertOnConflictKey(const YbcPgYBTupleIdDescriptor* tupleid, void* state,

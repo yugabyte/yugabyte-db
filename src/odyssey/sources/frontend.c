@@ -973,16 +973,20 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		server->in_out_response_received++;
 		/*
 		 * YB: Resume the client relay so CopyDone, CopyData
-		 * packets can be forwarded to the backend.
+		 * packets can be forwarded to the backend if not already
+		 * forwarded.
 		 */
-		rc = yb_resume_client_relay(client);
-		if (rc != 0) {
-			od_error(&instance->logger, "copy in response resume relay", client,
-					server,
-					"failed to resume client read on "
-					"CopyInResponse: %s",
-					od_io_error(client->relay.src));
-			return relay->error_read;
+		if (server->in_out_response_received !=
+			server->done_fail_response_received) {
+			rc = yb_resume_client_relay(client);
+			if (rc != 0) {
+				od_error(&instance->logger, "copy in response resume relay", client,
+						server,
+						"failed to resume client read on "
+						"CopyInResponse: %s",
+						od_io_error(client->relay.src));
+				return relay->error_read;
+			}
 		}
 		break;
 	case KIWI_BE_COPY_OUT_RESPONSE:

@@ -195,6 +195,7 @@ bool ContainsTask(const Tasks& tasks, CompactionType type) {
 
 } // namespace
 
+MonoDelta TEST_sleep_after_saving_chunk;
 MonoDelta TEST_sleep_during_flush;
 MonoDelta TEST_sleep_on_merged_chunk_populated;
 
@@ -1571,7 +1572,7 @@ Result<WritableFile*> VectorLSM<Vector, DistanceResult>::RollManifest() {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 auto VectorLSM<Vector, DistanceResult>::SaveIndexToFile(VectorIndex& index, uint64_t serial_no) ->
-    Result<std::pair<VectorLSMFileMetaDataPtr, VectorIndexPtr>> {
+    Result<SaveIndexToFileResult> {
   VLOG_WITH_PREFIX(1) << Format(
       "Saving vector index on disk, serial_no: $0, num entries: $1",
       serial_no, index.Size());
@@ -1592,7 +1593,7 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& chunk) {
   VLOG_WITH_PREFIX_AND_FUNC(3) << AsString(*chunk);
 
-  VectorIndexPtr new_index;
+  SaveIndexToFileResult saved;
   if (chunk->index) {
     LOG_IF(DFATAL, chunk->file.get())
         << "Chunk is already saved to "
@@ -1603,7 +1604,10 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
       std::this_thread::sleep_for(FLAGS_TEST_vector_index_delay_saving_first_chunk_ms * 1ms);
     }
 
-    std::tie(chunk->file, new_index) = VERIFY_RESULT(SaveIndexToFile(*chunk->index, serial_no));
+    saved = VERIFY_RESULT(SaveIndexToFile(*chunk->index, serial_no));
+    if (TEST_sleep_after_saving_chunk) {
+      SleepFor(TEST_sleep_after_saving_chunk);
+    }
   }
 
   WritableFile* manifest_file = nullptr;
@@ -1611,10 +1615,12 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
   const bool stopping = !shutdown_controller_.IsRunning();
   {
     std::lock_guard lock(mutex_);
-    if (new_index) {
+    chunk->file = std::move(saved.first);
+    if (saved.second) {
       VLOG_WITH_PREFIX_AND_FUNC(3)
-          << "Update index: " << AsString(*chunk) << " => " << AsString(new_index->IndexStatsStr());
-      chunk->index = new_index;
+          << "Update index: " << AsString(*chunk) << " => "
+          << AsString(saved.second->IndexStatsStr());
+      chunk->index = std::move(saved.second);
     }
     chunk->state = ImmutableChunkState::kOnDisk;
     if (stopping && FLAGS_TEST_vector_index_skip_manifest_update_during_shutdown) {
@@ -1856,6 +1862,16 @@ size_t VectorLSM<Vector, DistanceResult>::NumSavedImmutableChunks() const {
   return std::ranges::count_if(
       immutable_chunks_,
       [](auto&& chunk) { return chunk->IsInManifest() || chunk->IsOnDisk(); });
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+uint64_t VectorLSM<Vector, DistanceResult>::OnDiskSize() const {
+  SharedLock lock(mutex_);
+  uint64_t result = 0;
+  for (const auto& chunk : immutable_chunks_) {
+    result += chunk->file_size();
+  }
+  return result;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

@@ -91,6 +91,9 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_bool(ysql_enable_concurrent_ddl);
 
+DECLARE_uint64(rpc_max_message_size);
+DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
+
 DEPRECATE_FLAG(bool, ysql_disable_per_tuple_memory_context_in_update_relattrs, "06_2023");
 
 DEFINE_RUNTIME_PG_FLAG(
@@ -1924,6 +1927,11 @@ YbcTxnPriorityRequirement YBCGetTransactionPriorityType() {
   return pgapi->GetTransactionPriorityType();
 }
 
+uint64_t YBCGetMaxRpcResponseSize() {
+  return static_cast<uint64_t>(
+      FLAGS_rpc_max_message_size * FLAGS_max_buffer_size_to_rpc_limit_ratio);
+}
+
 YbcStatus YBCPgEnsureReadPoint() {
   return ToYBCStatus(pgapi->EnsureReadPoint());
 }
@@ -2125,11 +2133,12 @@ void YBCNotifyDeferredTriggersProcessingStarted() {
 
 YbcPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
     YbcPgOid table_relfilenode_oid, uint64_t ybctid, YbcPgOid database_oid,
-    const YbcPgExplicitRowLockParams* params, YbcPgTableLocalityInfo locality_info) {
+    const YbcPgExplicitRowLockParams* params, YbcPgTableLocalityInfo locality_info,
+    const YbcIsExplicitlyLockedRowSkippedCheckHandle* handle) {
   auto result = MakePgExplicitRowLockStatus();
   result.ybc_status = ToYBCStatus(pgapi->AddExplicitRowLockIntent(
       PgObjectId(database_oid, table_relfilenode_oid), YbctidAsSlice(ybctid), *params,
-      locality_info, result.error_info));
+      locality_info, handle ? std::optional(*handle) : std::nullopt, result.error_info));
   return result;
 }
 
@@ -2137,6 +2146,18 @@ YbcPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents() {
   auto result = MakePgExplicitRowLockStatus();
   result.ybc_status = ToYBCStatus(pgapi->FlushExplicitRowLockIntents(result.error_info));
   return result;
+}
+
+YbcPgExplicitRowLockStatus YBCIsExplicitlyLockedRowSkipped(
+    YbcIsExplicitlyLockedRowSkippedCheckHandle handle, bool* is_skipped) {
+  auto result = MakePgExplicitRowLockStatus();
+  result.ybc_status = ExtractValueFromResult(
+      pgapi->IsRowSkipped(handle, result.error_info), is_skipped);
+  return result;
+}
+
+YbcIsExplicitlyLockedRowSkippedCheckHandle YBCAcquireExplicitlyLockedRowSkippedCheckHandle() {
+  return pgapi->AcquireExplicitlyLockedRowSkippedCheckHandle();
 }
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------

@@ -3359,6 +3359,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_replication_origin_shared", PGC_POSTMASTER, DEVELOPER_OPTIONS,
+			gettext_noop("Enable shared replication origin write tagging."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_replication_origin_shared,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_ddl_transaction_block_enabled", PGC_POSTMASTER, DEVELOPER_OPTIONS,
 			gettext_noop("If true, DDL operations in YSQL will execute within "
 						 "the active transaction block instead of their "
@@ -4000,7 +4011,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_pg_stat_statements_docdb_metrics,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -4191,6 +4202,18 @@ static struct config_int ConfigureNamesInt[] =
 		&yb_explicit_row_locking_batch_size,
 		1024, 1, INT_MAX,
 		check_yb_explicit_row_locking_batch_size, NULL, NULL
+	},
+	{
+		{"yb_explicit_row_lock_skip_locked_max_read_ahead", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Max number of rows that are read ahead for "
+						 "SKIP LOCKED explicit row locking"),
+			gettext_noop("Set to 1 to preserve original behavior, "
+						 "read ahead is not performed by default"),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_explicit_row_lock_skip_locked_max_read_ahead,
+		1, 1, 1024,
+		NULL, NULL, NULL
 	},
 	{
 		{"default_statistics_target", PGC_USERSET, QUERY_TUNING_OTHER,

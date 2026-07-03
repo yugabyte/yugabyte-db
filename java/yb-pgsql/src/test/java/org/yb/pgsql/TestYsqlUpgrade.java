@@ -1217,6 +1217,16 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     // For pg_yb_migration, verify that all migrations were applied.
     try (Connection conn = customDbCb.connect();
          Statement stmt = conn.createStatement()) {
+      // Create an extra catalog object to push the OID high-water mark past the objects that
+      // migrations create, so this idempotency check actually exercises OID stability. An
+      // unconditional DROP VIEW + CREATE reuses the same OID only while that view is the highest
+      // (dropping it reverts the mark); once something higher exists, re-applying assigns a new
+      // OID and pg_catalog diverges. System-generated OIDs are assigned only in upgrade mode.
+      setSystemRelsModificationGuc(stmt, true);
+      stmt.execute("CREATE VIEW pg_catalog.yb_test_idempotency_oid_bump"
+          + " WITH (use_initdb_acl = true) AS SELECT 1 AS a");
+      setSystemRelsModificationGuc(stmt, false);
+
       SysCatalogSnapshot preSnapshot = takeSysCatalogSnapshot(stmt);
       final int latestMajorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE)
           .get(preSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(0);

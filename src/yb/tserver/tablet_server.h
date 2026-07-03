@@ -457,6 +457,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status ClearMetacache(const std::string& namespace_id) override;
 
+  void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
+
   Status ClearYCQLMetaDataCache() override;
 
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;

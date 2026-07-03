@@ -352,7 +352,7 @@ public class XClusterConfigController extends AuthenticatedController {
     JsonNode lagMetricData;
     try {
       Set<String> streamIds = xClusterConfig.getStreamIdsWithReplicationSetup();
-      log.info(
+      log.trace(
           "Querying lag metrics for XClusterConfig({}) using CDC stream IDs: {}",
           xClusterConfig.getUuid(),
           streamIds);
@@ -898,6 +898,10 @@ public class XClusterConfigController extends AuthenticatedController {
       boolean isForceDelete,
       boolean isForceBootstrap,
       SoftwareUpgradeHelper softwareUpgradeHelper) {
+    if (restartBootstrapParams == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "bootstrapParams is required to restart xCluster replication");
+    }
 
     // Add index tables.
     Map<String, List<String>> mainTableIndexTablesMap =
@@ -913,12 +917,10 @@ public class XClusterConfigController extends AuthenticatedController {
 
     log.debug("tableIds are {}", tableIds);
 
-    XClusterConfigCreateFormData.BootstrapParams bootstrapParams = null;
-    if (restartBootstrapParams != null) {
-      bootstrapParams = new XClusterConfigCreateFormData.BootstrapParams();
-      bootstrapParams.backupRequestParams = restartBootstrapParams.backupRequestParams;
-      bootstrapParams.tables = tableIds;
-    }
+    XClusterConfigCreateFormData.BootstrapParams bootstrapParams =
+        new XClusterConfigCreateFormData.BootstrapParams();
+    bootstrapParams.backupRequestParams = restartBootstrapParams.backupRequestParams;
+    bootstrapParams.tables = tableIds;
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
         XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
@@ -945,7 +947,8 @@ public class XClusterConfigController extends AuthenticatedController {
         sourceTableIdTargetTableIdMap,
         ybService,
         bootstrapParams,
-        xClusterConfig.getReplicationGroupName());
+        xClusterConfig.getReplicationGroupName(),
+        true /* isRestartReplication */);
 
     return new XClusterConfigTaskParams(
         xClusterConfig,
@@ -1798,6 +1801,28 @@ public class XClusterConfigController extends AuthenticatedController {
       YBClientService ybService,
       @Nullable BootstrapParams bootstrapParams,
       @Nullable String currentReplicationGroupName) {
+    xClusterBootstrappingPreChecks(
+        requestedTableInfoList,
+        sourceTableInfoList,
+        targetUniverse,
+        sourceUniverse,
+        sourceTableIdTargetTableIdMap,
+        ybService,
+        bootstrapParams,
+        currentReplicationGroupName,
+        false /* isRestartReplication */);
+  }
+
+  public static void xClusterBootstrappingPreChecks(
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
+      Universe targetUniverse,
+      Universe sourceUniverse,
+      Map<String, String> sourceTableIdTargetTableIdMap,
+      YBClientService ybService,
+      @Nullable BootstrapParams bootstrapParams,
+      @Nullable String currentReplicationGroupName,
+      boolean isRestartReplication) {
 
     Set<String> requestedTableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
     // If some tables do not exist on the target universe, bootstrapping is required.
@@ -1854,6 +1879,23 @@ public class XClusterConfigController extends AuthenticatedController {
               sourceTableIdTargetTableIdWithBootstrapMap,
               targetUniverse,
               currentReplicationGroupName);
+
+      if (isRestartReplication && !requestedTableInfoList.isEmpty()) {
+        // At this point, bootstrapParams.tables filtered out all tables that are involved
+        // (as source or target) in other xCluster replication configurations on the target
+        // universe.
+        boolean anyRequestedTableExcludedFromBootstrap =
+            requestedTableIds.stream()
+                .anyMatch(tableId -> !bootstrapParams.tables.contains(tableId));
+        if (anyRequestedTableExcludedFromBootstrap) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Restart is not allowed because one or more requested tables have corresponding"
+                  + " target tables already involved in other xCluster replication on the target"
+                  + " universe. Remove the other replication configurations to make this"
+                  + " configuration uni-directional replication and try again.");
+        }
+      }
 
       if (!bootstrapParams.tables.containsAll(sourceTableIdsWithNoTableOnTargetUniverse)) {
         throw new IllegalArgumentException(

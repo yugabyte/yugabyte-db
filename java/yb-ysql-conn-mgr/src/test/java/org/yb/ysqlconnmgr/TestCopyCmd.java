@@ -169,6 +169,171 @@ public class TestCopyCmd extends BaseYsqlConnMgr {
     }
   }
 
+  /*
+   * Some driver (go) can send CopyData, CopyDone immediately after
+   * sending COPY FROM command without waiting for COPYINRESPONSE packet
+   * from backend. This test verifies connection manager can handle this
+   * scenario. Since JDBC doesn't do this, so sending raw packets.
+   *
+   */
+  @Test
+  public void testCopyFromCopyDoneSentImmediatelyExtendedQuery() throws Exception {
+    createCopyTable();
+
+    InetSocketAddress addr = miniCluster.getYsqlConnMgrContactPoints().get(0);
+
+    try (Socket socket = new Socket()) {
+      socket.setTcpNoDelay(true);
+      socket.setSoTimeout(TEST_TIMEOUT_MS);
+      socket.connect(addr);
+
+      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+      DataInputStream in  = new DataInputStream(socket.getInputStream());
+
+      // Startup handshake.
+      out.write(buildStartupMessage("yugabyte", "yugabyte"));
+      out.flush();
+      readUntilReady(in);
+      LOG.info("Startup complete");
+
+      // Send P + B + E + S for COPY in one flush.
+      ByteArrayOutputStream pipeline = new ByteArrayOutputStream();
+      pipeline.write(buildParse("S1", "INSERT INTO copytest VALUES (3, 2, 3)", new int[0]));
+      pipeline.write(buildBind("S1", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildParse("COPY copytest FROM STDIN"));
+      pipeline.write(buildBind());
+      // Backend has entered COPY mode after EXECUTE.
+      pipeline.write(buildExecute());
+      pipeline.write(buildCopyData("3\t2\t3\n"));
+      pipeline.write(buildCopyDone());
+      pipeline.write(buildSync());
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent P+B+E+S for COPY copytest FROM STDIN");
+
+      char expectedTypes[] = {
+        BE_PARSE_COMPLETE,
+        BE_BIND_COMPLETE,
+        BE_COMMAND_COMPLETE,
+        BE_PARSE_COMPLETE,
+        BE_BIND_COMPLETE,
+        BE_COPY_IN_RESPONSE,
+        BE_COMMAND_COMPLETE,
+        BE_READY_FOR_QUERY,
+      };
+
+      for (char expectedType : expectedTypes) {
+        PgMessage msg = readMessageSkipNotice(in);
+        LOG.info("Received: {}", msg.typeToString());
+        assertEquals("Expected " + expectedType, expectedType, msg.type);
+      }
+
+      // Since above transaction will get committed with no error,
+      // we should see 2 rows (from the INSERT and COPY) in the table.
+      out.write(buildQuery("SELECT * FROM copytest"));
+      out.flush();
+
+      int rowCount = 0;
+      while (true) {
+        PgMessage selectMsg = readMessageSkipNotice(in);
+        LOG.info("SELECT response: {}", selectMsg.typeToString());
+        if (selectMsg.type == BE_DATA_ROW) {
+          rowCount++;
+        } else if (selectMsg.type == BE_ERROR_RESPONSE) {
+          fail("Unexpected error during SELECT: " +
+              new String(selectMsg.body, StandardCharsets.UTF_8));
+        } else if (selectMsg.type == BE_READY_FOR_QUERY) {
+          break;
+        }
+      }
+      assertEquals("Expected exactly 2 row in copytest", 2, rowCount);
+
+      out.write(buildTerminate());
+      out.flush();
+    }
+  }
+
+  /*
+   * This is an extension of testCopyFromCopyDoneSentImmediatelyExtendedQuery
+   * test, where it validates the client relay for conn mgr is paused and
+   * resumed correctly for COPY operations.
+   * It validates by sending COPY Data and CopyDone packets immediately after
+   * sending COPY FROM command without waiting for COPYINRESPONSE packet
+   * from backend. And in the same sync boundary, sends:
+   * P(Error) + P(S1) + B + E + SYNC
+   * Followed by:
+   * P(S1) + B + E SYNC.
+   * COPYINRESPONSE must resume the client relay, if COPY_DATA, COPY_DONE/
+   * COPY_FAIL is not forwarded.
+   * So first SYNC would continue waiting to get reconcile server hashmap
+   * before processing packets from next sync boundary (second S1) in
+   * connection manager.
+   */
+  @Test
+  public void testCopyFromCopyDoneSentImmedErrorInStream() throws Exception {
+    createCopyTable();
+
+    InetSocketAddress addr = miniCluster.getYsqlConnMgrContactPoints().get(0);
+
+    try (Socket socket = new Socket()) {
+      socket.setTcpNoDelay(true);
+      socket.setSoTimeout(TEST_TIMEOUT_MS);
+      socket.connect(addr);
+
+      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+      DataInputStream in  = new DataInputStream(socket.getInputStream());
+
+      // Startup handshake.
+      out.write(buildStartupMessage("yugabyte", "yugabyte"));
+      out.flush();
+      readUntilReady(in);
+      LOG.info("Startup complete");
+
+      // Send P + B + E + S for COPY in one flush.
+      // The Sync triggers OD_WAIT_SYNC, pausing the client relay.
+      ByteArrayOutputStream pipeline = new ByteArrayOutputStream();
+      pipeline.write(buildParse("S1", "INSERT INTO copytest VALUES (3, 2, 3)", new int[0]));
+      pipeline.write(buildBind("S1", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildParse("COPY copytest FROM STDIN"));
+      pipeline.write(buildBind());
+      // Backend has entered COPY mode after EXECUTE.
+      pipeline.write(buildExecute());
+      pipeline.write(buildCopyData("3\t2\t3\n"));
+      pipeline.write(buildCopyDone());
+      pipeline.write(buildParse("S_Error", "INSERT INTO copytest VALUES (4, 5, 6, 7)", new int[0]));
+      pipeline.write(buildBind("S_Error", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildParse("S2", "SELECT 2", new int[0]));
+      pipeline.write(buildBind("S2", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+      pipeline.write(buildParse("S2", "SELECT 2", new int[0]));
+      pipeline.write(buildBind("S2", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent P+B+E+S for COPY copytest FROM STDIN");
+
+      int count_rfq = 0;
+      while (true) {
+        PgMessage msg = readMessageSkipNotice(in);
+        LOG.info("Received: {}", msg.typeToString());
+        if (msg.type == BE_READY_FOR_QUERY) {
+          count_rfq++;
+        }
+        if (count_rfq == 2) {
+          break;
+        }
+      }
+
+      out.write(buildTerminate());
+      out.flush();
+    }
+  }
+
   /**
    * Verifies COPY TO STDOUT via extended query protocol works successfully
    * with connection manager by sending extra packets before and after
@@ -253,6 +418,126 @@ public class TestCopyCmd extends BaseYsqlConnMgr {
         LOG.info("Received: {}", msg.typeToString());
         assertEquals("Expected " + expectedTypes[i], expectedTypes[i], msg.type);
       }
+
+      out.write(buildTerminate());
+      out.flush();
+    }
+  }
+
+  /**
+   * Verifies COPY TO STDOUT and COPY FROM STDIN via extended query protocol
+   * works successfully when they are sent in the same sync boundary.
+   *
+   * Client Packet sequence:
+   *   Client P("SELECT * FROM copytest") + B + E
+   *   Client P("COPY copytest TO STDOUT") + B + E
+   *   Client P("COPY copytest FROM STDIN") + B + E + SYNC
+   *   Client P("SELECT 2") + B + E + SYNC.
+   *   Client P("SELECT * FROM copytest") + B + E
+   *   Client P("SELECT 2") + B + E + SYNC.
+   */
+
+  @Test
+  public void testCopyToCopyFromViaExtendedQuery() throws Exception {
+    createCopyTable();
+
+    InetSocketAddress addr = miniCluster.getYsqlConnMgrContactPoints().get(0);
+
+    try (Socket socket = new Socket()) {
+      socket.setTcpNoDelay(true);
+      socket.setSoTimeout(TEST_TIMEOUT_MS);
+      socket.connect(addr);
+
+      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+      DataInputStream in  = new DataInputStream(socket.getInputStream());
+
+      // Startup handshake.
+      out.write(buildStartupMessage("yugabyte", "yugabyte"));
+      out.flush();
+      readUntilReady(in);
+      LOG.info("Startup complete");
+
+      // Insert rows so COPY TO returns actual data.
+      out.write(buildQuery(
+          "INSERT INTO copytest VALUES ('foo', 1, 1.23), ('bar', 2, 4.56)"));
+      out.flush();
+      for (int i = 0; i < 2; i++) {
+        PgMessage msg = readMessage(in);
+        LOG.info("Insert response[" + i + "]: " + msg);
+        if (msg.type == BE_ERROR_RESPONSE) {
+          fail("Error during insert: " +
+              new String(msg.body, StandardCharsets.UTF_8));
+        }
+      }
+      LOG.info("Inserted 2 test rows");
+
+      ByteArrayOutputStream pipeline = new ByteArrayOutputStream();
+      pipeline.write(buildParse("S1", "SELECT * FROM copytest", new int[0]));
+      pipeline.write(buildBind("S1", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildParse("COPY copytest TO STDOUT"));
+      pipeline.write(buildBind());
+      pipeline.write(buildExecute());
+      pipeline.write(buildParse("COPY copytest FROM STDIN"));
+      pipeline.write(buildBind());
+      pipeline.write(buildExecute());
+      pipeline.write(buildCopyData("3\t2\t3\n"));
+      pipeline.write(buildCopyDone());
+      pipeline.write(buildParse("S2", "SELECT 2", new int[0]));
+      pipeline.write(buildBind("S2", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent packets to test COPY TO operation");
+
+      char expectedTypes[] = {
+        BE_PARSE_COMPLETE,
+        BE_BIND_COMPLETE,
+        BE_DATA_ROW,
+        BE_DATA_ROW,
+        BE_COMMAND_COMPLETE,
+        BE_PARSE_COMPLETE,
+        BE_BIND_COMPLETE,
+        BE_COPY_OUT_RESPONSE,
+        BE_COPY_DATA,
+        BE_COPY_DATA,
+        BE_COPY_DONE,
+        BE_COMMAND_COMPLETE,
+        BE_PARSE_COMPLETE,
+        BE_BIND_COMPLETE,
+        BE_COPY_IN_RESPONSE,
+        BE_COMMAND_COMPLETE,
+        BE_PARSE_COMPLETE,
+        BE_BIND_COMPLETE,
+        BE_DATA_ROW,
+        BE_COMMAND_COMPLETE,
+        BE_READY_FOR_QUERY,
+      };
+
+      for(int i = 0; i < expectedTypes.length; i++) {
+        PgMessage msg = readMessageSkipNotice(in);
+        LOG.info("Received: {}", msg.typeToString());
+        assertEquals("Expected " + expectedTypes[i], expectedTypes[i], msg.type);
+      }
+
+      out.write(buildQuery("SELECT * FROM copytest"));
+      out.flush();
+
+      int rowCount = 0;
+      while (true) {
+        PgMessage selectMsg = readMessageSkipNotice(in);
+        LOG.info("SELECT response: {}", selectMsg.typeToString());
+        if (selectMsg.type == BE_DATA_ROW) {
+          rowCount++;
+        } else if (selectMsg.type == BE_ERROR_RESPONSE) {
+          fail("Unexpected error during SELECT: " +
+              new String(selectMsg.body, StandardCharsets.UTF_8));
+        } else if (selectMsg.type == BE_READY_FOR_QUERY) {
+          break;
+        }
+      }
+      assertEquals("Expected exactly 3 row in copytest", 3, rowCount);
 
       out.write(buildTerminate());
       out.flush();

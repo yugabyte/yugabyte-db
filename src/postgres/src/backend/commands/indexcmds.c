@@ -1139,27 +1139,6 @@ DefineIndex(Oid relationId,
 
 		colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
 
-		if (OidIsValid(colocation_id))
-		{
-			if (!is_colocated)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("cannot set colocation_id for non-colocated index")));
-			if (OidIsValid(yb_binary_upgrade_next_colocation_id))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("cannot set yb_binary_upgrade_next_colocation_id for colocated index")));
-		}
-		else if (OidIsValid(yb_binary_upgrade_next_colocation_id))
-		{
-			if (!is_colocated)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("cannot set colocation_id for non-colocated index")));
-			colocation_id = yb_binary_upgrade_next_colocation_id;
-			yb_binary_upgrade_next_colocation_id = InvalidOid;
-		}
-
 		/*
 		 * Fail if the index is colocated via tablegroup and tablespace
 		 * is specified while creation.
@@ -1337,6 +1316,32 @@ DefineIndex(Oid relationId,
 
 	amcanorder = amRoutine->amcanorder;
 	amoptions = amRoutine->amoptions;
+
+	if (IsYugaByteEnabled())
+	{
+		bool		index_is_copartitioned = amRoutine->yb_amiscopartitioned;
+
+		if (OidIsValid(colocation_id))
+		{
+			if (!is_colocated && !index_is_copartitioned)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("cannot set colocation_id for non-colocated index")));
+			if (OidIsValid(yb_binary_upgrade_next_colocation_id))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("cannot set yb_binary_upgrade_next_colocation_id for colocated index")));
+		}
+		else if (OidIsValid(yb_binary_upgrade_next_colocation_id))
+		{
+			if (!is_colocated && !index_is_copartitioned)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("cannot set colocation_id for non-colocated index")));
+			colocation_id = yb_binary_upgrade_next_colocation_id;
+			yb_binary_upgrade_next_colocation_id = InvalidOid;
+		}
+	}
 
 	pfree(amRoutine);
 	ReleaseSysCache(tuple);

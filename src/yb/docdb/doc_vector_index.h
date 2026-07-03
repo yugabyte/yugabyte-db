@@ -143,6 +143,9 @@ class DocVectorIndex {
   virtual Status Destroy() = 0;
   virtual Result<size_t> TotalEntries() const = 0;
 
+  // Returns the total size in bytes occupied by this vector index on disk.
+  virtual uint64_t OnDiskSize() const = 0;
+
   virtual void StartShutdown() = 0;
   virtual void CompleteShutdown() = 0;
 

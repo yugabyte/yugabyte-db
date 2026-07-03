@@ -1808,7 +1808,7 @@ void SetupTabletInfo(
 
   auto& cstate = *metadata.mutable_committed_consensus_state();
   cstate.set_current_term(consensus::kMinimumTerm);
-  cstate.mutable_config()->set_opid_index(consensus::kInvalidOpIdIndex);
+  cstate.mutable_config()->set_committed_op_index(consensus::kInvalidOpIdIndex);
 }
 
 TabletInfoPtr CreateTabletInfo(

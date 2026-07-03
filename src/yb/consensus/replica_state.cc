@@ -422,9 +422,9 @@ Status ReplicaState::SetCommittedConfigUnlocked(const RaftConfigPB& config_to_co
   // if the pending config does not have its 'unsafe_config_change' flag set.
   if (!config_to_commit.unsafe_config_change()) {
     const RaftConfigPB& pending_config = GetPendingConfigUnlocked();
-    // Pending will not have an opid_index, so ignore that field.
+    // Pending will not have a committed_op_index, so ignore that field.
     RaftConfigPB config_no_opid = config_to_commit;
-    config_no_opid.clear_opid_index();
+    config_no_opid.clear_committed_op_index();
     // Quorums must be exactly equal, even w.r.t. peer ordering.
     SCHECK_EQ(
         GetPendingConfigUnlocked().SerializeAsString(), config_no_opid.SerializeAsString(),
@@ -708,9 +708,9 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
   if (PREDICT_FALSE(op_type == CHANGE_CONFIG_OP)) {
     const auto& change_config_record = round->replicate_msg()->change_config_record();
     DCHECK(change_config_record.has_old_config());
-    DCHECK(change_config_record.old_config().has_opid_index());
+    DCHECK(change_config_record.old_config().has_committed_op_index());
     DCHECK(change_config_record.has_new_config());
-    DCHECK(!change_config_record.new_config().has_opid_index());
+    DCHECK(!change_config_record.new_config().has_committed_op_index());
     if (mode == OperationMode::kFollower) {
       const auto& old_config = change_config_record.old_config();
       const auto& new_config = change_config_record.new_config();
@@ -727,13 +727,14 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
       // config. If so, this is a replay at startup in which the COMMIT
       // messages were delayed.
       const RaftConfigPB& committed_config = GetCommittedConfigUnlocked();
-      if (round->replicate_msg()->id().index() > committed_config.opid_index()) {
+      if (round->replicate_msg()->id().index() > committed_config.committed_op_index()) {
         RETURN_NOT_OK(SetPendingConfigUnlocked(new_config.ToGoogleProtobuf(), round->id()));
       } else {
         LOG_WITH_PREFIX(INFO)
             << "Ignoring setting pending config change with OpId "
             << OpId::FromPB(round->replicate_msg()->id())
-            << " because the committed config has OpId index " << committed_config.opid_index()
+            << " because the committed config has OpId index "
+            << committed_config.committed_op_index()
             << ". The config change we are ignoring is: Old config: { "
             << old_config.ShortDebugString() << " }. New config: { "
             << new_config.ShortDebugString() << " }";
@@ -855,6 +856,13 @@ void ReplicaState::SetLastCommittedIndexUnlocked(const yb::OpId& committed_op_id
   DCHECK(IsLocked());
   CHECK_GE(last_received_op_id_.index, committed_op_id.index);
   last_committed_op_id_ = committed_op_id;
+  const auto pending_config_op_id_from_rbs = cmeta_->pending_config_op_id_from_rbs();
+  if (pending_config_op_id_from_rbs.is_valid_not_empty() &&
+      last_committed_op_id_ >= pending_config_op_id_from_rbs) {
+    // That means pending_config_op_id_from_rbs could no longer be pending op id, it is either
+    // aborted or committed.
+    cmeta_->clear_pending_config_op_id_from_rbs();
+  }
   CheckPendingOperationsHead();
 }
 
@@ -1022,8 +1030,8 @@ void ReplicaState::ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round) {
   DCHECK(change_config_record.has_new_config());
   auto old_config = change_config_record.old_config().ToGoogleProtobuf();
   auto new_config = change_config_record.new_config().ToGoogleProtobuf();
-  DCHECK(old_config.has_opid_index());
-  DCHECK(!new_config.has_opid_index());
+  DCHECK(old_config.has_committed_op_index());
+  DCHECK(!new_config.has_committed_op_index());
 
   const OpId& current_id = round->id();
 
@@ -1039,12 +1047,12 @@ void ReplicaState::ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round) {
     }
   }
 
-  new_config.set_opid_index(current_id.index);
+  new_config.set_committed_op_index(current_id.index);
   // Check if the pending Raft config has an OpId less than the committed
   // config. If so, this is a replay at startup in which the COMMIT
   // messages were delayed.
   const RaftConfigPB& committed_config = GetCommittedConfigUnlocked();
-  if (new_config.opid_index() > committed_config.opid_index()) {
+  if (new_config.committed_op_index() > committed_config.committed_op_index()) {
     LOG_WITH_PREFIX(INFO)
         << "Committing config change with OpId "
         << current_id << ". Old config: { " << old_config.ShortDebugString() << " }. "
@@ -1054,7 +1062,7 @@ void ReplicaState::ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round) {
     LOG_WITH_PREFIX(INFO)
         << "Ignoring commit of config change with OpId "
         << current_id << " because the committed config has OpId index "
-        << committed_config.opid_index() << ". The config change we are ignoring is: "
+        << committed_config.committed_op_index() << ". The config change we are ignoring is: "
         << "Old config: { " << old_config.ShortDebugString() << " }. "
         << "New config: { " << new_config.ShortDebugString() << " }";
   }

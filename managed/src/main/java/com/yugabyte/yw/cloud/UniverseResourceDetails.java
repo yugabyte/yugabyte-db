@@ -156,7 +156,8 @@ public class UniverseResourceDetails {
       if (Math.abs(instancePrice.getPriceDetails().pricePerHour - 0) < EPSILON) {
         setPricingKnown(false);
       }
-      if (!context.isNodeCounted(nodeDetails)) {
+      // If the universe is paused, proceed to calculate the storage cost.
+      if (!params.universePaused && !context.isNodeCounted(nodeDetails)) {
         continue;
       }
 
@@ -419,7 +420,7 @@ public class UniverseResourceDetails {
               .flatMap(
                   ud ->
                       ud.nodeDetailsSet.stream()
-                          .filter(this::isNodeCounted)
+                          .filter(nodeDetails -> ud.universePaused || isNodeCounted(nodeDetails))
                           .filter(nodeDetails -> nodeDetails.cloudInfo != null)
                           .filter(nodeDetails -> nodeDetails.cloudInfo.instance_type != null)
                           .map(
@@ -440,7 +441,7 @@ public class UniverseResourceDetails {
               .flatMap(
                   ud ->
                       ud.nodeDetailsSet.stream()
-                          .filter(this::isNodeCounted)
+                          .filter(nodeDetails -> ud.universePaused || isNodeCounted(nodeDetails))
                           .filter(nodeDetails -> nodeDetails.cloudInfo != null)
                           .filter(nodeDetails -> nodeDetails.cloudInfo.region != null)
                           .map(
@@ -489,6 +490,8 @@ public class UniverseResourceDetails {
           PriceComponentKey.create(providerUuid, regionCode, componentCode));
     }
 
+    // This method checks only the status of the node.
+    // If the universe is paused, it filters out the nodes.
     public boolean isNodeCounted(NodeDetails nodeDetails) {
       if (isCreateOrEdit) {
         // In case we calculate cost for 'to be' universe during create or edit - count nodes,

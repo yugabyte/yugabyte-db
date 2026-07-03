@@ -407,7 +407,7 @@ Status RemoteTablet::RefreshFromRaftConfig(
     new_replicas.emplace_back(std::make_shared<RemoteReplica>((*tserver).get(), role));
   }
   replicas_ = std::move(new_replicas);
-  raft_config_opid_index_ = consensus_state.config().opid_index();
+  raft_config_opid_index_ = consensus_state.config().committed_op_index();
   VLOG(1) << "Raft config refresh succeeded with opid_index: " << raft_config_opid_index_
             << " for tablet: " << tablet_id_
             << ", replicas are now: " << ReplicasAsStringUnlocked();
@@ -683,7 +683,7 @@ bool RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
   return found;
 }
 
-void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
+bool RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
   bool found = false;
   std::lock_guard lock(mutex_);
   for (auto& replica : replicas_) {
@@ -693,8 +693,7 @@ void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
     }
   }
   VLOG_WITH_PREFIX(3) << "Latest replicas: " << ReplicasAsStringUnlocked();
-  DCHECK(found) << "Tablet " << tablet_id_ << ": Specified server not found: "
-                << server->ToString() << ". Replicas: " << ReplicasAsStringUnlocked();
+  return found;
 }
 
 std::string RemoteTablet::current_leader_uuid() const {
@@ -1276,7 +1275,7 @@ Status MetaCache::DoRefreshTabletInfoWithConsensusInfo(const PB& tablet_consensu
           tablet_consensus_info.tablet_id()));
   auto& consensus_state = tablet_consensus_info.consensus_state();
   SCHECK(
-      consensus_state.config().has_opid_index(), IllegalState,
+      consensus_state.config().has_committed_op_index(), IllegalState,
       "TabletConsensusInfo does not have a valid opid_index");
   SCHECK(
       consensus_state.has_leader_uuid() &&
@@ -1296,11 +1295,11 @@ Status MetaCache::DoRefreshTabletInfoWithConsensusInfo(const PB& tablet_consensu
     // error, but in the consensus info it returned it is still the leader, so we will end up in a
     // loop.
     SCHECK(
-        consensus_state.config().opid_index() >= tablet_opid, Incomplete,
+        consensus_state.config().committed_op_index() >= tablet_opid, Incomplete,
         "TabletConsensusInfo contains a staler opid than the remote tablet");
 
     SCHECK(
-        !(tablet_opid == consensus_state.config().opid_index() &&
+        !(tablet_opid == consensus_state.config().committed_op_index() &&
           remote->current_leader_uuid() == consensus_state.leader_uuid()),
         Incomplete,
         "Incoming consensus information contains the same leader and participants as the remote "
@@ -2493,6 +2492,23 @@ void MetaCache::MarkTSFailed(RemoteTabletServer* ts,
     // We just loop on all tablets; if a tablet does not have a replica on this
     // TS, MarkReplicaFailed() returns false and we ignore the return value.
     tablet.second->MarkReplicaFailed(ts, ts_status);
+  }
+}
+
+void MetaCache::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {
+  SharedLock<decltype(mutex_)> lock(mutex_);
+
+  for (const auto& uuid : ts_uuids) {
+    auto it = ts_cache_.find(uuid);
+    if (it == ts_cache_.end()) {
+      continue;
+    }
+    auto* ts = it->second.get();
+    LOG_WITH_PREFIX_AND_FUNC(INFO)
+        << "Marking replicas on leader-blacklisted tserver " << ts->ToString() << " as followers.";
+    for (const auto& tablet : tablets_by_id_) {
+      tablet.second->MarkTServerAsFollower(ts);
+    }
   }
 }
 

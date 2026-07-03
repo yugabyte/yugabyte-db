@@ -16,18 +16,32 @@
 
 using namespace std::literals;
 
-DECLARE_bool(enable_wait_queues);
+DECLARE_int32(TEST_transactional_read_delay_ms);
+DECLARE_bool(TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization);
 
-namespace yb {
-namespace pgwrapper {
+namespace yb::pgwrapper {
+namespace {
 
-template<IsolationLevel level>
+Status SetExplicitRowLockMaxReadAhead(PGConn& conn, size_t value) {
+  return conn.ExecuteFormat("SET yb_explicit_row_lock_skip_locked_max_read_ahead = $0", value);
+}
+
+Status DisableExplicitRowLockReadAhead(PGConn& conn) {
+  return SetExplicitRowLockMaxReadAhead(conn, 1);
+}
+
+} // namespace
+
 class PgExplicitLockTest : public PgMiniTestBase {
  protected:
   void BeforePgProcessStart() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_sleep_before_retry_on_txn_conflict) = false;
   }
+};
 
+template<IsolationLevel level>
+class PgExplicitLockTestTxnBase : public PgExplicitLockTest {
+ protected:
   void TestRowLockInJoin() {
     auto join_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
     auto misc_conn = ASSERT_RESULT(Connect());
@@ -101,17 +115,18 @@ class PgExplicitLockTest : public PgMiniTestBase {
 };
 
 class PgExplicitLockTestSerializable
-    : public PgExplicitLockTest<IsolationLevel::SERIALIZABLE_ISOLATION> {
+    : public PgExplicitLockTestTxnBase<IsolationLevel::SERIALIZABLE_ISOLATION> {
  protected:
   void BeforePgProcessStart() override {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     EnableFailOnConflict();
-    PgExplicitLockTest::BeforePgProcessStart();
+    PgExplicitLockTestTxnBase::BeforePgProcessStart();
   }
 };
 
-class PgExplicitLockTestSnapshot : public PgExplicitLockTest<IsolationLevel::SNAPSHOT_ISOLATION> {
+class PgExplicitLockTestSnapshot
+    : public PgExplicitLockTestTxnBase<IsolationLevel::SNAPSHOT_ISOLATION> {
  protected:
   void TestSkipLocked();
 };
@@ -206,5 +221,163 @@ TEST_F(PgExplicitLockTestSnapshot, YB_DISABLE_TEST_IN_SANITIZERS(SkipLocked)) {
   TestSkipLocked();
 }
 
-} // namespace pgwrapper
-} // namespace yb
+class PgSkipLockedOptimizationTest : public PgExplicitLockTest {
+ protected:
+  void SetUp() override {
+    EnableFailOnConflict();
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization) = true;
+    PgExplicitLockTest::SetUp();
+  }
+
+  size_t NumTabletServers() override {
+    return 1;
+  }
+};
+
+// The test checks basic correctness of batching rows locks with SKIP LOCKED clause
+TEST_F_EX(PgExplicitLockTest, BatchedSkipLockedBasic, PgSkipLockedOptimizationTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto aux_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE pk(k INT, v INT, PRIMARY KEY(k ASC))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t(k INT, v INT REFERENCES pk(k), v2 INT, PRIMARY KEY(k ASC))"));
+  ASSERT_OK(conn.Execute("INSERT INTO pk VALUES (1, 10), (2, 20), (3, 30)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1, 100), (2, 2, 200), (3, 3, 300)"));
+  ASSERT_OK(aux_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_RESULT(aux_conn.FetchRow<int32_t>("SELECT k FROM t WHERE k = 2 FOR UPDATE"));
+  constexpr auto kQuery = "SELECT * FROM t INNER JOIN pk ON (t.v = pk.k) FOR UPDATE SKIP LOCKED"sv;
+  ASSERT_OK(SetExplicitRowLockMaxReadAhead(conn, 10));
+  auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t, int32_t, int32_t, int32_t>(
+      std::string(kQuery))));
+  ASSERT_EQ(rows, (decltype(rows){{1, 1, 100, 1, 10}, {3, 3, 300, 3, 30}}));
+}
+
+// The test checks absence of undesired row locks in case of SKIP LOCKED with LIMIT clause
+TEST_F_EX(PgExplicitLockTest, BatchedSkipLockedWithLimit, PgSkipLockedOptimizationTest) {
+  auto conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+  auto aux_conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
+  auto extra_conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT, PRIMARY KEY(k ASC))"));
+  constexpr size_t kCount = 10000;
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT s, s FROM generate_series(1, $0) AS s", kCount));
+  ASSERT_OK(aux_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  auto aux_rows = ASSERT_RESULT(aux_conn.FetchRows<int32_t>(
+      "SELECT k FROM t WHERE k % 2 = 0 FOR UPDATE"));
+  auto checker = [&conn, &extra_conn](size_t read_ahead) -> Status {
+    RETURN_NOT_OK(SetExplicitRowLockMaxReadAhead(conn, read_ahead));
+    constexpr size_t kLimit = 1000;
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    auto rows = VERIFY_RESULT((conn.FetchRows<int32_t, int32_t>(Format(
+      "SELECT * FROM t LOCK FOR UPDATE SKIP LOCKED LIMIT $0", kLimit))));
+    SCHECK_EQ(rows.size(), kLimit, IllegalState, "Unexpected number of fetched rows");
+    auto extra_rows = VERIFY_RESULT(extra_conn.FetchRows<int32_t>(Format(
+        "SELECT k FROM t WHERE k % 2 = 1 AND k > $0 FOR UPDATE", kLimit * 2)));
+    SCHECK_EQ(
+        extra_rows.size(), kCount - kCount / 2 - kLimit, IllegalState,
+        "Unexpected number of fetched extra rows ");
+    RETURN_NOT_OK(conn.CommitTransaction());
+    return Status::OK();
+  };
+
+  for (auto read_ahead : {1, 2, 3, 5, 7, 11, 13, 17, 19}) {
+    ASSERT_OK(checker(read_ahead));
+  }
+  ASSERT_OK(aux_conn.CommitTransaction());
+}
+
+// The unit test check that SKIP LOCKED requests are sent in parallel
+TEST_F_EX(PgExplicitLockTest, BatchedSkipLockedPerformance, PgSkipLockedOptimizationTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT, PRIMARY KEY(k ASC))"));
+  constexpr auto kCount = 4;
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT s, s FROM generate_series(1, $0) AS s", kCount));
+  auto execute_with_duration = [&conn](size_t read_ahead) -> Result<uint64_t> {
+    RETURN_NOT_OK(SetExplicitRowLockMaxReadAhead(conn, read_ahead));
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    const auto start = std::chrono::steady_clock::now();
+    const auto res = VERIFY_RESULT((conn.FetchRows<int32_t, int32_t>(
+        "SELECT * FROM t LOCK FOR UPDATE SKIP LOCKED")));
+    const auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start).count();
+    SCHECK_EQ(
+        res, (decltype(res){{1, 1}, {2, 2}, {3, 3}, {4, 4}}), IllegalState, "Unexpected values");
+    RETURN_NOT_OK(conn.CommitTransaction());
+    return duration;
+  };
+  constexpr auto kDelay = 500;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transactional_read_delay_ms) = kDelay;
+  {
+    const auto dur = ASSERT_RESULT(execute_with_duration(/* read_ahead = */1));
+    // Without read ahead (i.e. yb_explicit_row_lock_skip_locked_max_read_ahead = 1) it is expected
+    // that all requests are sent sequentially, so each request will spent more than kDelay time
+    ASSERT_GT(dur, kCount * kDelay);
+  }
+
+  {
+    const auto dur = ASSERT_RESULT(execute_with_duration(/* read_ahead = */kCount));
+    // With read ahead more that required number of column it is expected that all
+    // requests are sent simultaneously, so total time is a little bit more that kDelay
+    ASSERT_LT(dur, 2 * kDelay);
+  }
+}
+
+// The test checks absence of undesired locks in case of JOIN
+TEST_F_EX(PgExplicitLockTest, BatchedSkipLockedJoinLockOrder, PgSkipLockedOptimizationTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto aux_conn = ASSERT_RESULT(Connect());
+  for(auto table : {"p1"sv, "p2"sv, "p3"sv}) {
+    ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(k INT, v INT, PRIMARY KEY(k ASC));"
+      "INSERT INTO $0 SELECT s, s FROM generate_series(1, 9) AS s", table));
+  }
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t(k INT, p1_fk INT REFERENCES p1(k),"
+      "                      p2_fk INT REFERENCES p2(k),"
+      "                      p3_fk INT REFERENCES p3(k), PRIMARY KEY(k ASC));"
+      "INSERT INTO t SELECT s, s, s, s FROM generate_series(1, 9) AS s"));
+
+  auto checker = [&conn, &aux_conn](bool batching) -> Status {
+    RETURN_NOT_OK(
+        batching ? SetExplicitRowLockMaxReadAhead(conn, 5) : DisableExplicitRowLockReadAhead(conn));
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(aux_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    using TableRows = std::pair<std::string_view, std::initializer_list<int32_t>>;
+    for (const auto& trow : std::initializer_list<TableRows>{{"p1"sv, {1, 3, 5}},
+                                                             {"p2"sv, {2, 4, 8}},
+                                                             {"p3"sv, {3, 6, 9}}}) {
+      const auto& [table_name, rows] = trow;
+      VERIFY_RESULT(aux_conn.FetchRows<int32_t>(Format(
+          "SELECT k FROM $0 WHERE k = ANY(ARRAY$1) FOR UPDATE",
+          table_name, CollectionToString(rows))));
+    }
+    const auto t_rows = VERIFY_RESULT((conn.FetchRows<int32_t, int32_t, int32_t, int32_t>(
+        "SELECT t.k, p1.v, p2.v, p3.v FROM t JOIN p1 ON (t.p1_fk = p1.k)"
+        "                                    JOIN p2 ON (t.p2_fk = p2.k)"
+        "                                    JOIN p3 ON (t.p3_fk = p3.k) FOR UPDATE SKIP LOCKED")));
+    SCHECK_EQ(t_rows, (decltype(t_rows){{7, 7, 7, 7}}), IllegalState, "Unexpected values");
+    RETURN_NOT_OK(aux_conn.CommitTransaction());
+
+    // Check non-locked rows in all the tables
+    RETURN_NOT_OK(DisableExplicitRowLockReadAhead(aux_conn));
+    for (const auto& trow : std::initializer_list<TableRows>{{"p1"sv, {1, 3, 5}},
+                                                             {"p2"sv, {1, 2, 3, 4, 5, 8}},
+                                                             {"p3"sv, {1, 2, 3, 4, 5, 6, 8, 9}},
+                                                             {"t"sv,  {}}}) {
+      const auto& [table_name, expected_rows] = trow;
+      const auto rows = VERIFY_RESULT(aux_conn.FetchRows<int32_t>(Format(
+          "SELECT k FROM $0 FOR UPDATE SKIP LOCKED", table_name)));
+      SCHECK_EQ(
+          rows, (decltype(rows){expected_rows}),
+          IllegalState, Format("Unexpected rows in table $0", table_name));
+    }
+    return conn.CommitTransaction();
+  };
+  ASSERT_OK(checker(/* batching = */ false));
+  ASSERT_OK(checker(/* batching = */ true));
+}
+
+} // namespace yb::pgwrapper

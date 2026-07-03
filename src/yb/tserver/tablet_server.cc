@@ -450,10 +450,10 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
                                            bool is_master_leader) {
   shared_ptr<server::MasterAddresses> new_master_addresses;
   if (is_master_leader) {
-    SetCurrentMasterIndex(new_config.opid_index());
+    SetCurrentMasterIndex(new_config.committed_op_index());
     new_master_addresses = make_shared<server::MasterAddresses>();
 
-    SetCurrentMasterIndex(new_config.opid_index());
+    SetCurrentMasterIndex(new_config.committed_op_index());
 
     for (const auto& peer : new_config.peers()) {
       std::vector<HostPort> list;
@@ -495,7 +495,7 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
   }
 
   LOG(INFO) << "Got new list of " << new_config.peers_size() << " masters at index "
-            << new_config.opid_index() << " old masters = "
+            << new_config.committed_op_index() << " old masters = "
             << yb::ToString(opts_.GetMasterAddresses())
             << " new masters = " << yb::ToString(new_master_addresses) << " from "
             << (is_master_leader ? "leader." : "follower.");
@@ -2456,6 +2456,10 @@ void TabletServer::ClearAllMetaCachesOnServer() {
 
 Status TabletServer::ClearMetacache(const std::string& namespace_id) {
   return client()->ClearMetacache(namespace_id);
+}
+
+void TabletServer::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {
+  client()->MarkTServersAsFollowers(ts_uuids);
 }
 
 Status TabletServer::ClearYCQLMetaDataCache() {
