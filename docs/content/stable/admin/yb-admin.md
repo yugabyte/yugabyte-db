@@ -805,16 +805,16 @@ yb-admin \
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *table_id*: UUID of the table to hash. Obtain this from [`list_tables`](#list-tables). For a colocated database, pass the child table UUID to scope the hash to one table, or the colocation parent table UUID to hash all colocated tables in the tablet.
-* *read_ht* (optional): Hybrid timestamp at which to read, as a 64-bit integer. Defaults to the current time. Use the same value on both clusters when comparing hashes for xCluster consistency checks.
+* *read_ht* (optional): Hybrid timestamp at which to read, as a 64-bit integer. Defaults to the current time. Because the arguments are positional, pass 0 to keep the default when you also need to specify `start_key_hex` / `end_key_hex`. Use the same value on both clusters when comparing hashes for xCluster consistency checks.
 * *start_key_hex* (optional): Inclusive lower bound of the partition-key range to hash, hex-encoded using the same encoding as the `partition_key_start` values shown by [`list_tablets`](#list-tablets). Pass an empty string (`""`) to leave this side unbounded.
 * *end_key_hex* (optional): Exclusive upper bound of the partition-key range, hex-encoded. Pass an empty string (`""`) to leave this side unbounded.
 
 **Notes**
 
-- Key range arguments (`start_key_hex` / `end_key_hex`) require a concrete child table ID. Using them with a colocation parent table ID returns an error.
-- For hash-partitioned tables, each bound must be a valid 2-byte hash-partition key.
-- `start_key_hex` must be strictly less than `end_key_hex` when both are specified.
-- When running with a mixed-version cluster, key-range and per-table colocated scoping require a version-matched yb-admin. An older tserver ignores these arguments and scans the full table.
+* Key range arguments (`start_key_hex` / `end_key_hex`) require a concrete child table ID. Using them with a colocation parent table ID returns an error.
+* For hash-partitioned tables, each bound must be a valid 2-byte hash-partition key.
+* `start_key_hex` must be strictly less than `end_key_hex` when both are specified.
+* Key-range and per-table colocated scoping require that both yb-admin and the target YB-TServers are on a version that supports these features. If you are using an older version of YB-TServer, the scoping arguments are silently ignored and the full table (or entire colocated tablet) is hashed instead of returning an error, so verify versions before relying on the result in a mixed-version cluster.
 
 **Example: Hash a full table**
 
@@ -840,12 +840,12 @@ Tablet ID: f1a234b5c6d7e8f9a0b1c2d3e4f5a6b7
     XOR hash: 1029384756
 
 Total row count: 300
-Total XOR hash: 1847263849
+Total XOR hash: 1948762961
 ```
 
 **Example: Hash a partition-key range**
 
-Use this to narrow down where data diverged across clusters. Obtain `partition_key_start` and `partition_key_end` values from [`list_tablets`](#list-tablets) and pass the relevant sub-range. The range is logical and cluster-independent — each cluster resolves it against its own tablet boundaries.
+Use this to narrow down where data diverged across clusters (bisecting after a whole-table mismatch), or to hash only a fraction of a very large table. For example, sampling a random range periodically, or splitting a full scan into non-overlapping ranges run in parallel. Obtain `partition_key_start` and `partition_key_end` values from `list_tablets` and pass the relevant sub-range. The range is logical and cluster-independent; each cluster resolves it against its own tablet boundaries.
 
 ```sh
 ./bin/yb-admin \
