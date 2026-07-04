@@ -1254,8 +1254,16 @@ class TransactionParticipant::Impl
   // Returns kMax if there are no running transactions.
   HybridTime MinRunningHybridTime() {
     auto result = min_running_ht_.load(std::memory_order_acquire);
+    // Refreshing the status of the oldest running transaction below is best-effort. Issuing the
+    // status request needs a ready local client (SendStatusRequest blocks on
+    // client_future().get()). This code runs on the Raft apply path (Tablet::ApplyIntents ->
+    // MinRunningHybridTime), and blocking there can deadlock: local client initialization itself
+    // depends on this tablet's apply making progress (e.g. the master sys catalog right after a
+    // restart, where the client cannot locate a leader master until the pending write is applied).
+    // Skip the refresh until the client is ready; it will be retried later.
     if (result == HybridTime::kMax || result == HybridTime::kInvalid
-        || !transactions_loaded_.load()) {
+        || !transactions_loaded_.load()
+        || !IsReady(participant_context_.client_future())) {
       return result;
     }
     auto now = CoarseMonoClock::now();
