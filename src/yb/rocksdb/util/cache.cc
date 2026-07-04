@@ -530,7 +530,13 @@ size_t LRUCache::GetSubCacheCapacity(const SubCacheType subcache_type) {
       if (strict_capacity_limit_ || !FLAGS_cache_overflow_single_touch) {
         return total_capacity_ - multi_touch_capacity_;
       }
-      return total_capacity_ - multi_touch_sub_cache_.Usage();
+      // total_capacity_ can drop below the multi-touch usage held by pinned entries once
+      // ConsumeSpace (block cache reservation) shrinks the effective capacity. Guard against the
+      // unsigned underflow; otherwise EvictFromLRU would compute a huge single-touch capacity and
+      // evict nothing, leaving the single-touch LRU non-empty while the cache reports full and
+      // tripping the IsLRUEmpty() assertion in Release.
+      return total_capacity_ > multi_touch_sub_cache_.Usage()
+          ? total_capacity_ - multi_touch_sub_cache_.Usage() : 0;
     case MULTI_TOUCH :
       return multi_touch_capacity_;
   }
