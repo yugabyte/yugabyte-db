@@ -890,13 +890,23 @@ TEST_P(PgVectorIndexTest, ConcurrentInsertAndSearch) {
   std::atomic<int64_t> next_id{1000};
   TestThreadHolder threads;
 
-  // Writers: keep inserting multi-row batches for the whole run. With task_size=1 every batch fans
-  // out into many concurrent add() calls on the chunk's index. Ids come from a shared counter so
-  // they stay unique across writers; once a chunk fills it simply rolls into a new mutable chunk.
+  // Cap the number of inserted rows. For the pure hnswlib backend a chunk's in-memory graph is
+  // never released after it is flushed to disk (DoSaveToFile keeps the original index), so resident
+  // memory grows with every inserted vector. Left unbounded, the sustained inserts push the tserver
+  // past its soft memory limit and the resulting overload intermittently corrupts an in-flight read
+  // RPC ("Failed to parse 'pgsql_batch'"). This cap keeps the index comfortably within the limit
+  // while still driving far more concurrent insert-vs-search traffic than the race needs to
+  // surface.
+  constexpr int64_t kMaxId = 1000000;
+
+  // Writers: keep inserting multi-row batches until the row cap is reached. With task_size=1 every
+  // batch fans out into many concurrent add() calls on the chunk's index. Ids come from a shared
+  // counter so they stay unique across writers; once a chunk fills it rolls into a new mutable one.
   for (size_t w = 0; w != kWriters; ++w) {
     threads.AddThreadFunctor([this, &next_id, &stop_flag = threads.stop_flag()] {
       auto write_conn = ASSERT_RESULT(Connect());
-      while (!stop_flag.load(std::memory_order_acquire)) {
+      while (!stop_flag.load(std::memory_order_acquire) &&
+             next_id.load(std::memory_order_relaxed) < kMaxId) {
         ASSERT_OK(InsertBatch(
             write_conn, next_id.fetch_add(kBatchSize, std::memory_order_relaxed), kBatchSize));
       }
