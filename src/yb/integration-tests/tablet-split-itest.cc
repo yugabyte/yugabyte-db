@@ -352,13 +352,24 @@ TEST_F(TabletSplitITest, BootstrapStateCopiedToChildren) {
       kDefaultNumRows, /*wait_for_intents=*/true));
 
   for (auto& tablet_peer : ASSERT_RESULT(ListTestTableActiveTabletPeers())) {
-    ASSERT_OK(tablet_peer->FlushBootstrapState());
+    // A follower may not have applied the write op yet, in which case its retryable requests are
+    // empty and FlushBootstrapState finds nothing to save (no file on disk). Retry the flush until
+    // the state is actually persisted so the subsequent split copies it to every child replica.
+    ASSERT_OK(WaitFor([&tablet_peer]() -> bool {
+      WARN_NOT_OK(tablet_peer->FlushBootstrapState(), "Failed to flush bootstrap state");
+      return tablet_peer->TEST_HasBootstrapStateOnDisk();
+    }, 30s, "Parent bootstrap state flushed to disk on all replicas"));
   }
   StringWaiterLogSink yes_sink{": Initialized TabletBootstrapStateManager, found a file ? yes"};
   StringWaiterLogSink no_sink{": Initialized TabletBootstrapStateManager, found a file ? no"};
   ASSERT_OK(SplitSingleTablet(split_hash_code));
   ASSERT_OK(WaitForTestTableTabletPeersPostSplitCompacted(30s));
-  // 2 children * 3 replicas.
+  // 2 children * 3 replicas. A lagging replica may receive its children via remote bootstrap, which
+  // initializes the bootstrap state manager later than the post-split compaction wait completes, so
+  // wait for all 6 replicas to report the copied file instead of checking the count immediately.
+  ASSERT_OK(WaitFor([&yes_sink]() -> bool {
+    return yes_sink.GetEventCount() >= 6;
+  }, 30s, "All 6 child replicas initialized bootstrap state from copied file"));
   ASSERT_EQ(yes_sink.GetEventCount(), 6);
   ASSERT_EQ(no_sink.GetEventCount(), 0);
 }
