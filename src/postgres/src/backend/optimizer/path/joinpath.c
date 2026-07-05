@@ -2091,7 +2091,7 @@ match_unsorted_outer(PlannerInfo *root,
 								  innerpath,
 								  merge_pathkeys,
 								  jointype,
-								  PGS_NESTLOOP_PLAIN,
+								  PGS_NESTLOOP_PLAIN | YB_PGS_BATCHEDNL,
 								  extra);
 
 				/*
@@ -2278,7 +2278,8 @@ consider_parallel_nestloop(PlannerInfo *root,
 
 			try_partial_nestloop_path(root, joinrel, outerpath, innerpath,
 									  pathkeys, jointype,
-									  PGS_NESTLOOP_PLAIN, extra);
+									  PGS_NESTLOOP_PLAIN | YB_PGS_BATCHEDNL,
+									  extra);
 
 			/*
 			 * Try generating a memoize path and see if that makes the nested

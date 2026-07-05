@@ -597,6 +597,9 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	if (enable_partitionwise_join)
 		glob->default_pgs_mask |= PGS_CONSIDER_PARTITIONWISE;
 
+	if (yb_enable_batchednl)
+		glob->default_pgs_mask |= YB_PGS_BATCHEDNL;
+
 	/* Allow plugins to take control after we've initialized "glob" */
 	if (planner_setup_hook)
 		(*planner_setup_hook) (glob, parse, query_string, cursorOptions,

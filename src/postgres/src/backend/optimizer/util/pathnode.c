@@ -1393,6 +1393,12 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel,
 							&pathnode->total_cost,
 							rel->reltablespace);
 			pathnode->rows = rel->rows;
+
+			uint64		enable_mask = PGS_SEQSCAN |
+				(parallel_workers > 0 ? 0 : PGS_CONSIDER_NONPARTIAL);
+
+			pathnode->disabled_nodes =
+				(rel->pgs_mask & enable_mask) == enable_mask ? 0 : 1;
 		}
 	}
 	else

@@ -44,23 +44,31 @@ set yb_fetch_size_limit = -1;  -- ERROR since yb_fetch_size_limit must be non-ne
 CREATE TABLE test_scan (i int, j int);
 CREATE INDEX NONCONCURRENTLY ON test_scan (j);
 
--- We want to know when disable_cost is added, but we don't want to depend on
--- the exact cost value.
+-- Report the top scan node and whether any node was disabled during planning.
+-- A disabled node shows up on its own "Disabled: true" line, so scan all lines.
 CREATE OR REPLACE FUNCTION get_plan_details(stmt text) RETURNS TABLE (
     scan_type text,
     disabled boolean
 ) AS
 $_$
 DECLARE
-    ret text;
-    first_line text;
+    line text;
+    first_line text := NULL;
+    is_disabled boolean := false;
 BEGIN
-    EXECUTE format('EXPLAIN (FORMAT text) %s', stmt) INTO ret;
-    first_line := split_part(ret, E'\n', 1); -- Extract the first line
-    -- return (first two words of the line, is_disabled)
+    FOR line IN EXECUTE format('EXPLAIN (FORMAT text) %s', stmt)
+    LOOP
+        IF first_line IS NULL THEN
+            first_line := line; -- top plan node
+        END IF;
+        IF line LIKE '%Disabled: true%' THEN
+            is_disabled := true;
+        END IF;
+    END LOOP;
+    -- return (first two words of the top line, is_disabled)
     RETURN QUERY
       SELECT trim(split_part(first_line, ' ', 1) || ' ' || split_part(first_line, ' ', 2)) AS scan_type,
-      first_line SIMILAR TO '%cost=1[0-9]{10}%' AS disabled;
+      is_disabled AS disabled;
 END;
 $_$
 LANGUAGE plpgsql;

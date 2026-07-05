@@ -3706,6 +3706,30 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 	Cost		inner_run_cost;
 	Cost		inner_rescan_run_cost;
 
+	int			yb_batch_size = 1;
+	bool		yb_is_batched = (IsYugaByteEnabled() &&
+								 yb_bnl_batch_size > 1 &&
+								 yb_is_outer_inner_batched(outer_path, inner_path));
+
+	if (!yb_is_batched)
+		enable_mask &= ~((uint64) YB_PGS_BATCHEDNL);
+	else
+	{
+		enable_mask &= ~((uint64) PGS_NESTLOOP_PLAIN);
+
+		/*
+		 * YB: For backward compatibility, don't treat the BNL as disabled when
+		 * yb_prefer_bnl is set and plain nestloops are allowed for this join,
+		 * even if yb_enable_batchednl is off.
+		 * See #21129 and YB comment about yb_prefer_bnl in `add_path`.
+		 */
+		if (yb_prefer_bnl && enable_nestloop)
+			enable_mask &= ~((uint64) YB_PGS_BATCHEDNL);
+
+		if (yb_enable_base_scans_cost_model || yb_legacy_bnl_cost)
+			yb_batch_size = yb_bnl_batch_size;
+	}
+
 	/* Count up disabled nodes. */
 	disabled_nodes = (extra->pgs_mask & enable_mask) == enable_mask ? 0 : 1;
 	disabled_nodes += inner_path->disabled_nodes;
@@ -3717,18 +3741,6 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 				&inner_rescan_total_cost);
 
 	/* cost of source data */
-	int			yb_batch_size = 1;
-	bool		yb_is_batched = false;
-
-	if (IsYugaByteEnabled() &&
-		(yb_enable_base_scans_cost_model || yb_legacy_bnl_cost))
-	{
-		yb_is_batched = yb_is_outer_inner_batched(outer_path, inner_path);
-		if (yb_is_batched)
-			yb_batch_size = yb_bnl_batch_size;
-	}
-
-	bool		yb_costing_bnl = yb_batch_size > 1 && !yb_legacy_bnl_cost;
 
 	/*
 	 * NOTE: clearly, we must pay both outer and inner paths' startup_cost
@@ -3746,7 +3758,7 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 	inner_rescan_run_cost = (inner_rescan_total_cost - inner_rescan_start_cost);
 
 	if ((jointype == JOIN_SEMI || jointype == JOIN_ANTI ||
-		 extra->inner_unique) && !yb_costing_bnl)
+		 extra->inner_unique) && (yb_batch_size == 1 || yb_legacy_bnl_cost))
 	{
 		/*
 		 * With a SEMI or ANTI join, or if the innerrel is known unique, the
@@ -3822,14 +3834,13 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 		path->jpath.path.rows = path->jpath.path.parent->rows;
 
 	int			yb_batch_size = 1;
-	bool		yb_is_batched = IsYugaByteEnabled() && yb_is_nestloop_batched(path);
+	bool		yb_is_batched = (IsYugaByteEnabled() &&
+								 yb_bnl_batch_size > 1 &&
+								 yb_is_nestloop_batched(path));
 
-	if (IsYugaByteEnabled() && yb_is_batched &&
+	if (yb_is_batched &&
 		(yb_enable_base_scans_cost_model || yb_legacy_bnl_cost))
 		yb_batch_size = yb_bnl_batch_size;
-
-	bool		yb_costing_bnl = yb_batch_size > 1 && !yb_legacy_bnl_cost;
-	int			yb_legacy_bnl_bs = (yb_legacy_bnl_cost? yb_batch_size : 1);
 
 	/* For partial paths, scale row estimate. */
 	if (path->jpath.path.parallel_workers > 0)
@@ -3868,7 +3879,7 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 	 * the adjustment to ntuples that is done after this branch statement.
 	 */
 	if ((path->jpath.jointype == JOIN_SEMI || path->jpath.jointype == JOIN_ANTI ||
-		 extra->inner_unique) && !yb_costing_bnl)
+		 extra->inner_unique) && (yb_batch_size == 1 || yb_legacy_bnl_cost))
 	{
 		/*
 		 * With a SEMI or ANTI join, or if the innerrel is known unique, the
@@ -3898,7 +3909,7 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 		 * account for successfully-matched outer rows.
 		 */
 
-		ntuples = ((outer_matched_rows / yb_legacy_bnl_bs) *
+		ntuples = ((outer_matched_rows / yb_batch_size) *
 				   inner_path_rows * inner_scan_frac);
 
 		/*
@@ -3929,9 +3940,9 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			if (outer_matched_rows > 0)
 				run_cost += inner_run_cost * inner_scan_frac;
 
-			if (outer_matched_rows > yb_legacy_bnl_bs)
-				run_cost += (((outer_matched_rows - yb_legacy_bnl_bs) /
-							  yb_legacy_bnl_bs) *
+			if (outer_matched_rows > yb_batch_size)
+				run_cost += (((outer_matched_rows - yb_batch_size) /
+							  yb_batch_size) *
 							 inner_rescan_run_cost * inner_scan_frac);
 
 			/*
@@ -3941,7 +3952,7 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			 * since we used inner_run_cost once already.
 			 */
 
-			if (yb_legacy_bnl_bs == 1)
+			if (yb_batch_size == 1)
 				run_cost += (outer_unmatched_rows *
 							 inner_rescan_run_cost / inner_path_rows);
 
@@ -3966,26 +3977,26 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			 */
 
 			/* First, count all unmatched join tuples as being processed */
-			ntuples += ((outer_unmatched_rows / yb_legacy_bnl_bs) *
+			ntuples += ((outer_unmatched_rows / yb_batch_size) *
 						inner_path_rows);
 
 			/* Now add the forced full scan, and decrement appropriate count */
 			run_cost += inner_run_cost;
-			if (outer_unmatched_rows >= yb_legacy_bnl_bs)
-				outer_unmatched_rows -= yb_legacy_bnl_bs;
-			else if (outer_matched_rows < yb_legacy_bnl_bs)
+			if (outer_unmatched_rows >= yb_batch_size)
+				outer_unmatched_rows -= yb_batch_size;
+			else if (outer_matched_rows < yb_batch_size)
 				outer_matched_rows -= outer_matched_rows;
 			else
-				outer_matched_rows -= yb_legacy_bnl_bs;
+				outer_matched_rows -= yb_batch_size;
 
 			/* Add inner run cost for additional outer tuples having matches */
 			if (outer_matched_rows > 0)
-				run_cost += ((outer_matched_rows / yb_legacy_bnl_bs) *
+				run_cost += ((outer_matched_rows / yb_batch_size) *
 							 inner_rescan_run_cost * inner_scan_frac);
 
 			/* Add inner run cost for additional unmatched outer tuples */
 			if (outer_unmatched_rows > 0)
-				run_cost += ((outer_unmatched_rows / yb_legacy_bnl_bs) *
+				run_cost += ((outer_unmatched_rows / yb_batch_size) *
 							 inner_rescan_run_cost);
 		}
 	}
@@ -7823,6 +7834,7 @@ void
 yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 				ParamPathInfo *param_info)
 {
+	uint64		enable_mask = PGS_SEQSCAN;
 	Cost		startup_cost = 0;
 	Cost		run_cost = 0;
 	int32		tuple_width = 0;
@@ -7862,11 +7874,6 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 		path->rows = param_info->ppi_rows;
 	else
 		path->rows = baserel->rows;
-
-	if (!enable_seqscan)
-	{
-		startup_cost += disable_cost;
-	}
 
 	/* DocDB costs */
 	/* Compute tuple width */
@@ -7948,6 +7955,8 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	}
 	else
 	{
+		enable_mask |= PGS_CONSIDER_NONPARTIAL;
+
 		num_result_pages = yb_get_num_result_pages(remote_filtered_rows,
 												   docdb_result_width);
 		result_transfer_cost = yb_compute_result_transfer_cost(remote_filtered_rows,
@@ -7989,6 +7998,9 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	cost_qual_eval(&qual_cost, local_clauses, root);
 	startup_cost += qual_cost.startup;
 	run_cost += qual_cost.per_tuple * remote_filtered_rows;
+
+	path->disabled_nodes =
+		(baserel->pgs_mask & enable_mask) == enable_mask ? 0 : 1;
 	path->startup_cost = startup_cost;
 	path->total_cost = startup_cost + run_cost;
 }
@@ -8523,6 +8535,7 @@ void
 yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			  bool partial_path)
 {
+	uint64		enable_mask;
 	IndexOptInfo *index = path->indexinfo;
 	bool		is_primary_index;
 	Oid			index_tablespace_id = index->reltablespace;
@@ -8593,6 +8606,12 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	Assert(IsA(baserel, RelOptInfo) && IsA(index, IndexOptInfo));
 	Assert(baserel->relid > 0);
 	Assert(baserel->rtekind == RTE_RELATION);
+
+	/* is this scan type disabled? */
+	enable_mask = (index_only ? PGS_INDEXONLYSCAN : PGS_INDEXSCAN)
+		| (partial_path ? 0 : PGS_CONSIDER_NONPARTIAL);
+	path->path.disabled_nodes =
+		(baserel->pgs_mask & enable_mask) == enable_mask ? 0 : 1;
 
 	yb_get_roundtrip_transfer_costs(index_tablespace_id,
 									&index_roundtrip_cost,
@@ -9237,10 +9256,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	startup_cost += path->path.pathtarget->cost.startup;
 	run_cost += path->path.pathtarget->cost.per_tuple * path->path.rows;
 
-	/* we don't need to check enable_index_onlyscan; indxpath.c does that */
-	if (!enable_indexscan)
-		startup_cost += disable_cost;
-
 	/* TODO(#29078): cost this better. */
 	if (path->yb_index_path_info.merge_scan_saop_cols)
 	{
@@ -9386,6 +9401,7 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 						  ParamPathInfo *param_info,
 						  Path *bitmapqual, double loop_count)
 {
+	uint64		enable_mask = PGS_BITMAPSCAN;
 	Cost		startup_cost = 0;
 	Cost		run_cost = 0;
 	Selectivity indexSelectivity;
@@ -9434,9 +9450,6 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	else
 		path->rows = baserel->rows;
 
-	if (!enable_bitmapscan)
-		startup_cost += disable_cost;
-
 	/* Adjust costing for parallelism, if used. */
 	if (path->parallel_workers > 0)
 	{
@@ -9446,6 +9459,8 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 												parallel_divisor);
 		path->rows = clamp_row_est(path->rows / parallel_divisor);
 	}
+	else
+		enable_mask |= PGS_CONSIDER_NONPARTIAL;
 
 	/* DocDB costs */
 	/* Compute tuple width */
@@ -9462,11 +9477,6 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	if (indexTotalCost > bitmap_exceeded_work_mem_disable_cost)
 	{
 		yb_cost_seqscan(path, root, baserel, param_info);
-		if (path->startup_cost > disable_cost)
-		{
-			path->startup_cost -= disable_cost;
-			path->total_cost -= disable_cost;
-		}
 		path->startup_cost += startup_cost;
 		path->total_cost += startup_cost;
 		return;
@@ -9601,6 +9611,8 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	startup_cost += qual_cost.startup;
 	run_cost += qual_cost.per_tuple * tuples_fetched;
 
+	path->disabled_nodes =
+		(baserel->pgs_mask & enable_mask) == enable_mask ? 0 : 1;
 	path->startup_cost = startup_cost;
 	path->total_cost = startup_cost + run_cost;
 	path->yb_plan_info.estimated_num_nexts_prevs = num_nexts;
