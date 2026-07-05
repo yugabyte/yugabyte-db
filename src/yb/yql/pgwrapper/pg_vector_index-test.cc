@@ -2118,6 +2118,83 @@ TEST_P(PgVectorIndexSingleServerTest, ManualCompactionDuringShutdown) {
                     "vector index destruction"));
 }
 
+// Reproduces a data race between the in-place update of the tablet's vector index list in
+// TabletVectorIndexes::DoCreateIndex and a lock-free reader iterating that same list -- the read
+// that the post-split vector index compaction performs via VectorIndexList::WaitForCompaction().
+//
+// The reader and writer are coordinated only through relaxed atomics: introducing a
+// mutex/latch/acquire-release would add a happens-before edge between the racing read and write and
+// hide the bug. The missing synchronization (a relaxed use_count() load driving an in-place
+// mutation) is exactly the defect under test. On buggy code TSAN reports a data race on the shared
+// std::vector buffer; the copy-on-write fix keeps a published buffer immutable, so the reader's
+// snapshot is never mutated in place.
+TEST_P(PgVectorIndexSingleServerTest, ConcurrentCreateIndexAndListRace) {
+  auto conn = ASSERT_RESULT(MakeIndex());  // Table + first vector index: the list holds one entry.
+
+  // Locate the single tablet that owns the vector index.
+  tablet::TabletPtr tablet;
+  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    auto candidate = peer->shared_tablet_maybe_null();
+    if (!candidate) {
+      continue;
+    }
+    auto list = candidate->vector_indexes().List();
+    if (list && !list->empty()) {
+      tablet = candidate;
+      break;
+    }
+  }
+  ASSERT_TRUE(tablet) << "No tablet with a vector index found";
+
+  std::atomic<bool> reader_has_snapshot{false};
+  std::atomic<bool> writer_parked{false};
+  std::atomic<bool> reader_done{false};
+
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "TabletVectorIndexes::DoCreateIndex:BeforeListUpdate",
+      [&writer_parked, &reader_done](void*) {
+        // Let the reader perform its racing read now, then wait until it drops the snapshot so that
+        // use_count() falls back to 1 and DoCreateIndex takes the in-place branch.
+        writer_parked.store(true, std::memory_order_relaxed);
+        while (!reader_done.load(std::memory_order_relaxed)) {}
+      });
+  sync_point->EnableProcessing();
+
+  TestThreadHolder threads;
+  threads.AddThreadFunctor(
+      [&tablet, &reader_has_snapshot, &writer_parked, &reader_done] {
+        // Snapshot the list under a brief shared lock (bumps use_count to 2), same as the
+        // compaction path, and release the lock before signalling so the parked writer cannot
+        // deadlock.
+        auto list = tablet->vector_indexes().List();
+        ASSERT_TRUE(list && !list->empty());
+        reader_has_snapshot.store(true, std::memory_order_relaxed);
+
+        // Wait until the writer is parked right before the in-place list update, so the racing read
+        // is fresh, then iterate the buffer exactly as WaitForCompaction() does.
+        while (!writer_parked.load(std::memory_order_relaxed)) {}
+        for (const auto& index : *list) {
+          ASSERT_TRUE(index != nullptr);  // Racing read of the shared vector buffer.
+        }
+
+        list = {};  // Drop the snapshot: use_count() falls back to 1.
+        reader_done.store(true, std::memory_order_relaxed);
+      });
+
+  // Ensure the reader released the shared lock before the writer takes the exclusive lock: the
+  // writer parks while holding vector_indexes_mutex_, so a reader still inside List() would
+  // deadlock.
+  while (!reader_has_snapshot.load(std::memory_order_relaxed)) {}
+
+  // Writer: create a second vector index. DoCreateIndex takes the in-place branch and mutates the
+  // shared buffer that the reader is still holding.
+  ASSERT_OK(CreateIndex(conn, "another"));
+
+  threads.WaitAndStop(60s * kTimeMultiplier);
+  sync_point->DisableProcessing();
+}
+
 TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
   // Set number of files for background compaction explicitly.
   constexpr auto kRetentionIntervalSec = 4;
