@@ -479,11 +479,17 @@ ERROR:  index method "gist" not supported yet
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
 CREATE INDEX text_idx on test__int using gin ( a gin__int_ops );
 SELECT count(*) from test__int WHERE a && '{23,50}';
-ERROR:  unsupported ybgin index scan
-DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+ count 
+-------
+   403
+(1 row)
+
 SELECT count(*) from test__int WHERE a @@ '23|50';
-ERROR:  unsupported ybgin index scan
-DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
+ count 
+-------
+   403
+(1 row)
+
 SELECT count(*) from test__int WHERE a @> '{23,50}';
  count 
 -------
@@ -527,8 +533,11 @@ SELECT count(*) from test__int WHERE a @> '{20,23}' or a @> '{50,68}';
 (1 row)
 
 SELECT count(*) from test__int WHERE a @@ '(20&23)|(50&68)';
-ERROR:  unsupported ybgin index scan
-DETAIL:  ybgin index method cannot use more than one required scan entry: got 3.
+ count 
+-------
+    21
+(1 row)
+
 SELECT count(*) from test__int WHERE a @@ '20 | !21';
  count 
 -------
