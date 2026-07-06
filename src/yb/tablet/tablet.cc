@@ -2003,7 +2003,8 @@ Status Tablet::ApplyKeyValueRowOperations(
     rocksdb::WriteBatch intents_write_batch;
     docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
-        GetSchemaPackingProvider(), frontiers, vector_indexes_->List().impl(), apply_to_storages);
+        GetSchemaPackingProvider(), frontiers, vector_indexes_->List().impl(), apply_to_storages,
+        table_type());
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetDirectWriter(&batcher);
@@ -2590,7 +2591,7 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   docdb::ApplyIntentsContext context(
       tablet_id(), data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
       min_running_ht, data.op_id, &key_bounds_, *metadata_, frontiers, intents_db_.get(),
-      vector_indexes, data.apply_to_storages, std::move(complete_listener));
+      vector_indexes, data.apply_to_storages, table_type(), std::move(complete_listener));
   docdb::IntentsWriter intents_writer(
       data.apply_state ? data.apply_state->key : Slice(), min_running_ht,
       intents_db_.get(), &context);

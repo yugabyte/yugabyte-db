@@ -510,6 +510,10 @@ SchemaPacking::SchemaPacking(TableType table_type, const Schema& schema) {
 
     const auto& type_info = *column_schema.type_info();
 
+    if (type_info.type == DataType::VECTOR) {
+      vector_columns_idx_.push_back(columns_.size());
+    }
+
     columns_.emplace_back(ColumnPackingData {
       .id = schema.column_id(i),
       .num_varlen_columns_before = varlen_columns_count_,
@@ -534,6 +538,9 @@ SchemaPacking::SchemaPacking(const SchemaPackingPB& pb) : varlen_columns_count_(
   for (const auto& entry : pb.columns()) {
     columns_.push_back(ColumnPackingData::FromPB(entry));
     column_to_idx_.set(columns_.back().id.rep(), narrow_cast<int>(columns_.size()) - 1);
+    if (columns_.back().data_type == DataType::VECTOR) {
+      vector_columns_idx_.push_back(columns_.size() - 1);
+    }
     if (columns_.back().varlen()) {
       ++varlen_columns_count_;
     }
