@@ -65,6 +65,15 @@ finalize-schema-post-data-import:
 
 |Refreshes the materialized views on target during the post-import-data phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 
+| --target-db-type |
+
+```yaml
+finalize-schema-post-data-import:
+  target-db-type
+```
+
+| Target database type to import into. <br> Accepted values: YugabyteDB (default), YugabyteDB AMP (a PostgreSQL-compatible compute over YugabyteDB storage) |
+
 | --target-db-host |
 
 ```yaml{.nocopy}

@@ -17,6 +17,23 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2026.7.1 - July 7, 2026
+
+### New feature
+
+- Added support for offline and basic live migration migration from PostgreSQL into YugabyteDB AMP (a PostgreSQL-compatible compute over YugabyteDB storage), selectable with `--target-db-type` CLI flag.
+
+### Enhancement
+
+- Added a guardrail that fails fast with a clear error when a `start-clean` import is attempted after the relevant queue segments have already been archived.
+
+### Bug fixes
+
+- Fixed an issue where unsupported query constructs were not detected during migration assessment when run with `--run-guardrails-checks=false`, even though [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) was installed and enabled.
+- Fixed unique-key conflict detection for multi-column unique indexes during live migration.
+- Fixed live migration reporting false unique-key conflicts for tables using the table CDC partitioning strategy.
+- Fixed a validation issue where `--use-partition-root` incorrectly evaluated the target engine instead of the source database, ensuring non-PostgreSQL sources are properly rejected.
+
 ## v2026.6.2 - June 24, 2026
 
 ### Enhancements
