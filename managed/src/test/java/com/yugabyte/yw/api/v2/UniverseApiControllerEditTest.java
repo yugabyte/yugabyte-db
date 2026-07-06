@@ -346,7 +346,6 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
   @Test
   public void testEditUniverseV2CommunicationPorts() throws ApiException {
     UniverseApi api = new UniverseApi();
-    // payload for editing the Universe instance type
     UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
     ClusterSpec primaryClusterSpec =
         universeSpec.getClusters().stream()
@@ -354,6 +353,23 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .findAny()
             .orElseThrow();
     ClusterEditSpec clusterEditSpec = new ClusterEditSpec().uuid(primaryClusterSpec.getUuid());
+    CommunicationPortsSpec communicationPortsSpec =
+        new CommunicationPortsSpec()
+            .masterHttpPort(1234)
+            .masterRpcPort(1235)
+            .tserverHttpPort(5678)
+            .tserverRpcPort(5679)
+            .nodeExporterPort(9301)
+            .otelCollectorMetricsPort(8890)
+            .redisServerHttpPort(11001)
+            .redisServerRpcPort(6380)
+            .ybControllerHttpPort(14001)
+            .ybControllerRpcPort(18019)
+            .yqlServerHttpPort(12001)
+            .yqlServerRpcPort(9043)
+            .ysqlServerHttpPort(13001)
+            .ysqlServerRpcPort(5434)
+            .internalYsqlServerRpcPort(6434);
     UniverseEditSpec universeEditSpec =
         new UniverseEditSpec()
             .expectedUniverseVersion(-1)
@@ -364,9 +380,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
                     .assignStaticPublicIp(
                         universeSpec.getNetworkingSpec().getAssignStaticPublicIp())
                     .enableIpv6(universeSpec.getNetworkingSpec().getEnableIpv6())
-                    .communicationPorts(
-                        new CommunicationPortsSpec().masterHttpPort(1234).tserverHttpPort(5678)));
-    // run the edit universe
+                    .communicationPorts(communicationPortsSpec));
     runEditUniverseV2(universeEditSpec);
   }
 

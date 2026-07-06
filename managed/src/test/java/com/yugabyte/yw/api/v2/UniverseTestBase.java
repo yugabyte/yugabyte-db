@@ -626,6 +626,11 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     } else {
       assertThat(dbCP.ysqlServerRpcPort, is(v2CP.getYsqlServerRpcPort()));
     }
+    if (v2CP.getInternalYsqlServerRpcPort() == null) {
+      assertThat(dbCP.internalYsqlServerRpcPort, is(defaultPorts.internalYsqlServerRpcPort));
+    } else {
+      assertThat(dbCP.internalYsqlServerRpcPort, is(v2CP.getInternalYsqlServerRpcPort()));
+    }
   }
 
   private void validateEncryptionAtRest(EncryptionAtRestSpec v2Enc, EncryptionAtRestConfig dbEnc) {
