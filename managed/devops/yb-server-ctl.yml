@@ -43,17 +43,20 @@
           set_fact:
             systemd_process: "{{ process if process == 'otel-collector' else 'yb-' ~ process }}"
             user_systemd_dir: "{{ yb_user_home | default('/home/yugabyte') }}/.config/systemd/user"
-        # Per-service scope detection. Check for the user-level unit file for THIS
-        # specific service rather than just the parent ~/.config/systemd/user/ directory:
-        # on mixed-systemd nodes that directory exists because YBA creates user-level
-        # utility services (yb-zip_purge_yb_logs etc.) even when master/tserver/controller
-        # are managed by root-level systemd. Checking the per-service file instead picks
-        # the correct scope for each service individually. User-systemd takes priority
-        # when its unit file is present, since on 2024.2 a per-service user unit file is
-        # only created via the intentional Systemd Upgrade flow.
+        # Pick the systemctl scope per service: check that service's user-level unit file,
+        # not just the ~/.config/systemd/user/ directory (which exists on mixed-systemd nodes
+        # for utility services even when master/tserver/controller run under root systemd).
+        # Fall back to the directory check for the clean family (clean/clean-logs/clean-instance):
+        # clean-instance has an empty `process`, and clean/clean-logs run after remove-services
+        # has deleted the per-service unit file, so a per-service stat would wrongly force
+        # `sudo systemctl` and fail on non-sudo user-systemd nodes. start/stop/stop-destroy keep
+        # the per-service check unchanged since their unit file is still present when they run.
         - name: Determine system or user scope
           stat:
-            path: "{{ user_systemd_dir }}/{{ systemd_process }}.service"
+            path: >-
+              {{ user_systemd_dir
+                 if ((is_clean_command | bool) or (process | default('') | length == 0))
+                 else (user_systemd_dir ~ '/' ~ systemd_process ~ '.service') }}
           register: systemd_user
         - name: Print systemd_user
           debug:
@@ -65,7 +68,7 @@
           set_fact:
             systemd_prefix: >-
               {{ systemd_log_level }}{{ 'systemctl --user'
-              if systemd_user.stat.exists else 'sudo systemctl' }}
+              if systemd_user.stat.exists else 'sudo -n systemctl' }}
         - name: Print systemd_prefix
           debug:
             var: systemd_prefix
@@ -81,6 +84,10 @@
             retries: 10
             delay: 10
             until: reload_daemon_result1.rc == 0
+            # Only user-level systemd (systemctl --user) is expected to succeed, so report/fail
+            # on its errors. Tolerate the sudo path: on non-sudo nodes `sudo -n systemctl` fails
+            # fast, and a daemon-reload there must not strand the node in DECOMMISSIONED.
+            failed_when: "systemd_user.stat.exists and reload_daemon_result1.rc != 0"
           - name: Enable the {{ systemd_process }}
             shell: "{{ systemd_prefix }} enable {{ systemd_process }}"
             when: command == 'start'
@@ -101,6 +108,7 @@
             retries: 10
             delay: 10
             until: reload_daemon_result2.rc == 0
+            failed_when: "systemd_user.stat.exists and reload_daemon_result2.rc != 0"
             when: command == 'stop'
           - name: Disable the {{ systemd_process }}
             shell: "{{ systemd_prefix }} disable {{ systemd_process }}"
@@ -115,6 +123,7 @@
             retries: 10
             delay: 10
             until: reload_daemon_result3.rc == 0
+            failed_when: "systemd_user.stat.exists and reload_daemon_result3.rc != 0"
           when: command != "stop-destroy"
         - name: Check if the logs cleanup script exists
           stat:
@@ -134,6 +143,8 @@
           block:
             - name: Reload daemon
               shell: "{{ systemd_prefix }} daemon-reload"
+              register: reload_daemon_destroy1
+              failed_when: "systemd_user.stat.exists and reload_daemon_destroy1.rc != 0"
             - name: "{{ systemd_process }} status output"
               shell: "{{ systemd_prefix }} status {{ systemd_process }}"
               register: systemd_status_output
@@ -149,6 +160,8 @@
               when: systemd_status_output.rc != 4
             - name: Reload daemon
               shell: "{{ systemd_prefix }} daemon-reload"
+              register: reload_daemon_destroy2
+              failed_when: "systemd_user.stat.exists and reload_daemon_destroy2.rc != 0"
           when:
             - command == "stop-destroy"
       when: systemd_option and process != "thirdparty" and process != "platform-services"
