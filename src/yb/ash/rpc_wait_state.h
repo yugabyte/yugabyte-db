@@ -12,6 +12,8 @@
 //
 #pragma once
 
+#include "opentelemetry/trace/span_context.h"
+
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/common.pb.h"
@@ -45,6 +47,9 @@ class MetadataSerializer : public rpc::MetadataSerializer {
   explicit MetadataSerializer(rpc::MetadataSerializationMode mode);
   size_t SerializedSize() override;
   uint8_t* SerializeToArray(uint8_t* out) override;
+
+  // Encodes span_context into the metadata's trace_context submessage.
+  void SetTraceContext(const opentelemetry::trace::SpanContext& span_context);
 
  private:
   AshMetadataPB metadata_;

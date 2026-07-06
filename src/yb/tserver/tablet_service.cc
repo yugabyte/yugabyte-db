@@ -124,6 +124,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/faststring.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flags.h"
@@ -2522,6 +2523,20 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
     return;
   }
   pgwrapper::PGConn conn = std::move(*res);
+
+  // Propagate the inbound trace context via the yb_dist_tracecontext GUC so the backend's RPCs for
+  // the SELECT below nest under the triggering trace instead of being parentless.
+  const auto traceparent = dist_trace::GetActiveTraceparent();
+  if (!traceparent.empty()) {
+    // Also carry the traceparent as a trailing SQL comment (sqlcommenter) so this SET
+    // self-scopes.
+    auto set_status = conn.ExecuteFormat(
+        "SET yb_dist_tracecontext = 'traceparent=''$0''' /*traceparent='$0'*/", traceparent);
+    if (!set_status.ok()) {
+      LOG_WITH_PREFIX_AND_FUNC(WARNING)
+          << "failed to set traceparent on backends-catalog-version connection: " << set_status;
+    }
+  }
 
   // Note: keep this query in sync with the errhint query (YbWaitForBackendsCatalogVersion at the
   // time of writing).

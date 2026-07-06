@@ -12,6 +12,8 @@
 //
 #include "yb/ash/rpc_wait_state.h"
 
+#include "yb/gutil/endian.h"
+
 #include "yb/rpc/inbound_call.h"
 #include "yb/rpc/lightweight_message.h"
 
@@ -107,6 +109,24 @@ MetadataSerializer::MetadataSerializer(rpc::MetadataSerializationMode mode)
     metadata.ToPB(&metadata_);
     serialized_size_ = metadata_.ByteSizeLong();
   }
+}
+
+void MetadataSerializer::SetTraceContext(const opentelemetry::trace::SpanContext& span_context) {
+  if (!span_context.IsValid()) {
+    return;
+  }
+  const auto trace_id = span_context.trace_id();
+  const auto span_id = span_context.span_id();
+  auto* trace_context = metadata_.mutable_trace_context();
+  // Split the 16-byte trace id into two big-endian 64-bit halves; the span id is one big-endian
+  // 64-bit value -- the layout rpc::ToSpanContext reads back on the tserver.
+  trace_context->set_trace_id_hi(BigEndian::Load64(trace_id.Id().data()));
+  trace_context->set_trace_id_lo(BigEndian::Load64(trace_id.Id().data() + 8));
+  trace_context->set_span_id(BigEndian::Load64(span_id.Id().data()));
+  // Low byte: flags; high byte: the (currently unused) version.
+  constexpr uint32_t kVersion = 0;
+  trace_context->set_version_and_flags((kVersion << 8) | span_context.trace_flags().flags());
+  serialized_size_ = metadata_.ByteSizeLong();
 }
 
 size_t MetadataSerializer::SerializedSize() {
