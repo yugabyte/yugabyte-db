@@ -28,13 +28,14 @@ import {
   getIsDbUpgradePrecheckTask,
   getLatestUniverseTask
 } from '../../../redesign/features/tasks/TaskUtils';
+import { colors } from '@app/redesign/theme/variables';
 
 //icons
-import AlertIcon from '../../../redesign/assets/approved/alert.svg';
-import SuccessIcon from '../../../redesign/assets/approved/success.svg';
+import AlertIcon from '../../../redesign/assets/approved/alert-solid.svg';
+import SuccessIcon from '../../../redesign/assets/approved/circle-check-solid.svg';
 import PendingIcon from '../../../redesign/assets/approved/pending.svg';
 import PausedIcon from '../../../redesign/assets/approved/paused.svg';
-import ErrorIcon from '../../../redesign/assets/approved/error.svg';
+import ErrorIcon from '../../../redesign/assets/approved/warning-solid.svg';
 import LoadingIcon from '../../../redesign/assets/default-loading-circles.svg';
 
 import './UniverseStatus.scss';
@@ -131,7 +132,7 @@ export default class UniverseStatus extends Component {
         (latestUniverseTask.status === 'Failure' || latestUniverseTask.status === 'Aborted');
       statusDisplay = (
         <div className="status-container good">
-          <SuccessIcon width={24} height={24} />
+          <SuccessIcon width={24} height={24} style={{ color: colors.success[500] }} />
           {showLabelText && universeStatus.state.text && <span>{universeStatus.state.text}</span>}
         </div>
       );
@@ -163,7 +164,7 @@ export default class UniverseStatus extends Component {
       ) {
         statusDisplay = (
           <div className="status-container warning">
-            <AlertIcon width={24} height={24} />
+            <AlertIcon width={24} height={24} style={{ color: colors.warning[500] }} />
             {showLabelText && universeStatus.state.text && <span>DB upgrade pre-check failed</span>}
           </div>
         );
@@ -175,7 +176,7 @@ export default class UniverseStatus extends Component {
       ) {
         statusDisplay = (
           <div className="status-container warning">
-            <AlertIcon width={24} height={24} />
+            <AlertIcon width={24} height={24} style={{ color: colors.warning[500] }} />
             {showLabelText && <span>DB upgrade aborted</span>}
           </div>
         );
