@@ -195,6 +195,13 @@ function getDocsPageHeaderOffset() {
 
 function updateDocsPageHeaderBarOffset() {
   const offset = getDocsPageHeaderOffset();
+
+  // If the fixed chrome can't be measured (offset <= 0), leave the CSS
+  // fallback value in place rather than pinning content under the navbar.
+  if (offset <= 0) {
+    return;
+  }
+
   document.documentElement.style.setProperty(
     '--docs-sticky-header-top',
     `${offset}px`,

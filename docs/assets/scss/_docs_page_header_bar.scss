@@ -16,6 +16,27 @@
   }
 }
 
+// Total vertical space the header bar occupies (its margins + min-height).
+:root {
+  --docs-page-header-bar-space: calc(
+    20px +
+    var(--docs-page-header-bar-line-height) +
+    (2 * var(--docs-page-header-bar-padding-y)) +
+    16px
+  );
+}
+
+// When the header bar isn't rendered at all (breadcrumbs disabled AND the page
+// is unversioned) the bar partial outputs nothing, so `.td-content` becomes the
+// first child of `main`. Reserve the bar's space here so the page title keeps
+// the same top offset as pages that show the bar, and stays aligned with the
+// absolutely-positioned Contribute widget.
+@media (min-width: 992px) {
+  main.content-area > .td-content:first-child .main-heading-with-version {
+    margin-top: calc(var(--docs-page-header-bar-space) + 20px);
+  }
+}
+
 .docs-page-header-bar {
   position: sticky;
   top: var(--docs-sticky-header-top);
@@ -29,10 +50,6 @@
   margin-bottom: 16px;
   padding: var(--docs-page-header-bar-padding-y) 0;
   background: #fff;
-  // Extend the opaque background a few pixels left/right so the 1px box-shadow
-  // outline of full-width tables scrolling underneath doesn't peek out at the
-  // content edges while the bar is sticky.
-  box-shadow: 8px 0 0 0 #fff, -8px 0 0 0 #fff;
 
   .td-breadcrumbs {
     flex: 1 1 auto;
@@ -100,8 +117,10 @@
     }
   }
 
+  // `--version-only` is set server-side when the version picker shows but
+  // breadcrumbs don't; the `:only-child` case covers a rendered breadcrumb that
+  // has just the single (home) crumb.
   &--version-only,
-  &:not(:has(.td-breadcrumbs)),
   &:has(.td-breadcrumbs .breadcrumb-item:only-child):has(.header-version-dropdown) {
     justify-content: flex-end;
 
@@ -130,7 +149,6 @@
     }
 
     &--version-only,
-    &:not(:has(.td-breadcrumbs)),
     &:has(.td-breadcrumbs .breadcrumb-item:only-child):has(.header-version-dropdown) {
       .header-version-dropdown {
         margin-left: auto;
