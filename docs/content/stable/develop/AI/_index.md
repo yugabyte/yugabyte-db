@@ -48,6 +48,7 @@ Explore the following tutorials to see how YugabyteDB integrates with different 
 | Tutorial | Use case | LLM / framework | LLM location |
 | :--- | :--- | :--- | :--- |
 | [Hello RAG](hello-rag/) | Build a basic RAG pipeline for document-based question answering. | OpenAI | External |
+| [Hello Distributed RAG](hello-dist-rag/) | Build the same RAG pipeline with ingestion managed in SQL by the pg_dist_rag extension. | OpenAI | External |
 | [Azure AI](azure-openai/) | Use Azure OpenAI to build a scalable RAG application with vector search. | Azure OpenAI | External |
 | [Google Vertex AI](google-vertex-ai/) | Use Google Vertex AI for similarity search and generative AI workflows. | Vertex AI | External |
 | [LocalAI](ai-localai/) | Build and run an LLM application entirely on-premises for privacy and security. | LocalAI | Local / on-premises |
