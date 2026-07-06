@@ -814,7 +814,7 @@ yb-admin \
 * Key range arguments (*start-key-hex* / *end-key-hex*) require a concrete child table ID. Using them with a colocation parent table ID returns an error.
 * For hash-partitioned tables, each bound must be a valid 2-byte hash-partition key.
 * *start-key-hex* must be strictly less than *end-key-hex* when both are specified.
-* Key-range and per-table colocated scoping require YugabyteDB {{<release "2024.2">}}, {{<release "2025.2">}}, or {{<release "2026.1">}} on both yb-admin and the target YB-TServers. On older TServer versions, the scoping arguments are silently ignored and the full table (or entire colocated tablet) is hashed instead of returning an error, so verify versions before relying on the result in a mixed-version cluster.
+* Key-range and per-table colocated scoping require YugabyteDB {{<release "2024.2">}}, {{<release "2025.2">}}, or {{<release "2026.1">}} on both yb-admin and the target YB-TServers. On older YB-TServer versions, the scoping arguments are silently ignored and the full table (or entire colocated tablet) is hashed instead of returning an error, so verify versions before relying on the result in a mixed-version cluster.
 
 **Example: Hash a full table**
 
