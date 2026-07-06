@@ -114,6 +114,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
@@ -3302,9 +3303,21 @@ Status Tablet::BackfillIndexesForYsql(
                           pgwrapper::PGConnSettings::kDefaultUser, postgres_auth_key,
                           backfill_params.modified_deadline)
                           .Connect();
+  auto conn = VERIFY_RESULT(std::move(conn_result));
+
+  // Propagate the inbound RPC's trace context via the yb_dist_tracecontext GUC
+  const auto traceparent = dist_trace::GetActiveTraceparent();
+  if (!traceparent.empty()) {
+    auto set_status = conn.ExecuteFormat(
+        "SET yb_dist_tracecontext = 'traceparent=''$0''' /*traceparent='$0'*/", traceparent);
+    if (!set_status.ok()) {
+      LOG(WARNING) << "failed to set traceparent on backfill connection: " << set_status;
+    }
+  }
+
   // BACKFILL passes a read time and SERIALIZABLE is incompatible with fixed read time.
-  auto conn = VERIFY_RESULT(pgwrapper::SetDefaultTransactionIsolation(
-      std::move(conn_result), IsolationLevel::SNAPSHOT_ISOLATION));
+  conn = VERIFY_RESULT(pgwrapper::SetDefaultTransactionIsolation(
+      std::move(conn), IsolationLevel::SNAPSHOT_ISOLATION));
 
   if (is_xcluster_target) {
     // For xCluster targets, we don't need to use the xCluster safe time as we are reading at

@@ -55,6 +55,7 @@
 
 #include "yb/rpc/lightweight_message.h"
 #include "yb/rpc/rpc_context.h"
+#include "yb/rpc/serialization.h"
 #include "yb/rpc/sidecars.h"
 #include "yb/rpc/scheduler.h"
 
@@ -78,6 +79,7 @@
 #include "yb/util/cast.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
 #include "yb/util/lw_function.h"
@@ -832,6 +834,30 @@ concept QueryTraitsType = std::is_same_v<QueryTraits<typename T::ReqPB, typename
 using PerformQueryTraits = QueryTraits<PgPerformRequestMsg, PgPerformResponseMsg>;
 using ObjectLockQueryTraits =
     QueryTraits<const PgAcquireObjectLockRequestMsg, PgAcquireObjectLockResponseMsg>;
+
+// Name of the inbound shared-memory span.
+template <QueryTraitsType T>
+std::string_view SharedMemHandlerSpanName();
+template <>
+std::string_view SharedMemHandlerSpanName<PerformQueryTraits>() {
+  return "shmem handler yb.tserver.PgClientService.Perform";
+}
+template <>
+std::string_view SharedMemHandlerSpanName<ObjectLockQueryTraits>() {
+  return "shmem handler yb.tserver.PgClientService.AcquireObjectLock";
+}
+
+// Method name attribute for the inbound shared-memory span.
+template <QueryTraitsType T>
+const char* SharedMemMethodName();
+template <>
+const char* SharedMemMethodName<PerformQueryTraits>() {
+  return "Perform";
+}
+template <>
+const char* SharedMemMethodName<ObjectLockQueryTraits>() {
+  return "AcquireObjectLock";
+}
 
 using ResponseSender = std::function<void()>;
 
@@ -2753,7 +2779,34 @@ class PgClientSession::Impl {
     auto track_guard = wait_state
         ? TrackSharedMemoryPgMethodExecution<T>(wait_state, query.ash_metadata())
         : std::nullopt;
-    return DoHandleSharedExchangeQuery(precondition_waiter, std::move(data), deadline);
+
+    // Fix span attibutes for shared memory exchange.
+    dist_trace::SpanWithScopePtr trace_scope;
+    const auto& ash_metadata = query.ash_metadata();
+    if (dist_trace::IsDistTraceEnabled() && ash_metadata.has_trace_context()) {
+      auto parent_context = rpc::ToSpanContext(ash_metadata.trace_context());
+      if (parent_context.ok()) {
+        trace_scope = dist_trace::StartServerSpanWithScope(
+            SharedMemHandlerSpanName<T>(), *parent_context);
+        if (trace_scope) {
+          // Mirror the attributes the RPC inbound span carries (yb_rpc.cc), minus the ones with no
+          // shared-memory analog (rpc.call_id).
+          trace_scope->SetAttribute("rpc.system", "inbound_shmem");
+          trace_scope->SetAttribute("rpc.service", "yb.tserver.PgClientService");
+          trace_scope->SetAttribute("rpc.method", SharedMemMethodName<T>());
+        }
+      }
+    }
+
+    const auto status = DoHandleSharedExchangeQuery(precondition_waiter, std::move(data), deadline);
+    if (trace_scope) {
+      if (status.ok()) {
+        trace_scope->SetStatus(opentelemetry::trace::StatusCode::kOk);
+      } else {
+        trace_scope->SetStatus(opentelemetry::trace::StatusCode::kError, status.ToUserMessage());
+      }
+    }
+    return status;
   }
 
   template <QueryTraitsType T, class... Args>

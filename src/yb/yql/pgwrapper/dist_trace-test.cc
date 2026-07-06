@@ -1677,9 +1677,9 @@ TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
   RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
   RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
 
-  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-log-test");
+  dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-otel-log-test");
   auto cleanup = ScopeExit([] {
-    dist_trace::CleanupDistTrace();
+    dist_trace::ShutdownDistTrace();
   });
 
   OTEL_INTERNAL_LOG_ERROR(kError);
@@ -1705,9 +1705,9 @@ TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelDefaultsToInfo) {
   RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
   RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
 
-  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-default-log-level-test");
+  dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-otel-default-log-level-test");
   auto cleanup = ScopeExit([] {
-    dist_trace::CleanupDistTrace();
+    dist_trace::ShutdownDistTrace();
   });
 
   OTEL_INTERNAL_LOG_ERROR(kError);
@@ -1734,9 +1734,9 @@ TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelGFlagControlsSdkFiltering) {
   RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
   RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
 
-  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-error-log-level-test");
+  dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-otel-error-log-level-test");
   auto cleanup = ScopeExit([] {
-    dist_trace::CleanupDistTrace();
+    dist_trace::ShutdownDistTrace();
   });
 
   OTEL_INTERNAL_LOG_ERROR(kError);
@@ -1765,9 +1765,9 @@ TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelNoneSuppressesAllMessages) {
   RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
   RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
 
-  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-none-log-level-test");
+  dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-otel-none-log-level-test");
   auto cleanup = ScopeExit([] {
-    dist_trace::CleanupDistTrace();
+    dist_trace::ShutdownDistTrace();
   });
 
   OTEL_INTERNAL_LOG_ERROR(kError);
@@ -1789,9 +1789,9 @@ TEST_F(DistTraceRpcTest, TestErroredRpcSpanStatus) {
       kOtelBatchMaxExportBatchSize;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_batch_max_queue_size) = kOtelBatchMaxQueueSize;
 
-  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-rpc-error-test");
+  dist_trace::InitDistTrace("ysql" /* service_name */, "dist-trace-rpc-error-test");
   auto cleanup = ScopeExit([] {
-    dist_trace::CleanupDistTrace();
+    dist_trace::ShutdownDistTrace();
   });
 
   auto root_span = dist_trace::GetDistTracer()->StartSpan("rpc-error-test");

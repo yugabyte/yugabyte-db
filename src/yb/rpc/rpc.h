@@ -40,6 +40,7 @@
 
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 
@@ -189,6 +190,9 @@ class RpcRetrier {
   std::atomic<ScheduledTaskId> task_id_{kInvalidTaskId};
 
   std::atomic<RpcRetrierState> state_{RpcRetrierState::kIdle};
+
+  // Trace context active when this retrier was constructed -- the caller's parent span.
+  dist_trace::trace::SpanContext trace_parent_ = dist_trace::trace::SpanContext::GetInvalid();
 
   DISALLOW_COPY_AND_ASSIGN(RpcRetrier);
 };

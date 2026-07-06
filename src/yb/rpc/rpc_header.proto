@@ -82,6 +82,9 @@ message RequestHeader {
 
   optional uint64 pool_tag = 7;
 
+  // Distributed-trace context, propagating the trace from caller to the server handling this RPC.
+  optional TraceContextPB trace_context = 8;
+
   // CRC32C for message body and header without CRC field. Use 15 as max 1 byte tag.
   optional fixed32 crc = 15;
 }

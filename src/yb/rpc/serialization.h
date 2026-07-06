@@ -42,6 +42,8 @@
 #include <google/protobuf/message.h>
 #include <google/protobuf/repeated_field.h>
 
+#include "opentelemetry/trace/span_context.h"
+
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/result.h"
@@ -59,6 +61,7 @@ class faststring;
 class RefCntBuffer;
 class Slice;
 class Status;
+class TraceContextPB;
 
 namespace rpc {
 
@@ -79,6 +82,7 @@ struct ParsedRequestHeader {
   boost::iterator_range<const uint32_t*> sidecar_offsets;
   Slice metadata;
   ThreadPoolTag pool_tag = 0;
+  Slice trace_context;
   std::optional<uint32_t> crc;
 
   std::string RemoteMethodAsString() const;
@@ -104,7 +108,15 @@ struct ParsedRemoteMethod {
   Slice method;
 };
 
+// Builds a SpanContext from a TraceContextPB (shared-memory path). Fails if any field is missing or
+// the trace/span ids are zero.
+Result<opentelemetry::trace::SpanContext> ToSpanContext(const TraceContextPB& trace_context);
+
 Result<ParsedRemoteMethod> ParseRemoteMethod(const Slice& buf);
+
+// Parses a RequestHeader.trace_context wire slice into a SpanContext (RPC path). Fails if any field
+// is missing or the trace/span ids are zero.
+Result<opentelemetry::trace::SpanContext> ParseTraceContext(const Slice& buf);
 Status ParseMetadata(Slice buf, AnyMessagePtr out);
 Status ParseMetadataFromSharedMemory(uint8_t** input, size_t length, AnyMessagePtr out);
 
