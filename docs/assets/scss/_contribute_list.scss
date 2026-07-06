@@ -1,7 +1,7 @@
 .td-main main:only-child {
   .dropdown-list#contribute-list {
     position: absolute;
-    top: 90px;
+    top: calc(var(--docs-sticky-header-top) + 60px);
     right: 0px;
 
     .dropdown-menu {

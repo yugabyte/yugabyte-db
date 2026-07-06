@@ -25,10 +25,10 @@
   justify-content: space-between;
   gap: 16px;
   min-height: calc(var(--docs-page-header-bar-line-height) + (2 * var(--docs-page-header-bar-padding-y)));
+  margin-top: 20px;
   margin-bottom: 16px;
   padding: var(--docs-page-header-bar-padding-y) 0;
   background: #fff;
-  border-bottom: 1px solid #e9eef2;
 
   .td-breadcrumbs {
     flex: 1 1 auto;
@@ -64,12 +64,6 @@
     }
 
     .dropdown-toggle {
-      min-height: var(--docs-page-header-bar-line-height);
-      height: var(--docs-page-header-bar-line-height);
-      padding-top: 0;
-      padding-bottom: 0;
-      line-height: var(--docs-page-header-bar-line-height);
-
       .tag.release {
         top: 0;
       }
