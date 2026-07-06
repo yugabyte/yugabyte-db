@@ -1247,6 +1247,22 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		XactIsoLevel = XACT_READ_COMMITTED;
 
 		(void) GetTransactionSnapshot();
+
+		/*
+		 * YB: Preload the pg_authid catalog caches (by-name AUTHNAME and by-OID
+		 * AUTHOID) before client authentication.  Authentication reads pg_authid
+		 * by role name to fetch the stored password, and backend startup then
+		 * reads it again by role OID for session-user setup and the superuser
+		 * check.  Both happen before the regular catalog cache preload, so
+		 * without this they incur a catalog cache miss on every new connection.
+		 * pg_authid is a shared catalog that is already prefetched at backend
+		 * startup (see YbRegisterSysTableForPrefetching above), so a single scan
+		 * populates both caches from already-fetched data and adds no master
+		 * read.
+		 */
+		if (IsYugaByteEnabled() &&
+			*YBCGetGFlags()->ysql_preload_pg_authid_for_auth)
+			YbPreloadCatalogCache(AUTHOID, AUTHNAME);
 	}
 
 	/*

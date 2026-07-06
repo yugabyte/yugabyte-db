@@ -75,6 +75,16 @@ DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
     "ysql_catalog_preload_additional_table_list are set, we take a union of "
     "both the default list and the user-specified list.");
 
+DEFINE_RUNTIME_bool(ysql_preload_pg_authid_for_auth, true,
+    "If true, YSQL preloads the pg_authid catalog caches (by-name and by-OID) "
+    "before client authentication. Authentication reads pg_authid by role name "
+    "to fetch the stored password, and backend startup then reads it again by "
+    "role OID for session-user setup and the superuser check; both happen "
+    "before the regular catalog cache preload, so without this they incur a "
+    "catalog cache miss on every new connection. pg_authid is a shared catalog "
+    "that is already prefetched at backend startup, so this only builds the "
+    "cache entries from already-fetched data and adds no master read.");
+
 DEFINE_NON_RUNTIME_bool(ysql_disable_global_impact_ddl_statements, false,
     "If true, disable global impact ddl statements in per database catalog "
     "version mode.");
@@ -188,6 +198,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
   static YbcPgGFlagsAccessor accessor = {
       .log_ysql_catalog_versions                = &FLAGS_log_ysql_catalog_versions,
       .ysql_catalog_preload_additional_tables   = &FLAGS_ysql_catalog_preload_additional_tables,
+      .ysql_preload_pg_authid_for_auth          = &FLAGS_ysql_preload_pg_authid_for_auth,
       .ysql_disable_index_backfill              = &FLAGS_ysql_disable_index_backfill,
       .ysql_disable_server_file_access          = &FLAGS_ysql_disable_server_file_access,
       .ysql_enable_reindex                      = &FLAGS_ysql_enable_reindex,
