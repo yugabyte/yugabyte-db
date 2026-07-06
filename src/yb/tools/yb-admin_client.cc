@@ -1349,7 +1349,7 @@ Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS(const PeerId& uuid)
 Status ClusterAdminClient::ListAllTabletServers(bool exclude_dead) {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
-  SortListTabletServerEntries(&servers);
+  SortListTabletServerEntries(servers);
   char kSpaceSep = ' ';
 
   cout << RightPadToUuidWidth("Tablet Server UUID") << kSpaceSep

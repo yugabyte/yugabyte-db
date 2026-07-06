@@ -304,7 +304,7 @@ TEST(ListTabletServerSortTest, AliveBeforeDeadThenHost) {
   *servers.Add() = MakeTabletServerEntry("uuid-dead-20", "10.0.0.20", 9100, false);
   *servers.Add() = MakeTabletServerEntry("uuid-alive-15", "10.0.0.15", 9100, true);
 
-  SortListTabletServerEntries(&servers);
+  SortListTabletServerEntries(servers);
 
   ASSERT_EQ(5, servers.size());
   EXPECT_EQ("uuid-alive-15", servers.Get(0).instance_id().permanent_uuid());

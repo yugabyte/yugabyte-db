@@ -13,6 +13,7 @@
 #include "yb/tools/yb-admin_util.h"
 
 #include <algorithm>
+#include <string_view>
 
 #include "yb/common/snapshot.h"
 
@@ -26,8 +27,6 @@ using master::ListTabletServersResponsePB;
 
 namespace {
 
-const std::string kEmptyHost;
-
 int GetTabletServerAliveRank(const ListTabletServersResponsePB::Entry& server) {
   if (!server.has_alive()) {
     return 2;
@@ -38,16 +37,19 @@ int GetTabletServerAliveRank(const ListTabletServersResponsePB::Entry& server) {
 bool CompareListTabletServersEntries(
     const ListTabletServersResponsePB::Entry& a,
     const ListTabletServersResponsePB::Entry& b) {
-  const int alive_rank_diff = GetTabletServerAliveRank(a) - GetTabletServerAliveRank(b);
-  if (alive_rank_diff != 0) {
-    return alive_rank_diff < 0;
+  const int a_alive_rank = GetTabletServerAliveRank(a);
+  const int b_alive_rank = GetTabletServerAliveRank(b);
+  if (a_alive_rank != b_alive_rank) {
+    return a_alive_rank < b_alive_rank;
   }
 
   const auto& a_addresses = a.registration().common().private_rpc_addresses();
   const auto& b_addresses = b.registration().common().private_rpc_addresses();
 
-  const std::string& a_host = a_addresses.empty() ? kEmptyHost : a_addresses.Get(0).host();
-  const std::string& b_host = b_addresses.empty() ? kEmptyHost : b_addresses.Get(0).host();
+  const std::string_view a_host =
+      a_addresses.empty() ? std::string_view() : a_addresses.Get(0).host();
+  const std::string_view b_host =
+      b_addresses.empty() ? std::string_view() : b_addresses.Get(0).host();
   if (a_host != b_host) {
     return a_host < b_host;
   }
@@ -80,11 +82,11 @@ SnapshotId StringToSnapshotId(const string& str) {
 }
 
 void SortListTabletServerEntries(
-    google::protobuf::RepeatedPtrField<ListTabletServersResponsePB::Entry>* servers) {
-  if (servers == nullptr || servers->empty()) {
+    google::protobuf::RepeatedPtrField<ListTabletServersResponsePB::Entry>& servers) {
+  if (servers.empty()) {
     return;
   }
-  std::sort(servers->begin(), servers->end(), CompareListTabletServersEntries);
+  std::sort(servers.begin(), servers.end(), CompareListTabletServersEntries);
 }
 
 }  // namespace tools
