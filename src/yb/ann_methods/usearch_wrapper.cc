@@ -18,6 +18,8 @@
 
 #include "yb/ann_methods/yb_hnsw_wrapper.h"
 
+#include "yb/hnsw/hnsw_block_cache.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/util/flags.h"
@@ -161,6 +163,12 @@ class UsearchIndex :
     index_.reserve(unum::usearch::index_limits_t(
       num_members, max_concurrent_inserts + max_concurrent_reads));
     search_semaphore_.emplace(max_concurrent_reads);
+    // Reserve block cache space for this chunk's full footprint now: the index grows its node and
+    // vector tapes lazily up to the reserved capacity, so the cache evicts other blocks instead of
+    // letting the index push total memory past the limits.
+    this->ReserveBlockCacheSpace(
+        block_cache_ ? &block_cache_->cache() : nullptr,
+        index_.estimate_bytes_for_num_vectors(num_vectors));
     static std::once_flag log_once;
     std::call_once(log_once, [index = &index_]() {
       LOG(INFO) << "Usearch metric: " << index->metric().isa_name();

@@ -387,6 +387,11 @@ class LRUCache {
   // free the needed space
   void SetCapacity(size_t capacity);
 
+  // Reserve/return space that is not backed by a cache entry. Reduces/restores the effective
+  // capacity available to real entries and evicts as needed. See Cache::ConsumeSpace.
+  void ConsumeSpace(size_t bytes);
+  void ReleaseSpace(size_t bytes);
+
   void SetMetrics(shared_ptr<yb::CacheMetrics> metrics) {
     metrics_ = metrics;
     table_.SetMetrics(metrics);
@@ -436,8 +441,17 @@ class LRUCache {
   LRUSubCache single_touch_sub_cache_;
   LRUSubCache multi_touch_sub_cache_;
 
+  // total_capacity_ is the effective capacity (base_total_capacity_ minus space_consumed_);
+  // multi_touch_capacity_ is derived from it. base_total_capacity_ is the configured capacity and
+  // space_consumed_ is reserved-but-not-stored space (see ConsumeSpace).
   size_t total_capacity_;
   size_t multi_touch_capacity_;
+  size_t base_total_capacity_ = 0;
+  size_t space_consumed_ = 0;
+
+  // Recomputes total_capacity_/multi_touch_capacity_ from base_total_capacity_ and space_consumed_,
+  // then evicts to fit. Caller must hold mutex_; evicted handles are freed via `deleted`.
+  void UpdateCapacities(LRUHandleDeleter* deleted);
 
   // Just reduce the reference count by 1.
   // Return true if last reference
@@ -561,15 +575,41 @@ void LRUCache::EvictFromLRU(const size_t charge,
   }
 }
 
+void LRUCache::UpdateCapacities(LRUHandleDeleter* deleted) {
+  total_capacity_ =
+      base_total_capacity_ > space_consumed_ ? base_total_capacity_ - space_consumed_ : 0;
+  multi_touch_capacity_ = round((1 - FLAGS_cache_single_touch_ratio) * total_capacity_);
+  EvictFromLRU(0, deleted, MULTI_TOUCH);
+  EvictFromLRU(0, deleted, SINGLE_TOUCH);
+}
+
 void LRUCache::SetCapacity(size_t capacity) {
   LRUHandleDeleter last_reference_list(metrics_.get());
 
   {
     MutexLock l(&mutex_);
-    multi_touch_capacity_ = round((1 - FLAGS_cache_single_touch_ratio) * capacity);
-    total_capacity_ = capacity;
-    EvictFromLRU(0, &last_reference_list, MULTI_TOUCH);
-    EvictFromLRU(0, &last_reference_list, SINGLE_TOUCH);
+    base_total_capacity_ = capacity;
+    UpdateCapacities(&last_reference_list);
+  }
+}
+
+void LRUCache::ConsumeSpace(size_t bytes) {
+  LRUHandleDeleter last_reference_list(metrics_.get());
+
+  {
+    MutexLock l(&mutex_);
+    space_consumed_ += bytes;
+    UpdateCapacities(&last_reference_list);
+  }
+}
+
+void LRUCache::ReleaseSpace(size_t bytes) {
+  LRUHandleDeleter last_reference_list(metrics_.get());
+
+  {
+    MutexLock l(&mutex_);
+    space_consumed_ = space_consumed_ > bytes ? space_consumed_ - bytes : 0;
+    UpdateCapacities(&last_reference_list);
   }
 }
 
@@ -894,6 +934,24 @@ class ShardedLRUCache : public Cache {
       shards_[s].SetCapacity(per_shard);
     }
     capacity_ = capacity;
+  }
+
+  void ConsumeSpace(size_t bytes) override {
+    int num_shards = 1 << num_shard_bits_;
+    const size_t per_shard = (bytes + (num_shards - 1)) / num_shards;
+    MutexLock l(&capacity_mutex_);
+    for (int s = 0; s < num_shards; s++) {
+      shards_[s].ConsumeSpace(per_shard);
+    }
+  }
+
+  void ReleaseSpace(size_t bytes) override {
+    int num_shards = 1 << num_shard_bits_;
+    const size_t per_shard = (bytes + (num_shards - 1)) / num_shards;
+    MutexLock l(&capacity_mutex_);
+    for (int s = 0; s < num_shards; s++) {
+      shards_[s].ReleaseSpace(per_shard);
+    }
   }
 
   virtual Status Insert(const Slice& key, const QueryId query_id, void* value, size_t charge,

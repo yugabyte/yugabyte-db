@@ -47,6 +47,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/path_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
@@ -56,16 +57,15 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
-DECLARE_bool(TEST_skip_process_apply);
+DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_usearch_exact);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_bool(vector_index_skip_filter_check);
-DECLARE_string(vector_index_backend);
-DECLARE_bool(ysql_enable_packed_row);
-DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
@@ -73,15 +73,14 @@ DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_string(vector_index_backend);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
-DECLARE_uint64(vector_index_max_merge_tasks);
 DECLARE_uint64(vector_index_task_size);
-DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_int32(priority_thread_pool_size);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
@@ -121,6 +120,10 @@ YB_STRONGLY_TYPED_BOOL(WaitForIntents);
 
 using FloatVector = std::vector<float>;
 const std::string kVectorIndexName = "vi";
+
+// Default HNSW build parameters used by CreateIndex/MakeIndex. Tests that build large indexes and
+// care about build time (not recall) can pass cheaper parameters instead.
+const std::string kDefaultIndexBuildOptions = "ef_construction = 256, m = 32, m0 = 128";
 
 const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
   return pointer_cast<const unum::usearch::byte_t*>(vector.data());
@@ -214,17 +217,19 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
   Status CreateIndex(
        PGConn& conn, const std::string& index_name = kVectorIndexName,
        std::optional<vector_index::DistanceKind> distance_kind = std::nullopt,
-       const std::string& column = std::string()) {
+       const std::string& column = std::string(),
+       const std::string& build_options = kDefaultIndexBuildOptions) {
     return conn.ExecuteFormat(
-        "CREATE INDEX $1 ON test USING ybhnsw ($2 $0) "
-            "WITH (ef_construction = 256, m = 32, m0 = 128)",
+        "CREATE INDEX $1 ON test USING ybhnsw ($2 $0) WITH ($3)",
         VectorOpsName(distance_kind.value_or(distance_kind_)), index_name,
-        column.empty() ? "embedding" : column);
+        column.empty() ? "embedding" : column, build_options);
   }
 
-  Result<PGConn> MakeIndex(size_t dimensions = 3, bool table_exists = false) {
+  Result<PGConn> MakeIndex(
+      size_t dimensions = 3, bool table_exists = false,
+      const std::string& build_options = kDefaultIndexBuildOptions) {
     auto conn =  VERIFY_RESULT(table_exists ? Connect() : MakeTable(dimensions));
-    RETURN_NOT_OK(CreateIndex(conn));
+    RETURN_NOT_OK(CreateIndex(conn, kVectorIndexName, std::nullopt, std::string(), build_options));
     return conn;
   }
 
@@ -2367,6 +2372,189 @@ TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
           ybctid_8_vector_1 -> ybctid_8
       )#" + expected_tail.str()),
       output);
+}
+
+////////////////////////////////////////////////////////
+// PgVectorIndexSmallBlockCacheTest
+////////////////////////////////////////////////////////
+
+// Reproduces #32357: a vector index backed by usearch/hnswlib allocates its graph state on the
+// heap, accounted under the per-tablet "vector_indexes" MemTracker. This consumption is additive
+// on top of whatever the RocksDB block cache already holds, so a server whose block cache is full
+// can be pushed over the soft/hard memory limit purely by building a vector index.
+//
+// The test sizes a small block cache, fills and reads a regular (non-vector) table to populate the
+// cache to its cap, then builds a vector index smaller than the cache. With the fix each chunk is
+// registered in the block cache as reserved (unloadable) space, so building the index evicts cached
+// blocks and the cache releases approximately the index footprint. Without the fix the cache is
+// untouched and the index simply grows total memory -- the regression this reproduces.
+//
+// Parameterized by vector index engine; colocation and packing are fixed since they do not affect
+// the heap footprint or its block cache reservation. All engines build their mutable chunk with
+// usearch/hnswlib on the heap (the yb_hnsw block-cache format is only the saved/loaded form, which
+// this test never reaches because it keeps the index mutable), so the reservation applies to all.
+
+// Consumption of the named direct child of `parent`, or 0 if `parent` or the child is absent.
+int64_t ChildConsumption(const MemTrackerPtr& parent, const std::string& child) {
+  auto tracker = parent ? parent->FindChild(child) : MemTrackerPtr();
+  return tracker ? tracker->consumption() : 0;
+}
+
+MemTrackerPtr ServerMemTracker(MiniCluster* cluster) {
+  return cluster->mini_tablet_server(0)->server()->mem_tracker();
+}
+
+int64_t BlockCacheConsumption(MiniCluster* cluster) {
+  return ChildConsumption(ServerMemTracker(cluster), "BlockBasedTable");
+}
+
+// Peak heap footprint of all vector indexes on the server, summed across tablets. The hierarchy is
+// server -> "Tablets_overhead" -> "tablet-<id>" -> "vector_indexes". We use the peak rather than
+// the current consumption because the index is built on the heap (usearch/hnswlib) but a memtable
+// flush can later seal the chunk and convert it to the on-disk yb_hnsw block-cache form, which
+// frees the heap tracker; the peak still reflects the footprint the build reserved cache space for.
+int64_t VectorIndexPeakConsumption(MiniCluster* cluster) {
+  auto overhead = ServerMemTracker(cluster)->FindChild("Tablets_overhead");
+  if (!overhead) {
+    return 0;
+  }
+  int64_t total = 0;
+  for (const auto& tablet : overhead->ListChildren()) {
+    auto tracker = tablet->FindChild("vector_indexes");
+    total += tracker ? tracker->peak_consumption() : 0;
+  }
+  return total;
+}
+
+// Varies only the vector index engine; colocation and packing are pinned.
+using PgVectorIndexEngineOnlyParam = VectorIndexEngine;
+
+template <>
+struct TestParamTraits<PgVectorIndexEngineOnlyParam> {
+  using ParamType = PgVectorIndexEngineOnlyParam;
+
+  static bool IsColocated(const ParamType&) {
+    return false;
+  }
+
+  static VectorIndexEngine Engine(const ParamType& param) {
+    return param;
+  }
+
+  static PackingMode GetPackingMode(const ParamType&) {
+    return PackingMode::kNone;
+  }
+
+  static auto TestParamGenerator() {
+    return testing::ValuesIn(kVectorIndexEngineArray);
+  }
+
+  static auto TestParamNameGenerator() {
+    return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
+      // ToString(kUsearch) is "kUsearch"; drop the leading "k" to get "Usearch", "Hnswlib", etc.
+      return ToString(param_info.param).substr(1);
+    };
+  }
+};
+
+class PgVectorIndexSmallBlockCacheTest
+    : public PgVectorIndexTestParamsDecoratorBase<
+          PgVectorIndexSingleServerTestBase, PgVectorIndexEngineOnlyParam> {
+  using Base = PgVectorIndexTestParamsDecoratorBase<
+      PgVectorIndexSingleServerTestBase, PgVectorIndexEngineOnlyParam>;
+
+ protected:
+  // Small block cache so it fills quickly and so a single vector index comfortably exceeds the
+  // space a chunk reserves. The index footprint we build below stays under this, so the cache is
+  // not driven empty -- it releases approximately the index footprint and keeps the rest.
+  static constexpr int64_t kBlockCacheBytes = 80_MB;
+
+  void SetUp() override {
+    // db_block_cache_size_bytes is read once when the shared block cache is built during cluster
+    // startup, so unlike the other flags this test tweaks it cannot be set from the test body.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_size_bytes) = kBlockCacheBytes;
+    Base::SetUp();
+  }
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexSmallBlockCacheTest);
+
+TEST_P(PgVectorIndexSmallBlockCacheTest, IndexReservesBlockCacheSpace) {
+  constexpr size_t kVectorDimensions = 768;
+  // Width of the filler column. The block cache holds uncompressed data blocks, so total filler
+  // bytes must exceed kBlockCacheBytes for the cache to fill to its cap once read back. Wider rows
+  // mean fewer of them for the same byte volume, which keeps the insert (per-row bound) fast; the
+  // column uses PLAIN storage so PG keeps the value inline instead of TOASTing/compressing it.
+  constexpr int kFillerRowBytes = 4000;
+  // Filler bytes (rows * kFillerRowBytes) must exceed kBlockCacheBytes so the cache fills to cap.
+  constexpr auto kFillerRows = static_cast<size_t>(kBlockCacheBytes * 11 / 10 / kFillerRowBytes);
+  // Keep the resulting index footprint comfortably below kBlockCacheBytes so the cache releases
+  // approximately the index size rather than being driven empty (which would cap the release).
+  constexpr auto kVectorRows = RegularBuildVsDebugVsSanitizers<int64_t>(8000, 8000, 6000);
+  constexpr size_t kFillerChunkRows = 5000;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = kVectorRows;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  auto conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+
+  // 1. Regular table without a vector index. Fill it, compact it to disk, then read it back so the
+  // block cache fills with its data blocks.
+  ASSERT_OK(conn.Execute("CREATE TABLE filler (id bigserial PRIMARY KEY, payload text)"));
+  // PLAIN storage keeps the wide payload inline and uncompressed, so reading it actually fills the
+  // block cache (a TOASTed/compressed value would occupy far less cache than its logical size).
+  ASSERT_OK(conn.Execute("ALTER TABLE filler ALTER COLUMN payload SET STORAGE PLAIN"));
+  for (size_t start = 0; start < kFillerRows; start += kFillerChunkRows) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO filler (payload) SELECT repeat('x', $0) FROM generate_series(1, $1)",
+        kFillerRowBytes, std::min(kFillerChunkRows, kFillerRows - start)));
+  }
+  ASSERT_OK(cluster_->CompactTablets());
+
+  // Read the whole table to populate the block cache up to its cap.
+  ASSERT_OK(conn.FetchRow<int64_t>("SELECT count(length(payload)) FROM filler"));
+  const auto cache_before = BlockCacheConsumption(cluster_.get());
+  ASSERT_GT(cache_before, kBlockCacheBytes * 80 / 100)
+      << "Block cache was not filled to at least 80% of its capacity; adjust filler sizing.";
+
+  // Cheap build parameters: this test measures memory, not recall, and a large ef_construction
+  // would make the build too slow to fit the time budget.
+  auto index_conn = ASSERT_RESULT(MakeIndex(
+      kVectorDimensions, /* table_exists= */ false, "ef_construction = 50, m = 16, m0 = 32"));
+
+  // Insert the vectors and wait until they have all been added to the index (the build is async, so
+  // the graph keeps growing after the inserts return).
+  constexpr int64_t kBatchRows = 1000;
+  for (int64_t start = 1; start <= kVectorRows; start += kBatchRows) {
+    ASSERT_OK(InsertBatch(index_conn, start, std::min(kBatchRows, kVectorRows - start + 1)));
+  }
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  // The fix registers each vector index chunk in the block cache as reserved (unloadable) space, so
+  // building the index evicts cached blocks instead of growing total memory. Without the fix the
+  // cache is untouched (release ~ 0), which is exactly the regression #32357 describes.
+  const auto index_size = VectorIndexPeakConsumption(cluster_.get());
+  const auto cache_after = BlockCacheConsumption(cluster_.get());
+  const auto released = cache_before - cache_after;
+  const auto free_space_before = kBlockCacheBytes - cache_before;
+  LOG(INFO) << "Block cache released " << released << " bytes (before=" << cache_before
+            << ", after=" << cache_after << ", free before=" << free_space_before
+            << ") for a vector index of " << index_size << " bytes";
+
+  ASSERT_GT(index_size, 0);
+  // The cache must be full enough that the index cannot simply fit in the unused space -- otherwise
+  // building it would not need to evict anything and the test would not exercise the reservation.
+  ASSERT_LT(free_space_before, index_size / 2)
+      << "Block cache had too much free space before the index build; increase the filler so the "
+         "index build is forced to evict.";
+  // Building the index reserves index_size bytes in the cache. Up to free_space_before of that fits
+  // in the unused capacity; the remainder must be reclaimed by evicting cached blocks. Require at
+  // least half of that remainder to be freed -- a deliberately loose bound that absorbs the
+  // difference between the heap build peak and the more compact on-disk form that ends up resident,
+  // plus estimate-vs-actual reservation rounding, while still failing hard when nothing is freed.
+  ASSERT_GE(released, (index_size - free_space_before) / 2)
+      << "Block cache did not release space for the vector index; the index footprint is not being "
+         "accounted within the block cache budget.";
 }
 
 class PgVectorIndexUtilTest : public PgVectorIndexSingleServerTestBase {
