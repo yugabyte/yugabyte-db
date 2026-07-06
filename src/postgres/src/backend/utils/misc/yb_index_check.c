@@ -1077,8 +1077,13 @@ init_estate(EState *estate, Relation baserel)
 	rte->rtekind = RTE_RELATION;
 	rte->relid = RelationGetRelid(baserel);
 	rte->relkind = RELKIND_RELATION;
-	ExecInitRangeTable(estate, list_make1(rte), NIL /* permInfos */,
-					   NULL /* unpruned_relids */);
+	/*
+	 * The single range-table entry (RT index 1) is the relation scanned by the
+	 * plan; mark it unpruned so ExecGetRangeTableRelation will open it.
+	 */
+	ExecInitRangeTable(estate, list_make1(rte),
+					   NIL,	/* permInfos */
+					   bms_make_singleton(1) /* unpruned_relids */ );
 
 	estate->es_param_exec_vals =
 		(ParamExecData *) palloc0(yb_bnl_batch_size * sizeof(ParamExecData));
