@@ -172,6 +172,10 @@ class BlockBasedTable : public TableReader {
   // be close to the file length.
   uint64_t ApproximateOffsetOf(const Slice& key) override;
 
+  // Given a key, return the byte offset of the smallest key in the file that is greater than or
+  // equal to the given key.
+  yb::Result<uint64_t> SeekOffsetOf(const Slice& key) override;
+
   // Returns true if the block for the specified key is in cache.
   // REQUIRES: key is in this table && block cache enabled
   bool TEST_KeyInCache(const ReadOptions& options, const Slice& key);
@@ -221,6 +225,9 @@ class BlockBasedTable : public TableReader {
 
   class BlockEntryIteratorState;
   class IndexIteratorHolder;
+
+  // Returns approximate offset of the end of all data blocks.
+  uint64_t ApproximateOffsetOfDataEnd() const;
 
   // Returns filter block handle for fixed-size bloom filter using filter index and filter key.
   Status GetFixedSizeFilterBlockHandle(

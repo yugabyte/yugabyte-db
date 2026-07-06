@@ -519,6 +519,8 @@ class DBImpl : public DB {
   // Used in testing to make the old memtable immutable and start writing to a new one.
   void TEST_SwitchMemtable() override;
 
+  Result<uint64_t> TEST_Cross(Slice key) override;
+
   // Used in testing to replace current exclude_from_compaction functor. Returns current functor.
   CompactionFileExcluderPtr TEST_SetExcludeFromCompaction(
       ColumnFamilyHandle* column_family,

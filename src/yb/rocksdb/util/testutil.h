@@ -728,6 +728,8 @@ class ChanglingCompactionFilterFactory : public CompactionFilterFactory {
   std::string name_;
 };
 
+std::vector<CompressionType> GetSupportedCompressionTypes();
+
 CompressionType RandomCompressionType(Random* rnd);
 
 void RandomCompressionTypeVector(const size_t count,

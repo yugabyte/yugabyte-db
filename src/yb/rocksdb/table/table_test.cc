@@ -393,6 +393,12 @@ class TableConstructor: public Constructor {
     return table_reader_->ApproximateOffsetOf(key);
   }
 
+  uint64_t SeekOffsetOf(const Slice& key) const {
+    auto result = down_cast<BlockBasedTable*>(table_reader_.get())->SeekOffsetOf(key);
+    CHECK_OK(result);
+    return *result;
+  }
+
   virtual Status Reopen(const ImmutableCFOptions& ioptions) {
     file_reader_.reset(test::GetRandomAccessFileReader(new test::StringSource(
         GetSink()->contents(), uniq_id_, ioptions.allow_mmap_reads)));
@@ -2533,6 +2539,78 @@ TEST_F(GeneralTableTest, ApproximateOffsetOfPlain) {
   ASSERT_TRUE(Between(c.ApproximateOffsetOf("xyz"),  610000, 612000));
 }
 
+TEST_F(GeneralTableTest, SeekOffsetOf) {
+  TableConstructor c(BytewiseComparator());
+  c.Add("k01", "hello");
+  c.Add("k02", "hello2");
+  c.Add("k03", std::string(10000, 'x'));
+  c.Add("k04", std::string(200000, 'x'));
+  c.Add("k05", std::string(300000, 'x'));
+  c.Add("k06", "hello3");
+  c.Add("k07", std::string(100000, 'x'));
+  std::vector<std::string> keys;
+  stl_wrappers::KVMap kvmap;
+  Options options;
+  auto internal_comparator = std::make_shared<test::PlainInternalKeyComparator>(options.comparator);
+  options.compression = kNoCompression;
+  BlockBasedTableOptions table_options;
+  table_options.block_size = 1024;
+  const ImmutableCFOptions ioptions(options);
+  c.Finish(options, ioptions, table_options, internal_comparator, &keys, &kvmap);
+
+  // case K preceeds all keys in the SST
+  ASSERT_EQ(c.SeekOffsetOf("abc"), 0);
+  // first key at 0 offset
+  ASSERT_EQ(c.SeekOffsetOf("k01"), 0);
+  // "hello" puts it at 11, key (3), 3 bytes of metadata
+  ASSERT_EQ(c.SeekOffsetOf("k01a"), 11);
+  ASSERT_EQ(c.SeekOffsetOf("k02"), 11);
+  // +10 from hello2 (6), 3 bytes of metadata, 1 byte for delta
+  ASSERT_EQ(c.SeekOffsetOf("k03"), 21);
+  // +10000 from k03 offset, 2 bytes of metadata, 2 bytes for len, 1 byte for delta,
+  // + 8 bytes restart, 5 bytes trailer
+  ASSERT_EQ(c.SeekOffsetOf("k04"), 10039);
+  // +200000 from k04 offset, 2 bytes of metadata, 3 bytes for len, 3 bytes for key,
+  // + 8 bytes restart, 5 bytes trailer
+  ASSERT_EQ(c.SeekOffsetOf("k05"), 210060);
+  // +300000, 2 bytes meta, 3 bytes len, 3 bytes key, + 8 bytes restart, 5 bytes trailer
+  ASSERT_EQ(c.SeekOffsetOf("k06"), 510081);
+  // "hello3" is 6 bytes, 2 bytes meta, 1 byte len, 3 bytes key
+  ASSERT_EQ(c.SeekOffsetOf("k07"), 510093);
+  // +100000, 2 bytes meta, 3 bytes len, 1 byte delta, + 8 bytes restart, 5 bytes trailer
+  ASSERT_EQ(c.SeekOffsetOf("xyz"), 610112);
+}
+
+// Exercises the "between blocks" branch of SeekOffsetOf: a query key that routes (via the index) to
+// a data block but is greater than every key in it, so the smallest key >= it lives in the next
+// block. This needs the index separator to be strictly greater than the block's last key, which
+// FindShortestSeparator produces for well-separated boundary keys
+// (e.g. "a" / "z" -> separator ~"b").
+TEST_F(GeneralTableTest, SeekOffsetOfBetweenBlocks) {
+  TableConstructor c(BytewiseComparator());
+  c.Add("a", std::string(10000, 'x'));  // forces block 0 to flush; last key "a"
+  c.Add("z", std::string(10000, 'x'));  // block 1; separator between blocks shortens to ~"b"
+  std::vector<std::string> keys;
+  stl_wrappers::KVMap kvmap;
+  Options options;
+  auto internal_comparator = std::make_shared<test::PlainInternalKeyComparator>(options.comparator);
+  options.compression = kNoCompression;
+  BlockBasedTableOptions table_options;
+  table_options.block_size = 1024;
+  const ImmutableCFOptions ioptions(options);
+  c.Finish(options, ioptions, table_options, internal_comparator, &keys, &kvmap);
+
+  // "z" is the first (and only) key of block 1, so its offset is block 1's start.
+  const uint64_t block1_offset = c.SeekOffsetOf("z");
+  ASSERT_GT(block1_offset, 0u);
+  // "a" < "aa" < separator "b": index routes "aa" to block 0, but block 0 has no
+  // key >= "aa", so the smallest key >= "aa" is "z" at the start of block 1.
+  ASSERT_EQ(c.SeekOffsetOf("aa"), block1_offset);
+  // Must resolve to the next block, not collapse to block 0.
+  ASSERT_EQ(c.SeekOffsetOf("a"), 0u);
+  ASSERT_NE(c.SeekOffsetOf("aa"), c.SeekOffsetOf("a"));
+}
+
 static void DoCompressionTest(CompressionType comp) {
   Random rnd(301);
   TableConstructor c(BytewiseComparator());
@@ -2591,6 +2669,172 @@ TEST_F(GeneralTableTest, ApproximateOffsetOfCompressed) {
 
   for (auto state : compression_state) {
     DoCompressionTest(state);
+  }
+}
+
+// One key per compressed block: probe keys that fall between blocks must resolve to the next
+// block's offset, not collapse to the current block or overshoot to data_size.
+static void DoSeekOffsetMonotonicTest(CompressionType comp) {
+  Random rnd(301);
+  TableConstructor c(BytewiseComparator());
+  std::string tmp;
+  auto key_for = [](int i) { return std::string("k") + static_cast<char>('0' + i); };
+  // Value larger than block_size so each key gets its own block.
+  for (int i = 0; i < 10; ++i) {
+    c.Add(key_for(i), CompressibleString(&rnd, 0.25, 10000, &tmp));
+  }
+  std::vector<std::string> keys;
+  stl_wrappers::KVMap kvmap;
+  Options options;
+  auto ikc = std::make_shared<test::PlainInternalKeyComparator>(options.comparator);
+  options.compression = comp;
+  BlockBasedTableOptions table_options;
+  table_options.block_size = 1024;
+  const ImmutableCFOptions ioptions(options);
+  c.Finish(options, ioptions, table_options, ikc, &keys, &kvmap);
+
+  // Build a sorted sweep of probe keys: before-all, each key, an in-between key, and past-all.
+  std::vector<std::string> probes;
+  probes.push_back("abc");  // precedes every key
+  for (int i = 0; i < 10; ++i) {
+    probes.push_back(key_for(i));         // exact key
+    probes.push_back(key_for(i) + "z");   // between this key and the next
+  }
+  probes.push_back("zzz");  // past the last key
+
+  // "zzz" is past the end, so SeekOffsetOf returns the data size: the upper bound for every result.
+  const uint64_t data_size = c.SeekOffsetOf("zzz");
+  ASSERT_GT(data_size, 0u);
+
+  uint64_t prev = 0;
+  for (const auto& probe : probes) {
+    const uint64_t off = c.SeekOffsetOf(probe);
+    ASSERT_LE(off, data_size) << "compression=" << comp << " probe=" << probe;
+    ASSERT_GE(off, prev) << "non-monotonic at compression=" << comp << " probe=" << probe;
+    prev = off;
+  }
+}
+
+TEST_F(GeneralTableTest, SeekOffsetOfCompressedMonotonic) {
+  for (auto comp : test::GetSupportedCompressionTypes()) {
+    DoSeekOffsetMonotonicTest(comp);
+    NO_PENDING_FATALS();
+  }
+}
+
+// Regression test: multiple keys per compressed block where decompressed size >> compressed size.
+// Without proper scaling of in-block offsets, block_offset + decompressed_offset can exceed the
+// next block's file offset, breaking monotonicity.
+static void DoSeekOffsetCompressedMultiKeyTest(CompressionType comp) {
+  Random rnd(42);
+  TableConstructor c(BytewiseComparator());
+  std::string tmp;
+  // Use a large block size so many keys land in the same block, and highly compressible values
+  // so decompressed_size >> compressed_size.
+  for (int i = 0; i < 50; ++i) {
+    char key_buf[16];
+    snprintf(key_buf, sizeof(key_buf), "k%04d", i);
+    c.Add(key_buf, CompressibleString(&rnd, 0.25, 2000, &tmp));
+  }
+  std::vector<std::string> keys;
+  stl_wrappers::KVMap kvmap;
+  Options options;
+  auto ikc = std::make_shared<test::PlainInternalKeyComparator>(options.comparator);
+  options.compression = comp;
+  BlockBasedTableOptions table_options;
+  // Large block size forces multiple keys per block.
+  table_options.block_size = 32768;
+  const ImmutableCFOptions ioptions(options);
+  c.Finish(options, ioptions, table_options, ikc, &keys, &kvmap);
+
+  std::vector<std::string> probes;
+  probes.push_back("a");
+  for (int i = 0; i < 50; ++i) {
+    char key_buf[16];
+    snprintf(key_buf, sizeof(key_buf), "k%04d", i);
+    probes.push_back(key_buf);
+    snprintf(key_buf, sizeof(key_buf), "k%04dz", i);
+    probes.push_back(key_buf);
+  }
+  probes.push_back("zzz");
+
+  const uint64_t data_size = c.SeekOffsetOf("zzz");
+  ASSERT_GT(data_size, 0u);
+
+  uint64_t prev = 0;
+  for (const auto& probe : probes) {
+    const uint64_t off = c.SeekOffsetOf(probe);
+    ASSERT_LE(off, data_size) << "exceeded data_size at compression=" << comp
+                              << " probe=" << probe;
+    ASSERT_GE(off, prev) << "non-monotonic at compression=" << comp << " probe=" << probe;
+    prev = off;
+  }
+}
+
+TEST_F(GeneralTableTest, SeekOffsetOfCompressedMultiKey) {
+  for (auto comp : test::GetSupportedCompressionTypes()) {
+    DoSeekOffsetCompressedMultiKeyTest(comp);
+    NO_PENDING_FATALS();
+  }
+}
+
+// Tests monotonicity when an SST has a mix of compressed and uncompressed blocks. Some values are
+// highly compressible (stored compressed) and others are random (stored uncompressed because
+// compression doesn't shrink them). This exercises the code path where block.value->size() may
+// or may not exceed handle.size() depending on the block.
+static void DoSeekOffsetMixedCompressionTest(CompressionType comp) {
+  Random rnd(123);
+  TableConstructor c(BytewiseComparator());
+  std::string tmp;
+  for (int i = 0; i < 40; ++i) {
+    char key_buf[16];
+    snprintf(key_buf, sizeof(key_buf), "k%04d", i);
+    if (i % 2 == 0) {
+      // Highly compressible: block will be stored compressed.
+      c.Add(key_buf, CompressibleString(&rnd, 0.1, 4000, &tmp));
+    } else {
+      // Random data: block won't compress well, may be stored uncompressed.
+      c.Add(key_buf, RandomString(&rnd, 4000));
+    }
+  }
+  std::vector<std::string> keys;
+  stl_wrappers::KVMap kvmap;
+  Options options;
+  auto ikc = std::make_shared<test::PlainInternalKeyComparator>(options.comparator);
+  options.compression = comp;
+  BlockBasedTableOptions table_options;
+  table_options.block_size = 4096;
+  const ImmutableCFOptions ioptions(options);
+  c.Finish(options, ioptions, table_options, ikc, &keys, &kvmap);
+
+  std::vector<std::string> probes;
+  probes.push_back("a");
+  for (int i = 0; i < 40; ++i) {
+    char key_buf[16];
+    snprintf(key_buf, sizeof(key_buf), "k%04d", i);
+    probes.push_back(key_buf);
+    snprintf(key_buf, sizeof(key_buf), "k%04dz", i);
+    probes.push_back(key_buf);
+  }
+  probes.push_back("zzz");
+
+  const uint64_t data_size = c.SeekOffsetOf("zzz");
+  ASSERT_GT(data_size, 0u);
+
+  uint64_t prev = 0;
+  for (const auto& probe : probes) {
+    const uint64_t off = c.SeekOffsetOf(probe);
+    ASSERT_LE(off, data_size) << "exceeded data_size at compression=" << comp
+                              << " probe=" << probe;
+    ASSERT_GE(off, prev) << "non-monotonic at compression=" << comp << " probe=" << probe;
+    prev = off;
+  }
+}
+
+TEST_F(GeneralTableTest, SeekOffsetOfMixedCompression) {
+  for (auto comp : test::GetSupportedCompressionTypes()) {
+    DoSeekOffsetMixedCompressionTest(comp);
+    NO_PENDING_FATALS();
   }
 }
 
@@ -3032,6 +3276,62 @@ TEST_F(TableTest, MiddleOfMiddleKey) {
   const auto mkey_second = ASSERT_RESULT(db->GetMiddleKey(kEmptyKey));
   // Still the same as the midkey of the previous largest sst.
   ASSERT_EQ(mkey_second, mid_key_of_sst);
+  delete db;
+}
+
+TEST_F(TableTest, Cross) {
+  rocksdb::Options options;
+  options.compaction_style = rocksdb::kCompactionStyleNone;
+  options.num_levels = 1;
+  options.create_if_missing = true;
+  options.compression = kNoCompression;
+  const std::string kDBPath = test::TmpDir() + "/cross";
+  ASSERT_OK(DestroyDB(kDBPath, options));
+  rocksdb::DB* db;
+  ASSERT_OK(rocksdb::DB::Open(options, kDBPath, &db));
+
+  const int kNumKeys = 500;
+  const int kMidpointKey = kNumKeys / 2;
+  const int kStep = 25;
+  const int kLeeway = 20;
+
+  auto padded = [](int i) {
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%06d", i);
+    return std::string(buf);
+  };
+
+  // Two SSTs with 250 keys each, zero-padded so lexicographic == numeric order.
+  for (int j = 0; j < kMidpointKey; j++) {
+    ASSERT_OK(db->Put(rocksdb::WriteOptions(), padded(j), "v"));
+  }
+  ASSERT_OK(db->Flush(FlushOptions()));
+  for (int j = kMidpointKey; j < kNumKeys; j++) {
+    ASSERT_OK(db->Put(rocksdb::WriteOptions(), padded(j), "v"));
+  }
+  ASSERT_OK(db->Flush(FlushOptions()));
+
+  // Before all keys: every SST contributes 0.
+  const uint64_t cross_before = ASSERT_RESULT(db->TEST_Cross(""));
+  ASSERT_EQ(cross_before, 0u);
+
+  // Past all keys: sum of all SST data sizes (the maximum).
+  const uint64_t total = ASSERT_RESULT(db->TEST_Cross("\xff"));
+  ASSERT_GT(total, 6000u);
+
+  // Monotonically non-decreasing across the key space.
+  uint64_t prev = 0;
+  for (int k = 0; k < kNumKeys; k += kStep) {
+    const uint64_t c = ASSERT_RESULT(db->TEST_Cross(padded(k)));
+    ASSERT_GE(c, prev) << "non-monotonic at key " << k;
+    ASSERT_LE(c, total) << "exceeds total at key " << k;
+    prev = c;
+  }
+
+  // A key in the middle should produce an intermediate value.
+  const uint64_t mid = ASSERT_RESULT(db->TEST_Cross(padded(kMidpointKey)));
+  ASSERT_BETWEEN(mid, total / 2 - kLeeway, total / 2 + kLeeway);
+
   delete db;
 }
 
