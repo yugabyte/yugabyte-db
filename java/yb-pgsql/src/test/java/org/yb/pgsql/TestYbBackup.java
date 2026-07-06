@@ -23,6 +23,7 @@ import static org.junit.Assume.*;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -154,12 +155,19 @@ public class TestYbBackup extends BasePgSQLTest {
     return 2;
   }
 
+  // Per-JVM subdir under results/ so parallel repeat_unit_test iterations (each a
+  // separate JVM sharing this classpath dir) don't truncate/clobber each other's
+  // output file. Pom source level is 1.8, so ProcessHandle (Java 9+) is unavailable;
+  // use the RuntimeMXBean name (typically "<pid>@<host>") sanitized for a path.
+  private static final String RESULTS_SUBDIR = "results/" +
+      ManagementFactory.getRuntimeMXBean().getName().replaceAll("[^A-Za-z0-9._-]", "_") + "/";
+
   private File runYsqlsh(String sqlPath, String comment, String dbName) throws Exception {
     final int tserverIndex = 0;
     File testDir = TestUtils.getClassResourceDir(getClass());
     File ysqlshExec = new File(pgBinDir, "ysqlsh");
     File inputFile  = new File(testDir, sqlPath);
-    File outputFile = new File(testDir, "results/" + inputFile.getName() + ".out");
+    File outputFile = new File(testDir, RESULTS_SUBDIR + inputFile.getName() + ".out");
     outputFile.getParentFile().mkdirs();
 
     List<String> ysqlsh_args = new ArrayList<>(Arrays.asList(
@@ -221,7 +229,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
     YBBackupUtil.runYbBackupRestore(backupDir, backupArgs);
     File expected = new File(testDir, expectedRestoreDumpPath);
-    File actual   = new File(testDir, "results/" + expected.getName());
+    File actual   = new File(testDir, RESULTS_SUBDIR + expected.getName());
     actual.getParentFile().mkdirs();
 
     // Validate that a dump of the restored db matches what we expect.
