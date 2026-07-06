@@ -939,14 +939,11 @@ Status CatalogManager::BackfillMetadataForXRepl(
           set_column_pg_type->set_name(entry.first);
           uint32_t pg_type_oid = entry.second;
 
-          const YbcPgTypeEntity* type_entity =
-              docdb::DocPgGetTypeEntity({.type_id = (int32_t)pg_type_oid, .type_mod = -1});
-
-          if (type_entity == nullptr && type_oid_info_map.contains(pg_type_oid)) {
+          if (type_oid_info_map.contains(pg_type_oid)) {
             VLOG(1) << "Looking up primitive type for: " << pg_type_oid;
             PgTypeInfo pg_type_info = type_oid_info_map.at(pg_type_oid);
-            YbgGetPrimitiveTypeOid(
-                pg_type_oid, pg_type_info.typtype, pg_type_info.typbasetype, &pg_type_oid);
+            pg_type_oid = VERIFY_RESULT(docdb::DocPgGetTypeOid(
+                pg_type_oid, pg_type_info.typtype, pg_type_info.typbasetype));
             VLOG(1) << "Found primitive type oid: " << pg_type_oid;
           }
           set_column_pg_type->set_pg_type_oid(pg_type_oid);

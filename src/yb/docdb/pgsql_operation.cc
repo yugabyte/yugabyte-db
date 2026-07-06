@@ -85,6 +85,8 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+#include "ybgate/ybgate_api.h"
+
 using namespace std::literals;
 
 DECLARE_bool(ysql_disable_index_backfill);

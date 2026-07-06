@@ -32,6 +32,7 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/version_info.h"
 #include "yb/common/ysql_operation_lease.h"
 
 #include "yb/rpc/secure_stream.h"
@@ -65,9 +66,6 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
-
-#include "ybgate/ybgate_api.h"
-#include "ybgate/ybgate_cpp_util.h"
 
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_int32(ysql_conn_mgr_max_pools);
@@ -1271,7 +1269,7 @@ string PgWrapper::MakeVersionedDataDir(int32_t version) {
 // directory.
 // This code is written to be identical for a tablet server hosting any major PG version.
 Status PgWrapper::InitDbLocalOnlyIfNeeded() {
-  int32_t current_pg_version = YbgGetPgVersion();
+  int32_t current_pg_version = static_cast<int32_t>(VersionInfo::YsqlMajorVersion());
 
   // One-time migration in case this installation is not yet using a symlink
   if (VERIFY_RESULT(Env::Default()->DoesDirectoryExist(conf_.data_dir)) &&
@@ -1327,7 +1325,7 @@ Status PgWrapper::InitDbLocalOnlyIfNeeded() {
 }
 
 Status PgWrapper::CleanupPgData(const std::string& data_dir) {
-  const auto current_pg_version = YbgGetPgVersion();
+  const auto current_pg_version = static_cast<int32_t>(VersionInfo::YsqlMajorVersion());
   const std::string versioned_data_dir =
       pgwrapper::MakeVersionedDataDir(data_dir, current_pg_version);
   auto env = Env::Default();
