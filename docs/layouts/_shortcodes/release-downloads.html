@@ -36,6 +36,12 @@ Usage:
 -}}
 {{- end -}}
 
+{{- if eq (len $tabs) 1 -}}
+{{- $solo := index $tabs 0 -}}
+<div class="release-downloads">
+{{ (print "```sh\n" $solo.body "\n```") | .Page.RenderString }}
+</div>
+{{- else -}}
 {{- $tabpane := print `{{< tabpane text=true plain=true ordinal="` $tabPaneOrdinal `" >}}` "\n" -}}
 {{- range $tabs -}}
 {{- $tabpane = print $tabpane `{{% tab header="` .header `" %}}` "\n" "```sh\n" .body "\n```\n" `{{% /tab %}}` "\n" -}}
@@ -44,3 +50,4 @@ Usage:
 <div class="release-downloads">
 {{ $tabpane | .Page.RenderString }}
 </div>
+{{- end -}}
