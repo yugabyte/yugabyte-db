@@ -12996,6 +12996,14 @@ validateForeignKeyConstraint(char *conname,
 	MemoryContext perTupCxt;
 	TupleTableSlot *ybSlot;
 
+	/*
+	 * YB: For xCluster targets in automatic mode, we skip validating existing
+	 * rows against the foreign key. The source universe has already validated
+	 * the constraint.
+	 */
+	if (yb_xcluster_automatic_mode_target_ddl)
+		return;
+
 	ereport(DEBUG1,
 			(errmsg_internal("validating foreign key constraint \"%s\"", conname)));
 
