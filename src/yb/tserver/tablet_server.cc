@@ -983,6 +983,13 @@ void TabletServer::Shutdown() {
     txn_manager->SetClosing();
   }
 
+  // Start shutting the remote bootstrap service down before the tablets, so peers bootstrapping
+  // from this server fail fast (terminal error) instead of retrying a source whose tablets are
+  // shutting down, which would otherwise wedge their own shutdown. See issue #32211.
+  if (auto remote_bootstrap_service = remote_bootstrap_service_.lock()) {
+    remote_bootstrap_service->StartShutdown();
+  }
+
   tablet_manager_->StartShutdown();
   WARN_NOT_OK(relinquish_lease_future.get(), "Couldn't relinquish ysql lease");
 

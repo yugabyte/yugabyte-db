@@ -510,7 +510,8 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   return tablet_->CompleteStartup();
 }
 
-bool TabletPeer::StartShutdown() {
+bool TabletPeer::StartShutdown(
+    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
 
   auto consensus = GetRaftConsensusUnsafe();
@@ -518,12 +519,16 @@ bool TabletPeer::StartShutdown() {
     consensus->StartShutdown();
   }
 
+  TabletPtr tablet;
   {
     std::lock_guard lock(lock_);
     DEBUG_ONLY_TEST_SYNC_POINT("TabletPeer::StartShutdown:1");
-    if (tablet_) {
-      tablet_->StartShutdown();
-    }
+    tablet = tablet_;
+  }
+  // Tablet::StartShutdown runs StartShutdownStorages, which may block waiting for in-flight read/
+  // write operations to drain, so it must not run while holding the lock_ spinlock.
+  if (tablet) {
+    tablet->StartShutdown(disable_flush_on_shutdown, abort_ops);
   }
 
   {
@@ -554,8 +559,7 @@ bool TabletPeer::StartShutdown() {
   return true;
 }
 
-void TabletPeer::CompleteShutdown(
-    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
+void TabletPeer::CompleteShutdown() {
   auto* strand = strand_.get();
   if (strand) {
     strand->Shutdown();
@@ -582,7 +586,7 @@ void TabletPeer::CompleteShutdown(
   FailAllAsyncWrites(STATUS(IllegalState, "Tablet peer is shutting down"));
 
   if (tablet_) {
-    tablet_->CompleteShutdown(disable_flush_on_shutdown, abort_ops);
+    tablet_->CompleteShutdown();
   }
 
   tablet_obj_state_.store(TabletObjectState::kDestroyed, std::memory_order_release);
@@ -643,11 +647,12 @@ void TabletPeer::WaitUntilShutdown() {
   }
 }
 
-Status TabletPeer::Shutdown(
+Status TabletPeer::TEST_Shutdown(
     ShouldAbortActiveTransactions should_abort_active_txns,
     DisableFlushOnShutdown disable_flush_on_shutdown,
     std::optional<TransactionId>&& exclude_aborting_txn_id) {
-  auto is_shutdown_initiated = StartShutdown();
+  auto is_shutdown_initiated =
+      StartShutdown(disable_flush_on_shutdown, AbortOps(should_abort_active_txns));
 
   if (should_abort_active_txns) {
     // Once raft group state enters QUIESCING state,
@@ -657,7 +662,7 @@ Status TabletPeer::Shutdown(
   }
 
   if (is_shutdown_initiated) {
-    CompleteShutdown(disable_flush_on_shutdown, AbortOps(should_abort_active_txns));
+    CompleteShutdown();
   } else {
     WaitUntilShutdown();
   }

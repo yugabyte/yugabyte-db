@@ -3190,6 +3190,12 @@ int DBImpl::GetCfdImmNumNotFlushed() {
   return cfd->imm()->NumNotFlushed();
 }
 
+void DBImpl::TEST_StopWrites() {
+  auto cfd = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
+  InstrumentedMutexLock guard_lock(&mutex_);
+  cfd->TEST_StopWrites();
+}
+
 FlushAbility DBImpl::GetFlushAbility() {
   auto cfd = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
   InstrumentedMutexLock guard_lock(&mutex_);
@@ -5690,7 +5696,7 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
     // in this case.
     while (bg_error_.ok() && write_controller_.IsStopped() && !IsShuttingDown()) {
       delayed = true;
-      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
+      TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
       bg_cv_.Wait();
     }
   }

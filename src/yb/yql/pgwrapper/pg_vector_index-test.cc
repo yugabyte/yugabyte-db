@@ -134,6 +134,19 @@ const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
 YB_DEFINE_ENUM(VectorIndexEngine, (kUsearch)(kYbHnswUsearch)(kHnswlib)(kYbHnswHnswlib));
 YB_DEFINE_ENUM(PackingMode, (kNone)(kV1)(kV2));
 
+// Returns the tablet peers matching `filter` that currently host at least one vector index.
+std::vector<tablet::TabletPeerPtr> ListTabletPeersWithVectorIndexes(
+    MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kAll) {
+  std::vector<tablet::TabletPeerPtr> result;
+  for (const auto& peer : ListTabletPeers(cluster, filter)) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (tablet && tablet->vector_indexes().List()) {
+      result.push_back(peer);
+    }
+  }
+  return result;
+}
+
 ////////////////////////////////////////////////////////
 // PgVectorIndexTestBase
 ////////////////////////////////////////////////////////
@@ -456,17 +469,10 @@ Status PgVectorIndexTestBase::WaitNoBackgroundInserts(
     RETURN_NOT_OK(WaitForAllIntentsApplied(cluster_.get(), timeout));
   }
   auto cond = [this]() -> Result<bool> {
-    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
-    for (const auto& peer : peers) {
-      auto list = VERIFY_RESULT(peer->shared_tablet())->vector_indexes().List();
-      if (!list) {
-        continue;
-      }
-      for (const auto& index : *list) {
-        if (index->TEST_HasBackgroundInserts()) {
-          LOG(INFO) << "Index " << index->ToString() << " has background inserts";
-          return false;
-        }
+    for (const auto& index : ListVectorIndexes(cluster_.get())) {
+      if (index->TEST_HasBackgroundInserts()) {
+        LOG(INFO) << "Index " << index->ToString() << " has background inserts";
+        return false;
       }
     }
     return true;
@@ -921,19 +927,10 @@ TEST_P(PgVectorIndexTest, ManyRowsWithBackfillAndRestart) {
   num_pre_split_tablets_ = 1;
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) = true;
   TestManyRows(AddFilter::kFalse, Backfill::kTrue);
-  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   size_t tablet_entries = 0;
-  for (const auto& peer : peers) {
-    auto tablet = peer->shared_tablet_maybe_null();
-    if (!tablet) {
-      continue;
-    }
-    auto list = tablet->vector_indexes().List();
-    if (!list) {
-      continue;
-    }
-    auto current_entries = ASSERT_RESULT((*list)[0]->TotalEntries());
-    LOG(INFO) << "P " << peer->permanent_uuid() << ": Total entries: " << current_entries;
+  for (const auto& index : ListVectorIndexes(cluster_.get())) {
+    auto current_entries = ASSERT_RESULT(index->TotalEntries());
+    LOG(INFO) << index->ToString() << ": Total entries: " << current_entries;
     if (tablet_entries) {
       ASSERT_EQ(tablet_entries, current_entries);
     } else {
@@ -1088,19 +1085,13 @@ TEST_P(PgVectorIndexTest, CompactionDuringShutdown) {
   // Schedule an asynchronous compaction and keep only a weak reference to the index, so the tablet
   // owns the only strong references and tearing the tablet down frees the VectorLSM.
   std::weak_ptr<docdb::DocVectorIndex> weak_index;
-  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    auto tablet = peer->shared_tablet_maybe_null();
-    if (!tablet) {
-      continue;
-    }
-    auto list = tablet->vector_indexes().List();
-    if (list && !list->empty()) {
-      weak_index = (*list)[0];
-      ASSERT_OK((*list)[0]->Compact());
-      break;
-    }
+  {
+    auto indexes = ListVectorIndexes(cluster_.get());
+    ASSERT_FALSE(indexes.empty()) << "No tablet with a vector index found";
+    weak_index = indexes.front();
+    ASSERT_OK(indexes.front()->Compact());
   }
-  ASSERT_FALSE(weak_index.expired()) << "No tablet with a vector index found";
+  ASSERT_FALSE(weak_index.expired());
 
   ASSERT_TRUE(task_in_window.WaitFor(60s * kTimeMultiplier))
       << "Compaction task did not reach the post-completion window";
@@ -1191,29 +1182,13 @@ TEST_P(PgVectorIndexCompactionPoolTest, ShutdownNotBlockedByCompaction) {
   // Pick the vector tablet leader (it holds the unflushed writes above, so its shutdown must flush)
   // and a follower (we run the pool-hogging compaction there so it keeps holding the worker while
   // the leader shuts down).
-  std::string leader_uuid;
-  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders)) {
-    auto tablet = peer->shared_tablet_maybe_null();
-    if (tablet && tablet->vector_indexes().TEST_HasIndexes()) {
-      leader_uuid = peer->permanent_uuid();
-      break;
-    }
-  }
-  ASSERT_FALSE(leader_uuid.empty()) << "No vector tablet leader found";
+  auto leader_peers = ListTabletPeersWithVectorIndexes(cluster_.get(), ListPeersFilter::kLeaders);
+  ASSERT_FALSE(leader_peers.empty()) << "No vector tablet leader found";
+  auto leader_uuid = leader_peers.front()->permanent_uuid();
 
-  docdb::DocVectorIndexPtr follower_index;
-  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders)) {
-    auto tablet = peer->shared_tablet_maybe_null();
-    if (!tablet) {
-      continue;
-    }
-    auto list = tablet->vector_indexes().List();
-    if (list && !list->empty()) {
-      follower_index = (*list)[0];
-      break;
-    }
-  }
-  ASSERT_TRUE(follower_index != nullptr) << "No vector tablet follower found";
+  auto follower_indexes = ListVectorIndexes(cluster_.get(), ListPeersFilter::kNonLeaders);
+  ASSERT_FALSE(follower_indexes.empty()) << "No vector tablet follower found";
+  auto follower_index = follower_indexes.front();
 
   size_t shutdown_idx = cluster_->num_tablet_servers();
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
@@ -1269,13 +1244,9 @@ void PgVectorIndexTest::TestRestart(tablet::FlushFlags flush_flags) {
   constexpr size_t kQueryLimit = 5;
 
   auto conn = ASSERT_RESULT(MakeIndex());
-  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders);
-  for (const auto& peer : peers) {
-    auto tablet = peer->shared_tablet_maybe_null();
-    if (tablet->vector_indexes().TEST_HasIndexes()) {
-      tablet->TEST_SleepBeforeApplyIntents(5s * kTimeMultiplier);
-      break;
-    }
+  auto peers = ListTabletPeersWithVectorIndexes(cluster_.get(), ListPeersFilter::kNonLeaders);
+  if (!peers.empty()) {
+    peers.front()->shared_tablet_maybe_null()->TEST_SleepBeforeApplyIntents(5s * kTimeMultiplier);
   }
   ASSERT_OK(InsertRows(conn, 1, kNumRows));
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
@@ -1676,14 +1647,11 @@ TEST_P(PgVectorIndexTest, Options) {
       LOG(INFO) << "Query: " << query;
       ASSERT_OK(conn.Execute(query));
     }
-    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    auto peers = ListTabletPeersWithVectorIndexes(cluster_.get());
     std::unordered_map<TabletId, size_t> checked_tablets;
     for (const auto& peer : peers) {
       auto tablet = peer->shared_tablet_maybe_null();
       auto vector_indexes = tablet->vector_indexes().List();
-      if (!vector_indexes) {
-        continue;
-      }
       if (checked_tablets[peer->tablet_id()] != 0) {
         continue;
       }
@@ -2107,21 +2075,15 @@ TEST_P(PgVectorIndexSingleServerTest, OnDiskSize) {
   ASSERT_OK(cluster_->FlushTablets(
       tablet::FlushMode::kSync, tablet::FlushFlags::kVectorIndexes));
 
-  size_t peers_with_vector_index = 0;
-  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders)) {
-    auto tablet = peer->shared_tablet_maybe_null();
-    if (!tablet || !tablet->vector_indexes().List()) {
-      continue;
-    }
-    ++peers_with_vector_index;
-
+  auto peers = ListTabletPeersWithVectorIndexes(cluster_.get(), ListPeersFilter::kLeaders);
+  ASSERT_FALSE(peers.empty());
+  for (const auto& peer : peers) {
     // The vector index size is reported via the on-disk size info (which feeds the UI) and must be
     // included in the active on-disk size.
     auto info = peer->GetOnDiskSizeInfo();
     ASSERT_GT(info.vector_index_disk_size, 0);
     ASSERT_GE(info.active_on_disk_size, info.vector_index_disk_size);
   }
-  ASSERT_GT(peers_with_vector_index, 0);
 }
 
 // Expected Key -> Value format:
@@ -2326,19 +2288,10 @@ TEST_P(PgVectorIndexSingleServerTest, ManualCompactionDuringShutdown) {
 
   // Hand the only external strong reference to the compaction thread; keep a weak ref to observe
   // destruction.
-  std::shared_ptr<docdb::DocVectorIndex> index;
-  for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    auto tablet = peer->shared_tablet_maybe_null();
-    if (!tablet) {
-      continue;
-    }
-    auto list = tablet->vector_indexes().List();
-    if (list && !list->empty()) {
-      index = (*list)[0];
-      break;
-    }
-  }
-  ASSERT_TRUE(index) << "No tablet with a vector index found";
+  auto indexes = ListVectorIndexes(cluster_.get());
+  ASSERT_FALSE(indexes.empty()) << "No tablet with a vector index found";
+  std::shared_ptr<docdb::DocVectorIndex> index = indexes.front();
+  indexes.clear();
   std::weak_ptr<docdb::DocVectorIndex> weak_index = index;
 
   TestThreadHolder threads;
@@ -2440,6 +2393,67 @@ TEST_P(PgVectorIndexSingleServerTest, ConcurrentCreateIndexAndListRace) {
 
   threads.WaitAndStop(60s * kTimeMultiplier);
   sync_point->DisableProcessing();
+}
+
+// Reproduces issue #32211: shutting a tablet down (e.g. on tombstone) must not deadlock when an
+// intents-DB write is parked in a RocksDB write stall that never clears. RemoveIntents runs on the
+// TabletPeer strand, and TabletPeer::CompleteShutdown drains that strand before it reaches the
+// point that signals the tablet's RocksDB instances to shut down. So a writer parked in
+// DBImpl::DelayWrite (which only escapes the stall once RocksDB is told it is shutting down) is
+// never released, and the strand drain -- hence the whole shutdown -- hangs forever. The fix
+// signals RocksDB shutdown early, in Tablet::StartShutdown, before the strand is drained.
+TEST_P(PgVectorIndexSingleServerTest, ShutdownDuringIntentsWriteStall) {
+  // DROP TABLE tears the tablet down only in the distributed (non-colocated) layout; in a colocated
+  // database the table shares a tablet that stays alive, so the shutdown path under test is not
+  // exercised.
+  if (IsColocated()) {
+    GTEST_SKIP() << "DROP TABLE does not tear the tablet down in colocated mode";
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  constexpr size_t kNumRows = 16;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get(), 30s * kTimeMultiplier));
+
+  // Locate the tablet peer holding the vector index; its provisional records (intents) DB is the
+  // one we stall.
+  auto peers = ListTabletPeersWithVectorIndexes(cluster_.get());
+  ASSERT_EQ(peers.size(), 1) << "Expected exactly one tablet peer with a vector index";
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  auto* intents_db = down_cast<rocksdb::DBImpl*>(tablet->intents_db());
+
+  CountDownLatch intents_write_stalled{1};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "DBImpl::DelayWrite:Wait",
+      [&intents_write_stalled](void*) { intents_write_stalled.CountDown(); });
+  sync_point->EnableProcessing();
+
+  // Write provisional intents in a distributed transaction, then force a never-clearing write stall
+  // on the intents DB. Committing applies the transaction and schedules RemoveIntents, which writes
+  // to the intents DB and parks in DelayWrite. The stall is owned by the DB, so it is cleaned up
+  // when the tablet is torn down -- no external token to release.
+  auto txn_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(txn_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(txn_conn.Execute(
+      "INSERT INTO test VALUES (1001, '[1,2,3]'), (1002, '[4,5,6]'), (1003, '[7,8,9]')"));
+  // Force the buffered provisional intents to flush to the tablet before we stop writes (a primary
+  // key read keeps the vector-index seq-scan guard happy).
+  ASSERT_RESULT(txn_conn.FetchRow<int64_t>("SELECT id FROM test WHERE id = 1001"));
+
+  intents_db->TEST_StopWrites();
+
+  ASSERT_OK(txn_conn.CommitTransaction());
+
+  ASSERT_TRUE(intents_write_stalled.WaitFor(60s * kTimeMultiplier))
+      << "No intents write parked in the write stall";
+
+  // Tear the tablet down. On the buggy code this hangs forever in TabletPeer::CompleteShutdown,
+  // waiting for the parked RemoveIntents to drain from the strand, and the test times out. On the
+  // fixed code Tablet::StartShutdown signals RocksDB shutdown before the strand drain, releasing
+  // the stalled write, so the drop completes.
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
 }
 
 TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
