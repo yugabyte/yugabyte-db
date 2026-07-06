@@ -8523,38 +8523,44 @@ YbCheckTserverResponseCacheForAuthGflags()
 		yb_enable_invalidation_messages;
 }
 
+/*
+ * Decide whether the current backend should serve its connection-auth catalog
+ * prefetch (pg_authid, pg_database, ...) from the tserver response cache.
+ *
+ * Treats connection manager auth backends and regular backends uniformly:
+ * when ysql_enable_read_request_cache_for_connection_auth is set (and the
+ * response cache + invalidation messages are available), both serve the
+ * prefetch from cache. Login profiles disable the cache because
+ * pg_yb_role_profile is written during login without bumping the catalog
+ * version (the cache would go stale); such backends fall back to the
+ * no-cache prefetch.
+ *
+ * Note this only governs the connection-auth prefetch. After authentication
+ * the backend still resolves the latest master catalog version and rebuilds
+ * its full catalog cache (and the shared relcache init file) from fresh data
+ * in RelationCacheInitializePhase3, so only the per-connection authentication
+ * lookup is served from the (version-keyed) cache.
+ */
 bool
 YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version)
 {
-	if (!(YbIsAuthBackend() || YbIsAuthPassthroughInProgress(MyProcPort)))
-		return false;
-	/*
-	 * We should only see auth backend or auth passthrough in progress if
-	 * connection manager is enabled.
-	 */
-	Assert(YbIsYsqlConnMgrEnabled());
-
 	if (!YbCheckTserverResponseCacheForAuthGflags())
 		return false;
 
 	/*
-	 * For now we do not allow using tserver response cache for auth processing
-	 * if login profile is enabled. This is because the login process itself
-	 * writes to pg_yb_role_profile table but this is not done under a DDL
-	 * statement context. As a result the catalog version isn't incremented
-	 * but the tserver response cache becomes stale. Newer login processing
-	 * will continue to use the stale cache which isn't right.
+	 * initdb and major-version-upgrade catalog restore run DDLs that do not
+	 * increment the catalog version, so cached responses could go stale -- the
+	 * same reason YbRunWithPrefetcher does not use the response cache for them.
 	 */
+	if (YBCIsInitDbModeEnvVarSet() || IsBinaryUpgrade)
+		return false;
+
 	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		return false;
 
-	/*
-	 * Tserver response cache requires a valid catalog version. Use the shared
-	 * memory catalog version as an approximation of the latest master catalog
-	 * version.
-	 */
 	if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
 		return false;
+
 	return true;
 }
 
