@@ -29,6 +29,10 @@
   margin-bottom: 16px;
   padding: var(--docs-page-header-bar-padding-y) 0;
   background: #fff;
+  // Extend the opaque background a few pixels left/right so the 1px box-shadow
+  // outline of full-width tables scrolling underneath doesn't peek out at the
+  // content edges while the bar is sticky.
+  box-shadow: 8px 0 0 0 #fff, -8px 0 0 0 #fff;
 
   .td-breadcrumbs {
     flex: 1 1 auto;
@@ -66,6 +70,32 @@
     .dropdown-toggle {
       .tag.release {
         top: 0;
+      }
+
+      // Hide the toggle's own release tooltip while the version menu is open,
+      // so it doesn't overlap the open menu.
+      &.show .tag.release .popup-details {
+        opacity: 0;
+        visibility: hidden;
+      }
+    }
+
+    // Anchor each menu item's tooltip to the full-width item so it opens just
+    // to the left of the whole menu (clear of the menu text), rather than on
+    // top of the item next to the small tag.
+    .dropdown-menu .dropdown-item {
+      position: relative;
+    }
+
+    // The version picker sits at the far right of the header bar, so open the
+    // release tooltips to the left to keep them on screen.
+    .tag.release .popup-details {
+      left: auto;
+      right: calc(100% + 10px);
+
+      &::before {
+        left: auto;
+        right: -13px;
       }
     }
   }
