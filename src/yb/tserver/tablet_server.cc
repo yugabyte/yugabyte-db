@@ -759,9 +759,10 @@ Status TabletServer::RegisterServices() {
   if (FLAGS_ysql_enable_auto_analyze_infra) {
     auto connect_to_pg = [this](const std::string& database_name,
                                 const CoarseTimePoint& deadline) {
-      return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
-                                                    GetSharedMemoryPostgresAuthKey(),
-                                                    deadline, true).Connect();
+      return pgwrapper::CreateInternalPGConnBuilder(
+                 pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(),
+                 deadline, pgwrapper::YbInternalConnKindWireName::kAutoAnalyze)
+          .Connect();
     };
     auto pg_auto_analyze_service =
         std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future(),
@@ -1363,7 +1364,15 @@ void TabletServer::RelcacheInitConnectionDone(
 
 void TabletServer::MakeRelcacheInitConnection(const std::string& dbname) {
   auto deadline = CoarseMonoClock::Now() + default_client_timeout();
-  auto status = ResultToStatus(CreateInternalPGConn(dbname, false, deadline));
+  // Identify this connection as the dedicated relcache-init builder so the
+  // backend takes on YB_RELCACHE_INIT_BACKEND, runs with minimal preload, and
+  // does not recursively trigger another internal connection
+  // (relcache.c:RelationCacheInitializePhase3).
+  auto status = ResultToStatus(
+      pgwrapper::CreateInternalPGConnBuilder(
+          pgsql_proxy_bind_address(), dbname, GetSharedMemoryPostgresAuthKey(), deadline,
+          pgwrapper::YbInternalConnKindWireName::kRelcacheInit)
+          .Connect(/*simple_query_protocol=*/false));
   if (status.ok()) {
     LOG(INFO) << "Relcache init connection to database " << dbname << " succeeded";
   } else {

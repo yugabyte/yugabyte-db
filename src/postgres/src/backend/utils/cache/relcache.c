@@ -6670,13 +6670,16 @@ RelationCacheInitializePhase3(void)
 		 * IsBinaryUpgrade=true indicates we are doing catalog restore during a
 		 * major version update. In this case local tserver is actually yb-master
 		 * which has not implemented YBCTriggerRelcacheInitConnection.
-		 * We allow internal connections to rebuild relcache init file.
+		 * The dedicated relcache-init builder backend (YB_RELCACHE_INIT_BACKEND)
+		 * is exempted so it actually rebuilds the file itself; other internal
+		 * connections (e.g. xCluster DDL queue, call-home) still go through the
+		 * trigger and get a separate relcache-init connection spawned for them.
 		 */
 		if (enable_relcache_init_optimization &&
 			YBIsDBCatalogVersionMode() &&
 			needNewCacheFile &&
 			!catalog_preload_required &&
-			!yb_is_internal_connection &&
+			MyBackendType != YB_RELCACHE_INIT_BACKEND &&
 			!IsBinaryUpgrade)
 		{
 			YbTriggerInternalRelcacheBuild();
