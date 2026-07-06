@@ -81,6 +81,7 @@ DECLARE_string(vector_index_backend);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
 DECLARE_uint32(vector_index_num_compactions_limit);
+DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
 DECLARE_uint64(vector_index_max_merge_tasks);
@@ -2952,6 +2953,131 @@ TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
 
   // Make sure the test hit the test path that clears result entries.
   ASSERT_FALSE(ANNOTATE_UNPROTECTED_READ(docdb::TEST_vector_index_clear_result_entries_once));
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/30262.
+TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_post_split_compaction_input_size_threshold_bytes) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+
+  constexpr size_t kNumRows = 10;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  const auto parent_tablet_id = peers.front()->tablet_id();
+  auto parent_tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  auto* parent_db = parent_tablet->regular_db();
+
+  TestKVFormatter formatter;
+  auto run_sst_dump = [this, &formatter](rocksdb::DB* db, bool clean_vectors = false) -> Status {
+    formatter.Clear(clean_vectors);
+    for (const auto& live_file : db->GetLiveFilesMetaData()) {
+      RETURN_NOT_OK(RunSstDump(formatter, live_file.BaseFilePath()));
+    }
+    return Status::OK();
+  };
+
+  ASSERT_OK(run_sst_dump(parent_db, /*clean_vectors=*/true));
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_4_vector_1 -> ybctid_4
+          ybctid_5_vector_1 -> ybctid_5
+          ybctid_6_vector_1 -> ybctid_6
+          ybctid_7_vector_1 -> ybctid_7
+          ybctid_8_vector_1 -> ybctid_8
+          ybctid_9_vector_1 -> ybctid_9
+          ybctid_10_vector_1 -> ybctid_10
+      )#",
+      formatter.FormatVectorsMeta());
+
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 2"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(run_sst_dump(parent_db, /* clean_vectors = */ true));
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_4_vector_1 -> ybctid_4
+          ybctid_5_vector_1 -> ybctid_5
+          ybctid_6_vector_1 -> ybctid_6
+          ybctid_7_vector_1 -> ybctid_7
+          ybctid_8_vector_1 -> ybctid_8
+          ybctid_9_vector_1 -> ybctid_9
+          ybctid_10_vector_1 -> ybctid_10
+          ybctid_2_vector_1 -> DEL
+          ybctid_2_vector_2 -> ybctid_2
+      )#",
+      formatter.FormatVectorsMeta());
+
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), parent_tablet_id));
+
+  peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  std::erase_if(peers, [&](const auto& peer) {
+    return peer->tablet_id() == parent_tablet_id;
+  });
+  ASSERT_EQ(peers.size(), 2);
+  std::ranges::sort(peers, [](const auto& peer1, const auto& peer2) {
+    const auto& part1 = peer1->tablet_metadata()->partition()->partition_key_start();
+    const auto& part2 = peer2->tablet_metadata()->partition()->partition_key_start();
+    return part1 < part2;
+  });
+
+  auto child0_tablet = ASSERT_RESULT(peers[0]->shared_tablet());
+  ASSERT_OK(run_sst_dump(child0_tablet->regular_db()));
+  const auto child0_dump = formatter.FormatVectorsMeta();
+  LOG(INFO) << "Tablet " << peers[0]->tablet_id() << " reverse mapping dump:\n" << child0_dump;
+
+  auto child1_tablet = ASSERT_RESULT(peers[1]->shared_tablet());
+  ASSERT_OK(run_sst_dump(child1_tablet->regular_db()));
+  const auto child1_dump = formatter.FormatVectorsMeta();
+  LOG(INFO) << "Tablet " << peers[1]->tablet_id() << " reverse mapping dump:\n" << child1_dump;
+
+  const bool child0_has_row2 = child0_dump.find("ybctid_2") != std::string::npos;
+  const bool child1_has_row2 = child1_dump.find("ybctid_2") != std::string::npos;
+  ASSERT_NE(child0_has_row2, child1_has_row2);
+
+  const auto& without_row2_dump = child0_has_row2 ? child1_dump : child0_dump;
+  const auto& with_row2_dump = child0_has_row2 ? child0_dump : child1_dump;
+
+  // The child that does not own row 2 must not retain any ybctid_2 reverse mapping records
+  // after post-split compaction (neither the bare tombstone nor the stale mapping entry).
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_4_vector_1 -> ybctid_4
+          ybctid_5_vector_1 -> ybctid_5
+          ybctid_7_vector_1 -> ybctid_7
+          ybctid_9_vector_1 -> ybctid_9
+          ybctid_10_vector_1 -> ybctid_10
+      )#",
+      without_row2_dump);
+
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_6_vector_1 -> ybctid_6
+          ybctid_8_vector_1 -> ybctid_8
+          ybctid_2_vector_1 -> DEL
+          ybctid_2_vector_2 -> ybctid_2
+      )#",
+      with_row2_dump);
 }
 
 TEST_F(PgVectorIndexUtilTest, SstDump) {

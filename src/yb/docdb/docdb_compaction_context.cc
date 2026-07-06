@@ -614,11 +614,14 @@ class VectorMetadataFilterImpl : public VectorMetadataFilter {
 
     // Make sure extracted entry matches the specified key.
     if (!entry.key.starts_with(key.Prefix(dockv::kEncodedDocVectorKeyStaticSize))) {
-      LOG_WITH_FUNC(DFATAL)
-          << "Unable to locate vector index reverse mapping"
+      // Single tombstone with no vector_id -> ybctid mapping left in the tablet: safe to drop
+      // as the mapping pair has been already dropped somewhere in the past, otherwise it should
+      // have been found by the Seek() above.
+      VLOG_WITH_FUNC(2)
+          << "Discarding orphaned vector index reverse mapping tombstone"
           << ", expected: " << key.Prefix(dockv::kEncodedDocVectorKeyStaticSize).ToDebugHexString()
           << ", located: " << entry.key.ToDebugHexString();
-      return rocksdb::FilterDecision::kKeep;
+      return rocksdb::FilterDecision::kDiscard;
     }
 
     return DoFilterYbctid(entry.value);
