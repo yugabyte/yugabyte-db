@@ -18937,6 +18937,8 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		appendPQExpBuffer(q, "\nALTER TABLE ONLY %s FORCE ROW LEVEL SECURITY;\n",
 						  qualrelname);
 
+	appendPQExpBuffer(delq, "DROP %s %s;\n", reltypename, qualrelname);
+
 	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		binary_upgrade_extension_member(q, &tbinfo->dobj,
 										reltypename, qrelname,

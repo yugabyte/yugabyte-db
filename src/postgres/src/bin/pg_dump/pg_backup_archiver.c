@@ -4316,15 +4316,6 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 		te->owner && strlen(te->owner) > 0 &&
 		te->dropStmt && strlen(te->dropStmt) > 0)
 	{
-		/*
-		 * YB_TODO_PG19MERGE: PG simplified the ALTER ... OWNER TO emission to
-		 * a single BLOB METADATA branch + the generic _getObjectDescription
-		 * else branch below. The YB-side branched on many te->desc values (old
-		 * PG code + YB added TABLEGROUP) to emit a
-		 * `\if :use_roles` / yb_dump_role_checks-aware ALTER OWNER block
-		 * (with role-existence guard). Port that role-check wrapping into the
-		 * generic else branch (or a per-desc helper).
-		 */
 		if (strcmp(te->desc, "BLOB METADATA") == 0)
 		{
 			/* BLOB METADATA needs special code to handle multiple LOs */
@@ -4346,8 +4337,48 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 			 * is no owner.
 			 */
 			if (temp.data[0])
-				ahprintf(AH, "ALTER %s OWNER TO %s;\n\n",
-						 temp.data, fmtId(te->owner));
+			{
+				if (AH->public.dopt->include_yb_metadata)
+				{
+					/*
+					 * YB: gate the owner change on :use_roles so a restore that
+					 * does not recreate roles skips it, and with
+					 * --dump-role-checks additionally guard on the role
+					 * existing. These are meta-commands, so bracket them out of
+					 * the \restrict region the plain-text dump otherwise runs in.
+					 */
+					PQExpBuffer alter = createPQExpBuffer();
+
+					appendPQExpBuffer(alter, "ALTER %s OWNER TO %s;",
+									  temp.data, fmtId(te->owner));
+
+					ybBeginUnrestrictedMeta(AH);
+					ahprintf(AH, "\\if :use_roles\n");
+					if (AH->public.dopt->yb_dump_role_checks)
+					{
+						PQExpBuffer role_buf = createPQExpBuffer();
+
+						appendStringLiteralAHX(role_buf, te->owner, AH);
+						ahprintf(AH, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = %s"
+								 ") AS role_exists \\gset\n"
+								 "\\if :role_exists\n"
+								 "    %s\n"
+								 "\\else\n"
+								 "    \\echo 'Skipping owner privilege due to missing role:' %s\n"
+								 "\\endif\n",
+								 role_buf->data, alter->data, fmtId(te->owner));
+						destroyPQExpBuffer(role_buf);
+					}
+					else
+						ahprintf(AH, "    %s\n", alter->data);
+					ahprintf(AH, "\\endif\n\n");
+					ybEndUnrestrictedMeta(AH);
+					destroyPQExpBuffer(alter);
+				}
+				else
+					ahprintf(AH, "ALTER %s OWNER TO %s;\n\n",
+							 temp.data, fmtId(te->owner));
+			}				/* YB */
 			termPQExpBuffer(&temp);
 		}
 
