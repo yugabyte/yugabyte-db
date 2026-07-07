@@ -2689,9 +2689,9 @@ class PgClientSession::Impl {
     read_request->set_is_forward_scan(req.is_forward());
     auto* embedded_req = read_request->mutable_get_tablet_key_ranges_request();
 
-    // IsInclusive is actually ignored by Tablet::GetTabletKeyRanges, and it always treats both
-    // boundaries as inclusive. But we are setting it here to avoid check failures inside
-    // YBPgsqlReadOp.
+    // IsInclusive is actually ignored by Tablet::GetTabletKeyRanges, it does not matter for
+    // the parallel ranges collection. We set it here to route the request to the correct tablet,
+    // if the bound is equal to the tablet key.
     if (!req.lower_bound_key().empty()) {
       read_request->mutable_lower_bound()->set_is_inclusive(true);
       for (auto* dest_key :
@@ -2702,7 +2702,7 @@ class PgClientSession::Impl {
       }
     }
     if (!req.upper_bound_key().empty()) {
-      read_request->mutable_upper_bound()->set_is_inclusive(true);
+      read_request->mutable_upper_bound()->set_is_inclusive(false);
       for (auto* dest_key :
            {embedded_req->mutable_upper_bound_key(),
             read_request->mutable_upper_bound()->mutable_key()}) {
