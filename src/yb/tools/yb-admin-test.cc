@@ -206,6 +206,40 @@ class AdminCliTest : public AdminTestBase {
   TmpDirProvider tmp_dir_;
 };
 
+// Verify that a misspelled operation gets suggested the commands it is a prefix of, without
+// needing a running cluster (the check happens before yb-admin connects to the master).
+TEST_F(AdminCliTest, InvalidOperationSuggestsPrefixMatches) {
+  const auto exe_path = GetAdminToolPath();
+  constexpr auto kUnusedMasterAddress = "127.0.0.1:0";
+  std::string error;
+
+  // Typo that is an unambiguous prefix of a single command.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(
+          exe_path, "--master_addresses", kUnusedMasterAddress, "list_snapshot_schedule"),
+      /* output */ nullptr, &error));
+  ASSERT_NE(error.find("Did you mean one of these?"), std::string::npos);
+  ASSERT_NE(error.find("list_snapshot_schedules"), std::string::npos);
+
+  // Prefix that matches multiple commands should list every candidate.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "list_table"), nullptr,
+      &error));
+  ASSERT_NE(error.find("list_tables"), std::string::npos);
+  ASSERT_NE(error.find("list_tablets"), std::string::npos);
+
+  // A completely unknown operation should not suggest anything.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "not_a_real_command"),
+      nullptr, &error));
+  ASSERT_EQ(error.find("Did you mean one of these?"), std::string::npos);
+
+  // An empty operation is a prefix of every command, but should not list all of them.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, ""), nullptr, &error));
+  ASSERT_EQ(error.find("Did you mean one of these?"), std::string::npos);
+}
+
 // Test yb-admin config change while running a workload.
 // 1. Instantiate external mini cluster with 3 TS.
 // 2. Create table with 2 replicas.

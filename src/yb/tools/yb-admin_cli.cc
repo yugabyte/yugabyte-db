@@ -472,6 +472,28 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
 
   if (cmd == command_indexes_.end()) {
     cerr << "Invalid operation: " << op << endl;
+
+    // The operation name is not an exact match, so look for commands that have it as a prefix,
+    // e.g. "list_snapshot_schedule" should point the user at "list_snapshot_schedules". An empty
+    // operation is a prefix of every command, so skip it instead of listing all commands.
+    vector<string> candidates;
+    if (!op.empty()) {
+      for (auto it = command_indexes_.lower_bound(op); it != command_indexes_.end(); ++it) {
+        if (!boost::starts_with(it->first, op)) {
+          break;
+        }
+        if (!commands_[it->second].hidden_) {
+          candidates.push_back(it->first);
+        }
+      }
+    }
+    if (!candidates.empty()) {
+      cerr << "Did you mean one of these?" << endl;
+      for (const auto& candidate : candidates) {
+        cerr << "  " << candidate << endl;
+      }
+    }
+
     return ClusterAdminCli::kInvalidArguments;
   }
 
