@@ -118,8 +118,8 @@ typename LSM::Options::VectorIndexFactory VectorLSMFactory(
     case HnswBackend::HNSWLIB: {
       using FactoryImpl = vector_index::MakeVectorIndexFactory<
           ann_methods::HnswlibIndexFactory, LSM>;
-      return [hnsw_options](vector_index::FactoryMode mode) {
-        return FactoryImpl::Create(mode, hnsw_options);
+      return [block_cache, hnsw_options, mem_tracker](vector_index::FactoryMode mode) {
+        return FactoryImpl::Create(mode, block_cache, hnsw_options, mem_tracker);
       };
     }
   }

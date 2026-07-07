@@ -26,7 +26,41 @@
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/vector_index_if.h"
 
+namespace rocksdb {
+class Cache;
+}
+
 namespace yb::vector_index {
+
+// RAII handle for space reserved in a block cache. While alive it keeps `bytes` of the cache's
+// capacity consumed -- which forces the cache to evict other blocks -- and releases that space on
+// destruction. Move-only.
+class BlockCacheReservation {
+ public:
+  BlockCacheReservation() = default;
+  // Consumes `bytes` of `cache`, unless `cache` is null, `bytes` is zero, or the reservation is
+  // disabled via the gflag -- in those cases the reservation stays empty.
+  BlockCacheReservation(rocksdb::Cache* cache, size_t bytes);
+
+  BlockCacheReservation(BlockCacheReservation&& rhs) noexcept;
+  BlockCacheReservation& operator=(BlockCacheReservation&& rhs) noexcept;
+
+  BlockCacheReservation(const BlockCacheReservation&) = delete;
+  void operator=(const BlockCacheReservation&) = delete;
+
+  ~BlockCacheReservation();
+
+  explicit operator bool() const {
+    return cache_ != nullptr;
+  }
+
+  // Releases the reserved space back to the cache.
+  void Reset();
+
+ private:
+  rocksdb::Cache* cache_ = nullptr;
+  size_t bytes_ = 0;
+};
 
 // Base class for index wrappers.
 // Contains common parts of index wrapper implementations.
@@ -84,6 +118,15 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     return immutable_.load(std::memory_order_acquire);
   }
 
+  // Reserve `bytes` of `block_cache` space for this index's in-memory footprint, replacing any
+  // prior reservation. Reserving lowers the cache's effective capacity, so the cache evicts other
+  // blocks instead of letting the index grow total memory consumption past the limits (#32357).
+  // Subclasses call this from their Reserve() with the backend-specific estimate of the chunk's
+  // footprint; the reservation is a no-op when `block_cache` is null, `bytes` is zero, or disabled.
+  void ReserveBlockCacheSpace(rocksdb::Cache* block_cache, size_t bytes) {
+    block_cache_reservation_ = BlockCacheReservation(block_cache, bytes);
+  }
+
  private:
   Impl& impl() {
     return *static_cast<Impl*>(this);
@@ -95,6 +138,11 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
 
   std::atomic<bool> immutable_{false};
   std::shared_ptr<void> attached_;
+
+  // Block cache space reserved for this index's footprint (#32357). Held for the index's lifetime
+  // and released on destruction. Empty when no block cache is set or the feature is disabled.
+  BlockCacheReservation block_cache_reservation_;
+
   // Coordinates lock-free searches against concurrent inserts on a mutable index: many inserts run
   // together and many searches run together, but a search phase and an insert phase never overlap,
   // so a search never observes a partially-applied insert. Backends whose concurrent inserts and

@@ -15,6 +15,8 @@
 
 #include <memory>
 
+#include "yb/hnsw/hnsw_fwd.h"
+
 #include "yb/util/result.h"
 
 #include "yb/vector_index/hnsw_options.h"
@@ -29,7 +31,18 @@ template<vector_index::IndexableVectorType Vector,
 class HnswlibIndexFactory {
  public:
   static vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
-      vector_index::FactoryMode mode, const vector_index::HNSWOptions& options);
+      vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
+      const vector_index::HNSWOptions& options, const std::shared_ptr<MemTracker>& mem_tracker);
+};
+
+template<vector_index::IndexableVectorType Vector,
+         vector_index::ValidDistanceResultType DistanceResult>
+class SimplifiedHnswlibIndexFactory {
+ public:
+  static vector_index::VectorIndexIfPtr<Vector, DistanceResult> Create(
+      vector_index::FactoryMode mode, const vector_index::HNSWOptions& options) {
+    return HnswlibIndexFactory<Vector, DistanceResult>::Create(mode, nullptr, options, nullptr);
+  }
 };
 
 }  // namespace yb::ann_methods

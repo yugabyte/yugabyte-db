@@ -42,9 +42,14 @@
 
 #pragma GCC diagnostic pop
 
+#include "yb/hnsw/hnsw_block_cache.h"
+
 #include "yb/gutil/casts.h"
 
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+
+#include "yb/ann_methods/index_memory_consumption.h"
 
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/index_wrapper_base.h"
@@ -158,9 +163,13 @@ class HnswlibIndex :
 
   using HNSWImpl = hnswlib::HierarchicalNSW<DistanceResult, VectorId>;
 
-  explicit HnswlibIndex(const HNSWOptions& options)
-      : options_(options),
+  HnswlibIndex(
+      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options,
+      const MemTrackerPtr& mem_tracker)
+      : block_cache_(block_cache),
+        options_(options),
         space_(CHECK_RESULT((CreateSpace<Scalar, DistanceResult>(options)))) {
+    consumption_.Init(mem_tracker);
   }
 
   std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
@@ -179,6 +188,8 @@ class HnswlibIndex :
           IllegalState, "Cannot reserve space for $0 vectors: Hnswlib index already initialized",
           num_vectors);
     }
+    // Both data and search-context allocations are sized off max_elements at construction.
+    auto se = UpdateAllConsumptionOnExit();
     // Please be careful about adding and removing arguments here and make sure they match the
     // actual list of arguments in hnswalg.h.
     hnsw_ = std::make_unique<HNSWImpl>(
@@ -189,10 +200,20 @@ class HnswlibIndex :
         /* random_seed= */ 100,              // Default value from hnswalg.h
         /* allow_replace_deleted= */ false,  // Default value from hnswalg.h
         /* ef= */ 128);
+    // Reserve block cache space for this chunk's full footprint so the index is accounted within
+    // the block cache budget (#32357): the cache evicts other blocks instead of letting the index
+    // grow total memory consumption past the limits.
+    this->ReserveBlockCacheSpace(
+        block_cache_ ? &block_cache_->cache() : nullptr,
+        HNSWImpl::estimateBytesForNumVectors(
+            num_vectors, options_.num_neighbors_per_vertex, options_.num_neighbors_per_vertex_base,
+            options_.dimensions * sizeof(Scalar)));
     return Status::OK();
   }
 
   Status DoInsert(VectorId vector_id, const Vector& v) {
+    // Only data grows on insert; the search-contexts pool is sized at construction.
+    auto se = UpdateDataConsumptionOnExit();
     hnsw_->addPoint(v.data(), vector_id);
 
     return Status::OK();
@@ -308,9 +329,33 @@ class HnswlibIndex :
   }
 
  private:
+  // RAII helper that refreshes the index_data tracker on scope exit (e.g. on the way out of
+  // an insert path). Use this when only the per-vector heap allocations changed.
+  auto UpdateDataConsumptionOnExit() {
+    return ScopeExit([this] {
+      if (hnsw_) {
+        consumption_.UpdateData(hnsw_->indexDataBytes());
+      }
+    });
+  }
+
+  // RAII helper that refreshes both the index_data and search_contexts trackers. Use this on
+  // operations that rebuild or resize the index (e.g. Reserve) where the pool / per-vector
+  // tables are also (re)allocated.
+  auto UpdateAllConsumptionOnExit() {
+    return ScopeExit([this] {
+      if (hnsw_) {
+        consumption_.UpdateData(hnsw_->indexDataBytes());
+        consumption_.UpdateSearch(hnsw_->searchContextBytes());
+      }
+    });
+  }
+
+  const hnsw::BlockCachePtr block_cache_;
   HNSWOptions options_;
   std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
   std::unique_ptr<HNSWImpl> hnsw_;
+  IndexMemoryConsumption consumption_;
 };
 
 
@@ -348,8 +393,9 @@ class HnswlibVectorIterator : public AbstractIterator<std::pair<VectorId, Vector
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 VectorIndexIfPtr<Vector, DistanceResult> HnswlibIndexFactory<Vector, DistanceResult>::Create(
-    vector_index::FactoryMode mode, const HNSWOptions& options) {
-  return std::make_shared<HnswlibIndex<Vector, DistanceResult>>(options);
+    vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
+    const HNSWOptions& options, const MemTrackerPtr& mem_tracker) {
+  return std::make_shared<HnswlibIndex<Vector, DistanceResult>>(block_cache, options, mem_tracker);
 }
 
 template class HnswlibIndexFactory<FloatVector, float>;

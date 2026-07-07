@@ -70,7 +70,7 @@ using MergeFilterPtr = vector_index::VectorLSMMergeFilterPtr;
 using TestUsearchIndexFactory = vector_index::MakeVectorIndexFactory<
     SimplifiedUsearchIndexFactory, FloatVectorLSM>;
 using TestHnswlibIndexFactory = vector_index::MakeVectorIndexFactory<
-    HnswlibIndexFactory, FloatVectorLSM>;
+    SimplifiedHnswlibIndexFactory, FloatVectorLSM>;
 
 class SimpleVectorLSMKeyValueStorage {
  public:
@@ -1064,7 +1064,7 @@ TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
     .frontiers = &frontiers,
     .chunk_size = num_vectors,
   }));
-  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm, 120s));
 
   ASSERT_OK(lsm.Flush(/* wait = */ true));
 
