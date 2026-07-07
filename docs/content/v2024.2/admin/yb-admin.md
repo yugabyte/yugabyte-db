@@ -774,8 +774,8 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *table-id*: UUID of the table to hash. Obtain this from [list_tables](#list-tables). For a colocated database, pass the child table UUID to scope the hash to one table, or the colocation parent table UUID to hash all colocated tables in the tablet.
 * *read-ht* (optional): Hybrid timestamp at which to read, as a 64-bit integer. Defaults to the current time. Because the arguments are positional, pass 0 to keep the default when you also need to specify *start-key-hex* / *end-key-hex*. Use the same value on both clusters when comparing hashes for xCluster consistency checks.
-* *start-key-hex* (optional): Inclusive lower bound of the partition-key range to hash, hex-encoded using the same encoding as the *partition-key-start* values shown by [list_tablets](#list-tablets). Pass an empty string (`""`) to leave this side unbounded.
-* *end-key-hex* (optional): Exclusive upper bound of the partition-key range, hex-encoded. Pass an empty string (`""`) to leave this side unbounded.
+* *start-key-hex* (optional): Inclusive lower bound of the partition-key range to hash, as the hex encoding of a tablet's `partition_key_start` from [list_tablets](#list-tablets). Pass an empty string (`""`) to leave this side unbounded.
+* *end-key-hex* (optional): Exclusive upper bound of the partition-key range, as the hex encoding of `partition_key_end`. `partition_key_end` values from [list_tablets](#list-tablets) are inclusive; add 1 to match this exclusive bound. Pass an empty string (`""`) to leave this side unbounded.
 
 **Notes**
 
@@ -813,7 +813,7 @@ Total XOR hash: 1948762961
 
 **Example: Hash a partition-key range**
 
-Use this to narrow down where data diverged across clusters (bisecting after a whole-table mismatch), or to hash only a fraction of a very large table. For example, sampling a random range periodically, or splitting a full scan into non-overlapping ranges run in parallel. Obtain *partition-key-start* and *partition-key-end* values from `list_tablets` and pass the relevant sub-range. The range is logical and cluster-independent; each cluster resolves it against its own tablet boundaries.
+Use this to narrow down where data diverged across clusters (bisecting after a whole-table mismatch), or to hash only a fraction of a very large table. For example, sampling a random range periodically, or splitting a full scan into non-overlapping ranges run in parallel. *start-key-hex* and *end-key-hex* are the hex encodings of `partition_key_start` and `partition_key_end` which you can obtain from [list_tablets](#list-tablets). For hash-partitioned tables, `list_tablets` prints each tablet's range as `hash_split: [0x..., 0x...]`; use the values without the `0x` prefix. Remember that `list_tablets` shows `partition_key_end` as inclusive, while *end-key-hex* is exclusive, so add 1 to the end value to land on the same boundary. The range is logical and cluster-independent; each cluster resolves it against its own tablet boundaries.
 
 ```sh
 ./bin/yb-admin \
@@ -822,16 +822,6 @@ Use this to narrow down where data diverged across clusters (bisecting after a w
 ```
 
 This hashes the lower half of the hash-partition space (unbounded start through `0x8000` exclusive).
-
-**Example: Hash a single colocated table**
-
-Pass the child colocated table's UUID (not the colocation parent) to scope the hash to that table alone:
-
-```sh
-./bin/yb-admin \
-    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    get_table_hash 000033e8000030008000000000000000
-```
 
 ---
 
