@@ -21,6 +21,8 @@
 #include "yb/dockv/value_packing_v2.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/util/format.h"
+
 namespace yb::dockv {
 
 namespace {

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components"
@@ -12,6 +13,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/yugaware"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight/checks"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
@@ -160,6 +162,20 @@ func upgradeCmd() *cobra.Command {
 			}
 			log.Info("Current state: " + state.Version)
 
+			// The services_running precheck was wired during initServices() from the
+			// desired-state view (e.g. nodeExporter.enabled) which, post-migration to
+			// new defaults, includes services the old install never had. Re-wire the
+			// precheck from the prior install's state so we only require services
+			// that were actually running before the upgrade.
+			var preUpgradeServices []components.Service
+			for s := range serviceManager.Services() {
+				if s.Name() == "node-exporter" && !state.Services.NodeExporter {
+					continue
+				}
+				preUpgradeServices = append(preUpgradeServices, s)
+			}
+			checks.SetServicesRunningCheck(preUpgradeServices)
+
 			//Todo: this is a temporary hidden feature to migrate data
 			//from Pg to Ybdb and vice-a-versa.
 			results := preflight.Run(preflight.UpgradeChecks, skippedPreflightChecks...)
@@ -279,7 +295,24 @@ func upgradeCmd() *cobra.Command {
 			if err := ybactlstate.StoreState(state); err != nil {
 				log.Fatal("failed to write state: " + err.Error())
 			}
+			// If node-exporter is enabled now but was not installed in the prior
+			// install, run a full Install (which extracts the package, generates
+			// the systemd unit, etc.) instead of Upgrade, which assumes a previous
+			// install. After install we also flip state.Services so future upgrades
+			// see node-exporter as installed.
+			neFreshInstall := !state.Services.NodeExporter && viper.GetBool("nodeExporter.enabled")
 			serviceActionFnc("upgrade", func(service components.Service) error {
+				if neFreshInstall && service.Name() == "node-exporter" {
+					log.Info("node-exporter was not installed previously; running first-time install.")
+					if err := service.Install(); err != nil {
+						return err
+					}
+					if err := service.Initialize(); err != nil {
+						return err
+					}
+					state.Services.NodeExporter = true
+					return nil
+				}
 				return service.Upgrade()
 			})
 

@@ -3,14 +3,15 @@ title: Instant database cloning
 headerTitle: Instant database cloning
 linkTitle: Instant database cloning
 description: Clone your database in YugabyteDB for data recovery, development, and testing.
-tags:
-  feature: early-access
+headcontent: Clone a database at a point in time for recovery, development, and testing
 menu:
   stable:
     identifier: instant-db-clone
     parent: backup-restore
     weight: 706
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 Instant database cloning in YugabyteDB allows you to quickly create a zero-copy, independent writable clone of your database that can be used for data recovery, development, and testing. Cloning is both fast and efficient because when initially created, it shares the same data files with the original database. Subsequently, as data is written to the clone, the clone stores its own changes as separate and independent delta files. Although they physically share some files, the two databases are logically isolated, which means you can freely play with the clone database, perform DDLs, read and write data, and delete it without affecting the original database.
@@ -24,22 +25,6 @@ Cloning has two main use cases:
 - Data recovery. To recover from data loss due to user error (for example, accidentally dropping a table) or application error (for example, updating rows with corrupted data), you can create a clone of your production database from a point in time when the database was in a good state. This allows you to perform forensic analysis, export the lost or corrupted data from the clone, and import it back to the original database. For instance, if you dropped a table by mistake at 9:01, then detected this error at 10.45, you want to recover the lost data as it was at 9:00 (just before the table drop). At the same time, you don't want to lose any new data added to other tables between 9:01 and 10:45. With database cloning, you can create a clone of the database as of 9:00 (before the table drop) and copy the data in the table from the cloned database to the production database.
 
 - Development and testing. Because the two databases are completely isolated, you can experiment with the cloned database, perform DDL operations, read and write data, and delete the clone without impacting the original. Developers can test their changes on an identical copy of the production database without affecting its performance.
-
-## Enable database cloning
-
-To enable database cloning in a cluster, set the yb-master flag `enable_db_clone` to true.
-
-For example, to set the flag when creating a cluster using yugabyted, use the `--master_flags` option of the [start](../../../reference/configuration/yugabyted/#start) command as follows:
-
-```sh
---master_flags "enable_db_clone=true"
-```
-
-You can also set the runtime flags while the yb-master process is running using the yb-ts-cli [set_flag](../../../admin/yb-ts-cli/#set-flag) command as follows:
-
-```sh
-./bin/yb-ts-cli --server-address=127.0.0.1:7100 set_flag enable_db_clone true
-```
 
 ## Clone databases
 
@@ -96,13 +81,15 @@ SELECT * FROM yb_database_clones();
 
 This shows that a new database named `staging_db` with db_oid 16386 is created as a clone of the database `src_db`. The clone is `COMPLETE` and created as of time `2026-05-12 21:10:19.191239+00`.
 
+#### Using yb-admin
+
 To check the status of clone operations performed on a database using [yb-admin](../../../admin/yb-admin/), use the `list_clones` command and provide the `source_database_id` (YSQL) or `source_namespace_id` (YCQL), as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses $MASTERS list_clones 00004000000030008000000000000000
 ```
 
-```output
+```output.json
 [
     {
         "aggregate_state": "COMPLETE",
@@ -131,7 +118,7 @@ You can check the status of a specific clone operation if you have both the `sou
 ./bin/yb-admin --master_addresses $MASTERS list_clones 00004000000030008000000000000000 2
 ```
 
-```output
+```output.json
 [
     {
         "aggregate_state": "COMPLETE",
@@ -173,7 +160,6 @@ The following example demonstrates how to use a database clone to recover from a
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.1 \
-        --master_flags "enable_db_clone=true"
     ```
 
 1. Start [ysqlsh](../../../api/ysqlsh/) and create the database:

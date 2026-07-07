@@ -18,7 +18,9 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_VALUES_SCAN;
 import static org.yb.AssertionWrappers.*;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Map;
 import java.io.ByteArrayOutputStream;
@@ -839,6 +841,299 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
       while (rs.next()) {
         long docdbRowsReturned = rs.getLong("docdb_rows_returned");
         assertEquals(200, docdbRowsReturned);
+      }
+    }
+  }
+
+  private Connection extendedAcOffConn() throws Exception {
+    return getConnectionBuilder()
+        .withPreferQueryMode("extended")
+        .withAutoCommit(AutoCommit.DISABLED)
+        .connect();
+  }
+
+  private ResultSet pgssRow(Statement stmt, String normalizedQuery) throws SQLException {
+    return stmt.executeQuery(
+        "SELECT calls, rows, docdb_read_rpcs, docdb_read_operations, " +
+        "docdb_rows_scanned, docdb_rows_returned, docdb_seeks " +
+        "FROM pg_stat_statements WHERE query = '" + normalizedQuery + "'");
+  }
+
+  private void runParameterizedSelect(Connection conn, String sql, long param)
+      throws SQLException {
+    try (PreparedStatement ps = conn.prepareStatement(sql)) {
+      ps.setLong(1, param);
+      try (ResultSet rs = ps.executeQuery()) {
+        while (rs.next()) { /* drain */ }
+      }
+    }
+  }
+
+  /** Extended Protocol + AutoCommit OFF SELECT must record non-zero DocDB metrics. */
+  @Test
+  public void testExtendedAutoCommitOffSelectCapturesDocdbMetrics() throws Exception {
+    try (Connection conn = extendedAcOffConn();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT pg_stat_statements_reset()");
+      conn.commit();
+
+      String tmpl = "SELECT c1, c2, c3 FROM %s_1 WHERE c1 < %s";
+      runParameterizedSelect(conn, String.format(tmpl, TABLE_NAME, "?"), 100L);
+      conn.commit();
+
+      try (Statement check = conn.createStatement();
+           ResultSet rs = pgssRow(check, String.format(tmpl, TABLE_NAME, "$1"))) {
+        assertTrue(rs.next());
+        assertEquals(1L, rs.getLong("calls"));
+        assertEquals(2L, rs.getLong("rows"));
+        assertGreaterThan(rs.getLong("docdb_read_rpcs"), 0L);
+        assertGreaterThan(rs.getLong("docdb_read_operations"), 0L);
+        assertEquals(2L, rs.getLong("docdb_rows_scanned"));
+        assertEquals(2L, rs.getLong("docdb_rows_returned"));
+        assertFalse(rs.next());
+      }
+    }
+  }
+
+  /** Q1's row must not absorb Q2's parse-time reads when Q2's Parse drives Q1's PortalCleanup. */
+  @Test
+  public void testExtendedAutoCommitOffCrossQueryNoLeak() throws Exception {
+    try (Connection conn = extendedAcOffConn();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT pg_stat_statements_reset()");
+      conn.commit();
+
+      String q1Tmpl = "SELECT c1 FROM %s_1 WHERE c1 < %s";
+      String q2Tmpl = "SELECT c1 FROM %s_2 WHERE c1 = %s";
+
+      runParameterizedSelect(conn, String.format(q1Tmpl, TABLE_NAME, "?"), 100L);
+      runParameterizedSelect(conn, String.format(q2Tmpl, TABLE_NAME, "?"), 1000L);
+      conn.commit();
+
+      long q1Rpcs, q1Scanned, q1Returned, q1Rows;
+      try (Statement check = conn.createStatement();
+           ResultSet rs = pgssRow(check, String.format(q1Tmpl, TABLE_NAME, "$1"))) {
+        assertTrue(rs.next());
+        q1Rpcs = rs.getLong("docdb_read_rpcs");
+        q1Scanned = rs.getLong("docdb_rows_scanned");
+        q1Returned = rs.getLong("docdb_rows_returned");
+        q1Rows = rs.getLong("rows");
+      }
+
+      long q2Rpcs, q2Scanned, q2Returned, q2Rows;
+      try (Statement check = conn.createStatement();
+           ResultSet rs = pgssRow(check, String.format(q2Tmpl, TABLE_NAME, "$1"))) {
+        assertTrue(rs.next());
+        q2Rpcs = rs.getLong("docdb_read_rpcs");
+        q2Scanned = rs.getLong("docdb_rows_scanned");
+        q2Returned = rs.getLong("docdb_rows_returned");
+        q2Rows = rs.getLong("rows");
+      }
+
+      assertGreaterThan(q1Rpcs, 0L);
+      assertGreaterThan(q2Rpcs, 0L);
+      assertEquals(2L, q1Rows);
+      assertEquals(1L, q2Rows);
+      assertEquals(2L, q1Scanned);    // range scan: 2 matching rows
+      assertEquals(1L, q2Scanned);    // PK equality: 1 seek, 1 row
+      assertEquals(2L, q1Returned);
+      assertEquals(1L, q2Returned);
+    }
+  }
+
+  /** Executor nesting counter must reset on error so the next statement still captures metrics. */
+  @Test
+  public void testErrorRecoveryPreservesNextStatementMetrics() throws Exception {
+    try (Connection conn = extendedAcOffConn();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT pg_stat_statements_reset()");
+      conn.commit();
+
+      String failingTmpl = "SELECT c1, (1::int / 0) FROM %s_1 WHERE c1 < %s";
+      try (PreparedStatement bad = conn.prepareStatement(
+              String.format(failingTmpl, TABLE_NAME, "?"))) {
+        bad.setLong(1, 100L);
+        try (ResultSet rs = bad.executeQuery()) {
+          while (rs.next()) { /* unreachable */ }
+          fail("Expected division-by-zero");
+        } catch (SQLException expected) {
+          // Aborted; recover below.
+        }
+      }
+      conn.rollback();
+
+      String goodTmpl = "SELECT c1 FROM %s_1 WHERE c1 = %s";
+      runParameterizedSelect(conn, String.format(goodTmpl, TABLE_NAME, "?"), 1L);
+      conn.commit();
+
+      try (Statement check = conn.createStatement();
+           ResultSet rs = pgssRow(check, String.format(goodTmpl, TABLE_NAME, "$1"))) {
+        assertTrue(rs.next());
+        assertEquals(1L, rs.getLong("calls"));
+        assertEquals(1L, rs.getLong("rows"));
+        assertGreaterThan(rs.getLong("docdb_read_rpcs"), 0L);
+        assertEquals(1L, rs.getLong("docdb_rows_scanned"));
+        assertEquals(1L, rs.getLong("docdb_rows_returned"));
+      }
+    }
+  }
+
+  /** Nested ExecutorRun must not capture; outer top-level capture must collect the work. */
+  @Test
+  public void testNestedExecutionAttributesMetricsToTopLevelQuery() throws Exception {
+    try (Connection conn = extendedAcOffConn();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT pg_stat_statements_reset()");
+      stmt.execute("SET pg_stat_statements.track = 'all'");
+      conn.commit();
+
+      stmt.execute(
+          "CREATE OR REPLACE FUNCTION yb_pgss_nested_select(bound bigint) " +
+          "RETURNS bigint LANGUAGE plpgsql AS $$ " +
+          "DECLARE n bigint; BEGIN " +
+          "  SELECT count(*) INTO n FROM " + TABLE_NAME + "_1 WHERE c1 < bound; " +
+          "  RETURN n; " +
+          "END $$");
+      conn.commit();
+
+      try (PreparedStatement ps =
+              conn.prepareStatement("SELECT yb_pgss_nested_select(?)")) {
+        ps.setLong(1, 100L);
+        try (ResultSet rs = ps.executeQuery()) {
+          assertTrue(rs.next());
+          assertEquals(2L, rs.getLong(1));
+        }
+      }
+      conn.commit();
+
+      // The nested SELECT's DocDB work must roll up to the top-level
+      // function-call row.  We do not assert on the nested row itself:
+      // proper per-statement attribution is follow-up work.
+      try (ResultSet rs = pgssRow(stmt, "SELECT yb_pgss_nested_select($1)")) {
+        assertTrue(rs.next());
+        assertEquals(1L, rs.getLong("calls"));
+        assertEquals(1L, rs.getLong("rows"));            // function returns 1 row
+        assertGreaterThan(rs.getLong("docdb_read_rpcs"), 0L);
+        assertEquals(2L, rs.getLong("docdb_rows_scanned"));   // nested count(*) scans 2
+        assertEquals(1L, rs.getLong("docdb_rows_returned"));  // count returns 1
+      }
+    }
+  }
+
+  /** AFTER triggers fire inside ExecutorFinish; their DocDB work must land on the outer DML row. */
+  @Test
+  public void testAfterTriggerDocdbWorkAttributesToOuterDml() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE pgss_trig_src (k bigint PRIMARY KEY, threshold bigint)");
+      stmt.execute("CREATE TABLE pgss_trig_audit (k bigint, count_below bigint)");
+      stmt.execute(
+          "CREATE OR REPLACE FUNCTION pgss_trig_fn() RETURNS trigger LANGUAGE plpgsql AS $$ " +
+          "BEGIN " +
+          "  INSERT INTO pgss_trig_audit (k, count_below) " +
+          "    SELECT NEW.k, count(*) FROM " + TABLE_NAME + "_1 WHERE c1 < NEW.threshold; " +
+          "  RETURN NEW; " +
+          "END $$");
+      stmt.execute(
+          "CREATE TRIGGER pgss_trig AFTER INSERT ON pgss_trig_src " +
+          "FOR EACH ROW EXECUTE FUNCTION pgss_trig_fn()");
+    }
+
+    try (Connection conn = extendedAcOffConn();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT pg_stat_statements_reset()");
+      conn.commit();
+
+      String tmpl = "INSERT INTO pgss_trig_src (k, threshold) VALUES (%s, %s)";
+      try (PreparedStatement ps = conn.prepareStatement(
+              String.format(tmpl, "?", "?"))) {
+        ps.setLong(1, 7L);
+        ps.setLong(2, 100L);
+        assertEquals(1, ps.executeUpdate());
+      }
+      conn.commit();
+
+      try (ResultSet rs = pgssRow(stmt, String.format(tmpl, "$1", "$2"))) {
+        assertTrue(rs.next());
+        assertEquals(1L, rs.getLong("calls"));
+        assertGreaterThan(rs.getLong("docdb_read_rpcs"), 0L);   // trigger's SELECT
+        assertEquals(2L, rs.getLong("docdb_rows_scanned"));     // count(*) scans 2 rows
+        assertEquals(1L, rs.getLong("docdb_rows_returned"));    // count returns 1 row
+      }
+    }
+  }
+
+  /** Server-side PREPARE/EXECUTE under extended protocol + AC OFF must record DocDB metrics. */
+  @Test
+  public void testServerSidePrepareExecuteCapturesDocdbMetrics() throws Exception {
+    try (Connection conn = extendedAcOffConn();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT pg_stat_statements_reset()");
+      conn.commit();
+
+      stmt.execute(
+          "PREPARE pgss_prep (bigint) AS " +
+          "SELECT c1 FROM " + TABLE_NAME + "_1 WHERE c1 < $1");
+      stmt.execute("EXECUTE pgss_prep(100)");
+      stmt.execute("EXECUTE pgss_prep(2000)");
+      conn.commit();
+
+      // Match by prep name, not full text
+      try (ResultSet rs = stmt.executeQuery(
+              "SELECT calls, rows, docdb_read_rpcs, docdb_rows_scanned, " +
+              "       docdb_rows_returned " +
+              "FROM pg_stat_statements " +
+              "WHERE query LIKE '%pgss_prep%' " +
+              "  AND query NOT LIKE 'EXECUTE%' " +
+              "  AND query NOT LIKE 'DEALLOCATE%'")) {
+        assertTrue("expected one pgss row for the prepared statement", rs.next());
+        assertEquals(2L, rs.getLong("calls"));
+        assertEquals(5L, rs.getLong("rows"));   // 2 (c1 < 100) + 3 (c1 < 2000)
+        assertGreaterThan(rs.getLong("docdb_read_rpcs"), 0L);
+        assertEquals(5L, rs.getLong("docdb_rows_scanned"));
+        assertEquals(5L, rs.getLong("docdb_rows_returned"));
+        assertFalse("expected exactly one matching pgss row", rs.next());
+      }
+
+      // EXECUTE itself must not produce a separate pgss row.
+      try (ResultSet rs = stmt.executeQuery(
+              "SELECT count(*) FROM pg_stat_statements " +
+              "WHERE query LIKE 'EXECUTE pgss_prep%'")) {
+        assertTrue(rs.next());
+        assertEquals(0L, rs.getLong(1));
+      }
+    }
+  }
+
+  /** A tracked utility must leave utility_operation_nesting_level at 0 so the next DML captures. */
+  @Test
+  public void testUtilityDoesNotLeakNestingIntoNextDml() throws Exception {
+    try (Connection conn = extendedAcOffConn();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT pg_stat_statements_reset()");
+      conn.commit();
+
+      // Tracked utility -- bumps/decrements utility nesting level.
+      stmt.execute("CREATE TABLE pgss_after_utility (k bigint PRIMARY KEY, v bigint)");
+      conn.commit();
+
+      // If the counter leaked, this SELECT would capture zero metrics.
+      String tmpl = "SELECT c1 FROM %s_1 WHERE c1 < %s";
+      try (PreparedStatement ps = conn.prepareStatement(
+              String.format(tmpl, TABLE_NAME, "?"))) {
+        ps.setLong(1, 100L);
+        try (ResultSet rs = ps.executeQuery()) {
+          while (rs.next()) { /* drain */ }
+        }
+      }
+      conn.commit();
+
+      try (ResultSet rs = pgssRow(stmt, String.format(tmpl, TABLE_NAME, "$1"))) {
+        assertTrue(rs.next());
+        assertEquals(1L, rs.getLong("calls"));
+        assertEquals(2L, rs.getLong("rows"));
+        assertGreaterThan(rs.getLong("docdb_read_rpcs"), 0L);
+        assertEquals(2L, rs.getLong("docdb_rows_scanned"));
+        assertEquals(2L, rs.getLong("docdb_rows_returned"));
       }
     }
   }

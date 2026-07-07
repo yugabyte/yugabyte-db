@@ -225,6 +225,7 @@ alter_table_action =
     | 'DROP' [ 'COLUMN' ] [ 'IF' 'EXISTS' ] column_name [ 'RESTRICT' | 'CASCADE' ]
     | 'ALTER' [ 'COLUMN' ] column_name [ 'SET DATA' ]
       'TYPE' data_type [ 'COLLATE' collation ] [ 'USING' expression ]
+    | 'ALTER' 'CONSTRAINT' constraint_name [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ]
     | 'ADD' alter_table_constraint
     | 'DROP' 'CONSTRAINT' constraint_name [ 'RESTRICT' | 'CASCADE' ]
     | 'RENAME' [ 'COLUMN' ] column_name 'TO' column_name
@@ -871,6 +872,14 @@ output_name = name ;
 
 (* 'DO' *)
 do = 'DO' "'" plpgsql_block_stmt "'";
+
+(* 'ALTER' 'AGGREGATE' *)
+alter_aggregate = 'ALTER' 'AGGREGATE' aggregate_name '(' aggregate_signature ')' alter_aggregate_action ;
+
+alter_aggregate_action =
+  'RENAME' 'TO' new_name |
+  'OWNER' 'TO' ( new_owner | 'CURRENT_ROLE' | 'CURRENT_USER' | 'SESSION_USER' ) |
+  'SET' 'SCHEMA' schema_name ;
 
 (* 'DROP' 'AGGREGATE' *)
 drop_aggregate = 'DROP' 'AGGREGATE' [ 'IF' 'EXISTS' ] ( aggregate_name '(' aggregate_signature ')' )

@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.NOT_FOUND;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.concurrent.KeyLock;
+import com.yugabyte.yw.common.config.RuntimeConfigCacheInvalidator;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
@@ -53,6 +55,7 @@ import jakarta.persistence.Transient;
 import jakarta.persistence.UniqueConstraint;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
@@ -120,6 +123,22 @@ public class Universe extends Model {
           String.format(
               "Universe %s doesn't belong to Customer %s", universeUUID, customer.getUuid()));
     }
+    return universe;
+  }
+
+  public static Universe getOrNotFound(UUID universeUUID, UUID customerUUID) {
+    Customer customer = Customer.getOrNotFound(customerUUID);
+    Universe universe = getOrNotFound(universeUUID);
+
+    MDC.put("universe-id", universeUUID.toString());
+    MDC.put("cluster-id", universeUUID.toString());
+
+    if (!universe.getCustomerId().equals(customer.getId())) {
+      throw new PlatformServiceException(
+          NOT_FOUND,
+          String.format("Universe %s not found for Customer %s", universeUUID, customer.getUuid()));
+    }
+
     return universe;
   }
 
@@ -269,10 +288,7 @@ public class Universe extends Model {
     universe.setCustomerId(customerId);
     // Create the default universe details. This should be updated after creation.
     universe.universeDetails = taskParams;
-    universe.universeDetailsJson =
-        Json.stringify(
-            RedactingService.filterSecretFields(
-                Json.toJson(universe.universeDetails), RedactionTarget.APIS));
+    universe.universeDetailsJson = Json.stringify(Json.toJson(universe.universeDetails));
     universe.swamperConfigWritten = true;
     LOG.info(
         "Created db entry for universe {} [{}]", universe.getName(), universe.getUniverseUUID());
@@ -359,16 +375,23 @@ public class Universe extends Model {
     return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
   }
 
+  private static Universe getOrHttpError(UUID universeUUID, int statusCode) {
+    return maybeGet(universeUUID)
+        .orElseThrow(
+            () -> new PlatformServiceException(statusCode, "Cannot find universe " + universeUUID));
+  }
+
   /**
    * Returns the Universe object given its uuid.
    *
    * @return the universe object
    */
   public static Universe getOrBadRequest(UUID universeUUID) {
-    return maybeGet(universeUUID)
-        .orElseThrow(
-            () ->
-                new PlatformServiceException(BAD_REQUEST, "Cannot find universe " + universeUUID));
+    return getOrHttpError(universeUUID, BAD_REQUEST);
+  }
+
+  public static Universe getOrNotFound(UUID universeUUID) {
+    return getOrHttpError(universeUUID, NOT_FOUND);
   }
 
   public static Optional<Universe> maybeGet(UUID universeUUID) {
@@ -1061,10 +1084,7 @@ public class Universe extends Model {
    */
   public void save(boolean incrementVersion) {
     // Update the universe details json.
-    this.universeDetailsJson =
-        Json.stringify(
-            RedactingService.filterSecretFields(
-                Json.toJson(universeDetails), RedactionTarget.APIS));
+    this.universeDetailsJson = Json.stringify(Json.toJson(universeDetails));
     this.setVersion(incrementVersion ? this.getVersion() + 1 : this.getVersion());
     super.save();
   }
@@ -1080,6 +1100,24 @@ public class Universe extends Model {
   }
 
   /**
+   * Returns the list of nodes in a given cluster and provider in the universe.
+   *
+   * @param clusterUUID UUID of the cluster to get the list of nodes.
+   * @param providerUUID UUID of the provider to filter nodes.
+   * @return a collection of nodes in a given cluster in this universe.
+   */
+  public Collection<NodeDetails> getProviderNodesInCluster(UUID clusterUUID, UUID providerUUID) {
+    Cluster cluster = getUniverseDetails().getClusterByUuid(clusterUUID);
+    if (cluster == null) {
+      return Collections.emptyList();
+    }
+    Set<NodeDetails> nodesInCluster = getUniverseDetails().getNodesInCluster(clusterUUID);
+    return nodesInCluster.stream()
+        .filter(n -> Objects.equals(cluster.getProviderUUIDForNode(n), providerUUID))
+        .collect(Collectors.toList());
+  }
+
+  /**
    * Get deployment mode of node (on-prem/kubernetes/cloud provider)
    *
    * @param node - node to get info on
@@ -1091,7 +1129,7 @@ public class Universe extends Model {
     }
     UniverseDefinitionTaskParams.Cluster cluster =
         getUniverseDetails().getClusterByUuid(node.placementUuid);
-    return cluster.userIntent.providerType;
+    return cluster.getProviderCloudType(node);
   }
 
   /**
@@ -1366,6 +1404,7 @@ public class Universe extends Model {
   @PostRemove
   public void cleanupUniverse() {
     RoleBindingUtil.cleanupRoleBindings(ResourceType.UNIVERSE, this.getUniverseUUID());
+    RuntimeConfigCacheInvalidator.invalidateScopeForDeletedEntity(getUniverseUUID());
   }
 
   @JsonIgnore

@@ -2604,6 +2604,7 @@ void CDCSDKYsqlTest::VerifyTablesInStreamMetadata(
             all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
             all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
             all_expected_table_ids.insert(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
+            all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationOid));
           }
           const uint64_t table_info_size = get_resp->table_info_size();
 
@@ -2662,6 +2663,7 @@ void CDCSDKYsqlTest::VerifyTablesAndStateInStreamMetadata(
           all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
           all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
           all_expected_table_ids.insert(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
+          all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationOid));
         }
 
         if (static_cast<size_t>(stream_lock->pb.table_id_size()) != all_expected_table_ids.size()) {

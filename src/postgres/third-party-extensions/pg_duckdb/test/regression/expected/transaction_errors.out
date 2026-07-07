@@ -1,0 +1,23 @@
+CREATE TABLE foo AS SELECT 'bar'::text AS t;
+BEGIN; SET duckdb.force_execution = true; SELECT t::integer AS t1 FROM foo; ROLLBACK;
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Conversion Error: Could not convert string 'bar' to INT32 when casting from source column t
+
+LINE 1:  SELECT (t)::integer AS t1 FROM pgduckdb.public.foo
+                   ^
+SET duckdb.force_execution = true;
+SELECT 1 FROM foo;
+ ?column? 
+----------
+        1
+(1 row)
+
+-- Make sure we query the cache during a valid TX
+DROP EXTENSION IF EXISTS pg_duckdb CASCADE;
+BEGIN;
+CREATE EXTENSION pg_duckdb;
+SELECT * FROM do_not_exist;
+ERROR:  relation "do_not_exist" does not exist
+LINE 1: SELECT * FROM do_not_exist;
+                      ^
+END;
+CREATE EXTENSION pg_duckdb;

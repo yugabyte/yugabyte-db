@@ -1176,10 +1176,21 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
      dynamic_tables_option = req->cdcsdk_stream_create_options().cdcsdk_dynamic_tables_option();
   }
 
+  std::vector<TableId> bound_table_ids;
+  if (req->has_cdcsdk_stream_create_options() &&
+      req->cdcsdk_stream_create_options().has_bound_table_ids()) {
+    const auto& ids = req->cdcsdk_stream_create_options().bound_table_ids().table_ids();
+    bound_table_ids.assign(ids.begin(), ids.end());
+  }
+
   xrepl::StreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
       client()->CreateCDCSDKStreamForNamespace(
           ns_id, options, populate_namespace_id_as_table_id, ReplicationSlotName(""), std::nullopt,
-          snapshot_option, deadline, dynamic_tables_option),
+          snapshot_option, deadline, dynamic_tables_option,
+          nullptr /* consistent_snapshot_time_out */,
+          std::nullopt /* lsn_type */,
+          std::nullopt /* ordering_mode */,
+          bound_table_ids),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
   resp->set_db_stream_id(db_stream_id.ToString());
   return Status::OK();
@@ -4864,6 +4875,7 @@ Result<std::vector<TableId>> CDCServiceImpl::GetStreamableCatalogTables(
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
   table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
+  table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgPublicationOid));
   return table_ids;
 }
 

@@ -118,6 +118,15 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // Gates `CREATE EXTENSION mage` -- required by testMageBackupRestore and
+    // harmless to the other tests in this class (they do not touch mage).
+    flagMap.put("ysql_yb_enable_mage", "true");
+    return flagMap;
+  }
+
+  @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
 
@@ -1967,6 +1976,132 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testDropUDTypeAttribute() throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TYPE test_type AS (a int, b int, c int, d int)");
+      stmt.execute("CREATE TABLE test_tbl (x int, y test_type)");
+      stmt.execute("INSERT INTO test_tbl VALUES (1, (11, 12, 13, 14)), " +
+                                               "(2, (21, 22, 23, 24))");
+      assertRowSet(stmt, "SELECT * FROM test_tbl", asSet(new Row(1, "(11,12,13,14)"),
+                                                         new Row(2, "(21,22,23,24)")));
+
+      stmt.execute("ALTER TYPE test_type DROP ATTRIBUTE b");
+      stmt.execute("INSERT INTO test_tbl VALUES(3, (31, 33, 34))");
+      assertRowSet(stmt, "SELECT * FROM test_tbl", asSet(new Row(1, "(11,13,14)"),
+                                                         new Row(2, "(21,23,24)"),
+                                                         new Row(3, "(31,33,34)")));
+
+      stmt.execute("ALTER TYPE test_type DROP ATTRIBUTE d");
+      stmt.execute("INSERT INTO test_tbl VALUES(4, (41, 43))");
+      assertRowSet(stmt, "SELECT * FROM test_tbl", asSet(new Row(1, "(11,13)"),
+                                                         new Row(2, "(21,23)"),
+                                                         new Row(3, "(31,33)"),
+                                                         new Row(4, "(41,43)")));
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertRowSet(stmt, "SELECT * FROM test_tbl", asSet(new Row(1, "(11,13)"),
+                                                         new Row(2, "(21,23)"),
+                                                         new Row(3, "(31,33)"),
+                                                         new Row(4, "(41,43)")));
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
+  public void testTypedTableBackupRestore() throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TYPE test_type2 AS (a text, b text, c text, d text)");
+      stmt.execute("CREATE TABLE typed_tbl OF test_type2");
+      stmt.execute("INSERT INTO typed_tbl VALUES ('a1', 'b1', 'c1', 'd1'), " +
+                                                "('a2', 'b2', 'c2', 'd2')");
+      assertRowSet(stmt, "SELECT * FROM typed_tbl", asSet(new Row("a1", "b1", "c1", "d1"),
+                                                          new Row("a2", "b2", "c2", "d2")));
+
+      // Without CASCADE this is rejected by PostgreSQL's standard typed-table check (same as
+      // upstream PG, independent of the YB guard).
+      runInvalidQuery(stmt, "ALTER TYPE test_type2 DROP ATTRIBUTE b",
+          "cannot alter type \"test_type2\" because it is the type of a typed table");
+
+      // YB: with CASCADE the drop would cascade into the typed table, but ALTER TYPE ... DROP
+      // ATTRIBUTE is PG-catalog-only and is not propagated to DocDB, so the YB guard rejects it.
+      // See https://github.com/yugabyte/yugabyte-db/issues/30577.
+      runInvalidQuery(stmt, "ALTER TYPE test_type2 DROP ATTRIBUTE b CASCADE",
+          "drop attribute on the type of a typed table is not supported yet");
+
+      // YB: DROP ATTRIBUTE is no longer applied, so the column-dropping steps below are disabled.
+      // stmt.execute("ALTER TYPE test_type2 DROP ATTRIBUTE b CASCADE");
+      // stmt.execute("INSERT INTO typed_tbl VALUES ('a3', 'c3', 'd3')");
+      // assertRowSet(stmt, "SELECT * FROM typed_tbl", asSet(new Row("a1", "c1", "d1"),
+      //                                                     new Row("a2", "c2", "d2"),
+      //                                                     new Row("a3", "c3", "d3")));
+      //
+      // stmt.execute("ALTER TYPE test_type2 DROP ATTRIBUTE d CASCADE");
+      // stmt.execute("INSERT INTO typed_tbl VALUES ('a4', 'c4')");
+      // assertRowSet(stmt, "SELECT * FROM typed_tbl", asSet(new Row("a1", "c1"),
+      //                                                     new Row("a2", "c2"),
+      //                                                     new Row("a3", "c3"),
+      //                                                     new Row("a4", "c4")));
+
+      // DROP ATTRIBUTE before the typed table exists: no DocDB divergence, so this is allowed.
+      stmt.execute("CREATE TYPE test_type3 AS (a text, b text, c text, d text)");
+      stmt.execute("ALTER TYPE test_type3 DROP ATTRIBUTE b");
+      stmt.execute("CREATE TABLE typed_tbl_drop_before OF test_type3");
+      stmt.execute("INSERT INTO typed_tbl_drop_before VALUES ('a1', 'c1', 'd1'), " +
+                                                "('a2', 'c2', 'd2')");
+      assertRowSet(stmt, "SELECT * FROM typed_tbl_drop_before",
+          asSet(new Row("a1", "c1", "d1"), new Row("a2", "c2", "d2")));
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertRowSet(stmt, "SELECT * FROM typed_tbl", asSet(new Row("a1", "b1", "c1", "d1"),
+                                                          new Row("a2", "b2", "c2", "d2")));
+      // YB: previously expected reduced columns after DROP ATTRIBUTE (now disabled).
+      // assertRowSet(stmt, "SELECT * FROM typed_tbl", asSet(new Row("a1", "c1"),
+      //                                                     new Row("a2", "c2"),
+      //                                                     new Row("a3", "c3"),
+      //                                                     new Row("a4", "c4")));
+
+      assertRowSet(stmt, "SELECT * FROM typed_tbl_drop_before",
+          asSet(new Row("a1", "c1", "d1"), new Row("a2", "c2", "d2")));
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
   private void testMaterializedViewsHelper(boolean matviewOnMatview, String dbName)
       throws Exception {
     String backupDir = null;
@@ -2181,6 +2316,61 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT EXISTS(SELECT 1 FROM pg_class " +
                   "WHERE relname = 'hints_norm_and_app')", new Row(false));
 
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
+  public void testMageBasicBackupRestore() throws Exception {
+    // End-to-end coverage for backup/restore of a database with the `mage`
+    // (Apache AGE) extension installed.
+    //
+    // The restore generates a ysql_dump in binary-upgrade mode that emits
+    // `DROP EXTENSION IF EXISTS mage;` before recreating an empty extension
+    // shell. 
+    //
+    // The test deliberately installs the extension *without* creating a graph.
+    // create_graph() materializes per-graph vertex/edge tables whose snapshot
+    // import currently hits an orthogonal issue at the master metadata stage;
+    // covering the extension itself is enough to exercise the failing DROP
+    // EXTENSION IF EXISTS mage path in ysql_dump that this fix targets.
+    // DB-21840
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION mage");
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      // mage is installed in the restored DB at the expected version.
+      assertQuery(stmt,
+          "SELECT extname, extversion FROM pg_extension WHERE extname = 'mage'",
+          new Row("mage", "1.6.0"));
+      // Catalog tables are member objects of the extension and were restored.
+      assertQuery(stmt,
+          "SELECT count(*) FROM mag_catalog.ag_graph",
+          new Row(0L));
+      // Dropping the restored extension must also work -- this exercises the
+      // AGE drop path on the restored side.
+      stmt.execute("DROP EXTENSION mage");
+      assertQuery(stmt,
+          "SELECT count(*) FROM pg_extension WHERE extname = 'mage'",
+          new Row(0L));
     }
 
     // Cleanup.
@@ -2732,6 +2922,183 @@ public class TestYbBackup extends BasePgSQLTest {
   }
 
   @Test
+  public void testRowTypeTable() throws Exception {
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE row_type_tbl (x4 INT, x1 INT)");
+      stmt.execute("INSERT INTO row_type_tbl (x4, x1) VALUES(8, 2)");
+      assertQuery(stmt, "SELECT * FROM row_type_tbl", new Row(8,2));
+
+      stmt.execute("CREATE TABLE my_table (x row_type_tbl)");
+      stmt.execute("INSERT INTO my_table (x) VALUES(ROW(9, 1))");
+      assertQuery(stmt, "SELECT * FROM my_table", new Row("(9,1)"));
+
+      stmt.execute("ALTER TABLE row_type_tbl DROP COLUMN x4");
+      assertQuery(stmt, "SELECT * FROM row_type_tbl", new Row(2));
+      assertQuery(stmt, "SELECT * FROM my_table", new Row("(1)"));
+
+      String output = YBBackupUtil.runYbBackupCreate(
+          "--backup_location", backupDir, "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM row_type_tbl", new Row(2));
+      assertQuery(stmt, "SELECT * FROM my_table", new Row("(1)"));
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
+  public void testPartitionedTableWithDroppedColumnsAttnumMismatch() throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      // The child partition has a different physical column ordering than its parent, so the
+      // dropped columns end up at different attribute numbers in the parent vs the child. After
+      // backup, ysql_dump emits the dropped columns as "........pg.dropped.N........" placeholders
+      // whose names (and positions) differ between parent and child. The restore-time schema
+      // validation in CatalogManager::ImportTableEntry must tolerate these differences.
+      stmt.execute("CREATE TABLE parent (a int, dummy int, dummy2 int, b int, c int) " +
+                   "PARTITION BY RANGE (a)");
+      // Note the columns are deliberately declared in a different order than the parent.
+      stmt.execute("CREATE TABLE child (b int, c int, a int, dummy int, dummy2 int)");
+      stmt.execute("ALTER TABLE parent ATTACH PARTITION child FOR VALUES FROM (0) TO (5)");
+
+      // Insert a row while the to-be-dropped columns still exist.
+      stmt.execute("INSERT INTO parent (a, dummy, dummy2, b, c) VALUES (0, 999, 888, 5, 50)");
+      assertQuery(stmt, "SELECT a, dummy, dummy2, b, c FROM parent ORDER BY a",
+                  new Row(0, 999, 888, 5, 50));
+
+      stmt.execute("ALTER TABLE parent DROP COLUMN dummy");
+      stmt.execute("ALTER TABLE parent DROP COLUMN dummy2");
+
+      stmt.execute("INSERT INTO parent (a, b, c) VALUES (1, 10, 100), (2, 20, 200)");
+
+      // Select explicit columns since "SELECT *" follows each table's own attribute ordering.
+      assertQuery(stmt, "SELECT a, b, c FROM parent ORDER BY a",
+                  new Row(0, 5, 50), new Row(1, 10, 100), new Row(2, 20, 200));
+      assertQuery(stmt, "SELECT a, b, c FROM child ORDER BY a",
+                  new Row(0, 5, 50), new Row(1, 10, 100), new Row(2, 20, 200));
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      // Select explicit columns since "SELECT *" follows each table's own attribute ordering.
+      assertQuery(stmt, "SELECT a, b, c FROM parent ORDER BY a",
+                  new Row(0, 5, 50), new Row(1, 10, 100), new Row(2, 20, 200));
+      assertQuery(stmt, "SELECT a, b, c FROM child ORDER BY a",
+                  new Row(0, 5, 50), new Row(1, 10, 100), new Row(2, 20, 200));
+
+      // The restored table should still be a working partition: new inserts get routed to child.
+      stmt.execute("INSERT INTO parent (a, b, c) VALUES (3, 30, 300)");
+      assertQuery(stmt, "SELECT a, b, c FROM child ORDER BY a",
+                  new Row(0, 5, 50), new Row(1, 10, 100), new Row(2, 20, 200),
+                  new Row(3, 30, 300));
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
+  public void testPartitionedTableWithCompositeTypesAndDroppedColumns() throws Exception {
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      // Same dropped-column attnum-mismatch setup as
+      // testPartitionedTableWithDroppedColumnsAttnumMismatch, but additionally exercises composite
+      // row types built on top of the partitioned tables. Each table has an associated composite
+      // type whose attribute layout (including the "........pg.dropped.N........" placeholders)
+      // differs between parent and child. Both the partition import and the composite type columns
+      // must survive backup/restore despite the mismatch.
+      stmt.execute("CREATE TABLE parent (a int, dummy int, dummy2 int, b int, c int) " +
+                   "PARTITION BY RANGE (a)");
+      // Note the columns are deliberately declared in a different order than the parent.
+      stmt.execute("CREATE TABLE child (b int, c int, dummy int, dummy2 int, a int)");
+      stmt.execute("ALTER TABLE parent ATTACH PARTITION child FOR VALUES FROM (1) TO (9)");
+      stmt.execute("ALTER TABLE parent DROP COLUMN dummy");
+      stmt.execute("ALTER TABLE parent DROP COLUMN dummy2");
+
+      // Composite-type columns that reference the partitioned tables' row types.
+      stmt.execute("CREATE TABLE uses_parent (tag text, r parent)");
+      stmt.execute("CREATE TABLE uses_child (tag text, r child)");
+
+      stmt.execute("INSERT INTO parent (a, b, c) VALUES (4, 40, 400), (5, 50, 500)");
+      // After dropping the columns, the parent row type is (a, b, c) while the child row type,
+      // following its own attribute ordering, is (b, c, a).
+      stmt.execute("INSERT INTO uses_parent (tag, r) VALUES ('p1', ROW(1, 10, 100))");
+      stmt.execute("INSERT INTO uses_child (tag, r) VALUES ('c1', ROW(20, 200, 2))");
+
+      // Select explicit columns since "SELECT *" follows each table's own attribute ordering.
+      assertQuery(stmt, "SELECT a, b, c FROM parent ORDER BY a",
+                  new Row(4, 40, 400), new Row(5, 50, 500));
+      assertQuery(stmt, "SELECT a, b, c FROM child ORDER BY a",
+                  new Row(4, 40, 400), new Row(5, 50, 500));
+      assertQuery(stmt, "SELECT tag, r::text FROM uses_parent ORDER BY tag",
+                  new Row("p1", "(1,10,100)"));
+      assertQuery(stmt, "SELECT tag, r::text FROM uses_child ORDER BY tag",
+                  new Row("c1", "(20,200,2)"));
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      // Select explicit columns since "SELECT *" follows each table's own attribute ordering.
+      assertQuery(stmt, "SELECT a, b, c FROM parent ORDER BY a",
+                  new Row(4, 40, 400), new Row(5, 50, 500));
+      assertQuery(stmt, "SELECT a, b, c FROM child ORDER BY a",
+                  new Row(4, 40, 400), new Row(5, 50, 500));
+      assertQuery(stmt, "SELECT tag, r::text FROM uses_parent ORDER BY tag",
+                  new Row("p1", "(1,10,100)"));
+      assertQuery(stmt, "SELECT tag, r::text FROM uses_child ORDER BY tag",
+                  new Row("c1", "(20,200,2)"));
+
+      // The restored table should still be a working partition: new inserts get routed to child.
+      stmt.execute("INSERT INTO parent (a, b, c) VALUES (3, 30, 300)");
+      assertQuery(stmt, "SELECT a, b, c FROM child ORDER BY a",
+                  new Row(3, 30, 300), new Row(4, 40, 400), new Row(5, 50, 500));
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
   public void testPgRegressStyle() throws Exception {
     testPgRegressStyleUtil(
       "yb.orig.backup_restore",
@@ -2767,6 +3134,19 @@ public class TestYbBackup extends BasePgSQLTest {
       "yb.orig.backup_roles.dump",
       "yb.orig.backup_roles_describe.sql",
       "yb.orig.backup_roles_describe.out"
+    );
+  }
+
+  @Test
+  public void testBackupDropColumn() throws Exception {
+    testPgRegressStyleUtil(
+      "yb.orig.backup_drop_column",
+      "yb.orig.backup_drop_column.sql",
+      "",
+      "db2",
+      "yb.orig.backup_drop_column.dump",
+      "yb.orig.backup_drop_column_describe.sql",
+      "yb.orig.backup_drop_column_describe.out"
     );
   }
 

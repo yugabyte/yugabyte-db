@@ -286,6 +286,13 @@
         },
         "earlyoomEnabled" : {
           "type" : "boolean"
+        },
+        "perProviderConfig" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/PerProviderState"
+          },
+          "description" : "Configuration per provider",
+          "type" : "object"
         }
       },
       "type" : "object"
@@ -990,7 +997,13 @@
             "PA_EMBEDDED_COLLECTOR_ERROR",
             "NODE_MAINTENANCE_SERVICE_FAILED",
             "NODE_MAINTENANCE_SERVICE_NOT_RUN",
-            "NODE_MAINTENANCE_SERVICE_DEFINITION_MISSING"
+            "NODE_MAINTENANCE_SERVICE_DEFINITION_MISSING",
+            "YBA_NODE_CPU_USAGE",
+            "YBA_NODE_MEMORY_USAGE",
+            "YBA_NODE_DISK_USAGE",
+            "YBA_K8S_CPU_USAGE",
+            "YBA_K8S_MEMORY_USAGE",
+            "YBA_K8S_DISK_USAGE"
           ],
           "type" : "string"
         },
@@ -1183,7 +1196,13 @@
             "PA_EMBEDDED_COLLECTOR_ERROR",
             "NODE_MAINTENANCE_SERVICE_FAILED",
             "NODE_MAINTENANCE_SERVICE_NOT_RUN",
-            "NODE_MAINTENANCE_SERVICE_DEFINITION_MISSING"
+            "NODE_MAINTENANCE_SERVICE_DEFINITION_MISSING",
+            "YBA_NODE_CPU_USAGE",
+            "YBA_NODE_MEMORY_USAGE",
+            "YBA_NODE_DISK_USAGE",
+            "YBA_K8S_CPU_USAGE",
+            "YBA_K8S_MEMORY_USAGE",
+            "YBA_K8S_DISK_USAGE"
           ],
           "type" : "string"
         },
@@ -1472,7 +1491,13 @@
             "PA_EMBEDDED_COLLECTOR_ERROR",
             "NODE_MAINTENANCE_SERVICE_FAILED",
             "NODE_MAINTENANCE_SERVICE_NOT_RUN",
-            "NODE_MAINTENANCE_SERVICE_DEFINITION_MISSING"
+            "NODE_MAINTENANCE_SERVICE_DEFINITION_MISSING",
+            "YBA_NODE_CPU_USAGE",
+            "YBA_NODE_MEMORY_USAGE",
+            "YBA_NODE_DISK_USAGE",
+            "YBA_K8S_CPU_USAGE",
+            "YBA_K8S_MEMORY_USAGE",
+            "YBA_K8S_DISK_USAGE"
           ],
           "type" : "string"
         },
@@ -2674,6 +2699,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -5573,6 +5599,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -7673,6 +7700,9 @@
             "Premium_LRS",
             "PremiumV2_LRS",
             "UltraSSD_LRS",
+            "OCI_Balanced",
+            "OCI_HigherPerformance",
+            "OCI_LowerCost",
             "Local"
           ],
           "type" : "string"
@@ -8710,6 +8740,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -9541,6 +9572,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -11079,6 +11111,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -11831,6 +11864,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -14347,6 +14381,38 @@
       ],
       "type" : "object"
     },
+    "NodeSpecification" : {
+      "properties" : {
+        "cgroupSize" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo"
+        },
+        "instanceType" : {
+          "type" : "string"
+        },
+        "k8SNodeResourceSpec" : {
+          "$ref" : "#/definitions/K8SNodeResourceSpec"
+        },
+        "proxyConfig" : {
+          "$ref" : "#/definitions/ProxyConfig"
+        }
+      },
+      "type" : "object"
+    },
+    "NodesSpecification" : {
+      "properties" : {
+        "masterSpecification" : {
+          "$ref" : "#/definitions/NodeSpecification"
+        },
+        "tserverSpecification" : {
+          "$ref" : "#/definitions/NodeSpecification"
+        }
+      },
+      "type" : "object"
+    },
     "OCICloudInfo" : {
       "properties" : {
         "ociCompartmentId" : {
@@ -15032,6 +15098,17 @@
       "required" : [
         "value"
       ],
+      "type" : "object"
+    },
+    "PerProviderState" : {
+      "properties" : {
+        "config" : {
+          "$ref" : "#/definitions/EarlyoomConfig"
+        },
+        "earlyoomEnabled" : {
+          "type" : "boolean"
+        }
+      },
       "type" : "object"
     },
     "PerfAdvisorManualRunStatus" : {
@@ -15964,6 +16041,10 @@
           },
           "type" : "array"
         },
+        "masterPauseCompleted" : {
+          "description" : "WARNING: This is a preview API that could change. True once the canary pauseAfterMasters checkpoint has been reached and resumed, so it is not re-emitted on a subsequent abort+retry of the upgrade.",
+          "type" : "boolean"
+        },
         "softwareVersion" : {
           "type" : "string"
         },
@@ -16194,6 +16275,75 @@
           "type" : "integer"
         },
         "sshUser" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "ProviderSpecification" : {
+      "properties" : {
+        "accessKeyCode" : {
+          "type" : "string"
+        },
+        "awsInstanceProfile" : {
+          "type" : "string"
+        },
+        "azHelmOverrides" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "type" : "object"
+        },
+        "baseNodesSpecification" : {
+          "$ref" : "#/definitions/NodesSpecification"
+        },
+        "enableLoadBalancer" : {
+          "type" : "boolean"
+        },
+        "exposingServiceState" : {
+          "enum" : [
+            "NONE",
+            "EXPOSED",
+            "UNEXPOSED"
+          ],
+          "type" : "string"
+        },
+        "helmOverrides" : {
+          "type" : "string"
+        },
+        "imageBundleUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "instanceTags" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "type" : "object"
+        },
+        "perAZOverrides" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/NodesSpecification"
+          },
+          "type" : "object"
+        },
+        "providerType" : {
+          "enum" : [
+            "unknown",
+            "aws",
+            "gcp",
+            "azu",
+            "oci",
+            "docker",
+            "onprem",
+            "kubernetes",
+            "local",
+            "other"
+          ],
+          "type" : "string"
+        },
+        "providerUUID" : {
+          "format" : "uuid",
           "type" : "string"
         }
       },
@@ -16539,6 +16689,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -17233,6 +17384,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -18296,6 +18448,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -19146,6 +19299,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -20702,6 +20856,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -21373,6 +21528,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -21799,6 +21955,7 @@
               "ModifyKubernetesQueryLoggingConfig",
               "ModifyMetricsExportConfig",
               "ConfigureExportTelemetryConfig",
+              "KubernetesConfigureExportTelemetryConfig",
               "InstallYbcSoftware",
               "UpgradeUniverseYbc",
               "UpgradeYbcGFlags",
@@ -22374,6 +22531,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -23160,6 +23318,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -24326,6 +24485,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -25165,7 +25325,8 @@
               "KubernetesToggleImmutableYbc",
               "OperatorImport",
               "RegisterWithPACollector",
-              "UnregisterFromPACollector"
+              "UnregisterFromPACollector",
+              "Unknown"
             ],
             "type" : "string"
           },
@@ -25666,6 +25827,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -26359,6 +26521,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -27193,6 +27356,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -27851,6 +28015,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -28509,6 +28674,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -29675,6 +29841,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -30137,6 +30304,12 @@
         },
         "provider" : {
           "type" : "string"
+        },
+        "providerSpecifications" : {
+          "items" : {
+            "$ref" : "#/definitions/ProviderSpecification"
+          },
+          "type" : "array"
         },
         "providerType" : {
           "enum" : [
@@ -30899,6 +31072,7 @@
             "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
             "ConfigureExportTelemetryConfig",
+            "KubernetesConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -31879,6 +32053,7 @@
         }
       },
       "required" : [
+        "bootstrapParams",
         "tables"
       ],
       "type" : "object"
@@ -32214,6 +32389,11 @@
             "ERROR"
           ],
           "type" : "string"
+        },
+        "logRetentionDays" : {
+          "description" : "Number of days to keep gzipped YCQL audit log archives on the node. 0 or unset disables the dedicated audit-log retention pipeline and keeps the default size-based tserver log purge behavior.",
+          "format" : "int32",
+          "type" : "integer"
         }
       },
       "required" : [
@@ -32288,6 +32468,11 @@
         "logRelation" : {
           "description" : "Log relation",
           "type" : "boolean"
+        },
+        "logRetentionDays" : {
+          "description" : "Number of days to keep extracted YSQL audit log archives on the node. 0 or unset disables the dedicated audit-log retention pipeline and keeps the default size-based postgres log purge behavior.",
+          "format" : "int32",
+          "type" : "integer"
         },
         "logRows" : {
           "description" : "Log rows",
@@ -50860,6 +51045,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"
@@ -50886,6 +51074,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"
@@ -50928,6 +51119,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"
@@ -50954,6 +51148,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"
@@ -50996,6 +51193,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"
@@ -51022,6 +51222,9 @@
                   "Premium_LRS",
                   "PremiumV2_LRS",
                   "UltraSSD_LRS",
+                  "OCI_Balanced",
+                  "OCI_HigherPerformance",
+                  "OCI_LowerCost",
                   "Local"
                 ],
                 "type" : "string"
@@ -52325,6 +52528,9 @@
     },
     {
       "name" : "Node instances"
+    },
+    {
+      "name" : "PA Proxy"
     },
     {
       "name" : "PITR management"

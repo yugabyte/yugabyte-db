@@ -1,0 +1,15 @@
+title: YBAValidationResponse
+description: |
+  YBAValidationResponse
+
+  YugabyteDB Anywhere Kubernetes overrides validation response
+type: object
+properties:
+  errors:
+    description: An array of errors.
+    type: array
+    items:
+      type: string
+    maxItems: 20
+    minItems: 1
+x-yba-api-visibility: internal

@@ -20,6 +20,7 @@ OBJS = \
 	yb_exceptions_for_func_pushdown.o \
 	yb_file_utils.o \
 	yb_index_check.o \
+	yb_internal_conn.o \
 	yb_jumblefuncs.o \
 	yb_pg_conf_validator.o \
 	yb_qpm.o \

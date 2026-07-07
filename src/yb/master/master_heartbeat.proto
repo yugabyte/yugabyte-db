@@ -19,6 +19,7 @@ option java_package = "org.yb.master";
 import "yb/cdc/cdc_consumer.proto";
 import "yb/cdc/xcluster_producer.proto";
 import "yb/common/common_types.proto";
+import "yb/common/opid.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/consensus_types.proto";
 import "yb/consensus/metadata.proto";
@@ -56,6 +57,9 @@ message ReportedTabletPB {
 
   // Is the tablet hidden.
   optional bool is_hidden = 9;
+
+  // Pending config operation id from consensus, if a config change is in progress. Unset otherwise.
+  optional OpIdPB pending_config_op_id = 10;
 
   // Mapping of table ids to their respective schema version numbers.
   map<string, uint32> table_to_version = 11;
@@ -106,6 +110,7 @@ message TabletDriveStorageMetadataPB {
   optional uint64 uncompressed_sst_file_size = 4;
   optional bool may_have_orphaned_post_split_data = 5 [default = true];
   optional uint64 total_size = 6;
+  optional uint64 vector_index_size = 7;
 }
 
 message TabletLeaderMetricsPB {
@@ -334,6 +339,11 @@ message TSHeartbeatResponsePB {
   optional XClusterHeartbeatInfo xcluster_heartbeat_info = 30;
 
   optional ReplicationInfoPB cluster_replication_info = 31;
+
+  // UUIDs of tservers that are currently leader-blacklisted and with no active leaders
+  // as per master's view. Tservers use this to proactively mark replicas hosted by
+  // these tservers as followers in their meta-cache.
+  repeated string leader_blacklisted_tservers_with_no_leaders = 32;
 }
 
 service MasterHeartbeat {

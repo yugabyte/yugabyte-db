@@ -1,0 +1,21 @@
+{{ $docVersion := $.Scratch.Get "docVersion" }}
+{{- if eq $docVersion "v2.20" -}}
+  {{ $isYbaDocs := false }}
+  {{- with .File -}}
+    {{- if in .Dir "yugabyte-platform" -}}
+      {{ $isYbaDocs = true }}
+    {{- end -}}
+  {{- end -}}
+
+  <div class="admonition warning">
+    <p class="admonition-title">v2.20 has reached end of life (EOL)</p>
+    {{- if $isYbaDocs -}}
+      <p>v2.20 is no longer supported. Upgrade to the <a href="/stable/releases/yba-releases/">latest YugabyteDB Anywhere release</a>. You should always run the latest version of YugabyteDB Anywhere.<br>
+      See <a href="/stable/yugabyte-platform/upgrade/">Upgrade YugabyteDB Anywhere</a> for instructions.</p>
+    {{- else -}}
+      <p>v2.20 is no longer supported. Upgrade your universes to the latest <a href="/stable/releases/ybdb-releases/v2025.2/">v2025.2</a> release.<br>
+      Note that to upgrade to v2025.2 (a <a href="/stable/manage/ysql-major-upgrade-yugabyted/">YSQL major upgrade</a>), you must first upgrade to the latest v2024.2 release.<br>
+      See <a href="/stable/manage/upgrade-deployment/">Upgrade YugabyteDB</a> for instructions.</p>
+    {{- end -}}
+  </div>
+{{- end -}}

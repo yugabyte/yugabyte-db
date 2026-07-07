@@ -904,6 +904,20 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 				closeAllVfds(); /* probably not necessary... */
 				/* Allowed names are restricted if you're not superuser */
 				load_file(stmt->filename, !superuser());
+
+				/*
+				 * If connection manager is used, mark the connection as sticky.
+				 * A library loaded via LOAD is local to the physical backend
+				 * that executed it; without stickiness, later queries from the
+				 * same logical client may be routed to a different backend that
+				 * has not loaded the library.
+				 */
+				if (YbIsClientYsqlConnMgr())
+				{
+					elog(LOG, "Incrementing sticky object count for LOAD '%s'",
+						 stmt->filename);
+					increment_sticky_object_count();
+				}
 			}
 			break;
 
@@ -4041,11 +4055,22 @@ YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
 							DestReceiver *dest,
 							QueryCompletion *qc)
 {
-	if (IsYugaByteEnabled() &&
+	bool		track_utility = IsYugaByteEnabled() &&
 		!(IsA(pstmt->utilityStmt, ExecuteStmt) ||
 		  IsA(pstmt->utilityStmt, PrepareStmt) ||
-		  IsA(pstmt->utilityStmt, DeallocateStmt) ||
-		  IsA(pstmt->utilityStmt, ExplainStmt)))
+		  IsA(pstmt->utilityStmt, DeallocateStmt));
+	/*
+	 * EXPLAIN is excluded: EXPLAIN ANALYZE's inner executor already wraps
+	 * buffering inside its measured timer, so wrapping again here would
+	 * defer the flush past that timer.
+	 */
+	bool		wrap_buffering = track_utility &&
+		!IsA(pstmt->utilityStmt, ExplainStmt);
+
+	if (track_utility)
+		YBOnUtilityOperationBegin();
+
+	if (wrap_buffering)
 	{
 		YBBeginOperationsBuffering();
 		standard_ProcessUtility(pstmt, queryString, readOnlyTree, context,
@@ -4055,4 +4080,7 @@ YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
 	else
 		standard_ProcessUtility(pstmt, queryString, readOnlyTree, context,
 								params, queryEnv, dest, qc);
+
+	if (track_utility)
+		YBOnUtilityOperationEnd();
 }

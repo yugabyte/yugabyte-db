@@ -104,6 +104,9 @@ func (m *Manager) serviceOrder() []string {
 	if viper.GetBool("perfAdvisor.enabled") {
 		order = append(order, "yb-perf-advisor")
 	}
+	if viper.GetBool("nodeExporter.enabled") {
+		order = append(order, "node-exporter")
+	}
 
 	// Logrotate should be last
 	order = append(order, "yb-logrotate")

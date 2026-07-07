@@ -43,6 +43,7 @@ std::vector<Vector> VectorIndexTestBase::RandomVectors(size_t num_vectors) {
 }
 
 void VectorIndexTestBase::SetUp() {
+  YBTest::SetUp();
   rocksdb_cache_ = rocksdb::NewLRUCache(BlockCacheCapacity(), 4);;
   block_cache_ = std::make_shared<BlockCache>(
       *Env::Default(),

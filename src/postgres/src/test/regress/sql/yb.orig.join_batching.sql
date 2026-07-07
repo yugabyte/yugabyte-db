@@ -648,6 +648,15 @@ set yb_bnl_batch_size to 10;
 explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
 select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
 
+-- expression-based index
+CREATE INDEX ON p2 ((b + 123) ASC);
+/*+ Set(yb_enable_cbo on) Leading((p1 p2)) YbBatchedNL(p1 p2) */
+EXPLAIN (COSTS OFF)
+SELECT * FROM p1 JOIN p2 ON p1.a = p2.b + 123 and p1.b >= 22;
+
+/*+ Set(yb_enable_cbo on) Leading((p1 p2)) YbBatchedNL(p1 p2) */
+SELECT * FROM p1 JOIN p2 ON p1.a = p2.b + 123 and p1.b >= 22;
+
 DROP TABLE p1;
 DROP TABLE p2;
 DROP TABLE p3;
@@ -797,20 +806,152 @@ SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1
 
 DROP TABLE q1nulls;
 
+delete from q1;
+delete from q2;
+insert into q1 values
+  (10, 1), (20, 2), (30, 3), (40, 4), (50, 5), (60, 6),
+  (5, 10), (99, 99), (88, 88), (77, 77), (41, 99), (42, 99);
+insert into q2 values
+  (10, 1), (20, 2), (30, 3), (40, 4), (50, 5), (60, 6),
+  (5, 10), (70, 7), (80, 8), (90, 9), (91, 11), (92, 12);
+analyze q1;
+analyze q2;
 create table q3(a int, b int, c name, primary key(a,b));
 create index q3_range on q3(a asc);
+insert into q3 values
+  (1, 1, 'q3row01_AAAAAAAAAAAA'), (2, 2, 'q3row02_BBBBBBBBBBBB'), (3, 3, 'q3row03_CCCCCCCCCCCC'),
+  (4, 4, 'q3row04_DDDDDDDDDDDD'), (5, 5, 'q3row05_EEEEEEEEEEEE'), (6, 6, 'q3row06_FFFFFFFFFFFF'),
+  (7, 7, 'q3row07_GGGGGGGGGGGG'), (8, 8, 'q3row08_HHHHHHHHHHHH'), (9, 9, 'q3row09_IIIIIIIIIIII'),
+  (10, 10, 'q3row10_JJJJJJJJJJJJ'), (100, 10, 'q3row11_KKKKKKKKKKKK'), (12, 12, 'q3row12_LLLLLLLLLLLL');
+analyze q3;
 
-/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan off) Set(enable_material off)*/ explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1;
+/*+
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_seqscan off)
+  Set(enable_material off)
+*/
+explain (costs off)
+select * from q1 p1 left join (select p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1
+  on j1.a1 = p1.c1 and j1.a1 + j1.a2 = p1.c1 + p1.c2
+order by p1.c1, p1.c2;
+/*+
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_seqscan off)
+  Set(enable_material off)
+*/
+select * from q1 p1 left join (select p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1
+  on j1.a1 = p1.c1 and j1.a1 + j1.a2 = p1.c1 + p1.c2
+order by p1.c1, p1.c2;
 
--- this should not be a batched NL join as it contains an unbatchable clause
--- (j1.a2 <= p1.c1) even though the batchable clause (j1.a1 = p1.c1) is also
--- present
+-- only the batchable equality (j1.a1 = p1.c1) is pushed into the inner index
+-- scan, while the unbatchable clauses (j1.a2 <= p1.c1 and the expression
+-- equality, which spans both inner relations) are relegated to the left join's
+-- filter.  The inner index scan never mixes batched and unbatched references
+-- to p1.  See #20495, #31760.  This enhancement is disabled in legacy mode for
+-- plan stability.
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_nestloop off)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_seqscan off)
+  Set(enable_material off)
+*/
+explain (costs off)
+select * from
+    q1 p1 left join
+    (select p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1
+      on j1.a1 = p1.c1 and j1.a2 <= p1.c1
+      and j1.a1 + j1.a2 = p1.c1 + p1.c2
+order by p1.c1, p1.c2;
+/*+
+  Set(yb_enable_cbo on)
+  Set(enable_nestloop off)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_seqscan off)
+  Set(enable_material off)
+*/
+select * from
+    q1 p1 left join
+    (select p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1
+      on j1.a1 = p1.c1 and j1.a2 <= p1.c1
+      and j1.a1 + j1.a2 = p1.c1 + p1.c2
+order by p1.c1, p1.c2;
 
-/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan off) Set(enable_material off)*/ explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1 and j1.a2 <= p1.c1;
+-- An UPDATE whose join has both a batchable equality (target.c1 = src.c1)
+-- and an unbatchable inequality (target.c2 < src.c2) on the same inner/outer
+-- relation pair.  Under the cost-based optimizer the planner builds a BNL by
+-- batching the equality into the inner index condition and relegating the
+-- unbatchable inequality to the join filter; the inner index scan never mixes
+-- batched and unbatched references to the same outer relation.  See #31760.
+-- yb_enable_cbo is set per query because this relegation is only done under
+-- the cost-based optimizer.  The target q1 is the batched inner relation and
+-- q2 is the outer relation.  Wrapped in a transaction so the row changes
+-- made by the actual UPDATE are rolled back.
+BEGIN;
+/*+
+  Set(enable_nestloop off)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_seqscan off)
+  Set(enable_material off)
+  Set(yb_enable_cbo on)
+  Leading((q2 q1))
+*/
+explain (costs off)
+update q1
+   set c2 = q1.c2 + 1000
+  from q2
+ where q1.c1 = q2.c1 and q1.c2 < q2.c2;
+/*+
+  Set(enable_nestloop off)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_seqscan off)
+  Set(enable_material off)
+  Set(yb_enable_cbo on)
+  Leading((q2 q1))
+*/
+update q1
+   set c2 = q1.c2 + 1000
+  from q2
+ where q1.c1 = q2.c1 and q1.c2 < q2.c2;
+ROLLBACK;
 
-/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan on) Set(enable_material off) Leading((q3 (q2 q1)))*/ explain (costs off) select * from q1, q2, q3 where q1.c1 = q2.c1 and q3.a = q1.c2;
+/*+
+  Set(enable_nestloop off)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_seqscan on)
+  Set(enable_material off)
+  Leading((q3 (q2 q1)))
+*/
+explain (costs off)
+select * from q1, q2, q3 where q1.c1 = q2.c1 and q3.a = q1.c2;
+/*+
+  Set(enable_nestloop off)
+  Set(enable_hashjoin off)
+  Set(enable_mergejoin off)
+  Set(yb_bnl_batch_size 3)
+  Set(enable_seqscan on)
+  Set(enable_material off)
+  Leading((q3 (q2 q1)))
+*/
+select * from q1, q2, q3 where q1.c1 = q2.c1 and q3.a = q1.c2
+order by q1.c1, q2.c1, q3.a;
 
-explain (costs off) SELECT * FROM q1, q2 where pg_backend_pid() >= 0 and q1.c1 = q2.c1;
+explain (costs off)
+SELECT * FROM q1, q2 where pg_backend_pid() >= 0 and q1.c1 = q2.c1;
 
 DROP TABLE q1;
 DROP TABLE q2;
@@ -1293,3 +1434,16 @@ WHERE t3.c_vc_key  = t2.c_vc
 RESET yb_bnl_enable_hashing;
 
 DROP TABLE repro31724;
+
+-- Test BNL on a table with a large number of tablets
+CREATE TABLE t_multi_tablet(h1 bigint, h2 bigint, v text, primary key((h1, h2) hash)) split into 48 tablets;
+INSERT INTO t_multi_tablet SELECT i, j, 'Value(' || i::text || ', ' || j::text || ')' FROM generate_series(1, 100) i, generate_series(1, 100) j;
+
+SET yb_bnl_batch_size = 1024;
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF, SUMMARY OFF)
+SELECT t.* FROM generate_series(1, 1000) i, t_multi_tablet t WHERE h1 = 1 AND h2 = i;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF, SUMMARY OFF)
+SELECT t.* FROM generate_series(1, 100) i, generate_series(1, 100) j, t_multi_tablet t WHERE h1 = i AND h2 = j;
+
+DROP TABLE t_multi_tablet;

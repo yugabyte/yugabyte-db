@@ -18,7 +18,7 @@
 #include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/listener.h"
 #include "yb/rocksdb/metadata.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 
 namespace rocksdb {
 

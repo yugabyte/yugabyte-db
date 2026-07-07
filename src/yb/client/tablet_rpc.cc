@@ -152,7 +152,10 @@ void TabletInvoker::SelectTabletServer()  {
     // refresh has occurred. This also avoids LookupTabletByKey() going into
     // "fast path" mode and not actually performing a metadata refresh from the
     // Master when it needs to.
-    tablet_->MarkTServerAsFollower(current_ts_);
+    const auto marked_as_follower = tablet_->MarkTServerAsFollower(current_ts_);
+    DCHECK(marked_as_follower)
+        << "Tablet " << tablet_id_ << ": Specified server not found: "
+        << current_ts_->ToString() << ". Replicas: " << tablet_->ReplicasAsString();
     current_ts_ = nullptr;
   }
   if (!current_ts_) {
@@ -176,6 +179,15 @@ void TabletInvoker::SelectTabletServer()  {
     VLOG(4) << "Selected TServer " << current_ts_->ToString() << " as leader for " << tablet_id_;
   }
   VTRACE_TO(1, trace_, "Selected $0", (current_ts_ ? current_ts_->ToString() : "none"));
+}
+
+void TabletInvoker::Reset() {
+  TRACE_TO(trace_, "Reset()");
+  tablet_id_.clear();
+  tablet_.reset();
+  current_ts_ = nullptr;
+  followers_.clear();
+  assign_new_leader_ = false;
 }
 
 void TabletInvoker::Execute(TabletIdView tablet_id, bool leader_only) {

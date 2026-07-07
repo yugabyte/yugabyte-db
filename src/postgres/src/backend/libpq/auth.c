@@ -51,6 +51,7 @@
 #include "utils/builtins.h"		/* TODO: may not be needed */
 #include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+#include "yb_internal_conn.h"
 
 /*----------------------------------------------------------------
  * Global authentication functions
@@ -490,16 +491,22 @@ ClientAuthentication(Port *port)
 	CHECK_FOR_INTERRUPTS();
 
 	/*
-	 * Only tserver-owned backends using yb-tserver-key authentication are
-	 * allowed to run as yb_auto_analyze.
+	 * Every registered YB internal-connection kind (see yb_internal_conn.h),
+	 * including auto-analyze, must use yb-tserver-key authentication, since the
+	 * tserver opens these over the local unix socket. Tests that need to pose
+	 * as a kind go through CreateInternalPGConnBuilder with the tserver's
+	 * shared-memory postgres auth key as password, matching the hardcoded
+	 *
+	 *     local all postgres yb-tserver-key
+	 *
+	 * HBA rule.
 	 */
-	if (IsYugaByteEnabled() && MyBackendType == YB_AUTO_ANALYZE_BACKEND &&
-		port->hba->auth_method != uaYbTserverKey &&
-		!YBCGetGFlags()->TEST_ysql_bypass_auto_analyze_auth_check)
+	if (IsYugaByteEnabled() && YbIsInternalConnBackendType(MyBackendType) &&
+		port->hba->auth_method != uaYbTserverKey)
 		ereport(FATAL,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("yb_auto_analyze can only be set if the authentication method "
-						"is yb-tserver-key")));
+				 errmsg("yb_internal_conn_kind can only be set if the "
+						"authentication method is yb-tserver-key")));
 
 	/*
 	 * This is the first point where we have access to the hba record for the

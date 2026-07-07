@@ -19,10 +19,13 @@ type: docs
 You can use the following [YB-TServer flags](../../../../reference/configuration/yb-tserver/) to tune logical replication deployment configuration:
 
 - [ysql_yb_default_replica_identity](../../../../reference/configuration/yb-tserver/#ysql-yb-default-replica-identity)
+- [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication)
+- [enable_table_rewrite_for_cdcsdk_table](../../../../reference/configuration/yb-tserver/#enable-table-rewrite-for-cdcsdk-table)
 - [cdcsdk_enable_dynamic_table_support](../../../../reference/configuration/yb-tserver/#cdcsdk-enable-dynamic-table-support)
 - [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs)
 - [cdcsdk_max_consistent_records](../../../../reference/configuration/yb-tserver/#cdcsdk-max-consistent-records)
 - [cdcsdk_vwal_getchanges_resp_max_size_bytes](../../../../reference/configuration/yb-tserver/#cdcsdk-vwal-getchanges-resp-max-size-bytes)
+- [cdc_enable_intra_transactional_before_image](../../../../reference/configuration/yb-tserver/#cdc-enable-intra-transactional-before-image)
 
 ## Retention of resources
 

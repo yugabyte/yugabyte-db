@@ -183,6 +183,10 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   protected void setupProvider(CloudType cloudType) {
     Provider provider = newProvider(customer, cloudType);
+    if (cloudType == CloudType.kubernetes) {
+      provider.setConfigMap(Map.of("KUBECONFIG", "foo"));
+      provider.save();
+    }
     providerUuid = provider.getUuid();
     // add 3 regions with 3 zones in each region
     Region region1 = Region.create(provider, "us-west-1", "us-west-1", "yb-image-1");
@@ -510,6 +514,15 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   private void validateUniverseNetworkginSpec(
       UniverseNetworkingSpec v2NetworkingSpec, UniverseDefinitionTaskParams dbUniv) {
+    validateUniverseNetworkingUserIntentFlags(v2NetworkingSpec, dbUniv);
+    validateCommunicationPorts(
+        v2NetworkingSpec.getCommunicationPorts(),
+        dbUniv.communicationPorts,
+        new CommunicationPorts());
+  }
+
+  private void validateUniverseNetworkingUserIntentFlags(
+      UniverseNetworkingSpec v2NetworkingSpec, UniverseDefinitionTaskParams dbUniv) {
     UserIntent primaryUserIntent = dbUniv.getPrimaryCluster().userIntent;
     if (v2NetworkingSpec.getAssignPublicIp() == null) {
       assertThat(primaryUserIntent.assignPublicIP, is(true));
@@ -527,78 +540,89 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     } else {
       assertThat(v2NetworkingSpec.getEnableIpv6(), is(primaryUserIntent.enableIPV6));
     }
-    validateCommunicationPorts(v2NetworkingSpec.getCommunicationPorts(), dbUniv.communicationPorts);
   }
 
-  private void validateCommunicationPorts(CommunicationPortsSpec v2CP, CommunicationPorts dbCP) {
+  private void validateUniverseEditNetworkingSpec(
+      UniverseNetworkingSpec v2EditNetworking, UniverseDefinitionTaskParams v1EditParams) {
+    if (v2EditNetworking.getCommunicationPorts() != null) {
+      validateCommunicationPorts(
+          v2EditNetworking.getCommunicationPorts(),
+          v1EditParams.communicationPorts,
+          Universe.getOrBadRequest(universeUuid).getUniverseDetails().communicationPorts);
+    }
+    validateUniverseNetworkingUserIntentFlags(v2EditNetworking, v1EditParams);
+  }
+
+  private void validateCommunicationPorts(
+      CommunicationPortsSpec v2CP, CommunicationPorts dbCP, CommunicationPorts defaultPorts) {
     if (v2CP.getMasterHttpPort() == null) {
-      assertThat(dbCP.masterHttpPort, is(7000));
+      assertThat(dbCP.masterHttpPort, is(defaultPorts.masterHttpPort));
     } else {
       assertThat(dbCP.masterHttpPort, is(v2CP.getMasterHttpPort()));
     }
     if (v2CP.getMasterRpcPort() == null) {
-      assertThat(dbCP.masterRpcPort, is(7100));
+      assertThat(dbCP.masterRpcPort, is(defaultPorts.masterRpcPort));
     } else {
       assertThat(dbCP.masterRpcPort, is(v2CP.getMasterRpcPort()));
     }
     if (v2CP.getNodeExporterPort() == null) {
-      assertThat(dbCP.nodeExporterPort, is(9300));
+      assertThat(dbCP.nodeExporterPort, is(defaultPorts.nodeExporterPort));
     } else {
       assertThat(dbCP.nodeExporterPort, is(v2CP.getNodeExporterPort()));
     }
     if (v2CP.getOtelCollectorMetricsPort() == null) {
       // default is coming from Provider runtime config yb.universe.otel_collector_metrics_port
-      assertThat(dbCP.otelCollectorMetricsPort, is(0));
+      assertThat(dbCP.otelCollectorMetricsPort, is(defaultPorts.otelCollectorMetricsPort));
     } else {
       assertThat(dbCP.otelCollectorMetricsPort, is(v2CP.getOtelCollectorMetricsPort()));
     }
     if (v2CP.getRedisServerHttpPort() == null) {
-      assertThat(dbCP.redisServerHttpPort, is(11000));
+      assertThat(dbCP.redisServerHttpPort, is(defaultPorts.redisServerHttpPort));
     } else {
       assertThat(dbCP.redisServerHttpPort, is(v2CP.getRedisServerHttpPort()));
     }
     if (v2CP.getRedisServerRpcPort() == null) {
-      assertThat(dbCP.redisServerRpcPort, is(6379));
+      assertThat(dbCP.redisServerRpcPort, is(defaultPorts.redisServerRpcPort));
     } else {
       assertThat(dbCP.redisServerRpcPort, is(v2CP.getRedisServerRpcPort()));
     }
     if (v2CP.getTserverHttpPort() == null) {
-      assertThat(dbCP.tserverHttpPort, is(9000));
+      assertThat(dbCP.tserverHttpPort, is(defaultPorts.tserverHttpPort));
     } else {
       assertThat(dbCP.tserverHttpPort, is(v2CP.getTserverHttpPort()));
     }
     if (v2CP.getTserverRpcPort() == null) {
-      assertThat(dbCP.tserverRpcPort, is(9100));
+      assertThat(dbCP.tserverRpcPort, is(defaultPorts.tserverRpcPort));
     } else {
       assertThat(dbCP.tserverRpcPort, is(v2CP.getTserverRpcPort()));
     }
     if (v2CP.getYbControllerHttpPort() == null) {
-      assertThat(dbCP.ybControllerHttpPort, is(14000));
+      assertThat(dbCP.ybControllerHttpPort, is(defaultPorts.ybControllerHttpPort));
     } else {
       assertThat(dbCP.ybControllerHttpPort, is(v2CP.getYbControllerHttpPort()));
     }
     if (v2CP.getYbControllerRpcPort() == null) {
-      assertThat(dbCP.ybControllerrRpcPort, is(18018));
+      assertThat(dbCP.ybControllerrRpcPort, is(defaultPorts.ybControllerrRpcPort));
     } else {
       assertThat(dbCP.ybControllerrRpcPort, is(v2CP.getYbControllerRpcPort()));
     }
     if (v2CP.getYqlServerHttpPort() == null) {
-      assertThat(dbCP.yqlServerHttpPort, is(12000));
+      assertThat(dbCP.yqlServerHttpPort, is(defaultPorts.yqlServerHttpPort));
     } else {
       assertThat(dbCP.yqlServerHttpPort, is(v2CP.getYqlServerHttpPort()));
     }
     if (v2CP.getYqlServerRpcPort() == null) {
-      assertThat(dbCP.yqlServerRpcPort, is(9042));
+      assertThat(dbCP.yqlServerRpcPort, is(defaultPorts.yqlServerRpcPort));
     } else {
       assertThat(dbCP.yqlServerRpcPort, is(v2CP.getYqlServerRpcPort()));
     }
     if (v2CP.getYsqlServerHttpPort() == null) {
-      assertThat(dbCP.ysqlServerHttpPort, is(13000));
+      assertThat(dbCP.ysqlServerHttpPort, is(defaultPorts.ysqlServerHttpPort));
     } else {
       assertThat(dbCP.ysqlServerHttpPort, is(v2CP.getYsqlServerHttpPort()));
     }
     if (v2CP.getYsqlServerRpcPort() == null) {
-      assertThat(dbCP.ysqlServerRpcPort, is(5433));
+      assertThat(dbCP.ysqlServerRpcPort, is(defaultPorts.ysqlServerRpcPort));
     } else {
       assertThat(dbCP.ysqlServerRpcPort, is(v2CP.getYsqlServerRpcPort()));
     }
@@ -1502,6 +1526,9 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       assertThat(
           universeEditSpec.getExpectedUniverseVersion(), is(v1EditParams.expectedUniverseVersion));
     }
+    if (universeEditSpec.getNetworkingSpec() != null) {
+      validateUniverseEditNetworkingSpec(universeEditSpec.getNetworkingSpec(), v1EditParams);
+    }
     validateClustersEditSpec(
         universeEditSpec.getClusters(), v1EditParams.clusters, v2dbUniverseSpec.getClusters());
   }
@@ -1563,6 +1590,12 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       ClusterProviderEditSpec v2ProviderEditSpec, Cluster dbCluster) {
     if (v2ProviderEditSpec.getRegionList() != null) {
       assertThat(v2ProviderEditSpec.getRegionList(), is(dbCluster.userIntent.regionList));
+    }
+    if (v2ProviderEditSpec.getImageBundleUuid() != null) {
+      assertThat(v2ProviderEditSpec.getImageBundleUuid(), is(dbCluster.userIntent.imageBundleUUID));
+    }
+    if (v2ProviderEditSpec.getAwsInstanceProfile() != null) {
+      assertThat(v2ProviderEditSpec.getAwsInstanceProfile(), is(dbCluster.userIntent.awsArnString));
     }
   }
 

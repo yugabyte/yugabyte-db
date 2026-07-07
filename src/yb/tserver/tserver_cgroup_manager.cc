@@ -182,20 +182,6 @@ REGISTER_CALLBACK(qos_system_high_cpu_max_percent, "qos cpu limit update", Apply
 REGISTER_CALLBACK(qos_capped_pool_cpu_weight, "qos cpu limit update", ApplyQosCpuLimits);
 REGISTER_CALLBACK(qos_system_med_cpu_max_percent, "qos cpu limit update", ApplyQosCpuLimits);
 
-Result<Cgroup&> GetOrCreateDbCgroup(PgOid db_oid) {
-  auto* root = RootCgroup();
-  SCHECK(root, IllegalState, "Cgroup management not initialized");
-  auto& capped_pool = VERIFY_RESULT_REF(root->CreateOrLoadChild("@capped-pool"));
-  auto& normal = VERIFY_RESULT_REF(capped_pool.CreateOrLoadChild("@normal"));
-  return VERIFY_RESULT_REF(normal.CreateOrLoadChild(Format("db_$0", db_oid)));
-}
-
-Result<Cgroup&> SetupCgroupForDb(PgOid db_oid, double per_db_cpu_fraction) {
-  auto& cgroup = VERIFY_RESULT_REF(GetOrCreateDbCgroup(db_oid));
-  RETURN_NOT_OK(cgroup.UpdateCpuLimits(per_db_cpu_fraction, FLAGS_qos_evaluation_window_us));
-  return cgroup;
-}
-
 std::string FormatNanoseconds(int64_t ns) {
   return StringPrintf("%.3f", static_cast<double>(ns) / 1e9);
 }
@@ -254,6 +240,44 @@ void CgroupThreadsToHtml(Cgroup& cgroup, HtmlPrintHelper& helper, std::ostream& 
 
 } // namespace
 
+Cgroup* TServerCgroupManager::system_high_cgroup_ = nullptr;
+Cgroup* TServerCgroupManager::capped_pool_cgroup_ = nullptr;
+Cgroup* TServerCgroupManager::system_med_cgroup_ = nullptr;
+Cgroup* TServerCgroupManager::normal_pool_cgroup_ = nullptr;
+
+Status TServerCgroupManager::CgroupManagementInit(bool is_tserver) {
+  return SetupCgroupManagement(
+      ClearChildCgroups{is_tserver},
+      /*default_cgroup_init=*/[](Cgroup& root) -> Result<Cgroup&> {
+        // The Cgroup hierarchy:
+        // $ROOT_CGROUP
+        //   - @system-high  (latency-sensitive: reactors, consensus, WAL, network)
+        //   - @capped-pool  (cap = 100% - reserved%; contains tenant and background work)
+        //     - @system-med  (hard cap -- background: compaction, flushes, maintenance,
+        //                     and all uncategorized threads)
+        //     - @normal      (uncapped within @capped-pool; groups tenant work so that
+        //                     @system-med's weight share stays constant as DBs come and go)
+        //       - db_$DBOID  (per-database query processing threads; individually capped)
+        //
+        // Protection model (configured via gflags, both mechanisms compose):
+        //   Cap:    qos_system_high_cpu_max_percent < 100 => hard ceiling on @system-high.
+        //   Weight: qos_capped_pool_cpu_weight vs @system-high (default weight)
+        //           => proportional CPU split under contention.
+        // @system-med and @normal share @capped-pool's budget: if @system-med is idle,
+        // @normal (and its per-DB children) can use the full @capped-pool budget.
+        system_high_cgroup_ = &VERIFY_RESULT_REF(root.CreateOrLoadChild("@system-high"));
+        capped_pool_cgroup_ = &VERIFY_RESULT_REF(root.CreateOrLoadChild("@capped-pool"));
+        system_med_cgroup_ = &VERIFY_RESULT_REF(
+            capped_pool_cgroup_->CreateOrLoadChild("@system-med"));
+        normal_pool_cgroup_ = &VERIFY_RESULT_REF(capped_pool_cgroup_->CreateOrLoadChild("@normal"));
+
+        // Uncategorized threads default to @system-med.
+        // This keeps the hierarchy simple and ensures all non-tenant, non-latency-sensitive
+        // threads share the same CPU budget and are visible in @system-med metrics.
+        return *system_med_cgroup_;
+      });
+}
+
 TServerCgroupManager::TServerCgroupManager() {
   flag_update_callbacks.Register(this);
 }
@@ -276,37 +300,18 @@ void TServerCgroupManager::Shutdown() {
 }
 
 Status TServerCgroupManager::Init() {
-  // The Cgroup hierarchy:
-  // $ROOT_CGROUP
-  //   - @system-high  (latency-sensitive: reactors, consensus, WAL, network)
-  //   - @capped-pool  (cap = 100% - reserved%; contains tenant and background work)
-  //     - @system-med  (hard cap -- background: compaction, flushes, maintenance,
-  //                     and all uncategorized threads)
-  //     - @normal      (uncapped within @capped-pool; groups tenant work so that
-  //                     @system-med's weight share stays constant as DBs come and go)
-  //       - db_$DBOID  (per-database query processing threads; individually capped)
-  //
-  // Protection model (configured via gflags, both mechanisms compose):
-  //   Cap:    qos_system_high_cpu_max_percent < 100 => hard ceiling on @system-high.
-  //   Weight: qos_capped_pool_cpu_weight vs @system-high (default weight)
-  //           => proportional CPU split under contention.
-  // @system-med and @normal share @capped-pool's budget: if @system-med is idle,
-  // @normal (and its per-DB children) can use the full @capped-pool budget.
-  auto* root = DCHECK_NOTNULL(RootCgroup());
-  system_high_cgroup_ = &VERIFY_RESULT_REF(root->CreateOrLoadChild("@system-high"));
-  capped_pool_cgroup_ = &VERIFY_RESULT_REF(root->CreateOrLoadChild("@capped-pool"));
-  system_med_cgroup_ = &VERIFY_RESULT_REF(capped_pool_cgroup_->CreateOrLoadChild("@system-med"));
-  normal_pool_cgroup_ = &VERIFY_RESULT_REF(capped_pool_cgroup_->CreateOrLoadChild("@normal"));
-
-  // Uncategorized threads default to @system-med rather than a separate @default cgroup.
-  // This keeps the hierarchy simpler and ensures all non-tenant, non-latency-sensitive
-  // threads share the same CPU budget and are visible in @system-med metrics.
-  // Also update the global default so that thread pools without an explicit cgroup
-  // assignment (e.g. CQL reactors, misc infrastructure) land in @system-med.
-  SetDefaultThreadCgroup(system_med_cgroup_);
-  RETURN_NOT_OK(system_med_cgroup_->MoveCurrentThreadToGroup());
-
   return ApplyCpuLimits();
+}
+
+Result<Cgroup&> TServerCgroupManager::GetOrCreateDbCgroup(PgOid db_oid) {
+  SCHECK(normal_pool_cgroup_, IllegalState, "Cgroup management not initialized");
+  return VERIFY_RESULT_REF(normal_pool_cgroup_->CreateOrLoadChild(Format("db_$0", db_oid)));
+}
+
+Result<Cgroup&> TServerCgroupManager::SetupCgroupForDb(PgOid db_oid, double per_db_cpu_fraction) {
+  auto& cgroup = VERIFY_RESULT_REF(GetOrCreateDbCgroup(db_oid));
+  RETURN_NOT_OK(cgroup.UpdateCpuLimits(per_db_cpu_fraction, FLAGS_qos_evaluation_window_us));
+  return cgroup;
 }
 
 double TServerCgroupManager::CappedPoolCpuFraction() const {
@@ -432,11 +437,6 @@ Status TServerCgroupManager::RegisterMetrics(MetricRegistry* registry) {
   if (normal_pool_cgroup_) {
     system_cgroup_metrics_.push_back(
         CreateCgroupMetrics(normal_pool_cgroup_, "@normal", registry));
-  }
-  auto* landing_zone = RootCgroup()->child("@default");
-  if (landing_zone) {
-    system_cgroup_metrics_.push_back(
-        CreateCgroupMetrics(landing_zone, "@default", registry));
   }
   return Thread::Create(
       "cgroup", "metrics-collector",

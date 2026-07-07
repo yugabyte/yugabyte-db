@@ -523,7 +523,6 @@ PgClient::ProxyInitInfo MakeProxyInitInfo(
                           tserver_shared_data.endpoint().port());
     result.resolve_cache_timeout = MonoDelta::kMax;
   }
-  LOG(INFO) << "Using TServer host_port: " << result.host_port;
   return result;
 }
 
@@ -695,6 +694,12 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
 
 struct PgApiImpl::PgSharedData {
   std::atomic<uint64_t> next_perform_op_serial_no{0};
+  // Source of read time serial numbers for the current backend. For parallel query, the leader and
+  // all of its workers share the same PgSharedData (via MyProc->yb_shared_data in DSM), so this
+  // counter hands out globally unique read time serial numbers across them. This prevents two
+  // unrelated snapshots in different parallel workers (or the leader) from sharing the same
+  // read_time_serial_no in the shared pg_client_session's read point history.
+  std::atomic<uint64_t> next_read_time_serial_no{0};
 };
 
 static_assert(std::is_trivially_destructible_v<PgApiImpl::PgSharedData>);
@@ -726,6 +731,7 @@ PgApiImpl::PgSharedDataHolder::PgSharedDataHolder(
   if (is_owner_) {
     signed_data_ = new (aligned_placeholder) SignedPgSharedData{};
     CHECK(signed_data_->data.next_perform_op_serial_no.is_lock_free());
+    CHECK(signed_data_->data.next_read_time_serial_no.is_lock_free());
   } else {
     signed_data_ = pointer_cast<SignedPgSharedData*>(aligned_placeholder);
     CHECK_EQ(
@@ -775,7 +781,8 @@ PgApiImpl::PgApiImpl(
       // projecting as a single ysql backend. When object locking is enabled, only the leader worker
       // should acquire object locks and issue finish transaction rpcs to ensure correctness.
       enable_table_locking_(ShouldEnableTableLocks() && !is_parallel_worker_),
-      pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_, enable_table_locking_)),
+      pg_txn_manager_(new PgTxnManager(&pg_client_, pg_callbacks_, enable_table_locking_,
+          pg_shared_data_->next_read_time_serial_no)),
       pg_session_(PgSession::Make(
           pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
           wait_event_watcher_, buffering_settings_)),
@@ -1244,6 +1251,10 @@ Result<tserver::PgQueryAutoAnalyzeResponsePB> PgApiImpl::QueryAutoAnalyze(PgOid 
     return pg_session_->pg_client().QueryAutoAnalyze(db_oid);
 }
 
+Status PgApiImpl::ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id) {
+  return pg_session_->pg_client().ResetAutoAnalyzeMutationCounters(table_id);
+}
+
 Result<YbcPgColumnInfo> PgApiImpl::GetColumnInfo(YbcPgTableDesc table_desc, int16_t attr_number) {
   return table_desc->GetColumnInfo(attr_number);
 }
@@ -1486,13 +1497,13 @@ Status PgApiImpl::DmlBindColumnCondIn(
 Status PgApiImpl::DmlAddRowUpperBound(
     PgStatement* handle, int n_col_values, PgExpr** col_values, bool is_inclusive) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).AddRowUpperBound(
-      handle, n_col_values, col_values, is_inclusive);
+      std::span(col_values, n_col_values), is_inclusive);
 }
 
 Status PgApiImpl::DmlAddRowLowerBound(
     PgStatement* handle, int n_col_values, PgExpr** col_values, bool is_inclusive) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).AddRowLowerBound(
-      handle, n_col_values, col_values, is_inclusive);
+      std::span(col_values, n_col_values), is_inclusive);
 }
 
 Status PgApiImpl::DmlBindHashCode(
@@ -2196,7 +2207,8 @@ Status PgApiImpl::SetTransactionIsolationLevel(int isolation) {
 }
 
 Status PgApiImpl::SetTransactionReadOnly(bool read_only) {
-  return pg_txn_manager_->SetReadOnly(read_only);
+  pg_txn_manager_->SetReadOnly(read_only);
+  return Status::OK();
 }
 
 Status PgApiImpl::SetEnableTracing(bool tracing) {
@@ -2204,7 +2216,8 @@ Status PgApiImpl::SetEnableTracing(bool tracing) {
 }
 
 Status PgApiImpl::UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms) {
-  return pg_txn_manager_->UpdateFollowerReadsConfig(enable_follower_reads, staleness_ms);
+  pg_txn_manager_->UpdateFollowerReadsConfig(enable_follower_reads, staleness_ms);
+  return Status::OK();
 }
 
 Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
@@ -2361,18 +2374,24 @@ void PgApiImpl::NotifyDeferredTriggersProcessingStarted() {
 Status PgApiImpl::AddExplicitRowLockIntent(
     const PgObjectId& table_id, const Slice& ybctid, const YbcPgExplicitRowLockParams& params,
     const YbcPgTableLocalityInfo& locality_info,
-    std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> handle,
+    std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle>* handle,
     YbcPgExplicitRowLockErrorInfo& error_info) {
-  ExplicitRowLockErrorInfoAdapter adapter(error_info);
-  RETURN_NOT_OK(explicit_row_lock_buffer().Add(
-      {.rowmark = params.rowmark,
-       .pg_wait_policy = params.pg_wait_policy,
-       .docdb_wait_policy = params.docdb_wait_policy,
-       .database_id = table_id.database_oid},
-      LightweightTableYbctid(table_id.object_oid, ybctid), locality_info, handle, adapter));
-  // TODO(#30984): Add FK reference into the cache in case of optimized SKIP LOCKED
+  ExplicitRowLockErrorInfoAdapter adapter{error_info};
+  ExplicitRowLockBuffer::AddLockData data{
+      .lock_info = {
+          .rowmark = params.rowmark,
+          .pg_wait_policy = params.pg_wait_policy,
+          .docdb_wait_policy = params.docdb_wait_policy,
+          .database_id = table_id.database_oid},
+      .lock_key{table_id.object_oid, ybctid},
+      .table_locality = locality_info,
+      .error_info = adapter};
   if (!handle) {
+    RETURN_NOT_OK(explicit_row_lock_buffer().Add(data));
     AddForeignKeyReference(table_id.object_oid, ybctid);
+  } else {
+    handle->emplace(VERIFY_RESULT(explicit_row_lock_buffer().AddSkippable(data, *handle)));
+    // TODO(#30984): Add FK reference into the cache in case of optimized SKIP LOCKED
   }
   return Status::OK();
 }
@@ -2742,6 +2761,11 @@ Status PgApiImpl::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool 
   return pg_session_->ReleaseSessionObjectLock(lock_id, release_all);
 }
 
+Status PgApiImpl::WaitForLockersMultiple(
+    const YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks) {
+  return pg_session_->WaitForLockersMultiple(lock_ids, lock_mode, num_locks);
+}
+
 //------------------------------------------------------------------------------------------------
 // Export/Import Pg Txn Snapshot.
 //------------------------------------------------------------------------------------------------
@@ -2805,11 +2829,6 @@ Result<SetupPerformOptionsAccessorTag> PgApiImpl::FlushBufferedEntities(
     const PgFlushDebugContext& dbg_ctx) {
   // TODO: Consider flushing FK reference intents also.
   return pg_session_->FlushBufferedEntities(dbg_ctx);
-}
-
-YbcIsExplicitlyLockedRowSkippedCheckHandle
-PgApiImpl::AcquireExplicitlyLockedRowSkippedCheckHandle() {
-  return explicit_row_lock_buffer().AcquireCheckHandle();
 }
 
 Result<bool> PgApiImpl::IsRowSkipped(

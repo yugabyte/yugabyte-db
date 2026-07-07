@@ -87,6 +87,10 @@ struct DoGetValueVisitor {
   Slice Vector() const {
     return Binary();
   }
+
+  Slice Bson() const {
+    return Binary();
+  }
 };
 
 UnsafeStatus NopRouter(

@@ -513,6 +513,11 @@ public enum TaskType {
       CustomerTask.TaskType.ConfigureExportTelemetryConfig,
       CustomerTask.TargetType.Universe),
 
+  KubernetesConfigureExportTelemetryConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.KubernetesConfigureExportTelemetryConfig.class,
+      CustomerTask.TaskType.ConfigureExportTelemetryConfig,
+      CustomerTask.TargetType.Universe),
+
   InstallYbcSoftware(
       com.yugabyte.yw.commissioner.tasks.InstallYbcSoftware.class,
       CustomerTask.TaskType.InstallYbcSoftware,
@@ -1403,6 +1408,7 @@ public enum TaskType {
           .put(ModifyKubernetesQueryLoggingConfig, 64)
           .put(ModifyMetricsExportConfig, 58)
           .put(ConfigureExportTelemetryConfig, 59)
+          .put(KubernetesConfigureExportTelemetryConfig, 65)
           .put(KubernetesToggleImmutableYbc, 60)
           .put(UpgradeKubernetesYbcGFlags, 61)
           .put(UpdateYbcThrottleFlags, 62)

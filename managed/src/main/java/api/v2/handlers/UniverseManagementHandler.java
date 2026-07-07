@@ -11,7 +11,10 @@ import api.v2.mappers.ClusterMapper;
 import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
 import api.v2.mappers.UniverseResourceDetailsMapper;
 import api.v2.mappers.UniverseRespMapper;
+import api.v2.mappers.UserIntentMapper;
 import api.v2.models.AttachUniverseSpec;
+import api.v2.models.CheckResizeOptionsResp;
+import api.v2.models.CheckResizeOptionsSpec;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterSpec;
@@ -26,6 +29,7 @@ import api.v2.models.FileCollectionSummary;
 import api.v2.models.NodeFileCollectionResult;
 import api.v2.models.NodeScriptResult;
 import api.v2.models.NodeSelection;
+import api.v2.models.ResizeUpdateOption;
 import api.v2.models.RunScriptRequest;
 import api.v2.models.RunScriptResponse;
 import api.v2.models.ScriptOptions;
@@ -36,7 +40,9 @@ import api.v2.models.UniverseOperatorImportReq;
 import api.v2.models.UniversePagedQuerySpec;
 import api.v2.models.UniversePagedResp;
 import api.v2.models.UniverseSpec;
+import api.v2.models.UniverseValidateKubernetesOverrides;
 import api.v2.models.YBATask;
+import api.v2.models.YBAValidationResponse;
 import api.v2.utils.ApiControllerUtils;
 import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -69,6 +75,7 @@ import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
+import com.yugabyte.yw.controllers.handlers.KubernetesOverridesHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.RunQueryFormData;
@@ -140,6 +147,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   @Inject private FileCollectionDownloader fileCollectionDownloader;
   @Inject private LocalhostAccessChecker localhostChecker;
   @Inject private RoleBindingUtil roleBindingUtil;
+  @Inject private KubernetesOverridesHandler kubernetesOverridesHandler;
 
   private static final String RELEASES_PATH = "yb.releases.path";
 
@@ -1075,8 +1083,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             .linuxUser(linuxUser)
             .build();
 
-    // Build node filter
-    NodeScriptRunner.NodeFilter nodeFilter = buildNodeFilter(runScriptRequest.getNodes());
+    // Build node filter (validates that requested node_names exist in the universe)
+    NodeScriptRunner.NodeFilter nodeFilter = buildNodeFilter(universe, runScriptRequest.getNodes());
 
     // Execute via service
     NodeScriptRunner.ExecutionResult result =
@@ -1099,6 +1107,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
               .nodeAddress(nr.getNodeAddress())
               .exitCode(nr.getExitCode())
               .stdout(nr.getStdout())
+              .stderr(nr.getStderr())
               .executionTimeMs(nr.getExecutionTimeMs())
               .success(nr.isSuccess())
               .errorMessage(nr.getErrorMessage()));
@@ -1186,8 +1195,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
     NodeFileCollector.CollectionParams collectionParams = paramsBuilder.build();
 
-    // Build node filter (reuses same NodeFilter as runScript)
-    NodeScriptRunner.NodeFilter nodeFilter = buildNodeFilter(collectFilesRequest.getNodes());
+    NodeScriptRunner.NodeFilter nodeFilter =
+        buildNodeFilter(universe, collectFilesRequest.getNodes());
 
     log.info(
         "Collecting files from universe {} with {} file paths, {} directory paths",
@@ -1339,19 +1348,37 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         collectionUuid, universe, deleteFromDbNodes, deleteFromYba);
   }
 
+  public YBAValidationResponse validateKubernetesOverrides(
+      Request request, UUID cUUID, UniverseValidateKubernetesOverrides spec)
+      throws JsonProcessingException {
+    Set<String> errors =
+        kubernetesOverridesHandler.validateKubernetesOverrides(
+            spec.getYbSoftwareVersion(),
+            spec.getNodePrefix(),
+            ClusterMapper.INSTANCE.toV1PlacementInfo(spec.getPlacementSpec()),
+            spec.getIsReadonlyCluster(),
+            spec.getOverrides(),
+            spec.getAzOverrides());
+    YBAValidationResponse response = new YBAValidationResponse();
+    errors.forEach(response::addErrorsItem);
+    return response;
+  }
+
   /**
    * Helper method to convert NodeSelection API model to NodeScriptRunner.NodeFilter. Reused by both
    * runScript and collectFiles handlers.
    */
-  private NodeScriptRunner.NodeFilter buildNodeFilter(NodeSelection nodeSelection) {
+  private NodeScriptRunner.NodeFilter buildNodeFilter(
+      Universe universe, NodeSelection nodeSelection) {
     if (nodeSelection == null) {
       return null;
     }
     if (Boolean.TRUE.equals(nodeSelection.getMastersOnly())
         && Boolean.TRUE.equals(nodeSelection.getTserversOnly())) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "masters_only and tservers_only both cannot be true");
+          BAD_REQUEST, "masters_only and tservers_only cannot both be true");
     }
+    validateRequestedNodeNames(universe, nodeSelection.getNodeNames());
     int maxParallelNodes =
         nodeSelection.getMaxParallelNodes() != null
             ? nodeSelection.getMaxParallelNodes()
@@ -1363,6 +1390,28 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         .tserversOnly(nodeSelection.getTserversOnly())
         .maxParallelNodes(maxParallelNodes)
         .build();
+  }
+
+  private void validateRequestedNodeNames(Universe universe, List<String> requestedNodeNames) {
+    if (CollectionUtils.isEmpty(requestedNodeNames)) {
+      return;
+    }
+    Set<String> universeNodeNames =
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .map(n -> n.nodeName)
+            .collect(Collectors.toSet());
+    List<String> unmatchedNodeNames =
+        requestedNodeNames.stream()
+            .filter(name -> !universeNodeNames.contains(name))
+            .distinct()
+            .collect(Collectors.toList());
+    if (!unmatchedNodeNames.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "The following node_names were not found in universe %s: %s",
+              universe.getUniverseUUID(), unmatchedNodeNames));
+    }
   }
 
   private boolean isNewUI() {
@@ -1441,5 +1490,48 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         }
       }
     }
+  }
+
+  public CheckResizeOptionsResp checkResizeOptions(
+      UUID cUUID, UUID uniUUID, CheckResizeOptionsSpec spec) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    UniverseDefinitionTaskParams taskParams =
+        Universe.getOrBadRequest(uniUUID, customer).getUniverseDetails();
+
+    Cluster cluster = taskParams.getClusterByUuid(spec.getClusterUuid());
+    if (cluster == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("Cluster with UUID '%s' does not exist.", spec.getClusterUuid()));
+    }
+    UserIntentMapper.INSTANCE.fillUserIntentFromClusterNodeSpec(
+        spec.getNodeSpec(), cluster.userIntent);
+    log.debug(
+        "Spec {} userIntent {}", Json.toJson(spec.getNodeSpec()), Json.toJson(cluster.userIntent));
+
+    Universe dbUniverse = Universe.getOrBadRequest(uniUUID, customer);
+
+    PlacementInfoUtil.updateUniverseDefinitionV2(
+        dbUniverse,
+        taskParams,
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
+        UniverseCRUDHandler.getUpdateOptions(
+            taskParams, UniverseConfigureTaskParams.ClusterOperationType.EDIT, cluster, dbUniverse);
+    log.info(
+        "Check resize options for universe {} cluster {}: {}",
+        uniUUID,
+        spec.getClusterUuid(),
+        updateOptions);
+    List<ResizeUpdateOption> res = new ArrayList<>();
+    for (UniverseDefinitionTaskParams.UpdateOptions updateOption : updateOptions) {
+      try {
+        res.add(ResizeUpdateOption.valueOf(updateOption.name()));
+      } catch (Exception ignored) {
+        log.error("Incorrect option: " + updateOption);
+      }
+    }
+    return new CheckResizeOptionsResp().options(res);
   }
 }

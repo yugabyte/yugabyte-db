@@ -98,6 +98,7 @@
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+#include "yb_internal_conn.h"
 #include <assert.h>
 
 /*---------------------------------------------------------------------------
@@ -1470,6 +1471,36 @@ YbSetSysCacheTuple(Relation rel, HeapTuple tup)
 }
 
 /*
+ * Should YbPreloadCatalogCache populate the full set of catcache LIST entries?
+ *
+ * In minimal-preload mode the caller preloads only the pg_rewrite (RULERELNAME)
+ * list -- the one whose on-demand rebuild during relcache init is expensive
+ * (see YbPreloadCatalogCache). This function decides whether to additionally
+ * preload the rest.
+ *
+ * - Outside minimal-preload mode: yes, always.
+ * - In minimal-preload mode: only if the current backend's YbInternalConnKind
+ *   descriptor opts in via preload_lists_in_minimal_mode. The relcache-init
+ *   builder is the one kind that opts in -- it is transient and needs its
+ *   lists while building the relcache init file. Other minimal-preload kinds
+ *   leave the remaining lists (notably pg_proc's by-name list, which must be
+ *   complete for correctness) to be built on demand from a full
+ *   SearchCatCacheList scan.
+ */
+static bool
+YbShouldPreloadCatcacheLists(void)
+{
+	YbInternalConnKind kind;
+
+	if (!YbUseMinimalCatalogCachesPreload())
+		return true;
+
+	kind = YbLookupInternalConnKindByBackendType(MyBackendType);
+	return kind != YB_INTERNAL_CONN_KIND_NONE &&
+		YbInternalConnKindDescriptors[kind].preload_lists_in_minimal_mode;
+}
+
+/*
  * In YugaByte mode preload the given cache with data from master.
  * If no index cache is associated with the given cache (most of the time), its id should be -1.
  */
@@ -1507,12 +1538,13 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 			SetCatCacheTuple(idx_cache, ntp, RelationGetDescr(relation));
 
 		/*
-		 * In minimal preload mode the scan above only includes system rows,
-		 * so any cached list built here would be missing user-defined
-		 * entries. Skip the list preloading entirely and let the lists be
-		 * built on demand from a full catalog scan in SearchCatCacheList.
+		 * In minimal-preload mode preload only the pg_rewrite (RULERELNAME)
+		 * list, which is safe to preload because we throw it away when we
+		 * are done preloading the corresponding relcache entry. The other
+		 * catcache lists are unsafe to preload in minimal mode because they
+		 * may be incomplete.
 		 */
-		if (YbUseMinimalCatalogCachesPreload())
+		if (cache_id != RULERELNAME && !YbShouldPreloadCatcacheLists())
 			continue;
 
 		bool		is_add_to_list_required = true;

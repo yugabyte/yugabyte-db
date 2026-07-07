@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"
 )
@@ -30,6 +31,8 @@ var (
 		"password":  true,
 	}
 	userVariables = []string{"LOGNAME", "USER", "LNAME", "USERNAME"}
+	// Max wait time after SIGTERM before SIGKILL.
+	processGroupKillGracePeriod = 3 * time.Second
 )
 
 // CommandInfo holds command information.
@@ -72,15 +75,74 @@ func (cmdInfo *CommandInfo) RunCmd(ctx context.Context) error {
 	util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
 		userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
 	env, _ := userEnv(ctx, userDetail)
-	cmd := createCmd(ctx, userDetail, cmdInfo.Cmd, cmdInfo.Args...)
-	cmd.Env = append(cmd.Env, env...)
+	// Handle cancellation in runCommand. Otherwise, when the context is cancelled,
+	// the command is killed without cleaning up the process group.
+	cmd := createCmd(context.WithoutCancel(ctx), userDetail, env, cmdInfo.Cmd, cmdInfo.Args...)
 	if cmdInfo.StdOut != nil {
 		cmd.Stdout = cmdInfo.StdOut
 	}
 	if cmdInfo.StdErr != nil {
 		cmd.Stderr = cmdInfo.StdErr
 	}
-	return cmd.Run()
+	return runCommand(ctx, cmd)
+}
+
+// Method runCommand starts cmd in its own process group and kills the entire group
+// when the context is cancelled so forked grandchildren are not left behind.
+func runCommand(ctx context.Context, cmd *exec.Cmd) error {
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Setpgid = true
+	// Start without waiting for it to exit.
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	pid := cmd.Process.Pid
+	waitComplete := make(chan struct{})
+	defer close(waitComplete)
+	watchContextCancel(ctx, pid, waitComplete)
+	return cmd.Wait()
+}
+
+// watchContextCancel watches the context cancellation and kills the process group gracefully.
+func watchContextCancel(ctx context.Context, pid int, waitComplete <-chan struct{}) {
+	if pid <= 0 || ctx.Done() == nil {
+		// It is not cancellable.
+		return
+	}
+	go func() {
+		select {
+		case <-ctx.Done():
+			// Context is cancelled, kill the process group gracefully first.
+			killProcessGroup(ctx, pid, syscall.SIGTERM)
+			timer := time.NewTimer(processGroupKillGracePeriod)
+			defer timer.Stop()
+			select {
+			case <-waitComplete:
+				// Command has already exited.
+			case <-timer.C:
+				killProcessGroup(ctx, pid, syscall.SIGKILL)
+			}
+		case <-waitComplete:
+			// Command has already exited.
+		}
+	}()
+}
+
+// killProcessGroup kills the process group with the given PID and signal.
+func killProcessGroup(ctx context.Context, pid int, sig syscall.Signal) {
+	if pid <= 0 {
+		return
+	}
+	// Negative PID targets the process group created via Setpgid.
+	if err := syscall.Kill(-pid, sig); err != nil {
+		util.FileLogger().Warnf(ctx,
+			"Failed to signal process group %d with %v: %v; falling back to pid",
+			pid, sig, err)
+		// Kill only this process if group kill failed
+		syscall.Kill(pid, sig)
+	}
 }
 
 // RunSteps runs a list of command steps with the specified user and logs the output.
@@ -111,7 +173,7 @@ func RunSteps(
 			if logOut != nil {
 				logOut.WriteLine("Running step: %s", cmdInfo.Desc)
 			}
-			err := cmd.Run()
+			err := runCommand(ctx, cmd)
 			if err != nil {
 				errMsg := fmt.Sprintf("%s - %s", err.Error(), cmdInfo.StdErr.String())
 				util.FileLogger().
@@ -182,6 +244,7 @@ func RunShellSteps(
 func createCmd(
 	ctx context.Context,
 	userDetail *util.UserDetail,
+	env []string,
 	name string,
 	arg ...string,
 ) *exec.Cmd {
@@ -196,6 +259,9 @@ func createCmd(
 	pwd := userDetail.User.HomeDir
 	if pwd == "" {
 		pwd = "/tmp"
+	}
+	if len(env) > 0 {
+		cmd.Env = append(cmd.Env, env...)
 	}
 	cmd.Env = append(cmd.Env, fmt.Sprintf("PWD=%s", pwd))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("HOME=%s", pwd))
@@ -291,8 +357,9 @@ func createCmds(
 		userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
 	env, _ := userEnv(ctx, userDetail)
 	for _, info := range infos {
-		cmd := createCmd(ctx, userDetail, info.Cmd, info.Args...)
-		cmd.Env = append(cmd.Env, env...)
+		// Handle cancellation in runCommand. Otherwise, when the context is cancelled,
+		// the command is killed without cleaning up the process group.
+		cmd := createCmd(context.WithoutCancel(ctx), userDetail, env, info.Cmd, info.Args...)
 		if info.StdOut != nil {
 			cmd.Stdout = info.StdOut
 		}
@@ -314,7 +381,7 @@ func userEnv(
 	// Approximate capacity of 100.
 	env := make([]string, 0, 100)
 	// Interactive shell to source ~/.bashrc.
-	cmd := createCmd(ctx, userDetail, "bash")
+	cmd := createCmd(ctx, userDetail, os.Environ(), "bash")
 	// Create a pseudo tty (non stdin) to act like SSH login.
 	// Otherwise, the child process is stopped because it is a background process.
 	ptty, err := pty.Start(cmd)

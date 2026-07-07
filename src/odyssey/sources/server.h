@@ -60,6 +60,12 @@ struct od_server {
 	od_list_t yb_prep_stmt_lru;
 	int yb_prep_stmt_count;
 
+	/*
+	 * YB: Stores prepared statements that were deallocated on backend,
+	 * but deferred eviction from server's prepared statement cache.
+	 */
+	od_hashmap_t *yb_close_prep_stmts;
+
 	/* YB: Outstanding parse queue for tracking unacknowledged parse operations */
 	yb_od_parse_queue_t parse_queue;
 
@@ -174,8 +180,11 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	if (reserve_prep_stmts) {
 		server->prep_stmts =
 			od_hashmap_create(OD_SERVER_DEFAULT_HASHMAP_SZ);
+		server->yb_close_prep_stmts =
+			od_hashmap_create(OD_SERVER_DEFAULT_HASHMAP_SZ);
 	} else {
 		server->prep_stmts = NULL;
+		server->yb_close_prep_stmts = NULL;
 	}
 }
 
@@ -197,6 +206,9 @@ static inline void od_server_free(od_server_t *server)
 		yb_od_parse_queue_free(&server->parse_queue);
 		if (server->prep_stmts) {
 			od_hashmap_free(server->prep_stmts);
+		}
+		if (server->yb_close_prep_stmts) {
+			od_hashmap_free(server->yb_close_prep_stmts);
 		}
 		yb_kiwi_vars_free(&server->yb_vars_default);
 		yb_kiwi_vars_free(&server->yb_vars_session);

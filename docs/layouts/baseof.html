@@ -23,7 +23,6 @@
           <div class="content-child">
             <div>
               <main class="content-area">
-                {{- partial "version-banner.html" . -}}
                 {{- if and (not .Site.Params.ui.breadcrumb_disable) (not .Params.breadcrumbDisable) -}}
                   {{- partial "breadcrumb.html" . -}}
                 {{- end -}}

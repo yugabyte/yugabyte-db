@@ -22,6 +22,8 @@ import api.v2.models.ClusterStorageSpec.StorageTypeEnum;
 import api.v2.models.NodeProxyConfig;
 import api.v2.models.PerProcessNodeSpec;
 import api.v2.models.UniverseResizeNodesCluster;
+import api.v2.models.UniverseUpdateProxyConfigClustersInner;
+import api.v2.models.UpdateProxyConfigSpec;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -51,9 +53,11 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
+import org.mapstruct.factory.Mappers;
 
 @Mapper(config = CentralConfig.class)
 public interface UserIntentMapper {
+  public static UserIntentMapper INSTANCE = Mappers.getMapper(UserIntentMapper.class);
 
   default ClusterNodeSpec userIntentToClusterNodeSpec(
       UniverseDefinitionTaskParams.UserIntent userIntent) {
@@ -138,6 +142,9 @@ public interface UserIntentMapper {
     @ValueMapping(target = "PREMIUM_LRS", source = "Premium_LRS"),
     @ValueMapping(target = "PREMIUMV2_LRS", source = "PremiumV2_LRS"),
     @ValueMapping(target = "ULTRASSD_LRS", source = "UltraSSD_LRS"),
+    @ValueMapping(target = "OCI_BALANCED", source = "OCI_Balanced"),
+    @ValueMapping(target = "OCI_HIGHERPERFORMANCE", source = "OCI_HigherPerformance"),
+    @ValueMapping(target = "OCI_LOWERCOST", source = "OCI_LowerCost"),
     @ValueMapping(target = "LOCAL", source = "Local"),
     @ValueMapping(target = "IO2", source = "IO2"),
   })
@@ -158,11 +165,9 @@ public interface UserIntentMapper {
         toV2EnableExposingServiceEnum(userIntent.enableExposingService));
     clusterNetworkingSpec.setProxyConfig(toV2ProxyConfig(userIntent.getProxyConfig()));
     // per az
-    if (userIntent.getUserIntentOverrides() != null
-        && userIntent.getUserIntentOverrides().getAZProxyConfigMap() != null) {
+    if (userIntent.getAZProxyConfigMap() != null) {
       Map<String, AvailabilityZoneNetworking> azNetworking = new HashMap<>();
       userIntent
-          .getUserIntentOverrides()
           .getAZProxyConfigMap()
           .forEach(
               (azUuid, azProxyConfig) -> {
@@ -297,6 +302,18 @@ public interface UserIntentMapper {
     return userIntent;
   }
 
+  default UserIntent toV1UserIntentFromUniverseUpdateProxyConfigClustersInner(
+      UniverseUpdateProxyConfigClustersInner source, @MappingTarget UserIntent userIntent) {
+    if (source == null) {
+      return userIntent;
+    }
+    if (userIntent == null) {
+      userIntent = new UniverseDefinitionTaskParams.UserIntent();
+    }
+    fillUserIntentFromUpdateProxyConfigSpec(source.getNetworkingSpec(), userIntent);
+    return userIntent;
+  }
+
   default UserIntent overwriteUserIntentFromClusterAddSpec(
       ClusterAddSpec clusterAddSpec, @MappingTarget UserIntent userIntent) {
     if (clusterAddSpec == null) {
@@ -361,6 +378,9 @@ public interface UserIntentMapper {
         overrides.setPerProcess(perProcess);
       }
       perProcess.put(ServerType.MASTER, masterOverrides);
+      // Our code is using masterInstanceType and masterDeviceInfo now instead of overrides.
+      userIntent.masterInstanceType = masterOverrides.getInstanceType();
+      userIntent.masterDeviceInfo = masterOverrides.getDeviceInfo();
     }
     if (clusterNodeSpec.getTserver() != null) {
       UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
@@ -636,6 +656,34 @@ public interface UserIntentMapper {
     return userIntent;
   }
 
+  default UserIntent fillUserIntentFromUpdateProxyConfigSpec(
+      UpdateProxyConfigSpec updateProxyConfigSpec, UserIntent userIntent) {
+    if (updateProxyConfigSpec == null) {
+      return userIntent;
+    }
+    if (updateProxyConfigSpec.getProxyConfig() != null) {
+      userIntent.setProxyConfig(toV1ProxyConfig(updateProxyConfigSpec.getProxyConfig()));
+    }
+    if (updateProxyConfigSpec.getAzNetworking() != null) {
+      if (userIntent.getUserIntentOverrides() == null) {
+        userIntent.setUserIntentOverrides(new UserIntentOverrides());
+      }
+      updateProxyConfigSpec
+          .getAzNetworking()
+          .forEach(
+              (azUuid, azProxyConfig) -> {
+                if (azProxyConfig != null) {
+                  userIntent
+                      .getUserIntentOverrides()
+                      .updateAZOverride(
+                          UUID.fromString(azUuid),
+                          azo -> azo.setProxyConfig(toV1ProxyConfig(azProxyConfig)));
+                }
+              });
+    }
+    return userIntent;
+  }
+
   default UserIntent fillUserIntentFromClusterProviderSpec(
       ClusterProviderSpec clusterProviderSpec, UserIntent userIntent) {
     if (clusterProviderSpec == null) {
@@ -671,6 +719,12 @@ public interface UserIntentMapper {
     List<UUID> regionList = clusterProviderEditSpec.getRegionList();
     if (regionList != null) {
       userIntent.regionList = new ArrayList<UUID>(regionList);
+    }
+    if (clusterProviderEditSpec.getImageBundleUuid() != null) {
+      userIntent.imageBundleUUID = clusterProviderEditSpec.getImageBundleUuid();
+    }
+    if (clusterProviderEditSpec.getAwsInstanceProfile() != null) {
+      userIntent.awsArnString = clusterProviderEditSpec.getAwsInstanceProfile();
     }
     return userIntent;
   }

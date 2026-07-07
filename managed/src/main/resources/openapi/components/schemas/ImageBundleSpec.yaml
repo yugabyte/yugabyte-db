@@ -1,0 +1,15 @@
+title: ImageBundleSpec
+description: |
+  User-provided image bundle configuration for a provider.
+type: object
+properties:
+  name:
+    description: Image bundle display name.
+    type: string
+    example: yb-aarch64-default
+  details:
+    description: 'Architecture, regions, SSH defaults, and per-region image overrides.'
+    $ref: "./ImageBundleDetails.yaml"
+  use_as_default:
+    description: Whether this bundle is the default for new clusters on the provider.
+    type: boolean

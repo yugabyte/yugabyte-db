@@ -118,7 +118,7 @@ DEFINE_RUNTIME_bool(enable_namespace_snapshot_workflow, true,
     "part of snapshot");
 
 DEFINE_test_flag(double, crash_during_sys_catalog_restoration, 0.0,
-                 "Probability of crash during the RESTORE_SYS_CATALOG phase.");
+    "Probability of crash during the RESTORE_SYS_CATALOG phase.");
 
 DEFINE_test_flag(bool, import_snapshot_failed, false,
     "Return a error from ImportSnapshotMeta RPC for testing the RPC failure.");
@@ -161,6 +161,12 @@ using client::internal::RemoteTabletServer;
 using client::internal::RemoteTabletPtr;
 
 namespace master {
+
+namespace {
+Status PrepareVectorIndexesIfNecessary(
+    CatalogManager& catalog_manager, const TableInfoPtr& table, bool is_clone,
+    const LeaderEpoch& epoch);
+}  // namespace
 
 Result<TableDescription> TableWithTabletsEntries::DescribeTable(
     const TableId& table_id, const NamespaceInfoPtr& namespace_info) const {
@@ -2054,7 +2060,8 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
 Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
                                         ExternalTableSnapshotData* table_data,
                                         const LeaderEpoch& epoch,
-                                        bool is_clone) {
+                                        bool is_clone,
+                                        bool tablet_partitions_changed) {
   DCHECK_EQ(table->id(), table_data->new_table_id);
   if (table->GetTableType() != PGSQL_TABLE_TYPE) {
     return STATUS_FORMAT(InvalidArgument,
@@ -2171,9 +2178,10 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
 
     // Change table's partition schema to the external snapshot's.
     auto& table_pb = table_lock.mutable_data()->pb;
-    table_pb.mutable_partition_schema()->CopyFrom(
-        table_data->table_entry_pb.partition_schema());
-    table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
+    table_pb.mutable_partition_schema()->CopyFrom(table_data->table_entry_pb.partition_schema());
+    if (tablet_partitions_changed) {
+      table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
+    }
 
     // Remove old tablets from TableInfo.
     VERIFY_RESULT(table->RemoveTablets(old_tablets));
@@ -2223,44 +2231,7 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
     tablegroup->ReplaceTablet(new_tablets[0]);
   }
 
-  // If this table is indexed by any vector indexes, update the vector indexes to the PREPARING
-  // state. They will have their tablet pointers fixed in UpdateColocatedUserTableInfo.
-  auto vector_index_ids = table->GetVectorIndexIds();
-  std::vector<TableInfoPtr> vector_indexes_to_prepare;
-  vector_indexes_to_prepare.reserve(vector_index_ids.size());
-  for (const auto& vector_index_id : vector_index_ids) {
-    vector_indexes_to_prepare.push_back(VERIFY_RESULT(FindTableById(vector_index_id)));
-  }
-  // Sort by table id to acquire write locks in the canonical order for multi-table locking.
-  std::sort(
-      vector_indexes_to_prepare.begin(), vector_indexes_to_prepare.end(),
-      [](const TableInfoPtr& lhs, const TableInfoPtr& rhs) { return lhs->id() < rhs->id(); });
-  std::vector<TableInfo::WriteLock> vector_index_locks;
-  vector_index_locks.reserve(vector_indexes_to_prepare.size());
-  std::vector<TableInfoPtr> vector_indexes_to_upsert;
-  vector_indexes_to_upsert.reserve(vector_indexes_to_prepare.size());
-  for (auto& vector_index : vector_indexes_to_prepare) {
-    auto vi_lock = vector_index->LockForWrite();
-    if (vi_lock->pb.state() != SysTablesEntryPB::RUNNING) {
-      LOG_WITH_FUNC(WARNING)
-          << "Skipping PREPARING transition for vector index " << vector_index->ToString()
-          << "; current state is " << SysTablesEntryPB_State_Name(vi_lock->pb.state());
-      continue;
-    }
-    vi_lock.mutable_data()->pb.set_state(SysTablesEntryPB::PREPARING);
-    vector_index_locks.push_back(std::move(vi_lock));
-    vector_indexes_to_upsert.push_back(vector_index);
-  }
-  if (!vector_indexes_to_upsert.empty()) {
-    RETURN_NOT_OK(sys_catalog_->Upsert(epoch, vector_indexes_to_upsert));
-    for (auto& lock : vector_index_locks) {
-      lock.Commit();
-    }
-    LOG_WITH_FUNC(INFO) << "Transitioned " << vector_indexes_to_upsert.size()
-                        << " vector indexes of table " << table->id() << " to PREPARING";
-  }
-
-  return Status::OK();
+  return PrepareVectorIndexesIfNecessary(*this, table, is_clone, epoch);
 }
 
 // Helper function for ImportTableEntry.
@@ -2436,28 +2407,27 @@ Status CatalogManager::ImportTableEntry(
 
     if (table_data->num_tablets > 0) {
       if (meta.table_type() == TableType::PGSQL_TABLE_TYPE) {
-        bool needs_repartition = false;
-        if (new_num_tablets != table_data->num_tablets || is_clone) {
-          needs_repartition = true;
-        } else {
+        bool tablet_partitions_changed = new_num_tablets != table_data->num_tablets;
+        if (!tablet_partitions_changed) {
           // Check if partition boundaries match.  Only check the starts; assume the ends are fine.
-          size_t i = 0;
-          vector<PartitionKey> partition_starts(table_data->num_tablets);
+          std::vector<PartitionKey> partition_starts;
+          partition_starts.reserve(table_data->num_tablets);
           for (const auto& [_, partition_pb] : table_data->old_tablets) {
-            partition_starts[i] = partition_pb.partition_key_start();
+            auto i = partition_starts.size();
+            partition_starts.push_back(partition_pb.partition_key_start());
             LOG_IF(DFATAL, (i == 0) ? partition_starts[i] != ""
                                     : partition_starts[i] <= partition_starts[i-1])
                 << "Wrong partition key start: " << b2a_hex(partition_starts[i]);
-            i++;
           }
           if (!table->HasPartitions(partition_starts)) {
             LOG_WITH_FUNC(INFO) << "Partition boundaries mismatch for table " << table->id();
-            needs_repartition = true;
+            tablet_partitions_changed = true;
           }
         }
 
-        if (needs_repartition) {
-          RETURN_NOT_OK(RepartitionTable(table, table_data, epoch, is_clone));
+        if (tablet_partitions_changed || is_clone) {
+          RETURN_NOT_OK(
+              RepartitionTable(table, table_data, epoch, is_clone, tablet_partitions_changed));
         }
       } else { // not PGSQL_TABLE_TYPE
         if (new_num_tablets != table_data->num_tablets) {
@@ -2547,15 +2517,26 @@ Status CatalogManager::ImportTableEntry(
       }
     }
 
-    // Restore partition key version.
-    if (persisted_schema.table_properties().partitioning_version() !=
-        schema.table_properties().partitioning_version()) {
+    // Restore table properties fixed at create time (partitioning_version,
+    // owns_vector_reverse_mapping) from backup snapshot metadata.
+    const bool restore_partitioning_version =
+        persisted_schema.table_properties().partitioning_version() !=
+        schema.table_properties().partitioning_version();
+    const bool restore_owns_vector_reverse_mapping =
+        persisted_schema.table_properties().owns_vector_reverse_mapping() !=
+        schema.table_properties().owns_vector_reverse_mapping();
+    if (restore_partitioning_version || restore_owns_vector_reverse_mapping) {
       auto l = table->LockForWrite();
-      auto table_props = l.mutable_data()->pb.mutable_schema()->mutable_table_properties();
-      table_props->set_partitioning_version(schema.table_properties().partitioning_version());
+      auto* table_props = l.mutable_data()->pb.mutable_schema()->mutable_table_properties();
+      if (restore_partitioning_version) {
+        table_props->set_partitioning_version(schema.table_properties().partitioning_version());
+      }
+      if (restore_owns_vector_reverse_mapping) {
+        table_props->set_owns_vector_reverse_mapping(
+            schema.table_properties().owns_vector_reverse_mapping());
+      }
 
       l.mutable_data()->pb.set_version(l->pb.version() + 1);
-      // Update sys-catalog with the new table schema.
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
       l.Commit();
       notify_ts_for_schema_change = true;
@@ -2826,6 +2807,34 @@ Status CatalogManager::UpdateColocatedUserTableInfo(
     tablet->AddTableId(table_data->new_table_id);
 
     new_tablet_lock.Commit();
+  }
+
+  // Update partition_list_version for the child table.
+  {
+    // Acquire write locks of both child and parent to block tablet splits from simultaneously
+    // updating partition_list_version.
+    std::vector<TableInfo::WriteLock> locks;
+    locks.reserve(2);
+    TableInfo::WriteLock* table_lock;
+    TableInfo::WriteLock* parent_lock;
+    if (table->id() < parent_table->id()) {
+      locks.push_back(table->LockForWrite());
+      locks.push_back(parent_table->LockForWrite());
+      table_lock = &locks[0];
+      parent_lock = &locks[1];
+    } else {
+      locks.push_back(parent_table->LockForWrite());
+      locks.push_back(table->LockForWrite());
+      parent_lock = &locks[0];
+      table_lock = &locks[1];
+    }
+    if (table_lock->data().pb.partition_list_version() !=
+        parent_lock->data().pb.partition_list_version()) {
+      table_lock->mutable_data()->pb.set_partition_list_version(
+          parent_lock->data().pb.partition_list_version());
+      RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
+      table_lock->Commit();
+    }
   }
 
   // Send AsyncAddTableToTablet so each tserver registers this colocated secondary table on the new
@@ -3831,6 +3840,67 @@ docdb::HistoryCutoff CatalogManager::AllowedHistoryCutoffProvider(
 
   return cutoff;
 }
+
+namespace {
+
+// For restores RepartitionTable creates a fresh set of tablets for the repartitioned table. If the
+// repartitioned table has vector indexes, these new tablets will not have the needed metadata. In
+// this case we must call AddTableToTablet on each vector index. Before we do so, we set each vector
+// index back to PREPARING here, to correspond to setting the indexed table to PREPARING inside
+// RepartitionTable.
+//
+// There is an early return for clones because the clone operation creates the tablets for the new
+// clone target DB by copying the source tablets at each tserver. Therefore the indexed table's
+// tablets already have all appropriate metadata for the vector index, and we do not need to call
+// AddTableToTablet for any vector indexes.
+Status PrepareVectorIndexesIfNecessary(
+    CatalogManager& catalog_manager, const TableInfoPtr& table, bool is_clone,
+    const LeaderEpoch& epoch) {
+  if (is_clone) {
+    return Status::OK();
+  }
+  // If this table is indexed by any vector indexes, update the vector indexes to the PREPARING
+  // state. Inside UpdateColocatedUserTableInfo they will have their tablet pointers fixed and we
+  // will call AddTableToTablet on them, transitioning them to the RUNNING state.
+  auto vector_index_ids = table->GetVectorIndexIds();
+  std::vector<TableInfoPtr> vector_indexes_to_prepare;
+  vector_indexes_to_prepare.reserve(vector_index_ids.size());
+  for (const auto& vector_index_id : vector_index_ids) {
+    vector_indexes_to_prepare.push_back(
+        VERIFY_RESULT(catalog_manager.FindTableById(vector_index_id)));
+  }
+  // Sort by table id to acquire write locks in the canonical order for multi-table locking.
+  std::sort(
+      vector_indexes_to_prepare.begin(), vector_indexes_to_prepare.end(),
+      [](const TableInfoPtr& lhs, const TableInfoPtr& rhs) { return lhs->id() < rhs->id(); });
+  std::vector<TableInfo::WriteLock> vector_index_locks;
+  vector_index_locks.reserve(vector_indexes_to_prepare.size());
+  std::vector<TableInfoPtr> vector_indexes_to_upsert;
+  vector_indexes_to_upsert.reserve(vector_indexes_to_prepare.size());
+  for (auto& vector_index : vector_indexes_to_prepare) {
+    auto vi_lock = vector_index->LockForWrite();
+    if (vi_lock->pb.state() != SysTablesEntryPB::RUNNING) {
+      LOG_WITH_FUNC(WARNING) << "Skipping PREPARING transition for vector index "
+                             << vector_index->ToString() << "; current state is "
+                             << SysTablesEntryPB_State_Name(vi_lock->pb.state());
+      continue;
+    }
+    vi_lock.mutable_data()->pb.set_state(SysTablesEntryPB::PREPARING);
+    vector_index_locks.push_back(std::move(vi_lock));
+    vector_indexes_to_upsert.push_back(vector_index);
+  }
+  if (vector_indexes_to_upsert.empty()) {
+    return Status::OK();
+  }
+  RETURN_NOT_OK(catalog_manager.sys_catalog()->Upsert(epoch, vector_indexes_to_upsert));
+  for (auto& lock : vector_index_locks | std::views::reverse) {
+    lock.Commit();
+  }
+  LOG_WITH_FUNC(INFO) << "Transitioned " << vector_indexes_to_upsert.size()
+                      << " vector indexes of table " << table->id() << " to PREPARING";
+  return Status::OK();
+}
+}  // namespace
 
 }  // namespace master
 }  // namespace yb

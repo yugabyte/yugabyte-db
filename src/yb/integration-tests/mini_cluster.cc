@@ -85,6 +85,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 #include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -1192,6 +1193,23 @@ Result<std::vector<tablet::TabletPeerPtr>> ListTabletActivePeers(
   return ListTabletPeers(cluster, tablet_id, [](const auto& peer) {
     return IsActive(*peer);
   });
+}
+
+std::vector<docdb::DocVectorIndexPtr> ListVectorIndexes(
+    MiniCluster* cluster, ListPeersFilter filter) {
+  std::vector<docdb::DocVectorIndexPtr> result;
+  for (const auto& peer : ListTabletPeers(cluster, filter)) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    auto list = tablet->vector_indexes().List();
+    if (!list) {
+      continue;
+    }
+    result.insert(result.end(), list->begin(), list->end());
+  }
+  return result;
 }
 
 std::vector<tablet::TabletPeerPtr> ListTableActiveTabletLeadersPeers(

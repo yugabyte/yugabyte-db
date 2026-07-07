@@ -87,20 +87,20 @@ function makeAvailabilityZonesWithNodeCount(
   };
 }
 
-/** Three AZs, three nodes (RF1 AZ_LEVEL), preferred ranks 0,1,3 — gap at rank 2. */
+/** Three AZs, three nodes (RF1 AZ_LEVEL), preferred ranks 1,2,4 — gap at rank 3. */
 function makeAvailabilityZonesPreferredGapRf1NodeLevel(
   regionCode: string
 ): NodeAvailabilityProps['availabilityZones'] {
   return {
     [regionCode]: [
-      { name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 0 },
-      { name: 'Z1', uuid: 'u-1', nodeCount: 1, preffered: 1 },
-      { name: 'Z2', uuid: 'u-2', nodeCount: 1, preffered: 3 }
+      { name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 1 },
+      { name: 'Z1', uuid: 'u-1', nodeCount: 1, preffered: 2 },
+      { name: 'Z2', uuid: 'u-2', nodeCount: 1, preffered: 4 }
     ]
   };
 }
 
-/** Build valid availabilityZones for one region with contiguous preferred ranks (0, 1, ...). */
+/** Build valid availabilityZones for one region with contiguous preferred ranks (1, 2, ...). */
 function makeValidAvailabilityZonesForRegion(
   regionCode: string,
   zoneCount: number
@@ -110,7 +110,7 @@ function makeValidAvailabilityZonesForRegion(
       name: `Z${i}`,
       uuid: `u-${i}`,
       nodeCount: 1,
-      preffered: i
+      preffered: i + 1
     }))
   };
 }
@@ -118,9 +118,9 @@ function makeValidAvailabilityZonesForRegion(
 /** Three regions (each with one AZ named Z0, uuid u-0 per makeRegion), gap in preferred ranks. */
 function makeAvailabilityZonesThreeRegionsPreferredGap(): NodeAvailabilityProps['availabilityZones'] {
   return {
-    r0: [{ name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 0 }],
-    r1: [{ name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 1 }],
-    r2: [{ name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 3 }]
+    r0: [{ name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 1 }],
+    r1: [{ name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 2 }],
+    r2: [{ name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 4 }]
   };
 }
 
@@ -301,9 +301,9 @@ describe('NodesAvailabilitySchema', () => {
       schema.validateSync({
         availabilityZones: {
           r0: [
-            { name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 0 },
-            { name: 'Z1', uuid: 'u-1', nodeCount: 1, preffered: 1 },
-            { name: 'Z2', uuid: 'u-2', nodeCount: 1, preffered: 2 }
+            { name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 1 },
+            { name: 'Z1', uuid: 'u-1', nodeCount: 1, preffered: 2 },
+            { name: 'Z2', uuid: 'u-2', nodeCount: 1, preffered: 3 }
           ]
         },
 
@@ -328,6 +328,59 @@ describe('NodesAvailabilitySchema', () => {
           r1: [{ name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 0 }]
         },
 
+        useDedicatedNodes: false
+      } as any)
+    ).toThrow();
+  });
+
+  const onPremContextLoaded = {
+    isOnPrem: true,
+    freeNodesByAzUuid: { 'u-0': 3 },
+    isOnPremNodesLoaded: true
+  };
+
+  const onPremNodeLevelResilience = {
+    ...minimalResilience,
+    [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL,
+    [RESILIENCE_FACTOR]: 1,
+    [REGIONS_FIELD]: [{ code: 'r0', name: 'R0', uuid: 'R0', latitude: 0, longitude: 0, zones: [] }] as any
+  };
+
+  it('accepts on-prem guided placement when free nodes are sufficient', () => {
+    const schema = NodesAvailabilitySchema(onPremNodeLevelResilience, onPremContextLoaded);
+    expect(() =>
+      schema.validateSync({
+        availabilityZones: {
+          r0: [{ name: 'Z0', uuid: 'u-0', nodeCount: 3, preffered: 0 }]
+        },
+        useDedicatedNodes: false
+      } as any)
+    ).not.toThrow();
+  });
+
+  it('rejects on-prem guided placement when requested nodes exceed free nodes in an AZ', () => {
+    const schema = NodesAvailabilitySchema(onPremNodeLevelResilience, onPremContextLoaded);
+    expect(() =>
+      schema.validateSync({
+        availabilityZones: {
+          r0: [{ name: 'Z0', uuid: 'u-0', nodeCount: 4, preffered: 0 }]
+        },
+        useDedicatedNodes: false
+      } as any)
+    ).toThrow();
+  });
+
+  it('blocks on-prem validation while node list is loading', () => {
+    const schema = NodesAvailabilitySchema(onPremNodeLevelResilience, {
+      isOnPrem: true,
+      freeNodesByAzUuid: {},
+      isOnPremNodesLoaded: false
+    });
+    expect(() =>
+      schema.validateSync({
+        availabilityZones: {
+          r0: [{ name: 'Z0', uuid: 'u-0', nodeCount: 3, preffered: 0 }]
+        },
         useDedicatedNodes: false
       } as any)
     ).toThrow();
@@ -433,9 +486,9 @@ describe('NodesAvailability', () => {
           nodesAvailabilitySettings: {
             availabilityZones: {
               r0: [
-                { name: 'Z0', uuid: 'u0', nodeCount: 0, preffered: 0 },
-                { name: 'Z1', uuid: 'u1', nodeCount: 1, preffered: 1 },
-                { name: 'Z2', uuid: 'u2', nodeCount: 1, preffered: 2 }
+                { name: 'Z0', uuid: 'u0', nodeCount: 0, preffered: 1 },
+                { name: 'Z1', uuid: 'u1', nodeCount: 1, preffered: 2 },
+                { name: 'Z2', uuid: 'u2', nodeCount: 1, preffered: 3 }
               ]
             },
             useDedicatedNodes: false
@@ -713,10 +766,10 @@ describe('NodesAvailability', () => {
           regions: [makeRegion('r0', 3), makeRegion('r1', 3)],
           nodesAvailabilitySettings: {
             availabilityZones: {
-              r0: [{ name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 0 }],
+              r0: [{ name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 1 }],
               r1: [
-                { name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 1 },
-                { name: 'Z1', uuid: 'u-1', nodeCount: 1, preffered: 2 }
+                { name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 2 },
+                { name: 'Z1', uuid: 'u-1', nodeCount: 1, preffered: 3 }
               ]
             },
             useDedicatedNodes: false
@@ -802,8 +855,8 @@ describe('NodesAvailability', () => {
           nodesAvailabilitySettings: {
             availabilityZones: {
               r0: [
-                { name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 0 },
-                { name: 'Z1', uuid: 'u-1', nodeCount: 1, preffered: 1 }
+                { name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 1 },
+                { name: 'Z1', uuid: 'u-1', nodeCount: 1, preffered: 2 }
               ]
             },
             nodeCountPerAz: 1,

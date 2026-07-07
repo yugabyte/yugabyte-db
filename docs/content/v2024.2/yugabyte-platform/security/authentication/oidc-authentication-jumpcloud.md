@@ -38,6 +38,24 @@ Note that the yugabyte privileged user will continue to exist as a local databas
 - [Enable YugabyteDB Anywhere authentication via OIDC](../../../administer-yugabyte-platform/oidc-authentication/)
 - [YFTT: OIDC Authentication in YSQL](https://www.youtube.com/watch?v=KJ0XV6OnAnU&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=1)
 
+## OIDC callback URI
+
+YugabyteDB Anywhere supports callback (redirect) URIs in one of the following formats:
+
+- Query (default):
+
+    `https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient`
+
+- Path:
+
+    `https://<YBA_IP_Address>/api/v1/callback/OidcClient`
+
+    Note that Path is only available in v2024.2.9.1 and later.
+
+This is where the IdP redirects after authentication.
+
+Only one format is supported at a time. To change the URI format, set the **OIDC Callback Mode** Global Runtime Configuration option (config key `yb.security.oidc_callback_mode`). Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+
 ## Set up OIDC with JumpCloud on YugabyteDB Anywhere
 
 To enable OIDC authentication with JumpCloud, you need to do the following:
@@ -64,9 +82,9 @@ To use JumpCloud for your IdP, do the following:
 
     Under **SSO > Endpoint Configuration**, configure the following:
 
-    - **Redirect URIs** - enter `https://<your-YugabyteDB-Anywhere-IP-address>/api/v1/callback?client_name=OidcClient`.
-    - **Client Authentication Type** - select **Client Secret Post**.
-    - **Login URL** - enter `https://<your-YugabyteDB-Anywhere-IP-address>/login`.
+    - **Redirect URIs**. Enter the [OIDC callback URI](#oidc-callback-uri). This is where the IdP redirects after authentication.
+    - **Client Authentication Type**. Select **Client Secret Post**.
+    - **Login URL**. Enter `https://<your-YugabyteDB-Anywhere-IP-address>/login`.
 
     Under **Attribute Mapping**, for **Standard Scopes**, select **Email** and **Profile**.
 
@@ -195,4 +213,4 @@ curl -k --location --request PUT '<server-address>/api/v1/customers/<customerUUI
 
 ## Manage users and roles
 
-{{< readfile "/stable/yugabyte-platform/security/authentication/oidc-manage-users-include.md" >}}
+{{< readfile "oidc-manage-users-include.md" >}}

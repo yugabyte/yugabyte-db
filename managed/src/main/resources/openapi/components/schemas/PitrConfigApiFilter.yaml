@@ -1,0 +1,10 @@
+title: PitrConfigApiFilter
+description: Optional filter for listing PITR configs on a universe.
+type: object
+properties:
+  dr_config_uuid:
+    description: |
+      When set, only PITR configs linked to the given disaster recovery config are returned.
+    type: string
+    format: uuid
+    example: f33e3c9b-75ab-4c30-80ad-cba85646ea39

@@ -1,12 +1,13 @@
 # Core FastAPI dependencies
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-pydantic==2.5.0
+pydantic>=2.6.0,<2.10  # docling-core 2.x requires pydantic>=2.6.0 (was ==2.5.0)
 langchain-core
 langchain-text-splitters
 langchain-openai
 langchain-community
 langchain-aws
+langchain-experimental  # SemanticChunker for embedding-driven text chunking
 
 # HTML processing
 protego  # robots.txt parser (BSD-3, by Scrapy team)
@@ -37,7 +38,13 @@ httpx==0.25.2  # For testing API endpoints
 
 # Optional: For enhanced logging and monitoring
 structlog==23.2.0
-boto3==1.34.81  # AWS SDK for Python (latest as of 2024-06)
+boto3>=1.34.131  # langchain-aws 0.2.x (langchain-core 0.3.x) requires >=1.34.131 (was ==1.34.81)
 
 # Langfuse
 langfuse>=3.0.0
+
+# finetuning
+mistune
+python-frontmatter
+
+langchain-docling==1.0.0

@@ -27,7 +27,10 @@ using std::string;
 
 DECLARE_bool(enable_qos);
 DECLARE_string(postmaster_cgroup);
+DECLARE_int32(TEST_slowdown_batcher_callback_ms);
 DECLARE_int32(TEST_slowdown_pgsql_aggregate_read_ms);
+DECLARE_int32(TEST_yb_client_num_callback_threads);
+DECLARE_uint64(refresh_waiter_timeout_ms);
 
 using namespace std::literals;
 
@@ -114,7 +117,12 @@ class PgQosCgroupsTest : public PgCgroupsTest {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_qos) = true;
-    ASSERT_OK(SetupCgroupManagement(ClearChildCgroups::kTrue));
+    // Enable the YBClient callback threadpool so server_clientcb threads
+    // actually process callbacks (default size is 0 = callbacks run inline).
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_client_num_callback_threads) = 1;
+    // Short refresh interval so wait-queue workers fire repeatedly during WaitFor.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 250;
+    ASSERT_OK(tserver::TServerCgroupManager::CgroupManagementInit(/*is_tserver=*/true));
     PgCgroupsTest::SetUp();
   }
 
@@ -201,6 +209,53 @@ TEST_F_EX(PgCgroupsTest, TestQosWrite, PgQosCgroupsTest) {
   ASSERT_OK(WaitFor([&] {
     return CheckThreadIdsForThreadName(cgroup, "TabletServer_pool_").ok();
   }, 5s, "Wait for RPC servicer thread in database cgroup"));
+}
+
+// Verify that wait-queue worker threads for lock-contention tasks appear in the per-DB cgroup.
+TEST_F_EX(PgCgroupsTest, TestQosWaitQueue, PgQosCgroupsTest) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto& cgroup = ASSERT_RESULT_REF(db_cgroup(conn1));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test (id INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test VALUES (1)"));
+
+  // conn1 holds the row's intent lock open in an active transaction.
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("UPDATE test SET id = 2"));
+
+  // conn2 issues a conflicting UPDATE that will block in the wait queue until conn1 commits.
+  std::jthread t{[&conn2] {
+    ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn2.Execute("UPDATE test SET id = 3"));
+    ASSERT_OK(conn2.CommitTransaction());
+  }};
+
+  ASSERT_OK(WaitFor([&] {
+    return CheckThreadIdsForThreadName(cgroup, "wait-queue_").ok();
+  }, 10s, "Wait for wait-queue thread in per-DB cgroup"));
+
+  // Release the intent lock so conn2 can complete.
+  ASSERT_OK(conn1.CommitTransaction());
+}
+
+// Verify that server_clientcb threads for batcher callbacks appear in the per-DB cgroup.
+TEST_F_EX(PgCgroupsTest, TestQosCallbackPool, PgQosCgroupsTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto& cgroup = ASSERT_RESULT_REF(db_cgroup(conn));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test (id INT NOT NULL)"));
+
+  // Slow down each batcher callback so the server_clientcb thread remains observable.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_batcher_callback_ms) = 5'000;
+
+  std::jthread t{[&conn] {
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 1000)"));
+  }};
+
+  ASSERT_OK(WaitFor([&] {
+    return CheckThreadIdsForThreadName(cgroup, "server_clientcb").ok();
+  }, 10s, "Wait for server_clientcb thread in per-DB cgroup"));
 }
 
 } // namespace yb::pgwrapper

@@ -2,12 +2,24 @@
   "dbVersions":
   [
     {
-      "series": "v2025.2",
+      "series": "v2026.1",
       "alias": "stable",
+      "display": "v2026.1 (STS)",
+      "version": "2026.1.0.0",
+      "versionShort": "2026.1.0",
+      "appVersion": "2026.1.0.0-b118",
+      "isStable": true,
+      "isSTS": true,
+      "initialRelease": "2026-06-29",
+      "endOfMaintenance": "2027-06-29",
+      "endOfLife": "2028-12-29"
+    },
+    {
+      "series": "v2025.2",
       "display": "v2025.2 (LTS)",
-      "version": "2025.2.3.1",
-      "versionShort": "2025.2.3",
-      "appVersion": "2025.2.3.1-b2",
+      "version": "2025.2.4.0",
+      "versionShort": "2025.2.4",
+      "appVersion": "2025.2.4.0-b122",
       "isStable": true,
       "isLTS": true,
       "initialRelease": "2025-12-11",

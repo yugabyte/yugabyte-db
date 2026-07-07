@@ -20,10 +20,11 @@
 #include "yb/server/server_base_options.h"
 
 #include "yb/util/net/net_util.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
+class Cgroup;
 class FsManager;
 
 namespace server {
@@ -35,6 +36,8 @@ struct ProcessWrapperCommonConfig {
   std::string certs_for_client_dir;
   std::string cert_base_name;
   bool enable_tls = false;
+
+  Cgroup* cgroup = nullptr;
 
   Status SetSslConf(const server::ServerBaseOptions& options, FsManager& fs_manager);
 };

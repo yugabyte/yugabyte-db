@@ -720,22 +720,23 @@ public class AccessManager extends DevopsBase {
     return universe.getUniverseDetails().clusters.stream()
         .noneMatch(
             cluster -> {
-              String keyCode = cluster.userIntent.accessKeyCode;
-              UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
-              if (!StringUtils.isEmpty(keyCode)) {
-                AccessKeyId id = AccessKeyId.create(providerUUID, keyCode);
-                AccessKey accessKey = allAccessKeysMap.get(id);
-                String keyFilePath = accessKey.getKeyInfo().privateKey;
-                try {
-                  String permissions =
-                      PosixFilePermissions.toString(
-                          Files.getPosixFilePermissions(Paths.get(keyFilePath)));
-                  if (!permissions.equals(PEM_PERMISSIONS)) {
+              for (UUID providerUUID : cluster.userIntent.getAllProviderUUIDs()) {
+                String keyCode = cluster.userIntent.getAccessKeyCodeForProvider(providerUUID);
+                if (!StringUtils.isEmpty(keyCode)) {
+                  AccessKeyId id = AccessKeyId.create(providerUUID, keyCode);
+                  AccessKey accessKey = allAccessKeysMap.get(id);
+                  String keyFilePath = accessKey.getKeyInfo().privateKey;
+                  try {
+                    String permissions =
+                        PosixFilePermissions.toString(
+                            Files.getPosixFilePermissions(Paths.get(keyFilePath)));
+                    if (!permissions.equals(PEM_PERMISSIONS)) {
+                      return true;
+                    }
+                  } catch (IOException e) {
+                    log.error("Error while fetching permissions of access key: {}", keyFilePath, e);
                     return true;
                   }
-                } catch (IOException e) {
-                  log.error("Error while fetching permissions of access key: {}", keyFilePath, e);
-                  return true;
                 }
               }
               return false;

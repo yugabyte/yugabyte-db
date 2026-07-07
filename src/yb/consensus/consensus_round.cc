@@ -40,6 +40,10 @@ Status ConsensusRound::NotifyAddedToLeader(const OpId& op_id, const OpId& commit
   return callback_->AddedToLeader(op_id, committed_op_id);
 }
 
+void ConsensusRound::NotifySubmittedToLeaderQueue() {
+  callback_->SubmittedToLeaderQueue();
+}
+
 void ConsensusRound::NotifyReplicationFinished(
     const Status& status, int64_t leader_term, OpIds* applied_op_ids) {
   bool expected = false;

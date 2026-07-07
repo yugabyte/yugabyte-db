@@ -374,6 +374,15 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   uint64_t GetSharedMemoryPostgresAuthKey();
 
+  // Opens an internal (yb-tserver-key authenticated) libpq connection to the local postgres.
+  // The connect retry loop is aborted if the tserver starts shutting down, so these connections
+  // never keep a shutdown blocked on a doomed connect (see the definition for details).
+  Result<pgwrapper::PGConn> CreateInternalPGConn(
+      const std::string& database_name, std::string_view user = kDefaultInternalPgUser,
+      bool simple_query_protocol = false,
+      const std::optional<CoarseTimePoint>& deadline = std::nullopt,
+      std::string_view yb_internal_conn_kind = {}) override;
+
   SchemaVersion GetMinXClusterSchemaVersion(const TableId& table_id,
       const ColocationId& colocation_id) const;
 
@@ -461,6 +470,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status ClearMetacache(const std::string& namespace_id) override;
 
+  void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
+
   Status ClearYCQLMetaDataCache() override;
 
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
@@ -503,10 +514,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Result<std::unordered_set<std::string>> GetFlagsForServer() const override;
 
   void SetCronLeaderLease(MonoTime cron_leader_lease_end);
-
-  Result<pgwrapper::PGConn> CreateInternalPGConn(
-      const std::string& database_name, bool simple_query_protocol = false,
-      const std::optional<CoarseTimePoint>& deadline = std::nullopt) override;
 
   std::atomic<bool> initted_{false};
 

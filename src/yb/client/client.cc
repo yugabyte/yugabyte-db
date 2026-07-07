@@ -255,6 +255,11 @@ DEFINE_RUNTIME_int32(backfill_index_client_rpc_timeout_ms, kDefaultBackfillIndex
     "Timeout for BackfillIndex RPCs from client to master.");
 TAG_FLAG(backfill_index_client_rpc_timeout_ms, advanced);
 
+DEFINE_NON_RUNTIME_int32(TEST_yb_client_num_callback_threads, 0,
+    "When > 0, overrides the YBClient callback threadpool size. "
+    "Used in tests that need server_clientcb threads to actually process callbacks.");
+TAG_FLAG(TEST_yb_client_num_callback_threads, unsafe);
+
 DEFINE_RUNTIME_int32(ycql_num_tablets, -1,
     "The number of tablets per YCQL table. Default value is -1. "
     "Colocated tables are not affected. "
@@ -281,7 +286,7 @@ DEFINE_RUNTIME_int32(ysql_num_tablets, 1,
 
 // Non-runtime because pggate uses it.
 DEFINE_NON_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms,
-    40000,
+    20000,
     "WaitForYsqlBackendsCatalogVersion client-to-master RPC timeout. Specifically, both the "
     "postgres-to-tserver and tserver-to-master RPC timeout.");
 TAG_FLAG(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms, advanced);
@@ -493,6 +498,9 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger,
   c->data_->wait_for_leader_election_on_init_ = data_->wait_for_leader_election_on_init_;
 
   auto callback_threadpool_size = data_->threadpool_size_;
+  if (callback_threadpool_size == 0 && FLAGS_TEST_yb_client_num_callback_threads > 0) {
+    callback_threadpool_size = FLAGS_TEST_yb_client_num_callback_threads;
+  }
   if (callback_threadpool_size == YBClientBuilder::Data::kUseNumReactorsAsNumThreads) {
     callback_threadpool_size = c->data_->messenger_->num_reactors();
   }
@@ -1593,7 +1601,8 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     const CDCSDKDynamicTablesOption& dynamic_tables_option,
     uint64_t *consistent_snapshot_time_out,
     const std::optional<ReplicationSlotLsnType>& lsn_type,
-    const std::optional<ReplicationSlotOrderingMode>& ordering_mode) {
+    const std::optional<ReplicationSlotOrderingMode>& ordering_mode,
+    const std::vector<TableId>& bound_table_ids) {
   CreateCDCStreamRequestPB req;
 
   if (populate_namespace_id_as_table_id) {
@@ -1625,6 +1634,12 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
   }
   req.mutable_cdcsdk_stream_create_options()->set_cdcsdk_dynamic_tables_option(
       dynamic_tables_option);
+  if (!bound_table_ids.empty()) {
+    auto* bound = req.mutable_cdcsdk_stream_create_options()->mutable_bound_table_ids();
+    for (const auto& id : bound_table_ids) {
+      bound->add_table_ids(id);
+    }
+  }
 
   CreateCDCStreamResponsePB resp;
   deadline = PatchAdminDeadline(deadline);
@@ -2120,6 +2135,12 @@ void YBClient::ReleaseObjectLocksGlobalAsync(
   data_->ReleaseObjectLocksGlobalAsync(this, request, deadline, callback);
 }
 
+void YBClient::WaitForLockersMultipleGlobalAsync(
+    const master::WaitForLockersMultipleGlobalRequestPB& request, StdStatusCallback callback,
+    CoarseTimePoint deadline) {
+  data_->WaitForLockersMultipleGlobalAsync(this, request, deadline, std::move(callback));
+}
+
 void YBClient::GetTableLocations(
     const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
     PartitionsOnly partitions_only, GetTableLocationsCallback callback) {
@@ -2541,6 +2562,27 @@ rpc::ProxyCache& YBClient::proxy_cache() const {
 
 ThreadPool *YBClient::callback_threadpool() {
   return data_->use_threadpool_for_callbacks_ ? data_->threadpool_.get() : nullptr;
+}
+
+void YBClient::SetCallbackCgroupProvider(std::function<Cgroup*(uint64_t)> provider) {
+  data_->callback_cgroup_provider_ = std::move(provider);
+}
+
+ThreadPoolToken* YBClient::GetOrCreateCallbackToken(uint64_t tag) {
+  if (!tag || !data_->callback_cgroup_provider_) {
+    return nullptr;
+  }
+  auto* cgroup = data_->callback_cgroup_provider_(tag);
+  if (!cgroup) {
+    return nullptr;
+  }
+  std::lock_guard lock(data_->per_tag_tokens_mutex_);
+  auto [it, inserted] = data_->per_tag_tokens_.try_emplace(tag);
+  if (inserted) {
+    it->second = data_->threadpool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
+    it->second->SetTaskCgroup(cgroup);
+  }
+  return it->second.get();
 }
 
 const std::string& YBClient::proxy_uuid() const {
@@ -3224,6 +3266,10 @@ void YBClient::ClearAllMetaCachesOnServer() {
 
 Status YBClient::ClearMetacache(const std::string& namespace_id) {
   return data_->meta_cache_->ClearCacheEntries(namespace_id);
+}
+
+void YBClient::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {
+  data_->meta_cache_->MarkTServersAsFollowers(ts_uuids);
 }
 
 template <class PB>

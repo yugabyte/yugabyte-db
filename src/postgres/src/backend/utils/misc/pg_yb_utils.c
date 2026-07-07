@@ -89,6 +89,7 @@
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_logical_client_version.h"
 #include "catalog/yb_type.h"
+#include "commands/async.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/trigger.h"
@@ -97,6 +98,7 @@
 #include "common/ip.h"
 #include "common/pg_yb_common.h"
 #include "common/pg_yb_param_status_flags.h"
+#include "executor/execdesc.h"
 #include "executor/spi.h"
 #include "executor/ybExpr.h"
 #include "fmgr.h"
@@ -129,6 +131,7 @@
 #include "storage/procarray.h"
 #include "tcop/pquery.h"
 #include "tcop/utility.h"
+#include "utils/acl.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
@@ -150,6 +153,7 @@
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
+#include "yb_internal_conn.h"
 #include "yb_qpm.h"
 #include "yb_query_diagnostics.h"
 
@@ -605,6 +609,17 @@ YBGetTableFullPrimaryKeyBms(Relation rel)
 	return rel->full_primary_key_bms;
 }
 
+/*
+ * Returns true if the relation has triggers whose firing depends on the
+ * pre-modification (old) tuple of each affected row.
+ *
+ * Despite the name, this also reports true for AFTER-ROW / NEW-table triggers
+ * on UPDATE.  Reason: an UPDATE may not touch every column, and the executor
+ * reconstructs the unmodified columns from the old tuple before passing the
+ * "new" row to the trigger.  For partitioned-table UPDATEs we also consider
+ * DELETE triggers, since cross-partition UPDATEs are executed as
+ * DELETE+INSERT on the underlying leaves.
+ */
 extern bool
 YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 {
@@ -617,7 +632,8 @@ YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 	if (operation == CMD_DELETE)
 	{
 		return trigdesc->trig_delete_after_row ||
-			trigdesc->trig_delete_before_row;
+			trigdesc->trig_delete_before_row ||
+			trigdesc->trig_delete_old_table;
 	}
 	if (operation != CMD_UPDATE)
 	{
@@ -627,7 +643,9 @@ YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 		!rel->rd_rel->relispartition)
 	{
 		return (trigdesc->trig_update_after_row ||
-				trigdesc->trig_update_before_row);
+				trigdesc->trig_update_before_row ||
+				trigdesc->trig_update_old_table ||
+				trigdesc->trig_update_new_table);
 	}
 	/*
 	 * This is an update operation. We look for both update and delete triggers
@@ -636,7 +654,10 @@ YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 	return (trigdesc->trig_update_after_row ||
 			trigdesc->trig_update_before_row ||
 			trigdesc->trig_delete_after_row ||
-			trigdesc->trig_delete_before_row);
+			trigdesc->trig_delete_before_row ||
+			trigdesc->trig_update_old_table ||
+			trigdesc->trig_update_new_table ||
+			trigdesc->trig_delete_old_table);
 }
 
 bool
@@ -2183,7 +2204,8 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 }
 
 bool
-YbWholeRowAttrRequired(Relation relation, CmdType operation)
+YbWholeRowAttrRequired(Relation relation, Relation root_relation,
+					   CmdType operation)
 {
 	Assert(IsYBRelation(relation));
 
@@ -2194,14 +2216,43 @@ YbWholeRowAttrRequired(Relation relation, CmdType operation)
 	if (operation == CMD_UPDATE)
 		return true;
 
+	if (operation != CMD_DELETE)
+		return false;
+
 	/*
 	 * For DELETE, wholerow is required for tables with:
-	 * 1. secondary indexes to removing index entries
+	 * 1. secondary indexes to remove index entries.
 	 * 2. row triggers to pass the old row for trigger execution.
 	 */
-	return (operation == CMD_DELETE &&
-			(YBRelHasSecondaryIndices(relation) ||
-			 YBRelHasOldRowTriggers(relation, operation)));
+	if (YBRelHasSecondaryIndices(relation) ||
+		YBRelHasOldRowTriggers(relation, operation))
+		return true;
+
+	/*
+	 * For a leaf in an inheritance/partition hierarchy, the wholerow attribute
+	 * is also needed when the relation explicitly named in the query (PG's
+	 * "root" result relation, mtstate->rootResultRelInfo) has an AFTER DELETE
+	 * transition table.  "Root" here is the query's named target, not the
+	 * topmost ancestor in the hierarchy -- statement-level triggers fire only
+	 * on the relation named in the SQL, so no intermediate parent matters.
+	 * Unlike heap tables (where GetTupleForTrigger can re-fetch the old tuple
+	 * via ctid), YB needs the wholerow junk attribute to supply old tuples
+	 * for that transition-table capture.
+	 *
+	 * The caller passes root_relation only when it is already open; this
+	 * function does not open any relation itself, so callers without it in
+	 * hand should pass NULL (and open the query's target themselves only if
+	 * this function returns false on the basic check).
+	 */
+	if (root_relation != NULL && root_relation != relation)
+	{
+		TriggerDesc *root_trigdesc = root_relation->trigdesc;
+
+		if (root_trigdesc && root_trigdesc->trig_delete_old_table)
+			return true;
+	}
+
+	return false;
 }
 
 /*------------------------------------------------------------------------------
@@ -2222,6 +2273,7 @@ bool		yb_plpgsql_disable_prefetch_in_for_query = false;
 bool		yb_enable_sequence_pushdown = true;
 bool		yb_disable_wait_for_backends_catalog_version = false;
 bool		yb_enable_base_scans_cost_model = false;
+bool		yb_prefetch_column_statistics = true;
 bool		yb_enable_update_reltuples_after_create_index = false;
 bool		yb_enable_index_backfill_scan_optimization = false;
 int			yb_wait_for_backends_catalog_version_timeout = 15 * 60 * 1000;	/* 15 min */
@@ -2231,6 +2283,7 @@ bool		yb_enable_saop_pushdown = true;
 int			yb_toast_catcache_threshold = 2048; /* 2 KB */
 int			yb_catcache_list_from_preloaded_limit = 100000;
 int			yb_parallel_range_size = 1024 * 1024;
+bool		yb_disable_parallel_query_in_ddl = true;
 int			yb_insert_on_conflict_read_batch_size = 1024;
 bool		yb_enable_fkey_catcache = true;
 bool		yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true;
@@ -2295,15 +2348,25 @@ bool		yb_is_non_atomic_commit_done = false;
 
 bool		yb_enable_retry_after_non_atomic_commit = false;
 
+char	   *yb_extra_commands_to_retry_string = NULL;
+bool	   *yb_extra_commands_to_retry = NULL;
+
+char	   *yb_extra_commands_to_retry_in_proc_string = NULL;
+bool	   *yb_extra_commands_to_retry_in_proc = NULL;
+
 bool		yb_test_system_catalogs_creation = false;
 
 int			yb_test_sleep_before_executor_start_ms = 0;
 
 int			yb_test_fail_next_ddl = 0;
 
+bool		yb_test_fail_drop_after_heap_drop = false;
+
 bool		yb_force_catalog_update_on_next_ddl = false;
 
 bool		yb_test_fail_all_drops = false;
+
+bool		yb_test_analyze_dont_reset_mutations = false;
 
 bool		yb_test_invalidate_relcache_in_planner = false;
 
@@ -2341,6 +2404,8 @@ int			yb_test_force_parallel = YB_FORCE_PARALLEL_OFF;
 bool		yb_enable_ddl_atomicity_infra = true;
 bool		yb_ddl_rollback_enabled = false;
 
+bool		yb_enable_replication_origin_shared = true;
+
 bool		yb_use_hash_splitting_by_default = true;
 
 bool		yb_xcluster_automatic_mode_target_ddl = false;
@@ -2351,7 +2416,7 @@ bool		yb_user_ddls_preempt_auto_analyze = true;
 
 bool		yb_enable_pg_stat_statements_rpc_stats = true;
 
-bool		yb_enable_pg_stat_statements_docdb_metrics = false;
+bool		yb_enable_pg_stat_statements_docdb_metrics = true;
 
 bool		yb_enable_global_views = false;
 
@@ -4482,13 +4547,6 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 									context, params, queryEnv,
 									dest, qc);
 
-		/*
-		 * YB: Account for stats collected during the execution of utility command
-		 * Only refresh stats at the last level of nesting
-		 */
-		if (YBGetDdlNestingLevel() == 1)
-			YbRefreshSessionStatsDuringExecution();
-
 		if (is_ddl)
 		{
 			CheckAlterDatabaseDdl(pstmt);
@@ -4615,6 +4673,84 @@ void
 YBFlushBufferedOperations(YbcFlushDebugContext debug_context)
 {
 	HandleYBStatus(YBCPgFlushBufferedOperations(&debug_context));
+}
+
+typedef struct YbQueryState
+{
+	unsigned int executor_operation_nesting_level;
+	unsigned int utility_operation_nesting_level;
+} YbQueryState;
+
+static YbQueryState query_state = {0};
+static YbInstrumentation last_utility_yb_instr = {0};
+
+static void
+YBClearLastUtilityStats(void)
+{
+	memset(&last_utility_yb_instr, 0, sizeof(last_utility_yb_instr));
+}
+
+void
+YBOnExecutorOperationBegin()
+{
+	if (query_state.executor_operation_nesting_level == 0 &&
+		query_state.utility_operation_nesting_level == 0)
+		YBClearLastUtilityStats();
+	query_state.executor_operation_nesting_level++;
+}
+
+void
+YBOnExecutorOperationEnd(struct QueryDesc *queryDesc)
+{
+	Assert(query_state.executor_operation_nesting_level > 0);
+	if (IsYugaByteEnabled() &&
+		YBIsTopLevelExecutorOperation() &&
+		!queryDesc->yb_skip_finish_capture)
+		YbUpdateSessionStats(&queryDesc->yb_query_stats->yb_instr);
+
+	query_state.executor_operation_nesting_level--;
+}
+
+bool
+YBIsTopLevelExecutorOperation()
+{
+	return query_state.executor_operation_nesting_level == 1 &&
+		query_state.utility_operation_nesting_level == 0;
+}
+
+void
+YBOnUtilityOperationBegin()
+{
+	if (query_state.utility_operation_nesting_level == 0)
+		YBClearLastUtilityStats();
+	query_state.utility_operation_nesting_level++;
+}
+
+void
+YBOnUtilityOperationEnd()
+{
+	Assert(query_state.utility_operation_nesting_level > 0);
+
+	if (query_state.utility_operation_nesting_level == 1 &&
+		query_state.executor_operation_nesting_level == 0)
+		YbUpdateSessionStats(&last_utility_yb_instr);
+
+	query_state.utility_operation_nesting_level--;
+}
+
+void
+YBResetOperationTracking()
+{
+	memset(&query_state, 0, sizeof(query_state));
+	YBClearLastUtilityStats();
+}
+
+YbInstrumentation *
+YBGetUtilityOperationStats()
+{
+	if (!IsYugaByteEnabled())
+		return NULL;
+	return &last_utility_yb_instr;
 }
 
 bool
@@ -7000,6 +7136,12 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 		GUC_check_errdetail("Provided timestamp is in the future.");
 		return false;
 	}
+
+	if (value_ull != 0 && YbHasActiveOrPendingListen())
+	{
+		GUC_check_errmsg("yb_read_time cannot be set while LISTEN is active");
+		return false;
+	}
 	return true;
 }
 
@@ -7011,6 +7153,7 @@ assign_yb_read_time(const char *newval, void *extra)
 
 	elog(DEBUG1, "Setting yb_read_time to %s", newval);
 	parse_yb_read_time(newval, &value_ull, &is_ht_unit);
+
 	/*
 	 * Don't refresh the sys caches in case the read time value didn't change.
 	 */
@@ -7857,18 +8000,35 @@ YbSplitOptionsToPresplitString(YbOptSplit *split_options)
 }
 
 /*
- * Reconcile a statement's SPLIT clause and its yb_presplit reloption so that
- * both representations are kept in sync prior to relation creation.
+ * Reconcile a statement's SPLIT clause and its yb_presplit reloption prior
+ * to relation creation.
  *
- *   - If *split_options is set, attempt to serialize it into a yb_presplit
- *     entry appended to *options. If the SPLIT clause contains expressions
- *     that cannot be serialized, *split_options is left intact (so the
- *     relation is still created with the original clause) and no yb_presplit
- *     entry is added. It is an error if yb_presplit is already present in
- *     *options, since that would conflict with the SPLIT clause.
- *   - Otherwise, if a yb_presplit entry is present in *options, parse it back
- *     into *split_options so the relation is created with the persisted
- *     pre-split values (e.g., on pg_dump restore).
+ *   - If *split_options is set and yb_presplit is also in *options, the
+ *     user has specified both: the SPLIT clause governs the relation's
+ *     initial tablet layout, and the yb_presplit entry is persisted as-is
+ *     into pg_class.reloptions to serve as the user-recorded intent for
+ *     future operations (TRUNCATE/REFRESH/dump/restore).  The two are
+ *     allowed to disagree; the SPLIT clause "wins" for the immediate
+ *     layout, and the reloption "wins" for everything that later asks
+ *     "what did the user want?".  As a special case, an empty-string
+ *     yb_presplit is a "suppress auto-derive" sentinel: drop the entry so
+ *     it does not persist (ysql_dump --include-yb-metadata uses this on
+ *     CREATE statements for relations whose source had no yb_presplit but
+ *     for which the dump still emits a SPLIT clause to preserve the
+ *     current tablet count; without the sentinel, the auto-derive would
+ *     add yb_presplit=N to the restored relation and diverge from the
+ *     source).
+ *
+ *   - If *split_options is set and yb_presplit is not in *options, serialize
+ *     the SPLIT clause into a yb_presplit entry and append it to *options
+ *     so that the reloption tracks what the user just asked for.  If the
+ *     SPLIT clause contains expressions that cannot be serialized,
+ *     *split_options is left intact (so the relation is still created with
+ *     the original clause) and no yb_presplit entry is added.
+ *
+ *   - Otherwise, if a yb_presplit entry is present in *options, parse it
+ *     back into *split_options so the relation is created with the
+ *     persisted pre-split values (e.g., on pg_dump restore).
  *
  * Used by both CREATE TABLE and CREATE INDEX paths.
  */
@@ -7880,27 +8040,49 @@ YbSyncSplitOptionsAndPresplit(YbOptSplit **split_options, List **options)
 	if (*split_options)
 	{
 		char	   *presplit_str;
+		ListCell   *presplit_cell = NULL;
+		bool		presplit_is_sentinel = false;
 
-		/*
-		 * Error if yb_presplit already exists in options (e.g., from
-		 * WITH (yb_presplit=...) alongside SPLIT INTO/AT).
-		 */
 		foreach(lc, *options)
 		{
 			DefElem    *def = (DefElem *) lfirst(lc);
 
 			if (strcmp(def->defname, "yb_presplit") == 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DUPLICATE_OBJECT),
-						 errmsg("yb_presplit cannot be specified together with SPLIT INTO or SPLIT AT VALUES")));
+			{
+				char	   *val = defGetString(def);
+
+				presplit_cell = lc;
+				presplit_is_sentinel = (val != NULL && val[0] == '\0');
+				break;
+			}
+		}
+
+		if (presplit_cell != NULL)
+		{
+			if (presplit_is_sentinel)
+			{
+				/*
+				 * Drop the empty sentinel so it does not persist; the
+				 * SPLIT clause alone governs the relation's layout and no
+				 * yb_presplit reloption is recorded.
+				 */
+				*options = list_delete_cell(*options, presplit_cell);
+			}
+			/*
+			 * Otherwise keep both: the SPLIT clause governs the immediate
+			 * layout and the user-supplied yb_presplit is recorded as-is.
+			 */
+			return;
 		}
 
 		/*
-		 * If the split options contain expressions we can't serialize (e.g.
-		 * function calls), YbSplitOptionsToPresplitString returns NULL and we
-		 * skip storing yb_presplit.  *split_options is left intact so the
-		 * relation is still created with the original SPLIT clause; those
-		 * expressions are evaluated at creation time by
+		 * No yb_presplit in *options: auto-derive it from the SPLIT clause
+		 * so the reloption tracks what the user just asked for.  If the
+		 * split options contain expressions we can't serialize (e.g.
+		 * function calls), YbSplitOptionsToPresplitString returns NULL and
+		 * we skip storing yb_presplit.  *split_options is left intact so
+		 * the relation is still created with the original SPLIT clause;
+		 * those expressions are evaluated at creation time by
 		 * YBTransformPartitionSplitValue.
 		 */
 		presplit_str = YbSplitOptionsToPresplitString(*split_options);
@@ -7912,14 +8094,26 @@ YbSyncSplitOptionsAndPresplit(YbOptSplit **split_options, List **options)
 		return;
 	}
 
-	/* Derive split_options from yb_presplit if not already set. */
+	/*
+	 * Derive split_options from yb_presplit if not already set.  An empty
+	 * sentinel here (no SPLIT clause given) is meaningless -- nothing to
+	 * suppress -- so strip it to avoid persisting an empty value into
+	 * pg_class.reloptions.
+	 */
 	foreach(lc, *options)
 	{
 		DefElem    *def = (DefElem *) lfirst(lc);
 
 		if (strcmp(def->defname, "yb_presplit") == 0)
 		{
-			*split_options = YbParsePresplitString(defGetString(def));
+			char	   *val = defGetString(def);
+
+			if (val != NULL && val[0] == '\0')
+			{
+				*options = list_delete_cell(*options, lc);
+				return;
+			}
+			*split_options = YbParsePresplitString(val);
 			break;
 		}
 	}
@@ -8615,6 +8809,12 @@ YbIsAuthBackend()
 	return yb_is_auth_backend;
 }
 
+bool
+YbIsAuthPassthroughControlBackend()
+{
+	return yb_conn_mgr_is_auth_passthrough_backend;
+}
+
 /* Used in YB to check if an attribute is a key column. */
 bool
 YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum)
@@ -8811,7 +9011,6 @@ YbInvalidationMessagesTableExists()
 }
 
 bool		yb_is_calling_internal_sql_for_ddl = false;
-bool		yb_is_internal_connection = false;
 char *
 YbGetPotentiallyHiddenOidText(Oid oid)
 {
@@ -8914,38 +9113,44 @@ YbCheckTserverResponseCacheForAuthGflags()
 		yb_enable_invalidation_messages;
 }
 
+/*
+ * Decide whether the current backend should serve its connection-auth catalog
+ * prefetch (pg_authid, pg_database, ...) from the tserver response cache.
+ *
+ * Treats connection manager auth backends and regular backends uniformly:
+ * when ysql_enable_read_request_cache_for_connection_auth is set (and the
+ * response cache + invalidation messages are available), both serve the
+ * prefetch from cache. Login profiles disable the cache because
+ * pg_yb_role_profile is written during login without bumping the catalog
+ * version (the cache would go stale); such backends fall back to the
+ * no-cache prefetch.
+ *
+ * Note this only governs the connection-auth prefetch. After authentication
+ * the backend still resolves the latest master catalog version and rebuilds
+ * its full catalog cache (and the shared relcache init file) from fresh data
+ * in RelationCacheInitializePhase3, so only the per-connection authentication
+ * lookup is served from the (version-keyed) cache.
+ */
 bool
 YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version)
 {
-	if (!(YbIsAuthBackend() || YbIsAuthPassthroughInProgress(MyProcPort)))
-		return false;
-	/*
-	 * We should only see auth backend or auth passthrough in progress if
-	 * connection manager is enabled.
-	 */
-	Assert(YbIsYsqlConnMgrEnabled());
-
 	if (!YbCheckTserverResponseCacheForAuthGflags())
 		return false;
 
 	/*
-	 * For now we do not allow using tserver response cache for auth processing
-	 * if login profile is enabled. This is because the login process itself
-	 * writes to pg_yb_role_profile table but this is not done under a DDL
-	 * statement context. As a result the catalog version isn't incremented
-	 * but the tserver response cache becomes stale. Newer login processing
-	 * will continue to use the stale cache which isn't right.
+	 * initdb and major-version-upgrade catalog restore run DDLs that do not
+	 * increment the catalog version, so cached responses could go stale -- the
+	 * same reason YbRunWithPrefetcher does not use the response cache for them.
 	 */
+	if (YBCIsInitDbModeEnvVarSet() || IsBinaryUpgrade)
+		return false;
+
 	if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		return false;
 
-	/*
-	 * Tserver response cache requires a valid catalog version. Use the shared
-	 * memory catalog version as an approximation of the latest master catalog
-	 * version.
-	 */
 	if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
 		return false;
+
 	return true;
 }
 
@@ -8958,13 +9163,21 @@ YbCatalogPreloadRequired()
 bool
 YbUseMinimalCatalogCachesPreload()
 {
+	YbInternalConnKind kind;
+
 	if (*YBCGetGFlags()->ysql_minimal_catalog_caches_preload)
 		return true;
 	if (YbNeedAdditionalCatalogTables())
 		return false;
-	if (yb_is_internal_connection)
-		return true;
-	return false;
+	/*
+	 * Per-kind preload behavior comes from the registry (yb_internal_conn.h).
+	 * Only kinds whose descriptor sets use_minimal_preload = true (e.g. the
+	 * relcache-init builder) run with minimal preload; the rest preload
+	 * normally even though they are tserver-owned internal connections.
+	 */
+	kind = YbLookupInternalConnKindByBackendType(MyBackendType);
+	return kind != YB_INTERNAL_CONN_KIND_NONE &&
+		YbInternalConnKindDescriptors[kind].use_minimal_preload;
 }
 
 /* Comparison function for sorting strings in a List */
@@ -8979,6 +9192,7 @@ string_list_compare(const ListCell *a, const ListCell *b)
  * The returned data structure is a row type with the following columns:
  * - tablet_id: text
  * - object_uuid: text
+ * - oid: oid (stable pg_class.oid for YSQL tables, NULL otherwise)
  * - namespace: text
  * - object_name: text
  * - type: text
@@ -8986,10 +9200,21 @@ string_list_compare(const ListCell *a, const ListCell *b)
  * - end_hash_code: int32
  * - leader: text
  * - replicas: text[]
+ * - start_range: text
+ * - end_range: text
+ * - tablet_attrs: json
+ * - tablet_state: text
  *
- * The start_hash_code and end_hash_code are the hash codes of the start and end
- * keys of the tablet for hash sharded tables. Leader is provided as a separate
- * column for simpler querying and self-explanatory access.
+ * For hash-partitioned tables (primary key contains at least one HASH column),
+ * start_hash_code (inclusive) and end_hash_code (exclusive) contain the
+ * partition bounds, while start_range and end_range are NULL. This includes
+ * tables with composite (HASH, ASC) primary keys -- only the hash boundaries
+ * are reported; the range component is not currently surfaced.
+ * For purely range-partitioned tables, start_hash_code and end_hash_code are
+ * NULL, and start_range/end_range contain the decoded range partition key
+ * boundaries.
+ * Leader is provided as a separate column for simpler querying.
+ * tablet_attrs is reserved for future use and is currently always NULL.
  */
 Datum
 yb_get_tablet_metadata(PG_FUNCTION_ARGS)
@@ -8999,7 +9224,7 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 	Tuplestorestate *tupstore;
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
-	static int	ncols = 9;
+	int ncols = YbGetNumberOfFunctionOutputColumns(F_YB_GET_TABLET_METADATA);
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -9031,6 +9256,17 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 	rsinfo->setResult = tupstore;
 	rsinfo->setDesc = tupdesc;
 
+	/*
+	 * Privilege gating: superusers and yb_db_admin members see real values
+	 * for every row. Other roles see real values only for rows whose table
+	 * lives in the current database and on which they hold SELECT (checked
+	 * per row below). The system 'transactions' tablet is always shown.
+	 */
+	const Oid	caller_uid = GetUserId();
+	const bool	is_privileged = superuser() || IsYbDbAdminUser(caller_uid);
+	const char *current_db = is_privileged ? NULL : get_database_name(MyDatabaseId);
+	static const char *const masked_placeholder = "<insufficient privilege>";
+
 	YbcPgGlobalTabletsDescriptor *tablets = NULL;
 	size_t		num_tablets = 0;
 
@@ -9046,26 +9282,130 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
+		/*
+		 * Decide whether this row's sensitive columns (relname and the range
+		 * bounds) should show real values or the masked placeholder. Always
+		 * unmasked for superusers and yb_db_admin members; for other users,
+		 * only when the row belongs to the current database and the user
+		 * holds SELECT on the underlying relation. The system 'transactions'
+		 * tablet is exempt -- its name is fixed and non-sensitive.
+		 *
+		 * YCQL and system tablets (other than 'transactions') are always
+		 * masked for unprivileged users: the type gate (table_type == "YSQL")
+		 * ensures they never enter the OID/ACL check branch, so show_real
+		 * stays false.
+		 */
+		Oid			pg_table_oid = tablet->pg_table_oid;
+		bool		show_real = is_privileged;
+
+		if (!is_privileged)
+		{
+			/*
+			 * Pass a non-NULL is_missing so a rewritten or orphaned relation (a
+			 * valid-looking OID with no live pg_class row) returns ACLCHECK_NO_PRIV
+			 * and gets masked, instead of erroring out the whole view query.
+			 */
+			bool		acl_is_missing = false;
+
+			if (strcmp(tablet_descriptor->namespace_name, "system") == 0 &&
+				strcmp(tablet_descriptor->table_name, "transactions") == 0)
+			{
+				show_real = true;
+			}
+			else if (current_db != NULL &&
+					 strcmp(tablet_descriptor->table_type, "YSQL") == 0 &&
+					 strcmp(tablet_descriptor->namespace_name, current_db) == 0 &&
+					 OidIsValid(pg_table_oid) &&
+					 pg_class_aclcheck_ext(pg_table_oid, caller_uid, ACL_SELECT,
+										   &acl_is_missing) == ACLCHECK_OK)
+			{
+				show_real = true;
+			}
+		}
+
 		values[0] = CStringGetTextDatum(tablet_descriptor->tablet_id);
 		values[1] = CStringGetTextDatum(tablet_descriptor->table_id);
-		values[2] = CStringGetTextDatum(tablet_descriptor->namespace_name);
-		values[3] = CStringGetTextDatum(tablet_descriptor->table_name);
-		values[4] = CStringGetTextDatum(tablet_descriptor->table_type);
+
+		/*
+		 * The stable PG table oid is computed by the master, which handles
+		 * table rewrites (where relfilenode diverges from the oid). It is
+		 * InvalidOid for non-YSQL tables and colocation parents, which surface
+		 * as NULL.
+		 */
+		if (OidIsValid(tablet->pg_table_oid))
+			values[2] = ObjectIdGetDatum(tablet->pg_table_oid);
+		else
+			nulls[2] = true;
+
+		values[3] = CStringGetTextDatum(tablet_descriptor->namespace_name);
+		values[4] = CStringGetTextDatum(show_real
+										? tablet_descriptor->table_name
+										: masked_placeholder);
+		values[5] = CStringGetTextDatum(tablet_descriptor->table_type);
 
 		if (tablet->is_hash_partitioned)
 		{
-			values[5] =
+			values[6] =
 				UInt16GetDatum(YBCDecodeMultiColumnHashLeftBound(tablet_descriptor->partition_key_start,
 																 tablet_descriptor->partition_key_start_len));	/* start_hash is
 																												 * inclusive */
-			values[6] =
+			values[7] =
 				UInt16GetDatum(YBCDecodeMultiColumnHashRightBound(tablet_descriptor->partition_key_end,
 																  tablet_descriptor->partition_key_end_len) + 1);	/* end_hash is exclusive */
+			nulls[10] = true;
+			nulls[11] = true;
 		}
 		else
 		{
-			nulls[5] = true;
 			nulls[6] = true;
+			nulls[7] = true;
+
+			if (!show_real && OidIsValid(pg_table_oid))
+			{
+				/*
+				 * Valid table but the caller lacks privilege: mask both
+				 * range bounds uniformly -- including edge tablets whose
+				 * value would have been NULL -- to prevent leaking the
+				 * table's tablet count and edge positions.
+				 */
+				values[10] = CStringGetTextDatum(masked_placeholder);
+				nulls[10] = false;
+				values[11] = CStringGetTextDatum(masked_placeholder);
+				nulls[11] = false;
+			}
+			else if (show_real)
+			{
+				char	   *start_range =
+					YBCDecodeRangePartitionKey(tablet_descriptor->partition_key_start,
+											   tablet_descriptor->partition_key_start_len);
+				if (start_range != NULL)
+				{
+					values[10] = CStringGetTextDatum(start_range);
+					pfree(start_range);
+				}
+				else
+					nulls[10] = true;
+
+				char	   *end_range =
+					YBCDecodeRangePartitionKey(tablet_descriptor->partition_key_end,
+											   tablet_descriptor->partition_key_end_len);
+				if (end_range != NULL)
+				{
+					values[11] = CStringGetTextDatum(end_range);
+					pfree(end_range);
+				}
+				else
+					nulls[11] = true;
+			}
+			else
+			{
+				/*
+				 * InvalidOid (e.g. colocation parent): no meaningful
+				 * partition bounds exist to mask, so leave ranges NULL.
+				 */
+				nulls[10] = true;
+				nulls[11] = true;
+			}
 		}
 
 		/* Convert replicas array to PostgreSQL text array */
@@ -9074,7 +9414,7 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			Assert(tablet->replicas != NULL);
 
 			/* The last replica is the leader. */
-			values[7] = CStringGetTextDatum(tablet->replicas[tablet->replicas_count - 1]);
+			values[8] = CStringGetTextDatum(tablet->replicas[tablet->replicas_count - 1]);
 
 			/* Convert char ** to List * */
 			List	   *replicas_list = NIL;
@@ -9087,13 +9427,21 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			 * with same replicas have same entries.
 			 */
 			list_sort(replicas_list, string_list_compare);
-			values[8] = PointerGetDatum(strlist_to_textarray(replicas_list));
+			values[9] = PointerGetDatum(strlist_to_textarray(replicas_list));
 		}
 		else
 		{
-			nulls[7] = true;
 			nulls[8] = true;
+			nulls[9] = true;
 		}
+
+		/* TODO(#30180): Populate tablet_attrs. */
+		nulls[12] = true;
+
+		if (tablet->tablet_state)
+			values[13] = CStringGetTextDatum(tablet->tablet_state);
+		else
+			nulls[13] = true;
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
@@ -9651,6 +9999,19 @@ YbCanSkipIntentsWrite(Relation rel)
 	return YbCanSkipIntents(rel, true /* is_write */ );
 }
 
+void
+YbDisableSkipIntentsIfModifyingCTE(struct QueryDesc *queryDesc)
+{
+	if (skip_intents_txn_state.disabled)
+		return;
+
+	if (queryDesc && queryDesc->plannedstmt && queryDesc->plannedstmt->hasModifyingCTE)
+	{
+		elog(DEBUG1, "Disable skip intents due to modifying CTE");
+		skip_intents_txn_state.disabled = true;
+	}
+}
+
 static bool
 YbCanSkipIntentsRead(Relation rel)
 {
@@ -9685,8 +10046,8 @@ YbMaybeDisableSkipIntentsForCurrentTxn(Relation rel)
 	/*
 	 * 2. Top-level statement shape (Halloween / read-your-writes guard).
 	 * For same-txn-created relations we relax only when we are clearly in a
-	 * plain read-only SELECT (no MERGE/INSERT/…, no modifying CTE). If portal
-	 * context is missing, stay conservative.
+	 * plain read-only SELECT (no MERGE/INSERT/...). If portal context is
+	 * missing, stay conservative.
 	 */
 	else
 	{
@@ -9696,8 +10057,6 @@ YbMaybeDisableSkipIntentsForCurrentTxn(Relation rel)
 			stmt_may_write_reason = 3;
 		else if (qd->operation != CMD_SELECT)
 			stmt_may_write_reason = 4;
-		else if (qd->plannedstmt && qd->plannedstmt->hasModifyingCTE)
-			stmt_may_write_reason = 5;
 	}
 
 	/*

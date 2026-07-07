@@ -21,6 +21,7 @@
 #include "opentelemetry/context/runtime_context.h"
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_factory.h"
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_options.h"
+#include "opentelemetry/sdk/common/global_log_handler.h"
 #include "opentelemetry/sdk/trace/batch_span_processor_factory.h"
 #include "opentelemetry/sdk/trace/batch_span_processor_options.h"
 #include "opentelemetry/sdk/trace/tracer_provider.h"
@@ -54,14 +55,22 @@ DEFINE_NON_RUNTIME_uint32(otel_batch_max_export_batch_size, 512,
     "Maximum number of spans exported in a single batch. Must be greater than 0 and no "
     "larger than otel_batch_max_queue_size.");
 
+DEFINE_NON_RUNTIME_string(otel_internal_log_level, "info",
+    "Minimum OpenTelemetry SDK internal log level forwarded to YugabyteDB logging. Allowed "
+    "values are debug, info, warning, error, and none.");
+
 DEFINE_validator(otel_batch_max_queue_size,
     FLAG_GE_FLAG_VALIDATOR(otel_batch_max_export_batch_size));
+
+DEFINE_validator(otel_internal_log_level,
+    FLAG_IN_SET_VALIDATOR("debug", "info", "warning", "error", "none"));
 
 namespace yb::dist_trace {
 
 namespace trace_sdk = opentelemetry::sdk::trace;
 namespace resource_sdk = opentelemetry::sdk::resource;
 namespace otlp_exporter = opentelemetry::exporter::otlp;
+namespace internal_log = opentelemetry::sdk::common::internal_log;
 namespace context = opentelemetry::context;
 
 namespace {
@@ -98,6 +107,56 @@ class RpcSpanAttrs {
 };
 
 thread_local RpcSpanAttrs pending_rpc_attrs;
+
+internal_log::LogLevel GetOtelInternalLogLevel() {
+  const auto& flag_value = FLAGS_otel_internal_log_level;
+  if (flag_value == "debug") {
+    return internal_log::LogLevel::Debug;
+  }
+  if (flag_value == "info") {
+    return internal_log::LogLevel::Info;
+  }
+  if (flag_value == "warning") {
+    return internal_log::LogLevel::Warning;
+  }
+  if (flag_value == "error") {
+    return internal_log::LogLevel::Error;
+  }
+  if (flag_value == "none") {
+    return internal_log::LogLevel::None;
+  }
+  LOG(DFATAL) << "Unknown otel_internal_log_level: " << flag_value;
+  return internal_log::LogLevel::Info;
+}
+
+class YbOtelLogHandler : public internal_log::LogHandler {
+ public:
+  void Handle(
+      internal_log::LogLevel level, const char* file, int line, const char* msg,
+      const opentelemetry::sdk::common::AttributeMap& attributes) noexcept override {
+    (void)attributes;
+
+    const char* safe_file = file ? file : "unknown";
+    const char* safe_msg = msg ? msg : "";
+
+    switch (level) {
+      case internal_log::LogLevel::Error:
+        LOG(ERROR) << "[" << safe_file << ":" << line << "]: " << safe_msg;
+        break;
+      case internal_log::LogLevel::Warning:
+        LOG(WARNING) << "[" << safe_file << ":" << line << "]: " << safe_msg;
+        break;
+      case internal_log::LogLevel::Info:
+        LOG(INFO) << "[" << safe_file << ":" << line << "]: " << safe_msg;
+        break;
+      case internal_log::LogLevel::Debug:
+        LOG(INFO) << "[" << safe_file << ":" << line << "] Debug: " << safe_msg;
+        break;
+      case internal_log::LogLevel::None:
+        break;
+    }
+  }
+};
 
 resource_sdk::Resource CreateResource(int64_t process_pid, nostd::string_view node_uuid) {
   resource_sdk::ResourceAttributes attrs;
@@ -173,6 +232,13 @@ bool IsDistTraceEnabled() {
 void InitDistTrace(int64_t process_pid, nostd::string_view node_uuid) {
   DCHECK(IsDistTraceEnabled());
 
+  internal_log::GlobalLogHandler::SetLogHandler(
+      opentelemetry::nostd::shared_ptr<internal_log::LogHandler>(new YbOtelLogHandler()));
+
+  // OTel macros filter first using GlobalLogHandler::GetLogLevel(). Accepted messages
+  // are mapped to LOG(...), where YB logging applies its own routing.
+  internal_log::GlobalLogHandler::SetLogLevel(GetOtelInternalLogLevel());
+
   auto resource_attrs = CreateResource(process_pid, node_uuid);
   const auto status = InitDistTraceProvider(resource_attrs);
   if (!status.ok()) {
@@ -184,7 +250,6 @@ void InitDistTrace(int64_t process_pid, nostd::string_view node_uuid) {
       nostd::shared_ptr<context::propagation::TextMapPropagator>(
           new trace::propagation::HttpTraceContext()));
 
-  // TODO(#30723): Integrate Otel logs with Yugabyte logs.
   LOG(INFO) << "OTEL: Initialized tracing for service: " << ysql_resource_name
             << "\nBatchSpanProcessor config: max_queue_size=" << FLAGS_otel_batch_max_queue_size
             << ", schedule_delay_ms=" << FLAGS_otel_batch_schedule_delay_ms

@@ -30,6 +30,7 @@
 
 #include "yb/docdb/docdb_pgapi.h"
 
+#include "yb/master/alter_table_batch_tracker.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
@@ -41,6 +42,7 @@
 #include "yb/master/master.h"
 #include "yb/master/snapshot_transfer_manager.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/ts_manager.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
@@ -58,6 +60,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
@@ -147,6 +150,31 @@ TAG_FLAG(cdcsdk_enable_identification_of_non_eligible_tables, hidden);
 DEFINE_test_flag(bool, cdcsdk_skip_table_removal_from_qualified_list, false,
                  "When enabled, table would not be removed from the qualified table list as part "
                  "of the table removal process from CDC stream");
+
+DEFINE_RUNTIME_int32(cdc_create_stream_alter_table_dispatch_batch_size, 10,
+    "Number of per-table AlterTable calls to dispatch in one batch during CDC stream creation. The "
+    "value <= 0 signifies no batching.");
+
+DEFINE_RUNTIME_int32(cdc_create_stream_alter_table_dispatch_delay_ms, 50,
+    "If non-zero, sleeps for the configured number of milliseconds after each batch of "
+    "cdc_create_stream_alter_table_dispatch_batch_size per-table AlterTable calls during CDC "
+    "stream creation.");
+
+DEFINE_RUNTIME_int32(max_concurrent_alter_table_rpcs, 10,
+    "Maximum number of concurrent outstanding AsyncAlterTable RPCs the master will allow in "
+    "flight. 0 disables the throttle entirely. Positive values are used as the absolute global "
+    "cap. If its value is < 0 then the max_concurrent_alter_table_rpcs_per_tserver gflag and the "
+    "number of live tservers are used to determine the limit. When the limit is reached, "
+    "additional tasks block at the throttler and are rescheduled via the existing RetryingRpcTask "
+    "backoff. It mirrors the semantics of max_concurrent_snapshot_rpcs.");
+
+DEFINE_RUNTIME_int32(max_concurrent_alter_table_rpcs_per_tserver, 1,
+    "Maximum number of concurrent outstanding AsyncAlterTable RPCs the master will allow in flight "
+    "per tserver. Only used if the value of the gflag max_concurrent_alter_table_rpcs < 0. When "
+    "used, it is multiplied by the live-tserver count to obtain the global cap on outstanding "
+    "AsyncAlterTable RPCs. If the live-tserver count cannot be determined (e.g. cluster config not "
+    "available during master startup) the per-tserver value is used as the global cap by itself. "
+    "It mirrors max_concurrent_snapshot_rpcs_per_tserver.");
 
 DEFINE_RUNTIME_bool(enable_truncate_cdcsdk_table, false,
     "When set, enables truncating tables currently part of a CDCSDK Stream");
@@ -622,7 +650,7 @@ std::string CDCStreamInfosAsString(const std::vector<CDCStreamInfoPointer>& cdc_
 
 bool IsCatalogTableEligibleForCDC(uint32_t table_oid) {
   return table_oid == kPgClassTableOid || table_oid == kPgPublicationRelOid ||
-         table_oid == kPgReplicationOriginOid;
+         table_oid == kPgReplicationOriginOid || table_oid == kPgPublicationOid;
 }
 
 }  // namespace
@@ -1045,37 +1073,90 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
       req.has_cdcsdk_ysql_replication_slot_name() &&
       FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key;
 
+  const bool has_bound_table_ids =
+      req.has_cdcsdk_stream_create_options() &&
+      req.cdcsdk_stream_create_options().has_bound_table_ids();
+
   // TODO(#19211): Validate that if the ns type is PGSQL, it must have the replication slot name in
   // the request. This can only be done after we have ensured that YSQL is the only client
   // requesting to create CDC streams.
   std::vector<TableInfoPtr> tables;
+  std::vector<TableId> table_ids;
   {
     SharedLock lock(mutex_);
-    // Sanity check this id corresponds to a namespace.
-    VERIFY_RESULT(FindNamespaceByIdUnlocked(namespace_id));
-    tables = FindAllTablesForCDCSDK(
-        namespace_id, allow_tables_without_primary_key,
-        false /* allow_cdc_used_syscatalog_tables */);
+    auto ns = VERIFY_RESULT(FindNamespaceByIdUnlocked(namespace_id));
+
+    // yb_system namespace is meant for YB's internal use (currently it is only used by
+    // LISTEN/NOTIFY). Only internal CDC streams meant to stream the notifications from the
+    // kPgYbNotificationsTableName to the tservers are allowed on it. The slot associated
+    // with such streams have kYbNotificationsSlotPrefix prefix in the name. Disallow other streams.
+    if (ns->name() == kYbSystemDbName &&
+        !(req.has_cdcsdk_ysql_replication_slot_name() &&
+          StringStartsWithOrEquals(
+              req.cdcsdk_ysql_replication_slot_name(), kYbNotificationsSlotPrefix))) {
+      return STATUS(
+          InvalidArgument, "CDC streams are not supported for yb_system database");
+    }
+
+    if (has_bound_table_ids) {
+      const auto& bound_ids = req.cdcsdk_stream_create_options().bound_table_ids().table_ids();
+      for (const auto& tid : bound_ids) {
+        auto table_info = tables_->FindTableOrNull(tid);
+        if (!table_info) {
+          return STATUS_FORMAT(
+              NotFound, "Bound table id $0 not found in namespace $1", tid, namespace_id);
+        }
+
+        auto ltm = table_info->LockForRead();
+        if (!ltm->visible_to_client()) {
+          return STATUS_FORMAT(NotFound, "Bound table id $0 is not visible to the client", tid);
+        }
+
+        if (ltm->namespace_id() != namespace_id) {
+          return STATUS_FORMAT(
+              InvalidArgument,
+              "Bound table id $0 does not belong to namespace $1", tid, namespace_id);
+        }
+
+        if (!IsTableEligibleForCDCSDKStream(
+                table_info.get(), ltm, true /* check_schema */, allow_tables_without_primary_key,
+                false /* allow_cdc_used_syscatalog_tables */)) {
+          return STATUS_FORMAT(InvalidArgument, "Bound table id $0 is not eligible for CDC", tid);
+        }
+        tables.push_back(std::move(table_info));
+      }
+
+      // Cannot create table bound streams with no eligible tables.
+      if (tables.empty()) {
+        return STATUS(
+            InvalidArgument,
+            "No eligible tables found in the list provided to create a CDC stream");
+      }
+    } else {
+      tables = FindAllTablesForCDCSDK(
+          namespace_id, allow_tables_without_primary_key,
+          false /* allow_cdc_used_syscatalog_tables */);
+    }
   }
 
-  std::vector<TableId> table_ids;
   table_ids.reserve(tables.size());
   for (const auto& table : tables) {
-    RETURN_NOT_OK(BackfillMetadataForXRepl(table, epoch));
     table_ids.push_back(table->id());
   }
 
-  // We add the pg_class, pg_publication_rel and pg_replication_origin catalog tables to the stream
-  // metadata as we will poll them to figure out changes to the publications and replication
-  // origins. This will not be done for gRPC streams.
+  // We add the pg_class, pg_publication_rel, pg_replication_origin and pg_publication catalog
+  // tables to the stream metadata as we will poll them to figure out changes to the publications
+  // and replication origins. This will not be done for gRPC streams.
   if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
       FLAGS_cdc_enable_dynamic_schema_changes && req.has_cdcsdk_ysql_replication_slot_name()) {
     auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelOid));
     table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
-    VLOG_WITH_FUNC(1) << "Added the catalog tables pg_class, pg_publication_rel and "
-                      << "pg_replication_origin to the stream metadata tables list.";
+    table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationOid));
+    VLOG_WITH_FUNC(1) << "Added the catalog tables pg_class, pg_publication_rel, "
+                      << "pg_replication_origin and pg_publication to the stream metadata tables "
+                      << "list.";
   }
 
   VLOG_WITH_FUNC(1) << Format("Creating CDCSDK stream for $0 tables", table_ids.size());
@@ -1263,6 +1344,11 @@ Status CatalogManager::CreateNewCdcsdkStream(
         FLAGS_cdc_enable_dynamic_schema_changes);
   }
 
+  // CDC streams which are bound to fixed set of tables will have dynamic table addition disabled.
+  if (req.has_cdcsdk_stream_create_options() &&
+      req.cdcsdk_stream_create_options().has_bound_table_ids()) {
+    disable_dynamic_tables = true;
+  }
   metadata->set_cdcsdk_disable_dynamic_table_addition(disable_dynamic_tables);
 
   if (req.has_cdcsdk_ysql_replication_slot_plugin_name()) {
@@ -1570,12 +1656,96 @@ Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
   return cdc_state_table_->UpsertEntries(entries);
 }
 
+Status CatalogManager::FlushCDCSDKRetentionBarrierBatch(
+    std::vector<scoped_refptr<TableInfo>>* current_batch, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch, const xrepl::StreamId& stream_id, bool has_consistent_snapshot_option,
+    bool require_history_cutoff, CoarseTimePoint deadline) {
+  if (current_batch->empty()) {
+    return Status::OK();
+  }
+
+  // Pre-count tablets so the latch is sized correctly.
+  //
+  // PG system-catalog tables (pg_class, pg_publication_rel, pg_replication_origin) live on the
+  // single sys-catalog tablet. SendAlterTableRequestInternal has an early-return for those: it
+  // calls SetAllInitialCDCSDKRetentionBarriersOnCatalogTable synchronously and dispatches zero
+  // AsyncAlterTable tasks. If we pre-count their tablet, Finished() will never fire for it and
+  // tracker->Wait() will hang. So, skipping those tables in the count.
+  int total_tablets = 0;
+  for (auto& table : *current_batch) {
+    auto tablets = VERIFY_RESULT(table->GetTablets());
+    if (tablets.size() == 1 && tablets[0]->tablet_id() == kSysCatalogTabletId) {
+      continue;
+    }
+    // TODO: For colocated tables, the same tablet is shared by all tables in the colocation
+    // group, so we count it once per table. This is correct because we send a separate
+    // AlterTableRequest per table, but it is redundant work we should optimize for this flow.
+    total_tablets += static_cast<int>(tablets.size());
+  }
+
+  auto tracker = std::make_shared<AlterTableBatchTracker>(total_tablets);
+
+  for (const auto& table : *current_batch) {
+    AlterTableRequestPB alter_table_req;
+    alter_table_req.mutable_table()->set_table_id(table->id());
+    alter_table_req.set_wal_retention_secs(FLAGS_cdc_wal_retention_time_secs);
+    if (has_consistent_snapshot_option) {
+      alter_table_req.set_cdc_sdk_stream_id(stream_id.ToString());
+      alter_table_req.set_cdc_sdk_require_history_cutoff(require_history_cutoff);
+    }
+    AlterTableResponsePB alter_table_resp;
+    Status s = this->AlterTableWithBatchTracker(
+        &alter_table_req, &alter_table_resp, rpc, epoch, tracker);
+    if (!s.ok()) {
+      // Return the error immediately and let any already-dispatched per-tablet AsyncAlterTable
+      // tasks continue running on their own. They retain their own shared_ptr to the tracker; when
+      // they reach terminal state the tracker is destroyed unobserved.
+      return STATUS(
+          InternalError,
+          Format("Unable to set retention barriers for table, error: $0", s.message()), table->id(),
+          MasterError(MasterErrorPB::INTERNAL_ERROR));
+    }
+  }
+
+  // Wait for every per-tablet AsyncAlterTable in this batch to reach a terminal state. By the time
+  // this returns OK, each tablet's HandleResponse has already populated the cdc_state row.
+  RETURN_NOT_OK(tracker->Wait(deadline));
+
+  const auto dispatch_delay_ms = FLAGS_cdc_create_stream_alter_table_dispatch_delay_ms;
+  if (dispatch_delay_ms > 0) {
+    LOG_WITH_FUNC(INFO) << "CDC AlterTable batch flushed (" << current_batch->size() << " tables, "
+                        << total_tablets << " tablet RPCs); sleeping " << dispatch_delay_ms
+                        << "ms before next batch for stream " << stream_id;
+    SleepFor(MonoDelta::FromMilliseconds(dispatch_delay_ms));
+  }
+
+  current_batch->clear();
+  return Status::OK();
+}
+
 Status CatalogManager::SetAllCDCSDKRetentionBarriers(
-  const CreateCDCStreamRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch,
-  const std::vector<TableId>& table_ids, const xrepl::StreamId& stream_id,
-  const bool has_consistent_snapshot_option, const bool require_history_cutoff) {
+    const CreateCDCStreamRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch,
+    const std::vector<TableId>& table_ids, const xrepl::StreamId& stream_id,
+    const bool has_consistent_snapshot_option, const bool require_history_cutoff) {
   VLOG_WITH_FUNC(4) << "Setting All retention barriers for stream: " << stream_id;
 
+  // Dispatch the per-table AlterTable() calls in batches. After each batch we wait for all of
+  // its per-tablet AsyncAlterTable RPCs to reach a terminal state (via AlterTableBatchTracker)
+  // before moving on to the next batch.
+  //
+  // batch_size <= 0: "single batch of everything" (default): dispatch all tables.
+  // batch_size > 0: chunk dispatch into batches of that many AlterTables.
+  const auto raw_batch_size = FLAGS_cdc_create_stream_alter_table_dispatch_batch_size;
+  const bool single_batch_mode = (raw_batch_size <= 0);
+  const int32_t batch_size =
+      single_batch_mode ? std::numeric_limits<int32_t>::max() : raw_batch_size;
+  const auto deadline = rpc->GetClientDeadline();
+
+  // Tables accumulated for the current batch. Cleared after each flush.
+  std::vector<scoped_refptr<TableInfo>> current_batch;
+  current_batch.reserve(single_batch_mode ? table_ids.size() : raw_batch_size);
+
+  // Walk tables, accumulating into the current batch and flushing when full.
   for (const auto& table_id : table_ids) {
     auto table = VERIFY_RESULT(FindTableById(table_id));
     {
@@ -1586,34 +1756,20 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
             MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
       }
     }
+    current_batch.push_back(table);
 
-    AlterTableRequestPB alter_table_req;
-    alter_table_req.mutable_table()->set_table_id(table_id);
-    alter_table_req.set_wal_retention_secs(FLAGS_cdc_wal_retention_time_secs);
-
-    if (has_consistent_snapshot_option) {
-      alter_table_req.set_cdc_sdk_stream_id(stream_id.ToString());
-      alter_table_req.set_cdc_sdk_require_history_cutoff(require_history_cutoff);
-    }
-
-    AlterTableResponsePB alter_table_resp;
-    Status s = this->AlterTable(&alter_table_req, &alter_table_resp, rpc, epoch);
-    if (!s.ok()) {
-      return STATUS(
-          InternalError,
-          Format("Unable to set retention barries for table, error: $0", s.message()),
-          table_id, MasterError(MasterErrorPB::INTERNAL_ERROR));
+    if (static_cast<int32_t>(current_batch.size()) >= batch_size) {
+      RETURN_NOT_OK(FlushCDCSDKRetentionBarrierBatch(
+          &current_batch, rpc, epoch, stream_id, has_consistent_snapshot_option,
+          require_history_cutoff, deadline));
     }
   }
-
-  if (has_consistent_snapshot_option) {
-    auto deadline = rpc->GetClientDeadline();
-    // TODO(#18934): Handle partial failures by rolling back all changes.
-    for (const auto& table_id : table_ids) {
-      RETURN_NOT_OK(WaitForAlterTableToFinish(table_id, deadline));
-    }
-    RETURN_NOT_OK(WaitForSnapshotSafeOpIdToBePopulated(stream_id, table_ids, deadline));
-  }
+  RETURN_NOT_OK(TEST_CDCSDKFailCreateStreamRequestIfNeeded(
+      "CreateCDCSDKStream::kBeforeFinalAlterTableBatchFlush"));
+  // Final partial batch (also handles the single_batch_mode case where nothing flushed yet).
+  RETURN_NOT_OK(FlushCDCSDKRetentionBarrierBatch(
+      &current_batch, rpc, epoch, stream_id, has_consistent_snapshot_option, require_history_cutoff,
+      deadline));
 
   return Status::OK();
 }
@@ -2438,6 +2594,14 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
         "Creation of CDCSDK stream with a replication slot name is disallowed");
   }
 
+  if (req.has_cdcsdk_stream_create_options() &&
+      req.cdcsdk_stream_create_options().has_bound_table_ids()) {
+    if (req.has_cdcsdk_ysql_replication_slot_name()) {
+      RETURN_INVALID_REQUEST_STATUS(
+          "CDC streams bound to specific tables cannot be created with a replication slot");
+    }
+  }
+
   if (!FLAGS_ysql_yb_allow_replication_slot_lsn_types && req.has_cdcsdk_stream_create_options() &&
       req.cdcsdk_stream_create_options().has_lsn_type()) {
     RETURN_INVALID_REQUEST_STATUS(
@@ -2543,6 +2707,10 @@ bool CatalogManager::IsTableEligibleForCDCSDKStream(
     return false;
   }
 
+  if (IsInternalTableToBeExcludedFromCDCSDKStream(lock)) {
+    return false;
+  }
+
   if (allow_cdc_used_syscatalog_tables && !table_info->IsUserTable(lock)) {
     auto table_oid_result = lock->GetPgTableOid(table_info->id());
     if (table_oid_result.ok() && IsCatalogTableEligibleForCDC(*table_oid_result)) {
@@ -2561,6 +2729,13 @@ bool CatalogManager::IsTableEligibleForCDCSDKStream(
   }
 
   return true;
+}
+
+bool CatalogManager::IsInternalTableToBeExcludedFromCDCSDKStream(
+    const TableInfo::ReadLock& lock) const {
+  // xCluster DDL replication tables (yb_xcluster_ddl_replication.ddl_queue and .replicated_ddls)
+  // drive xCluster DDL replication.
+  return lock->IsXClusterDDLReplicationTable();
 }
 
 /*
@@ -6604,6 +6779,17 @@ Status CatalogManager::CDCSDKAllowTableRewrite(
           table_id);
     }
 
+    // Table rewrite is not yet supported for colocated tables on a CDC logical replication
+    // stream. TODO(#31908): Re-enable once colocated rewrite + CDC support is added.
+    auto table = tables_->FindTableOrNull(table_id);
+    if (table && table->colocated()) {
+      return STATUS_FORMAT(
+          NotSupported,
+          "Table rewrite is not supported for colocated table $0 that is part of a CDC logical "
+          "replication stream.",
+          table_id);
+    }
+
     if (!FLAGS_cdc_enable_dynamic_schema_changes) {
       return STATUS_FORMAT(
           NotSupported,
@@ -6635,6 +6821,38 @@ Status CatalogManager::CDCSDKValidateCreateTableRequest(const CreateTableRequest
   RETURN_NOT_OK(CDCSDKAllowTableRewrite(table_id, req.is_truncate()));
 
   return Status::OK();
+}
+
+AsyncTaskThrottlerBase* CatalogManager::GetCDCStreamAlterTableThrottler() {
+  if (FLAGS_max_concurrent_alter_table_rpcs == 0) {
+    return nullptr;
+  }
+  return &cdc_stream_alter_table_throttler_;
+}
+
+uint64_t CatalogManager::GetCDCStreamAlterTableRpcLimit() {
+  // Mirrors MasterSnapshotCoordinator::Impl::GetRpcLimit. Three cases:
+  //   total == 0      -> unlimited (numeric_limits<uint64_t>::max()).
+  //   total >  0      -> use total directly as the global cap.
+  //   total <  0      -> derive global cap as per_tserver * num_live_tservers.
+  auto total = FLAGS_max_concurrent_alter_table_rpcs;
+  auto per_tserver = FLAGS_max_concurrent_alter_table_rpcs_per_tserver;
+  if (total == 0) {
+    return std::numeric_limits<uint64_t>::max();
+  }
+  if (total > 0) {
+    return static_cast<uint64_t>(total);
+  }
+  // total < 0: per-tserver path.
+  // Use NumLiveDescriptors (live tservers seen by the master). If the cluster is still
+  // initializing or for any reason we see 0 live tservers, fall back to the per-tserver
+  // value itself as the global cap, matching the snapshot coordinator's fallback.
+  const auto safe_per_tserver = static_cast<uint64_t>(std::max(1, per_tserver));
+  const auto num = master_->ts_manager()->NumLiveDescriptors();
+  if (num == 0) {
+    return safe_per_tserver;
+  }
+  return num * safe_per_tserver;
 }
 
 }  // namespace master

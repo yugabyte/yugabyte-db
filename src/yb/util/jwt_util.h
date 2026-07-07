@@ -16,7 +16,7 @@
 
 #include <string>
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb::util {

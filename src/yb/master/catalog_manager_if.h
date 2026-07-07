@@ -37,7 +37,7 @@
 #include "yb/tserver/tablet_peer_lookup.h"
 
 #include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace google::protobuf {
 template <class T>

@@ -65,8 +65,6 @@ The following table lists the primitive and compound data types in YSQL.
 | `tsvector` <sup>1</sup> | | Text search document |
 | `txid_snapshot` <sup>1</sup> | | Transaction ID snapshot |
 | [uuid](type_uuid) | | Universally unique identifier |
-| `xml` <sup>2</sup> | | XML data |
+| [xml](type_xml/) | | XML data |
 
-<sup>1</sup> Table columns of this type cannot be part of an `INDEX` `KEY`.
-
-<sup>2</sup> Under development.
+<sup>1</sup> Table columns of this type cannot be part of an `INDEX` `KEY`. For an indexing pattern for `inet` and `cidr` containment queries, see [CIDR range lookups](../../../develop/data-modeling/cidr-range-lookups-ysql/).

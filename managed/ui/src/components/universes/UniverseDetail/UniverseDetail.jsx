@@ -59,6 +59,8 @@ import { EditConnectionPoolModal } from '../../../redesign/features/universe/uni
 import { EditMultiTenancyModal } from '../../../redesign/features/universe/universe-actions/edit-multi-tenancy/EditMultiTenancyModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import { EditUniverse } from '@app/redesign/features-v2/universe/edit-universe';
+import { EditUniverseTabs } from '@app/redesign/features-v2/universe/edit-universe/EditUniverseContext';
+import { getEditUniverseSettingsRoute } from '@app/redesign/features-v2/universe/edit-universe/editUniverseTabUtils';
 import { UpgradeLinuxVersionModal } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/UpgradeLinuxVersionModal';
 import { DBUpgradeModal as LegacyDbUpgradeModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBUpgradeModal';
 import { DbUpgradeModal } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeModal';
@@ -76,6 +78,7 @@ import {
 } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import { DrConfigList } from '../../xcluster/disasterRecovery/DrConfigList';
 import { InstallNodeAgentModal } from '../../../redesign/features/universe/universe-actions/install-node-agent/InstallNodeAgentModal';
+import { ReprovisionNodesWithYnpModal } from '../../../redesign/features/universe/universe-actions/reprovision-nodes-with-ynp/ReprovisionNodesWithYnpModal';
 import { YBMenuItemLabel } from '../../../redesign/components/YBDropdownMenu/YBMenuItemLabel';
 import {
   PerfAdvisorModalIntention,
@@ -266,6 +269,21 @@ class UniverseDetail extends Component {
       }
     }
 
+    // Refresh PA registration status whenever a PA register/unregister task on this universe
+    // completes, otherwise the actions menu keeps the pre-task label until a full reload.
+    const prevDetails = prevProps.universe.currentUniverse.data?.universeDetails;
+    const currDetails = currentUniverse?.data?.universeDetails;
+    const justCompleted =
+      prevDetails?.updateInProgress === true && currDetails?.updateInProgress === false;
+    const paTaskTypes = ['RegisterUniverseWithPACollector', 'UnregisterUniverseFromPACollector'];
+    if (
+      justCompleted &&
+      paTaskTypes.includes(prevDetails?.updatingTask) &&
+      isNonEmptyArray(ybaToPaServiceDetails?.data)
+    ) {
+      this.props.getUniversePaRegistrationStatus(currentUniverse.data.universeUUID);
+    }
+
     // Redirect to Overview when on Performance tab but it should no longer be shown
     // (perf advisor collector or advanced observability disabled for the universe)
     const isOnPerfAdvisorTab = this.props.location?.pathname?.includes(PERF_ADVISOR_PATH);
@@ -386,6 +404,7 @@ class UniverseDetail extends Component {
       showTLSConfigurationModal,
       showRollingRestartModal,
       showInstallNodeAgentModal,
+      showReprovisionNodesWithYnpModal,
       showUpgradeSystemdModal,
       showThirdpartyUpgradeModal,
       showRunSampleAppsModal,
@@ -419,7 +438,6 @@ class UniverseDetail extends Component {
       params: { tab },
       featureFlags,
       providers,
-      accessKeys,
       graph,
       location
     } = this.props;
@@ -459,13 +477,8 @@ class UniverseDetail extends Component {
     const isProviderNodeAgentEnabled = provider?.details?.enableNodeAgent;
     const isNodeAgentMissing = universe?.currentUniverse?.data?.universeDetails?.nodeAgentMissing;
 
-    let onPremSkipProvisioning = false;
-    if (provider && provider.code === 'onprem') {
-      const onPremKey = accessKeys.data.find(
-        (accessKey) => accessKey.idKey.providerUUID === provider.uuid
-      );
-      onPremSkipProvisioning = onPremKey?.keyInfo.skipProvisioning;
-    }
+    const onPremWithoutSudoAccess =
+      provider?.code === 'onprem' && provider?.details?.skipProvisioning;
 
     const isNodeAgentClientEnabled =
       providerRuntimeConfigs?.data?.configEntries?.find(
@@ -511,7 +524,7 @@ class UniverseDetail extends Component {
         ?.value === 'true';
 
     // This is the current Perf Advisor UI which is mostly not used and will be removed from 2026.2
-    const isPerfAdvisorUIEnabled =
+    const isLegacyPAEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.PERFORMANCE_ADVISOR_UI_FEATURE_FLAG
       )?.value === 'true';
@@ -521,17 +534,20 @@ class UniverseDetail extends Component {
     - Integrations -> Perf Advisor (to attach a customer to Perf Advisor service)
     - Under Universe Actions -> Show options to enable/disable Performance Monitoring for the universe (Perf Advisor Service)
     */
-    const isPerfAdvisorServiceEnabled =
+    const isPACollectorEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (c) => c.key === RuntimeConfigKey.ENABLE_PA_COLLECTOR
       )?.value === 'true';
 
-    // Performance Tab should be shown only if Perf Advisor is enabled for the universe with advanced observability
-    const isPerformanceTabEnabled =
-      isPerfAdvisorServiceEnabled &&
+    const isEmbeddedPAEnabled =
+      isPACollectorEnabled &&
       runtimeConfigs?.data?.configEntries?.find(
         (c) => c.key === RuntimeConfigKey.ENABLE_NEW_PERF_ADVISOR_UI
-      )?.value === 'true' &&
+      )?.value === 'true';
+
+    // Performance Tab should be shown only if Perf Advisor is enabled for the universe with advanced observability
+    const isPATabEnabled =
+      isEmbeddedPAEnabled &&
       universePaRegistrationStatus?.data?.success &&
       universePaRegistrationStatus?.data?.advancedObservability;
 
@@ -650,6 +666,9 @@ class UniverseDetail extends Component {
     isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.INSTALL);
     const isInstallNodeAgentDisabled =
       isUniverseStatusPending || isActionFrozen(allowedTasks, UNIVERSE_TASKS.INSTALL_NODE_AGENT);
+    const isReprovisionNodesWithYnpDisabled =
+      isUniverseStatusPending ||
+      isActionFrozen(allowedTasks, UNIVERSE_TASKS.REPROVISION_NODES_WITH_YNP);
     const isReadReplicaAsymmetricBlocked =
       hasAsymmetricAsyncCluster && !(isKubernetesUniverse && enableAzOverridesK8s);
     const isReadReplicaDisabled =
@@ -692,7 +711,12 @@ class UniverseDetail extends Component {
       : 'overview';
     // Check if the pathname contains "performance" to determine if we should show the performance tab
     const isPerfAdvisorPath = location?.pathname?.includes(PERF_ADVISOR_PATH);
-    const activeTab = isPerfAdvisorPath ? PERF_ADVISOR_PATH : tab || defaultTab;
+    const isSettingsPath = location?.pathname?.includes('/settings');
+    const activeTab = isPerfAdvisorPath
+      ? PERF_ADVISOR_PATH
+      : isSettingsPath || tab === 'settings'
+        ? 'settings'
+        : tab || defaultTab;
     const tabElements = [
       //common tabs for every universe
       ...[
@@ -777,7 +801,7 @@ class UniverseDetail extends Component {
             onExit={this.stripQueryParams}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.queries')}
           >
-            <QueriesViewer isPerfAdvisorUIEnabled={isPerfAdvisorUIEnabled} />
+            <QueriesViewer isLegacyPAEnabled={isLegacyPAEnabled} />
           </Tab.Pane>
         ),
         isNotHidden(currentCustomer.data.features, 'universes.details.recovery') && isDrEnabled && (
@@ -827,7 +851,7 @@ class UniverseDetail extends Component {
           </Tab.Pane>
         ),
         isNotHidden(currentCustomer.data.features, 'universes.details.performance') &&
-          isPerformanceTabEnabled &&
+          isPATabEnabled &&
           ybaToPaServiceDetails?.data?.length > 0 && (
             <Tab.Pane
               eventKey={'perfAdvisor'}
@@ -1166,6 +1190,7 @@ class UniverseDetail extends Component {
                   )}
                   {!isReadOnlyUniverse &&
                     !universePaused &&
+                    !isV2EditUniverseUIEnabled &&
                     isNotHidden(
                       currentCustomer.data.features,
                       'universes.details.overview.editUniverse'
@@ -1200,6 +1225,87 @@ class UniverseDetail extends Component {
                           </span>
                         </YBTooltip>
                       </RbacValidator>
+                    )}
+                    {
+                      !isReadOnlyUniverse &&
+                      !universePaused &&
+                      isV2EditUniverseUIEnabled &&
+                      isNotHidden(
+                        currentCustomer.data.features,
+                        'universes.details.overview.editUniverse'
+                      ) && (
+                        <>
+                          <MenuItem divider />
+                          <RbacValidator
+                            isControl
+                            accessRequiredOn={{
+                              onResource: uuid,
+                              ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                            }}
+                          >
+                            <YBTooltip
+                              title={
+                                hasAsymmetricPrimaryCluster &&
+                                  !(isKubernetesUniverse && enableAzOverridesK8s)
+                                  ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
+                                  : ''
+                              }
+                              placement="left"
+                            >
+                              <span>
+                                <YBMenuItem
+                                  to={getEditUniverseSettingsRoute(uuid, EditUniverseTabs.PLACEMENT)}
+                                  availability={getFeatureState(
+                                    currentCustomer.data.features,
+                                    'universes.details.overview.editUniverse'
+                                  )}
+                                  disabled={isEditUniverseDisabled}
+                                  className="no-border-bottom"
+                                >
+                                  <YBLabelWithIcon icon="fa fa-pencil" className="menu-item-subtext-container">
+                                    Edit Universe Placement
+                                    <span className="menu-item-subtext">Regions, Availability Zones, and Nodes</span>
+                                  </YBLabelWithIcon>
+                                </YBMenuItem>
+                              </span>
+                            </YBTooltip>
+                          </RbacValidator>
+                          <RbacValidator
+                            isControl
+                            accessRequiredOn={{
+                              onResource: uuid,
+                              ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                            }}
+                          >
+                            <YBTooltip
+                              title={
+                                hasAsymmetricPrimaryCluster &&
+                                  !(isKubernetesUniverse && enableAzOverridesK8s)
+                                  ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
+                                  : ''
+                              }
+                              placement="left"
+                            >
+                              <span>
+                                <YBMenuItem
+                                  to={getEditUniverseSettingsRoute(uuid, EditUniverseTabs.HARDWARE)}
+                                  availability={getFeatureState(
+                                    currentCustomer.data.features,
+                                    'universes.details.overview.editUniverse'
+                                  )}
+                                  disabled={isEditUniverseDisabled}
+                                  className="no-border-bottom"
+                                >
+                                  <YBLabelWithIcon icon="fa fa-pencil" className="menu-item-subtext-container">
+                                    Edit Hardware
+                                    <span className="menu-item-subtext">Instances and storage</span>
+                                  </YBLabelWithIcon>
+                              </YBMenuItem>
+                            </span>
+                          </YBTooltip>
+                        </RbacValidator>
+                        <MenuItem divider />
+                      </>
                     )}
                   {!universePaused && !this.isRRFlagsEnabled() && (
                     <RbacValidator
@@ -1659,6 +1765,27 @@ class UniverseDetail extends Component {
                         </YBMenuItem>
                       </RbacValidator>
                     )}
+                    {!isReadOnlyUniverse &&
+                      !universePaused &&
+                      !isKubernetesUniverse &&
+                      !onPremWithoutSudoAccess && (
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.UPGRADE_UNIVERSE_PROVISION_NODES
+                          }}
+                        >
+                          <YBMenuItem
+                            disabled={isReprovisionNodesWithYnpDisabled}
+                            onClick={showReprovisionNodesWithYnpModal}
+                          >
+                            <YBLabelWithIcon icon="fa fa-refresh">
+                              Reprovision Nodes with YNP
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        </RbacValidator>
+                      )}
                     {!universePaused && (
                       <RbacValidator
                         isControl
@@ -1691,7 +1818,7 @@ class UniverseDetail extends Component {
                       </RbacValidator>
                     )}
                     {!universePaused &&
-                      isPerfAdvisorServiceEnabled &&
+                      isPACollectorEnabled &&
                       ybaToPaServiceDetails?.data?.length > 0 && (
                         <RbacValidator
                           isControl
@@ -1710,7 +1837,7 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         </RbacValidator>
                       )}
-                    {isPerformanceTabEnabled &&
+                    {isEmbeddedPAEnabled &&
                       !universePaused &&
                       universePaRegistrationStatus?.data?.success &&
                       !universePaRegistrationStatus?.data?.advancedObservability && (
@@ -1728,7 +1855,8 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         </RbacValidator>
                       )}
-                    {!universePaused &&
+                    {isEmbeddedPAEnabled &&
+                      !universePaused &&
                       universePaRegistrationStatus?.data?.success &&
                       universePaRegistrationStatus?.data?.advancedObservability && (
                         <RbacValidator
@@ -2002,7 +2130,7 @@ class UniverseDetail extends Component {
               this.props.getUniversePaRegistrationStatus(currentUniverse.data.universeUUID);
             }
           }}
-          isPerformanceTabEnabled={isPerformanceTabEnabled}
+          isEmbeddedPAEnabled={isEmbeddedPAEnabled}
           paUuid={ybaToPaServiceDetails?.data?.[0]?.uuid}
           universeData={currentUniverse.data}
           perfAdvisorStatus={universePaRegistrationStatus}
@@ -2051,6 +2179,18 @@ class UniverseDetail extends Component {
           universeUuid={currentUniverse.data.universeUUID}
           isUniverseAction={true}
           isReinstall={!isNodeAgentMissing}
+        />
+
+        <ReprovisionNodesWithYnpModal
+          modalProps={{
+            open: showModal && visibleModal === 'reprovisionNodesWithYnpModal',
+            onClose: () => {
+              closeModal();
+              this.props.fetchCustomerTasks();
+              this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+            }
+          }}
+          universeUuid={currentUniverse.data.universeUUID}
         />
 
         <UniverseSupportBundleModal

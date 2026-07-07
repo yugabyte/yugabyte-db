@@ -52,6 +52,13 @@ public class TestPgRegressLock extends BasePgRegressTestPorted {
   }
 
   @Test
+  // Disable conn mgr for the deadlock test: with object locking enabled, DocDB transactions
+  // can be re-used whenever possible, and this affects the start time logic that deadlock
+  // depends on while picking the victim. With connection manager enabled, there could be
+  // reuse of backends and this in combination with re-use of transactions might affect
+  // deadlock detection. Since the deadlock test itself has nothing to do with connection
+  // manager, it is better to run the test on Postgres port instead.
+  @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testIsolation() throws Exception {
     runPgRegressTest(
         PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */,

@@ -159,41 +159,27 @@ You might need to `unload` the service before loading it.
 
 ## Download
 
-Download YugabyteDB as follows:
+Download and extract YugabyteDB as follows:
 
-{{< tabpane text=true >}}
+{{< tabpane text=true plain=true >}}
 
-{{% tab header="macOS x86" lang="x86" %}}
+{{% tab header="<i class='fa-brands fa-apple' aria-hidden='true'></i> x86" lang="x86" %}}
 
-1. Download the YugabyteDB `tar.gz` file by executing the following `wget` command:
-
-    ```sh
-    wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz
-    echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64-tar.gz.sha) *yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz" | shasum --check
-    ```
-
-1. Extract the package and then change directories to the YugabyteDB home, as follows:
-
-    ```sh
-    tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
-    ```
+```sh
+wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz
+echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64-tar.gz.sha) *yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz" | shasum --check
+tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
+```
 
 {{% /tab %}}
 
-{{% tab header="macOS ARM" lang="arm" %}}
+{{% tab header="<i class='fa-brands fa-apple' aria-hidden='true'></i> ARM" lang="arm" %}}
 
-1. Download the YugabyteDB `tar.gz` file by executing the following `wget` command:
-
-    ```sh
-    wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-arm64.tar.gz
-    echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-arm64-tar.gz.sha) *yugabyte-{{< yb-version version="stable" format="build">}}-darwin-arm64.tar.gz" | shasum --check
-    ```
-
-1. Extract the package and then change directories to the YugabyteDB home, as follows:
-
-    ```sh
-    tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-darwin-arm64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
-    ```
+```sh
+wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-arm64.tar.gz
+echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-arm64-tar.gz.sha) *yugabyte-{{< yb-version version="stable" format="build">}}-darwin-arm64.tar.gz" | shasum --check
+tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-darwin-arm64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
+```
 
 {{% /tab %}}
 

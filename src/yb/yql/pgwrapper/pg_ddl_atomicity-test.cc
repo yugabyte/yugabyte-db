@@ -82,6 +82,14 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
         Format("--ysql_yb_ddl_transaction_block_enabled=$0", TransactionalDdlEnabled()));
     options->extra_tserver_flags.push_back(
         Format("--enable_object_locking_for_table_locks=$0", TableLocksEnabled()));
+    // Concurrent DDL requires object locking, so when object locking is disabled, disable
+    // concurrent DDL too; otherwise the cross-flag validator would FATAL if concurrent DDL defaults
+    // on. When object locking is enabled, leave concurrent DDL at its default.
+    if (!TableLocksEnabled()) {
+      options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+      AppendFlagToAllowedPreviewFlagsCsv(
+          options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    }
 
   }
 
@@ -1031,6 +1039,14 @@ class PgDdlAtomicitySanityTestWithTableLocks : public PgDdlAtomicitySanityTest,
     PgDdlAtomicitySanityTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back(
         yb::Format("--enable_object_locking_for_table_locks=$0", TableLocksEnabled()));
+    // Concurrent DDL requires object locking, so when object locking is disabled, disable
+    // concurrent DDL too; otherwise the cross-flag validator would FATAL if concurrent DDL defaults
+    // on. When object locking is enabled, leave concurrent DDL at its default.
+    if (!TableLocksEnabled()) {
+      options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+      AppendFlagToAllowedPreviewFlagsCsv(
+          options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    }
     options->extra_tserver_flags.push_back(
         yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", TableLocksEnabled()));
   }

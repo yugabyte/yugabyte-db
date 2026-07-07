@@ -442,6 +442,12 @@ void TabletServer::SetupAsyncClientInit(client::AsyncClientInitializer* async_cl
       client->SetLocalTabletServer(uuid, proxy, tserver);
     });
   }
+#ifdef __linux__
+  async_client_init->AddPostCreateHook([this](client::YBClient* client) {
+    client->SetCallbackCgroupProvider(
+        [this](uint64_t tag) { return PerDbCgroupProvider(tag); });
+  });
+#endif
 }
 
 Status TabletServer::ValidateMasterAddressResolution() const {
@@ -452,10 +458,10 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
                                            bool is_master_leader) {
   shared_ptr<server::MasterAddresses> new_master_addresses;
   if (is_master_leader) {
-    SetCurrentMasterIndex(new_config.opid_index());
+    SetCurrentMasterIndex(new_config.committed_op_index());
     new_master_addresses = make_shared<server::MasterAddresses>();
 
-    SetCurrentMasterIndex(new_config.opid_index());
+    SetCurrentMasterIndex(new_config.committed_op_index());
 
     for (const auto& peer : new_config.peers()) {
       std::vector<HostPort> list;
@@ -497,7 +503,7 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
   }
 
   LOG(INFO) << "Got new list of " << new_config.peers_size() << " masters at index "
-            << new_config.opid_index() << " old masters = "
+            << new_config.committed_op_index() << " old masters = "
             << yb::ToString(opts_.GetMasterAddresses())
             << " new masters = " << yb::ToString(new_master_addresses) << " from "
             << (is_master_leader ? "leader." : "follower.");
@@ -697,7 +703,8 @@ std::map<std::string, std::string> TabletServer::ValidateConfCsvViaPg(
   if (!paths_result.ok()) return fail_all(paths_result.status());
   auto paths = std::move(*paths_result);
 
-  auto conn_result = CreateInternalPGConn("yugabyte", /*simple_query_protocol=*/false, deadline);
+  auto conn_result = CreateInternalPGConn(
+      "yugabyte", kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline);
   if (!conn_result.ok()) return fail_all(conn_result.status());
   auto conn = std::move(*conn_result);
 
@@ -846,9 +853,9 @@ Status TabletServer::RegisterServices() {
   if (FLAGS_ysql_enable_auto_analyze_infra) {
     auto connect_to_pg = [this](const std::string& database_name,
                                 const CoarseTimePoint& deadline) {
-      return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
-                                                    GetSharedMemoryPostgresAuthKey(),
-                                                    deadline, true).Connect();
+      return CreateInternalPGConn(
+          database_name, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline,
+          pgwrapper::YbInternalConnKindWireName::kAutoAnalyze);
     };
     auto pg_auto_analyze_service =
         std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future(),
@@ -964,6 +971,17 @@ void TabletServer::Shutdown() {
   }
 
   client()->RequestAbortAllRpcs();
+
+  // Mark the transaction manager as closing before aborting tablet operations below. Aborting
+  // in-flight transaction status operations (e.g. heartbeats) completes their client RPCs, and
+  // unless the manager is already flagged as closing those completions are treated as retryable
+  // failures and re-registered as new operations on tablets that are already shutting down. Those
+  // late operations never get aborted (their tablet peers finish shutdown only after the txn
+  // manager), leaving the RPCs stuck until the txn manager's shutdown deadline elapses, which
+  // trips a CHECK(calls_.empty()) fatal failure. See DbServerBase::Shutdown for the later call.
+  if (auto* txn_manager = transaction_manager_.load()) {
+    txn_manager->SetClosing();
+  }
 
   tablet_manager_->StartShutdown();
   WARN_NOT_OK(relinquish_lease_future.get(), "Couldn't relinquish ysql lease");
@@ -1450,7 +1468,13 @@ void TabletServer::RelcacheInitConnectionDone(
 
 void TabletServer::MakeRelcacheInitConnection(const std::string& dbname) {
   auto deadline = CoarseMonoClock::Now() + default_client_timeout();
-  auto status = ResultToStatus(CreateInternalPGConn(dbname, false, deadline));
+  // Identify this connection as the dedicated relcache-init builder so the
+  // backend takes on YB_RELCACHE_INIT_BACKEND, runs with minimal preload, and
+  // does not recursively trigger another internal connection
+  // (relcache.c:RelationCacheInitializePhase3).
+  auto status = ResultToStatus(CreateInternalPGConn(
+      dbname, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline,
+      pgwrapper::YbInternalConnKindWireName::kRelcacheInit));
   if (status.ok()) {
     LOG(INFO) << "Relcache init connection to database " << dbname << " succeeded";
   } else {
@@ -2050,7 +2074,8 @@ void TabletServer::DoGarbageCollectionOfInvalidationMessages(
 
 Status TabletServer::CheckYsqlLaggingCatalogVersions() {
   auto deadline = CoarseMonoClock::Now() + default_client_timeout();
-  auto pg_conn = VERIFY_RESULT(CreateInternalPGConn("template1", false, deadline));
+  auto pg_conn = VERIFY_RESULT(
+      CreateInternalPGConn("template1", kDefaultInternalPgUser, false, deadline));
   const std::string query = "SELECT datid, local_catalog_version FROM "
                             "yb_pg_stat_get_backend_local_catalog_version(NULL) "
                             "ORDER BY datid ASC, local_catalog_version ASC";
@@ -2265,10 +2290,8 @@ Status TabletServer::CreateXClusterConsumer() {
     return tablet_peer->LeaderTerm();
   };
   auto connect_to_pg = [this](const std::string& database_name, const CoarseTimePoint& deadline) {
-    return pgwrapper::CreateInternalPGConnBuilder(
-               pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(),
-               deadline)
-        .Connect();
+    return CreateInternalPGConn(
+        database_name, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline);
   };
   auto get_namespace_info =
       [this](const TabletId& tablet_id) -> Result<std::pair<NamespaceId, NamespaceName>> {
@@ -2539,6 +2562,10 @@ Status TabletServer::ClearMetacache(const std::string& namespace_id) {
   return client()->ClearMetacache(namespace_id);
 }
 
+void TabletServer::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {
+  client()->MarkTServersAsFollowers(ts_uuids);
+}
+
 Status TabletServer::ClearYCQLMetaDataCache() {
   auto* cql_server_api = cql_server_external_.load();
   SCHECK_NOTNULL(cql_server_api);
@@ -2640,10 +2667,18 @@ void TabletServer::SetCronLeaderLease(MonoTime cron_leader_lease_end) {
 }
 
 Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(
-    const std::string& database_name, bool simple_query_protocol,
-    const std::optional<CoarseTimePoint>& deadline) {
+    const std::string& database_name, std::string_view user, bool simple_query_protocol,
+    const std::optional<CoarseTimePoint>& deadline,
+    std::string_view yb_internal_conn_kind) {
   return pgwrapper::CreateInternalPGConnBuilder(
-             pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(), deadline)
+             pgsql_proxy_bind_address(), database_name, user, GetSharedMemoryPostgresAuthKey(),
+             deadline, yb_internal_conn_kind,
+             // Abort the connect retry loop as soon as shutdown begins. Internal connects run on
+             // messenger threads and can hold the triggering backend's inbound RpcContext alive
+             // until they return; retrying the (also shutting-down) postgres for the full deadline
+             // keeps that RPC connection non-idle and makes Messenger::Shutdown() time out joining
+             // the reactor.
+             [this] { return static_cast<bool>(shutting_down_); })
       .Connect(simple_query_protocol);
 }
 

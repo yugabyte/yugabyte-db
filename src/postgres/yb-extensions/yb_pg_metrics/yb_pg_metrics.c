@@ -50,6 +50,7 @@
 #include "utils/syscache.h"
 #include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb_internal_conn.h"
 
 #define YSQL_METRIC_PREFIX "yb_ysqlserver_"
 #define YSQL_LATENCY_METRIC_PREFIX "handler_latency_yb_ysqlserver_SQLProcessor_"
@@ -705,9 +706,10 @@ pullRpczEntries(void)
 			PGPROC	   *proc = NULL;
 
 			if (beentry->st_backendType == B_BACKEND ||
-				beentry->st_backendType == YB_AUTO_ANALYZE_BACKEND)
+				YbIsInternalConnBackendType(beentry->st_backendType))
 				proc = BackendPidGetProc(rpcz[i].proc_id);
-			else if (beentry->st_backendType != YB_YSQL_CONN_MGR)
+			else if (beentry->st_backendType != YB_YSQL_CONN_MGR &&
+					 beentry->st_backendType != YB_YSQL_CONN_MGR_CTRL)
 			{
 				/*
 				 * For an auxiliary process, retrieve process info from
@@ -1076,7 +1078,9 @@ ybpgm_InitPostgres()
 						&conn_init_secs, &conn_init_usecs);
 	uint64_t	conn_latency_us = (uint64_t) (conn_init_secs * 1000000 + conn_init_usecs);
 	YbStatementType conn_type =
-		YbIsAuthBackend() ? AuthBackendInitLatency : RegularBackendInitLatency;
+		(YbIsAuthBackend() || YbIsAuthPassthroughControlBackend()) ?
+			AuthBackendInitLatency :
+			RegularBackendInitLatency;
 
 	ybpgm_Store(conn_type, conn_latency_us, 0);
 

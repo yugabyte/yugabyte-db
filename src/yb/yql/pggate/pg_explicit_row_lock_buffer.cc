@@ -41,33 +41,14 @@ class ExplicitRowLockBuffer::Impl {
  public:
   explicit Impl(PgSession& session) : ybctid_reader_(session) {}
 
-  Status Add(
-      const Info& info, const LightweightTableYbctid& key,
-      const YbcPgTableLocalityInfo& locality_info,
-      std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> handle,
-      std::optional<ErrorStatusAdditionalInfo>& error_info) {
-    if (info_ && *info_ != info && HasPendingLocks()) {
-      RETURN_NOT_OK(DoFlush(error_info));
-    }
+  Status Add(const AddLockData& data) {
+    return DoAdd(data);
+  }
 
-    if (!info_) {
-      info_ = info;
-    }
-
-    auto ipair = intents_.emplace(key.table_id, key.ybctid);
-    if (ipair.second) {
-      table_locality_map_.Add(key.table_id, locality_info);
-    }
-
-    if (handle) {
-      DCHECK(*handle == next_check_handle_ - 1);
-      const auto* last = skippable_.empty() ? nullptr : &skippable_.back();
-      const uint32_t handle_idx =  (!last || last->handle != *handle) ? 0 : (last->handle_idx + 1);
-      skippable_.emplace_back(*handle, *ipair.first, handle_idx);
-    }
-
-    return narrow_cast<int>(intents_.size()) >= yb_explicit_row_locking_batch_size
-        ? DoFlush(error_info) : Status::OK();
+  Result<YbcIsExplicitlyLockedRowSkippedCheckHandle> AddSkippable(
+      const AddLockData& data, std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> handle) {
+    RETURN_NOT_OK(DoAdd(data, &handle));
+    return *handle;
   }
 
   Status Flush(std::optional<ErrorStatusAdditionalInfo>& error_info) {
@@ -101,11 +82,45 @@ class ExplicitRowLockBuffer::Impl {
     return skipped_.erase(handle);
   }
 
-  [[nodiscard]] YbcIsExplicitlyLockedRowSkippedCheckHandle AcquireCheckHandle() {
-    return next_check_handle_++;
+ private:
+  Status DoAdd(
+      const AddLockData& data,
+      std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle>* handle = nullptr) {
+    if (info_ && *info_ != data.lock_info && HasPendingLocks()) {
+      RETURN_NOT_OK(DoFlush(data.error_info));
+    }
+
+    if (!info_) {
+      info_ = data.lock_info;
+    }
+    const auto& ybctid = data.lock_key.ybctid;
+    const auto& table_id = data.lock_key.table_id;
+
+    auto ipair = intents_.emplace(table_id, ybctid);
+    if (ipair.second) {
+      table_locality_map_.Add(table_id, data.table_locality);
+    }
+
+    if (handle) {
+      size_t handle_idx = 0;
+      // Handle is kind of a signature to indicate that multiple ybctids belongs to it.
+      // It is expected that all the ybctids for same handle are added one after another,
+      // so only the latest handle is valid.
+      if (handle->has_value()) {
+          RSTATUS_DCHECK(
+              !skippable_.empty() && **handle == skippable_.back().handle,
+              IllegalState, "Latest known skip locked handle is only expected");
+          handle_idx = skippable_.back().handle_idx + 1;
+      } else {
+        handle->emplace(next_check_handle_++);
+      }
+      skippable_.emplace_back(**handle, *ipair.first, handle_idx);
+    }
+
+    return narrow_cast<int>(intents_.size()) >= yb_explicit_row_locking_batch_size
+        ? DoFlush(data.error_info) : Status::OK();
   }
 
- private:
   void ClearIntents() {
     info_.reset();
     intents_.clear();
@@ -190,7 +205,7 @@ class ExplicitRowLockBuffer::Impl {
   }
 
   YbctidReader ybctid_reader_;
-  std::optional<Info> info_;
+  std::optional<LockInfo> info_;
   MemoryOptimizedTableYbctidSet intents_;
   TableLocalityMap table_locality_map_;
 
@@ -205,12 +220,14 @@ ExplicitRowLockBuffer::ExplicitRowLockBuffer(PgSession& session)
 
 ExplicitRowLockBuffer::~ExplicitRowLockBuffer() = default;
 
-Status ExplicitRowLockBuffer::Add(
-      const Info& info, const LightweightTableYbctid& key,
-      const YbcPgTableLocalityInfo& locality_info,
-      std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> handle,
-      std::optional<ErrorStatusAdditionalInfo>& error_info) {
-  return impl_->Add(info, key, locality_info, handle, error_info);
+Status ExplicitRowLockBuffer::Add(const AddLockData& data) {
+  return impl_->Add(data);
+}
+
+Result<YbcIsExplicitlyLockedRowSkippedCheckHandle> ExplicitRowLockBuffer::AddSkippable(
+    const AddLockData& data,
+    std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> handle) {
+  return impl_->AddSkippable(data, handle);
 }
 
 Status ExplicitRowLockBuffer::Flush(std::optional<ErrorStatusAdditionalInfo>& error_info) {
@@ -223,10 +240,6 @@ void ExplicitRowLockBuffer::Clear() {
 
 bool ExplicitRowLockBuffer::HasPendingLocks() const {
   return impl_->HasPendingLocks();
-}
-
-YbcIsExplicitlyLockedRowSkippedCheckHandle ExplicitRowLockBuffer::AcquireCheckHandle() {
-  return impl_->AcquireCheckHandle();
 }
 
 Result<bool> ExplicitRowLockBuffer::IsSkipped(

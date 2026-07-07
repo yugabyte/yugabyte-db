@@ -174,7 +174,6 @@ export const GeoPartitionPlacementView = () => {
       }
     ];
   }, [readReplicaClusters?.uuid, t, universeUuid]);
-  console.warn({isUniverseReady});
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>

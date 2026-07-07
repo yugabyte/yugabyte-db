@@ -24,6 +24,7 @@
 #include <google/protobuf/empty.pb.h>
 #include <gtest/gtest.h>
 
+#include "opentelemetry/sdk/common/global_log_handler.h"
 #include "opentelemetry/trace/scope.h"
 #include "opentelemetry/trace/tracer.h"
 #include "opentelemetry/proto/collector/trace/v1/trace_service.pb.h"
@@ -39,6 +40,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
@@ -52,6 +54,7 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_string(otel_collector_traces_endpoint);
+DECLARE_string(otel_internal_log_level);
 DECLARE_uint32(otel_batch_max_queue_size);
 DECLARE_uint32(otel_batch_schedule_delay_ms);
 DECLARE_uint32(otel_batch_max_export_batch_size);
@@ -1471,6 +1474,16 @@ TEST_F(DistTraceTest, TestSpiTracingBasic) {
   ASSERT_OK(conn_->Fetch("SELECT yb_spi_trace_basic()"));
 
   ASSERT_OK(collector_.VerifyTraceContainsOpName(tp.trace_id, "spi.query"));
+
+  // The spi.query span should carry the SQL executed via SPI in its
+  // "spi.query.text" attribute. plpgsql strips the "INTO v" target, so the
+  // recorded statement contains the "SELECT 1" expression it ran.
+  auto spi_span = collector_.FindSpanByNamePrefix(tp.trace_id, "spi.query");
+  ASSERT_TRUE(spi_span.has_value()) << "spi.query span not found";
+  auto statement_it = spi_span->str_attrs.find("spi.query.text");
+  ASSERT_NE(statement_it, spi_span->str_attrs.end())
+      << "spi.query.text attribute missing on spi.query span";
+  ASSERT_STR_CONTAINS(statement_it->second, "SELECT 1");
 }
 
 // Verifies that a function making N SPI calls produces at least N "spi.query" spans.
@@ -1647,6 +1660,125 @@ TEST_F(DistTraceRpcTest, TestRpcSpans) {
       },
       kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
       "RPC span to appear in trace"));
+}
+
+TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_internal_log_level) = "debug";
+
+  static constexpr auto kError = "otel internal error";
+  static constexpr auto kWarning = "otel internal warning";
+  static constexpr auto kInfo = "otel internal info";
+  static constexpr auto kDebug = "otel internal debug";
+
+  RegexWaiterLogSink error_waiter(Format("E.*$0.*", kError));
+  RegexWaiterLogSink warning_waiter(Format("W.*$0.*", kWarning));
+  RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
+  RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
+
+  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-log-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::CleanupDistTrace();
+  });
+
+  OTEL_INTERNAL_LOG_ERROR(kError);
+  OTEL_INTERNAL_LOG_WARN(kWarning);
+  OTEL_INTERNAL_LOG_INFO(kInfo);
+  OTEL_INTERNAL_LOG_DEBUG(kDebug);
+
+  ASSERT_OK(error_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(warning_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(info_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(debug_waiter.WaitFor(5s * kTimeMultiplier));
+}
+
+TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelDefaultsToInfo) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
+
+  static constexpr auto kError = "otel default internal error";
+  static constexpr auto kInfo = "otel default internal info";
+  static constexpr auto kDebug = "otel default internal debug";
+
+  RegexWaiterLogSink error_waiter(Format("E.*$0.*", kError));
+  RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
+  RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
+
+  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-default-log-level-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::CleanupDistTrace();
+  });
+
+  OTEL_INTERNAL_LOG_ERROR(kError);
+  OTEL_INTERNAL_LOG_INFO(kInfo);
+  OTEL_INTERNAL_LOG_DEBUG(kDebug);
+
+  ASSERT_OK(error_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(info_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_EQ(debug_waiter.GetEventCount(), 0);
+}
+
+TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelGFlagControlsSdkFiltering) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_internal_log_level) = "error";
+
+  static constexpr auto kError = "otel error threshold internal error";
+  static constexpr auto kWarning = "otel error threshold internal warning";
+  static constexpr auto kInfo = "otel error threshold internal info";
+  static constexpr auto kDebug = "otel error threshold internal debug";
+
+  RegexWaiterLogSink error_waiter(Format("E.*$0.*", kError));
+  RegexWaiterLogSink warning_waiter(Format("W.*$0.*", kWarning));
+  RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
+  RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
+
+  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-error-log-level-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::CleanupDistTrace();
+  });
+
+  OTEL_INTERNAL_LOG_ERROR(kError);
+  OTEL_INTERNAL_LOG_WARN(kWarning);
+  OTEL_INTERNAL_LOG_INFO(kInfo);
+  OTEL_INTERNAL_LOG_DEBUG(kDebug);
+
+  ASSERT_OK(error_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_EQ(warning_waiter.GetEventCount(), 0);
+  ASSERT_EQ(info_waiter.GetEventCount(), 0);
+  ASSERT_EQ(debug_waiter.GetEventCount(), 0);
+}
+
+TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelNoneSuppressesAllMessages) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_internal_log_level) = "none";
+
+  static constexpr auto kError = "otel none threshold internal error";
+  static constexpr auto kWarning = "otel none threshold internal warning";
+  static constexpr auto kInfo = "otel none threshold internal info";
+  static constexpr auto kDebug = "otel none threshold internal debug";
+
+  RegexWaiterLogSink error_waiter(Format("E.*$0.*", kError));
+  RegexWaiterLogSink warning_waiter(Format("W.*$0.*", kWarning));
+  RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
+  RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
+
+  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-none-log-level-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::CleanupDistTrace();
+  });
+
+  OTEL_INTERNAL_LOG_ERROR(kError);
+  OTEL_INTERNAL_LOG_WARN(kWarning);
+  OTEL_INTERNAL_LOG_INFO(kInfo);
+  OTEL_INTERNAL_LOG_DEBUG(kDebug);
+
+  ASSERT_EQ(error_waiter.GetEventCount(), 0);
+  ASSERT_EQ(warning_waiter.GetEventCount(), 0);
+  ASSERT_EQ(info_waiter.GetEventCount(), 0);
+  ASSERT_EQ(debug_waiter.GetEventCount(), 0);
 }
 
 TEST_F(DistTraceRpcTest, TestErroredRpcSpanStatus) {

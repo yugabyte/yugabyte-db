@@ -39,7 +39,6 @@ import { Replication } from './pages/Replication';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
 import { SlotDetail } from './redesign/features/universe/universe-tabs/replication-slots/components/SlotDetail';
-import { PerfAdvisorAnalysisView } from './pages/PerfAdvisorAnalysisView';
 import {
   clearRbacCreds,
   getRbacEnabledVal,
@@ -274,8 +273,6 @@ export default (store) => {
         <IndexRoute component={Dashboard} />
         <Route path="/universes" component={Universes}>
           <IndexRoute component={UniverseConsole} />
-          <Route path="/universes/:uuid/perfAdvisor/clusterLoad/overallLoad/queries/:id" component={PerfAdvisorAnalysisView} />
-          <Route path="/universes/:uuid/perfAdvisor/clusterLoad/dbLoad/queries/:id" component={PerfAdvisorAnalysisView} />
           <Route path="/universes/:uuid/replication-slots/:streamID" component={SlotDetail} />
           <Route path="/universes/create" component={UniverseNewView} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
@@ -283,11 +280,11 @@ export default (store) => {
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail} />
           <Route path="/universes/:uuid/replication/:replicationUUID" component={Replication} />
           <Route path="/universes/:uuid/recovery/:drConfigUuid" component={DrPanel} />
+          <Route path="/universes/:uuid/perfAdvisor/**" component={UniverseDetail} />
+          <Route path="/universes/:uuid/settings/:settingsTab" component={UniverseDetail} />
           <Route path="/universes/:uuid/:mode/:type" component={UniverseNewView} />
           {/* </Route> */}
           <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
-          <Route path="/universes/:uuid/perfAdvisor/clusterLoad/overallLoad/queries" component={UniverseDetail} />
-          <Route path="/universes/:uuid/perfAdvisor/clusterLoad/dbLoad" component={UniverseDetail} />
         </Route>
 
         {/* ------------------------------------------------------------------------*/}

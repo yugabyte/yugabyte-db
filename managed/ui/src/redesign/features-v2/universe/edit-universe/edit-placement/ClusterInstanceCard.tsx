@@ -13,7 +13,6 @@ import {
   PlacementRegion
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
-  countMasterAndTServerNodesByPlacementRegion,
   countRegionsAzsAndNodes,
   countMasterNodesInAz,
   getDedicatedCountsForPlacementRegion,
@@ -316,7 +315,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
           <>
             <div>
               <Typography variant="subtitle1" color="textSecondary">
-                {t('faultTolerance')}
+                {t('resilienceLevel')}
               </Typography>
               <StyledValue>{resilientType}</StyledValue>
             </div>

@@ -161,16 +161,9 @@ message PgVectorIdxOptionsPB {
   // index id in new tablet remains the same.
   optional string id = 8;
 
-  // As of now, no reverse mapping backfill is required during vector index backfill.
-  // However, there could be a scenario where vector index backfill was started but
-  // not completed before an upgrade. In such a case, we must allow the backfill to
-  // finish as usual to avoid losing any vector data.
-  // This field is used for backward compatibility in upgrade scenarios, allowing
-  // vector indexes to complete the backfill process. It is explicitly set to `true`
-  // for all newly created vector indexes to prevent reverse mapping backfill, since
-  // reverse mappings are now populated on row insertion or update regardless of
-  // whether a vector index already exists.
-  optional bool skip_reverse_mapping_backfill = 9;
+  // Deprecated: skip_reverse_mapping_backfill. TablePropertiesPB.owns_vector_reverse_mapping
+  // on the indexed table is used instead.
+  reserved 9;
 }
 
 message PgHnswReadOptionsPB {
@@ -226,6 +219,12 @@ message TablePropertiesPB {
   optional uint32 partitioning_version = 11;
 
   optional PgReplicaIdentity ysql_replica_identity = 12;
+
+  // When true, the base table owns vector reverse mapping lifecycle: mappings are written on
+  // row insert/update regardless of whether a vector index exists, and backfill skips reverse
+  // mapping. Set at table creation on the master from `enable_table_owned_vector_reverse_mapping`
+  // gflag and cannot be changed afterwards.
+  optional bool owns_vector_reverse_mapping = 13;
 }
 
 message SchemaPB {
@@ -798,6 +797,11 @@ message CDCSDKStreamCreateOptionsPB {
   optional ReplicationSlotLsnType lsn_type = 12 [default = ReplicationSlotLsnType_SEQUENCE];
   optional ReplicationSlotOrderingMode ordering_mode =
     13 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
+  optional CDCSDKBoundTableIds bound_table_ids = 14;
+}
+
+message CDCSDKBoundTableIds {
+  repeated string table_ids = 1;
 }
 
 message TserverMetricsInfoPB {

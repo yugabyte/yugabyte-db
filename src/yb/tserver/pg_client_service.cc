@@ -21,6 +21,7 @@
 #include <optional>
 #include <queue>
 #include <ranges>
+#include <span>
 #include <unordered_set>
 #include <vector>
 
@@ -76,6 +77,7 @@
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
+#include "yb/tserver/stateful_services/pg_auto_analyze_table.h"
 #include "yb/tserver/stateful_services/stateful_service_base.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.pb.h"
@@ -167,6 +169,8 @@ DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(enable_object_locking_for_table_locks);
 
@@ -280,9 +284,18 @@ class RequestSequencer {
     return Status::OK();
   }
 
-  void Shutdown() {
+  // Stops accepting new requests and wakes any cond_var waiters. Safe to call
+  // without holding mutex_. Must be paired with CompleteShutdown (which drains
+  // parked callbacks under the mutex) so that parked InboundCall references are
+  // released and the reactor can exit.
+  void StartShutdown() {
     is_active_.store(false, std::memory_order_release);
     cond_.notify_all();
+  }
+
+  void CompleteShutdown() {
+    DEBUG_ONLY(DCHECK(DEBUG_IsMutexLocked()));
+    impl_.RejectPendingRequests();
   }
 
  private:
@@ -447,7 +460,28 @@ class LockablePgClientSession {
   }
 
   void StartShutdown(bool pg_service_shutting_down) {
-    request_sequencer_.Shutdown();
+    request_sequencer_.StartShutdown();
+    if (pg_service_shutting_down) {
+      // Service is going down. Drain synchronously: the messenger thread pool
+      // is about to shut down, so a deferred drain may never run, leaving
+      // parked InboundCall references that prevent the reactor from exiting.
+      // mutex_ is normally uncontended on this path.
+      std::lock_guard lock(mutex_);
+      request_sequencer_.CompleteShutdown();
+    } else {
+      // Session expired (e.g., backend killed). An in-flight Perform RPC
+      // (e.g., slow BackfillIndex) may hold mutex_ for an unbounded time.
+      // Defer the drain to the messenger thread pool so session_.StartShutdown()
+      // which aborts the session's transactions is not gated on that RPC.
+      messenger_.ThreadPool().EnqueueFunctor([shared_this = shared_this_] {
+        auto obj = shared_this.lock();
+        if (!obj) {
+          return;
+        }
+        std::lock_guard lock(obj->mutex_);
+        obj->request_sequencer_.CompleteShutdown();
+      });
+    }
     if (exchange_runnable_) {
       exchange_runnable_->StartShutdown();
     }
@@ -682,6 +716,8 @@ class PgClientSessionLocker {
       : session_(std::move(session)), guard_(std::move(guard)) {}
 
   [[nodiscard]] PgClientSession* operator->() const { return session_.get(); }
+
+  [[nodiscard]] PgSessionGuard& guard() { return guard_; }
 
  private:
   std::shared_ptr<PgClientSession> session_;
@@ -2301,7 +2337,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     VLOG(1) << "ImportTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
     auto snapshot = VERIFY_RESULT(txn_snapshot_manager_.Get(req.snapshot_id()));
     auto options = req.options();
-    snapshot.read_time.ToPB(options.mutable_read_time());
+    snapshot.read_time.ToPB(options.mutable_read_time_options()->mutable_read_time());
     RETURN_NOT_OK(VERIFY_RESULT(GetSession(req))->SetTxnSnapshotReadTime(
         options, context->GetClientDeadline()));
     snapshot.ToPBNoReadTime(*resp->mutable_snapshot());
@@ -2985,6 +3021,27 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return Status::OK();
   }
 
+  Status ResetAutoAnalyzeMutationCounters(
+      const PgResetAutoAnalyzeMutationCountersRequestPB& req,
+      PgResetAutoAnalyzeMutationCountersResponsePB* resp, rpc::RpcContext* context) {
+    if (!FLAGS_ysql_enable_auto_analyze_infra || !FLAGS_ysql_enable_auto_analyze) {
+      return Status::OK();
+    }
+
+    const auto table_id =
+        PgObjectId(req.database_oid(), req.table_relfilenode_oid()).GetYbTableId();
+
+    client::TableHandle table;
+    RETURN_NOT_OK(table.Open(
+        stateful_service::GetStatefulServiceTableName(StatefulServiceKind::PG_AUTO_ANALYZE),
+        &client()));
+    auto session = client().NewSession(context->GetClientDeadline());
+    RETURN_NOT_OK(stateful_service::ResetPgAutoAnalyzeMutationCounts(
+        table, *session, std::span(&table_id, 1)));
+
+    return Status::OK();
+  }
+
   Status RemoteExec(
       const PgRemoteExecRequestPB& req, PgRemoteExecResponsePB* resp,
       rpc::RpcContext* context) {
@@ -3030,12 +3087,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       const YB_PG_CLIENT_METHOD_ARG(data, method, Request)& req, \
       YB_PG_CLIENT_METHOD_ARG(data, method, Response)* resp, \
       rpc::RpcContext context) { \
-    const auto session = GetSession(req); \
+    auto session = GetSession(req); \
     if (!session.ok()) { \
       Respond(session.status(), resp, &context); \
       return; \
     } \
-    (*session)->method(req, resp, std::move(context)); \
+    (*session)->method(req, resp, std::move(context), session->guard()); \
   }
 
   BOOST_PP_SEQ_FOR_EACH(
@@ -3050,6 +3107,10 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   size_t TEST_SessionsCount() {
     SharedLock lock(mutex_);
     return sessions_.size();
+  }
+
+  size_t TEST_ExchangeThreadPoolWorkersCreated() {
+    return exchange_thread_pool_ ? exchange_thread_pool_->TEST_NumWorkersCreated() : 0;
   }
 
  private:
@@ -3327,6 +3388,10 @@ Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }
+
+size_t PgClientServiceImpl::TEST_ExchangeThreadPoolWorkersCreated() {
+  return impl_->TEST_ExchangeThreadPoolWorkersCreated();
+}
 
 void PgClientServiceImpl::Shutdown() { impl_->Shutdown(); }
 

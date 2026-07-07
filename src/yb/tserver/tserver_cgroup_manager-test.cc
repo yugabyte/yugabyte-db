@@ -27,11 +27,14 @@
 
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"
+
+using namespace std::literals;
 
 DECLARE_bool(enable_qos);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
@@ -40,6 +43,7 @@ DECLARE_bool(qos_compaction_per_db_cgroups);
 DECLARE_double(qos_max_db_cpu_percent);
 DECLARE_int32(qos_evaluation_window_us);
 DECLARE_int32(qos_metrics_interval_sec);
+DECLARE_bool(use_priority_thread_pool_for_compactions);
 
 METRIC_DECLARE_entity(cgroup);
 METRIC_DECLARE_gauge_int64(cgroup_cpu_usage_ns);
@@ -67,7 +71,7 @@ class TServerCgroupManagerTest : public TabletServerTestBase {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_qos) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_metrics_interval_sec) = 1;
-    ASSERT_OK(SetupCgroupManagement(ClearChildCgroups::kTrue));
+    ASSERT_OK(TServerCgroupManager::CgroupManagementInit(/*is_tserver=*/true));
 
     TabletServerTestBase::SetUp();
     StartTabletServer();
@@ -177,27 +181,50 @@ TEST_F(TServerCgroupManagerTest, TestBadDbCpuLimits) {
 // Verifies that thread pool worker threads land in the correct cgroups after
 // the tablet server starts. This catches the bug where workers that start before
 // SetCgroup() would cache a stale pool cgroup and revert to /@default.
+//
+// Also covers the misassignments described in GH #31751:
+//   - per-db worker pools (TabletServer_pool_*, shmem_exchange, server_clientcb,
+//     wait-queue) must land in /@capped-pool/@normal/db_<OID>, not @system-med.
+//   - metric cleanup threads must land in @system-med (the global default after cgroup
+//     manager init), not @default.
+//   - RocksDB high/low background threads must land in @system-med, not @system-high.
 TEST_F(TServerCgroupManagerTest, TestPoolCgroupAssignment) {
   // Wait for the tablet to be fully running (consensus elected) so that pool
   // worker threads have processed at least one task and MoveToPoolCgroup() has run.
   ASSERT_OK(WaitForTabletRunning(kTabletId));
 
+  // Insert data and flush/compact to force RocksDB background threads to spawn.
+  // rocksdb:high and rocksdb:low have min_threads=0 and are never created otherwise.
+  // Disable priority thread pool for compactions so that CompactTablets() schedules
+  // work on the Env::LOW pool and spawns rocksdb:low threads (the default uses
+  // PriorityThreadPool which does not create rocksdb:low threads).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_compactions) = false;
+  InsertTestRowsRemote(0, 1, 10);
+  ASSERT_OK(mini_server_->FlushTablets());
+  ASSERT_OK(mini_server_->CompactTablets());
+
   // Pool name prefix -> expected cgroup path relative to the root cgroup.
-  // We test pools that have min_threads=1, guaranteeing at least one worker.
   struct PoolExpectation {
     std::string prefix;
     std::string expected_cgroup;
   };
   std::vector<PoolExpectation> expectations = {
-      // system-high pools (consensus/WAL path).
-      {"consensus_",  "/@system-high"},
-      {"log-sync_",   "/@system-high"},
-      {"prepare_",    "/@system-high"},
-      {"append_",     "/@system-high"},
-      {"log-alloc_",  "/@system-high"},
-      // system-med pools (background work, always assigned).
+      // system-high pools (consensus/WAL path), all min_threads=1.
+      {"consensus_",   "/@system-high"},
+      {"log-sync_",    "/@system-high"},
+      {"prepare_",     "/@system-high"},
+      {"append_",      "/@system-high"},
+      {"log-alloc_",   "/@system-high"},
+      // system-med pools (background work), min_threads=1.
       {"flush-retry",  "/@capped-pool/@system-med"},
+      // wait-queue pool, min_threads=1. Stays in @system-med here because this test
+      // uses a plain docdb tablet with no PG database OID -- no per-DB cgroup is created.
+      // Per-DB placement is verified by pg_cgroups-test (TestQosWaitQueue).
       {"wait-queue_",  "/@capped-pool/@system-med"},
+      // RocksDB background threads: GH #31751 -- must be in @system-med, not @system-high.
+      // Spawned by FlushTablets/CompactTablets above.
+      {"rocksdb:high", "/@capped-pool/@system-med"},
+      {"rocksdb:low",  "/@capped-pool/@system-med"},
   };
 
   std::vector<std::string> prefixes;
@@ -228,11 +255,28 @@ TEST_F(TServerCgroupManagerTest, TestPoolCgroupAssignment) {
     }
   }
 
-  // Verify we found at least one thread for each pool with min_threads=1.
   for (const auto& e : expectations) {
-    EXPECT_TRUE(found_prefixes.count(e.prefix))
-        << "No worker thread found for pool prefix: " << e.prefix;
+    if (!found_prefixes.count(e.prefix)) {
+      ADD_FAILURE() << "No worker thread found for pool prefix: " << e.prefix;
+    }
   }
+
+  // Verify metric cleanup explicitly: submit a task to force the worker to spawn, then
+  // poll until it appears (it exits after its idle_timeout so we use WaitFor).
+  ASSERT_OK(registry_->SubmitAMetricCleanupTask());
+  std::string metric_cleanup_cgroup;
+  ASSERT_OK(WaitFor(
+      [&] {
+        auto threads = GetPoolThreadCgroups({"metric cleanup"});
+        if (!threads.ok() || threads->empty()) {
+          return false;
+        }
+        metric_cleanup_cgroup = (*threads)[0].cgroup;
+        return true;
+      },
+      2s, "Wait for metric cleanup worker"));
+  EXPECT_EQ(metric_cleanup_cgroup, "/@capped-pool/@system-med")
+      << "metric cleanup worker expected in @system-med (global default after cgroup manager init)";
 }
 
 TEST_F(TServerCgroupManagerTest, TestCgroupMetricsForSystemCgroups) {
@@ -242,7 +286,6 @@ TEST_F(TServerCgroupManagerTest, TestCgroupMetricsForSystemCgroups) {
   auto capped_pool_entity = FindCgroupEntity("@capped-pool");
   auto system_med_entity = FindCgroupEntity("@system-med");
   auto normal_entity = FindCgroupEntity("@normal");
-  auto default_entity = FindCgroupEntity("@default");
 
   auto usage_ns = METRIC_cgroup_cpu_usage_ns.Instantiate(system_high_entity, 0);
   auto user_ns = METRIC_cgroup_cpu_user_ns.Instantiate(system_high_entity, 0);
@@ -254,7 +297,6 @@ TEST_F(TServerCgroupManagerTest, TestCgroupMetricsForSystemCgroups) {
   auto pool_usage = METRIC_cgroup_cpu_usage_ns.Instantiate(capped_pool_entity, 0);
   auto med_usage = METRIC_cgroup_cpu_usage_ns.Instantiate(system_med_entity, 0);
   auto normal_usage = METRIC_cgroup_cpu_usage_ns.Instantiate(normal_entity, 0);
-  auto def_usage = METRIC_cgroup_cpu_usage_ns.Instantiate(default_entity, 0);
 
   // Wait until the background thread has populated values.
   ASSERT_EVENTUALLY([&] {
@@ -268,7 +310,6 @@ TEST_F(TServerCgroupManagerTest, TestCgroupMetricsForSystemCgroups) {
     ASSERT_GE(pool_usage->value(), 0);
     ASSERT_GE(med_usage->value(), 0);
     ASSERT_GE(normal_usage->value(), 0);
-    ASSERT_GE(def_usage->value(), 0);
   });
 }
 
@@ -497,11 +538,10 @@ TEST_F(TServerCgroupManagerTest, TestSystemHighSingletonThreads) {
   });
 }
 
-// Regression test for #31710: TerminationMonitor::SetCgroup moves the
+// Regression test for #31710: TerminationMonitor::Create(cgroup) moves the
 // sigterm_loop thread into the given cgroup.
 TEST_F(TServerCgroupManagerTest, TestTerminationMonitorSetCgroup) {
-  auto monitor = TerminationMonitor::Create();
-  monitor->SetCgroup(manager_->SystemHighCgroup());
+  auto monitor = TerminationMonitor::Create(manager_->SystemHighCgroup());
 
   ASSERT_EVENTUALLY([&] {
     auto threads = ASSERT_RESULT(GetPoolThreadCgroups({"sigterm_loop"}));

@@ -1,0 +1,19 @@
+title: DrConfigUniverseReplicationState
+description: |
+  Replication status of a universe participating in disaster recovery.
+  Used for both primary and DR replica universes; valid values depend on role.
+type: string
+enum:
+  - UNCONFIGURED_FOR_DR
+  - READY_TO_REPLICATE
+  - WAITING_FOR_DR
+  - REPLICATING_DATA
+  - BOOTSTRAPPING
+  - RECEIVING_DATA_READY_FOR_READS
+  - REPLICATION_PAUSED
+  - PREPARING_FOR_SWITCHOVER
+  - SWITCHING_TO_DR_REPLICA
+  - SWITCHING_TO_DR_PRIMARY
+  - UNIVERSE_MARKED_AS_DR_FAILED
+x-yba-api-since: 2026.1.0.0-b0
+x-yba-api-visibility: preview

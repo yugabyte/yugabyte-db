@@ -1,0 +1,80 @@
+title: BackupSpec
+description: |
+  User-provided and configuration attributes for a universe backup.
+type: object
+properties:
+  customer_uuid:
+    description: Customer UUID that owns the backup.
+    type: string
+    format: uuid
+  universe_uuid:
+    description: Universe UUID that was backed up.
+    type: string
+    format: uuid
+  universe_name:
+    description: Universe name at backup time.
+    type: string
+  schedule_uuid:
+    description: 'Backup schedule UUID, when created by a schedule.'
+    type: string
+    format: uuid
+  schedule_name:
+    description: 'Backup schedule name, when created by a schedule.'
+    type: string
+  backup_type:
+    description: Table type for the backup.
+    type: string
+    enum:
+      - YQL_TABLE_TYPE
+      - REDIS_TABLE_TYPE
+      - PGSQL_TABLE_TYPE
+      - TRANSACTION_STATUS_TABLE_TYPE
+  category:
+    description: Backup implementation category.
+    type: string
+    enum:
+      - YB_BACKUP_SCRIPT
+      - YB_CONTROLLER
+  storage_config_type:
+    description: Storage provider type for the backup.
+    type: string
+    enum:
+      - S3
+      - NFS
+      - AZ
+      - GCS
+      - FILE
+  is_full_backup:
+    description: Whether this is a full backup rather than incremental.
+    type: boolean
+  on_demand:
+    description: True when the backup was not created by a schedule.
+    type: boolean
+  use_tablespaces:
+    description: Whether tablespaces were included in the backup.
+    type: boolean
+  use_roles:
+    description: Whether database roles were included in the backup.
+    type: boolean
+  expiry_time:
+    description: Time when the backup expires.
+    type: string
+    format: date-time
+  expiry_time_unit:
+    description: Unit used for backup expiry configuration.
+    type: string
+    enum:
+      - NanoSeconds
+      - MicroSeconds
+      - MilliSeconds
+      - Seconds
+      - Minutes
+      - Hours
+      - Days
+      - Months
+      - Years
+  keyspace_tables:
+    description: Keyspaces and tables included in the backup.
+    type: array
+    items:
+      $ref: "./BackupKeyspaceTables.yaml"

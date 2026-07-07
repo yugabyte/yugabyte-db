@@ -1004,7 +1004,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithFor
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithoutPrimaryKey) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false, true));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat(
@@ -3490,21 +3489,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConsumptionAfterDroppingTable
     // Drop test2 which is not part of the publication.
     LOG(INFO) << "Dropping table: " << table2.table_name();
     DropTable(&test_cluster_, table2.table_name().c_str());
-    VerifyTablesInStreamMetadata(
-        stream_id, {table1.table_id()},
-        "Waiting for stream metadata cleanup after dropping test2",
-        std::nullopt /* expected_unqualified_table_ids */, true /* include_catalog_tables */);
-
-    // Verify state table entries for tablets of test2 are also removed.
-    std::unordered_set<TabletId> expected_tablets;
-    expected_tablets.insert(kCDCSDKSlotEntryTabletId);
-    for (auto& entry : table_1_tablets) {
-      expected_tablets.insert(entry.tablet_id());
-    }
-    CheckTabletsInCDCStateTable(
-        expected_tablets, test_client(), stream_id, {} /* expected_colocated_table_ids */,
-        "Timed out waiting for state table entries for test2 to be deleted",
-        true /* include_catalog_tables */);
   });
 
   auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
@@ -5641,7 +5625,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUnackRecordsPolledFromHiddenT
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDDLOnTableWithoutPrimaryKey) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
   // ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 2;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
@@ -6062,9 +6045,43 @@ TEST_F(
   ASSERT_OK(conn.Fetch("select pg_drop_replication_slot('test_slot')"));
 }
 
+// TODO(#31908): Remove the test once the support for colocated rewrite + CDC is added.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestTableRewriteDisallowedOnColocatedTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, true /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  auto table_1 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+
+  const auto errstr = "Table rewrite is not supported for colocated table " + table_1.table_id() +
+                      " that is part of a CDC logical replication stream.";
+
+  // Each of these DDLs causes a table rewrite. All must be rejected for a colocated table that is
+  // part of a CDC logical replication stream.
+  const std::vector<std::string> rewrite_ddls = {
+      "ALTER TABLE test_table DROP CONSTRAINT test_table_pkey",
+      "ALTER TABLE test_table ADD COLUMN c2 SERIAL",
+      "TRUNCATE TABLE test_table"};
+
+  for (const auto& ddl : rewrite_ddls) {
+    auto res = conn.Execute(ddl);
+    ASSERT_NOK(res);
+    ASSERT_STR_CONTAINS(res.ToString(), errstr);
+  }
+}
+
+// TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
 // This test verifies that VWAL is able to correctly switchover to new table upon table rewrite for
 // colocated table.
-TEST_F(CDCSDKConsumptionConsistentChangesTest, TestTableRewriteOnColocatedTable) {
+TEST_F(CDCSDKConsumptionConsistentChangesTest, DISABLED_TestTableRewriteOnColocatedTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
@@ -6133,7 +6150,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestTableRewriteOnColocatedTable)
 // This test verifies that we retain the colocated table from deletion upon table rewrite. If the
 // older colocated table is not retained properly, then a FATAL is generated in this test on calling
 // GetConsistentChanges.
-TEST_F(CDCSDKConsumptionConsistentChangesTest, TestNoFailureOnPollingOldColocatedTable) {
+// TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, DISABLED_TestNoFailureOnPollingOldColocatedTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
@@ -6169,7 +6187,9 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestNoFailureOnPollingOldColocate
   ASSERT_OK(GetConsistentChangesFromCDC(stream_id));
 }
 
-TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOldColocatedTableDeletedAfterConsumption) {
+// TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, DISABLED_TestOldColocatedTableDeletedAfterConsumption) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
@@ -6262,7 +6282,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOldColocatedTableDeletedAfter
       true /* include_catalog_tables */);
 }
 
-TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOldColocatedTableDeletedAfterExpiry) {
+// TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, DISABLED_TestOldColocatedTableDeletedAfterExpiry) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;

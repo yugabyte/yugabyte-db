@@ -431,6 +431,56 @@ TEST_F_EX(PgBackendsTest, ConnectionLimit, PgBackendsTestConnLimit) {
   ASSERT_EQ(0, num_backends);
 }
 
+// Test for #31978: Verifies that CREATE INDEX succeeds when the new YSQL operation lease
+// is disabled. Previously, disabling the YSQL lease caused GetAllTSDescriptorsWithALiveLease()
+// to return an empty list, which made CREATE INDEX wait indefinitely for backends to catch up
+// and eventually time out.
+class PgBackendsTestYsqlLeaseDisabled : public PgBackendsTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgBackendsTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--enable_ysql_operation_lease=false");
+    options->extra_tserver_flags.push_back("--enable_ysql_operation_lease=false");
+    // When table locks are enabled, the ysql lease is implicitly enabled internally via
+    // IsYsqlLeaseEnabled() in ysql_operation_lease.cc. We disable it here so that the test
+    // actually exercises the old catalog lease logic.
+    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_master_flags, "ysql_enable_concurrent_ddl");
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    options->extra_master_flags.push_back(
+        Format("--master_ts_ysql_catalog_lease_ms=$0", kYsqlLeaseSec * 1000));
+    // Set a short timeout so that if the test fails (e.g. on a build without the fix),
+    // it fails quickly rather than hanging for the default 15 minutes.
+    options->extra_tserver_flags.push_back(
+        "--ysql_yb_wait_for_backends_catalog_version_timeout=15000");
+  }
+};
+
+TEST_F_EX(PgBackendsTest,
+          CreateIndexYsqlLeaseDisabled,
+          PgBackendsTestYsqlLeaseDisabled) {
+  LOG(INFO) << "Start create index connection";
+  PGConn conn_index = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_index.Execute("CREATE TABLE t (i int)"));
+
+  WaitOutInitialCatalogLeasePeriod();
+
+  LOG(INFO) << "Do create index";
+  const auto start = MonoTime::Now();
+  Status s = conn_index.Execute("CREATE INDEX ON t (i)");
+  const auto end = MonoTime::Now();
+  ASSERT_OK(s);
+
+  const auto time_spent = end - start;
+  LOG(INFO) << "Time spent: " << time_spent;
+  constexpr auto kMargin = 15s * kTimeMultiplier;
+  ASSERT_LT(time_spent, kMargin);
+}
+
 class PgBackendsTestPgTimeout : public PgBackendsTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -889,7 +939,12 @@ class PgBackendsTestRf3TableLocksDisabled : public PgBackendsTestRf3 {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgBackendsTestRf3::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
     options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
+    options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_master_flags, "ysql_enable_concurrent_ddl");
   }
 };
 

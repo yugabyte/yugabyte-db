@@ -83,3 +83,37 @@ SELECT * FROM increment_test;
 (1 row)
 
 COMMIT;
+-- -----------------------------------------------------------------------------
+-- TEST 5: Interleaved Modifying CTEs Visibility (YB vs PG deviation)
+-- -----------------------------------------------------------------------------
+BEGIN;
+CREATE TABLE mcte_test (id INT PRIMARY KEY);
+-- YugabyteDB deviates from PostgreSQL here due to how in_txn_limit is picked (GHI #10142).
+-- In PostgreSQL, same-transaction visibility uses CommandId which is fixed before the
+-- statement begins, so the read CTE will not see the INSERT from the write CTE.
+-- Expected PG result: 0.
+-- In YugabyteDB, the in_txn_limit is picked by the read operation. Because the read
+-- is forced to execute after the write via LATERAL correlation, the picked in_txn_limit
+-- includes the write that just occurred in the same statement.
+-- Expected YB result: 1.
+WITH
+  w_write AS (
+    INSERT INTO mcte_test VALUES (10) RETURNING id
+  ),
+  w_read AS (
+    SELECT x.cnt AS c
+    FROM w_write w
+    CROSS JOIN LATERAL (
+      SELECT count(*) AS cnt
+      FROM mcte_test g
+      WHERE g.id <= w.id
+    ) x
+  )
+SELECT r.c AS count_after_write
+FROM w_read r;
+ count_after_write 
+-------------------
+                 1
+(1 row)
+
+COMMIT;

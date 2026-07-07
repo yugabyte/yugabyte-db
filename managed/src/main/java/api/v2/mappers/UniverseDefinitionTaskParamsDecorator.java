@@ -4,13 +4,16 @@ package api.v2.mappers;
 import api.v2.models.CloudSpecificInfo;
 import api.v2.models.ClusterSpec;
 import api.v2.models.ClusterSpec.ClusterTypeEnum;
+import api.v2.models.CommunicationPortsSpec;
 import api.v2.models.EncryptionInTransitSpec;
 import api.v2.models.UniverseCreateSpec;
+import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseNetworkingSpec;
 import api.v2.models.UniverseSpec;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.ArrayList;
@@ -111,10 +114,8 @@ public abstract class UniverseDefinitionTaskParamsDecorator
           }
           // set networking into all clusters
           if (universeSpec != null && universeSpec.getNetworkingSpec() != null) {
-            UniverseNetworkingSpec source = universeSpec.getNetworkingSpec();
-            cluster.userIntent.assignPublicIP = source.getAssignPublicIp();
-            cluster.userIntent.assignStaticPublicIP = source.getAssignStaticPublicIp();
-            cluster.userIntent.enableIPV6 = source.getEnableIpv6();
+            applyNetworkingUserIntentToCluster(
+                universeSpec.getNetworkingSpec(), cluster.userIntent);
           }
           // set ysql into all clusters
           if (universeSpec != null && universeSpec.getYsql() != null) {
@@ -185,6 +186,99 @@ public abstract class UniverseDefinitionTaskParamsDecorator
       }
     }
     return params;
+  }
+
+  @Override
+  public UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParamsFromEditSpec(
+      UniverseEditSpec universeEditSpec,
+      UniverseDefinitionTaskParams v1UniverseDefinitionTaskParams) {
+    UniverseDefinitionTaskParams params =
+        delegate.toV1UniverseDefinitionTaskParamsFromEditSpec(
+            universeEditSpec, v1UniverseDefinitionTaskParams);
+
+    if (universeEditSpec != null && universeEditSpec.getNetworkingSpec() != null) {
+      UniverseNetworkingSpec networkingSpec = universeEditSpec.getNetworkingSpec();
+      if (networkingSpec.getCommunicationPorts() != null) {
+        params.communicationPorts =
+            mergeCommunicationPorts(
+                params.communicationPorts, networkingSpec.getCommunicationPorts());
+      }
+      applyNetworkingUserIntentToClusters(networkingSpec, params.clusters);
+    }
+    return params;
+  }
+
+  private static void applyNetworkingUserIntentToClusters(
+      UniverseNetworkingSpec source, List<Cluster> clusters) {
+    if (source == null || clusters == null) {
+      return;
+    }
+    for (Cluster cluster : clusters) {
+      applyNetworkingUserIntentToCluster(source, cluster.userIntent);
+    }
+  }
+
+  private static void applyNetworkingUserIntentToCluster(
+      UniverseNetworkingSpec source, UserIntent userIntent) {
+    if (source == null || userIntent == null) {
+      return;
+    }
+    userIntent.assignPublicIP = source.getAssignPublicIp();
+    userIntent.assignStaticPublicIP = source.getAssignStaticPublicIp();
+    if (source.getEnableIpv6() != null) {
+      userIntent.enableIPV6 = source.getEnableIpv6();
+    }
+  }
+
+  private static CommunicationPorts mergeCommunicationPorts(
+      CommunicationPorts existing, CommunicationPortsSpec patch) {
+    CommunicationPorts result = existing != null ? existing : new CommunicationPorts();
+    if (patch.getMasterHttpPort() != null) {
+      result.masterHttpPort = patch.getMasterHttpPort();
+    }
+    if (patch.getMasterRpcPort() != null) {
+      result.masterRpcPort = patch.getMasterRpcPort();
+    }
+    if (patch.getTserverHttpPort() != null) {
+      result.tserverHttpPort = patch.getTserverHttpPort();
+    }
+    if (patch.getTserverRpcPort() != null) {
+      result.tserverRpcPort = patch.getTserverRpcPort();
+    }
+    if (patch.getYbControllerHttpPort() != null) {
+      result.ybControllerHttpPort = patch.getYbControllerHttpPort();
+    }
+    if (patch.getYbControllerRpcPort() != null) {
+      result.ybControllerrRpcPort = patch.getYbControllerRpcPort();
+    }
+    if (patch.getRedisServerHttpPort() != null) {
+      result.redisServerHttpPort = patch.getRedisServerHttpPort();
+    }
+    if (patch.getRedisServerRpcPort() != null) {
+      result.redisServerRpcPort = patch.getRedisServerRpcPort();
+    }
+    if (patch.getYqlServerHttpPort() != null) {
+      result.yqlServerHttpPort = patch.getYqlServerHttpPort();
+    }
+    if (patch.getYqlServerRpcPort() != null) {
+      result.yqlServerRpcPort = patch.getYqlServerRpcPort();
+    }
+    if (patch.getYsqlServerHttpPort() != null) {
+      result.ysqlServerHttpPort = patch.getYsqlServerHttpPort();
+    }
+    if (patch.getYsqlServerRpcPort() != null) {
+      result.ysqlServerRpcPort = patch.getYsqlServerRpcPort();
+    }
+    if (patch.getInternalYsqlServerRpcPort() != null) {
+      result.internalYsqlServerRpcPort = patch.getInternalYsqlServerRpcPort();
+    }
+    if (patch.getNodeExporterPort() != null) {
+      result.nodeExporterPort = patch.getNodeExporterPort();
+    }
+    if (patch.getOtelCollectorMetricsPort() != null) {
+      result.otelCollectorMetricsPort = patch.getOtelCollectorMetricsPort();
+    }
+    return result;
   }
 
   // Need this due to a MapStruct limitation https://github.com/mapstruct/mapstruct/issues/3165

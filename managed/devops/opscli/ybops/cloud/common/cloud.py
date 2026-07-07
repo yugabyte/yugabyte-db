@@ -132,6 +132,7 @@ class AbstractCloud(AbstractCommandParser):
 
     def __init__(self, name):
         super(AbstractCloud, self).__init__(name)
+        self._wait_for_startup_script_command = None
 
     def init(self, args=None):
         # The metadata file name is the same internally and externally.

@@ -378,7 +378,7 @@ extern void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
  */
 extern TM_Result YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 							  LockWaitPolicy wait_policy, EState *estate,
-							  const YbcIsExplicitlyLockedRowSkippedCheckHandle *handle);
+							  YbcIsExplicitlyLockedRowSkippedCheckHandleOptional *handle);
 
 /*
  * Fetch a single row for given ybctid into a heap-tuple.

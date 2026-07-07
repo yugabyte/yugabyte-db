@@ -22,13 +22,14 @@ import {
   getPlacementRegions
 } from '../../create-universe/CreateUniverseUtils';
 import { sanitizeClusters } from '../../read-replica/add/buildUniverseSpecForReadReplicaPricing';
+import { getEditUniverseSettingsRoute } from '../../edit-universe/editUniverseTabUtils';
 
 export function navigateToUniverseSettingsFromWizard(
   universeData?: UniverseRespResponse
 ): void {
   const uuid = universeData?.info?.universe_uuid;
   if (uuid) {
-    window.location.href = `/universes/${uuid}/settings`;
+    window.location.href = getEditUniverseSettingsRoute(uuid);
   }
 }
 
@@ -196,9 +197,12 @@ export const extractRegionsAndNodeDataFromUniverse = (
   providerRegions: Region[]
 ): RegionsAndNodesFormType => {
   const regions: RegionsAndNodesFormType['regions'] = [];
+  const isGeoPartioned = getExistingGeoPartitions(universeData).length > 0;
 
   universeData.spec?.clusters.forEach((cluster) => {
-    cluster.placement_spec?.cloud_list[0].region_list?.forEach((region) => {
+
+    const cloudList = isGeoPartioned ? cluster.partitions_spec?.[0].placement?.cloud_list : cluster.placement_spec?.cloud_list;
+    cloudList?.[0].region_list?.forEach((region) => {
       const regionData = providerRegions.find((r) => r.uuid === region.uuid);
       if (!regionData) return;
       const azs = region?.az_list;
@@ -377,13 +381,13 @@ export const prepareAddGeoPartitionPayload = (
         default_partition: isDefaultNewPartition,
         replication_factor: isDefaultNewPartition
           ? primaryCluster.replication_factor!
-          : getEffectiveReplicationFactorForResilience(gp.resilience)
+          : getEffectiveReplicationFactorForResilience(gp.resilience, gp.nodesAndAvailability)
       };
 
       // New default partition mirrors primary cluster placement unless AZs were configured in the wizard.
       if (isDefaultNewPartition) {
         if (hasConfiguredAvailabilityZones(azs)) {
-          const regionList = getPlacementRegions(gp.resilience, azs);
+          const regionList = getPlacementRegions(gp.resilience, azs, gp.nodesAndAvailability);
           return {
             ...base,
             placement: {
@@ -406,7 +410,7 @@ export const prepareAddGeoPartitionPayload = (
 
       // Match create-universe: per-AZ replication_factor sums to partition RF, drop 0-node AZs,
       // and map leader_preference from preffered.
-      const regionList = getPlacementRegions(gp.resilience, azs);
+      const regionList = getPlacementRegions(gp.resilience, azs, gp.nodesAndAvailability);
 
       return {
         ...base,

@@ -411,11 +411,17 @@ export const getUserIntent = (
   if (cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
     intent.masterInstanceType = instanceConfig.masterInstanceType;
     intent.masterDeviceInfo = instanceConfig.masterDeviceInfo;
+  } else {
+    // Clear master-only fields when not using dedicated nodes so configure API payload is valid
+    intent.masterInstanceType = null;
+    intent.masterDeviceInfo = null;
   }
 
   if (cloudConfig.provider?.code === CloudType.kubernetes) {
     intent.masterK8SNodeResourceSpec = instanceConfig.masterK8SNodeResourceSpec;
-    intent.masterDeviceInfo = instanceConfig.masterDeviceInfo;
+    if (cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
+      intent.masterDeviceInfo = instanceConfig.masterDeviceInfo;
+    }
   }
 
   if (instanceConfig.enableYSQLAuth && instanceConfig.ysqlPassword)

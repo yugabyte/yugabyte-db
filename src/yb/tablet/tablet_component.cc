@@ -93,7 +93,7 @@ void TabletComponent::RefreshYBMetaDataCache() {
   tablet_.ResetYBMetaDataCache();
 }
 
-docdb::DocVectorIndexesPtr TabletComponent::VectorIndexesList() const {
+VectorIndexList TabletComponent::VectorIndexesList() const {
   return tablet_.vector_indexes().List();
 }
 

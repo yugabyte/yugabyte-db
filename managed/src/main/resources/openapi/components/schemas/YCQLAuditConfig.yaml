@@ -75,3 +75,9 @@ properties:
       - INFO
       - WARNING
       - ERROR
+  log_retention_days:
+    description: |
+      Number of days to keep gzipped YCQL audit log archives on the node. 0 or unset disables the dedicated audit-log retention pipeline and keeps the default size-based tserver log purge behavior.
+    type: integer
+    format: int32
+    minimum: 0

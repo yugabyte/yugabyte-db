@@ -87,18 +87,23 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
     options->extra_master_flags.push_back("--ysql_disable_index_backfill=false");
     options->extra_master_flags.push_back(
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
-    options->extra_master_flags.push_back("--master_ysql_operation_lease_ttl_ms=10000");
     options->extra_tserver_flags.push_back("--ysql_disable_index_backfill=false");
     options->extra_tserver_flags.push_back(
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
-    options->extra_tserver_flags.push_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=20000");
 
     const bool enable_table_locks = EnableTableLocks();
     options->extra_tserver_flags.push_back(
         Format("--enable_object_locking_for_table_locks=$0", enable_table_locks));
     options->extra_tserver_flags.push_back(
         Format("--ysql_yb_ddl_transaction_block_enabled=$0", enable_table_locks));
+    // Concurrent DDL requires object locking, so when object locking is disabled, disable
+    // concurrent DDL too; otherwise the cross-flag validator would FATAL if concurrent DDL defaults
+    // on. When object locking is enabled, leave concurrent DDL at its default.
+    if (!enable_table_locks) {
+      options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+      AppendFlagToAllowedPreviewFlagsCsv(
+          options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    }
     if (enable_table_locks) {
       options->extra_master_flags.push_back("--enable_ysql_operation_lease=true");
 

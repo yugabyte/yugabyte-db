@@ -14,7 +14,8 @@ export {
   reduceExpertNodeCountsToAtMostRf,
   getExpertNodesStepDefaultPlacement,
   getPlacementRegions,
-  getAZCount
+  getAZCount,
+  distributeReplicationFactorAcrossAzs
 } from './utils/placementAndAvailability';
 export { inferResilience, getInferredOutageCount } from './utils/inferResilience';
 export {

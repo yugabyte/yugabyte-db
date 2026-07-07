@@ -327,6 +327,15 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_allow_dockey_bounds, kLocalVolatile, false,
     "If true, allow lower_bound/upper_bound fields of PgsqlReadRequestPB to be DocKeys. Only "
     "applicable for hash-sharded tables.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_dump_presplit_in_create, kExternal, false, true,
+    "If true, ysql_dump --include-yb-metadata folds a relation's yb_presplit reloption into the "
+    "CREATE statement's WITH clause alongside the emitted SPLIT clause (injecting an empty-string "
+    "suppress-auto-derive sentinel for relations whose source had no yb_presplit). If false, "
+    "yb_presplit is omitted from the WITH clause and re-emitted as a separate "
+    "ALTER TABLE/INDEX ... SET (yb_presplit=...). The folded form requires the restore target to "
+    "accept yb_presplit alongside a SPLIT clause, which older versions reject, so this AutoFlag is "
+    "promoted only after upgrade finalize once rollback to such a version is no longer possible.");
+
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_test_make_all_ddl_statements_incrementing,
     kLocalVolatile, false, true,
     "When set, all DDL statements will cause the catalog version to increment. This mainly "
@@ -834,6 +843,7 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf, const string& hba_con
   lines.insert(lines.begin(), {
       "# Internal configuration:",
       "# local all postgres yb-tserver-key",
+      "# local all yb_global_views_user yb-tserver-key",
   });
 
   const auto conf_path = JoinPathSegments(conf.data_dir, kYsqlHbaConfFileName);
@@ -1529,7 +1539,7 @@ Status PgWrapper::CleanupLockFileAndKillHungPg(const std::string& lock_file) {
 // ------------------------------------------------------------------------------------------------
 
 PgSupervisor::PgSupervisor(PgProcessConf conf, PgWrapperContext* server)
-    : conf_(std::move(conf)), server_(server) {
+    : ProcessSupervisor(conf.cgroup), conf_(std::move(conf)), server_(server) {
   if (server_) {
     server_->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
     server_->RegisterPgProcessRestarter(std::bind(&PgSupervisor::Restart, this));

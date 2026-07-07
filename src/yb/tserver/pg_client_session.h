@@ -20,6 +20,7 @@
 #include <memory>
 #include <utility>
 
+#include <boost/preprocessor/punctuation/remove_parens.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 
 #include "yb/client/client_fwd.h"
@@ -50,6 +51,8 @@ class WriteBuffer;
 
 namespace tserver {
 
+class PgSessionGuard;
+
 #define PG_CLIENT_SESSION_METHODS \
     (AlterDatabase) \
     (AlterTable) \
@@ -63,7 +66,6 @@ namespace tserver {
     (DropTable) \
     (DropTablegroup) \
     (FetchData) \
-    (FinishTransaction) \
     (RollbackToSubTransaction) \
     (TruncateTable) \
     (WaitForBackendsCatalogVersion) \
@@ -87,11 +89,13 @@ namespace tserver {
 // If such method responds with error Status, it will be handled by the upper layer that will fill
 // response with error status and call context.RespondSuccess.
 #define PG_CLIENT_SESSION_ASYNC_METHODS \
+    (FinishTransaction) \
     /**/
 
 #define PG_CLIENT_SESSION_ASYNC_LW_METHODS \
     (AcquireObjectLock) \
     (GetTableKeyRanges) \
+    (WaitForLockersMultiple) \
     /**/
 
 YB_STRONGLY_TYPED_BOOL(IsDDL);
@@ -167,29 +171,30 @@ class PgClientSession final {
 
   Status SetTxnSnapshotReadTime(const PgPerformOptionsPB& options, CoarseTimePoint deadline);
 
-  #define PG_CLIENT_SESSION_METHOD_DECLARE_IMPL(ret, ctx_type, prefix, method) \
+  #define PG_CLIENT_SESSION_METHOD_DECLARE_IMPL(ret, context, prefix, method) \
     ret method( \
         const YB_PG_CLIENT_METHOD_ARG(prefix, method, Request)& req, \
         YB_PG_CLIENT_METHOD_ARG(prefix, method, Response)* resp, \
-        ctx_type context);
+        BOOST_PP_REMOVE_PARENS context);
 
   #define PG_CLIENT_SESSION_METHOD_DECLARE(r, data_tuple, method) \
     PG_CLIENT_SESSION_METHOD_DECLARE_IMPL( \
-        BOOST_PP_TUPLE_ELEM(3, 0, data_tuple), BOOST_PP_TUPLE_ELEM(3, 1, data_tuple), \
+        BOOST_PP_TUPLE_ELEM(3, 0, data_tuple), (BOOST_PP_TUPLE_ELEM(3, 1, data_tuple)), \
         BOOST_PP_TUPLE_ELEM(3, 2, data_tuple), method)
 
   BOOST_PP_SEQ_FOR_EACH(
-        PG_CLIENT_SESSION_METHOD_DECLARE, (Status, rpc::RpcContext*, BOOST_PP_NIL),
+        PG_CLIENT_SESSION_METHOD_DECLARE, (Status, (rpc::RpcContext*), BOOST_PP_NIL),
         PG_CLIENT_SESSION_METHODS);
   BOOST_PP_SEQ_FOR_EACH(
-        PG_CLIENT_SESSION_METHOD_DECLARE, (Status, rpc::RpcContext*, (LW)),
+        PG_CLIENT_SESSION_METHOD_DECLARE, (Status, (rpc::RpcContext*), (LW)),
         PG_CLIENT_SESSION_LW_METHODS);
   BOOST_PP_SEQ_FOR_EACH(
         PG_CLIENT_SESSION_METHOD_DECLARE,
-        (void, rpc::RpcContext&&, BOOST_PP_NIL), PG_CLIENT_SESSION_ASYNC_METHODS);
+        (void, (rpc::RpcContext&&, PgSessionGuard&), BOOST_PP_NIL),
+        PG_CLIENT_SESSION_ASYNC_METHODS);
 BOOST_PP_SEQ_FOR_EACH(
         PG_CLIENT_SESSION_METHOD_DECLARE,
-        (void, rpc::RpcContext&&, (LW)), PG_CLIENT_SESSION_ASYNC_LW_METHODS);
+        (void, (rpc::RpcContext&&, PgSessionGuard&), (LW)), PG_CLIENT_SESSION_ASYNC_LW_METHODS);
 
   #undef PG_CLIENT_SESSION_METHOD_DECLARE
   #undef PG_CLIENT_SESSION_METHOD_DECLARE_IMPL

@@ -443,7 +443,11 @@ Status TabletPeer::MajorityReplicated(const OpId& committed_op_id) {
 }
 
 void TabletPeer::BecomeReplica() {
-  // TODO(#28383): delay this until the new leader is caught up to async writes too.
+  // For graceful stepdowns, this gets called after we wait for the protege to catch up (which also
+  // waits for any in-progress async writes to make it to the protege). Note that if that drain
+  // takes longer than FLAGS_protege_synchronization_timeout_ms, then ongoing async writes will
+  // likely abort - FailAllAsyncWrites will make the client retry on the new leader to validate.
+
   // Return NOT_THE_LEADER so the client can retry on a different leader.
   FailAllAsyncWrites(STATUS(
       IllegalState, Format("Tablet $0 leader changed during async write", tablet_id()),
@@ -867,7 +871,7 @@ Status TabletPeer::RunLogGC(bool rollover) {
   if (!s.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Unable to reset cdc min replicated index " << s;
   }
-  int64_t min_log_index;
+  log::MinRetainLogIndexInfo min_log_index;
   if (VLOG_IS_ON(2)) {
     std::string details;
     min_log_index = VERIFY_RESULT(GetEarliestNeededLogIndex(&details));
@@ -1010,7 +1014,8 @@ Result<OpId> TabletPeer::MaxPersistentOpId() const {
   return result;
 }
 
-Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) const {
+Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
+    std::string* details) const {
   if (PREDICT_FALSE(!log_)) {
     auto status = STATUS(Uninitialized, "Log not ready (tablet peer not yet initialized?)");
     LOG(DFATAL) << status;
@@ -1028,7 +1033,7 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
 
   // If we never have written to the log, no need to proceed.
   if (min_index == 0) {
-    return min_index;
+    return log::MinRetainLogIndexInfo{min_index};
   }
 
   // Next, we interrogate the anchor registry.
@@ -1133,11 +1138,18 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
     }
   }
 
+  // Index xrepl (CDCSDK/xCluster) still needs the source to retain. This is the same value Log GC
+  // applies as its soft xrepl floor; bundling it here gives remote bootstrap and GC one source of
+  // truth. Returns int64 max when no xrepl consumer constrains retention.
+  const int64_t log_index_needed_by_cdc = log_->GetXReplMinReplicatedIndex();
+
   if (details) {
     *details += Format("Earliest needed log index: $0\n", min_index);
+    *details += Format(
+        "Log index needed by xrepl (CDCSDK/xCluster): $0\n", log_index_needed_by_cdc);
   }
 
-  return min_index;
+  return log::MinRetainLogIndexInfo{min_index, log_index_needed_by_cdc};
 }
 
 Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootstrap() const {
@@ -1166,7 +1178,7 @@ Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootst
 
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   RETURN_NOT_OK(CheckRunning());
-  int64_t min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
+  const auto min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
   RETURN_NOT_OK(log_->GetGCableDataSize(min_op_idx, retention_size));
   return Status::OK();
 }
@@ -1653,6 +1665,7 @@ TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfoUnlocked() const {
     info.sst_files_disk_size = tablet_->GetCurrentVersionSstFilesSize();
     info.uncompressed_sst_files_disk_size =
         tablet_->GetCurrentVersionSstFilesUncompressedSize();
+    info.vector_index_disk_size = tablet_->vector_indexes().List().OnDiskSize();
   }
 
   auto log = log_atomic_.load(std::memory_order_acquire);
@@ -2012,8 +2025,8 @@ Status TabletPeer::VerifyAsyncWriteReceived(const OpId& op_id) {
   }
 
   if (op_id.term + 1 == leader_state.term) {
-    // One term ago - since the leader is ready, the initial NO_OP has committed
-    // and all entries from the previous term at index < NO_OP index are also committed.
+    // One term ago - the current term's NO_OP committed everything before it. Also covers
+    // a split child on its first elected term, since first_index == split_op_id.index + 1.
     if (op_id.index < first_index) {
       return Status::OK();
     }

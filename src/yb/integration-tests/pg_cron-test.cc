@@ -30,6 +30,7 @@
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using namespace std::chrono_literals;
 
@@ -323,10 +324,11 @@ TEST_F(PgCronTest, JobOnDifferentDB) {
     LOG(INFO) << Format("Creating table $0", i);
     auto status = new_db_conn.ExecuteFormat("CREATE TABLE tbl$0(a INT)", i);
     if (!status.ok()) {
+      auto message = status.message().ToBuffer();
       // The cron worker's drop_all_tables() races this CREATE TABLE on the per-DB catalog
       // version row; either side can lose the race and surface a 40001 to its caller.
-      if (status.message().Contains("could not serialize access due to concurrent update")) {
-        LOG(INFO) << Format("Ignoring concurrent catalog-version conflict: $0", status.ToString());
+      if (pgwrapper::IsSerializeAccessError(status) || pgwrapper::IsRetryable(status)) {
+        LOG(INFO) << Format("Ignoring concurrent catalog-version conflict: $0", message);
         SleepFor(200ms);
         continue;
       }
@@ -335,13 +337,17 @@ TEST_F(PgCronTest, JobOnDifferentDB) {
     SleepFor(1s);
   }
 
-  // Wait for the job to get to all the tables.
-  SleepFor(3s * kTimeMultiplier);
-
-  // We should have (default_sleep_min, default_sleep_min+1) rows.
-  auto table_count = ASSERT_RESULT(new_db_conn.FetchRow<pgwrapper::PGUint64>(
-      "SELECT COUNT(*) FROM pg_tables WHERE schemaname = 'public'"));
-  ASSERT_EQ(table_count, 0);
+  // During the create loop the cron job's drop_all_tables() repeatedly loses the catalog-version
+  // race and rolls back, so tables accumulate. Each DROP TABLE is a DDL that waits for catalog
+  // version propagation (~1s), so draining the backlog takes time. Now that the loop has stopped
+  // creating tables there is no more contention, so poll until the job has dropped all tables
+  // rather than relying on a fixed sleep.
+  ASSERT_OK(WaitFor(
+      [&new_db_conn]() -> Result<bool> {
+        return VERIFY_RESULT(new_db_conn.FetchRow<pgwrapper::PGUint64>(
+                   "SELECT COUNT(*) FROM pg_tables WHERE schemaname = 'public'")) == 0;
+      },
+      kTimeout, "Wait for cron job to drop all tables"));
 }
 
 // Make sure pg_cron can survive the crash of the leader tserver/postgres process.

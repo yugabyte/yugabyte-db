@@ -90,8 +90,8 @@ bool		yb_conn_mgr_is_auth_passthrough_backend = false;
 bool
 YbIsAuthPassthroughInProgress(struct Port *port)
 {
-	return YbIsClientYsqlConnMgr() && port != NULL &&
-		   port->yb_is_auth_passthrough_req;
+	return YbIsClientYsqlConnMgr() && YbIsAuthPassthroughControlBackend() &&
+		   port != NULL && port->yb_is_auth_passthrough_req;
 }
 
 /*
@@ -963,12 +963,15 @@ yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
 {
 	yb_is_client_ysqlconnmgr = newval;
 
-	if (MyBackendType != YB_YSQL_CONN_MGR && YbIsClientYsqlConnMgr())
+	if (MyBackendType != YB_YSQL_CONN_MGR &&
+		MyBackendType != YB_YSQL_CONN_MGR_CTRL
+		&& YbIsClientYsqlConnMgr())
 	{
 		if (MyBackendType == B_WAL_SENDER)
 			MyBackendType = YB_YSQL_CONN_MGR_WAL_SENDER;
 		else
 			MyBackendType = YB_YSQL_CONN_MGR;
+		/* YB: YB_YSQL_CONN_MGR_CTRL is being set while processing startup packet */
 	}
 
 	/*

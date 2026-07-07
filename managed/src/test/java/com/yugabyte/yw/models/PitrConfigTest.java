@@ -4,6 +4,7 @@ package com.yugabyte.yw.models;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 
+import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -11,6 +12,7 @@ import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.DrConfigCreateForm.PitrParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import io.ebean.PagedList;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
@@ -101,5 +103,58 @@ public class PitrConfigTest extends FakeDBApplication {
     pitrConfig.refresh();
     assertEquals(1, pitrConfig.getXClusterConfigs().size());
     assertEquals(xClusterConfig1.getUuid(), pitrConfig.getXClusterConfigs().get(0).getUuid());
+  }
+
+  @Test
+  public void getPagedListForUniverse_filtersByDrConfigUuid() {
+    Universe sourceUniverse = createUniverse("pitr-filter-source");
+    BootstrapBackupParams backupRequestParams = new BootstrapBackupParams();
+    backupRequestParams.storageConfigUUID = config.getConfigUUID();
+    Set<String> sourceDbIds = Set.of("db1");
+
+    Universe targetUniverse = createUniverse("pitr-filter-target");
+    DrConfig drConfig =
+        DrConfig.create(
+            "pitr-filter-dr",
+            sourceUniverse.getUniverseUUID(),
+            targetUniverse.getUniverseUUID(),
+            backupRequestParams,
+            new PitrParams(),
+            sourceDbIds,
+            false);
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+
+    CreatePitrConfigParams drPitrParams = new CreatePitrConfigParams();
+    drPitrParams.setUniverseUUID(sourceUniverse.getUniverseUUID());
+    drPitrParams.customerUUID = Customer.get(sourceUniverse.getCustomerId()).getUuid();
+    drPitrParams.keyspaceName = "dr-keyspace";
+    drPitrParams.tableType = TableType.PGSQL_TABLE_TYPE;
+    drPitrParams.retentionPeriodInSeconds = 86400L;
+    drPitrParams.intervalInSeconds = 86400L;
+    drPitrParams.xClusterConfig = xClusterConfig;
+    PitrConfig drLinkedPitr = PitrConfig.create(UUID.randomUUID(), drPitrParams);
+    xClusterConfig.addPitrConfig(drLinkedPitr);
+
+    CreatePitrConfigParams standaloneParams = new CreatePitrConfigParams();
+    standaloneParams.setUniverseUUID(sourceUniverse.getUniverseUUID());
+    standaloneParams.customerUUID = Customer.get(sourceUniverse.getCustomerId()).getUuid();
+    standaloneParams.keyspaceName = "standalone-keyspace";
+    standaloneParams.tableType = TableType.PGSQL_TABLE_TYPE;
+    standaloneParams.retentionPeriodInSeconds = 86400L;
+    standaloneParams.intervalInSeconds = 86400L;
+    PitrConfig.create(UUID.randomUUID(), standaloneParams);
+
+    PagedList<PitrConfig> filtered =
+        PitrConfig.getPagedListForUniverse(
+            sourceUniverse.getUniverseUUID(),
+            drConfig.getUuid(),
+            new NormalizedPaginationSpec(0, 10, "asc"));
+    assertEquals(1, filtered.getTotalCount());
+    assertEquals(drLinkedPitr.getUuid(), filtered.getList().get(0).getUuid());
+
+    PagedList<PitrConfig> allOnUniverse =
+        PitrConfig.getPagedListForUniverse(
+            sourceUniverse.getUniverseUUID(), new NormalizedPaginationSpec(0, 10, "asc"));
+    assertEquals(2, allOnUniverse.getTotalCount());
   }
 }

@@ -36,6 +36,7 @@
 #include "utils/typcache.h"
 
 /* YB includes */
+#include "commands/prepare.h"
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_dist_trace.h"
 
@@ -65,6 +66,14 @@ static _SPI_connection *_SPI_stack = NULL;
 static _SPI_connection *_SPI_current = NULL;
 static int	_SPI_stack_depth = 0;	/* allocated size of _SPI_stack */
 static int	_SPI_connected = -1;	/* current stack index */
+
+/*
+ * YB: True if the current top-level CALL/DO ran a statement not safe to retry.
+ * Reset at outermost SPI_connect_ext(); consumed by YbProcRetryBlocked() /
+ * yb_is_retry_possible() in postgres.c. See YbIsRetriableProcStmtTag for the
+ * safe set.
+ */
+static bool yb_proc_retry_blocked = false;
 
 typedef struct SPICallbackArg
 {
@@ -102,6 +111,9 @@ static int	_SPI_end_call(bool use_exec);
 static MemoryContext _SPI_execmem(void);
 static MemoryContext _SPI_procmem(void);
 static bool _SPI_checktuples(void);
+
+static bool YbIsRetriableProcStmtTag(CommandTag command_tag);
+static bool YbSpiStmtBlocksProcRetry(CachedPlanSource *plansource);
 
 
 /* =================== interface functions =================== */
@@ -145,6 +157,10 @@ SPI_connect_ext(int options)
 	/* Enter new stack level */
 	_SPI_connected++;
 	Assert(_SPI_connected >= 0 && _SPI_connected < _SPI_stack_depth);
+
+	/* YB: reset proc-retriability tracking at the outermost SPI connect. */
+	if (_SPI_connected == 0)
+		yb_proc_retry_blocked = false;
 
 	_SPI_current = &(_SPI_stack[_SPI_connected]);
 	_SPI_current->processed = 0;
@@ -2407,6 +2423,42 @@ _SPI_prepare_oneshot_plan(const char *src, SPIPlanPtr plan)
 	error_context_stack = spierrcontext.previous;
 }
 
+/* YB: assertion-only helper validating the plancache_list query strings */
+#ifdef USE_ASSERT_CHECKING
+/*
+ * YbVerifyQueryStringIsSameInPlanCacheList
+ *		Check that every plansource in the given plancache list carries the
+ *		same query string as the first one.  Used only in assertions.
+ */
+static bool
+YbVerifyQueryStringIsSameInPlanCacheList(List *plancache_list)
+{
+	ListCell   *lc;
+	const char *first_query_string;
+
+	if (plancache_list == NIL)
+		return true;
+
+	first_query_string =
+		((CachedPlanSource *) linitial(plancache_list))->query_string;
+
+	foreach(lc, plancache_list)
+	{
+		CachedPlanSource *plansource = (CachedPlanSource *) lfirst(lc);
+
+		if (plansource->query_string == NULL || first_query_string == NULL)
+		{
+			if (plansource->query_string != first_query_string)
+				return false;
+		}
+		else if (strcmp(plansource->query_string, first_query_string) != 0)
+			return false;
+	}
+
+	return true;
+}
+#endif							/* USE_ASSERT_CHECKING */
+
 /*
  * _SPI_execute_plan: execute the given plan with the given options
  *
@@ -2464,6 +2516,19 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 	error_context_stack = &spierrcontext;
 
 	YB_SPI_DIST_TRACE_START_SPAN("spi.query");
+
+	/* All plansources share the same SPI query string. */
+	if (yb_enable_spi_dist_tracing && YBCIsDistTraceActive() &&
+		plan->plancache_list != NIL)
+	{
+		CachedPlanSource *first_plansource =
+			(CachedPlanSource *) linitial(plan->plancache_list);
+
+		Assert(YbVerifyQueryStringIsSameInPlanCacheList(plan->plancache_list));
+		if (first_plansource->query_string)
+			YBCDistTraceSetCurrSpanAttrStr("spi.query.text",
+										   first_plansource->query_string);
+	}
 
 	/*
 	 * We support four distinct snapshot management behaviors:
@@ -2590,6 +2655,9 @@ _SPI_execute_plan(SPIPlanPtr plan, const SPIExecuteOptions *options,
 							   plan->cursor_options,
 							   false);	/* not fixed result */
 		}
+
+		/* YB: accumulate per-top-level-CALL/DO proc-retriability. */
+		yb_proc_retry_blocked |= YbSpiStmtBlocksProcRetry(plansource);
 
 		/*
 		 * If asked to, complain when query does not return tuples.
@@ -3476,4 +3544,60 @@ YbGetSPIStackDepth(void)
 	 * 1+ = Nested (Function/Trigger/Procedure)
 	 */
 	return _SPI_connected + 1;
+}
+
+bool
+YbProcRetryBlocked(void)
+{
+	/* Flag is per top-level CALL/DO; only valid while SPI is connected. */
+	return yb_proc_retry_blocked && _SPI_connected >= 0;
+}
+
+static bool
+YbIsRetriableProcStmtTag(CommandTag command_tag)
+{
+	if (command_tag == CMDTAG_COPY ||
+		command_tag == CMDTAG_COPY_FROM ||
+		command_tag == CMDTAG_ANALYZE)
+		return false;
+
+	if (command_tag == CMDTAG_SELECT ||
+		command_tag == CMDTAG_INSERT ||
+		command_tag == CMDTAG_UPDATE ||
+		command_tag == CMDTAG_DELETE ||
+		command_tag == CMDTAG_CALL ||
+		command_tag == CMDTAG_DO)
+		return true;
+
+	if (yb_extra_commands_to_retry_in_proc != NULL &&
+		yb_extra_commands_to_retry_in_proc[command_tag])
+		return true;
+
+	return false;
+}
+
+static bool
+YbSpiStmtBlocksProcRetry(CachedPlanSource *plansource)
+{
+	CommandTag	command_tag = plansource->commandTag;
+
+	/*
+	 * For SQL-level EXECUTE, resolve to the prepared statement's own tag so
+	 * EXECUTE of a retriable command stays retriable; an unresolved EXECUTE
+	 * conservatively blocks.
+	 */
+	if (command_tag == CMDTAG_EXECUTE &&
+		plansource->raw_parse_tree != NULL &&
+		IsA(plansource->raw_parse_tree->stmt, ExecuteStmt))
+	{
+		ExecuteStmt *execute_stmt = (ExecuteStmt *) plansource->raw_parse_tree->stmt;
+		PreparedStatement *prepared_stmt = FetchPreparedStatement(execute_stmt->name,
+																  false /* throwError */ );
+
+		command_tag = (prepared_stmt != NULL ?
+					   prepared_stmt->plansource->commandTag :
+					   CMDTAG_UNKNOWN);
+	}
+
+	return !YbIsRetriableProcStmtTag(command_tag);
 }

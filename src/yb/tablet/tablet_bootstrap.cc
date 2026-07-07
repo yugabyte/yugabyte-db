@@ -409,8 +409,11 @@ namespace {
 struct ReplayDecision {
   bool should_replay = false;
 
-  // This is true for transaction update operations that have already been applied to the regular
-  // RocksDB but not to the intents RocksDB.
+  // Which storages a replayed op still applies to. Restricted below All() when the op's effect is
+  // already durable in some storages but not others: an APPLYING transaction-update op already in
+  // the regular RocksDB but not the intents RocksDB; and (GH#31899) a fused xCluster external
+  // WRITE_OP, which is intents-gated on replay but writes the regular RocksDB, so its regular bit
+  // is cleared once the regular RocksDB already has it.
   docdb::StorageSet apply_to_storages = docdb::StorageSet::All();
 
   std::string ToString() const {
@@ -1116,6 +1119,22 @@ class TabletBootstrap {
     }
   }
 
+  // Computes which storages a replayed write must (re-)materialize into: the regular DB when this
+  // op is not yet flushed there, plus each vector index that is likewise behind.
+  static docdb::StorageSet ComputeApplyToStorages(
+      int64_t index, const DocDbOpIds& flushed_op_ids) {
+    docdb::StorageSet apply_to_storages;
+    if (index > flushed_op_ids.regular.index) {
+      apply_to_storages.SetRegularDB();
+    }
+    for (size_t idx = 0; idx != flushed_op_ids.vector_indexes.size(); ++idx) {
+      if (index > flushed_op_ids.vector_indexes[idx].index) {
+        apply_to_storages.SetVectorIndex(idx);
+      }
+    }
+    return apply_to_storages;
+  }
+
   ReplayDecision ShouldReplayOperation(
       consensus::OperationType op_type,
       const int64_t index,
@@ -1125,22 +1144,13 @@ class TabletBootstrap {
       bool write_op_has_transaction) {
     if (op_type == consensus::UPDATE_TRANSACTION_OP) {
       if (txn_status == TransactionStatus::APPLYING) {
-        docdb::StorageSet apply_to_storages;
-        if (index > flushed_op_ids.regular.index) {
-          apply_to_storages.SetRegularDB();
-        }
-        for (size_t idx = 0; idx != flushed_op_ids.vector_indexes.size(); ++idx) {
-          if (index > flushed_op_ids.vector_indexes[idx].index) {
-            apply_to_storages.SetVectorIndex(idx);
-          }
-        }
-
         // This was added as part of D17730 / #12730 to ensure we don't clean up transactions
         // before they are replicated to the CDC destination.
         //
         // TODO: Replaying even transactions that are flushed to both regular and intents RocksDB is
         // a temporary change. The long term change is to track write and apply operations
         // separately instead of a tracking a single "intents_flushed_index".
+        auto apply_to_storages = ComputeApplyToStorages(index, flushed_op_ids);
         VLOG_WITH_PREFIX_AND_FUNC(3)
             << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString()
             << ", apply_to_storages: " << apply_to_storages.ToString();
@@ -1171,10 +1181,22 @@ class TabletBootstrap {
     }
 
     if (op_type == consensus::WRITE_OP && write_op_has_transaction) {
-      // Write intents that have not been flushed into the intents DB.
+      // A transactional WRITE_OP writes external intents to the intents DB and -- for an
+      // xCluster external transaction whose APPLY is fused into the same op -- applies them
+      // inline to the regular DB and any vector indexes (see NonTransactionalBatchWriter). Replay
+      // it while it is unflushed in the intents DB, but gate the apply per storage on that
+      // storage's own flushed OpId, exactly as the APPLYING branch does: do not write to a storage
+      // this op is already durably flushed to. Otherwise an ungraceful restart whose intents
+      // flushed OpId lags applies an already-durable external write a second time -- in the regular
+      // DB, where after a packed-row repack the duplicate shadows the merged row and drops a column
+      // update (GH#31899); in a vector index, where it duplicates an already-present
+      // entry. The long-term "track write and apply separately" fix in the APPLYING branch's TODO
+      // above would subsume this.
+      auto apply_to_storages = ComputeApplyToStorages(index, flushed_op_ids);
       VLOG_WITH_PREFIX_AND_FUNC(3)
-          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
-      return {index > flushed_op_ids.intents.index};
+          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString()
+          << ", apply_to_storages: " << apply_to_storages.ToString();
+      return {index > flushed_op_ids.intents.index, apply_to_storages};
     }
 
     VLOG_WITH_PREFIX_AND_FUNC(3)
@@ -1849,14 +1871,14 @@ class TabletBootstrap {
     auto* change_config = replicate_msg->mutable_change_config_record();
     RaftConfigPB config = change_config->new_config().ToGoogleProtobuf();
 
-    int64_t cmeta_opid_index =  cmeta_->committed_config().opid_index();
+    int64_t cmeta_opid_index = cmeta_->committed_config().committed_op_index();
     if (replicate_msg->id().index() > cmeta_opid_index) {
-      SCHECK(!config.has_opid_index(),
+      SCHECK(!config.has_committed_op_index(),
              Corruption,
              "A config change record must have an opid_index");
-      config.set_opid_index(replicate_msg->id().index());
+      config.set_committed_op_index(replicate_msg->id().index());
       VLOG_WITH_PREFIX(1) << "WAL replay found Raft configuration with log index "
-                          << config.opid_index()
+                          << config.committed_op_index()
                           << " that is greater than the committed config's index "
                           << cmeta_opid_index
                           << ". Applying this configuration change.";

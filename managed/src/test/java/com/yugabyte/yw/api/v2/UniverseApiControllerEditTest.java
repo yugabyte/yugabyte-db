@@ -2,6 +2,8 @@
 package com.yugabyte.yw.api.v2;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
@@ -13,6 +15,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import api.v2.handlers.UniverseManagementHandler;
+import api.v2.models.UniverseValidateKubernetesOverrides;
+import api.v2.models.YBAValidationResponse;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.ClusterAddSpec;
@@ -25,16 +30,20 @@ import com.yugabyte.yba.v2.client.models.ClusterSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec.ClusterTypeEnum;
 import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
 import com.yugabyte.yba.v2.client.models.ClusterStorageSpec.StorageTypeEnum;
+import com.yugabyte.yba.v2.client.models.CommunicationPortsSpec;
 import com.yugabyte.yba.v2.client.models.PlacementAZ;
 import com.yugabyte.yba.v2.client.models.PlacementCloud;
 import com.yugabyte.yba.v2.client.models.PlacementRegion;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseEditSpec;
+import com.yugabyte.yba.v2.client.models.UniverseNetworkingSpec;
 import com.yugabyte.yba.v2.client.models.UniverseSpec;
 import com.yugabyte.yba.v2.client.models.YBATask;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -42,6 +51,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -50,16 +60,21 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+import play.libs.Json;
 
 /** Tests for Edit Universe using v2.UniverseApiControllerImp. */
+@Slf4j
 public class UniverseApiControllerEditTest extends UniverseTestBase {
 
   @Before
@@ -329,6 +344,33 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
   }
 
   @Test
+  public void testEditUniverseV2CommunicationPorts() throws ApiException {
+    UniverseApi api = new UniverseApi();
+    // payload for editing the Universe instance type
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+    ClusterEditSpec clusterEditSpec = new ClusterEditSpec().uuid(primaryClusterSpec.getUuid());
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .clusters(List.of(clusterEditSpec))
+            .networkingSpec(
+                new UniverseNetworkingSpec()
+                    .assignPublicIp(universeSpec.getNetworkingSpec().getAssignPublicIp())
+                    .assignStaticPublicIp(
+                        universeSpec.getNetworkingSpec().getAssignStaticPublicIp())
+                    .enableIpv6(universeSpec.getNetworkingSpec().getEnableIpv6())
+                    .communicationPorts(
+                        new CommunicationPortsSpec().masterHttpPort(1234).tserverHttpPort(5678)));
+    // run the edit universe
+    runEditUniverseV2(universeEditSpec);
+  }
+
+  @Test
   public void testEditUniverseV2GeoPartitions() throws ApiException {
     UniverseApi api = new UniverseApi();
     // payload for editing the Universe storage spec
@@ -571,5 +613,64 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         .submit(eq(TaskType.ReadOnlyClusterDelete), v1DeleteClusterParamsCapture.capture());
     ReadOnlyClusterDelete.Params v1DeleteClusterParams = v1DeleteClusterParamsCapture.getValue();
     assertThat(v1DeleteClusterParams.clusterUUID, is(rrClusterUuid));
+  }
+
+  @Test
+  public void testValidateKubernetesOverrides() throws Exception {
+    setupProvider(Common.CloudType.kubernetes);
+    Provider provider = Provider.get(customer.getUuid(), providerUuid);
+    UniverseManagementHandler handler = app.injector().instanceOf(UniverseManagementHandler.class);
+    KubernetesManager kubernetesManager = kubernetesManagerFactory.getManager();
+
+    when(kubernetesManager.validateOverrides(any(), any(), any(), any(), any(), any()))
+        .thenAnswer(
+            invocation -> {
+              String azCode = invocation.getArgument(5);
+              Map<String, Object> parsedAzOverrides = invocation.getArgument(4);
+              if (parsedAzOverrides != null && !parsedAzOverrides.isEmpty()) {
+                return Set.of("helm template validation failed for " + azCode);
+              }
+              return Collections.emptySet();
+            });
+
+    Map<String, String> azOverrides = new HashMap<>();
+    azOverrides.put("unknown-az", "tserver:\n  podLabels:\n    env: test");
+    azOverrides.put("r2-az-1", "tserver:\n  podLabels:\n    env: test");
+    azOverrides.put("r1-az-1", "tserver:\n  podLabels:\n    env: test");
+
+    UniverseValidateKubernetesOverrides payload =
+        new UniverseValidateKubernetesOverrides()
+            .ybSoftwareVersion("2.20.0.0-b123")
+            .nodePrefix("test-node-prefix")
+            .isReadonlyCluster(false)
+            .placementSpec(
+                new api.v2.models.ClusterPlacementSpec()
+                    .cloudList(
+                        List.of(
+                            Json.fromJson(
+                                Json.toJson(placementFromProvider(3, 3)),
+                                api.v2.models.PlacementCloud.class))))
+            .overrides("")
+            .azOverrides(azOverrides);
+
+    YBAValidationResponse response =
+        handler.validateKubernetesOverrides(fakeRequest, customer.getUuid(), payload);
+
+    assertThat(
+        response.getErrors(),
+        hasItem(
+            is(
+                String.format(
+                    "Provider %s doesn't have following AZs: [unknown-az]. "
+                        + "But they are referred in AZ overrides",
+                    provider.getName()))));
+    assertThat(
+        response.getErrors(),
+        hasItem(
+            containsString(
+                "AZ overrides have following AZs for primary cluster: [r2-az-1]."
+                    + " But no DB pods assigned to these AZs."
+                    + "These overrides are not validated.")));
+    assertThat(response.getErrors(), hasItem("helm template validation failed for r1-az-1"));
   }
 }

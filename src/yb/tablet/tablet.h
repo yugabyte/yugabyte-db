@@ -351,25 +351,37 @@ class Tablet : public AbstractTablet,
       docdb::ApplyTransactionState* stream_state);
 
   // Apply all of the row operations associated with this transaction.
+  //
+  // `apply_to_storages` selects which storages this write is materialized into -- the regular
+  // RocksDB (bit 0) and vector indexes (bits 1+); there is no intents-DB bit. It is honored only
+  // on the non-transactional (xCluster external-apply) path, where NonTransactionalBatchWriter
+  // skips applying to any storage whose bit is clear -- the regular-DB Put, and (via
+  // VectorIndexesUpdater) each vector index. Tablet-bootstrap replay narrows it -- clearing the
+  // bit for any storage a fused external WRITE_OP is already durably flushed to, so that storage
+  // is not written again (GH#31899); every other caller passes All(). The argument has no default,
+  // so each caller states its intent explicitly.
   Status ApplyRowOperations(
       WriteOperation* operation,
-      const docdb::StorageSet& apply_to_storages = {},
+      const docdb::StorageSet& apply_to_storages,
       bool skip_opid_update = false);
 
   Status UpdateOpIdForOperation(WriteOperation* operation);
 
+  // `apply_to_storages`: see ApplyRowOperations.
   Status ApplyOperation(
       const Operation& operation, int64_t batch_idx,
       const docdb::LWKeyValueWriteBatchPB& write_batch,
-      const docdb::StorageSet& apply_to_storages = {},
+      const docdb::StorageSet& apply_to_storages,
       bool skip_opid_update = false);
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
+  // `apply_to_storages`: see ApplyRowOperations.
   Status ApplyKeyValueRowOperations(
       int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers& frontiers,
-      HybridTime write_hybrid_time, HybridTime local_hybrid_time);
+      HybridTime write_hybrid_time, HybridTime local_hybrid_time,
+      const docdb::StorageSet& apply_to_storages);
 
   void WriteToRocksDB(
       const storage::UserFrontiers& frontiers,

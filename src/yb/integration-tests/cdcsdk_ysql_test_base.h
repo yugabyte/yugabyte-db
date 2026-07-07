@@ -119,6 +119,7 @@ DECLARE_bool(TEST_cdcsdk_skip_processing_dynamic_table_addition);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DECLARE_uint32(cdcsdk_max_consistent_records);
 DECLARE_bool(ysql_yb_enable_replication_slot_consumption);
+DECLARE_bool(ysql_yb_enable_replication_slot_query_api);
 DECLARE_bool(TEST_cdc_sdk_fail_setting_retention_barrier);
 DECLARE_bool(TEST_cdc_add_dynamic_index_to_state_table);
 DECLARE_uint64(cdcsdk_publication_list_refresh_interval_secs);
@@ -163,6 +164,10 @@ DECLARE_bool(cdc_enable_dynamic_schema_changes);
 DECLARE_bool(TEST_cdc_skip_master_bg_task);
 DECLARE_bool(TEST_cdc_fail_before_setting_barrier);
 DECLARE_string(ysql_yb_default_replica_identity);
+DECLARE_int32(cdc_create_stream_alter_table_dispatch_batch_size);
+DECLARE_int32(cdc_create_stream_alter_table_dispatch_delay_ms);
+DECLARE_int32(max_concurrent_alter_table_rpcs);
+DECLARE_int32(ysql_ddl_rpc_timeout_sec);
 
 namespace yb {
 
@@ -938,6 +943,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestCleanupOfExpiredTable(bool use_logical_replication);
 
+  void TestXClusterTablesNotAddedToStream(
+      bool use_logical_replication_stream, bool enable_xcluster_before_stream_creation);
+
   void TestMetricObjectRemovalAfterStreamDeletion(bool use_logical_replication);
 
   Status CreateTables(
@@ -959,6 +967,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestStreamsDroppedOnDBDropAndMasterRestart(
       const string& sync_point_name, bool use_logical_replication);
+
+  void TestStreamCreationRollbackWithBatchedAlterTables(const std::string& sync_point);
 
   Status CdcReleaseBarriersOnTablet(const TabletId& tablet_id);
 };

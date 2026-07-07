@@ -153,6 +153,9 @@ service PgClientService {
 
   rpc QueryAutoAnalyze(PgQueryAutoAnalyzeRequestPB) returns (PgQueryAutoAnalyzeResponsePB);
 
+  rpc ResetAutoAnalyzeMutationCounters(PgResetAutoAnalyzeMutationCountersRequestPB)
+      returns (PgResetAutoAnalyzeMutationCountersResponsePB);
+
   rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
     option (yb.rpc.exclude_metadata) = true; // TODO: remove after #27903
@@ -178,6 +181,11 @@ service PgClientService {
   }
   rpc ReleaseSessionObjectLock(PgReleaseSessionObjectLockRequestPB)
       returns (PgReleaseSessionObjectLockResponsePB);
+
+  rpc WaitForLockersMultiple(PgWaitForLockersMultipleRequestPB)
+      returns (PgWaitForLockersMultipleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
 
   rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
       returns (PgExportTxnSnapshotResponsePB);
@@ -829,25 +837,33 @@ message PgPerformOptionsPB {
     OptionalUint32PB lifetime_threshold_ms = 3;
   }
 
+  message ReadTimeOptionsPB {
+    uint64 read_time_serial_no = 1;
+    uint64 read_time_serial_no_history_min = 2;
+    bool restart_transaction = 3;
+    bool defer_read_point = 4;
+    ReadTimeManipulation read_time_manipulation = 5;
+    ReadHybridTimePB read_time = 6;
+    // When set,
+    // - Sets the read time locally.
+    // - Clamps the read uncertainty window.
+    // See the commit desc for more info.
+    bool clamp_uncertainty_window = 7;
+    OptionalUint32PB follower_read_staleness_ms = 8;
+  }
+
   // Cannot use IsolationLevel enum, since we cannot use proto2 enum in proto3 messages.
   // Replace with IsolationLevel after migration to proto3.
   uint32 isolation = 2;
   bool ddl_mode = 3;
   bool ddl_use_regular_transaction_block = 25;
   uint64 txn_serial_no = 4;
-  uint64 read_time_serial_no = 20;
-  uint64 read_time_serial_no_history_min = 27;
-
 
   // See ReadHybridTimePB for information about in_txn_limit_ht.
   OptionalFixed64PB in_txn_limit_ht = 5;
   bool use_existing_priority = 6;
   fixed64 priority = 7;
-  bool restart_transaction = 8;
-  bool defer_read_point = 9;
-  ReadTimeManipulation read_time_manipulation = 10;
-  ReadHybridTimePB read_time = 11;
-  bool use_catalog_session = 12;
+  bool use_legacy_catalog_session = 12;
   string namespace_id = 14;
   bool use_xcluster_database_consistency = 15;
   uint32 active_sub_transaction_id = 16;
@@ -864,17 +880,13 @@ message PgPerformOptionsPB {
   uint32 force_tablespace_locality_oid = 30;
   bool is_all_region_local = 28;
 
-  // When set,
-  // - Sets the read time locally.
-  // - Clamps the read uncertainty window.
-  // See the commit desc for more info.
-  bool clamp_uncertainty_window = 24;
-
   bool xcluster_target_ddl_bypass = 26;
 
   uint32 xrepl_origin_id = 31;
 
   bool is_using_table_locks = 32;
+
+  ReadTimeOptionsPB read_time_options = 34;
 }
 
 message PgPerformRequestPB {
@@ -1364,6 +1376,15 @@ message PgAutoAnalyzeDataPB {
   bytes last_analyze_info = 3;
 }
 
+message PgResetAutoAnalyzeMutationCountersRequestPB {
+  uint32 database_oid = 1;
+  uint32 table_relfilenode_oid = 2;
+}
+
+message PgResetAutoAnalyzeMutationCountersResponsePB {
+  AppStatusPB status = 1;
+}
+
 //--------------------------------------------------------------------------------------------------
 // Advisory lock - Acquire / Release locks.
 //--------------------------------------------------------------------------------------------------
@@ -1459,6 +1480,20 @@ message PgReleaseSessionObjectLockRequestPB {
 }
 
 message PgReleaseSessionObjectLockResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgWaitForLockersMultipleRequestPB {
+  message ObjectLockEntry {
+    ObjectLockOid lock_oid = 1;
+    ObjectLockMode lock_mode = 2;
+  }
+  uint64 session_id = 1;
+  PgPerformOptionsPB options = 2;
+  repeated ObjectLockEntry lock_entries = 3;
+}
+
+message PgWaitForLockersMultipleResponsePB {
   AppStatusPB status = 1;
 }
 

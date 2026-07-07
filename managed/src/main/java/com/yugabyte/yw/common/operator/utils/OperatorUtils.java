@@ -57,6 +57,7 @@ import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParam
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
@@ -548,8 +549,10 @@ public class OperatorUtils {
           .getAllAZUUIDs()
           .forEach(
               azUUID -> {
-                DeviceInfo tsDeviceInfo = curCluster.userIntent.getDeviceInfoForAz(azUUID, false);
-                DeviceInfo newTsDeviceInfo = newIntentClone.getDeviceInfoForAz(azUUID, false);
+                DeviceInfo tsDeviceInfo =
+                    curCluster.userIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
+                DeviceInfo newTsDeviceInfo =
+                    newIntentClone.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
                 log.debug(
                     "Comparing tserver device info for AZ {}: old {}, new {}",
                     azUUID,
@@ -560,8 +563,9 @@ public class OperatorUtils {
 
                 if (curCluster.clusterType != ClusterType.ASYNC) {
                   DeviceInfo masterDeviceInfo =
-                      curCluster.userIntent.getDeviceInfoForAz(azUUID, true);
-                  DeviceInfo newMasterDeviceInfo = newIntentClone.getDeviceInfoForAz(azUUID, true);
+                      curCluster.userIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
+                  DeviceInfo newMasterDeviceInfo =
+                      newIntentClone.getDeviceInfoForAz(azUUID, ServerType.MASTER);
                   log.debug(
                       "Comparing master device info for AZ {}: old {}, new {}",
                       azUUID,
@@ -968,6 +972,8 @@ public class OperatorUtils {
             || !(u.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
                 == ybUniverse.getSpec().getUseYbdbInbuiltYbc());
     log.trace("Toggle Immutable YBC mismatch: {}", mismatch);
+    mismatch = mismatch || shouldRotateCerts(u, ybUniverse, cust.getUuid());
+    log.trace("certificate mismatch: {}", mismatch);
     return mismatch;
   }
 
@@ -1138,6 +1144,35 @@ public class OperatorUtils {
       }
     }
     return false;
+  }
+
+  /*--- Certificate rotation helper methods ---*/
+
+  /**
+   * Checks if certificate rotation is needed for the universe.
+   *
+   * @param universe the current universe
+   * @param ybUniverse the YBUniverse spec
+   * @param customerUUID the customer UUID
+   * @return true if certificate rotation is needed, false otherwise
+   */
+  public boolean shouldRotateCerts(Universe universe, YBUniverse ybUniverse, UUID customerUUID) {
+    String specRootCAName = ybUniverse.getSpec().getRootCA();
+    UUID currentRootCA = universe.getUniverseDetails().rootCA;
+
+    // If no cert specified in spec, no rotation needed
+    if (StringUtils.isBlank(specRootCAName)) {
+      return false;
+    }
+
+    CertificateInfo specRootCACert = CertificateInfo.get(customerUUID, specRootCAName);
+    if (specRootCACert == null) {
+      log.warn("Certificate {} not found for customer {}", specRootCAName, customerUUID);
+      return false;
+    }
+
+    // Check if the certificate UUID differs from the current one
+    return !specRootCACert.getUuid().equals(currentRootCA);
   }
 
   /*--- Backup and Scheduled backup helper methods ---*/

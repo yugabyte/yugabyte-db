@@ -15,7 +15,7 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {

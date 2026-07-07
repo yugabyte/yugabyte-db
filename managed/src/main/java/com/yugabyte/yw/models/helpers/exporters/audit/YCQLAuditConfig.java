@@ -44,6 +44,14 @@ public class YCQLAuditConfig {
   @ApiModelProperty(value = "Log Level", accessMode = READ_WRITE)
   private YCQLAuditLogLevel logLevel;
 
+  @ApiModelProperty(
+      value =
+          "Number of days to keep gzipped YCQL audit log archives on the node."
+              + " 0 or unset disables the dedicated audit-log retention pipeline and keeps the"
+              + " default size-based tserver log purge behavior.",
+      accessMode = READ_WRITE)
+  private Integer logRetentionDays;
+
   public enum YCQLAuditCategory {
     QUERY,
     DML,
