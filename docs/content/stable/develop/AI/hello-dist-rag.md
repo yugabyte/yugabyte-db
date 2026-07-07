@@ -207,6 +207,13 @@ source_id = cursor.fetchone()[0]
 Create the vector index. This creates the backing table `public.hello_dist_rag` with a `vector(1536)` column and a ybhnsw index on it — the DDL you wrote by hand in Hello RAG. The chunking configuration names a LangChain text splitter and its arguments (as a JSON string), and must be set explicitly:
 
 ```python
+model_params = json.dumps(
+    {"model": "text-embedding-3-small", "dimensions": 1536}
+)
+chunk_params = json.dumps({
+    "splitter": "recursive_character",
+    "args": json.dumps({"chunk_size": 1000, "chunk_overlap": 100}),
+})
 cursor.execute(
     """
     SELECT dist_rag.init_vector_index(
@@ -217,9 +224,7 @@ cursor.execute(
         r_chunk_params := %s::jsonb
     );
     """,
-    (index_name, source_id,
-     '{"model": "text-embedding-3-small", "dimensions": 1536}',
-     '{"splitter": "recursive_character", "args": "{\\"chunk_size\\": 1000, \\"chunk_overlap\\": 100}"}'),
+    (index_name, source_id, model_params, chunk_params),
 )
 ```
 
