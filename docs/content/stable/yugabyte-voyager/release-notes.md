@@ -19,9 +19,15 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ## v2026.7.1 - July 7, 2026
 
+{{< note title="Important: Breaking change" >}}
+
+This release includes breaking changes for Voyager migrations. Migrations started with earlier Voyager versions cannot be continued with this version. To proceed, either continue the migration using the same Voyager version you started with, or start a new migration using v2026.7.1.
+
+{{< /note >}}
+
 ### New feature
 
-- Added support for offline and basic live migration migration from PostgreSQL into YugabyteDB AMP (a PostgreSQL-compatible compute over YugabyteDB storage), selectable with `--target-db-type` CLI flag.
+- Added support for offline and basic live migration from PostgreSQL into YugabyteDB AMP (a PostgreSQL-compatible compute over YugabyteDB storage), selectable with `--target-db-type` CLI flag.
 
 ### Enhancement
 
