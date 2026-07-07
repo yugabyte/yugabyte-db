@@ -187,3 +187,6 @@ race:k5_once
 race:od_logger_format
 race:od_stat_query_end
 race:od_route_pool_stat
+
+# False positive because we compile OpenSSL without TSAN instrumentation (#32121).
+race:libcrypto.so.3
