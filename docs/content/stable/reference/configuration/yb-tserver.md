@@ -2441,6 +2441,7 @@ The percentage (0.0–100.0) of CPU reserved for high-priority system work when 
 {{% tags/wrap %}}
 {{<tags/feature/ea>}}
 {{<tags/feature/restart-needed>}}
+{{% tags/feature/t-server %}}
 {{% /tags/wrap %}}
 
 Determines the number of available CPUs from the cgroup CPU limit rather than the total number of CPUs on the host. Set this to `true` in containerized environments where the container is allotted a fraction of the host's CPUs.

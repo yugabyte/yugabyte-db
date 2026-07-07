@@ -10,7 +10,7 @@ type: indexpage
 Quality of service (QoS) is used to ensure that your critical services (or SQL statements) achieve performance objectives, or to just keep the cluster running under heavy load. There are two scenarios where QoS becomes important:
 
 * **Heavy cluster utilization**: In this scenario, it becomes important to keep the cluster running, while ensuring some transactions are given higher priority. This is handled by admission control.
-* **Multi-tenancy**: If the cluster used by multiple tenants or services, it becomes essential to limit the resource usage of any one tenant or service. This can be done by rate limiting resources per tenant, or by isolating CPU usage per database using [Multitenancy](../../additional-features/multitenancy/).
+* **Multitenancy**: If the cluster is used by multiple tenants or services, it becomes essential to limit the resource usage of any one tenant or service. This can be done by rate limiting resources per tenant, or by isolating CPU usage per database using [Multitenancy](../../additional-features/multitenancy/).
 
 ## Admission control
 

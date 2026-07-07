@@ -63,6 +63,7 @@ DelegateSubgroup=ybtserver
 `DelegateSubgroup=` requires systemd 254 or later. On earlier versions (for example, AlmaLinux 9), create the subgroup and delegate the CPU controller manually in the service before starting the YB-TServer:
 
 ```sh
+SERVICE_CGROUP="/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)"
 SUBGROUP_NAME="$SERVICE_CGROUP/ybtserver"
 # Create the subgroup.
 mkdir -p "$SUBGROUP_NAME"
@@ -86,15 +87,15 @@ Container deployments (Docker and Kubernetes) typically mount the cgroups filesy
 
 ## Enable and configure the resource governor
 
-The resource governor is controlled entirely through flags, set on both YB-Master and YB-TServer. To enable multitenancy, set the `enable_qos` flag to true on Masters and TServers.
+The resource governor is controlled entirely through flags. To enable multitenancy, set the `enable_qos` flag to true on Masters and TServers.
 
-Set the following flags on both YB-Masters and YB-TServers to configure multitenancy.
+Set the following flags to configure multitenancy. Unless noted otherwise, set flags on both YB-Masters and YB-TServers.
 
 | Flag | Description | Default |
 | :--- | :--- | :--- |
 | [enable_qos](../../../reference/configuration/yb-tserver/#enable-qos) | Master switch for per-database CPU limits and the database count cap. When `false` (the default), per-database cgroups are not created and no `qos_*` flag has any effect. | `false` |
 | [qos_max_db_cpu_percent](../../../reference/configuration/yb-tserver/#qos-max-db-cpu-percent) | Per-database maximum percentage of the node's non-system-reserved CPU. | `100.0` |
-| [qos_max_db_count](../../../reference/configuration/yb-master/#qos-max-db-count) |  Maximum number of (non-template) databases. Sets the effective per-database minimum CPU as `1 / qos_max_db_count`. | `50` |
+| [qos_max_db_count](../../../reference/configuration/yb-master/#qos-max-db-count) | Master only. Maximum number of (non-template) databases. Sets the effective per-database minimum CPU as `1 / qos_max_db_count`. | `50` |
 | [qos_evaluation_window_us](../../../reference/configuration/yb-tserver/#qos-evaluation-window-us) | Advanced. Scheduler period (µs) for checking CPU limits (`cfs_period_us`) (1000–1000000). Do not change unless necessary. | `100000` |
 | [enable_reserved_cpu_for_system](../../../reference/configuration/yb-tserver/#enable-reserved-cpu-for-system) | Reserves CPU for high-priority system work by capping all other work. Can be used independently of `enable_qos`. | `false` |
 | [high_priority_system_reserved_cpu](../../../reference/configuration/yb-tserver/#high-priority-system-reserved-cpu) | Amount of CPU reserved for high-priority system work (0.0–100.0). | `5.0` |
@@ -112,8 +113,7 @@ With yugabyted, you are responsible for setting up the root cgroup manually (see
 For example, to reserve 5% of CPU for system work, cap each database at 25% of the remaining CPU, and allow at most 20 databases (a 5% per-database minimum):
 
 ```sh
-./bin/yugabyted start \
-    --tserver_flags="enable_qos=true,enable_reserved_cpu_for_system=true,qos_max_db_cpu_percent=25,high_priority_system_reserved_cpu=5,qos_max_db_count=20" \
+    --tserver_flags="enable_qos=true,enable_reserved_cpu_for_system=true,qos_max_db_cpu_percent=25,high_priority_system_reserved_cpu=5" \
     --master_flags="enable_qos=true,enable_reserved_cpu_for_system=true,qos_max_db_cpu_percent=25,high_priority_system_reserved_cpu=5,qos_max_db_count=20"
 ```
 

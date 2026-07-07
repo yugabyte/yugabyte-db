@@ -2054,7 +2054,6 @@ Set the resource governor flags on both YB-Master and YB-TServer. Descriptions f
 
 {{% tags/wrap %}}
 {{<tags/feature/ea>}}
-{{% tags/feature/t-server %}}
 Default: `50`
 {{% /tags/wrap %}}
 
