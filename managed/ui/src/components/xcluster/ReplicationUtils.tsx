@@ -934,8 +934,8 @@ const getStringRepresentationOfTableStatus = (
 ) =>
   tableStatus === XClusterTableStatus.ERROR
     ? replicationStatusErrors[0] ??
-      i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}`)
-    : i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}`);
+      i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}.label`)
+    : i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}.label`);
 
 /**
  * Returns array of XClusterReplicationTable or array of XClusterTable by augmenting YBTable with XClusterTableDetails.
@@ -1021,7 +1021,7 @@ export const augmentTablesWithXClusterDetails = <TIncludeDroppedTables extends b
             isTableInfoIncludedInConfig
               ? XClusterTableStatus.DROPPED
               : XClusterTableStatus.TABLE_INFO_MISSING
-          }`
+          }.label`
         ),
         replicationLag
       });
