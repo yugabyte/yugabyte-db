@@ -33,13 +33,13 @@ Because the pipeline state lives in the database, you can watch ingestion progre
 ## Prerequisites
 
 - Python 3.11 (required by the RAG worker) and Python 3 for the application.
-- YugabyteDB {{<release "2025.2">}} or later with the pg_dist_rag extension.
+- YugabyteDB {{<release "2026.1">}} or later with the pg_dist_rag extension.
 - An [OpenAI API key](https://platform.openai.com/api-keys), exported as `OPENAI_API_KEY`.
 - AWS credentials for the RAG worker. The worker uses them to list the source bucket; any valid AWS credentials work for the public sample bucket, because it grants public read access.
 
 ## Set up YugabyteDB
 
-1. [Download and install](https://download.yugabyte.com) YugabyteDB {{<release "2025.2">}} or later.
+1. [Download and install](https://download.yugabyte.com) YugabyteDB {{<release "2026.1">}} or later.
 
 1. Start a single-node cluster using [yugabyted](../../../reference/configuration/yugabyted/).
 
