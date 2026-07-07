@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Hugo docs server",
+      "runtimeExecutable": "hugo",
+      "runtimeArgs": ["server", "--environment=local", "--baseURL=http://localhost:1313/stable/", "--port=1313"],
+      "port": 1313
+    }
+  ]
+}
