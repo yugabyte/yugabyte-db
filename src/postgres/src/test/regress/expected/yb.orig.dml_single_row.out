@@ -2824,6 +2824,100 @@ EXPLAIN(costs off) UPDATE pk SET a = 1002 WHERE a = 1000;
 (4 rows)
 
 UPDATE pk SET a = 1002 WHERE a = 1000;
+-- Test NOT NULL constraint enforcement in single-row UPDATE when parent and
+-- child column orders don't match.
+-- GH issue: https://github.com/yugabyte/yugabyte-db/issues/32472.
+CREATE TABLE pk_nn (k int, a int, b int NOT NULL, PRIMARY KEY (k))
+    PARTITION BY RANGE (k);
+CREATE TABLE pk_nn1 (b int NOT NULL, a int, k int NOT NULL, PRIMARY KEY (k));
+ALTER TABLE pk_nn ATTACH PARTITION pk_nn1 FOR VALUES FROM (1) TO (100);
+CREATE TABLE pk_nn2 (a int, b int NOT NULL, k int NOT NULL, PRIMARY KEY (k));
+ALTER TABLE pk_nn ATTACH PARTITION pk_nn2 FOR VALUES FROM (100) TO (200);
+INSERT INTO pk_nn VALUES (5, 10, 20), (105, 110, 120);
+-- All plans should USE single-row.  Setting NOT NULL column b to NULL should
+-- fail on either partition; updating only 'a' should succeed without checking
+-- the unmodified column b.
+EXPLAIN (COSTS OFF) UPDATE pk_nn SET b = NULL WHERE k = 5;
+        QUERY PLAN        
+--------------------------
+ Update on pk_nn
+   Update on pk_nn1 pk_nn
+   ->  Result pk_nn
+(3 rows)
+
+EXPLAIN (COSTS OFF) UPDATE pk_nn SET b = NULL WHERE k = 105;
+        QUERY PLAN        
+--------------------------
+ Update on pk_nn
+   Update on pk_nn2 pk_nn
+   ->  Result pk_nn
+(3 rows)
+
+EXPLAIN (COSTS OFF) UPDATE pk_nn SET a = 11 WHERE k = 5;
+        QUERY PLAN        
+--------------------------
+ Update on pk_nn
+   Update on pk_nn1 pk_nn
+   ->  Result pk_nn
+(3 rows)
+
+EXPLAIN (COSTS OFF) UPDATE pk_nn SET a = 11 WHERE k = 105;
+        QUERY PLAN        
+--------------------------
+ Update on pk_nn
+   Update on pk_nn2 pk_nn
+   ->  Result pk_nn
+(3 rows)
+
+UPDATE pk_nn SET b = NULL WHERE k = 5;
+ERROR:  null value in column "b" of relation "pk_nn1" violates not-null constraint
+DETAIL:  Failing row contains (5, null, null).
+UPDATE pk_nn SET b = NULL WHERE k = 105;
+ERROR:  null value in column "b" of relation "pk_nn2" violates not-null constraint
+DETAIL:  Failing row contains (105, null, null).
+UPDATE pk_nn SET a = 11 WHERE k = 5;
+UPDATE pk_nn SET a = 11 WHERE k = 105;
+SELECT * FROM pk_nn ORDER BY k;
+  k  | a  |  b  
+-----+----+-----
+   5 | 11 |  20
+ 105 | 11 | 120
+(2 rows)
+
+-- Same misfire via dropped columns: CREATE TABLE ... PARTITION OF does not
+-- materialize the parent's dropped columns, so the leaf's attribute numbers
+-- differ from the root's even though the column order matches.
+CREATE TABLE pk_nn_drop (k int, dropme int, a int, b int NOT NULL,
+    PRIMARY KEY (k)) PARTITION BY RANGE (k);
+ALTER TABLE pk_nn_drop DROP COLUMN dropme;
+CREATE TABLE pk_nn_drop1 PARTITION OF pk_nn_drop FOR VALUES FROM (1) TO (100);
+INSERT INTO pk_nn_drop VALUES (5, 10, 20);
+EXPLAIN (COSTS OFF) UPDATE pk_nn_drop SET b = NULL WHERE k = 5;
+             QUERY PLAN             
+------------------------------------
+ Update on pk_nn_drop
+   Update on pk_nn_drop1 pk_nn_drop
+   ->  Result pk_nn_drop
+(3 rows)
+
+EXPLAIN (COSTS OFF) UPDATE pk_nn_drop SET a = 11 WHERE k = 5;
+             QUERY PLAN             
+------------------------------------
+ Update on pk_nn_drop
+   Update on pk_nn_drop1 pk_nn_drop
+   ->  Result pk_nn_drop
+(3 rows)
+
+UPDATE pk_nn_drop SET b = NULL WHERE k = 5;
+ERROR:  null value in column "b" of relation "pk_nn_drop1" violates not-null constraint
+DETAIL:  Failing row contains (5, null, null).
+UPDATE pk_nn_drop SET a = 11 WHERE k = 5;
+SELECT * FROM pk_nn_drop ORDER BY k;
+ k | a  | b  
+---+----+----
+ 5 | 11 | 20
+(1 row)
+
 -- Test single-shard transactions in a partition table.
 -- The absence of flushes and storage scans in the EXPLAIN plan indicate the use
 -- of single-shard transactions.
@@ -3302,6 +3396,8 @@ DROP TABLE array_t4;
 DROP TABLE json_t1;
 DROP TABLE p_test;
 DROP TABLE pk;
+DROP TABLE pk_nn;
+DROP TABLE pk_nn_drop;
 DROP TABLE t_simple;
 DROP TABLE t_temp;
 DROP TYPE rt;
