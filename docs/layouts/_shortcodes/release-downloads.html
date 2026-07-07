@@ -41,7 +41,7 @@ Usage:
 <div class="release-downloads">
 <ul class="nav nav-tabs tabpane-plain rd-single-tab" role="presentation">
   <li class="nav-item">
-    <span class="nav-link active">{{ $solo.header | safeHTML }}</span>
+    <span class="nav-link active" style="cursor:default;pointer-events:none;">{{ $solo.header | safeHTML }}</span>
   </li>
 </ul>
 <div class="tab-content">
@@ -50,9 +50,6 @@ Usage:
 </div>
 </div>
 </div>
-<style>
-  .rd-single-tab .nav-link { cursor: default; pointer-events: none; }
-</style>
 {{- else -}}
 {{- $tabpane := print `{{< tabpane text=true plain=true ordinal="` $tabPaneOrdinal `" >}}` "\n" -}}
 {{- range $tabs -}}
@@ -63,32 +60,3 @@ Usage:
 {{ $tabpane | .Page.RenderString }}
 </div>
 {{- end -}}
-<script>
-(function(){
-  function addCopyButtons(root){
-    root.querySelectorAll("div:not(.nocopy) > pre").forEach(function(pre){
-      var code=pre.querySelector("code[data-lang]");
-      if(!code||pre.querySelector("button.copy"))return;
-      var btn=document.createElement("button");
-      btn.className="copy unclicked";
-      btn.addEventListener("click",function(){
-        var text=code.innerText||code.textContent;
-        navigator.clipboard&&navigator.clipboard.writeText(text).catch(function(){});
-        btn.classList.remove("unclicked");
-        setTimeout(function(){btn.classList.add("unclicked");},1500);
-      });
-      code.after(btn);
-      pre.classList.add("can-be-copied");
-      var lines=(pre.innerText.match(/\r|\n/g)||[]).length;
-      pre.setAttribute("data-code",lines>0?lines:1);
-    });
-  }
-  if(document.readyState==="loading"){
-    document.addEventListener("DOMContentLoaded",function(){
-      document.querySelectorAll(".release-downloads").forEach(addCopyButtons);
-    });
-  }else{
-    document.querySelectorAll(".release-downloads").forEach(addCopyButtons);
-  }
-})();
-</script>
