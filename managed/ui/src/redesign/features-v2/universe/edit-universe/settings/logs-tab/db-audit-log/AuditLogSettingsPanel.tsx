@@ -9,6 +9,7 @@ import { toast } from 'react-toastify';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import { YBModal, YBTooltip } from '@app/redesign/components';
 import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
+import { taskQueryKey, universeQueryKey } from '@app/redesign/helpers/api';
 import {
   getGetUniverseQueryKey,
   useConfigureExportTelemetryConfig,
@@ -273,13 +274,10 @@ export const AuditLogSettingsPanel: FC<AuditLogSettingsPanelProps> = ({
       },
       {
         onSuccess: () => {
-          toast.success(
-            <Typography variant="body2" component="span">
-              {operation === 'create' ? t('enableInProgress') : t('updateInProgress')}
-            </Typography>
-          );
           queryClient.invalidateQueries(telemetryConfigQuery.queryKey);
+          queryClient.invalidateQueries(universeQueryKey.detailsV2(universeUuid));
           queryClient.invalidateQueries(getGetUniverseQueryKey(universeUuid));
+          queryClient.invalidateQueries(taskQueryKey.universe(universeUuid));
           setIsConfirmationOpen(false);
           onClose();
         },

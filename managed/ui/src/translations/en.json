@@ -4477,8 +4477,13 @@
         "databaseAuditLog": "Database Audit Log",
         "databaseAuditLogDescription": "Capture session database audit logs to comply with government, financial, or ISO certification.",
         "learnMore": "Learn more",
+        "active": "Active",
+        "configuring": "Configuring",
+        "logStatus": "Log Status",
         "enableQueryLogging": "Enable Query Logging",
-        "editQueryLogging": "Edit",
+        "editQueryLogging": "Query Logging Configuration",
+        "editDatabaseQueryLogging": "Edit Database Query Logging",
+        "disableDatabaseQueryLogging": "Disable Database Query Logging",
         "enableAuditLogging": "Enable Audit Logging",
         "telemetryExportNote": "<bold>Note:</bold> To send logs to external tools, go to Telemetry Export.",
         "queryLogSettings": {
@@ -4538,6 +4543,8 @@
           }
         },
         "editAuditLogging": "Audit Logging Configuration",
+        "editDatabaseAuditLogging": "Edit Database Audit Logging",
+        "disableDatabaseAuditLogging": "Disable Database Audit Logging",
         "auditLogSettings": {
           "title": "Configure Database Audit Logging",
           "introTitle": "YSQL audit log",
