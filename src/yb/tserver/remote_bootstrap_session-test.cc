@@ -56,7 +56,7 @@ void RemoteBootstrapSessionTest::TearDown() {
   messenger_->Shutdown();
   session_.reset();
   WARN_NOT_OK(
-    tablet_peer_->Shutdown(
+    tablet_peer_->TEST_Shutdown(
         tablet::ShouldAbortActiveTransactions::kTrue, tablet::DisableFlushOnShutdown::kFalse),
     "Tablet peer shutdown failed");
   multi_raft_manager_->CompleteShutdown();

@@ -672,7 +672,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   template <class RemoteClient>
   std::unique_ptr<RemoteClient> InitRemoteClient(
       const std::string& log_prefix, const TabletId& tablet_id, const PeerId& source_uuid,
-      const std::string& source_addr, const std::string& debug_session_string);
+      const std::string& source_addr, const std::string& debug_session_string,
+      std::function<bool()> is_cancelled = {});
 
   void UpdateCompactFlushRateLimitBytesPerSec();
   void UpdateAllowCompactionFailures();

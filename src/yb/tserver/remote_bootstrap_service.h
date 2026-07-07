@@ -91,6 +91,11 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
       RemoveRemoteBootstrapSessionResponsePB* resp,
       rpc::RpcContext context) override;
 
+  // Starts shutting the service down: rejects new sessions/fetches and tears down active sessions,
+  // so that peers bootstrapping from this server fail fast (instead of retrying a source whose
+  // tablets are shutting down). Called before the tablets shut down. See issue #32211.
+  void StartShutdown();
+
   void Shutdown() override;
 
   void RegisterLogAnchor(
@@ -202,6 +207,10 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
 
   mutable std::mutex log_anchors_mutex_;
   LogAnchorsMap log_anchors_map_ GUARDED_BY(log_anchors_mutex_);
+
+  // Set by StartShutdown to reject new sessions and fail in-flight fetches once the server begins
+  // shutting down.
+  bool closing_ GUARDED_BY(sessions_mutex_){false};
 
   // Session expiration thread.
   // TODO: this is a hack, replace with some kind of timer impl. See KUDU-286.

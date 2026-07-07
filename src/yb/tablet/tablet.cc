@@ -602,7 +602,10 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
 
   void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo& flush_job_info) override {
     RocksDbListener::OnFlushCompleted(db, flush_job_info);
-    ERROR_NOT_OK(tablet_.MayModifyIntentsDbFlushedOpId(), log_prefix_);
+    auto status = tablet_.MayModifyIntentsDbFlushedOpId();
+    if (!status.ok() && !tablet_.shutdown_requested_.load(std::memory_order_acquire)) {
+      LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "Failed to update intents db flushed op id: " << status;
+    }
   }
 
  private:
@@ -821,15 +824,14 @@ Tablet::Tablet(const TabletInitData& data)
 }
 
 Tablet::~Tablet() {
-  if (StartShutdown()) {
-    CompleteShutdown(DisableFlushOnShutdown::kFalse, AbortOps::kFalse);
+  if (StartShutdown(DisableFlushOnShutdown::kFalse, AbortOps::kFalse)) {
+    CompleteShutdown();
   } else {
     auto state = state_;
     if (state != kShutdown) {
       LOG_WITH_PREFIX(DFATAL) << "Destroying Tablet that did not complete shutdown: " << state;
-      // Still try to complete shutdown in release builds, but disable flush in this state to
-      // minimize risk of flushing potentially corrupted data.
-      CompleteShutdown(DisableFlushOnShutdown::kTrue, AbortOps::kFalse);
+      // Still try to complete shutdown in release builds.
+      CompleteShutdown();
     }
   }
   if (regulardb_block_based_table_mem_tracker_) {
@@ -1595,7 +1597,8 @@ void Tablet::MarkFinishedBootstrapping() {
   vector_indexes_->LaunchBackfillsIfNecessary();
 }
 
-bool Tablet::StartShutdown() {
+bool Tablet::StartShutdown(
+    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
   LOG_WITH_PREFIX(INFO) << __func__;
 
   bool expected = false;
@@ -1603,9 +1606,28 @@ bool Tablet::StartShutdown() {
     return false;
   }
 
+  // Stop the transaction coordinator's pollers before StartShutdownStorages pauses read/write
+  // operations below: otherwise a poll could submit a transaction status update operation against
+  // the paused tablet and fail with a non-shutdown status, tripping a DFATAL. See issue #32211.
+  if (transaction_coordinator_) {
+    transaction_coordinator_->StartShutdown();
+  }
+
   if (transaction_participant_) {
     transaction_participant_->StartShutdown();
   }
+
+  // Start shutting the RocksDB instances down (signalling shutdown, pausing read/write operations)
+  // here, before TabletPeer::CompleteShutdown drains the peer strand. StartShutdownStorages signals
+  // RocksDB shutdown, which releases any writer parked in DBImpl::DelayWrite on a write stall (the
+  // stall loop breaks out once the DB reports it is shutting down). Otherwise the shutdown would
+  // deadlock: the strand drain waits for in-flight RemoveIntents (and similar) tasks to finish, but
+  // a RemoveIntents write stalled on an intents-DB write stall that never clears would never be
+  // released until StartShutdownStorages runs -- which used to happen only later, from
+  // CompleteShutdown, i.e. after the strand drain. See issue #32211.
+  // The op pauses must outlive this call (they keep operations paused until the RocksDB instances
+  // are destroyed in CompleteShutdownStorages), so they are stored in a member.
+  shutdown_op_pauses_ = StartShutdownStorages(disable_flush_on_shutdown, abort_ops, Stop::kTrue);
 
   return true;
 }
@@ -1617,18 +1639,19 @@ Status Tablet::CompleteStartup() {
   return EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr);
 }
 
-void Tablet::CompleteShutdown(
-    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
+void Tablet::CompleteShutdown() {
   LOG_WITH_PREFIX(INFO) << __func__;
 
-  StartShutdown();
-
-  auto op_pauses = StartShutdownStorages(disable_flush_on_shutdown, abort_ops, Stop::kTrue);
+  // StartShutdown must have been called before CompleteShutdown (via TabletPeer::StartShutdown or
+  // Tablet::~Tablet). It runs StartShutdownStorages and populates shutdown_op_pauses_, which we
+  // consume below.
+  LOG_IF_WITH_PREFIX(DFATAL, !shutdown_requested_.load(std::memory_order_acquire))
+      << "CompleteShutdown called without a preceding StartShutdown";
 
   cleanup_intent_files_token_.reset();
 
   if (transaction_coordinator_) {
-    transaction_coordinator_->Shutdown();
+    transaction_coordinator_->CompleteShutdown();
   }
 
   if (transaction_participant_) {
@@ -1657,7 +1680,7 @@ void Tablet::CompleteShutdown(
   // Shutdown the RocksDB instance for this tablet, if present.
   // Destruct intents DB and regular DB in-memory objects in reverse order to their creation.
   // Also it makes sure that regular DB is alive during flush filter of intents db.
-  CompleteShutdownStorages(op_pauses);
+  CompleteShutdownStorages(shutdown_op_pauses_);
 
   {
     std::lock_guard compaction_lock(full_compaction_token_mutex_);
@@ -1668,7 +1691,7 @@ void Tablet::CompleteShutdown(
 
   state_ = kShutdown;
 
-  for (auto* op_pause : op_pauses.AsArray()) {
+  for (auto* op_pause : shutdown_op_pauses_.AsArray()) {
     // Release the mutex that prevents snapshot restore / truncate operations from running. Such
     // operations are no longer possible because the tablet has shut down. When we start the
     // "read/write operation pause", we incremented the "exclusive operation" counter. This will

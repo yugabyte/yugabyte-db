@@ -1736,7 +1736,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 
   auto rb_client = InitRemoteClient<RemoteBootstrapClient>(
       kLogPrefix, tablet_id, bootstrap_peer_uuid, bootstrap_peer_addr.ToString(),
-      kDebugBootstrapString);
+      kDebugBootstrapString, [this] { return IsShutdownStarted(); });
 
   if (replacing_tablet) {
     RETURN_NOT_OK(rb_client->SetTabletToReplace(meta, leader_term));
@@ -1815,8 +1815,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   // it to VOTER, so the wait is guaranteed to time out, exceeding the 30s budget that
   // WaitForRemoteSessionsToEnd (called from StartShutdown) allows the RBS to finish in.
   auto status = rb_client->VerifyChangeRoleSucceeded(
-      VERIFY_RESULT(tablet_peer->GetConsensus()),
-      [this] { return IsShutdownStarted(); });
+      VERIFY_RESULT(tablet_peer->GetConsensus()));
   if (status.IsShutdownInProgress()) {
     LOG_WITH_PREFIX(INFO) << status;
   } else if (!status.ok()) {
@@ -1858,7 +1857,8 @@ Status TSTabletManager::StartRemoteSnapshotTransfer(
   const auto& rocksdb_dir = tablet->tablet_metadata()->rocksdb_dir();
 
   auto remote_snapshot_client = InitRemoteClient<RemoteSnapshotTransferClient>(
-      kLogPrefix, tablet_id, source_uuid, source_addr.ToString(), kDebugSnapshotTransferString);
+      kLogPrefix, tablet_id, source_uuid, source_addr.ToString(), kDebugSnapshotTransferString,
+      [this] { return IsShutdownStarted(); });
 
   // Download and persist the remote superblock.
   RETURN_NOT_OK(remote_snapshot_client->Start(
@@ -1992,9 +1992,30 @@ Status TSTabletManager::DeleteTablet(
     meta->SetHidden(true);
     return meta->Flush();
   }
-  RETURN_NOT_OK(tablet_peer->Shutdown(
-      should_abort_active_txns, tablet::DisableFlushOnShutdown::kTrue,
-      std::move(exclude_aborting_txn_id)));
+  // Shut the peer down. We cannot use TabletPeer::TEST_Shutdown here: this runs on an RPC handler
+  // thread, and if another thread (e.g. the tserver shutdown sequence) already initiated the peer's
+  // shutdown, blocking in TabletPeer::WaitUntilShutdown until it reaches SHUTDOWN would deadlock --
+  // that other thread may be joining this RPC threadpool before it drives CompleteShutdown. So we
+  // drive CompleteShutdown ourselves when we initiate the shutdown, and otherwise poll while
+  // bailing out if the tablet manager itself starts shutting down. See issue #32211.
+  auto shutdown_initiated = tablet_peer->StartShutdown(
+      tablet::DisableFlushOnShutdown::kTrue, tablet::AbortOps(should_abort_active_txns));
+  if (should_abort_active_txns) {
+    tablet_peer->AbortActiveTransactions(std::move(exclude_aborting_txn_id));
+  }
+  if (shutdown_initiated) {
+    tablet_peer->CompleteShutdown();
+  } else {
+    const auto kPollInterval = MonoDelta::FromMilliseconds(10);
+    while (tablet_peer->state() != tablet::RaftGroupStatePB::SHUTDOWN) {
+      if (IsShutdownStarted()) {
+        return STATUS(
+            ShutdownInProgress,
+            "Tablet manager is shutting down while waiting for concurrent tablet shutdown");
+      }
+      SleepFor(kPollInterval);
+    }
+  }
 
   auto last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
 
@@ -2512,7 +2533,10 @@ void TSTabletManager::StartShutdown() {
   // on to the lock while shutting them down, which might cause a lock
   // inversion. (see KUDU-308 for example).
   for (const TabletPeerPtr& peer : GetTabletPeers()) {
-    if (peer->StartShutdown()) {
+    // StartShutdown carries the flush-on-shutdown / abort options (CompleteShutdown takes none).
+    if (peer->StartShutdown(
+            tablet::DisableFlushOnShutdown(FLAGS_TEST_disable_flush_on_shutdown),
+            tablet::AbortOps::kFalse)) {
       shutting_down_peers_.push_back(peer);
     }
   }
@@ -2540,9 +2564,7 @@ void TSTabletManager::CompleteShutdown() {
   tablet_metadata_validator_->CompleteShutdown();
 
   for (const TabletPeerPtr& peer : shutting_down_peers_) {
-    peer->CompleteShutdown(
-        tablet::DisableFlushOnShutdown(FLAGS_TEST_disable_flush_on_shutdown),
-        tablet::AbortOps::kFalse);
+    peer->CompleteShutdown();
   }
 
   for (auto& vector_index_thread_pool_ref : vector_index_thread_pools_) {
@@ -3740,13 +3762,14 @@ Result<tablet::TabletPeerPtr> TSTabletManager::CheckStateAndLookupTabletUnlocked
 template <class RemoteClient>
 std::unique_ptr<RemoteClient> TSTabletManager::InitRemoteClient(
     const std::string& log_prefix, const TabletId& tablet_id, const PeerId& source_uuid,
-    const std::string& source_addr, const std::string& debug_session_string) {
+    const std::string& source_addr, const std::string& debug_session_string,
+    std::function<bool()> is_cancelled) {
   const auto& init_msg = Format(
       "$0 Initiating $1 from Peer $2 ($3)", log_prefix, debug_session_string, source_uuid,
       source_addr);
   LOG(INFO) << init_msg;
   TRACE(init_msg);
-  return std::make_unique<RemoteClient>(tablet_id, fs_manager_);
+  return std::make_unique<RemoteClient>(tablet_id, fs_manager_, std::move(is_cancelled));
 }
 
 client::YBMetaDataCache* TSTabletManager::CreateYBMetaDataCache() {
@@ -3997,8 +4020,9 @@ Status ShutdownAndTombstoneTabletPeerNotOk(
     return status;
   }
   // If shutdown was initiated by someone else we should not wait for shutdown to complete.
-  if (tablet_peer && tablet_peer->StartShutdown()) {
-    tablet_peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse);
+  if (tablet_peer && tablet_peer->StartShutdown(
+                         tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse)) {
+    tablet_peer->CompleteShutdown();
   }
   tserver::LogAndTombstone(meta, msg, uuid, status, ts_tablet_manager);
   return status;

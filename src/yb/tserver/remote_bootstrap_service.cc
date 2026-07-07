@@ -286,6 +286,13 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
   scoped_refptr<RemoteBootstrapSession> session;
   {
     std::lock_guard l(sessions_mutex_);
+    if (closing_) {
+      // Report the session as gone so the destination treats this as terminal and aborts its
+      // bootstrap, instead of retrying against a source that is shutting down. See issue #32211.
+      RPC_RETURN_APP_ERROR(
+          RemoteBootstrapErrorPB::NO_SESSION, "Remote bootstrap service is shutting down",
+          STATUS(NotFound, "Remote bootstrap service is shutting down"));
+    }
     auto it = sessions_.find(session_id);
     if (it == sessions_.end()) {
       RPC_RETURN_APP_ERROR(
@@ -392,12 +399,16 @@ void RemoteBootstrapServiceImpl::RemoveRemoteBootstrapSession(const std::string&
   sessions_.erase(it);
 }
 
-void RemoteBootstrapServiceImpl::Shutdown() {
-  shutdown_latch_.CountDown();
-  session_expiration_thread_->Join();
-
+void RemoteBootstrapServiceImpl::StartShutdown() {
+  // Mark the service as closing and tear down active sessions so that in-flight FetchData calls
+  // from peers fail fast with NO_SESSION (a terminal error for the destination) instead of them
+  // retrying against a source whose tablets are being shut down. Idempotent: a second call after
+  // closing_ is set is a no-op. See issue #32211.
   {
     std::lock_guard lock(sessions_mutex_);
+    if (std::exchange(closing_, true)) {
+      return;
+    }
     // Destroy all remote bootstrap sessions.
     std::vector<string> session_ids;
     session_ids.reserve(sessions_.size());
@@ -411,8 +422,15 @@ void RemoteBootstrapServiceImpl::Shutdown() {
       WARN_NOT_OK(
           DoEndRemoteBootstrapSession(session_id, false, &app_error),
           "DoEndRemoteBootstrapSession failed with status: ");
+      RemoveRemoteBootstrapSession(session_id);
     }
   }
+  shutdown_latch_.CountDown();
+}
+
+void RemoteBootstrapServiceImpl::Shutdown() {
+  StartShutdown();
+  session_expiration_thread_->Join();
 
   {
     std::lock_guard l(log_anchors_mutex_);
@@ -481,6 +499,12 @@ Result<scoped_refptr<RemoteBootstrapSession>> RemoteBootstrapServiceImpl::Create
   scoped_refptr<RemoteBootstrapSession> session;
   {
     std::lock_guard l(sessions_mutex_);
+    if (closing_) {
+      // Report the session as gone so the destination treats this as terminal and aborts its
+      // bootstrap, instead of retrying against a source that is shutting down. See issue #32211.
+      *error_code = RemoteBootstrapErrorPB::NO_SESSION;
+      return STATUS(ShutdownInProgress, "Remote bootstrap service is shutting down");
+    }
     auto it = sessions_.find(session_id);
     if (it == sessions_.end()) {
       LOG(INFO) << "Beginning new remote bootstrap session on tablet " << tablet_id << " from peer "
@@ -795,6 +819,9 @@ Status RemoteBootstrapServiceImpl::DoEndLogAnchorSession(
 
 void RemoteBootstrapServiceImpl::EndExpiredRemoteBootstrapSessions() {
   std::lock_guard l(sessions_mutex_);
+  if (closing_) {
+    return;
+  }
   auto now = CoarseMonoClock::Now();
 
   std::vector<string> expired_session_ids;
