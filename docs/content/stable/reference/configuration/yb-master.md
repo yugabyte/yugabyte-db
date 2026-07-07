@@ -2044,6 +2044,22 @@ Default: `300000`
 
 Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
 
+### Multitenancy (resource governor) flags
+
+These flags control per-database CPU isolation, which lets you treat each database as a tenant and prevent one database from starving others of CPU. For an overview and setup instructions, see [Multitenancy](../../../additional-features/multitenancy/).
+
+Set the resource governor flags on both YB-Master and YB-TServer. Descriptions for the flags common to both processes ([enable_qos](../yb-tserver/#enable-qos), [qos_max_db_cpu_percent](../yb-tserver/#qos-max-db-cpu-percent), [qos_evaluation_window_us](../yb-tserver/#qos-evaluation-window-us), [enable_reserved_cpu_for_system](../yb-tserver/#enable-reserved-cpu-for-system), and [high_priority_system_reserved_cpu](../yb-tserver/#high-priority-system-reserved-cpu)) are given in the [YB-TServer reference](../yb-tserver/#multitenancy-resource-governor-flags).
+
+##### --qos_max_db_count
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{% tags/feature/t-server %}}
+Default: `50`
+{{% /tags/wrap %}}
+
+The maximum number of non-template databases that can be created. `CREATE DATABASE` fails if it would exceed this limit. Because per-database cgroups are weighted equally, this cap sets the effective per-database minimum CPU as `1 / qos_max_db_count` (for example, a value of `20` guarantees each database at least 5% of the available CPU). Has no effect unless `enable_qos` is `true`.
+
 ### Other performance tuning options
 
 ##### --allowed_preview_flags_csv

@@ -39,6 +39,12 @@ type: indexpage
     icon="fa-thin fa-grip-lines-vertical">}}
 
   {{<index/item
+    title="Multitenancy"
+    body="Isolate CPU usage across databases (tenants)."
+    href="multitenancy/"
+    icon="fa-thin fa-people-group">}}
+
+  {{<index/item
     title="PostgreSQL extensions"
     body="Use PostgreSQL extensions to extend the functionality of YSQL."
     href="pg-extensions/"

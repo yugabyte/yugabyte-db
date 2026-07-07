@@ -16,6 +16,7 @@ Perform the following configuration on each node in the cluster:
 1. Set up time synchronization.
 1. Set ulimits.
 1. Enable transparent hugepages.
+1. Configure cgroups for multitenancy (optional).
 
 Keep in mind that, although YugabyteDB is PostgreSQL compatible and runs a PostgreSQL process, it is not a PostgreSQL distribution. The PostgreSQL it runs doesn't need the same OS and system resources that open source PostgreSQL requires. For this reason, the kernel configuration requirements are different.
 
@@ -303,3 +304,15 @@ For example, on RHEL or CentOS 7 or 8, using grub2, you can use the following st
     ```
 
 1. Reboot the system.
+
+## Configure cgroups for multitenancy
+
+If you intend to use [multitenancy](../../../additional-features/multitenancy/), you need to configure a cgroup that:
+
+- has the CPU controller available;
+- is writable by the user running the YB-TServer process; and
+- is a leaf cgroup not managed by any other process (no other process moves processes in or out of it, or creates cgroups underneath it).
+
+Creating this cgroup and granting write access generally requires root privileges (running the YB-TServer afterwards does not). The exact steps depend on your operating system and how you run the YB-TServer.
+
+For information on multitenancy and setup, refer to [Set up multitenancy](../../../additional-features/multitenancy/set-up/).
