@@ -4,12 +4,15 @@ else
   package_path="{{ package_path }}"
 fi
 
+# Directory used by node_exporter's textfile collector for YugabyteDB metrics.
+metrics_dir="{{ yb_home_dir }}/metrics"
+
 # Setup the directories & permissions for prometheus user
 mkdir -p /opt/prometheus
 mkdir -p /etc/prometheus
 mkdir -p /var/log/prometheus
 mkdir -p /var/run/prometheus
-mkdir -p /tmp/yugabyte/metrics
+mkdir -p "$metrics_dir"
 
 # Detect system architecture
 arch=$(uname -m)
@@ -69,8 +72,8 @@ chown -R prometheus:{{ yb_user }} /opt/prometheus
 chown -R prometheus:{{ yb_user }} /etc/prometheus
 chown -R prometheus:{{ yb_user }} /var/log/prometheus
 chown -R prometheus:{{ yb_user }} /var/run/prometheus
-chown -R yugabyte:yugabyte /tmp/yugabyte/metrics
-chmod -R 755 /tmp/yugabyte/metrics
+chown -R {{ yb_user }}:{{ yb_user }} "$metrics_dir"
+chmod -R 755 "$metrics_dir"
 
 if [ -f "/opt/prometheus/$node_exporter_package" ]; then
     chmod +r /opt/prometheus/$node_exporter_package
@@ -106,12 +109,34 @@ Group={{ yb_user }}
 
 ExecStart=/opt/prometheus/$node_exported_package_name/node_exporter  \
 --web.listen-address=:{{ node_exporter_port }} \
---collector.textfile.directory={{ yb_home_dir }}/metrics
+--collector.textfile.directory=$metrics_dir
 EOL
 
-# Enable and start the node_exporter service
+# Reload systemd so the (possibly updated) unit file is picked up, and make sure
+# node_exporter is enabled on boot.
 systemctl daemon-reload
 systemctl enable node_exporter
-systemctl start node_exporter
+
+# A running node_exporter keeps its old textfile directory even after the unit
+# file is rewritten, so restart only if the live process uses a different path.
+if systemctl is-active --quiet node_exporter; then
+    main_pid=$(systemctl show -p MainPID --value node_exporter)
+    # Read the live process' args from /proc; leave the value empty (forcing a
+    # restart) if the pid or cmdline is unavailable for any reason.
+    running_textfile_dir=""
+    if [ -r "/proc/${main_pid}/cmdline" ]; then
+        running_textfile_dir=$(tr '\0' '\n' < "/proc/${main_pid}/cmdline" \
+            | sed -n 's/^--collector\.textfile\.directory=//p')
+    fi
+    if [ "$running_textfile_dir" != "$metrics_dir" ]; then
+        echo "node_exporter textfile directory changed from" \
+            "'${running_textfile_dir:-unknown}' to '$metrics_dir'; restarting service."
+        systemctl restart node_exporter
+    else
+        echo "node_exporter already using textfile directory '$metrics_dir'; no restart needed."
+    fi
+else
+    systemctl start node_exporter
+fi
 
 echo "Node exporter setup is complete."

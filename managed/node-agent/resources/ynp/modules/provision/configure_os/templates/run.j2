@@ -140,12 +140,6 @@ EOF
   # Apply the changes system-wide
   sysctl --system
 
-  # Ensure metrics directory exists
-  yb_metrics_dir="{{ yb_home_dir }}/metrics"
-  mkdir -p "$yb_metrics_dir"
-  chown -R "{{ yb_user }}:{{ yb_user }}" "$yb_metrics_dir"
-  chmod -R 755 "$yb_metrics_dir"
-
   if [[ "{{ os_family }}" == "RedHat" ]]; then
     # Check if tuned is installed
     if command -v tuned-adm &> /dev/null; then

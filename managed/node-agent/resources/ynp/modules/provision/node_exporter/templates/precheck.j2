@@ -12,9 +12,20 @@ fi
 
 threshold={{ min_prometheus_space_gb }}
 # Get available disk space in gigabytes
-free_space_gb=$(df -B1G --output=avail "{{ tmp_directory }}" | tail -n 1 )
+# Check parent directory since /metrics subdirectory won't exist during precheck
+free_space_gb=$(df -B1G --output=avail "{{ yb_home_dir }}" | tail -n 1 )
 if [ "$free_space_gb" -gt "$threshold" ]; then
     add_result "Yugabyte Node Exporter Directory Free Space Check" "PASS" "Sufficient disk space available: ${free_space_gb}G"
 else
     add_result "Yugabyte Node Exporter Directory Free Space Check" "FAIL" "Insufficient disk space: ${free_space_gb}G available, ${threshold}G required."
+fi
+
+# Check /opt/prometheus for binary installation space
+free_space_prometheus=$(df -B1G --output=avail "/opt/prometheus" | tail -n 1 )
+if [ "$free_space_prometheus" -gt "$threshold" ]; then
+    add_result "Prometheus Installation Directory Free Space Check" "PASS" \
+        "Sufficient disk space available: ${free_space_prometheus}G"
+else
+    add_result "Prometheus Installation Directory Free Space Check" "FAIL" \
+        "Insufficient disk space: ${free_space_prometheus}G available, ${threshold}G required."
 fi
