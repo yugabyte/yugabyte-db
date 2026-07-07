@@ -1022,6 +1022,85 @@ DefineIndex(Oid relationId,
 		!YbIsConnectedToTemplateDb() &&
 		YbGetTableProperties(rel)->is_colocated;
 
+	/*
+	 * YB: the access method computation block has been moved up here so the implicit tablegroup
+	 * selection code can pivot on whether this index is copartitioned.
+	 *
+	 * look up the access method, verify it can handle the requested features
+	 */
+	accessMethodName = stmt->accessMethod; /* YB move access method computation */
+
+	/*
+	 * In Yugabyte mode, switch index method from "btree" or "hash" to "lsm" depending on whether
+	 * the table is stored in Yugabyte storage or not (such as temporary tables).
+	 */
+	if (IsYugaByteEnabled())
+	{
+		if (accessMethodName == NULL)
+		{
+			accessMethodName = IsYBRelation(rel) ? DEFAULT_YB_INDEX_TYPE : DEFAULT_INDEX_TYPE;
+		}
+		else if (IsYBRelation(rel))
+		{
+			char	   *new_name = NULL;
+
+			/* YB: Keeping the gin/hnsw index substitution message silent. */
+			if (strcmp(accessMethodName, "gin") == 0 ||
+				strcmp(accessMethodName, "hnsw") == 0)
+			{
+				new_name = psprintf("yb%s", accessMethodName);
+				ereport(LOG,
+						(errmsg("substituting access method \"%s\" for \"%s\" in YugabyteDB",
+								new_name, accessMethodName)));
+				accessMethodName = new_name;
+			}
+			else
+			{
+				if (strcmp(accessMethodName, "btree") == 0 ||
+					strcmp(accessMethodName, "hash") == 0)
+					new_name = DEFAULT_YB_INDEX_TYPE;
+
+				else if (strcmp(accessMethodName, "hnsw") == 0)
+					new_name = "ybhnsw";
+
+				if (new_name != NULL)
+				{
+					ereport(NOTICE,
+							(errmsg("substituting access method \"%s\" for \"%s\" in YugabyteDB",
+									new_name, accessMethodName)));
+					accessMethodName = new_name;
+				}
+			}
+
+		}
+	}
+
+	tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethodName));
+	if (!HeapTupleIsValid(tuple))
+	{
+		/*
+		 * Hack to provide more-or-less-transparent updating of old RTREE
+		 * indexes to GiST: if RTREE is requested and not found, use GIST.
+		 */
+		if (strcmp(accessMethodName, "rtree") == 0)
+		{
+			ereport(NOTICE,
+					(errmsg("substituting access method \"gist\" for obsolete method \"rtree\"")));
+			accessMethodName = "gist";
+			tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethodName));
+		}
+
+		if (!HeapTupleIsValid(tuple))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("access method \"%s\" does not exist",
+							accessMethodName)));
+	}
+	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
+	accessMethodId = accessMethodForm->oid;
+	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);
+	/* YB end of moved access method computation hunk */
+
 	if (IsYugaByteEnabled())
 	{
 		/* Use tablegroup of the indexed table, if any. */
@@ -1032,6 +1111,13 @@ DefineIndex(Oid relationId,
 		bool		is_colocated_via_database = is_colocated && MyDatabaseColocated;
 		bool		is_colocated_tables_with_tablespace_enabled =
 			*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+
+		/*
+		 * A copartitioned index (e.g. a ybhnsw vector index) stores its rows
+		 * co-located with the indexed table's own tablets, so it must live in
+		 * the indexed table's implicit tablegroup rather than the default one.
+		 */
+		bool		index_is_copartitioned = amRoutine->yb_amiscopartitioned;
 
 		/*
 		 * For colocated index tables in a colocation database, the implicit
@@ -1061,27 +1147,61 @@ DefineIndex(Oid relationId,
 			}
 			else if (yb_binary_restore && OidIsValid(binary_upgrade_next_tablegroup_oid))
 			{
+				Oid			preserved_tablegroup_oid = binary_upgrade_next_tablegroup_oid;
+				bool		is_default = binary_upgrade_next_tablegroup_default;
+
+				binary_upgrade_next_tablegroup_default = false;
+
 				/*
 				 * In yb_binary_restore if tablespaceId is not valid but
-				 * binary_upgrade_next_tablegroup_oid is valid, that implies either:
+				 * binary_upgrade_next_tablegroup_oid is valid, that implies
+				 * either:
 				 * 1. it is a default tablespace.
 				 * 2. we are restoring without tablespace information.
 				 * In this case all tables are restored to default tablespace,
-				 * while maintaining the colocation properties, and tablegroup's name
-				 * will be colocation_restore_tablegroupId, while default tablegroup's
-				 * name would still be default.
+				 * while maintaining the colocation properties, and tablegroup's
+				 * name will be colocation_restore_tablegroupId, while default
+				 * tablegroup's name would still be default.
+				 *
+				 * The implicit tablegroup may already exist from an earlier
+				 * restore step (e.g. the indexed table was restored with
+				 * --use_tablespaces using the colocation_<tablespace_oid>
+				 * name). Look up by OID before falling back to the restore
+				 * name.
 				 */
-				tablegroup_name = (binary_upgrade_next_tablegroup_default ?
-								   DEFAULT_TABLEGROUP_NAME :
-								   get_restore_tablegroup_name(binary_upgrade_next_tablegroup_oid));
-				binary_upgrade_next_tablegroup_default = false;
-				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+				tablegroup_name = get_tablegroup_name(preserved_tablegroup_oid);
+				if (tablegroup_name != NULL)
+				{
+					tablegroupId = preserved_tablegroup_oid;
+					binary_upgrade_next_tablegroup_oid = InvalidOid;
+				}
+				else
+				{
+					tablegroup_name = (is_default ?
+									   DEFAULT_TABLEGROUP_NAME :
+									   get_restore_tablegroup_name(preserved_tablegroup_oid));
+					tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+				}
 			}
 			else if (yb_binary_restore && OidIsValid(tablegroupId))
 			{
 				/*
 				 * This case handles Primary Key's tablegroup id. The variable
 				 * tablegroupId stores the tablegroupId of the parent table.
+				 */
+				tablegroup_name = get_tablegroup_name(tablegroupId);
+			}
+			else if (index_is_copartitioned && OidIsValid(tablegroupId))
+			{
+				/*
+				 * A copartitioned index (e.g. a ybhnsw vector index) has no
+				 * tablespace of its own and its rows are stored co-located
+				 * with the indexed table's tablets. It must therefore share
+				 * the indexed table's implicit tablegroup. Falling through to
+				 * the default tablegroup below would create a spurious empty
+				 * implicit tablegroup (an empty colocation parent) that holds
+				 * no data and cannot be reproduced on the restore/clone side,
+				 * breaking snapshot import.
 				 */
 				tablegroup_name = get_tablegroup_name(tablegroupId);
 			}
@@ -1198,82 +1318,6 @@ DefineIndex(Oid relationId,
 											stmt->excludeOpNames,
 											stmt->primary,
 											stmt->isconstraint);
-
-	/*
-	 * look up the access method, verify it can handle the requested features
-	 */
-	accessMethodName = stmt->accessMethod;
-
-	/*
-	 * In Yugabyte mode, switch index method from "btree" or "hash" to "lsm" depending on whether
-	 * the table is stored in Yugabyte storage or not (such as temporary tables).
-	 */
-	if (IsYugaByteEnabled())
-	{
-		if (accessMethodName == NULL)
-		{
-			accessMethodName = IsYBRelation(rel) ? DEFAULT_YB_INDEX_TYPE : DEFAULT_INDEX_TYPE;
-		}
-		else if (IsYBRelation(rel))
-		{
-			char	   *new_name = NULL;
-
-			/* YB: Keeping the gin/hnsw index substitution message silent. */
-			if (strcmp(accessMethodName, "gin") == 0 ||
-				strcmp(accessMethodName, "hnsw") == 0)
-			{
-				new_name = psprintf("yb%s", accessMethodName);
-				ereport(LOG,
-						(errmsg("substituting access method \"%s\" for \"%s\" in YugabyteDB",
-								new_name, accessMethodName)));
-				accessMethodName = new_name;
-			}
-			else
-			{
-				if (strcmp(accessMethodName, "btree") == 0 ||
-					strcmp(accessMethodName, "hash") == 0)
-					new_name = DEFAULT_YB_INDEX_TYPE;
-
-				else if (strcmp(accessMethodName, "hnsw") == 0)
-					new_name = "ybhnsw";
-
-				if (new_name != NULL)
-				{
-					ereport(NOTICE,
-							(errmsg("substituting access method \"%s\" for \"%s\" in YugabyteDB",
-									new_name, accessMethodName)));
-					accessMethodName = new_name;
-				}
-			}
-
-		}
-	}
-
-	tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethodName));
-	if (!HeapTupleIsValid(tuple))
-	{
-		/*
-		 * Hack to provide more-or-less-transparent updating of old RTREE
-		 * indexes to GiST: if RTREE is requested and not found, use GIST.
-		 */
-		if (strcmp(accessMethodName, "rtree") == 0)
-		{
-			ereport(NOTICE,
-					(errmsg("substituting access method \"gist\" for obsolete method \"rtree\"")));
-			accessMethodName = "gist";
-			tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethodName));
-		}
-
-		if (!HeapTupleIsValid(tuple))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("access method \"%s\" does not exist",
-							accessMethodName)));
-	}
-
-	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
-	accessMethodId = accessMethodForm->oid;
-	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);
 
 	if (IsYBRelation(rel) && !amRoutine->yb_amisforybrelation)
 		ereport(ERROR,

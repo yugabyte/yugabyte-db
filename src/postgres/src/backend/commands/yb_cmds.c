@@ -782,6 +782,11 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 				 is_colocated_tables_with_tablespace_enabled &&
 				 OidIsValid(binary_upgrade_next_tablegroup_oid))
 		{
+			Oid			preserved_tablegroup_oid = binary_upgrade_next_tablegroup_oid;
+			bool		is_default = binary_upgrade_next_tablegroup_default;
+
+			binary_upgrade_next_tablegroup_default = false;
+
 			/*
 			 * In yb_binary_restore if tablespaceId is not valid but
 			 * binary_upgrade_next_tablegroup_oid is valid, that implies either:
@@ -791,13 +796,24 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			 * while maintaining the colocation properties, and tablegroup's name
 			 * will be colocation_restore_tablegroupId, while default tablegroup's
 			 * name would still be default.
+			 *
+			 * The implicit tablegroup may already exist from an earlier restore
+			 * step using the colocation_<tablespace_oid> name. Look up by OID
+			 * before falling back to the restore name.
 			 */
-			tablegroup_name =
-				(binary_upgrade_next_tablegroup_default ?
-				 DEFAULT_TABLEGROUP_NAME :
-				 get_restore_tablegroup_name(binary_upgrade_next_tablegroup_oid));
-			binary_upgrade_next_tablegroup_default = false;
-			tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+			tablegroup_name = get_tablegroup_name(preserved_tablegroup_oid);
+			if (tablegroup_name != NULL)
+			{
+				tablegroupId = preserved_tablegroup_oid;
+				binary_upgrade_next_tablegroup_oid = InvalidOid;
+			}
+			else
+			{
+				tablegroup_name = (is_default ?
+								 DEFAULT_TABLEGROUP_NAME :
+								 get_restore_tablegroup_name(preserved_tablegroup_oid));
+				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+			}
 		}
 		else
 		{
