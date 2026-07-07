@@ -433,6 +433,16 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		{
 			YbcReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
 
+			/*
+			 * slot_contents is fabricated here rather than copied from a real
+			 * ReplicationSlot, so zero-initialize it. Fields not set explicitly
+			 * below (e.g. slotsync_skip_reason, failover, synced, inactive_since)
+			 * must default to 0, otherwise the column fill reads stack garbage --
+			 * slotsync_skip_reason in particular indexes SlotSyncSkipReasonNames[]
+			 * and would dereference an out-of-bounds pointer.
+			 */
+			memset(&slot_contents, 0, sizeof(slot_contents));
+
 			slot_contents.data.database = slot->database_oid;
 			namestrcpy(&slot_contents.data.name, slot->slot_name);
 			namestrcpy(&slot_contents.data.plugin, slot->output_plugin);
@@ -445,7 +455,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 			slot_contents.data.confirmed_flush = slot->confirmed_flush;
 			yb_restart_commit_ht = slot->record_id_commit_time_ht;
 			slot_contents.data.xmin = slot->xmin;
-			/* YB_TODO_PG19MERGE: does YbcReplicationSlotDescriptor.active_pid need to be changed*/
+			/* YB_TODO_PG19MERGE: does YbcReplicationSlotDescriptor.active_pid need to be changed */
 			slot_contents.active_proc = slot->active_pid;
 			/*
 			 * Set catalog_xmin as xmin to make the PG Debezium connector work.
