@@ -204,7 +204,7 @@ cursor.execute(
 source_id = cursor.fetchone()[0]
 ```
 
-Create the vector index. This creates the backing table `public.hello_dist_rag` with a `vector(1536)` column and a ybhnsw index on it — the DDL you wrote by hand in Hello RAG:
+Create the vector index. This creates the backing table `public.hello_dist_rag` with a `vector(1536)` column and a ybhnsw index on it — the DDL you wrote by hand in Hello RAG. The chunking configuration names a LangChain text splitter and its arguments (as a JSON string), and must be set explicitly:
 
 ```python
 cursor.execute(
@@ -213,10 +213,13 @@ cursor.execute(
         r_index_name := %s,
         r_sources := ARRAY[%s]::UUID[],
         r_ai_provider := 'OPENAI',
-        r_embedding_model_params := %s::jsonb
+        r_embedding_model_params := %s::jsonb,
+        r_chunk_params := %s::jsonb
     );
     """,
-    (index_name, source_id, '{"model": "text-embedding-3-small", "dimensions": 1536}'),
+    (index_name, source_id,
+     '{"model": "text-embedding-3-small", "dimensions": 1536}',
+     '{"splitter": "recursive_character", "args": "{\\"chunk_size\\": 1000, \\"chunk_overlap\\": 100}"}'),
 )
 ```
 
