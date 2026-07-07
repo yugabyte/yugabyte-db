@@ -25,12 +25,9 @@ This release includes breaking changes for Voyager migrations. Migrations starte
 
 {{< /note >}}
 
-### New feature
+### Enhancements
 
 - Added `--target-db-type` CLI flag to select the target database engine for offline and basic live migrations from PostgreSQL.
-
-### Enhancement
-
 - Added a guardrail that fails fast with a clear error when a `start-clean` import is attempted after the relevant queue segments have already been archived.
 
 ### Bug fixes
