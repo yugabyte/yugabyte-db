@@ -83,9 +83,6 @@ SnapshotId StringToSnapshotId(const string& str) {
 
 void SortListTabletServerEntries(
     google::protobuf::RepeatedPtrField<ListTabletServersResponsePB::Entry>& servers) {
-  if (servers.empty()) {
-    return;
-  }
   std::sort(servers.begin(), servers.end(), CompareListTabletServersEntries);
 }
 
