@@ -193,6 +193,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_shared_mem.h"
+#include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
@@ -2114,7 +2115,9 @@ bool IsYcqlNamespace(const NamespaceInfo& ns) {
 }
 
 bool IsYcqlTable(const TableInfo& table) {
-  return table.GetTableType() == TableType::YQL_TABLE_TYPE && table.id() != kSysCatalogTableId;
+  return table.GetTableType() == TableType::YQL_TABLE_TYPE &&
+         table.id() != kSysCatalogTableId &&
+         table.name() != tserver::kPgAdvisoryLocksTableName;
 }
 
 Status CatalogManager::PrepareNamespace(
