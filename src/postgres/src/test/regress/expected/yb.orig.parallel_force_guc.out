@@ -48,7 +48,8 @@ INSERT INTO pctest2
     SELECT i, a, (random() * 200)::int, (random() * 49)::int, 'Other value ' || i::text
     FROM (SELECT i, row_number() OVER (ORDER BY random()) AS a
           FROM generate_series(1, 1000) i) t;
-ANALYZE pctest1, pctest2;
+ANALYZE pctest1;
+ANALYZE pctest2;
 set yb_test_force_parallel = force;
 -- Parallel sequential scan
 EXPLAIN (costs off)
@@ -931,7 +932,8 @@ INSERT INTO pctest_h1
     SELECT i, 400 - i, i/3, i%50, 'Value' || i::text FROM generate_series(1, 400) i;
 INSERT INTO pctest_h2
     SELECT i, 100 + i, i/5, i%10, 'Other value ' || i::text FROM generate_series(1, 100) i;
-ANALYZE pctest_h1, pctest_h2;
+ANALYZE pctest_h1;
+ANALYZE pctest_h2;
 -- Parallel sequential scan
 EXPLAIN (costs off)
 SELECT * FROM pctest_h1 WHERE d LIKE 'Value_9';
@@ -1472,27 +1474,47 @@ SELECT * FROM pctest_h1 ORDER BY a LIMIT 10;
   Set(yb_bnl_batch_size 1) Set(enable_material off)
 */
 EXPLAIN (costs off)
-SELECT pctest_h1.* FROM pctest_h1, pctest_h2
-  WHERE pctest_h1.a = pctest_h2.b and pctest_h1.a % 10 = 0;
-                        QUERY PLAN                        
-----------------------------------------------------------
- Nested Loop
-   ->  Gather
-         Workers Planned: 2
-         ->  Parallel Seq Scan on pctest_h1
-               Storage Filter: ((a % 10) = 0)
-   ->  Index Only Scan using pctest_h2_b_idx on pctest_h2
-         Index Cond: (b = pctest_h1.a)
-(7 rows)
+WITH cte AS MATERIALIZED (
+  SELECT pctest_h1.* FROM pctest_h1, pctest_h2
+    WHERE pctest_h1.a = pctest_h2.b and pctest_h1.a % 10 = 0)
+SELECT * FROM cte ORDER BY k;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Sort
+   Sort Key: cte.k
+   CTE cte
+     ->  Nested Loop
+           ->  Gather
+                 Workers Planned: 2
+                 ->  Parallel Seq Scan on pctest_h1
+                       Storage Filter: ((a % 10) = 0)
+           ->  Index Only Scan using pctest_h2_b_idx on pctest_h2
+                 Index Cond: (b = pctest_h1.a)
+   ->  CTE Scan on cte
+(11 rows)
 
--- TODO row order varies between runs (parallel workers on hash-sharded
--- outer interleave).
--- /*+
---   Set(enable_mergejoin off) Set(enable_hashjoin off)
---   Set(yb_bnl_batch_size 1) Set(enable_material off)
--- */
--- SELECT pctest_h1.* FROM pctest_h1, pctest_h2
---  WHERE pctest_h1.a = pctest_h2.b and pctest_h1.a % 10 = 0;
+/*+
+  Set(enable_mergejoin off) Set(enable_hashjoin off)
+  Set(yb_bnl_batch_size 1) Set(enable_material off)
+*/
+WITH cte AS MATERIALIZED (
+  SELECT pctest_h1.* FROM pctest_h1, pctest_h2
+    WHERE pctest_h1.a = pctest_h2.b and pctest_h1.a % 10 = 0)
+SELECT * FROM cte ORDER BY k;
+  k  | a  |  b  | c  |    d     
+-----+----+-----+----+----------
+ 380 | 20 | 126 | 30 | Value380
+ 390 | 10 | 130 | 40 | Value390
+ 390 | 10 | 130 | 40 | Value390
+ 390 | 10 | 130 | 40 | Value390
+ 390 | 10 | 130 | 40 | Value390
+ 390 | 10 | 130 | 40 | Value390
+ 400 |  0 | 133 |  0 | Value400
+ 400 |  0 | 133 |  0 | Value400
+ 400 |  0 | 133 |  0 | Value400
+ 400 |  0 | 133 |  0 | Value400
+(10 rows)
+
 EXPLAIN (costs off)
 /*+YbBatchedNL(pctest_h1 pctest_h2)*/
 SELECT pctest_h1.*, pctest_h2.k FROM pctest_h1, pctest_h2
@@ -1616,43 +1638,51 @@ SELECT x, d FROM
 (5 rows)
 
 EXPLAIN (costs off)
+WITH cte AS MATERIALIZED (
 SELECT * FROM
   (SELECT pctest_h1.* FROM pctest_h1, pctest_h2
      WHERE pctest_h1.k = pctest_h2.k AND pctest_h1.c = pctest_h2.c) s1 JOIN
   (SELECT pctest_h2.* FROM pctest_h1, pctest_h2
-     WHERE pctest_h1.k = pctest_h2.k AND pctest_h1.b = pctest_h2.b) s2 ON s1.b = s2.c;
-                                             QUERY PLAN                                             
-----------------------------------------------------------------------------------------------------
- Nested Loop
-   ->  Gather
-         Workers Planned: 2
-         ->  Parallel Hash Join
-               Hash Cond: (pctest_h2_1.c = pctest_h1.b)
-               ->  Parallel Seq Scan on pctest_h2 pctest_h2_1
-               ->  Parallel Hash
-                     ->  Hash Join
-                           Hash Cond: ((pctest_h2.k = pctest_h1.k) AND (pctest_h2.c = pctest_h1.c))
-                           ->  Parallel Seq Scan on pctest_h2
-                           ->  Hash
-                                 ->  Seq Scan on pctest_h1
-   ->  Index Scan using pctest_h1_pkey on pctest_h1 pctest_h1_1
-         Index Cond: (k = pctest_h2_1.k)
-         Storage Filter: (pctest_h2_1.b = b)
-(15 rows)
+     WHERE pctest_h1.k = pctest_h2.k AND pctest_h1.b = pctest_h2.b) s2 ON s1.b = s2.c)
+SELECT * FROM cte ORDER BY 1, 5;
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: cte.k, cte.d
+   CTE cte
+     ->  Nested Loop
+           ->  Gather
+                 Workers Planned: 2
+                 ->  Parallel Hash Join
+                       Hash Cond: (pctest_h2_1.c = pctest_h1.b)
+                       ->  Parallel Seq Scan on pctest_h2 pctest_h2_1
+                       ->  Parallel Hash
+                             ->  Hash Join
+                                   Hash Cond: ((pctest_h2.k = pctest_h1.k) AND (pctest_h2.c = pctest_h1.c))
+                                   ->  Parallel Seq Scan on pctest_h2
+                                   ->  Hash
+                                         ->  Seq Scan on pctest_h1
+           ->  Index Scan using pctest_h1_pkey on pctest_h1 pctest_h1_1
+                 Index Cond: (k = pctest_h2_1.k)
+                 Storage Filter: (pctest_h2_1.b = b)
+   ->  CTE Scan on cte
+(19 rows)
 
+WITH cte AS MATERIALIZED (
 SELECT * FROM
   (SELECT pctest_h1.* FROM pctest_h1, pctest_h2
      WHERE pctest_h1.k = pctest_h2.k AND pctest_h1.c = pctest_h2.c) s1 JOIN
   (SELECT pctest_h2.* FROM pctest_h1, pctest_h2
-     WHERE pctest_h1.k = pctest_h2.k AND pctest_h1.b = pctest_h2.b) s2 ON s1.b = s2.c;
+     WHERE pctest_h1.k = pctest_h2.k AND pctest_h1.b = pctest_h2.b) s2 ON s1.b = s2.c)
+SELECT * FROM cte ORDER BY 1, 5;
  k |  a  | b | c |   d    | k |  a  | b | c |       d       
 ---+-----+---+---+--------+---+-----+---+---+---------------
  3 | 397 | 1 | 3 | Value3 | 1 | 101 | 0 | 1 | Other value 1
  4 | 396 | 1 | 4 | Value4 | 1 | 101 | 0 | 1 | Other value 1
  5 | 395 | 1 | 5 | Value5 | 1 | 101 | 0 | 1 | Other value 1
- 8 | 392 | 2 | 8 | Value8 | 2 | 102 | 0 | 2 | Other value 2
- 7 | 393 | 2 | 7 | Value7 | 2 | 102 | 0 | 2 | Other value 2
  6 | 394 | 2 | 6 | Value6 | 2 | 102 | 0 | 2 | Other value 2
+ 7 | 393 | 2 | 7 | Value7 | 2 | 102 | 0 | 2 | Other value 2
+ 8 | 392 | 2 | 8 | Value8 | 2 | 102 | 0 | 2 | Other value 2
 (6 rows)
 
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
