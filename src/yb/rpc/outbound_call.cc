@@ -465,8 +465,9 @@ Status OutboundCall::SetRequestParam(
   }
 
   if (trace_context_size > 0) {
-    // Write the TraceContextPB submessage. Field numbers match yb.TraceContextPB in common.proto. The
-    // 16-byte trace id splits into two big-endian 64-bit halves; the span id is one big-endian 64-bit.
+    // Write the TraceContextPB submessage. Field numbers match yb.TraceContextPB in common.proto.
+    // The 16-byte trace id splits into two big-endian 64-bit halves; the span id is one big-endian
+    // 64-bit.
     dst = Output::WriteTagToArray(
         (RequestHeader::kTraceContextFieldNumber << 3) | WireFormatLite::WIRETYPE_LENGTH_DELIMITED,
         dst);
@@ -614,8 +615,9 @@ void OutboundCall::InvokeCallbackSync(std::optional<CoarseTimePoint> now_optiona
   // TODO: consider removing the cycle-based mechanism of reporting slow callbacks below.
 
   int64_t start_cycles = CycleClock::Now();
-  // Re-activate the call's parent context so RPCs the callback issues nest as siblings, not parentless
-  // roots. No-op when trace_parent_ is invalid; parent_scope drops at block end so it can't leak.
+  // Re-activate the call's parent context so RPCs the callback issues nest as siblings, not
+  // parentless roots. No-op when trace_parent_ is invalid; parent_scope drops at block end so it
+  // can't leak.
   {
     auto parent_scope = dist_trace::ActivateParentScope(trace_parent_);
     callback_();

@@ -24,7 +24,8 @@ namespace nostd = opentelemetry::nostd;
 namespace trace = opentelemetry::trace;
 
 // Bundles a span with an activated (thread-local) scope so work started after it inherits it as
-// parent; DropScope on the constructing thread before hopping threads. End() is safe from any thread.
+// parent; DropScope on the constructing thread before hopping threads. End() is safe from any
+// thread.
 struct SpanWithScope {
   explicit SpanWithScope(nostd::shared_ptr<trace::Span> s)
       : span(std::move(s)), scope(span) {}
