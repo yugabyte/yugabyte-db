@@ -976,4 +976,11 @@ Status WaitForTableIntentsApplied(
     ExternalMiniCluster* cluster, const TableId& table_id,
     MonoDelta timeout = MonoDelta::FromSeconds(30));
 
+// Logs, for every live tserver, the number of tablet replicas it hosts broken down by table.
+// Intended for diagnosing load-balancing test failures.
+// When running_only is true (the default), replicas that are not in the RUNNING state (e.g.
+// tombstoned replicas left behind after the load balancer moved a peer elsewhere) are excluded, so
+// the counts reflect the committed placement rather than transient over-replication.
+void DumpTabletDistribution(ExternalMiniCluster* cluster, bool running_only = true);
+
 }  // namespace yb

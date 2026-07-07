@@ -2883,6 +2883,7 @@ void PgLibPqTest::AddTSToLoadBalanceMultipleInstances(
 }
 
 void PgLibPqTest::VerifyLoadBalance(const std::map<std::string, int>& ts_loads) {
+  DumpTabletDistribution(cluster_.get());
   constexpr int kNumDatabases = 3;
   // Ensure that the load is properly distributed.
   int min_load = kNumDatabases;
@@ -2934,13 +2935,31 @@ void PgLibPqTest::TestLoadBalanceMultipleColocatedDB(
   VerifyLoadBalance(ts_loads);
 }
 
+// Fixture for the multi-database load-balancing tests, which add a tserver and then assert that a
+// small set of single-tablet parent tablets (one per database) ends up near-evenly spread.
+class PgLibPqLoadBalanceMultipleDBsTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    // These tests add a 4th tserver and assert that the parent tablets are well balanced. Ensure
+    // that the other system / pg internal tables that get created have a multiple of 4 tablets, so
+    // that they distribute evenly across the 4 tservers and don't affect the global balancing of
+    // the parent tablets the test inspects. pg_auto_analyze_table is a single-tablet stateful
+    // service that cannot be made a multiple of 4, so disable its creation entirely.
+    options->transaction_table_num_tablets = 4;
+    options->extra_master_flags.push_back("--num_advisory_locks_tablets=4");
+    options->extra_master_flags.push_back("--ysql_enable_auto_analyze_infra=false");
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze_infra=false");
+  }
+};
+
 // Test that adding a tserver causes colocation tablets of colocation databases to offload
 // tablet-peers to the new tserver.
-TEST_F(PgLibPqTest, LoadBalanceMultipleColocatedDB) {
+TEST_F_EX(PgLibPqTest, LoadBalanceMultipleColocatedDB, PgLibPqLoadBalanceMultipleDBsTest) {
   TestLoadBalanceMultipleColocatedDB(GetColocatedDbDefaultTablegroupTabletLocations);
 }
 
-TEST_F(PgLibPqTest, LoadBalanceMultipleTablegroups) {
+TEST_F_EX(PgLibPqTest, LoadBalanceMultipleTablegroups, PgLibPqLoadBalanceMultipleDBsTest) {
   constexpr int num_databases = 3;
   const auto timeout = 60s * kTimeMultiplier;
   const std::string database_prefix = "test_db";
