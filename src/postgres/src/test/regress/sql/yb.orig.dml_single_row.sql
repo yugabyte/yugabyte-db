@@ -1,4 +1,10 @@
 -- Regression tests for UPDATE/DELETE single row operations.
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
+\i :filename
+\set P1 ':explain'
+\set P2
+\set explain 'EXPLAIN (COSTS OFF)'
 -- Expression pushdown is disabled.
 SET yb_enable_expression_pushdown to off;
 
@@ -920,6 +926,42 @@ INSERT into pk VALUES (1000);
 EXPLAIN(costs off) UPDATE pk SET a = 1002 WHERE a = 1000;
 UPDATE pk SET a = 1002 WHERE a = 1000;
 
+-- Test NOT NULL constraint enforcement in single-row UPDATE when parent and
+-- child column orders don't match.
+-- GH issue: https://github.com/yugabyte/yugabyte-db/issues/32472.
+CREATE TABLE pk_nn (k int, a int, b int NOT NULL, PRIMARY KEY (k))
+    PARTITION BY RANGE (k);
+CREATE TABLE pk_nn1 (b int NOT NULL, a int, k int NOT NULL, PRIMARY KEY (k));
+ALTER TABLE pk_nn ATTACH PARTITION pk_nn1 FOR VALUES FROM (1) TO (100);
+CREATE TABLE pk_nn2 (a int, b int NOT NULL, k int NOT NULL, PRIMARY KEY (k));
+ALTER TABLE pk_nn ATTACH PARTITION pk_nn2 FOR VALUES FROM (100) TO (200);
+INSERT INTO pk_nn VALUES (5, 10, 20), (105, 110, 120);
+-- All plans should USE single-row.  Setting NOT NULL column b to NULL should
+-- fail on either partition; updating only 'a' should succeed without checking
+-- the unmodified column b.
+\set Pnext :iter_Q2
+\set Q1 'b = NULL'
+\set Q2 'a = 11'
+\set Qnext :iter_R2
+\set R1 '5'
+\set R2 '105'
+\set query ':P UPDATE pk_nn SET :Q WHERE k = :R;'
+\i :iter_P2
+SELECT * FROM pk_nn ORDER BY k;
+-- Same misfire via dropped columns: CREATE TABLE ... PARTITION OF does not
+-- materialize the parent's dropped columns, so the leaf's attribute numbers
+-- differ from the root's even though the column order matches.
+CREATE TABLE pk_nn_drop (k int, dropme int, a int, b int NOT NULL,
+    PRIMARY KEY (k)) PARTITION BY RANGE (k);
+ALTER TABLE pk_nn_drop DROP COLUMN dropme;
+CREATE TABLE pk_nn_drop1 PARTITION OF pk_nn_drop FOR VALUES FROM (1) TO (100);
+INSERT INTO pk_nn_drop VALUES (5, 10, 20);
+\set Qnext :iter_query
+\set query ':P UPDATE pk_nn_drop SET :Q WHERE k = 5;'
+\i :iter_P2
+\set Pnext :iter_query
+SELECT * FROM pk_nn_drop ORDER BY k;
+
 -- Test single-shard transactions in a partition table.
 -- The absence of flushes and storage scans in the EXPLAIN plan indicate the use
 -- of single-shard transactions.
@@ -1046,6 +1088,8 @@ DROP TABLE array_t4;
 DROP TABLE json_t1;
 DROP TABLE p_test;
 DROP TABLE pk;
+DROP TABLE pk_nn;
+DROP TABLE pk_nn_drop;
 DROP TABLE t_simple;
 DROP TABLE t_temp;
 DROP TYPE rt;
