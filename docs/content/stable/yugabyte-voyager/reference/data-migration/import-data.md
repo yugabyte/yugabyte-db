@@ -169,7 +169,7 @@ import-data:
   target-db-type
 ```
 
-| Target database type to import into. <br> Accepted values: yugabytedb (default), yugabytedb-amp (a PostgreSQL-compatible compute over YugabyteDB storage) |
+| Target database type to import into. <br> Accepted values: yugabytedb (default), yugabytedb-amp (more details coming soon) |
 
 | --use-public-ip |
 

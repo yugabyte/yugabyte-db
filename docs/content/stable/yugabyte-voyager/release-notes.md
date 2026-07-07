@@ -27,7 +27,7 @@ This release includes breaking changes for Voyager migrations. Migrations starte
 
 ### New feature
 
-- Added support for offline and basic live migration from PostgreSQL into YugabyteDB AMP (a PostgreSQL-compatible compute over YugabyteDB storage), selectable with `--target-db-type` CLI flag.
+- Added `--target-db-type` CLI flag to select the target database engine for offline and basic live migrations from PostgreSQL.
 
 ### Enhancement
 
