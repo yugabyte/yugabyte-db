@@ -307,6 +307,32 @@ TEST_F(PgDdlTransactionMiniClusterTest, TestWaitForSchemaVersionAfterRollback) {
   SyncPoint::GetInstance()->DisableProcessing();
 }
 
+TEST_F(PgDdlTransactionTest, TestRenameIndexAndTruncateInTxn) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  const std::string kTable = "rename_truncate_tbl";
+  const std::string kIndex = "rename_truncate_idx";
+  const std::string kRenamedIndex = "rename_truncate_idx_new";
+
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0 CASCADE", kTable));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTable));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (v)", kIndex, kTable));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTable));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+    "report_ysql_ddl_txn_status_to_master", "false"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER INDEX $0 RENAME TO $1", kIndex, kRenamedIndex));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE TABLE $0", kTable));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+    ASSERT_TRUE(cluster_->master(i)->IsProcessAlive())
+        << "Master " << i << " fatally exited";
+  }
+}
+
 class PgDdlSavepointMiniClusterTest : public PgMiniTestBase,
                                       public ::testing::WithParamInterface<TestCommit> {
  protected:

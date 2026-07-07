@@ -302,7 +302,13 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
   //   the table won't be found in the PG catalog.
   // 2. Table existed before the transaction and its deletion went through successfully.
   //    BEGIN; DROP TABLE; COMMIT;
-  // 3. In some unit tests where --TEST_yb_test_table_rewrite_keep_old_table=true
+  // 3. The table is an index which existed before the transaction and was dropped as part of table
+  //    rewrite of the base table. During table rewrite, the old index tables are not deleted
+  //    explicitly. Instead, we rely on the base table deletion to delete the old index tables. As
+  //    a result, the old index tables will not be found in the PG catalog but it won't have the
+  //    drop table op in the verifier state. So, it will not fall in the case 2.
+  //    Example: BEGIN; ALTER INDEX RENAME; TRUNCATE base_table; COMMIT;
+  // 4. In some unit tests where --TEST_yb_test_table_rewrite_keep_old_table=true
   //   is set on yb-master and PG GUC yb_test_table_rewrite_keep_old_table is true,
   //   an ALTER TABLE statement that involves a table rewrite will not have
   //   "contains_drop_table_op" set, therefore is_being_deleted_by_ysql_ddl_txn()
@@ -333,7 +339,14 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
       *result = true;
       return Status::OK();
     }
-    // Must be case 3 where alter table resulted in a table rewrite and the old table was
+    // Case 3.
+    if (l->is_index()) {
+      VLOG(3) << "Ysql transaction for " << table->ToString()
+              << " detected to have succeeded as index table not found in PG catalog";
+      *result = true;
+      return Status::OK();
+    }
+    // Must be case 4 where alter table resulted in a table rewrite and the old table was
     // successfully deleted from the PG catalog after the DDL transaction completed. If the
     // transaction had aborted, the old table would not exist in the catalog.
     CHECK(FLAGS_TEST_yb_test_table_rewrite_keep_old_table &&
