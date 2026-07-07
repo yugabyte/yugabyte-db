@@ -282,9 +282,9 @@ struct ResponseReadyTraits;
 std::string_view GetSharedMemSpanName(tserver::PgSharedExchangeReqType req_type) {
   switch (req_type) {
     case tserver::PgSharedExchangeReqType::PERFORM:
-      return "shmem req yb.tserver.PgClientService.Perform";
+      return "shmem yb.tserver.PgClientService.Perform";
     case tserver::PgSharedExchangeReqType::ACQUIRE_OBJECT_LOCK:
-      return "shmem req yb.tserver.PgClientService.AcquireObjectLock";
+      return "shmem yb.tserver.PgClientService.AcquireObjectLock";
     case tserver::PgSharedExchangeReqType_INT_MIN_SENTINEL_DO_NOT_USE_: [[fallthrough]];
     case tserver::PgSharedExchangeReqType_INT_MAX_SENTINEL_DO_NOT_USE_: break;
   }

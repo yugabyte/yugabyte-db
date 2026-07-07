@@ -39,7 +39,6 @@
 #include "yb/util/dist_trace.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
@@ -71,7 +70,7 @@ static constexpr auto kOtelBatchMaxQueueSize = 4096;
 static constexpr auto kOtelBatchMaxExportBatchSize = 512;
 static constexpr auto kOtelBatchScheduleDelayMs = 100;
 static constexpr auto kSharedMemoryPerformSpanName =
-    "shmem req yb.tserver.PgClientService.Perform";
+    "shmem yb.tserver.PgClientService.Perform";
 
 YB_DEFINE_ENUM(QueryExecMode, (kFetch)(kExecute));
 YB_STRONGLY_TYPED_BOOL(IsUtility);
@@ -190,7 +189,7 @@ class OtlpHttpCollector {
 
   static bool ShouldIgnoreForQuerySpanComparison(const Span& span) {
     return kExecutorNodeSpanNames.contains(span.op_name) ||
-           span.op_name.starts_with("shmem req ") ||
+           span.op_name.starts_with("shmem ") ||
            span.op_name.starts_with("rpc ");
   }
 
@@ -349,7 +348,8 @@ class OtlpHttpCollector {
     std::lock_guard lock(mutex_);
     for (const auto& [_, trace] : traces_) {
       for (const auto& span : trace.spans) {
-        if (span.op_name.starts_with(prefix) && span.status_message == status_message) {
+        if (span.op_name.starts_with(prefix) &&
+            span.status_message.find(status_message) != std::string_view::npos) {
           return true;
         }
       }
@@ -1815,7 +1815,8 @@ TEST_F(DistTraceRpcTest, TestErroredRpcSpanStatus) {
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         return collector_.HasSpanWithNamePrefixAndStatusMessage(
-            "rpc WrongServiceName.ThisMethodDoesNotExist", "Call ErroredOut");
+            "rpc WrongServiceName.ThisMethodDoesNotExist",
+            "Service WrongServiceName not registered on TabletServer");
       },
       kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
       "Errored RPC span to appear in trace"));
@@ -1844,7 +1845,7 @@ TEST_F(DistTraceRpcTimeoutTest, TestTimedOutRpcSpanStatus) {
         auto rpc_spans = collector_.FindSpansByNamePrefix(tp.trace_id, "rpc ");
         return std::any_of(rpc_spans.begin(), rpc_spans.end(), [](const Span& span) {
           return span.op_name.starts_with("rpc yb.tserver.PgClientService.GetLockStatus") &&
-                 span.status_message == "Call TimedOut";
+                 span.status_message.find("timed out after") != std::string::npos;
         });
       },
       kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,

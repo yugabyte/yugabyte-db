@@ -840,11 +840,11 @@ template <QueryTraitsType T>
 std::string_view SharedMemHandlerSpanName();
 template <>
 std::string_view SharedMemHandlerSpanName<PerformQueryTraits>() {
-  return "shmem handler yb.tserver.PgClientService.Perform";
+  return "shmem yb.tserver.PgClientService.Perform";
 }
 template <>
 std::string_view SharedMemHandlerSpanName<ObjectLockQueryTraits>() {
-  return "shmem handler yb.tserver.PgClientService.AcquireObjectLock";
+  return "shmem yb.tserver.PgClientService.AcquireObjectLock";
 }
 
 // Method name attribute for the inbound shared-memory span.
