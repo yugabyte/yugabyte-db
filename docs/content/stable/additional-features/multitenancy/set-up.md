@@ -88,7 +88,7 @@ Container deployments (Docker and Kubernetes) typically mount the cgroups filesy
 
 The resource governor is controlled entirely through flags, set on both YB-Master and YB-TServer. To enable multitenancy, set the `enable_qos` flag to true on Masters and TServers.
 
-Set the following flags to configure multitenancy.
+Set the following flags on both YB-Masters and YB-TServers to configure multitenancy.
 
 | Flag | Description | Default |
 | :--- | :--- | :--- |
