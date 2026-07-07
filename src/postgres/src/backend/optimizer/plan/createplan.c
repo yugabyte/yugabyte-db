@@ -52,6 +52,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
+#include "optimizer/inherit.h"
 #include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
 #include "parser/parse_relation.h"
@@ -3951,16 +3952,46 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 		 */
 		if (rel->rd_rel->relkind == RELKIND_RELATION)
 		{
-			RTEPermissionInfo *perminfo =
-				getRTEPermissionInfo(root->parse->rteperminfos, rte);
-			Bitmapset  *updated_cols = perminfo ? perminfo->updatedCols : NULL;
+			/*
+			 * YB: This block runs only for multi-row UPDATE and
+			 * INSERT ... ON CONFLICT ... DO UPDATE (see the guard above), but the
+			 * two cases source updatedCols differently.
+			 *
+			 * For UPDATE, the planner identifies the candidate partitions at
+			 * planning time and builds scan nodes for them, so the result
+			 * relation here can be a child partition.  Per PG commit
+			 * a61b1f74823c9c4f79c95226a461f1e7a367764b a child RTE has
+			 * perminfoindex == 0 and carries no RTEPermissionInfo (only the root
+			 * target relation does), so getRTEPermissionInfo() on it would elog.
+			 * get_rel_all_updated_cols() instead reads updatedCols from the root
+			 * target's perminfo, maps them to this relation's attribute numbers,
+			 * and folds in dependent generated columns -- working for both plain
+			 * and partitioned UPDATE targets.
+			 *
+			 * For INSERT ... ON CONFLICT ... DO UPDATE, partition routing happens
+			 * only in the execution layer, so the result relation here is the
+			 * root partition, which does carry an RTEPermissionInfo -- the direct
+			 * getRTEPermissionInfo() path is safe.  (get_rel_all_updated_cols()
+			 * asserts CMD_UPDATE and so does not support this case.)
+			 */
+			if (plan->operation == CMD_UPDATE)
+			{
+				updatedCols =
+					get_rel_all_updated_cols(root, find_base_rel(root, rt_index));
+			}
+			else
+			{
+				RTEPermissionInfo *perminfo =
+					getRTEPermissionInfo(root->parse->rteperminfos, rte);
+				Bitmapset  *updated_cols = perminfo ? perminfo->updatedCols : NULL;
 
-			updatedCols =
-				bms_add_members(get_dependent_generated_columns(root, rt_index,
-																updated_cols,
-																NULL /* yb_generated_cols_source */ ,
-																NULL /* yb_relation */ ),
-								updated_cols);
+				updatedCols =
+					bms_add_members(get_dependent_generated_columns(root, rt_index,
+																	updated_cols,
+																	NULL /* yb_generated_cols_source */ ,
+																	NULL /* yb_relation */ ),
+									updated_cols);
+			}
 			plan->yb_update_affected_entities =
 				YbComputeAffectedEntitiesForRelation(plan, rel, updatedCols);
 			bms_free(updatedCols);

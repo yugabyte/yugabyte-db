@@ -1855,7 +1855,7 @@ ExecForPortionOfLeftovers(ModifyTableContext *context,
 		AfterTriggerBeginQuery();
 		ExecSetupTransitionCaptureState(mtstate, estate);
 		fireBSTriggers(mtstate);
-		ExecInsert(context, resultRelInfo, leftoverSlot, NULL /* blockInsertStmt */, false, NULL, NULL);
+		ExecInsert(context, resultRelInfo, leftoverSlot, NULL /* YB blockInsertStmt */ , false, NULL, NULL);
 		fireASTriggers(mtstate);
 		AfterTriggerEndQuery(estate);
 	}
@@ -2945,7 +2945,7 @@ lreplace:
 
 		/*
 		 * YB_TODO_PG19MERGE: PG commit 7fee7871b4302e916577df130344060d0f9b8004
-		 * split ri_NumGeneratedNeeded into ...I/...U. 
+		 * split ri_NumGeneratedNeeded into ...I/...U.
 		 */
 		if (resultRelInfo->ri_NumGeneratedNeededU > 0)
 		{
@@ -7079,34 +7079,24 @@ Bitmapset *
 YbFetchColumnsMarkedForUpdate(ModifyTableContext *context,
 							  ResultRelInfo *partitionRelInfo)
 {
-	ModifyTableState *mtstate = context->mtstate;
-	EState	   *estate = context->estate;
-	RangeTblEntry *rte = rt_fetch(partitionRelInfo->ri_RangeTableIndex,
-								  estate->es_range_table);
-	ModifyTable *plan = (ModifyTable *) mtstate->ps.plan;
-	RTEPermissionInfo *perminfo = getRTEPermissionInfo(estate->es_rteperminfos, rte);
-	Bitmapset  *cols_marked_for_update = bms_copy(perminfo->updatedCols);
-	Bitmapset  *partition_cols = NULL;
-	TupleConversionMap *map;
-
-	if (!(plan->onConflictAction == ONCONFLICT_UPDATE &&
-		  mtstate->mt_partition_tuple_routing &&
-		  partitionRelInfo->ri_RootResultRelInfo))
-
-		return cols_marked_for_update;
-
-	map = ExecGetRootToChildMap(partitionRelInfo, estate);
-	if (map == NULL)
-		return cols_marked_for_update;
-
 	/*
-	 * The given query is an ON CONFLICT .. DO UPDATE query on a partitioned
-	 * table. In such cases, the plan state may not hold details of the correct
-	 * partition whose tuple is to be updated, as the tuple may not have been
-	 * routed at planning time. Moreover, the partition has defined its columns
-	 * in an order that is different to that of the root table. In such cases,
-	 * it is essential to re-map the attribute numbers in the updated columns
-	 * bitmapset to that of the partition's.
+	 * ExecGetUpdatedCols() returns the columns marked for update, mapped to
+	 * partitionRelInfo's own attribute numbers.  It handles both shapes:
+	 * - If partitionRelInfo is the root target relation, its updatedCols are
+	 *   read directly from its RTEPermissionInfo.
+	 * - If partitionRelInfo is a child partition, its RTE has perminfoindex == 0
+	 *   (only the root target relation carries an RTEPermissionInfo), so
+	 *   ExecGetUpdatedCols() fetches the root's updated columns and remaps them
+	 *   via the root-to-child attribute map, taking care of column order
+	 *   differences in the process.
+	 *
+	 * The remap matters for e.g. an ON CONFLICT .. DO UPDATE query on a
+	 * partitioned table. In such cases, the plan state may not hold details of
+	 * the correct partition whose tuple is to be updated, as the tuple may not
+	 * have been routed at planning time. Moreover, the partition has defined its
+	 * columns in an order that is different to that of the root table. In such
+	 * cases, it is essential to re-map the attribute numbers in the updated
+	 * columns bitmapset to that of the partition's.
 	 * For example:
 	 * A parent table 'base' has columns in the order [a, b, c] while one of its
 	 * partitions 'p1' has columns in the order [b, c, a].
@@ -7114,11 +7104,9 @@ YbFetchColumnsMarkedForUpdate(ModifyTableContext *context,
 	 * The planner will produce the following bitmapset: {a -> 10, b -> 11}
 	 * based on 'base' while the correct mapping for 'p1' is as follows:
 	 * {b -> 10, a -> 12}.
+	 *
+	 * The caller takes ownership of and frees the returned set, so return a
+	 * copy rather than an RTEPermissionInfo's own bitmap.
 	 */
-	partition_cols = execute_attr_map_cols(map->attrMap,
-										   cols_marked_for_update,
-										   partitionRelInfo->ri_RelationDesc);
-
-	bms_free(cols_marked_for_update);
-	return partition_cols;
+	return bms_copy(ExecGetUpdatedCols(partitionRelInfo, context->estate));
 }
