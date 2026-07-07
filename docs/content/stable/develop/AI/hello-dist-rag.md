@@ -64,15 +64,6 @@ Note what you don't do here: no `CREATE TABLE`, and no `CREATE INDEX`. pg_dist_r
 
 RAG workers do the heavy lifting — crawling sources, chunking documents, and generating embeddings — outside your database and your application. A worker is a standalone Python service that polls the `dist_rag.work_queue` table for tasks; it can run on any machine that can reach the database, S3, and the OpenAI API.
 
-1. In your YugabyteDB installation directory, set up the worker environment:
-
-    ```sh
-    cd python/ai/rag_agent
-    python3.11 -m venv .venv
-    source .venv/bin/activate
-    pip install -r requirements.txt
-    ```
-
 1. Configure the worker:
 
     ```sh
@@ -84,6 +75,15 @@ RAG workers do the heavy lifting — crawling sources, chunking documents, and g
     ```
 
     The AWS credentials are used to list the objects in the source bucket. Downloading the documents themselves falls back to public HTTPS URLs when the bucket is public.
+
+1. In your YugabyteDB installation directory, set up the worker environment:
+
+    ```sh
+    cd python/ai/rag_agent
+    python3.11 -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
+    ```
 
 1. Start the worker:
 
