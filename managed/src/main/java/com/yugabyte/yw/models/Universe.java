@@ -35,6 +35,7 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.ProxyConfig;
+import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TransactionUtil;
 import io.ebean.DB;
 import io.ebean.ExpressionList;
@@ -201,6 +202,20 @@ public class Universe extends Model {
   private String universeDetailsJson;
 
   @Transient private UniverseDefinitionTaskParams universeDetails;
+
+  @DbJson
+  @Column(columnDefinition = "TEXT")
+  private StateTransitionDetails stateTransitionDetails;
+
+  @JsonIgnore
+  public StateTransitionDetails getStateTransitionDetails() {
+    return stateTransitionDetails;
+  }
+
+  @JsonIgnore
+  public void setStateTransitionDetails(StateTransitionDetails stateTransitionDetails) {
+    this.stateTransitionDetails = stateTransitionDetails;
+  }
 
   public void setUniverseDetails(UniverseDefinitionTaskParams details) {
     universeDetailsJson = Json.stringify(Json.toJson(details));

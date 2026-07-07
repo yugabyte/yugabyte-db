@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -188,6 +189,283 @@ public class DeltaEvaluatorTest {
     JsonNode current = Json.parse("{\"name\":\"alice\",\"age\":30}");
     JsonNode newValue = Json.parse("{\"name\":\"alice\",\"age\":31}");
     JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(current, newValue);
+    assertEquals(current, DeltaEvaluator.generateOldValue(delta));
+    assertEquals(newValue, DeltaEvaluator.generateNewValue(delta));
+  }
+
+  @Test
+  public void buildDeltaJsonTreeObjectFieldAdd() {
+    JsonNode current = Json.parse("{\"flags\":{\"existing\":\"a\"}}");
+    JsonNode newValue = Json.parse("{\"flags\":{\"existing\":\"a\",\"newFlag\":\"b\"}}");
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(current, newValue);
+    JsonNode addedFlag = delta.get("flags").get("newFlag");
+    assertEquals("ADD", addedFlag.get("$deltaType").asText());
+    assertEquals("b", addedFlag.get("$newValue").asText());
+    assertEquals(current, DeltaEvaluator.generateOldValue(delta));
+    assertEquals(newValue, DeltaEvaluator.generateNewValue(delta));
+  }
+
+  @Test
+  public void buildDeltaJsonTreeNodeDetailsSetInPlaceChangeUsesReplace() {
+    JsonNode current =
+        Json.parse(
+            "{\"nodeDetailsSet\":[{\"nodeIdx\":1,\"nodeName\":\"n1\",\"nodeUuid\":\"uuid-1\","
+                + "\"state\":\"Live\"}]}");
+    JsonNode newValue =
+        Json.parse(
+            "{\"nodeDetailsSet\":[{\"nodeIdx\":1,\"nodeName\":\"n1\",\"nodeUuid\":\"uuid-1\","
+                + "\"state\":\"ToBeAdded\"}]}");
+    JsonNode delta =
+        DeltaEvaluator.buildDeltaJsonTree(current, newValue, new NodeDetailsArrayComparator());
+    JsonNode stateDelta = delta.get("nodeDetailsSet").get(0).get("state");
+    assertEquals("REPLACE", stateDelta.get("$deltaType").asText());
+    assertEquals("Live", stateDelta.get("$oldValue").asText());
+    assertEquals("ToBeAdded", stateDelta.get("$newValue").asText());
+    assertEquals(current, DeltaEvaluator.generateOldValue(delta));
+    assertEquals(newValue, DeltaEvaluator.generateNewValue(delta));
+  }
+
+  @Test
+  public void buildDeltaJsonTreeNodeDetailsSetAddNode() {
+    JsonNode current =
+        Json.parse(
+            "{\"nodeDetailsSet\":[{\"nodeIdx\":1,\"nodeName\":\"n1\",\"nodeUuid\":\"uuid-1\","
+                + "\"state\":\"Live\"}]}");
+    JsonNode newValue =
+        Json.parse(
+            "{\"nodeDetailsSet\":["
+                + "{\"nodeIdx\":1,\"nodeName\":\"n1\",\"nodeUuid\":\"uuid-1\",\"state\":\"Live\"},"
+                + "{\"nodeIdx\":2,\"nodeName\":\"n2\",\"nodeUuid\":\"uuid-2\","
+                + "\"state\":\"ToBeAdded\"}"
+                + "]}");
+    JsonNode delta =
+        DeltaEvaluator.buildDeltaJsonTree(current, newValue, new NodeDetailsArrayComparator());
+    JsonNode nodeDetailsDelta = delta.get("nodeDetailsSet");
+    assertEquals(2, nodeDetailsDelta.size());
+    assertEquals("Live", nodeDetailsDelta.get(0).get("state").asText());
+    JsonNode addedNode = nodeDetailsDelta.get(1);
+    assertEquals("ADD", addedNode.get("$deltaType").asText());
+    assertEquals("n2", addedNode.get("$newValue").get("nodeName").asText());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Type transitions
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void buildDeltaJsonTreeScalarToObjectIsReplace() {
+    JsonNode current = Json.parse("\"x\"");
+    JsonNode newValue = Json.parse("{\"k\":1}");
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(current, newValue);
+    assertEquals("REPLACE", delta.get("$deltaType").asText());
+    assertEquals(current, DeltaEvaluator.generateOldValue(delta));
+    assertEquals(newValue, DeltaEvaluator.generateNewValue(delta));
+  }
+
+  @Test
+  public void buildDeltaJsonTreeArrayReplacedByScalarIsReplace() {
+    JsonNode current = Json.parse("[1,2]");
+    JsonNode newValue = Json.parse("\"x\"");
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(current, newValue);
+    assertEquals("REPLACE", delta.get("$deltaType").asText());
+    assertEquals(current, DeltaEvaluator.generateOldValue(delta));
+    assertEquals(newValue, DeltaEvaluator.generateNewValue(delta));
+  }
+
+  @Test
+  public void buildDeltaJsonTreeBooleanReplace() {
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(Json.parse("true"), Json.parse("false"));
+    assertEquals("REPLACE", delta.get("$deltaType").asText());
+    assertTrue(delta.get("$oldValue").asBoolean());
+    assertFalse(delta.get("$newValue").asBoolean());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Null-valued fields inside objects
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void buildDeltaJsonTreeNullFieldValueToNonNullIsAdd() {
+    JsonNode current = Json.parse("{\"a\":null}");
+    JsonNode newValue = Json.parse("{\"a\":1}");
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(current, newValue);
+    JsonNode aDelta = delta.get("a");
+    assertEquals("ADD", aDelta.get("$deltaType").asText());
+    assertEquals(1, aDelta.get("$newValue").asInt());
+  }
+
+  @Test
+  public void buildDeltaJsonTreeNonNullFieldValueToNullIsDelete() {
+    JsonNode current = Json.parse("{\"a\":1}");
+    JsonNode newValue = Json.parse("{\"a\":null}");
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(current, newValue);
+    JsonNode aDelta = delta.get("a");
+    assertEquals("DELETE", aDelta.get("$deltaType").asText());
+    assertEquals(1, aDelta.get("$oldValue").asInt());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Empty containers and no-op cases
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void buildDeltaJsonTreeEmptyObjects() {
+    JsonNode current = Json.parse("{}");
+    JsonNode newValue = Json.parse("{}");
+    JsonNode result = DeltaEvaluator.buildDeltaJsonTree(current, newValue);
+    assertFalse(result.has("$deltaType"));
+    assertEquals(newValue, result);
+  }
+
+  @Test
+  public void buildDeltaJsonTreeEmptyArrays() {
+    JsonNode current = Json.parse("[]");
+    JsonNode newValue = Json.parse("[]");
+    JsonNode result = DeltaEvaluator.buildDeltaJsonTree(current, newValue);
+    assertEquals(newValue, result);
+  }
+
+  @Test
+  public void buildDeltaJsonTreeArrayReorderProducesNoDelta() {
+    // With the default hashCode comparator, both sides sort to the same order, so a pure
+    // reorder of the same elements yields no delta.
+    JsonNode current = Json.parse("[3,1,2]");
+    JsonNode newValue = Json.parse("[1,2,3]");
+    JsonNode result = DeltaEvaluator.buildDeltaJsonTree(current, newValue);
+    assertFalse(result.isObject() && result.has("$deltaType"));
+    assertEquals(newValue, result);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Arrays of objects with a custom comparator
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void buildDeltaJsonTreeArrayOfObjectsNestedReplaceWithComparator() {
+    JsonNode current = Json.parse("{\"items\":[{\"id\":1,\"v\":\"a\"},{\"id\":2,\"v\":\"b\"}]}");
+    JsonNode newValue = Json.parse("{\"items\":[{\"id\":1,\"v\":\"a\"},{\"id\":2,\"v\":\"c\"}]}");
+    DeltaEvaluator.ArrayElementComparator byId =
+        (p, n1, n2) -> {
+          if (p != null && p.endsWith("items")) {
+            return Integer.compare(n1.get("id").asInt(), n2.get("id").asInt());
+          }
+          return Integer.compare(n1.hashCode(), n2.hashCode());
+        };
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(current, newValue, byId);
+    JsonNode vDelta = delta.get("items").get(1).get("v");
+    assertEquals("REPLACE", vDelta.get("$deltaType").asText());
+    assertEquals("b", vDelta.get("$oldValue").asText());
+    assertEquals("c", vDelta.get("$newValue").asText());
+    assertEquals(current, DeltaEvaluator.generateOldValue(delta));
+    assertEquals(newValue, DeltaEvaluator.generateNewValue(delta));
+  }
+
+  // ---------------------------------------------------------------------------
+  // generateOnlyDelta
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void generateOnlyDeltaNull() {
+    assertNull(DeltaEvaluator.generateOnlyDelta(null));
+  }
+
+  @Test
+  public void generateOnlyDeltaNoChangesReturnsNull() {
+    JsonNode current = Json.parse("{\"a\":1,\"b\":{\"c\":2}}");
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(current, current.deepCopy());
+    assertNull(DeltaEvaluator.generateOnlyDelta(delta));
+  }
+
+  @Test
+  public void generateOnlyDeltaPrunesUnchangedSiblings() {
+    JsonNode current = Json.parse("{\"a\":1,\"b\":2}");
+    JsonNode newValue = Json.parse("{\"a\":1,\"b\":3}");
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(current, newValue);
+    JsonNode only = DeltaEvaluator.generateOnlyDelta(delta);
+    assertNotNull(only);
+    assertFalse(only.has("a"));
+    assertEquals("REPLACE", only.get("b").get("$deltaType").asText());
+  }
+
+  @Test
+  public void generateOnlyDeltaNestedKeepsOnlyChangedPath() {
+    JsonNode current = Json.parse("{\"outer\":{\"a\":1,\"b\":2}}");
+    JsonNode newValue = Json.parse("{\"outer\":{\"a\":1,\"b\":3}}");
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(current, newValue);
+    JsonNode only = DeltaEvaluator.generateOnlyDelta(delta);
+    assertNotNull(only);
+    JsonNode outer = only.get("outer");
+    assertFalse(outer.has("a"));
+    assertEquals(3, outer.get("b").get("$newValue").asInt());
+  }
+
+  @Test
+  public void generateOnlyDeltaArrayKeepsOnlyDeltaElements() {
+    JsonNode current = Json.parse("[1,2]");
+    JsonNode newValue = Json.parse("[1,2,3]");
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(current, newValue);
+    JsonNode only = DeltaEvaluator.generateOnlyDelta(delta);
+    assertNotNull(only);
+    assertEquals(1, only.size());
+    assertEquals("ADD", only.get(0).get("$deltaType").asText());
+    assertEquals(3, only.get(0).get("$newValue").asInt());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Round-trips (old == current, new == target)
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void buildDeltaJsonTreeObjectFieldDeleteRoundTrip() {
+    JsonNode current = Json.parse("{\"flags\":{\"a\":\"1\",\"b\":\"2\"}}");
+    JsonNode newValue = Json.parse("{\"flags\":{\"a\":\"1\"}}");
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(current, newValue);
+    assertEquals("DELETE", delta.get("flags").get("b").get("$deltaType").asText());
+    assertEquals(current, DeltaEvaluator.generateOldValue(delta));
+    assertEquals(newValue, DeltaEvaluator.generateNewValue(delta));
+  }
+
+  @Test
+  public void buildDeltaJsonTreeArrayDeleteElementRoundTrip() {
+    JsonNode current = Json.parse("[1,2,3]");
+    JsonNode newValue = Json.parse("[1,2]");
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(current, newValue);
+    assertEquals(current, DeltaEvaluator.generateOldValue(delta));
+    assertEquals(newValue, DeltaEvaluator.generateNewValue(delta));
+  }
+
+  @Test
+  public void buildDeltaJsonTreeMultipleFieldChangesRoundTrip() {
+    JsonNode current = Json.parse("{\"a\":1,\"b\":2,\"c\":3}");
+    JsonNode newValue = Json.parse("{\"a\":1,\"b\":20,\"c\":3,\"d\":4}");
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(current, newValue);
+    assertEquals("REPLACE", delta.get("b").get("$deltaType").asText());
+    assertEquals("ADD", delta.get("d").get("$deltaType").asText());
+    assertEquals(current, DeltaEvaluator.generateOldValue(delta));
+    assertEquals(newValue, DeltaEvaluator.generateNewValue(delta));
+    JsonNode only = DeltaEvaluator.generateOnlyDelta(delta);
+    assertFalse(only.has("a"));
+    assertFalse(only.has("c"));
+    assertTrue(only.has("b"));
+    assertTrue(only.has("d"));
+  }
+
+  @Test
+  public void buildDeltaJsonTreeComplexNestedRoundTrip() {
+    JsonNode current =
+        Json.parse("{\"num\":5,\"tags\":{\"x\":\"1\"}," + "\"nodes\":[{\"id\":1,\"s\":\"L\"}]}");
+    JsonNode newValue =
+        Json.parse(
+            "{\"num\":6,\"tags\":{},"
+                + "\"nodes\":[{\"id\":1,\"s\":\"L\"},{\"id\":2,\"s\":\"A\"}]}");
+    DeltaEvaluator.ArrayElementComparator byId =
+        (p, n1, n2) -> {
+          if (p != null && p.endsWith("nodes")) {
+            return Integer.compare(n1.get("id").asInt(), n2.get("id").asInt());
+          }
+          return Integer.compare(n1.hashCode(), n2.hashCode());
+        };
+    JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(current, newValue, byId);
     assertEquals(current, DeltaEvaluator.generateOldValue(delta));
     assertEquals(newValue, DeltaEvaluator.generateNewValue(delta));
   }

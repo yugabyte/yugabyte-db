@@ -2026,15 +2026,7 @@ public class Util {
     dbTaskParams.sequenceNumber = universe.getUniverseDetails().sequenceNumber;
     JsonNode deltaTree =
         DeltaEvaluator.buildDeltaJsonTree(
-            universe.getUniverseDetails(),
-            dbTaskParams,
-            (p, n1, n2) -> {
-              if ("nodeDetailsSet".equals(p)) {
-                // This allows elements in nodeDetails collection to be compared deeply.
-                return n1.get("nodeIdx").asInt() - n2.get("nodeIdx").asInt();
-              }
-              return Integer.compare(n1.hashCode(), n2.hashCode());
-            });
+            universe.getUniverseDetails(), dbTaskParams, new NodeDetailsArrayComparator());
     return DeltaEvaluator.generateOnlyDelta(deltaTree);
   }
 }

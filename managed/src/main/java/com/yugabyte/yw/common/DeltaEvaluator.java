@@ -9,8 +9,10 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 import play.libs.Json;
 
 /** Utility class for evaluating deltas between two JsonNode objects. */
@@ -306,8 +308,13 @@ public final class DeltaEvaluator {
         return newData;
       }
       ObjectNode deltaObject = MAPPER.createObjectNode();
-      for (Iterator<String> iter = currentData.fieldNames(); iter.hasNext(); ) {
-        String fieldName = iter.next();
+      // Iterate the union of both sides' field names. Iterating only currentData would miss keys
+      // present solely in newData (e.g. a newly added gflag or instanceTags entry), dropping them
+      // from the delta so they could not be reconstructed by generateNewValue.
+      Set<String> fieldNames = new HashSet<>();
+      currentData.fieldNames().forEachRemaining(fieldNames::add);
+      newData.fieldNames().forEachRemaining(fieldNames::add);
+      for (String fieldName : fieldNames) {
         String nextPath = path == null ? fieldName : path + "." + fieldName;
         JsonNode currentFieldValue = currentData.get(fieldName);
         JsonNode newFieldValue = newData.get(fieldName);

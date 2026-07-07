@@ -62,6 +62,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetSta
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdateMasterAddresses;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterInfoPersist;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterNetworkConnectivityCheck;
+import com.yugabyte.yw.common.DeltaEvaluator;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.DrConfigStates;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
@@ -69,6 +70,7 @@ import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
+import com.yugabyte.yw.common.NodeDetailsArrayComparator;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -150,6 +152,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Model;
@@ -993,6 +996,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           // TODO When checkSuccess = false, lock and unlock are not reverse of each other, but this
           // existing behaviour is retained to not cause regression.
           if (clearUpdatingTask || updaterConfig.isRollbackPerformed()) {
+            universe.setStateTransitionDetails(null);
             if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
               boolean pausedTask =
                   getTaskExecutor()
@@ -1210,6 +1214,32 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return false;
   }
 
+  /**
+   * Returns the target universe definition to diff against the pre-lock snapshot when capturing
+   * state transition delta during freeze. Return null to skip capture.
+   *
+   * <p>Today this is typically the interim task params (e.g. {@code ToBeAdded} nodes). TODO
+   * (PLAT-21497): derive the post-success steady-state UDTP instead.
+   */
+  @Nullable
+  protected UniverseDefinitionTaskParams getStateTransitionCaptureTarget() {
+    return null;
+  }
+
+  /**
+   * Captures the delta between the clean pre-task universe definition and the intended target
+   * definition. Invoked from {@link com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse}
+   * after the freeze callback, using the pre-lock snapshot as {@code beforeUDTP}.
+   */
+  protected void captureStateTransitionDelta(
+      Universe universe,
+      UniverseDefinitionTaskParams beforeUDTP,
+      UniverseDefinitionTaskParams targetUDTP) {
+    JsonNode delta =
+        DeltaEvaluator.buildDeltaJsonTree(beforeUDTP, targetUDTP, new NodeDetailsArrayComparator());
+    universe.setStateTransitionDetails(new StateTransitionDetails(true, delta));
+  }
+
   private void initAndAddPrecheckTasks(Universe universe) {
     createPrecheckTasks(universe);
     ExecutionContext context = getOrCreateExecutionContext();
@@ -1318,6 +1348,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.setUniverse(universe);
     params.setCallback(callback);
     params.setExecutionContext(getOrCreateExecutionContext());
+    if (isFirstTry()) {
+      params.setStateTransitionCaptureTarget(getStateTransitionCaptureTarget());
+    }
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
