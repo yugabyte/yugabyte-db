@@ -634,7 +634,8 @@ class DistTraceTest : public LibPqTestBase {
       AppendFlagToAllowedPreviewFlagsCsv(*flags, "otel_collector_traces_endpoint");
       flags->push_back(Format("--otel_collector_traces_endpoint=$0", collector_.Url()));
       flags->push_back(Format("--otel_batch_schedule_delay_ms=$0", kOtelBatchScheduleDelayMs));
-      flags->push_back(Format("--otel_batch_max_export_batch_size=$0", kOtelBatchMaxExportBatchSize));
+      flags->push_back(
+          Format("--otel_batch_max_export_batch_size=$0", kOtelBatchMaxExportBatchSize));
       flags->push_back(Format("--otel_batch_max_queue_size=$0", kOtelBatchMaxQueueSize));
     }
   }

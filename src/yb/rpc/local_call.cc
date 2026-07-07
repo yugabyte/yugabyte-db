@@ -43,8 +43,8 @@ LocalOutboundCall::LocalOutboundCall(
   TRACE_TO(trace_, "LocalOutboundCall");
   if (otel_span()) {
     otel_span()->SetAttribute("rpc.local_call", true);
-    // The OutboundCall ctor left the client span's scope on this thread; a local call never drops it.
-    // Drop it here or it re-parents later work. The span stays alive via GetContext().
+    // The OutboundCall ctor left the client span's scope on this thread; a local call never drops
+    // it. Drop it here or it re-parents later work. The span stays alive via GetContext().
     otel_span()->DropScope();
   }
 }

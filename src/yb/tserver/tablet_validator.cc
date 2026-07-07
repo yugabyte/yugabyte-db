@@ -405,7 +405,8 @@ bool TabletMetadataValidator::Impl::ScheduleTabletPropertiesValidation(
   }
 
   // Active OTel context, live here because the threadpool carries it from the CreateTablet RPC into
-  // OpenTablet. Stored per index so the later GetBackfillStatus poll nests under the triggering trace.
+  // OpenTablet. Stored per index so the later GetBackfillStatus poll nests under the triggering
+  // trace.
   const auto trace_parent = dist_trace::GetActiveSpanContext();
 
   // Pick all index tables with retain_delete_markers set to true.

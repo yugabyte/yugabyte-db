@@ -50,8 +50,9 @@ class LocalOutboundCall : public OutboundCall {
     return req_;
   }
 
-  // Span context of this outbound call's trace span, to parent the matching local inbound span (local
-  // calls carry no wire header). nullopt when tracing is off. Safe after the scope is dropped.
+  // Span context of this outbound call's trace span, to parent the matching local inbound span
+  // (local calls carry no wire header). nullopt when tracing is off. Safe after the scope is
+  // dropped.
   std::optional<opentelemetry::trace::SpanContext> otel_span_context() const {
     if (const auto& span = otel_span(); span) {
       return span->GetContext();

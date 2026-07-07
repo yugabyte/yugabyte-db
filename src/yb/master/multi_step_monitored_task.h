@@ -144,9 +144,10 @@ class MultiStepMonitoredTask : public server::RunnableMonitoredTask {
   std::string next_step_description_ GUARDED_BY(schedule_task_mutex_);
   std::function<Status()> next_step_ GUARDED_BY(schedule_task_mutex_) = nullptr;
 
-  // Trace context of the operation that created this task, captured at construction and re-activated
-  // around each step so the step's RPCs nest under the triggering trace -- steps run on async-pool/
-  // reactor threads, so the context must ride on the task. No-op when unset or tracing is off.
+  // Trace context of the operation that created this task, captured at construction and
+  // re-activated around each step so the step's RPCs nest under the triggering trace -- steps run
+  // on async-pool/reactor threads, so the context must ride on the task. No-op when unset or
+  // tracing is off.
   dist_trace::trace::SpanContext trace_parent_ = dist_trace::trace::SpanContext::GetInvalid();
 };
 

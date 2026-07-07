@@ -140,7 +140,8 @@ class YbOtelLogHandler : public internal_log::LogHandler {
   }
 };
 
-resource_sdk::Resource CreateResource(nostd::string_view service_name, nostd::string_view node_uuid) {
+resource_sdk::Resource CreateResource(
+    nostd::string_view service_name, nostd::string_view node_uuid) {
   resource_sdk::ResourceAttributes attrs;
   attrs.SetAttribute("service.name", service_name);
   attrs.SetAttribute("process.pid", static_cast<int64_t>(getpid()));
@@ -362,7 +363,8 @@ SpanWithScopePtr StartClientSpanWithScope(std::string_view op_name) {
 SpanWithScopePtr StartServerSpanWithScope(
     std::string_view op_name,
     const trace::SpanContext& parent_context,
-    const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs) {
+    const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>&
+        attrs) {
   if (!IsDistTraceEnabled()) {
     return nullptr;
   }

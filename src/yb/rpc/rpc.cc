@@ -229,8 +229,9 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
   if (new_status.ok()) {
     controller_.Reset();
     VTRACE_TO(1, rpc->trace(), "Sending Rpc");
-    // DoRetry runs on a scope-less reactor thread; re-establish the caller's parent (captured in the
-    // ctor) so the OutboundCall rebuilt in SendRpc captures it. No-op when trace_parent_ is invalid.
+    // DoRetry runs on a scope-less reactor thread; re-establish the caller's parent (captured in
+    // the ctor) so the OutboundCall rebuilt in SendRpc captures it. No-op when trace_parent_ is
+    // invalid.
     auto parent_scope = dist_trace::ActivateParentScope(trace_parent_);
     rpc->SendRpc();
   } else {
