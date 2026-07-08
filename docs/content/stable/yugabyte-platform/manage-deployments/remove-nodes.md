@@ -127,7 +127,7 @@ Perform the following steps to recommission a node:
 
     ![Recommission Node](/images/ee/recommission-node.png)
 
-1. Click OK to confirm.
+1. Click **OK** to confirm.
 
 YugabyteDB Anywhere starts the node recommissioning process, and you can view the progress on the **Tasks** tab.
 
