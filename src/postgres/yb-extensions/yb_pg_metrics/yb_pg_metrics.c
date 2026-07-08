@@ -329,6 +329,8 @@ static long last_relcache_preload_val = 0;
 static volatile sig_atomic_t got_SIGHUP = false;
 static volatile sig_atomic_t got_SIGTERM = false;
 
+extern PGDLLEXPORT void webserver_worker_main(Datum main_arg);
+
 void		_PG_init(void);
 
 /*
