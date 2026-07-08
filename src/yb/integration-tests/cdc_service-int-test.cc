@@ -726,65 +726,6 @@ TEST_F(CDCServiceTest, TestCleanupStaleCDCStreamsDryRunAndDelete) {
   stream_id_ = xrepl::StreamId::Nil();
 }
 
-TEST_F(CDCServiceTest, TestCleanupStaleCDCStreamsNamespaceFilter) {
-  const client::YBTableName other_table_name(
-      YQL_DATABASE_CQL, "other_keyspace", "other_cdc_test_table");
-  TableHandle other_table;
-  CreateTable(tablet_count(), other_table_name, &other_table);
-
-  stream_id_ = ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id()));
-  const auto other_stream_id = ASSERT_RESULT(
-      CreateXClusterStream(*client_, other_table.table()->id()));
-
-  auto cdc_state_table = MakeCDCStateTable(client_.get());
-  const auto tablet_id = GetTablet();
-  const auto other_tablet_id = GetTablet(other_table_name);
-  const auto missing_stream_id = xrepl::StreamId::GenerateRandom();
-  const auto other_missing_stream_id = xrepl::StreamId::GenerateRandom();
-  const auto orphaned_stream_id = xrepl::StreamId::GenerateRandom();
-  const CDCStateTableKey selected_missing_stream_key(tablet_id, missing_stream_id);
-  const CDCStateTableKey selected_missing_tablet_key("missing_tablet_id", stream_id_);
-  const CDCStateTableKey other_missing_stream_key(other_tablet_id, other_missing_stream_id);
-  const CDCStateTableKey other_missing_tablet_key("other_missing_tablet_id", other_stream_id);
-  const CDCStateTableKey unattributed_key("unattributed_missing_tablet_id", orphaned_stream_id);
-
-  ASSERT_OK(cdc_state_table.InsertEntries({
-      CDCStateTableEntry(selected_missing_stream_key),
-      CDCStateTableEntry(selected_missing_tablet_key),
-      CDCStateTableEntry(other_missing_stream_key),
-      CDCStateTableEntry(other_missing_tablet_key),
-      CDCStateTableEntry(unattributed_key)}));
-
-  master::MasterReplicationProxy master_proxy(
-      &client_->proxy_cache(), cluster_->mini_master()->bound_rpc_addr());
-  master::GetNamespaceInfoResponsePB namespace_info;
-  ASSERT_OK(client_->GetNamespaceInfo(
-      kTableName.namespace_name(), YQL_DATABASE_CQL, &namespace_info));
-  master::CleanupStaleCDCStreamsRequestPB req;
-  req.set_dry_run(false);
-  req.set_namespace_id(namespace_info.namespace_().id());
-  master::CleanupStaleCDCStreamsResponsePB resp;
-  RpcController rpc;
-  rpc.set_timeout(MonoDelta::FromSeconds(60));
-
-  ASSERT_OK(master_proxy.CleanupStaleCDCStreams(req, &resp, &rpc));
-  ASSERT_FALSE(resp.has_error()) << resp.error().ShortDebugString();
-  ASSERT_EQ(resp.stale_entries_size(), 2);
-  ASSERT_EQ(resp.deleted_entries_size(), 2);
-  ASSERT_FALSE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(selected_missing_stream_key)));
-  ASSERT_FALSE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(selected_missing_tablet_key)));
-  ASSERT_TRUE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(other_missing_stream_key)));
-  ASSERT_TRUE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(other_missing_tablet_key)));
-  ASSERT_TRUE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(unattributed_key)));
-  ASSERT_OK(VerifyCdcStateMatches(client_.get(), stream_id_, tablet_id, 0, 0));
-  ASSERT_OK(VerifyCdcStateMatches(client_.get(), other_stream_id, other_tablet_id, 0, 0));
-
-  ASSERT_OK(DeleteXClusterStream(other_stream_id));
-  ASSERT_OK(DeleteXClusterStream(stream_id_));
-  stream_id_ = xrepl::StreamId::Nil();
-  ASSERT_OK(client_->DeleteTable(other_table_name));
-}
-
 TEST_F(CDCServiceTest, TestSafeTime) {
   docdb::DisableYcqlPackedRow();
   stream_id_ = ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id()));

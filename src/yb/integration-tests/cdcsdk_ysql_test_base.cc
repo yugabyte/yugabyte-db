@@ -5058,8 +5058,7 @@ Status CDCSDKYsqlTest::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
   return Status::OK();
 }
 
-Result<std::string> CDCSDKYsqlTest::CleanupStaleCDCStreams(
-    const std::string& ysql_database_name, bool dry_run) {
+Result<std::string> CDCSDKYsqlTest::CleanupStaleCDCStreams(bool dry_run) {
   string tool_path = GetToolPath("../bin", "yb-admin");
   vector<string> argv;
   argv.push_back(tool_path);
@@ -5069,9 +5068,6 @@ Result<std::string> CDCSDKYsqlTest::CleanupStaleCDCStreams(
     argv.push_back("--dry_run");
   }
   argv.push_back("cleanup_stale_cdc_streams");
-  if (!ysql_database_name.empty()) {
-    argv.push_back(ysql_database_name);
-  }
 
   std::string output;
   RETURN_NOT_OK(Subprocess::Call(argv, &output));

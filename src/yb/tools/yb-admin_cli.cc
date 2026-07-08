@@ -2146,17 +2146,15 @@ Status validate_and_sync_cdc_state_table_entries_on_change_data_stream_action(
   return Status::OK();
 }
 
-const auto cleanup_stale_cdc_streams_args = "[<ysql_database_name>]";
+const auto cleanup_stale_cdc_streams_args = "";
 Status cleanup_stale_cdc_streams_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() > 1) {
+  if (!args.empty()) {
     return ClusterAdminCli::kInvalidArguments;
   }
 
-  const string ysql_database_name = args.empty() ? "" : args[0];
-
   RETURN_NOT_OK_PREPEND(
-      client->CleanupStaleCDCStreams(ysql_database_name, FLAGS_dry_run),
+      client->CleanupStaleCDCStreams(FLAGS_dry_run),
       "Failed to cleanup stale CDC streams");
   return Status::OK();
 }

@@ -2065,47 +2065,6 @@ The above command results in the following response:
 Successfully deleted CDC DB Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 ```
 
-#### cleanup_stale_cdc_streams
-
-Lists and optionally deletes stale entries from the `cdc_state` table. An entry is considered stale
-when its stream no longer exists or its tablet no longer exists.
-
-**Syntax**
-
-```sh
-yb-admin \
-    --master_addresses <master-addresses> \
-    [--dry_run] \
-    cleanup_stale_cdc_streams [ysql-database-name]
-```
-
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *ysql-database-name*: (Optional) The YSQL database for which to clean up stale entries. If not specified, all namespaces are scanned.
-* `--dry_run`: Report stale entries without deleting them.
-
-When a YSQL database name is specified, only entries that can be attributed to that database are
-cleaned up. Entries whose stream and tablet metadata are both missing cannot be attributed to a
-specific database; run the command without a database name to include those entries.
-
-**Example:**
-
-```sh
-./bin/yb-admin \
-    --master_addresses 127.0.0.1:7100 \
-    --dry_run \
-    cleanup_stale_cdc_streams yugabyte
-```
-
-Example output:
-
-```output
-Filtering stale CDC state entries for YSQL database: yugabyte
-
-Found 2 stale cdc_state entries (dry run).
-  tablet_id: 8f3b9b3a8b2c4e2b9c7d6a5f4e3d2c1b, stream_id: 3d9f1e2a4b6c4d8e9f0123456789abcd, table_id: 000033e8000030008000000000004000, table_name: orders, reason: stream not found
-  tablet_id: missing_tablet_id, stream_id: 7a8b9c0d1e2f34567890abcdef123456, reason: tablet not found
-```
-
 ### xCluster Replication Commands
 
 For detailed step-by-step instructions on deploying xCluster, refer to the [Deploy xCluster](../../deploy/multi-dc/async-replication). For monitoring xCluster, refer to [Monitor xCluster](../../launch-and-manage/monitor-and-alert/xcluster-monitor).

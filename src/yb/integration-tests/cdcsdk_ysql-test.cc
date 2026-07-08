@@ -9693,8 +9693,7 @@ TEST_F(CDCSDKYsqlTest, TestCleanupStaleCDCStreamsWithYBAdminDryRunAndDelete) {
       CDCStateTableEntry(missing_tablet_key),
       CDCStateTableEntry(missing_stream_key)}));
 
-  const auto dry_run_output =
-      ASSERT_RESULT(CleanupStaleCDCStreams(test_namespace_name, /*dry_run=*/true));
+  const auto dry_run_output = ASSERT_RESULT(CleanupStaleCDCStreams(/*dry_run=*/true));
   ASSERT_STR_CONTAINS(dry_run_output, "Found 2 stale cdc_state entries (dry run)");
   ASSERT_STR_CONTAINS(dry_run_output, "reason: stream not found");
   ASSERT_STR_CONTAINS(dry_run_output, "reason: tablet not found");
@@ -9702,8 +9701,7 @@ TEST_F(CDCSDKYsqlTest, TestCleanupStaleCDCStreamsWithYBAdminDryRunAndDelete) {
   ASSERT_TRUE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(missing_tablet_key)));
   ASSERT_TRUE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(missing_stream_key)));
 
-  const auto cleanup_output =
-      ASSERT_RESULT(CleanupStaleCDCStreams(test_namespace_name, /*dry_run=*/false));
+  const auto cleanup_output = ASSERT_RESULT(CleanupStaleCDCStreams(/*dry_run=*/false));
   ASSERT_STR_CONTAINS(cleanup_output, "Found 2 stale cdc_state entries");
   ASSERT_STR_CONTAINS(cleanup_output, "Deleted 2 stale cdc_state entries");
   ASSERT_FALSE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(missing_tablet_key)));

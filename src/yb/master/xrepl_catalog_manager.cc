@@ -5389,34 +5389,6 @@ Status CatalogManager::CleanupStaleCDCStreams(
             << req->ShortDebugString();
 
   const bool dry_run = req->dry_run();
-  const auto& namespace_filter = req->namespace_id();
-
-  std::unordered_set<xrepl::StreamId> all_stream_ids;
-  std::unordered_map<xrepl::StreamId, NamespaceId> stream_namespaces;
-  {
-    SharedLock lock(mutex_);
-    for (const auto& [stream_id, stream] : cdc_stream_map_) {
-      auto stream_lock = stream->LockForRead();
-      if (stream_lock->is_deleting()) {
-        continue;
-      }
-
-      all_stream_ids.insert(stream_id);
-      NamespaceId stream_namespace = stream_lock->namespace_id();
-      // Xcluster streams do not persist namespace_id in stream metadata. Resolve those via the
-      // first table_id when possible so namespace-filtered cleanup can attribute their cdc_state
-      // rows.
-      if (stream_namespace.empty() && !stream_lock->table_id().empty()) {
-        auto table = tables_->FindTableOrNull(stream_lock->table_id().Get(0));
-        if (table) {
-          stream_namespace = table->LockForRead()->namespace_id();
-        }
-      }
-      if (!stream_namespace.empty()) {
-        stream_namespaces.emplace(stream_id, std::move(stream_namespace));
-      }
-    }
-  }
 
   // we check the table existence to instead of relying on GetTableRangeAsync down the line
   // because GetTableRangeAsync has a long timeout.
@@ -5427,6 +5399,19 @@ Status CatalogManager::CleanupStaleCDCStreams(
         STATUS(
             NotFound,
             "cdc_state table does not exist or is not ready."));
+  }
+
+  std::unordered_set<xrepl::StreamId> all_stream_ids;
+  {
+    SharedLock lock(mutex_);
+    for (const auto& [stream_id, stream] : cdc_stream_map_) {
+      auto stream_lock = stream->LockForRead();
+      if (stream_lock->is_deleting()) {
+        continue;
+      }
+
+      all_stream_ids.insert(stream_id);
+    }
   }
 
   Status iteration_status;
@@ -5446,30 +5431,24 @@ Status CatalogManager::CleanupStaleCDCStreams(
   }
 
   std::vector<cdc::CDCStateTableKey> all_entry_keys;
-  for (const auto& entry_result : *all_entry_keys_result) {
-    RETURN_NOT_OK(entry_result);
-    all_entry_keys.push_back(entry_result->key);
-  }
-  RETURN_NOT_OK(iteration_status);
-
   std::unordered_map<TabletId, TabletInfoPtr> tablet_info_map;
+
   {
     std::unordered_set<TabletId> tablet_ids;
-    for (const auto& key : all_entry_keys) {
+    for (const auto& entry_result : *all_entry_keys_result) {
+      RETURN_NOT_OK(entry_result);
+
+      const auto& key = entry_result->key;
+      all_entry_keys.push_back(key);
+
       // Ignore sys catalog tablet and slot entry.
       if (key.tablet_id == kCDCSDKSlotEntryTabletId || key.tablet_id == kSysCatalogTabletId) {
         continue;
       }
 
-      if (!namespace_filter.empty()) {
-        const auto it = stream_namespaces.find(key.stream_id);
-        if (it != stream_namespaces.end() && it->second != namespace_filter) {
-          continue;
-        }
-      }
-
       tablet_ids.insert(key.tablet_id);
     }
+    RETURN_NOT_OK(iteration_status);
 
     auto tablet_infos = GetTabletInfos({tablet_ids.begin(), tablet_ids.end()});
     for (auto& tablet_info : tablet_infos) {
@@ -5493,8 +5472,6 @@ Status CatalogManager::CleanupStaleCDCStreams(
     }
   }
 
-  // at this point we have tablet infos for all candidate tablets,
-  // and stream_namespaces.
   std::vector<cdc::CDCStateTableKey> keys_to_delete;
   const std::vector<scoped_refptr<TableInfo>> no_tables;
 
@@ -5521,13 +5498,7 @@ Status CatalogManager::CleanupStaleCDCStreams(
       };
 
   for (const auto& key : all_entry_keys) {
-    const auto stream_iter = stream_namespaces.find(key.stream_id);
     const bool stream_exists = all_stream_ids.contains(key.stream_id);
-    if (!namespace_filter.empty() && stream_iter != stream_namespaces.end() &&
-        stream_iter->second != namespace_filter) {
-      continue;
-    }
-
     if ((key.tablet_id == kCDCSDKSlotEntryTabletId || key.tablet_id == kSysCatalogTabletId) &&
         stream_exists) {
       continue;
@@ -5537,29 +5508,6 @@ Status CatalogManager::CleanupStaleCDCStreams(
     const auto tablet_tables_iter = tablet_tables_map.find(key.tablet_id);
     const auto* tablet_tables =
         tablet_tables_iter == tablet_tables_map.end() ? nullptr : &tablet_tables_iter->second;
-
-    if (!namespace_filter.empty()) {
-      // Check if the tablet belongs to the namespace. If stream exists,
-      // it belongs to the namespace. If the stream doesn't exist,
-      // we need to check the tablet's tables to see if it belongs to the namespace.
-      // stream_iter->second == namespace_filter is guaranteed by the namespace check
-      // above, so a resolved stream here always matches the filter.
-      bool belongs_to_namespace = stream_iter != stream_namespaces.end();
-
-      if (!belongs_to_namespace && tablet_tables) {
-        for (const auto& table : *tablet_tables) {
-          if (table->LockForRead()->namespace_id() == namespace_filter) {
-            // we found that the stream doesn't exist but the tablet belongs to the namespace,
-            // so we should consider this entry for deletion
-            belongs_to_namespace = true;
-            break;
-          }
-        }
-      }
-      if (!belongs_to_namespace) {
-        continue;
-      }
-    }
 
     // Classify the remaining candidate row in order: missing stream, then missing tablet.
     if (!stream_exists) {

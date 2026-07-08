@@ -4272,18 +4272,10 @@ Status ClusterAdminClient::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
   return Status::OK();
 }
 
-Status ClusterAdminClient::CleanupStaleCDCStreams(
-    const std::string& ysql_database_name, bool dry_run) {
+Status ClusterAdminClient::CleanupStaleCDCStreams(bool dry_run) {
   master::CleanupStaleCDCStreamsRequestPB req;
   master::CleanupStaleCDCStreamsResponsePB resp;
 
-  if (!ysql_database_name.empty()) {
-    cout << "Filtering stale CDC state entries for YSQL database: " << ysql_database_name << "\n\n";
-    master::GetNamespaceInfoResponsePB namespace_info_resp;
-    RETURN_NOT_OK(
-        yb_client_->GetNamespaceInfo(ysql_database_name, YQL_DATABASE_PGSQL, &namespace_info_resp));
-    req.set_namespace_id(namespace_info_resp.namespace_().id());
-  }
   req.set_dry_run(dry_run);
 
   RpcController rpc;
