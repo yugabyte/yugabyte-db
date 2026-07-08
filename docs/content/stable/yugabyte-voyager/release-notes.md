@@ -23,6 +23,8 @@ YugabyteDB Voyager no longer supports [live migration](../migrate/live-migrate/)
 
 Contact {{% support-general %}} to discuss alternative tools and approaches.
 
+{{< /warning >}}
+
 ## v2026.7.1 - July 7, 2026
 
 {{< note title="Important: Breaking change" >}}
