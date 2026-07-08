@@ -22,6 +22,7 @@
 #include "yb/qlexpr/index.h"
 #include "yb/common/schema.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 
 #include "yb/yql/cql/ql/ptree/column_desc.h"

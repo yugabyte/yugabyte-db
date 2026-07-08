@@ -853,11 +853,9 @@ Status TabletServer::RegisterServices() {
   if (FLAGS_ysql_enable_auto_analyze_infra) {
     auto connect_to_pg = [this](const std::string& database_name,
                                 const CoarseTimePoint& deadline) {
-      return pgwrapper::CreateInternalPGConnBuilder(
-                 pgsql_proxy_bind_address(), database_name,
-                 pgwrapper::PGConnSettings::kDefaultUser, GetSharedMemoryPostgresAuthKey(),
-                 deadline, pgwrapper::YbInternalConnKindWireName::kAutoAnalyze)
-          .Connect();
+      return CreateInternalPGConn(
+          database_name, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline,
+          pgwrapper::YbInternalConnKindWireName::kAutoAnalyze);
     };
     auto pg_auto_analyze_service =
         std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future(),
@@ -973,6 +971,24 @@ void TabletServer::Shutdown() {
   }
 
   client()->RequestAbortAllRpcs();
+
+  // Mark the transaction manager as closing before aborting tablet operations below. Aborting
+  // in-flight transaction status operations (e.g. heartbeats) completes their client RPCs, and
+  // unless the manager is already flagged as closing those completions are treated as retryable
+  // failures and re-registered as new operations on tablets that are already shutting down. Those
+  // late operations never get aborted (their tablet peers finish shutdown only after the txn
+  // manager), leaving the RPCs stuck until the txn manager's shutdown deadline elapses, which
+  // trips a CHECK(calls_.empty()) fatal failure. See DbServerBase::Shutdown for the later call.
+  if (auto* txn_manager = transaction_manager_.load()) {
+    txn_manager->SetClosing();
+  }
+
+  // Start shutting the remote bootstrap service down before the tablets, so peers bootstrapping
+  // from this server fail fast (terminal error) instead of retrying a source whose tablets are
+  // shutting down, which would otherwise wedge their own shutdown. See issue #32211.
+  if (auto remote_bootstrap_service = remote_bootstrap_service_.lock()) {
+    remote_bootstrap_service->StartShutdown();
+  }
 
   tablet_manager_->StartShutdown();
   WARN_NOT_OK(relinquish_lease_future.get(), "Couldn't relinquish ysql lease");
@@ -1463,12 +1479,9 @@ void TabletServer::MakeRelcacheInitConnection(const std::string& dbname) {
   // backend takes on YB_RELCACHE_INIT_BACKEND, runs with minimal preload, and
   // does not recursively trigger another internal connection
   // (relcache.c:RelationCacheInitializePhase3).
-  auto status = ResultToStatus(
-      pgwrapper::CreateInternalPGConnBuilder(
-          pgsql_proxy_bind_address(), dbname, kDefaultInternalPgUser,
-          GetSharedMemoryPostgresAuthKey(), deadline,
-          pgwrapper::YbInternalConnKindWireName::kRelcacheInit)
-          .Connect(/*simple_query_protocol=*/false));
+  auto status = ResultToStatus(CreateInternalPGConn(
+      dbname, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline,
+      pgwrapper::YbInternalConnKindWireName::kRelcacheInit));
   if (status.ok()) {
     LOG(INFO) << "Relcache init connection to database " << dbname << " succeeded";
   } else {
@@ -2284,10 +2297,8 @@ Status TabletServer::CreateXClusterConsumer() {
     return tablet_peer->LeaderTerm();
   };
   auto connect_to_pg = [this](const std::string& database_name, const CoarseTimePoint& deadline) {
-    return pgwrapper::CreateInternalPGConnBuilder(
-               pgsql_proxy_bind_address(), database_name, pgwrapper::PGConnSettings::kDefaultUser,
-               GetSharedMemoryPostgresAuthKey(), deadline)
-        .Connect();
+    return CreateInternalPGConn(
+        database_name, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline);
   };
   auto get_namespace_info =
       [this](const TabletId& tablet_id) -> Result<std::pair<NamespaceId, NamespaceName>> {
@@ -2668,7 +2679,13 @@ Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(
     std::string_view yb_internal_conn_kind) {
   return pgwrapper::CreateInternalPGConnBuilder(
              pgsql_proxy_bind_address(), database_name, user, GetSharedMemoryPostgresAuthKey(),
-             deadline, yb_internal_conn_kind)
+             deadline, yb_internal_conn_kind,
+             // Abort the connect retry loop as soon as shutdown begins. Internal connects run on
+             // messenger threads and can hold the triggering backend's inbound RpcContext alive
+             // until they return; retrying the (also shutting-down) postgres for the full deadline
+             // keeps that RPC connection non-idle and makes Messenger::Shutdown() time out joining
+             // the reactor.
+             [this] { return static_cast<bool>(shutting_down_); })
       .Connect(simple_query_protocol);
 }
 

@@ -105,6 +105,12 @@ enum CompressionType : char {
   kZSTDNotFinalCompression = 0x40,
 };
 
+// This should be in sync with enum values of CompressionType
+constexpr CompressionType kAllCompressionTypes[] = {
+  kNoCompression, kSnappyCompression, kZlibCompression, kBZip2Compression,
+  kLZ4Compression, kLZ4HCCompression, kZSTDNotFinalCompression
+};
+
 enum CompactionStyle : char {
   // level based compaction style
   kCompactionStyleLevel = 0x0,

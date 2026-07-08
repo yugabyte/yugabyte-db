@@ -1485,6 +1485,12 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedIndexes) {
   ASSERT_OK(producer_conn_->ExecuteFormat(
       "INSERT INTO $0 SELECT i, i%2, i::text FROM generate_series(1, 100) as i;", kNewTableName));
 
+  // Ensure the base table CREATE is fully replicated and applied on the target before pausing DDL
+  // replication. Otherwise, if the target's DDL queue handler is still catching up on this CREATE
+  // TABLE when we pause, it repeatedly fails that unrelated DDL and can hit the max-retries cap,
+  // permanently pausing DDL replication (which would never recover once we unpause).
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
   // Pause DDL replication to test that we handle the index data correctly.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
 

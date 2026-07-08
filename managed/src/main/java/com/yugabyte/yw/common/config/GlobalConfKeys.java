@@ -2321,4 +2321,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Skip memory availability validation when enabling Performance Advisor Collection",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> paEmbeddedUiReverseProxyEnabled =
+      new ConfKeyInfo<>(
+          "yb.pa.embedded_ui.reverse_proxy.enabled",
+          ScopeType.GLOBAL,
+          "Reverse-proxy API calls from embedded PA Collector UI via YBA",
+          "When true, embedded PA Collector UI traffic is proxied through YBA (same origin)"
+              + " so YBA performs all authentication and universe RBAC; requires PA Collector to"
+              + " accept the X-AUTH-TP-API-TOKEN service token as full user-request auth.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

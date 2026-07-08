@@ -200,4 +200,15 @@ CompactionFileExcluderPtr DBImpl::TEST_SetExcludeFromCompaction(
   }
 }
 
+yb::Result<TableReader*> DBImpl::TEST_GetLargestSstTableReader() {
+  InstrumentedMutexLock lock(&mutex_);
+  return default_cf_handle_->cfd()->current()->TEST_GetLargestSstTableReader();
+}
+
+yb::Result<uint64_t> DBImpl::TEST_Cross(Slice key) {
+  InstrumentedMutexLock lock(&mutex_);
+  auto internal_key = InternalKey::MinPossibleForUserKey(key);
+  return default_cf_handle_->cfd()->current()->Cross(internal_key.Encode());
+}
+
 }  // namespace rocksdb

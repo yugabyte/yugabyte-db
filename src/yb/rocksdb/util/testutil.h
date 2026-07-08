@@ -47,6 +47,7 @@
 #include "yb/rocksdb/util/random.h"
 
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/mem_tracker_fwd.h"
 #include "yb/util/slice.h"
 
 DECLARE_bool(never_fsync);
@@ -726,6 +727,8 @@ class ChanglingCompactionFilterFactory : public CompactionFilterFactory {
  protected:
   std::string name_;
 };
+
+std::vector<CompressionType> GetSupportedCompressionTypes();
 
 CompressionType RandomCompressionType(Random* rnd);
 

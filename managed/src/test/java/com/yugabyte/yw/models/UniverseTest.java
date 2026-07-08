@@ -558,6 +558,43 @@ public class UniverseTest extends FakeDBApplication {
   }
 
   @Test
+  public void testAreTagsSameMulticloud() {
+    UUID providerUUID = defaultProvider.getUuid();
+    Map<String, String> tags = ImmutableMap.of("Cust", "Test", "Dept", "Misc");
+
+    UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
+        new UniverseDefinitionTaskParams.ProviderSpecification();
+    providerSpecification.setProviderUUID(providerUUID);
+    providerSpecification.setProviderType(CloudType.aws);
+    providerSpecification.setInstanceTags(tags);
+
+    UserIntent userIntent = getBaseIntent();
+    userIntent.providerType = CloudType.aws;
+    userIntent.providerSpecifications = List.of(providerSpecification);
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+
+    UserIntent sameTagsIntent = getBaseIntent();
+    sameTagsIntent.providerType = CloudType.aws;
+    UniverseDefinitionTaskParams.ProviderSpecification sameSpec =
+        new UniverseDefinitionTaskParams.ProviderSpecification();
+    sameSpec.setProviderUUID(providerUUID);
+    sameSpec.setProviderType(CloudType.aws);
+    sameSpec.setInstanceTags(tags);
+    sameTagsIntent.providerSpecifications = List.of(sameSpec);
+    assertTrue(cluster.areTagsSame(new Cluster(ClusterType.PRIMARY, sameTagsIntent)));
+
+    UserIntent differentTagsIntent = getBaseIntent();
+    differentTagsIntent.providerType = CloudType.aws;
+    UniverseDefinitionTaskParams.ProviderSpecification differentSpec =
+        new UniverseDefinitionTaskParams.ProviderSpecification();
+    differentSpec.setProviderUUID(providerUUID);
+    differentSpec.setProviderType(CloudType.aws);
+    differentSpec.setInstanceTags(ImmutableMap.of("Cust", "Test"));
+    differentTagsIntent.providerSpecifications = List.of(differentSpec);
+    assertFalse(cluster.areTagsSame(new Cluster(ClusterType.PRIMARY, differentTagsIntent)));
+  }
+
+  @Test
   public void testAreTagsSameErrors() {
     Universe u = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());

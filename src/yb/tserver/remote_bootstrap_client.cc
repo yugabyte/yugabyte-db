@@ -142,8 +142,9 @@ using tablet::RaftGroupMetadata;
 using tablet::RaftGroupMetadataPtr;
 using tablet::TabletStatusListener;
 
-RemoteBootstrapClient::RemoteBootstrapClient(const TabletId& tablet_id, FsManager* fs_manager)
-    : RemoteClientBase(tablet_id, fs_manager) {
+RemoteBootstrapClient::RemoteBootstrapClient(
+    const TabletId& tablet_id, FsManager* fs_manager, std::function<bool()> is_cancelled)
+    : RemoteClientBase(tablet_id, fs_manager, std::move(is_cancelled)) {
   AddComponent<RemoteBootstrapSnapshotsComponent>();
 }
 
@@ -506,8 +507,7 @@ Status RemoteBootstrapClient::Finish() {
 }
 
 Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
-    const shared_ptr<consensus::Consensus>& shared_consensus,
-    const std::function<bool()>& is_cancelled) {
+    const shared_ptr<consensus::Consensus>& shared_consensus) {
 
   if (!shared_consensus) {
     return STATUS(InvalidArgument, "Invalid consensus object");
@@ -520,7 +520,7 @@ Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
   RaftConfigPB committed_config;
 
   do {
-    if (is_cancelled && is_cancelled()) {
+    if (IsCancelled()) {
       return STATUS_FORMAT(
           ShutdownInProgress,
           "Abandoning VerifyChangeRoleSucceeded for peer $0: cancellation requested (likely "

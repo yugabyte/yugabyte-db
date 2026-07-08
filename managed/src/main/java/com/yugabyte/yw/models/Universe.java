@@ -55,6 +55,7 @@ import jakarta.persistence.Transient;
 import jakarta.persistence.UniqueConstraint;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
@@ -1096,6 +1097,24 @@ public class Universe extends Model {
    */
   public Collection<NodeDetails> getNodesInCluster(UUID clusterUUID) {
     return getUniverseDetails().getNodesInCluster(clusterUUID);
+  }
+
+  /**
+   * Returns the list of nodes in a given cluster and provider in the universe.
+   *
+   * @param clusterUUID UUID of the cluster to get the list of nodes.
+   * @param providerUUID UUID of the provider to filter nodes.
+   * @return a collection of nodes in a given cluster in this universe.
+   */
+  public Collection<NodeDetails> getProviderNodesInCluster(UUID clusterUUID, UUID providerUUID) {
+    Cluster cluster = getUniverseDetails().getClusterByUuid(clusterUUID);
+    if (cluster == null) {
+      return Collections.emptyList();
+    }
+    Set<NodeDetails> nodesInCluster = getUniverseDetails().getNodesInCluster(clusterUUID);
+    return nodesInCluster.stream()
+        .filter(n -> Objects.equals(cluster.getProviderUUIDForNode(n), providerUUID))
+        .collect(Collectors.toList());
   }
 
   /**

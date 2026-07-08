@@ -298,10 +298,10 @@ class ThreeSharedPartsEncoder {
 
   // Encodes components sizes + non-shared key parts and value into buffer.
   // See EncodeThreeSharedPartsSizes for description of how we encode component sizes.
-  template <size_t SmallLen, bool kTrackMemoryUsage>
+  template <size_t SmallLen, class Consumer>
   inline void Encode(
       size_t shared_prefix_size, const Slice& value,
-      yb::ByteBufferBase<SmallLen, kTrackMemoryUsage>* buffer) {
+      yb::ByteBufferBase<SmallLen, Consumer>* buffer) {
     const auto value_size = value.size();
 
     EncodeThreeSharedPartsSizes(

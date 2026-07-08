@@ -240,6 +240,14 @@ class BlockIter : public InternalIterator {
     return num_restarts_;
   }
 
+  // Byte offset within the block's data of the current entry. Valid only while positioned
+  // (Valid()). Added to the block's file offset this yields the entry's file offset; see
+  // BlockBasedTable::SeekOffsetOf.
+  inline uint32_t GetCurrentEntryOffset() const {
+    DCHECK(Valid());
+    return current_;
+  }
+
  private:
   // It is required to store at least one entry, even in case if restart block caching is off.
   static constexpr const size_t kRestartBlockCacheMinSize = 1;

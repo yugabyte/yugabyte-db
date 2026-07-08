@@ -44,6 +44,7 @@
 #include "parser/parse_coerce.h"
 #include "pg_yb_utils.h"
 #include "rewrite/rewriteHandler.h"
+#include "utils/fmgroids.h"
 
 /* These parameters are set by GUC */
 int			from_collapse_limit;
@@ -3157,6 +3158,113 @@ yb_make_derived_restrictinfo(PlannerInfo *root, OpExpr *clause, Relids nullable_
 	return rinfo;
 }
 
+/*
+ * yb_expr_safe_to_derive
+ *	  True if expr matches one of the allowlisted index-expression shapes.
+ *	  Used to gate derivation when the substituted side cannot be
+ *	  const-folded at plan time.
+ *
+ *	  Currently allows yb_hash_code(...) and yb_hash_code(...) % const_int,
+ *	  matching the cases the derived-equalities feature was built around
+ *	  (sharding/bucket helpers).  Other shapes can be added here as needed.
+ */
+static bool
+yb_expr_safe_to_derive(Expr *expr)
+{
+	if (expr == NULL)
+		return false;
+
+	/* The expression itself may be wrapped in a no-op cast. */
+	while (expr && IsA(expr, RelabelType))
+		expr = ((RelabelType *) expr)->arg;
+
+	if (IsA(expr, FuncExpr) &&
+		((FuncExpr *) expr)->funcid == F_YB_HASH_CODE)
+		return true;
+
+	/* yb_hash_code(...) % const */
+	if (IsA(expr, OpExpr))
+	{
+		OpExpr	   *op = (OpExpr *) expr;
+		Node	   *lhs;
+		Node	   *rhs;
+
+		/* int4 modulus operator oid */
+		if (op->opno != 530 || list_length(op->args) != 2)
+			return false;
+		lhs = (Node *) linitial(op->args);
+		rhs = (Node *) lsecond(op->args);
+		while (lhs && IsA(lhs, RelabelType))
+			lhs = (Node *) ((RelabelType *) lhs)->arg;
+		while (rhs && IsA(rhs, RelabelType))
+			rhs = (Node *) ((RelabelType *) rhs)->arg;
+		if (lhs && IsA(lhs, FuncExpr) &&
+			((FuncExpr *) lhs)->funcid == F_YB_HASH_CODE &&
+			rhs && IsA(rhs, Const) &&
+			!((Const *) rhs)->constisnull)
+			return true;
+	}
+
+	return false;
+}
+
+/*
+ * yb_safely_fold_substituted
+ *	  Constant-fold and null-check the substituted side of a derived
+ *	  equality.  Returns the folded Node on success, NULL if the
+ *	  derivation should be skipped because:
+ *	  - folding itself errored (e.g. divide-by-zero in a folded
+ *	    subexpression); we'd rather skip the derivation than fail
+ *	    planning, so PG_TRY converts that outcome into NULL, or
+ *	  - the folded result is a NULL Const, which would make the
+ *	    derived clause f(col) = NULL silently drop rows under SQL
+ *	    three-valued logic.
+ *
+ *	  Callers may further inspect the returned Node (e.g. to dispatch
+ *	  on Const vs. Var-bearing) -- see yb_try_derive_equal_from_ec.
+ */
+Node *
+yb_safely_fold_substituted(PlannerInfo *root, Expr *substituted)
+{
+	Node	   *folded = NULL;
+	MemoryContext oldcxt = CurrentMemoryContext;
+	ResourceOwner oldowner = CurrentResourceOwner;
+	ResourceOwner tmpowner = ResourceOwnerCreate(oldowner,
+												 "yb_safely_fold_substituted");
+
+	/*
+	 * Run the fold under tmpowner so syscache refs acquired before an error
+	 * (which FlushErrorState doesn't release) pin to tmpowner instead of
+	 * oldowner.  Releasing tmpowner with isCommit=false silently drops them;
+	 * oldowner's eventual isCommit=true release would emit a "cache reference
+	 * leak" warning otherwise.
+	 */
+	CurrentResourceOwner = tmpowner;
+
+	PG_TRY();
+	{
+		folded = eval_const_expressions(root, (Node *) substituted);
+	}
+	PG_CATCH();
+	{
+		FlushErrorState();
+	}
+	PG_END_TRY();
+
+	MemoryContextSwitchTo(oldcxt);
+	CurrentResourceOwner = oldowner;
+	ResourceOwnerRelease(tmpowner, RESOURCE_RELEASE_BEFORE_LOCKS, false, false);
+	ResourceOwnerRelease(tmpowner, RESOURCE_RELEASE_LOCKS,        false, false);
+	ResourceOwnerRelease(tmpowner, RESOURCE_RELEASE_AFTER_LOCKS,  false, false);
+	ResourceOwnerDelete(tmpowner);
+
+	if (folded == NULL)
+		return NULL;
+	if (IsA(folded, Const) && ((Const *) folded)->constisnull)
+		return NULL;
+	return folded;
+}
+
 RestrictInfo *
 yb_try_derive_equal_from_ec(PlannerInfo *root, Index rti, Index target_rti,
 							Expr *inferrable_expr, Expr *generation_expr,
@@ -3170,8 +3278,26 @@ yb_try_derive_equal_from_ec(PlannerInfo *root, Index rti, Index target_rti,
 											   target_rti,
 											   &nullable_relids);
 	if (substituted)
+	{
+		/*
+		 * Skip the derivation if yb_safely_fold_substituted reports the
+		 * substituted side is unsafe (fold errored or folded to NULL
+		 * Const).  Otherwise, when the folded result still contains a Var
+		 * (typical join derivation), we can't determine nullness at plan
+		 * time, so restrict to allowlisted shapes guaranteed non-NULL on
+		 * non-NULL inputs.
+		 */
+		Node	   *folded = yb_safely_fold_substituted(root, substituted);
+
+		if (folded == NULL ||
+			(!IsA(folded, Const) && !yb_expr_safe_to_derive(generation_expr)))
+		{
+			bms_free(nullable_relids);
+			return NULL;
+		}
 		clause = yb_create_derived_clause(inferrable_expr, substituted,
 										  opfamily);
+	}
 	if (clause)
 		return yb_make_derived_restrictinfo(root, clause, nullable_relids);
 	bms_free(nullable_relids);

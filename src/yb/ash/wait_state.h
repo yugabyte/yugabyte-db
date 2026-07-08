@@ -19,8 +19,6 @@
 
 #include "yb/ash/ash_fwd.h"
 
-#include "yb/common/common.messages.h"
-#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/wire_protocol.h"
 
@@ -69,6 +67,10 @@ DECLARE_bool(ysql_yb_enable_ash);
 
 namespace yb {
 class Trace;
+
+// Avoid pulling in the (very heavy) common.messages.h / common.pb.h chains.
+class AshMetadataPB;
+class LWAshMetadataPB;
 }  // namespace yb
 namespace yb::ash {
 
@@ -398,21 +400,10 @@ struct AshMetadata {
     }
   }
 
-  void RootRequestIdToPB(AshMetadataPB* pb) const {
-    pb->set_root_request_id(root_request_id.data(), root_request_id.size());
-  }
-
-  void RootRequestIdToPB(LWAshMetadataPB* pb) const {
-    pb->dup_root_request_id(root_request_id.AsSlice());
-  }
-
-  void TopLevelNodeIdToPB(AshMetadataPB* pb) const {
-    pb->set_top_level_node_id(top_level_node_id.data(), top_level_node_id.size());
-  }
-
-  void TopLevelNodeIdToPB(LWAshMetadataPB* pb) const {
-    pb->dup_top_level_node_id(top_level_node_id.AsSlice());
-  }
+  void RootRequestIdToPB(AshMetadataPB* pb) const;
+  void RootRequestIdToPB(LWAshMetadataPB* pb) const;
+  void TopLevelNodeIdToPB(AshMetadataPB* pb) const;
+  void TopLevelNodeIdToPB(LWAshMetadataPB* pb) const;
 
   template <class PB>
   void ToPB(PB* pb) const {

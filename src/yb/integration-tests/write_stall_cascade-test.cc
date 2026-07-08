@@ -186,7 +186,7 @@ TEST_F(WriteStallCascadeTest, ElectionSucceedsDespiteFollowerWriteStall) {
 
   auto tablet = ASSERT_RESULT(layout.stalled_peer->shared_tablet());
   auto* db_impl = down_cast<rocksdb::DBImpl*>(tablet->regular_db());
-  auto& write_controller = db_impl->TEST_write_controler();
+  auto& write_controller = db_impl->TEST_write_controller();
 
   auto stop_token = write_controller.GetStopToken();
   ASSERT_TRUE(write_controller.IsStopped());
@@ -280,7 +280,7 @@ TEST_F(WriteStallCascadeTest, WriteStallCanBlockElection) {
 
   auto tablet = ASSERT_RESULT(layout.stalled_peer->shared_tablet());
   auto* db_impl = down_cast<rocksdb::DBImpl*>(tablet->regular_db());
-  auto& write_controller = db_impl->TEST_write_controler();
+  auto& write_controller = db_impl->TEST_write_controller();
 
   auto stop_token = write_controller.GetStopToken();
   ASSERT_TRUE(write_controller.IsStopped());
@@ -408,7 +408,7 @@ TEST_F(WriteStallCrossTabletCascadeTest, HealthyTabletUnaffectedByWriteStalledTa
   // Inject write stop on the stalled follower for tablet_A.
   auto tablet = ASSERT_RESULT(layout.stalled_peer->shared_tablet());
   auto* db_impl = down_cast<rocksdb::DBImpl*>(tablet->regular_db());
-  auto& write_controller = db_impl->TEST_write_controler();
+  auto& write_controller = db_impl->TEST_write_controller();
 
   auto stop_token = write_controller.GetStopToken();
   ASSERT_TRUE(write_controller.IsStopped());
@@ -529,7 +529,7 @@ TEST_F(WriteStallCrossTabletCascadeTest, WriteStalledFollowerStarvesOtherTablets
   // Inject write stop on the stalled follower for tablet_A.
   auto tablet = ASSERT_RESULT(layout.stalled_peer->shared_tablet());
   auto* db_impl = down_cast<rocksdb::DBImpl*>(tablet->regular_db());
-  auto& write_controller = db_impl->TEST_write_controler();
+  auto& write_controller = db_impl->TEST_write_controller();
 
   auto stop_token = write_controller.GetStopToken();
   ASSERT_TRUE(write_controller.IsStopped());

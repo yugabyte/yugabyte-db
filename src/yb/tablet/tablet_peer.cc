@@ -510,7 +510,8 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   return tablet_->CompleteStartup();
 }
 
-bool TabletPeer::StartShutdown() {
+bool TabletPeer::StartShutdown(
+    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
 
   auto consensus = GetRaftConsensusUnsafe();
@@ -518,12 +519,16 @@ bool TabletPeer::StartShutdown() {
     consensus->StartShutdown();
   }
 
+  TabletPtr tablet;
   {
     std::lock_guard lock(lock_);
     DEBUG_ONLY_TEST_SYNC_POINT("TabletPeer::StartShutdown:1");
-    if (tablet_) {
-      tablet_->StartShutdown();
-    }
+    tablet = tablet_;
+  }
+  // Tablet::StartShutdown runs StartShutdownStorages, which may block waiting for in-flight read/
+  // write operations to drain, so it must not run while holding the lock_ spinlock.
+  if (tablet) {
+    tablet->StartShutdown(disable_flush_on_shutdown, abort_ops);
   }
 
   {
@@ -540,22 +545,30 @@ bool TabletPeer::StartShutdown() {
     }
   }
 
-  std::lock_guard l(state_change_lock_);
-  // Even though Tablet::Shutdown() also unregisters its ops, we have to do it here
-  // to ensure that any currently running operation finishes before we proceed with
-  // the rest of the shutdown sequence. In particular, a maintenance operation could
-  // indirectly end up calling into the log, which we are about to shut down.
-  UnregisterMaintenanceOps();
+  {
+    std::lock_guard l(state_change_lock_);
+    // Even though Tablet::Shutdown() also unregisters its ops, we have to do it here
+    // to ensure that any currently running operation finishes before we proceed with
+    // the rest of the shutdown sequence. In particular, a maintenance operation could
+    // indirectly end up calling into the log, which we are about to shut down.
+    UnregisterMaintenanceOps();
 
-  if (consensus) {
-    consensus->CompleteShutdown();
+    if (consensus) {
+      consensus->CompleteShutdown();
+    }
   }
+
+  // Fail parked WaitForAsyncWrite RPCs. During server shutdown, Messenger::Shutdown joins the
+  // reactor threads, which waits for all inbound calls to be responded to, and that runs before
+  // TabletPeer::CompleteShutdown. Return NOT_THE_LEADER so the client can retry on a new leader.
+  FailAllAsyncWrites(STATUS(
+      IllegalState, Format("Tablet $0 peer shutting down during async write", tablet_id()),
+      tserver::TabletServerError(tserver::TabletServerErrorPB::NOT_THE_LEADER)));
 
   return true;
 }
 
-void TabletPeer::CompleteShutdown(
-    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
+void TabletPeer::CompleteShutdown() {
   auto* strand = strand_.get();
   if (strand) {
     strand->Shutdown();
@@ -579,10 +592,8 @@ void TabletPeer::CompleteShutdown(
 
   VLOG_WITH_PREFIX(1) << "Shut down!";
 
-  FailAllAsyncWrites(STATUS(IllegalState, "Tablet peer is shutting down"));
-
   if (tablet_) {
-    tablet_->CompleteShutdown(disable_flush_on_shutdown, abort_ops);
+    tablet_->CompleteShutdown();
   }
 
   tablet_obj_state_.store(TabletObjectState::kDestroyed, std::memory_order_release);
@@ -643,11 +654,12 @@ void TabletPeer::WaitUntilShutdown() {
   }
 }
 
-Status TabletPeer::Shutdown(
+Status TabletPeer::TEST_Shutdown(
     ShouldAbortActiveTransactions should_abort_active_txns,
     DisableFlushOnShutdown disable_flush_on_shutdown,
     std::optional<TransactionId>&& exclude_aborting_txn_id) {
-  auto is_shutdown_initiated = StartShutdown();
+  auto is_shutdown_initiated =
+      StartShutdown(disable_flush_on_shutdown, AbortOps(should_abort_active_txns));
 
   if (should_abort_active_txns) {
     // Once raft group state enters QUIESCING state,
@@ -657,7 +669,7 @@ Status TabletPeer::Shutdown(
   }
 
   if (is_shutdown_initiated) {
-    CompleteShutdown(disable_flush_on_shutdown, AbortOps(should_abort_active_txns));
+    CompleteShutdown();
   } else {
     WaitUntilShutdown();
   }

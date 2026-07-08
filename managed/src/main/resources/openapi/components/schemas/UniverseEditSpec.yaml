@@ -22,3 +22,5 @@ properties:
     description: Expected universe version. Set to -1 to ignore version checking.
     type: integer
     format: int32
+  universe_settings:
+    $ref: "./UniverseSettings.yaml"
