@@ -15,6 +15,7 @@ import time
 import requests
 
 from ybops.common.exceptions import YBOpsRuntimeError, YBOpsRecoverableError
+from ybops.cloud.common.utils import request_retry_decorator
 from ybops.utils import DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, MIN_NUM_CORES
 from ybops.utils.ssh import format_rsa_key, validated_key_file
 from threading import Thread
@@ -73,6 +74,15 @@ MIN_BOOT_VOLUME_SIZE_GB = 50
 
 # Max length of a single DNS label per RFC 1035.
 MAX_DNS_LABEL_LENGTH = 63
+
+
+def oci_instance_action_conflict_handler(e):
+    """OCI returns 409 when instance_action is called during background modification."""
+    return isinstance(e, oci.exceptions.ServiceError) and e.status == 409
+
+
+def oci_instance_action_conflict_retry(fn):
+    return request_retry_decorator(fn, oci_instance_action_conflict_handler)
 
 
 def sanitize_dns_label(name, max_length=MAX_DNS_LABEL_LENGTH):
@@ -615,8 +625,12 @@ class OciCloudAdmin:
         self.compute_client.instance_action(instance_id, "STOP")
         return self._wait_for_instance_state(instance_id, OCI_INSTANCE_STOPPED)
 
+    @oci_instance_action_conflict_retry
+    def _invoke_instance_action(self, instance_id, action):
+        self.compute_client.instance_action(instance_id, action)
+
     def start_instance(self, instance_id):
-        self.compute_client.instance_action(instance_id, "START")
+        self._invoke_instance_action(instance_id, "START")
         return self._wait_for_instance_state(instance_id, OCI_INSTANCE_RUNNING)
 
     def reboot_instance(self, instance_id):
@@ -636,6 +650,10 @@ class OciCloudAdmin:
             shape_config=shape_config
         )
         self.compute_client.update_instance(instance_id, update_details)
+        return self._wait_for_instance_state(
+            instance_id,
+            OCI_INSTANCE_STOPPED,
+            ready_check=lambda instance: instance.shape == new_shape)
 
     def create_volume(self, availability_domain, size_in_gbs, display_name=None,
                       volume_type=OCI_VOLUME_TYPE_BALANCED, vpus_per_gb=None, tags=None):
@@ -731,13 +749,15 @@ class OciCloudAdmin:
         return ""
 
     def _wait_for_instance_state(
-            self, instance_id, target_state, timeout=600, allow_not_found=False):
+            self, instance_id, target_state, timeout=600, allow_not_found=False,
+            ready_check=None):
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
                 instance = self.compute_client.get_instance(instance_id).data
                 if instance.lifecycle_state == target_state:
-                    return instance
+                    if ready_check is None or ready_check(instance):
+                        return instance
                 if instance.lifecycle_state == OCI_INSTANCE_TERMINATED:
                     if allow_not_found:
                         return None
@@ -749,7 +769,8 @@ class OciCloudAdmin:
                 raise
             time.sleep(10)
         raise YBOpsRuntimeError(
-            "Timeout waiting for instance {} to reach state {}".format(instance_id, target_state))
+            "Timeout waiting for instance {} to reach state {}".format(
+                instance_id, target_state))
 
     def _wait_for_volume_state(self, volume_id, target_state, timeout=300):
         start_time = time.time()

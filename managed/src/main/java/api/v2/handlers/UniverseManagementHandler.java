@@ -306,6 +306,15 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
+    for (Cluster cluster : v1Params.clusters) {
+      if (!cluster.userIntent.dedicatedNodes) {
+        // Since in V2 API is based on partial updates,
+        // we cannot detect the case when these fields are removed (during dedicated mode switch)
+        // Keeping these fields will lead to error in validation.
+        cluster.userIntent.masterInstanceType = null;
+        cluster.userIntent.masterDeviceInfo = null;
+      }
+    }
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 
     // edit universe with v1 spec

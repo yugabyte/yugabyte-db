@@ -3181,6 +3181,26 @@
       ],
       "type" : "object"
     },
+    "AzNodesSpec" : {
+      "properties" : {
+        "azCode" : {
+          "type" : "string"
+        },
+        "code" : {
+          "type" : "string"
+        },
+        "masterSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        },
+        "tserverSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        }
+      },
+      "required" : [
+        "code"
+      ],
+      "type" : "object"
+    },
     "AzureCloudInfo" : {
       "properties" : {
         "azuClientId" : {
@@ -14399,8 +14419,11 @@
       ],
       "type" : "object"
     },
-    "NodeSpecification" : {
+    "NodeSpec" : {
       "properties" : {
+        "backupProxyConfig" : {
+          "$ref" : "#/definitions/ProxyConfig"
+        },
         "cgroupSize" : {
           "format" : "int32",
           "type" : "integer"
@@ -14413,20 +14436,6 @@
         },
         "k8SNodeResourceSpec" : {
           "$ref" : "#/definitions/K8SNodeResourceSpec"
-        },
-        "proxyConfig" : {
-          "$ref" : "#/definitions/ProxyConfig"
-        }
-      },
-      "type" : "object"
-    },
-    "NodesSpecification" : {
-      "properties" : {
-        "masterSpecification" : {
-          "$ref" : "#/definitions/NodeSpecification"
-        },
-        "tserverSpecification" : {
-          "$ref" : "#/definitions/NodeSpecification"
         }
       },
       "type" : "object"
@@ -16320,9 +16329,6 @@
           },
           "type" : "object"
         },
-        "baseNodesSpecification" : {
-          "$ref" : "#/definitions/NodesSpecification"
-        },
         "enableLoadBalancer" : {
           "type" : "boolean"
         },
@@ -16347,11 +16353,8 @@
           },
           "type" : "object"
         },
-        "perAZOverrides" : {
-          "additionalProperties" : {
-            "$ref" : "#/definitions/NodesSpecification"
-          },
-          "type" : "object"
+        "nodesSpecs" : {
+          "$ref" : "#/definitions/RootNodesSpec"
         },
         "providerType" : {
           "enum" : [
@@ -16373,6 +16376,11 @@
           "type" : "string"
         }
       },
+      "required" : [
+        "nodesSpecs",
+        "providerType",
+        "providerUUID"
+      ],
       "type" : "object"
     },
     "ProvisionUniverseNodesParams" : {
@@ -18020,6 +18028,32 @@
         "latitude",
         "longitude",
         "name"
+      ],
+      "type" : "object"
+    },
+    "RegionNodesSpec" : {
+      "properties" : {
+        "azNodesSpecs" : {
+          "items" : {
+            "$ref" : "#/definitions/AzNodesSpec"
+          },
+          "type" : "array"
+        },
+        "code" : {
+          "type" : "string"
+        },
+        "masterSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        },
+        "regionCode" : {
+          "type" : "string"
+        },
+        "tserverSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        }
+      },
+      "required" : [
+        "code"
       ],
       "type" : "object"
     },
@@ -21237,6 +21271,23 @@
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
       ],
+      "type" : "object"
+    },
+    "RootNodesSpec" : {
+      "properties" : {
+        "masterSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        },
+        "regionNodesSpecs" : {
+          "items" : {
+            "$ref" : "#/definitions/RegionNodesSpec"
+          },
+          "type" : "array"
+        },
+        "tserverSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        }
+      },
       "type" : "object"
     },
     "RunQueryFormData" : {
