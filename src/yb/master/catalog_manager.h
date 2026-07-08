@@ -3364,6 +3364,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     // Indicates whether the transaction is committed or aborted or unknown.
     TxnState txn_state;
 
+    // Status tablet of the transaction. Required when re-triggering verification from a failed
+    // state.
+    TabletId txn_status_tablet;
+
     // Indicates the verification state of the DDL transaction.
     YsqlDdlVerificationState state;
 
