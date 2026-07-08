@@ -3546,21 +3546,19 @@ TEST_P(PgVectorIndexReverseMappingTest, UpdateReverseMapping_NoIndex) {
   ASSERT_OK(InsertRows(conn, 1, 3));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
-  // TODO(#32310): Remove the transaction wrapper once the issue is fixed.
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 2"));
-  ASSERT_OK(conn.CommitTransaction());
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
   auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
   if (TableOwnsVectorReverseMapping()) {
+    // Fast path writes the new reverse-mapping entry before tombstoning the old vector id.
     ASSERT_STR_EQ_VERBOSE_TRIMMED(
         R"#(
             ybctid_1_vector_1 -> ybctid_1
             ybctid_2_vector_1 -> ybctid_2
             ybctid_3_vector_1 -> ybctid_3
-            ybctid_2_vector_1 -> DEL
             ybctid_2_vector_2 -> ybctid_2
+            ybctid_2_vector_1 -> DEL
         )#",
         output);
   } else {
@@ -3641,10 +3639,7 @@ TEST_P(PgVectorIndexReverseMappingTest, DeleteReverseMapping_NoIndex) {
   ASSERT_OK(InsertRows(conn, 1, 3));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
-  // TODO(#32310): Remove the transaction wrapper once the issue is fixed.
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
-  ASSERT_OK(conn.CommitTransaction());
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
   auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());

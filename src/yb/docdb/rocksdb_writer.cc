@@ -1302,15 +1302,37 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
     RETURN_NOT_OK(PrepareApplyExternalIntents(apply_external_transactions, handler));
   }
 
-  DocHybridTimeBuffer doc_ht_buffer;
+  std::optional<VectorIndexesUpdater> vector_indexes_updater;
   IntraTxnWriteId write_id = 0;
+  if (ShouldMaintainVectorIndexes(table_type_)) {
+    vector_indexes_updater.emplace(
+        vector_indexes_, schema_packing_provider_, frontiers_, apply_to_storages_,
+        write_hybrid_time_, write_id);
+  }
+
+  DocHybridTimeBuffer doc_ht_buffer;
   for (const auto& write_pair : put_batch_.write_pairs()) {
     if (VERIFY_RESULT(AddEntryToWriteBatch(
             write_pair, apply_external_transactions, handler, write_id))) {
+      if (vector_indexes_updater) {
+        RETURN_NOT_OK(vector_indexes_updater->Feed(
+            handler, write_pair.key(), write_pair.value()));
+      }
       HandleRegularRecord(write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &write_id);
 
       RETURN_NOT_OK(UpdateSchemaVersion(write_pair.key(), write_pair.value()));
     }
+  }
+
+  if (vector_indexes_updater) {
+    RETURN_NOT_OK(vector_indexes_updater->Complete());
+  }
+
+  if (put_batch_.has_delete_vector_ids()) {
+    RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
+        handler, Slice(put_batch_.delete_vector_ids()),
+        DocHybridTime(write_hybrid_time_, write_id)));
+    frontiers_.Largest().SetHasVectorDeletion();
   }
 
   return Status::OK();
