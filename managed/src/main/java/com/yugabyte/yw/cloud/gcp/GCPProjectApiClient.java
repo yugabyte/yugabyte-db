@@ -43,6 +43,7 @@ import com.google.api.services.compute.model.NetworkList;
 import com.google.api.services.compute.model.Operation;
 import com.google.api.services.compute.model.Reservation;
 import com.google.api.services.compute.model.ReservationAggregatedList;
+import com.google.api.services.compute.model.ReservationList;
 import com.google.api.services.compute.model.ReservationsScopedList;
 import com.google.api.services.compute.model.SubnetworkList;
 import com.google.api.services.compute.model.TCPHealthCheck;
@@ -855,6 +856,14 @@ public class GCPProjectApiClient {
       String reservationName, String zone, String instanceType, int count, Map<String, String> tags)
       throws IOException {
 
+    if (fetchReservationIfExists(reservationName, zone) != null) {
+      log.info(
+          "Capacity reservation {} already exists in zone {}, skipping creation",
+          reservationName,
+          zone);
+      return reservationName;
+    }
+
     // Create the reservation object using the older API models
     com.google.api.services.compute.model.Reservation reservation =
         new com.google.api.services.compute.model.Reservation();
@@ -1004,5 +1013,16 @@ public class GCPProjectApiClient {
     Long count = specificReservation.getCount();
     Long inUseCount = specificReservation.getInUseCount();
     return count != null && inUseCount != null && inUseCount.equals(count);
+  }
+
+  private Reservation fetchReservationIfExists(String reservationName, String zone)
+      throws IOException {
+    ReservationList list =
+        compute
+            .reservations()
+            .list(project, zone)
+            .setFilter("name = \"" + reservationName + "\"")
+            .execute();
+    return CollectionUtils.isEmpty(list.getItems()) ? null : list.getItems().get(0);
   }
 }
