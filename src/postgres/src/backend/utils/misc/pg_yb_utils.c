@@ -7103,6 +7103,35 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 		return false;
 	}
 
+	/*
+	 * Disallow setting yb_read_time inside an explicit transaction block.
+	 * Setting it resets the backend's local catalog version, which is not
+	 * refreshed while a transaction is already open, and can surface as a
+	 * confusing "Catalog Version Mismatch" error on a subsequent statement.
+	 * yb_read_time is meant to be set at the session level, before any
+	 * transaction is started.
+	 *
+	 * Carve-outs:
+	 *  - yb_disable_catalog_version_check: the caller has explicitly opted out
+	 *    of the catalog version check (e.g. xCluster, non-superuser CDC
+	 *    connector), so resetting the local catalog version is
+	 *    harmless.
+	 *  - walsender: logical replication snapshot consumers legitimately use
+	 *    SET LOCAL yb_read_time inside the snapshot transaction, and their
+	 *    reads do not send a catalog version anyway.
+	 */
+	if (!yb_disable_catalog_version_check &&
+		!am_walsender &&
+		IsTransactionBlock())
+	{
+		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+		GUC_check_errmsg("yb_read_time cannot be set inside a transaction block");
+		GUC_check_errdetail("Set yb_read_time at the session level, outside an "
+							"explicit transaction block (BEGIN/COMMIT), or set "
+							"yb_disable_catalog_version_check first.");
+		return false;
+	}
+
 	/* Read time should be convertable to unsigned long long */
 	unsigned long long read_time_ull;
 	unsigned long long value_ull;
