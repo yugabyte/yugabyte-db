@@ -28,9 +28,9 @@ The following table includes a list of supported data type mappings for migratin
 | Oracle data type | Maps to YugabyteDB as | Comments |
 | :--------------- | :------------------- | :------- |
 | CHAR | CHAR |
-| NCHAR | CHAR | Live migration from Oracle is not supported. |
+| NCHAR | CHAR |
 | VARCHAR2 | VARCHAR |
-| NVARCHAR2 | VARCHAR | Live migration from Oracle is not supported. |
+| NVARCHAR2 | VARCHAR |
 | RAW | BYTEA |
 | LONG RAW | BYTEA |
 | DATE | TIMESTAMP |

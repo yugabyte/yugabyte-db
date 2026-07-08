@@ -42,7 +42,6 @@ This release includes breaking changes for Voyager migrations. Migrations starte
 - Fixed unique-key conflict detection for multi-column unique indexes during live migration.
 - Fixed live migration reporting false unique-key conflicts for tables using the table CDC partitioning strategy.
 - Fixed a validation issue where `--use-partition-root` incorrectly evaluated the target engine instead of the source database, ensuring non-PostgreSQL sources are properly rejected.
->>>>>>> master
 
 ## v2026.6.2 - June 24, 2026
 
