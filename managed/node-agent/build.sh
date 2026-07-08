@@ -210,8 +210,9 @@ run_test() {
     echo "Running tests in ${dir}..."
     set +e
     go clean -testcache
-    local json_file="target/test-reports/tmp_results_${dir}.json"
-    local xml_file="target/test-reports/node_agent_test_results_${dir}.xml"
+    mkdir -p "target/test-reports/${dir}"
+    local json_file="target/test-reports/${dir}/tmp_results.json"
+    local xml_file="target/test-reports/${dir}/node_agent_test_results.xml"
     go test -json -short --tags testonly ./"$dir"/... > "$json_file"
     if [ -s "$json_file" ]; then
         go-junit-report -parser gojson -set-exit-code -iocopy -out "$xml_file" < "$json_file"
@@ -230,10 +231,12 @@ run_tests() {
     pushd "$project_dir"
     mkdir -p target/test-reports
     if [ -n "$testone_path" ]; then
-        run_test "$testone_path"
-        if [ $? -ne 0 ]; then
-            failed_tests+=("$testone_path")
-        fi
+        # E.g testone app/task/module.
+        local test_files=$(find "${testone_path}" -name '*_test.go')
+        for test_file in $test_files; do
+            local test_dir=$(dirname "$test_file")
+            run_test "$test_dir"
+        done
     else
         for dir in */ ; do
             # Remove trailing slash.

@@ -71,6 +71,9 @@ class PgDdlAtomicityStressTest : public PgDdlAtomicityTestBase,
     }
     // TODO(#28042): Enable object locking once the false deadlock issues are addressed.
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   }
 
   Status SetupTables();
@@ -212,6 +215,16 @@ Result<bool> PgDdlAtomicityStressTest::DoExecuteWithRetry(
     "Invalid column number"sv,
     "duplicate key value violates unique constraint"sv,
     "not found in Raft group"sv,
+    // For a colocated partitioned table, CREATE INDEX creates a child index on each partition and
+    // waits for its creation to finish. If the DDL transaction is aborted by a concurrent conflict,
+    // the child index table is deleted as part of rollback while the backend is still polling for
+    // its creation. The poll then keeps seeing OBJECT_NOT_FOUND until the statement deadline and
+    // fails with "Timed out waiting for '<idx>' table creation" (the "'<idx>' table creation" tail
+    // comes from PrettyRequest in pg_client.cc). This is an expected transient here, so retry the
+    // statement. Match the "' table creation" tail rather than a bare "table creation" to avoid
+    // over-matching unrelated messages. Note the sqlstate ("pgsql error XX000") is an attached
+    // error code, not part of Status::message(), so it must not be included here.
+    "' table creation"sv,
     kDdlVerificationError
   };
   if (HasSubstring(msg, allowed_msgs)) {

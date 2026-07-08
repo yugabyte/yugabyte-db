@@ -684,6 +684,19 @@ GET /customers/:cUUID/universes/:uUUID/pa_collector                            c
 PUT /customers/:cUUID/universes/:uUUID/pa_collector/:paUUID                    com.yugabyte.yw.controllers.PACollectorController.registerUniverse(cUUID: java.util.UUID, uUUID: java.util.UUID, paUUID: java.util.UUID, advancedObservability: java.lang.Boolean ?= false, request: Request)
 DELETE /customers/:cUUID/universes/:uUUID/pa_collector                        com.yugabyte.yw.controllers.PACollectorController.unregisterUniverse(cUUID: java.util.UUID, uUUID: java.util.UUID, request: Request)
 
+# PA Proxy - reverse proxy for PA UI XHRs. Universe-scoped routes come first so
+# the more specific pattern matches before the catch-all.
+GET     /customers/:cUUID/pa_proxy/:paUUID/api/universe/:uUUID/*path com.yugabyte.yw.controllers.PAProxyController.proxyUniverse(cUUID: java.util.UUID, paUUID: java.util.UUID, uUUID: java.util.UUID, path: String, request: Request)
+POST    /customers/:cUUID/pa_proxy/:paUUID/api/universe/:uUUID/*path com.yugabyte.yw.controllers.PAProxyController.proxyUniverse(cUUID: java.util.UUID, paUUID: java.util.UUID, uUUID: java.util.UUID, path: String, request: Request)
+PUT     /customers/:cUUID/pa_proxy/:paUUID/api/universe/:uUUID/*path com.yugabyte.yw.controllers.PAProxyController.proxyUniverse(cUUID: java.util.UUID, paUUID: java.util.UUID, uUUID: java.util.UUID, path: String, request: Request)
+DELETE  /customers/:cUUID/pa_proxy/:paUUID/api/universe/:uUUID/*path com.yugabyte.yw.controllers.PAProxyController.proxyUniverse(cUUID: java.util.UUID, paUUID: java.util.UUID, uUUID: java.util.UUID, path: String, request: Request)
+PATCH   /customers/:cUUID/pa_proxy/:paUUID/api/universe/:uUUID/*path com.yugabyte.yw.controllers.PAProxyController.proxyUniverse(cUUID: java.util.UUID, paUUID: java.util.UUID, uUUID: java.util.UUID, path: String, request: Request)
+GET     /customers/:cUUID/pa_proxy/:paUUID/api/*path                 com.yugabyte.yw.controllers.PAProxyController.proxyGeneric(cUUID: java.util.UUID, paUUID: java.util.UUID, path: String, request: Request)
+POST    /customers/:cUUID/pa_proxy/:paUUID/api/*path                 com.yugabyte.yw.controllers.PAProxyController.proxyGeneric(cUUID: java.util.UUID, paUUID: java.util.UUID, path: String, request: Request)
+PUT     /customers/:cUUID/pa_proxy/:paUUID/api/*path                 com.yugabyte.yw.controllers.PAProxyController.proxyGeneric(cUUID: java.util.UUID, paUUID: java.util.UUID, path: String, request: Request)
+DELETE  /customers/:cUUID/pa_proxy/:paUUID/api/*path                 com.yugabyte.yw.controllers.PAProxyController.proxyGeneric(cUUID: java.util.UUID, paUUID: java.util.UUID, path: String, request: Request)
+PATCH   /customers/:cUUID/pa_proxy/:paUUID/api/*path                 com.yugabyte.yw.controllers.PAProxyController.proxyGeneric(cUUID: java.util.UUID, paUUID: java.util.UUID, path: String, request: Request)
+
 # New Release APIs
 POST /customers/:cUUID/ybdb_release                                            com.yugabyte.yw.controllers.ReleasesController.create(cUUID: java.util.UUID, request: Request)
 GET /customers/:cUUID/ybdb_release                                             com.yugabyte.yw.controllers.ReleasesController.list(cUUID: java.util.UUID, deployment_type: String ?= null, request: Request)

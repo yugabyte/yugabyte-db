@@ -137,5 +137,6 @@ extern OpExpr *yb_create_derived_clause(Expr *inferrable_expr,
 extern RestrictInfo *yb_make_derived_restrictinfo(PlannerInfo *root,
 												  OpExpr *clause,
 												  Relids nullable_relids);
+extern Node *yb_safely_fold_substituted(PlannerInfo *root, Expr *substituted);
 
 #endif							/* PLANMAIN_H */

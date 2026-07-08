@@ -115,31 +115,6 @@
           sourceType: endpoint
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
-/ybc/gflags-metadata:
-  get:
-    operationId: listYbcGflagsMetadata
-    summary: List YBC Gflags metadata
-    description: Get list of all YBC gflags and related metadata.
-    tags:
-      - Backup and Restore
-    responses:
-      '200':
-        $ref: "../components/responses/YbcGflagsResp.yaml"
-      '404':
-        description: Not found
-    security:
-      - apiKeyAuth: []
-    x-yba-api-audit:
-      noAudit: true
-    x-yba-api-authz:
-      - requiredPermission:
-          resourceType: other
-          action: read
-        resourceLocation:
-          path: customers
-          sourceType: endpoint
-    x-yba-api-since: 2024.2.0.0
-    x-yba-api-visibility: preview
 '/customers/{cUUID}/backups/page':
   parameters:
     - name: cUUID
@@ -181,6 +156,31 @@
           sourceType: endpoint
         checkOnlyPermission: true
     x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+/ybc/gflags-metadata:
+  get:
+    operationId: listYbcGflagsMetadata
+    summary: List YBC Gflags metadata
+    description: Get list of all YBC gflags and related metadata.
+    tags:
+      - Backup and Restore
+    responses:
+      '200':
+        $ref: "../components/responses/YbcGflagsResp.yaml"
+      '404':
+        description: Not found
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/auto-yba-backups':
   parameters:
@@ -2937,6 +2937,63 @@
         checkOnlyPermission: false
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/proxy-config':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: updateProxyConfig
+    summary: Update proxy configuration
+    description: |
+      Queues a task to update HTTP/HTTPS proxy settings for nodes in the universe.
+      Supports universe-level proxy_config and per-availability-zone overrides via
+      az_networking.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseUpdateProxyConfigReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Customer or Universe or Cluster not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpdateProxyConfig
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.2.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/resize-nodes':
   parameters:
     - name: cUUID

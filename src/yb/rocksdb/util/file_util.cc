@@ -28,6 +28,8 @@
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
 
+#include "yb/util/status_format.h"
+
 #include "yb/util/path_util.h"
 
 namespace rocksdb {

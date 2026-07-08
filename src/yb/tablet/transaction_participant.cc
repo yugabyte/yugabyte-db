@@ -1405,9 +1405,20 @@ class TransactionParticipant::Impl
         if (committed_ids.empty()) {
           break;
         } else {
-          // We are waiting only for committed transactions to be applied.
-          // So just add some delay.
-          std::this_thread::sleep_for(10ms * std::min<size_t>(10, committed_ids.size()));
+          // We are waiting only for committed transactions to be applied. Honor the deadline
+          // instead of spinning forever: the resolver returns quickly for already-committed
+          // transactions, so nothing in this loop observes the deadline otherwise. A committed
+          // transaction that never gets applied (e.g. when the applier is stopped during
+          // shutdown) would keep this loop sleeping indefinitely and block callers such as CDC
+          // GetChanges from returning.
+          auto now = CoarseMonoClock::Now();
+          if (now >= deadline) {
+            return STATUS(
+                TimedOut, "Timed out waiting for committed transactions to be applied");
+          }
+          // So just add some delay, but don't sleep past the deadline.
+          std::this_thread::sleep_for(std::min<CoarseMonoClock::Duration>(
+              10ms * std::min<size_t>(10, committed_ids.size()), deadline - now));
         }
       }
     }

@@ -16,7 +16,7 @@ import logging
 import os
 from typing import Any, Dict, Generator, Optional
 
-from rag_pipeline.md_parser import parse_markdown
+from rag_pipeline.md_parser import parse_markdown, split_embed_text
 from observability import meko_observe
 
 PDF_MIME_TYPES = frozenset({"application/pdf"})
@@ -59,4 +59,4 @@ def chunk_pdf_whole_file(
     )
 
     for chunk in doc.chunks:
-        yield chunk.to_embed_text(doc.title)
+        yield from split_embed_text(chunk.to_embed_text(doc.title))

@@ -3020,6 +3020,9 @@ class YBDdlAtomicityBackupTest : public YBBackupTestBase, public pgwrapper::PgDd
     // Test enables TEST_pause_ddl_rollback which may block table locks for ddl from
     // being released. Hence blocking the following statements from failing to acquire locks.
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
     pgwrapper::PgDdlAtomicityTestBase::UpdateMiniClusterOptions(options);
   }
 
@@ -4152,6 +4155,75 @@ INSTANTIATE_TEST_SUITE_P(
     [](const testing::TestParamInfo<VectorIndexColocationScenario>& info) {
       return VectorIndexColocationScenarioName(info.param);
     });
+
+TEST_F_EX(
+    YBBackupTest,
+    YB_DISABLE_TEST_IN_SANITIZERS(YBCBackupRestoreColocatedTablespaceVectorIndex),
+    YBBackupTestColocatedTablesWithTablespaces) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Test requires YBC.";
+  }
+
+  const std::string_view kBackupDbName{"backup_db"};
+  const std::string_view kRestoreDbName{"restore_db"};
+
+  const std::string placement_info_1 = R"#(
+    '{
+      "num_replicas" : 1,
+      "placement_blocks": [
+          {
+            "cloud"            : "cloud1",
+            "region"           : "datacenter1",
+            "zone"             : "rack1",
+            "min_num_replicas" : 1
+          }
+      ]
+    }'
+  )#";
+
+  {
+    auto admin_conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_OK(admin_conn.ExecuteFormat(
+        "CREATE TABLESPACE tsp1 WITH (replica_placement=$0)", placement_info_1));
+    ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION=TRUE", kBackupDbName));
+  }
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kBackupDbName));
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT, embedding vector(3)) TABLESPACE tsp1"));
+  ASSERT_OK(conn.Execute(
+      "CREATE INDEX t1_vec_idx ON t1 USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 SELECT g, 'row' || g, "
+      "ARRAY[random(), random(), random()]::vector FROM generate_series(1, 50) g"));
+
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(
+          "SELECT count(*) FROM pg_yb_tablegroup WHERE grpname LIKE 'colocation_%'")),
+      1);
+
+  const std::string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--use_tablespaces", "--keyspace",
+       Format("ysql.$0", kBackupDbName), "create"}));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--use_tablespaces", "--keyspace",
+       Format("ysql.$0", kRestoreDbName), "restore"}));
+
+  auto restore_conn = ASSERT_RESULT(cluster_->ConnectToDB(kRestoreDbName));
+  ASSERT_EQ(ASSERT_RESULT(restore_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM t1")), 50);
+  ASSERT_EQ(
+      ASSERT_RESULT(restore_conn.FetchRow<int64_t>(
+          "SELECT count(*) FROM pg_yb_tablegroup WHERE grpname LIKE 'colocation_%'")),
+      1);
+
+  auto nearest_id = ASSERT_RESULT(restore_conn.FetchRow<int32_t>(
+      "SELECT id FROM t1 ORDER BY embedding <-> '[0.1,0.2,0.3]' LIMIT 1"));
+  ASSERT_GE(nearest_id, 1);
+  ASSERT_LE(nearest_id, 50);
+}
 
 TEST_F(
     YBBackupTest,

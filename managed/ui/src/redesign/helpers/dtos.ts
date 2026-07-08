@@ -228,7 +228,9 @@ export enum NodeState {
   Removed = 'Removed',
   Adding = 'Adding',
   BeingDecommissioned = 'BeingDecommissioned',
-  Decommissioned = 'Decommissioned'
+  Decommissioned = 'Decommissioned',
+  InstanceStopping = 'InstanceStopping',
+  InstanceStopped = 'InstanceStopped'
 }
 
 // NodeDetails.java

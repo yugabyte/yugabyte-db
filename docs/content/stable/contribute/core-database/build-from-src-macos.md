@@ -49,7 +49,7 @@ First, install [Homebrew](https://brew.sh/), if you do not already have it. Home
 
 ```sh
 /usr/bin/ruby -e "$(
-  curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+  curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
 ```
 
 Install the following packages using Homebrew:

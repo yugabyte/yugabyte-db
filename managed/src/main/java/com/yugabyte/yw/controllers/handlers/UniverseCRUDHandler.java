@@ -559,7 +559,7 @@ public class UniverseCRUDHandler {
         }
 
         if (cert.getCertType() == CertConfigType.CustomCertHostPath) {
-          if (!taskParams.getPrimaryCluster().userIntent.getAllCloudTypes().stream()
+          if (taskParams.getPrimaryCluster().userIntent.getAllCloudTypes().stream()
               .filter(ct -> ct != Common.CloudType.onprem)
               .findFirst()
               .isPresent()) {
@@ -609,7 +609,7 @@ public class UniverseCRUDHandler {
 
       cert = CertificateInfo.get(taskParams.getClientRootCA());
       if (cert.getCertType() == CertConfigType.CustomCertHostPath) {
-        if (!taskParams.getPrimaryCluster().userIntent.getAllCloudTypes().stream()
+        if (taskParams.getPrimaryCluster().userIntent.getAllCloudTypes().stream()
             .filter(ct -> ct != Common.CloudType.onprem)
             .findFirst()
             .isPresent()) {

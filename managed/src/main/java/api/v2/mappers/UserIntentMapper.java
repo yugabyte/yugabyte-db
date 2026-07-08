@@ -22,6 +22,8 @@ import api.v2.models.ClusterStorageSpec.StorageTypeEnum;
 import api.v2.models.NodeProxyConfig;
 import api.v2.models.PerProcessNodeSpec;
 import api.v2.models.UniverseResizeNodesCluster;
+import api.v2.models.UniverseUpdateProxyConfigClustersInner;
+import api.v2.models.UpdateProxyConfigSpec;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -300,6 +302,18 @@ public interface UserIntentMapper {
     return userIntent;
   }
 
+  default UserIntent toV1UserIntentFromUniverseUpdateProxyConfigClustersInner(
+      UniverseUpdateProxyConfigClustersInner source, @MappingTarget UserIntent userIntent) {
+    if (source == null) {
+      return userIntent;
+    }
+    if (userIntent == null) {
+      userIntent = new UniverseDefinitionTaskParams.UserIntent();
+    }
+    fillUserIntentFromUpdateProxyConfigSpec(source.getNetworkingSpec(), userIntent);
+    return userIntent;
+  }
+
   default UserIntent overwriteUserIntentFromClusterAddSpec(
       ClusterAddSpec clusterAddSpec, @MappingTarget UserIntent userIntent) {
     if (clusterAddSpec == null) {
@@ -390,12 +404,8 @@ public interface UserIntentMapper {
           .getAzNodeSpec()
           .forEach(
               (azUuid, azNode) -> {
-                UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
-                if (overrides == null) {
-                  overrides = new UserIntentOverrides();
-                  overrides.setAzOverrides(new HashMap<UUID, AZOverrides>());
-                  userIntent.setUserIntentOverrides(overrides);
-                }
+                UserIntentOverrides overrides = getOrCreateUserIntentOverrides(userIntent);
+                Map<UUID, AZOverrides> azOverridesMap = getOrCreateAzOverrides(overrides);
                 AZOverrides azOverrides = new AZOverrides();
                 azOverrides.setInstanceType(azNode.getInstanceType());
                 azOverrides.setDeviceInfo(storageSpecToDeviceInfo(azNode.getStorageSpec()));
@@ -405,16 +415,16 @@ public interface UserIntentMapper {
                   masterOverrides.setInstanceType(azNode.getMaster().getInstanceType());
                   masterOverrides.setDeviceInfo(
                       storageSpecToDeviceInfo(azNode.getMaster().getStorageSpec()));
-                  azOverrides.getPerProcess().put(ServerType.MASTER, masterOverrides);
+                  getOrCreateAzPerProcess(azOverrides).put(ServerType.MASTER, masterOverrides);
                 }
                 if (azNode.getTserver() != null) {
                   PerProcessDetails tserverOverrides = new PerProcessDetails();
                   tserverOverrides.setInstanceType(azNode.getTserver().getInstanceType());
                   tserverOverrides.setDeviceInfo(
                       storageSpecToDeviceInfo(azNode.getTserver().getStorageSpec()));
-                  azOverrides.getPerProcess().put(ServerType.TSERVER, tserverOverrides);
+                  getOrCreateAzPerProcess(azOverrides).put(ServerType.TSERVER, tserverOverrides);
                 }
-                overrides.getAzOverrides().put(UUID.fromString(azUuid), azOverrides);
+                azOverridesMap.put(UUID.fromString(azUuid), azOverrides);
               });
     }
     return userIntent;
@@ -522,17 +532,11 @@ public interface UserIntentMapper {
           .getAzNodeSpec()
           .forEach(
               (azUuid, azNode) -> {
-                UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
-                if (overrides == null) {
-                  overrides = new UserIntentOverrides();
-                  overrides.setAzOverrides(new HashMap<UUID, AZOverrides>());
-                  userIntent.setUserIntentOverrides(overrides);
-                }
+                UserIntentOverrides overrides = getOrCreateUserIntentOverrides(userIntent);
+                Map<UUID, AZOverrides> azOverridesMap = getOrCreateAzOverrides(overrides);
                 boolean hasAzOverride = false;
                 AZOverrides azOverrides =
-                    overrides
-                        .getAzOverrides()
-                        .getOrDefault(UUID.fromString(azUuid), new AZOverrides());
+                    azOverridesMap.getOrDefault(UUID.fromString(azUuid), new AZOverrides());
                 if (azNode.getInstanceType() != null) {
                   azOverrides.setInstanceType(azNode.getInstanceType());
                   hasAzOverride = true;
@@ -551,10 +555,10 @@ public interface UserIntentMapper {
                   hasAzOverride = true;
                 }
                 if (azNode.getMaster() != null) {
+                  Map<ServerType, PerProcessDetails> azPerProcess =
+                      getOrCreateAzPerProcess(azOverrides);
                   PerProcessDetails masterOverrides =
-                      azOverrides
-                          .getPerProcess()
-                          .getOrDefault(ServerType.MASTER, new PerProcessDetails());
+                      azPerProcess.getOrDefault(ServerType.MASTER, new PerProcessDetails());
                   boolean hasChanges = false;
                   if (azNode.getMaster().getInstanceType() != null) {
                     masterOverrides.setInstanceType(azNode.getMaster().getInstanceType());
@@ -571,15 +575,15 @@ public interface UserIntentMapper {
                     hasChanges = true;
                   }
                   if (hasChanges) {
-                    azOverrides.getPerProcess().put(ServerType.MASTER, masterOverrides);
+                    azPerProcess.put(ServerType.MASTER, masterOverrides);
                     hasAzOverride = true;
                   }
                 }
                 if (azNode.getTserver() != null) {
+                  Map<ServerType, PerProcessDetails> azPerProcess =
+                      getOrCreateAzPerProcess(azOverrides);
                   PerProcessDetails tserverOverrides =
-                      azOverrides
-                          .getPerProcess()
-                          .getOrDefault(ServerType.TSERVER, new PerProcessDetails());
+                      azPerProcess.getOrDefault(ServerType.TSERVER, new PerProcessDetails());
                   boolean hasChanges = false;
                   if (azNode.getTserver().getInstanceType() != null) {
                     tserverOverrides.setInstanceType(azNode.getTserver().getInstanceType());
@@ -596,12 +600,12 @@ public interface UserIntentMapper {
                     hasChanges = true;
                   }
                   if (hasChanges) {
-                    azOverrides.getPerProcess().put(ServerType.TSERVER, tserverOverrides);
+                    azPerProcess.put(ServerType.TSERVER, tserverOverrides);
                     hasAzOverride = true;
                   }
                 }
                 if (hasAzOverride) {
-                  overrides.getAzOverrides().put(UUID.fromString(azUuid), azOverrides);
+                  azOverridesMap.put(UUID.fromString(azUuid), azOverrides);
                 }
               });
     }
@@ -642,6 +646,34 @@ public interface UserIntentMapper {
     return userIntent;
   }
 
+  default UserIntent fillUserIntentFromUpdateProxyConfigSpec(
+      UpdateProxyConfigSpec updateProxyConfigSpec, UserIntent userIntent) {
+    if (updateProxyConfigSpec == null) {
+      return userIntent;
+    }
+    if (updateProxyConfigSpec.getProxyConfig() != null) {
+      userIntent.setProxyConfig(toV1ProxyConfig(updateProxyConfigSpec.getProxyConfig()));
+    }
+    if (updateProxyConfigSpec.getAzNetworking() != null) {
+      if (userIntent.getUserIntentOverrides() == null) {
+        userIntent.setUserIntentOverrides(new UserIntentOverrides());
+      }
+      updateProxyConfigSpec
+          .getAzNetworking()
+          .forEach(
+              (azUuid, azProxyConfig) -> {
+                if (azProxyConfig != null) {
+                  userIntent
+                      .getUserIntentOverrides()
+                      .updateAZOverride(
+                          UUID.fromString(azUuid),
+                          azo -> azo.setProxyConfig(toV1ProxyConfig(azProxyConfig)));
+                }
+              });
+    }
+    return userIntent;
+  }
+
   default UserIntent fillUserIntentFromClusterProviderSpec(
       ClusterProviderSpec clusterProviderSpec, UserIntent userIntent) {
     if (clusterProviderSpec == null) {
@@ -677,6 +709,12 @@ public interface UserIntentMapper {
     List<UUID> regionList = clusterProviderEditSpec.getRegionList();
     if (regionList != null) {
       userIntent.regionList = new ArrayList<UUID>(regionList);
+    }
+    if (clusterProviderEditSpec.getImageBundleUuid() != null) {
+      userIntent.imageBundleUUID = clusterProviderEditSpec.getImageBundleUuid();
+    }
+    if (clusterProviderEditSpec.getAwsInstanceProfile() != null) {
+      userIntent.awsArnString = clusterProviderEditSpec.getAwsInstanceProfile();
     }
     return userIntent;
   }
@@ -720,5 +758,30 @@ public interface UserIntentMapper {
     // do not set inherit from primary as v2 manually defaults to true behaviour
     specificGFlags.setInheritFromPrimary(false);
     return specificGFlags;
+  }
+
+  default UserIntentOverrides getOrCreateUserIntentOverrides(UserIntent userIntent) {
+    UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
+    if (overrides == null) {
+      overrides = new UserIntentOverrides();
+      userIntent.setUserIntentOverrides(overrides);
+    }
+    return overrides;
+  }
+
+  default Map<UUID, AZOverrides> getOrCreateAzOverrides(UserIntentOverrides overrides) {
+    if (overrides.getAzOverrides() == null) {
+      overrides.setAzOverrides(new HashMap<>());
+    }
+    return overrides.getAzOverrides();
+  }
+
+  default Map<ServerType, PerProcessDetails> getOrCreateAzPerProcess(AZOverrides azOverrides) {
+    Map<ServerType, PerProcessDetails> perProcess = azOverrides.getPerProcess();
+    if (perProcess == null) {
+      perProcess = new HashMap<>();
+      azOverrides.setPerProcess(perProcess);
+    }
+    return perProcess;
   }
 }

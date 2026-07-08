@@ -1090,16 +1090,27 @@ TEST_P(VectorLSMTest, SimpleCompactionMetrics) {
   ASSERT_EQ(0, lsm.TEST_NextManifestFileNo());
   ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), 0);
   ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), 0);
+  ASSERT_EQ(lsm.metrics().flush_write_bytes->value(), 0);
+  ASSERT_EQ(lsm.metrics().flush_us->TotalCount(), 0);
+  ASSERT_EQ(lsm.metrics().compact_us->TotalCount(), 0);
 
-  // Empty compaction, write metric remains unchanged.
+  // Empty compaction, write metric remains unchanged. No chunks are compacted, so the compaction
+  // time metric must not be recorded.
   ASSERT_OK(lsm.Compact(/* wait = */ true));
   ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), 0);
   ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), 0);
+  ASSERT_EQ(lsm.metrics().compact_us->TotalCount(), 0);
 
   // Insert 1 batch of entries to create 1 chunk file.
   ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kNumEntriesPerChunk));
   ASSERT_EQ(kNumEntriesPerChunk, inserted_entries_.size());
   ASSERT_EQ(1, lsm.NumImmutableChunks());
+
+  // Flushing the chunk to disk must record a flush and bump the flush write metric by its size.
+  // Track cumulative flush bytes; compaction writes go through a separate path and must not count.
+  auto flush_writes = lsm.TEST_LatestChunkSize();
+  ASSERT_EQ(lsm.metrics().flush_write_bytes->value(), flush_writes);
+  ASSERT_EQ(lsm.metrics().flush_us->TotalCount(), 1);
 
   // Compact single file into a single file, write metric increases by size of new chunk file.
   // The single input chunk is read during compaction.
@@ -1109,6 +1120,10 @@ TEST_P(VectorLSMTest, SimpleCompactionMetrics) {
   auto compaction_writes = lsm.TEST_LatestChunkSize();
   ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), compaction_writes);
   ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), compaction_reads);
+  // A non-empty compaction must record exactly one compaction time sample. The compaction wrote a
+  // new chunk via its own path, so the flush write metric must be unchanged.
+  ASSERT_EQ(lsm.metrics().compact_us->TotalCount(), 1);
+  ASSERT_EQ(lsm.metrics().flush_write_bytes->value(), flush_writes);
 
   // Insert 5 more batches for a total of 6 chunk files.
   // Track input sizes: the compacted chunk from the 1st compaction is now an input to the 2nd.
@@ -1117,9 +1132,16 @@ TEST_P(VectorLSMTest, SimpleCompactionMetrics) {
   for (size_t i = 1; i < kNumChunks; ++i) {
     ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kNumEntriesPerChunk));
     ASSERT_EQ(kNumEntriesPerChunk, inserted_entries_.size());
-    compaction_reads += lsm.TEST_LatestChunkSize();
+    const auto latest_chunk_size = lsm.TEST_LatestChunkSize();
+    compaction_reads += latest_chunk_size;
+    flush_writes += latest_chunk_size;
   }
   ASSERT_EQ(kNumChunks, lsm.NumImmutableChunks());
+
+  // Each flushed chunk (the initial one plus the kNumChunks - 1 just inserted) is recorded, and the
+  // flush write metric accounts for every flushed chunk file.
+  ASSERT_EQ(lsm.metrics().flush_us->TotalCount(), kNumChunks);
+  ASSERT_EQ(lsm.metrics().flush_write_bytes->value(), flush_writes);
 
   // Compact all files into a single file.
   ASSERT_OK(lsm.Compact(/* wait = */ true));
@@ -1127,6 +1149,8 @@ TEST_P(VectorLSMTest, SimpleCompactionMetrics) {
   compaction_writes += lsm.TEST_LatestChunkSize();
   ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), compaction_writes);
   ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), compaction_reads);
+  // The second non-empty compaction adds another compaction time sample.
+  ASSERT_EQ(lsm.metrics().compact_us->TotalCount(), 2);
 }
 
 TEST_P(VectorLSMTest, ChunkedCompactionRespectsMemStoreLimit) {

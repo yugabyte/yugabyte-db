@@ -166,6 +166,11 @@ size_t DocReadContext::NumColumnsUsedByBloomFilterKey() const {
   return schema_.num_hash_key_columns() + 1;
 }
 
+dockv::VectorValueFormat DocReadContext::vector_value_format() const {
+  return schema_.table_properties().owns_vector_reverse_mapping()
+      ? dockv::VectorValueFormat::kTyped : dockv::VectorValueFormat::kLegacy;
+}
+
 DocReadContext DocReadContext::TEST_Create(const Schema& schema) {
   static const auto registry = std::make_shared<dockv::SchemaPackingRegistry>("TEST: ");
   return DocReadContext(

@@ -33,6 +33,9 @@ class PgCacheRefreshTest : public LibPqTestBase {
     // Tests here run DDLs concurrently with DMLs. Such behavior will not be possible
     // with table locks enabled.
     opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   }
 
  protected:
