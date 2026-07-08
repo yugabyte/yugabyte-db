@@ -512,17 +512,26 @@ bool TabletPeer::StartShutdown() {
     }
   }
 
-  std::lock_guard l(state_change_lock_);
-  // Even though Tablet::Shutdown() also unregisters its ops, we have to do it here
-  // to ensure that any currently running operation finishes before we proceed with
-  // the rest of the shutdown sequence. In particular, a maintenance operation could
-  // indirectly end up calling into the log, which we are about to shut down.
-  UnregisterMaintenanceOps();
+  {
+    std::lock_guard l(state_change_lock_);
+    // Even though Tablet::Shutdown() also unregisters its ops, we have to do it here
+    // to ensure that any currently running operation finishes before we proceed with
+    // the rest of the shutdown sequence. In particular, a maintenance operation could
+    // indirectly end up calling into the log, which we are about to shut down.
+    UnregisterMaintenanceOps();
 
-  auto consensus = GetRaftConsensusUnsafe();
-  if (consensus) {
-    consensus->Shutdown();
+    auto consensus = GetRaftConsensusUnsafe();
+    if (consensus) {
+      consensus->Shutdown();
+    }
   }
+
+  // Fail parked WaitForAsyncWrite RPCs. During server shutdown, Messenger::Shutdown joins the
+  // reactor threads, which waits for all inbound calls to be responded to, and that runs before
+  // TabletPeer::CompleteShutdown. Return NOT_THE_LEADER so the client can retry on a new leader.
+  FailAllAsyncWrites(STATUS(
+      IllegalState, Format("Tablet $0 peer shutting down during async write", tablet_id()),
+      tserver::TabletServerError(tserver::TabletServerErrorPB::NOT_THE_LEADER)));
 
   return true;
 }
@@ -551,8 +560,6 @@ void TabletPeer::CompleteShutdown(
   }
 
   VLOG_WITH_PREFIX(1) << "Shut down!";
-
-  FailAllAsyncWrites(STATUS(IllegalState, "Tablet peer is shutting down"));
 
   if (tablet_) {
     tablet_->CompleteShutdown(disable_flush_on_shutdown, abort_ops);
