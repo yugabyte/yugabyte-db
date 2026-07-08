@@ -2524,20 +2524,6 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   }
   pgwrapper::PGConn conn = std::move(*res);
 
-  // Propagate the inbound trace context via the yb_dist_tracecontext GUC so the backend's RPCs for
-  // the SELECT below nest under the triggering trace instead of being parentless.
-  const auto traceparent = dist_trace::GetActiveTraceparent();
-  if (!traceparent.empty()) {
-    // Also carry the traceparent as a trailing SQL comment (sqlcommenter) so this SET
-    // self-scopes.
-    auto set_status = conn.ExecuteFormat(
-        "SET yb_dist_tracecontext = 'traceparent=''$0''' /*traceparent='$0'*/", traceparent);
-    if (!set_status.ok()) {
-      LOG_WITH_PREFIX_AND_FUNC(WARNING)
-          << "failed to set traceparent on backends-catalog-version connection: " << set_status;
-    }
-  }
-
   // Note: keep this query in sync with the errhint query (YbWaitForBackendsCatalogVersion at the
   // time of writing).
   //

@@ -400,6 +400,9 @@ struct pg_conn
 										 * names (see yb_internal_conn.h);
 										 * NULL/empty for a regular client
 										 * connection */
+	char	   *yb_dist_traceparent;	/* W3C traceparent for the backend's
+										  root trace span and query tracing from
+										  tserver; NULL when not tracing */
 
 	/* Optional file to write trace info to */
 	FILE	   *Pfdebug;

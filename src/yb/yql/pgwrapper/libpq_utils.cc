@@ -28,6 +28,7 @@
 #include "yb/gutil/endian.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/endian_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
@@ -139,6 +140,9 @@ std::string BuildConnectionString(const PGConnSettings& settings, bool mask_pass
   if (!settings.yb_internal_conn_kind.empty()) {
     result += Format(
         " yb_internal_conn_kind=$0", PqEscapeStringConn(settings.yb_internal_conn_kind));
+  }
+  if (!settings.traceparent.empty()) {
+    result += Format(" yb_dist_traceparent=$0", PqEscapeStringConn(settings.traceparent));
   }
   return result;
 }
@@ -1030,7 +1034,8 @@ PGConnBuilder CreateInternalPGConnBuilder(
        .password = UInt64ToString(postgres_auth_key),
        .connect_timeout = connect_timeout,
        .yb_internal_conn_kind = std::string(yb_internal_conn_kind),
-       .should_stop = std::move(should_stop)});
+       .should_stop = std::move(should_stop),
+       .traceparent = dist_trace::GetActiveTraceparent()});
 }
 
 } // namespace yb::pgwrapper
