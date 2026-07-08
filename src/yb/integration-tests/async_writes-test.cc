@@ -31,7 +31,9 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/hdr_histogram.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
@@ -53,6 +55,8 @@ DECLARE_int32(leader_lease_duration_ms);
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 DECLARE_int64(protege_synchronization_timeout_ms);
 
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_WaitForAsyncWrite);
+
 namespace yb {
 
 constexpr auto kTableName = "tbl1";
@@ -61,15 +65,24 @@ const auto kSelectAllStmt = Format("SELECT * FROM $0 ORDER BY key", kTableName);
 class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
  public:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
-
-    // These tests stepdown the leader, so we need to disable load balancing.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_create_table_leader_hint) = false;
+    SetTestFlags();
 
     TEST_SETUP_SUPER(pgwrapper::PgMiniTestBase);
+
+    // Tablets created while tservers are still registering start under-replicated; let the LB
+    // repair them before disabling it.
+    ASSERT_OK(cluster_->WaitForAllTabletServers());
+    ASSERT_OK(
+        WaitAllReplicasReady(cluster_.get(), 120s * kTimeMultiplier, UserTabletsOnly::kFalse));
+    // These tests stepdown the leader, so we need to disable load balancing.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     conn_ = std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(Connect()));
+  }
+
+  virtual void SetTestFlags() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_create_table_leader_hint) = false;
   }
 
   size_t NumMasters() override { return 3; }
@@ -197,6 +210,29 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
     return Status::OK();
   }
 
+  // Moves every tablet leader off ts_idx except excluded_tablet_id, so that crashing ts_idx
+  // only takes down the tablet under test. Loops until a full pass finds no leaders to move,
+  // since a tablet that is mid-election during a pass is invisible to the kLeaders filter.
+  Status MoveLeadersOffTserver(size_t ts_idx, const TabletId& excluded_tablet_id) {
+    const auto& uuid = cluster_->mini_tablet_server(ts_idx)->server()->permanent_uuid();
+    const size_t target_idx = ts_idx == 0 ? 1 : 0;
+    return LoggedWaitFor(
+        [&]() -> Result<bool> {
+          bool clean_pass = true;
+          for (const auto& peer : ListTabletPeers(
+                   cluster_.get(), ListPeersFilter::kLeaders, UserTabletsOnly::kFalse)) {
+            if (peer->permanent_uuid() != uuid || peer->tablet_id() == excluded_tablet_id) {
+              continue;
+            }
+            clean_pass = false;
+            // Tolerate races: leadership may have moved since the list was taken.
+            WARN_NOT_OK(StepDown(ts_idx, target_idx, peer->tablet_id()), "StepDown failed");
+          }
+          return clean_pass;
+        },
+        60s * kTimeMultiplier, "Move tablet leaders off Tserver");
+  }
+
   // Returns the leader index.
   Result<size_t> PrepareToBreakConnectivity(TabletId tablet_id) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_max_missed_heartbeat_periods) = 100;
@@ -260,6 +296,24 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
         Format(
             "Wait for leader to commit up to op id $0 after clearing follower delay",
             leader_op_id)));
+  }
+
+  // Sums WaitForAsyncWrite RPC arrivals across the tablet servers. The client sends this RPC
+  // only after receiving an async_write_op_id ack in a response, so an arrival proves the ack
+  // crossed the wire. Summing over the mini tservers only (not masters) excludes the masters'
+  // own pipelined sys-catalog writes, whose WaitForAsyncWrite RPCs go to the master's embedded
+  // tablet service.
+  uint64_t GetWaitForAsyncWriteArrivalCount() {
+    uint64_t total = 0;
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      total += cluster_->mini_tablet_server(i)
+                   ->metric_entity()
+                   .FindOrCreateMetric<Histogram>(
+                       &METRIC_handler_latency_yb_tserver_TabletServerService_WaitForAsyncWrite)
+                   ->underlying()
+                   ->TotalCount();
+    }
+    return total;
   }
 
   void LeaderStepDownAfterWriteAckTest(bool perform_read);
@@ -745,6 +799,349 @@ TEST_F(YSqlAsyncWriteTest, SelectForUpdateAsyncWrite) {
   ASSERT_EQ(rows, "1, a; 2, x; 3, c");
 }
 
+// The ack (async_write_op_id) of the read path's internal lock write (SELECT ... FOR UPDATE,
+// FK checks, serializable reads) must reach the client, which gates COMMIT on the lock write's
+// quorum fate.
+//
+// Ensures the ack arrived by checking for a WaitForAsyncWrite RPC arrival at a tserver (the
+// RPC's handler-latency metric summed over the mini tservers), since the client sends that RPC
+// only after receiving an ack. The control phase proves the counting machinery works via the
+// write path; the main phase asserts the same arrival for a locking read.
+TEST_F(YSqlAsyncWriteTest, SelectForUpdateAckReachesClient) {
+  google::SetVLOGLevel("write_query*", 2);
+  // Trigger guard: the server routed the read path's lock write through the pipelined path and
+  // produced the OpId into its (scratch) response.
+  auto internal_async_write_count = StringWaiterLogSink("Performing Async write: Internal request");
+
+  // Diagnostics only (the assertions key on the metric): log which OpIds get verified, so an
+  // unexpected bug-phase arrival is traceable.
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("TabletServiceImpl::WaitForAsyncWrite::Verified", [](void* arg) {
+    LOG(INFO) << "WaitForAsyncWrite verified for op id " << *static_cast<OpId*>(arg);
+  });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 'a'), (2, 'b'), (3, 'c')", kTableName));
+
+  // Control phase: a pipelined WRITE's ack reaches the client, which then sends WaitForAsyncWrite.
+  // Ensures that the arrival counting works without SELECT ... FOR UPDATE.
+  auto arrivals_before = GetWaitForAsyncWriteArrivalCount();
+  const auto control_start = CoarseMonoClock::now();
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (4, 'd')", kTableName));
+  ASSERT_OK(WaitFor(
+      [this, arrivals_before] { return GetWaitForAsyncWriteArrivalCount() > arrivals_before; },
+      10s * kTimeMultiplier, "control phase: WaitForAsyncWrite arrival for a pipelined INSERT"));
+  const auto control_latency = CoarseMonoClock::now() - control_start;
+  LOG(INFO) << "Control-phase INSERT-to-arrival latency: " << MonoDelta(control_latency);
+  ASSERT_OK(conn_->CommitTransaction());
+  // COMMIT returns only after every recorded async write is verified, so no control-phase
+  // arrival can leak into the main phase's counted window below.
+
+  // Main phase: the same arrival for the internal lock write behind SELECT ... FOR UPDATE.
+  // The transaction contains ONLY the locking read, so any arrival in the counted window must
+  // be the lock write's.
+  const auto internal_count_before = internal_async_write_count.GetEventCount();
+  arrivals_before = GetWaitForAsyncWriteArrivalCount();
+
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  auto rows = ASSERT_RESULT(
+      conn_->FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key FOR UPDATE", kTableName)));
+  ASSERT_EQ(rows, "1, a; 2, b; 3, c; 4, d");
+
+  // Trigger guard: if this fails, the pipelined read path never engaged and the test is vacuous.
+  ASSERT_EQ(internal_async_write_count.GetEventCount(), internal_count_before + 1)
+      << "Trigger guard failed: the locking read did not engage the pipelined write path.";
+
+  // Give the ack a window at least 10x the control phase's observed latency.
+  auto bug_window = MonoDelta(10s * kTimeMultiplier);
+  bug_window = std::max(bug_window, MonoDelta(control_latency) * 10);
+  const auto arrival_status = WaitFor(
+      [this, arrivals_before] { return GetWaitForAsyncWriteArrivalCount() > arrivals_before; },
+      bug_window, "main phase: WaitForAsyncWrite arrival for the locking read's lock write");
+
+  // The COMMIT is gated on the lock write, but the machine-checked signal is the RPC arrival
+  // above (commit latency would be flaky to assert on).
+  ASSERT_OK(conn_->CommitTransaction());
+
+  ASSERT_TRUE(arrival_status.ok())
+      << "READ-PATH ACK LOST: the lock write's async_write_op_id never reached the client "
+         "(wiped by ReadQuery::Complete()'s resp_->Clear() before the read response was "
+         "serialized), so the client never tracked the lock write and COMMIT was not gated on "
+         "its quorum fate.";
+}
+
+// A committed transaction's FOR UPDATE guarantee must hold across a single tserver crash in an
+// RF3 cluster. Two accounts, each in its own single-tablet table, both starting at balance 100;
+// a withdrawal of 150 is allowed only if the combined balance stays >= 0, so at most one of two
+// concurrent withdrawals may commit:
+//
+//   conn1: FOR UPDATE-locks account Y (healthy tablet), then account X. X's lock write is kept
+//          off quorum (X's followers reject appends), so it exists only on X's leader.
+//   crash: X's tablet leader is shut down, destroying the lock op.
+//   conn2: reads both accounts (total=200, so withdrawing 150 is justified) and withdraws 150
+//          from account X.
+//   conn1: withdraws 150 from account Y and COMMITs.
+//
+// conn1's COMMIT must fail: its client holds X's lock-write OpId, whose verification fails
+// after the leader change. The two-table split keeps conn1's txn status record and metadata on
+// healthy quorums, so the crash destroys nothing but the lock itself and conn1 cannot be
+// aborted for an unrelated reason.
+TEST_F(YSqlAsyncWriteTest, SelectForUpdateHoldsAcrossLeaderCrash) {
+  google::SetVLOGLevel("write_query*", 2);
+  auto internal_async_write_count = StringWaiterLogSink("Performing Async write: Internal request");
+
+  constexpr auto kAcctX = "acct_x";
+  constexpr auto kAcctY = "acct_y";
+  for (const auto* table : {kAcctX, kAcctY}) {
+    ASSERT_OK(conn_->ExecuteFormat(
+        "CREATE TABLE $0 (id INT PRIMARY KEY, balance INT) SPLIT INTO 1 TABLETS", table));
+  }
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 100)", kAcctX));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (2, 100)", kAcctY));
+
+  auto tablet_x = ASSERT_RESULT(GetTabletId(kAcctX));
+  // Wait for Y's leadership to settle so MoveLeadersOffTserver sees it.
+  ASSERT_RESULT(GetTabletId(kAcctY));
+  // Moves X's leader off the tserver hosting postgres so it can be crashed.
+  const size_t old_leader_idx = ASSERT_RESULT(PrepareToBreakConnectivity(tablet_x));
+  // Keep Y's tablet and the transaction status tablets clear of the crash.
+  ASSERT_OK(MoveLeadersOffTserver(old_leader_idx, tablet_x));
+
+  // conn1: lock account Y first, while the whole cluster is healthy. This creates the
+  // transaction (status record) and writes conn1's txn metadata on Y's tablet, all
+  // quorum-replicated. Give the status record a couple of heartbeat periods to settle so the
+  // txn itself demonstrably survives the crash below.
+  ASSERT_OK(conn_->Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  auto rows = ASSERT_RESULT(
+      conn_->FetchAllAsString(Format("SELECT * FROM $0 FOR UPDATE", kAcctY)));
+  ASSERT_EQ(rows, "2, 100");
+  SleepFor(2s * kTimeMultiplier);
+
+  // Make X's followers reject non-empty appends so the X lock write cannot land on ANY follower
+  // before the crash, not even via a racing heartbeat. (TEST_DelayUpdate is not enough: it only
+  // delays the follower's response, after the op was already appended to its local log.)
+  std::vector<tablet::TabletPeerPtr> follower_peers;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    if (i == old_leader_idx) {
+      continue;
+    }
+    auto peer = ASSERT_RESULT(GetTabletPeerOnTserver(i, tablet_x));
+    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
+    follower_peers.push_back(peer);
+  }
+
+  const auto internal_count_before = internal_async_write_count.GetEventCount();
+
+  // conn1: lock account X. Total = 200 >= 150: the withdrawal below is justified.
+  rows = ASSERT_RESULT(
+      conn_->FetchAllAsString(Format("SELECT * FROM $0 FOR UPDATE", kAcctX)));
+  ASSERT_EQ(rows, "1, 100");
+
+  // Trigger guard 1: the X lock write went through the pipelined read path (otherwise the FOR
+  // UPDATE above would still be blocked waiting for quorum against the rejecting followers).
+  ASSERT_EQ(internal_async_write_count.GetEventCount(), internal_count_before + 1)
+      << "Trigger guard failed: the locking read did not engage the pipelined write path.";
+
+  // Trigger guard 2: the X lock op exists only on X's leader - not quorum-committed, and not
+  // present on any follower - so the crash below genuinely destroys it.
+  {
+    auto leader_peer = ASSERT_RESULT(GetTabletPeerOnTserver(old_leader_idx, tablet_x));
+    auto leader_consensus = ASSERT_RESULT(leader_peer->GetRaftConsensus());
+    const auto received = ASSERT_RESULT(leader_consensus->GetLastOpId(consensus::RECEIVED_OPID));
+    const auto committed = ASSERT_RESULT(leader_consensus->GetLastOpId(consensus::COMMITTED_OPID));
+    ASSERT_GT(received.index, committed.index)
+        << "Trigger guard failed: the lock op already reached quorum; the crash below would "
+           "not destroy it.";
+    for (auto& peer : follower_peers) {
+      const auto follower_received =
+          ASSERT_RESULT(ASSERT_RESULT(peer->GetRaftConsensus())->GetLastOpId(
+              consensus::RECEIVED_OPID));
+      ASSERT_LT(follower_received.index, received.index)
+          << "Trigger guard failed: follower " << peer->permanent_uuid()
+          << " received the lock op despite reject mode; the crash below would not destroy it.";
+    }
+  }
+
+  // Crash X's leader. The un-replicated lock op (conn1's lock on account X) dies with it.
+  cluster_->mini_tablet_server(old_leader_idx)->Shutdown();
+
+  // Let the surviving followers accept appends again so they can elect a new leader.
+  for (auto& peer : follower_peers) {
+    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNone);
+  }
+  const size_t new_leader_idx = ASSERT_RESULT(WaitForNewTabletLeader(tablet_x, old_leader_idx));
+  LOG(INFO) << "New leader of X's tablet after crash: tserver index " << new_leader_idx;
+
+  // conn2 withdraws from account X, writing to the row conn1's destroyed FOR UPDATE lock covered.
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  const auto x_balance = ASSERT_RESULT(conn2.FetchRow<int32_t>(
+      Format("SELECT balance FROM $0 WHERE id = 1", kAcctX)));
+  const auto y_balance = ASSERT_RESULT(conn2.FetchRow<int32_t>(
+      Format("SELECT balance FROM $0 WHERE id = 2", kAcctY)));
+  ASSERT_EQ(x_balance + y_balance, 200);  // conn2's withdrawal is justified too.
+  ASSERT_OK(conn2.ExecuteFormat("UPDATE $0 SET balance = balance - 150 WHERE id = 1", kAcctX));
+  ASSERT_OK(conn2.CommitTransaction());
+
+  // conn1 completes its withdrawal (on the untouched, healthy Y tablet) and commits. The COMMIT
+  // must FAIL: conn1's lock on X is lost and unverified.
+  auto update_status =
+      conn_->ExecuteFormat("UPDATE $0 SET balance = balance - 150 WHERE id = 2", kAcctY);
+  auto commit_status = update_status.ok() ? conn_->CommitTransaction() : update_status;
+
+  const auto final_x = ASSERT_RESULT(conn2.FetchRow<int32_t>(
+      Format("SELECT balance FROM $0 WHERE id = 1", kAcctX)));
+  const auto final_y = ASSERT_RESULT(conn2.FetchRow<int32_t>(
+      Format("SELECT balance FROM $0 WHERE id = 2", kAcctY)));
+  LOG(INFO) << "conn1 update: " << update_status << ", commit: " << commit_status
+            << ", final balances: X=" << final_x << " Y=" << final_y
+            << " total=" << final_x + final_y;
+
+  ASSERT_FALSE(update_status.ok() && commit_status.ok())
+      << "LOCK GUARANTEE VOID: both lock-guarded withdrawals committed after a single tserver "
+         "crash; final balances X=" << final_x << " Y=" << final_y << " (total "
+      << final_x + final_y << ") break the total >= 0 invariant the FOR UPDATE locks existed "
+         "to protect. conn1's COMMIT was never gated on its lock write because the read-path "
+         "async_write_op_id ack was lost.";
+}
+
+// The SERIALIZABLE flavor of SelectForUpdateHoldsAcrossLeaderCrash: plain SELECTs write read
+// intents through the same pipelined lock-write path FOR UPDATE uses. Same two accounts and
+// withdrawal rule:
+//
+//   conn1 (SERIALIZABLE): reads both balances with plain SELECTs; the read intents on X's
+//                         tablet are kept off quorum.
+//   crash: X's tablet leader is shut down, destroying conn1's read locks on X.
+//   conn2 (SERIALIZABLE): reads both balances, withdraws 150 from account X, COMMITs.
+//   conn1: withdraws 150 from account Y and COMMITs.
+//
+// conn1's COMMIT must fail: committing both transactions would be a write-skew with no serial
+// order (conn1 read X before conn2's withdrawal; conn2 read Y before conn1's).
+TEST_F(YSqlAsyncWriteTest, SerializableIsolationHoldsAcrossLeaderCrash) {
+  google::SetVLOGLevel("write_query*", 2);
+  auto internal_async_write_count = StringWaiterLogSink("Performing Async write: Internal request");
+
+  constexpr auto kAcctX = "acct_x";
+  constexpr auto kAcctY = "acct_y";
+  for (const auto* table : {kAcctX, kAcctY}) {
+    ASSERT_OK(conn_->ExecuteFormat(
+        "CREATE TABLE $0 (id INT PRIMARY KEY, balance INT) SPLIT INTO 1 TABLETS", table));
+  }
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 100)", kAcctX));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (2, 100)", kAcctY));
+
+  auto tablet_x = ASSERT_RESULT(GetTabletId(kAcctX));
+  // Wait for Y's leadership to settle so MoveLeadersOffTserver sees it.
+  ASSERT_RESULT(GetTabletId(kAcctY));
+  const size_t old_leader_idx = ASSERT_RESULT(PrepareToBreakConnectivity(tablet_x));
+  // Keep Y's tablet and the transaction status tablets clear of the crash.
+  ASSERT_OK(MoveLeadersOffTserver(old_leader_idx, tablet_x));
+
+  // conn1: read account Y first, while the whole cluster is healthy (creates the transaction and
+  // its Y-side read intents on quorum-safe ground; see SelectForUpdateHoldsAcrossLeaderCrash for
+  // why). The read is a plain SELECT: SERIALIZABLE turns it into a pipelined lock write.
+  ASSERT_OK(conn_->Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+  auto y_balance = ASSERT_RESULT(
+      conn_->FetchRow<int32_t>(Format("SELECT balance FROM $0 WHERE id = 2", kAcctY)));
+  ASSERT_EQ(y_balance, 100);
+  SleepFor(2s * kTimeMultiplier);
+
+  std::vector<tablet::TabletPeerPtr> follower_peers;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    if (i == old_leader_idx) {
+      continue;
+    }
+    auto peer = ASSERT_RESULT(GetTabletPeerOnTserver(i, tablet_x));
+    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
+    follower_peers.push_back(peer);
+  }
+
+  const auto internal_count_before = internal_async_write_count.GetEventCount();
+
+  // conn1: read account X. Total = 200 >= 150: the withdrawal below is justified.
+  auto x_balance = ASSERT_RESULT(
+      conn_->FetchRow<int32_t>(Format("SELECT balance FROM $0 WHERE id = 1", kAcctX)));
+  ASSERT_EQ(x_balance, 100);
+
+  // Trigger guard 1: the plain serializable SELECT engaged the pipelined lock-write path.
+  ASSERT_EQ(internal_async_write_count.GetEventCount(), internal_count_before + 1)
+      << "Trigger guard failed: the serializable read did not engage the pipelined write path.";
+
+  // Trigger guard 2: conn1's X read-intent op exists only on X's leader.
+  {
+    auto leader_peer = ASSERT_RESULT(GetTabletPeerOnTserver(old_leader_idx, tablet_x));
+    auto leader_consensus = ASSERT_RESULT(leader_peer->GetRaftConsensus());
+    const auto received = ASSERT_RESULT(leader_consensus->GetLastOpId(consensus::RECEIVED_OPID));
+    const auto committed = ASSERT_RESULT(leader_consensus->GetLastOpId(consensus::COMMITTED_OPID));
+    ASSERT_GT(received.index, committed.index)
+        << "Trigger guard failed: the read-intent op already reached quorum; the crash below "
+           "would not destroy it.";
+    for (auto& peer : follower_peers) {
+      const auto follower_received =
+          ASSERT_RESULT(ASSERT_RESULT(peer->GetRaftConsensus())->GetLastOpId(
+              consensus::RECEIVED_OPID));
+      ASSERT_LT(follower_received.index, received.index)
+          << "Trigger guard failed: follower " << peer->permanent_uuid()
+          << " received the read-intent op despite reject mode.";
+    }
+  }
+
+  // Crash X's leader. conn1's read locks on account X die with it.
+  cluster_->mini_tablet_server(old_leader_idx)->Shutdown();
+  for (auto& peer : follower_peers) {
+    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNone);
+  }
+  const size_t new_leader_idx = ASSERT_RESULT(WaitForNewTabletLeader(tablet_x, old_leader_idx));
+  LOG(INFO) << "New leader of X's tablet after crash: tserver index " << new_leader_idx;
+
+  // conn2: the same guarded withdrawal, from account X. Its read of Y takes a shared read lock
+  // (compatible with conn1's read lock on Y); its write to X is what conn1's dead read lock on X
+  // should have serialized.
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+  const auto conn2_x = ASSERT_RESULT(
+      conn2.FetchRow<int32_t>(Format("SELECT balance FROM $0 WHERE id = 1", kAcctX)));
+  const auto conn2_y = ASSERT_RESULT(
+      conn2.FetchRow<int32_t>(Format("SELECT balance FROM $0 WHERE id = 2", kAcctY)));
+  ASSERT_EQ(conn2_x + conn2_y, 200);  // conn2's withdrawal is justified too.
+  ASSERT_OK(conn2.ExecuteFormat("UPDATE $0 SET balance = balance - 150 WHERE id = 1", kAcctX));
+  ASSERT_OK(conn2.CommitTransaction());
+
+  // Wait out the cleanup of conn2's committed read intents on Y. Residual committed intents can
+  // transiently conflict with conn1's write below; that residue is incidental (it disappears on
+  // apply), not a serializability guard - the designed guard is conn1's LIVE read lock on X,
+  // which the crash destroyed.
+  SleepFor(3s * kTimeMultiplier);
+
+  // conn1 completes its withdrawal and commits. The COMMIT must FAIL: conn1's read locks on X
+  // are lost and unverified.
+  auto update_status =
+      conn_->ExecuteFormat("UPDATE $0 SET balance = balance - 150 WHERE id = 2", kAcctY);
+  auto commit_status = update_status.ok() ? conn_->CommitTransaction() : update_status;
+
+  const auto final_x = ASSERT_RESULT(conn2.FetchRow<int32_t>(
+      Format("SELECT balance FROM $0 WHERE id = 1", kAcctX)));
+  const auto final_y = ASSERT_RESULT(conn2.FetchRow<int32_t>(
+      Format("SELECT balance FROM $0 WHERE id = 2", kAcctY)));
+  LOG(INFO) << "conn1 update: " << update_status << ", commit: " << commit_status
+            << ", final balances: X=" << final_x << " Y=" << final_y
+            << " total=" << final_x + final_y;
+
+  ASSERT_FALSE(update_status.ok() && commit_status.ok())
+      << "SERIALIZABILITY VIOLATED: two SERIALIZABLE transactions committed a write-skew after "
+         "a single tserver crash; final balances X=" << final_x << " Y=" << final_y << " (total "
+      << final_x + final_y << ") admit no serial order (conn1 read X=100 before conn2's "
+         "withdrawal; conn2 read Y=100 before conn1's). conn1's COMMIT was never gated on its "
+         "X read-lock write because the read-path async_write_op_id ack was lost.";
+}
+
 TEST_F(YSqlAsyncWriteTest, ForeignKeyAsyncWrite) {
   google::SetVLOGLevel("write_query*", 2);
   // Internal async writes are triggered by the read path's write query to lock rows.
@@ -1182,14 +1579,14 @@ TEST_F(YSqlAsyncWriteTest, RepeatedStepDownsWithAsyncWrites) {
 
 class YSqlAsyncWriteLongLeaseTest : public YSqlAsyncWriteTest {
  public:
-  void SetUp() override {
+  void SetTestFlags() override {
+    YSqlAsyncWriteTest::SetTestFlags();
     // Bump up leader leases so we can pause followers for an extended period of time.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 30000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 30000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 100;
     // Speed up test start up.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_quick_leader_election_on_create) = true;
-    YSqlAsyncWriteTest::SetUp();
   }
 };
 
@@ -1261,15 +1658,11 @@ TEST_F(YSqlAsyncWriteLongLeaseTest, GracefulStepDownWithExtendedProtegeSyncWait)
 
 class YSqlAsyncWriteSplitTest : public YSqlAsyncWriteTest {
  public:
-  void SetUp() override {
+  void SetTestFlags() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
-    // Disable load balancing and bump the heartbeat threshold so terms stay stable.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_create_table_leader_hint) = true;
+    // Bump the heartbeat threshold so terms stay stable.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 100;
-
-    TEST_SETUP_SUPER(pgwrapper::PgMiniTestBase);
-    conn_ = std::make_unique<pgwrapper::PGConn>(ASSERT_RESULT(Connect()));
   }
 
   // Force a flush so the parent has an SST file.
