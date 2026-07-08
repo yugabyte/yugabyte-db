@@ -1896,7 +1896,8 @@ class PgConcurrentCreateIndexTest : public PgConcurrentDDLAnalyzeTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
-            "--ysql_yb_wait_for_backends_catalog_version_timeout=5000");
+            Format("--ysql_yb_wait_for_backends_catalog_version_timeout=$0",
+                   5000 * kTimeMultiplier));
     options->extra_tserver_flags.emplace_back(
             "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=1000");
     options->extra_master_flags.emplace_back("--master_ysql_operation_lease_ttl_ms=10000");
