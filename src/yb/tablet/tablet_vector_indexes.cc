@@ -457,6 +457,12 @@ Status TabletVectorIndexes::Backfill(
     std::this_thread::sleep_for(FLAGS_TEST_sleep_before_vector_index_backfill_seconds * 1s);
   }
 
+  // The backfill task holds only a non-blocking ScopedRWOperation here (not the tablet metadata
+  // apply lock), so a test may park it until the tablet starts shutting down without wedging the
+  // tserver. On release, reader.Init below resolves intents and, if the tablet is shutting down,
+  // fails fast via the aborted MvccManager safe time wait instead of hanging.
+  TEST_SYNC_POINT("TabletVectorIndexes::Backfill:Start");
+
   IndexedTableReader reader(*vector_index);
   RETURN_NOT_OK(reader.Init(backfill_ht, from_key));
 

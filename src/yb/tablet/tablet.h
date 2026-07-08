@@ -310,6 +310,11 @@ class Tablet : public AbstractTablet,
   // This transitions from kBootstrapping to kOpen state.
   void MarkFinishedBootstrapping();
 
+  // Starts tablet subsystems that must not run until the tablet is fully created and published by
+  // its TabletPeer (in particular vector index backfill, which resolves transaction statuses and
+  // therefore needs the TabletPeer to be able to serve safe time). Called from TabletPeer::Start.
+  void Start();
+
   // This can be called to proactively prevent new operations from being handled, even before
   // Shutdown() is called.
   // Returns true if it was the first call to StartShutdown.

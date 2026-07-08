@@ -520,13 +520,6 @@ storage::UserFrontierPtr GetMutableMemTableFrontierFromDb(
 }
 
 
-Result<HybridTime> CheckSafeTime(HybridTime time, HybridTime min_allowed) {
-  if (time) {
-    return time;
-  }
-  return STATUS_FORMAT(TimedOut, "Timed out waiting for safe time $0", min_allowed);
-}
-
 class ActiveCompactionToken {
  public:
   explicit ActiveCompactionToken(std::atomic<size_t>& counter) : counter_(counter) {
@@ -1594,6 +1587,21 @@ Status Tablet::DoEnableCompactions() {
 void Tablet::MarkFinishedBootstrapping() {
   CHECK_EQ(state_, kBootstrapping);
   state_ = kOpen;
+}
+
+void Tablet::Start() {
+  if (transaction_coordinator_) {
+    transaction_coordinator_->Start();
+  }
+
+  if (transaction_participant_) {
+    transaction_participant_->Start();
+  }
+
+  // Launch vector index backfill only now, after the tablet has been published by its TabletPeer.
+  // The backfill resolves transaction statuses of provisional records, which reads the tablet's
+  // safe time; running it during bootstrap (before TabletPeer::tablet_ is assigned) would race with
+  // that assignment.
   vector_indexes_->LaunchBackfillsIfNecessary();
 }
 
@@ -1605,6 +1613,11 @@ bool Tablet::StartShutdown(
   if (!shutdown_requested_.compare_exchange_strong(expected, true)) {
     return false;
   }
+  // shutdown_requested_ is now set, so the vector index backfill will observe it and exit. This
+  // sync point fires before StartShutdownStorages pauses read/write operations, so a test can
+  // release a backfill parked at TabletVectorIndexes::Backfill:Start here without deadlocking that
+  // pause.
+  TEST_SYNC_POINT("Tablet::StartShutdown");
 
   // Stop the transaction coordinator's pollers before StartShutdownStorages pauses read/write
   // operations below: otherwise a poll could submit a transaction status update operation against
@@ -1616,6 +1629,12 @@ bool Tablet::StartShutdown(
   if (transaction_participant_) {
     transaction_participant_->StartShutdown();
   }
+
+  // Abort in-flight safe time waits before StartShutdownStorages pauses read/write operations.
+  // Safe time stops advancing once shutdown starts, so an operation blocked in
+  // MvccManager::SafeTime/SafeTimeForFollower (e.g. a vector index backfill resolving an aborted
+  // transaction) would otherwise never release its ScopedRWOperation, deadlocking the pause.
+  mvcc_.StartShutdown();
 
   // Start shutting the RocksDB instances down (signalling shutdown, pausing read/write operations)
   // here, before TabletPeer::CompleteShutdown drains the peer strand. StartShutdownStorages signals
@@ -2746,7 +2765,8 @@ Status Tablet::GetIntentsForCDC(
 
 HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) {
   // We could not use mvcc_ directly, because correct lease should be passed to it.
-  return mvcc_.SafeTimeForFollower(min_allowed, deadline);
+  auto safe_time = mvcc_.SafeTimeForFollower(min_allowed, deadline);
+  return safe_time.ok() ? *safe_time : HybridTime::kInvalid;
 }
 
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIterator(
@@ -4255,7 +4275,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
     RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
   TEST_PAUSE_IF_FLAG(TEST_pause_before_getting_safe_time);
   if (require_lease == RequireLease::kFalse) {
-    return CheckSafeTime(mvcc_.SafeTimeForFollower(min_allowed, deadline), min_allowed);
+    return mvcc_.SafeTimeForFollower(min_allowed, deadline);
   }
   FixedHybridTimeLease ht_lease;
   if (ht_lease_provider_) {
@@ -4264,7 +4284,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
     if (!ht_lease_result.ok()) {
       if (require_lease == RequireLease::kFallbackToFollower &&
           ht_lease_result.status().IsIllegalState()) {
-        return CheckSafeTime(mvcc_.SafeTimeForFollower(min_allowed, deadline), min_allowed);
+        return mvcc_.SafeTimeForFollower(min_allowed, deadline);
       }
       return ht_lease_result.status();
     }
@@ -4283,7 +4303,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
         InternalError, "Read request hybrid time after leader lease: $0, lease: $1",
         min_allowed, ht_lease);
   }
-  return CheckSafeTime(mvcc_.SafeTime(min_allowed, deadline, ht_lease), min_allowed);
+  return mvcc_.SafeTime(min_allowed, deadline, ht_lease);
 }
 
 ScopedRWOperationPause Tablet::PauseWritePermits(CoarseTimePoint deadline) {
