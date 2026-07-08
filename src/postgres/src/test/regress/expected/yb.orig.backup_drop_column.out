@@ -64,27 +64,11 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16396'::pg_catalog.o
 
 CREATE TABLE public.comp_parent (
     a integer,
-    "........pg.dropped.2........" INTEGER /* dummy */,
-    "........pg.dropped.3........" INTEGER /* dummy */,
     b integer,
     c integer
 )
 PARTITION BY RANGE (a)
 SPLIT INTO 1 TABLETS;
-
--- For binary upgrade, recreate dropped column.
-UPDATE pg_catalog.pg_attribute
-SET attlen = 4, attalign = 'i', attbyval = false
-WHERE attname = '........pg.dropped.2........'
-  AND attrelid = 'public.comp_parent'::pg_catalog.regclass;
-ALTER TABLE ONLY public.comp_parent DROP COLUMN "........pg.dropped.2........";
-
--- For binary upgrade, recreate dropped column.
-UPDATE pg_catalog.pg_attribute
-SET attlen = 4, attalign = 'i', attbyval = false
-WHERE attname = '........pg.dropped.3........'
-  AND attrelid = 'public.comp_parent'::pg_catalog.regclass;
-ALTER TABLE ONLY public.comp_parent DROP COLUMN "........pg.dropped.3........";
 
 
 \if :use_roles
@@ -113,25 +97,9 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16399'::pg_catalog.o
 CREATE TABLE public.comp_child (
     b integer,
     c integer,
-    "........pg.dropped.3........" INTEGER /* dummy */,
-    "........pg.dropped.4........" INTEGER /* dummy */,
     a integer
 )
 SPLIT INTO 2 TABLETS;
-
--- For binary upgrade, recreate dropped column.
-UPDATE pg_catalog.pg_attribute
-SET attlen = 4, attalign = 'i', attbyval = false
-WHERE attname = '........pg.dropped.3........'
-  AND attrelid = 'public.comp_child'::pg_catalog.regclass;
-ALTER TABLE ONLY public.comp_child DROP COLUMN "........pg.dropped.3........";
-
--- For binary upgrade, recreate dropped column.
-UPDATE pg_catalog.pg_attribute
-SET attlen = 4, attalign = 'i', attbyval = false
-WHERE attname = '........pg.dropped.4........'
-  AND attrelid = 'public.comp_child'::pg_catalog.regclass;
-ALTER TABLE ONLY public.comp_child DROP COLUMN "........pg.dropped.4........";
 
 
 \if :use_roles
@@ -213,27 +181,11 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16390'::pg_catalog.o
 
 CREATE TABLE public.part_drop_parent (
     a integer,
-    "........pg.dropped.2........" INTEGER /* dummy */,
-    "........pg.dropped.3........" INTEGER /* dummy */,
     b integer,
     c integer
 )
 PARTITION BY RANGE (a)
 SPLIT INTO 1 TABLETS;
-
--- For binary upgrade, recreate dropped column.
-UPDATE pg_catalog.pg_attribute
-SET attlen = 4, attalign = 'i', attbyval = false
-WHERE attname = '........pg.dropped.2........'
-  AND attrelid = 'public.part_drop_parent'::pg_catalog.regclass;
-ALTER TABLE ONLY public.part_drop_parent DROP COLUMN "........pg.dropped.2........";
-
--- For binary upgrade, recreate dropped column.
-UPDATE pg_catalog.pg_attribute
-SET attlen = 4, attalign = 'i', attbyval = false
-WHERE attname = '........pg.dropped.3........'
-  AND attrelid = 'public.part_drop_parent'::pg_catalog.regclass;
-ALTER TABLE ONLY public.part_drop_parent DROP COLUMN "........pg.dropped.3........";
 
 
 \if :use_roles
@@ -260,25 +212,9 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16393'::pg_catalog.o
 CREATE TABLE public.part_drop_child (
     b integer,
     c integer,
-    a integer,
-    "........pg.dropped.4........" INTEGER /* dummy */,
-    "........pg.dropped.5........" INTEGER /* dummy */
+    a integer
 )
 SPLIT INTO 2 TABLETS;
-
--- For binary upgrade, recreate dropped column.
-UPDATE pg_catalog.pg_attribute
-SET attlen = 4, attalign = 'i', attbyval = false
-WHERE attname = '........pg.dropped.4........'
-  AND attrelid = 'public.part_drop_child'::pg_catalog.regclass;
-ALTER TABLE ONLY public.part_drop_child DROP COLUMN "........pg.dropped.4........";
-
--- For binary upgrade, recreate dropped column.
-UPDATE pg_catalog.pg_attribute
-SET attlen = 4, attalign = 'i', attbyval = false
-WHERE attname = '........pg.dropped.5........'
-  AND attrelid = 'public.part_drop_child'::pg_catalog.regclass;
-ALTER TABLE ONLY public.part_drop_child DROP COLUMN "........pg.dropped.5........";
 
 
 \if :use_roles
@@ -303,17 +239,9 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16384'::pg_catalog.
 SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16384'::pg_catalog.oid);
 
 CREATE TABLE public.row_type_tbl (
-    "........pg.dropped.1........" INTEGER /* dummy */,
     x1 integer
 )
 SPLIT INTO 2 TABLETS;
-
--- For binary upgrade, recreate dropped column.
-UPDATE pg_catalog.pg_attribute
-SET attlen = 4, attalign = 'i', attbyval = false
-WHERE attname = '........pg.dropped.1........'
-  AND attrelid = 'public.row_type_tbl'::pg_catalog.regclass;
-ALTER TABLE ONLY public.row_type_tbl DROP COLUMN "........pg.dropped.1........";
 
 
 \if :use_roles
@@ -375,7 +303,7 @@ COPY public.comp_child (b, c, a) FROM stdin;
 --
 
 COPY public.comp_uses_child (tag, r) FROM stdin;
-c1	(20,200,2)
+c1	(20,200,)
 \.
 
 
@@ -384,7 +312,7 @@ c1	(20,200,2)
 --
 
 COPY public.comp_uses_parent (tag, r) FROM stdin;
-p1	(1,10,100)
+p1	(1,,)
 \.
 
 
@@ -411,7 +339,7 @@ COPY public.row_type_tbl (x1) FROM stdin;
 --
 
 COPY public.row_type_user (x) FROM stdin;
-(1)
+(9)
 \.
 
 

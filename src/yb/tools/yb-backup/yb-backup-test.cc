@@ -1077,5 +1077,45 @@ TEST_F_EX(YBBackupTest,
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+class YBBackupTestShortHistoryRetention : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    // Make the restore's dropped-column deletion eligible for GC on the very next compaction.
+    options->extra_tserver_flags.push_back("--timestamp_history_retention_interval_sec=0");
+    options->extra_tserver_flags.push_back("--history_cutoff_propagation_interval_ms=1");
+  }
+};
+
+TEST_F(YBBackupTestShortHistoryRetention, TestDroppedMiddleColumnSurvivesCompaction) {
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE repro_tbl (a INT PRIMARY KEY, b INT, c INT)"));
+  ASSERT_NO_FATALS(RunPsqlCommand("ALTER TABLE repro_tbl DROP COLUMN b", "ALTER TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("TRUNCATE TABLE repro_tbl", "TRUNCATE TABLE"));
+
+  ASSERT_NO_FATALS(InsertRows(
+      "INSERT INTO repro_tbl (a, c) SELECT i, i * 1000 FROM generate_series(1, 100) i", 100));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(
+      RunBackupCommand({"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  DropPsqlDatabase("yugabyte");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
+
+  // The restored data is correct immediately after restore.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT COUNT(*) FROM repro_tbl WHERE c = a * 1000", "100", /* tuples_only */ true));
+
+  // Flush + compact the restored table. Compaction drops every value under column c's DocDB id
+  // because that id is still in the tablet's del_columns.
+  const auto table_id = ASSERT_RESULT(GetTableId("repro_tbl", "post-restore", "yugabyte"));
+  ASSERT_OK(client_->FlushTables(
+      {table_id}, /* timeout */ MonoDelta::FromSeconds(60), /* add_indexes */ false));
+  ASSERT_OK(client_->CompactTables({table_id}));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT COUNT(*) FROM repro_tbl WHERE c = a * 1000", "100", /* tuples_only */ true));
+}
+
 }  // namespace tools
 }  // namespace yb
