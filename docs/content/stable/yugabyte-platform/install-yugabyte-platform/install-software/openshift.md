@@ -8,6 +8,8 @@ menu:
     parent: install-software-2-kubernetes
     identifier: install-software-2-openshift
     weight: 81
+rightNav:
+  hideH4: true
 type: docs
 private: true
 ---
@@ -76,9 +78,9 @@ The YugabyteDB Anywhere [Red Hat certified Helm chart](https://catalog.redhat.co
 
 Installing the YugabyteDB Anywhere [Red Hat certified Helm chart](https://catalog.redhat.com/software/container-stacks/detail/6371ef8950ac9be93651a765) on an OpenShift cluster involves the following:
 
-- [Installing YugabyteDB Anywhere using certified Helm chart](#install-yugabytedb-anywhere-using-certified-helm-chart)
-- [Finding the availability zone labels](#find-the-availability-zone-labels)
-- [Accessing and configuring YugabyteDB Anywhere](#access-and-configure-yugabytedb-anywhere)
+- [Install YugabyteDB Anywhere using certified Helm chart](#install-yugabytedb-anywhere-using-certified-helm-chart)
+- [Find the availability zone labels](#find-the-availability-zone-labels)
+- [Locate your YugabyteDB Anywhere instance](#locate-your-yugabytedb-anywhere-instance)
 
 ### Install YugabyteDB Anywhere using certified Helm chart
 
@@ -145,9 +147,9 @@ You can also install the certified Helm chart using the CLI. For instructions, r
 
 Installing YugabyteDB Anywhere on an OpenShift cluster using Helm involves the following:
 
-- [Creating an instance of YugabyteDB Anywhere](#create-an-instance-of-yugabytedb-anywhere-via-helm)
-- [Finding the availability zone labels](#find-the-availability-zone-labels)
-- [Accessing and configuring YugabyteDB Anywhere](#access-and-configure-yugabytedb-anywhere)
+- [Create an instance of YugabyteDB Anywhere via Helm](#create-an-instance-of-yugabytedb-anywhere-via-helm)
+- [Find the availability zone labels](#find-the-availability-zone-labels)
+- [Locate your YugabyteDB Anywhere instance](#locate-your-yugabytedb-anywhere-instance)
 
 ### Create an instance of YugabyteDB Anywhere via Helm
 
