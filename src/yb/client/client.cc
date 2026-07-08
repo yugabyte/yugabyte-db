@@ -3195,6 +3195,10 @@ Status YBClient::ClearMetacache(const std::string& namespace_id) {
   return data_->meta_cache_->ClearCacheEntries(namespace_id);
 }
 
+void YBClient::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {
+  data_->meta_cache_->MarkTServersAsFollowers(ts_uuids);
+}
+
 bool YBClient::RefreshTabletInfoWithConsensusInfo(
     const tserver::TabletConsensusInfoPB& newly_received_info) {
   auto status = data_->meta_cache_->RefreshTabletInfoWithConsensusInfo(newly_received_info);

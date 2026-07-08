@@ -1121,6 +1121,8 @@ class YBClient {
 
   Status ClearMetacache(const std::string& namespace_id);
 
+  void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
+
   // Uses the TabletConsensusInfo piggybacked from a response to
   // refresh a RemoteTablet in metacache. Returns true if the
   // RemoteTablet was indeed refreshed, false otherwise.

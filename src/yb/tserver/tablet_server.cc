@@ -2358,6 +2358,10 @@ Status TabletServer::ClearMetacache(const std::string& namespace_id) {
   return client()->ClearMetacache(namespace_id);
 }
 
+void TabletServer::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {
+  client()->MarkTServersAsFollowers(ts_uuids);
+}
+
 Status TabletServer::ClearYCQLMetaDataCache() {
   auto* cql_server_api = cql_server_external_.load();
   SCHECK_NOTNULL(cql_server_api);

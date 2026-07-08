@@ -338,6 +338,11 @@ message TSHeartbeatResponsePB {
   optional XClusterHeartbeatInfo xcluster_heartbeat_info = 30;
 
   optional ReplicationInfoPB cluster_replication_info = 31;
+
+  // UUIDs of tservers that are currently leader-blacklisted and with no active leaders
+  // as per master's view. Tservers use this to proactively mark replicas hosted by
+  // these tservers as followers in their meta-cache.
+  repeated string leader_blacklisted_tservers_with_no_leaders = 32;
 }
 
 service MasterHeartbeat {
