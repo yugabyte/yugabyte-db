@@ -223,6 +223,8 @@ Status YBSubTransaction::RollbackToSubTransaction(SubTransactionId id) {
 
 const SubTransactionMetadata& YBSubTransaction::get() const { return sub_txn_; }
 
+CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline);
+
 class YBTransaction::Impl final : public internal::TxnBatcherIf {
  public:
   Impl(TransactionManager* manager, YBTransaction* transaction, TransactionFullLocality locality)
@@ -609,6 +611,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         return;
       }
     }
+
+    // Adjust the deadline after completing the async write drain, so that the drain does not
+    // contribute to the commit deadline.
+    deadline = AdjustDeadline(deadline);
 
     {
       UniqueLock lock(mutex_);
@@ -2740,7 +2746,8 @@ internal::TxnBatcherIf& YBTransaction::batcher_if() {
 
 void YBTransaction::Commit(
     CoarseTimePoint deadline, SealOnly seal_only, CommitCallback callback) {
-  impl_->Commit(AdjustDeadline(deadline), seal_only, std::move(callback));
+  // Impl::Commit adjusts the deadline after the async-write drain; pass it through unchanged.
+  impl_->Commit(deadline, seal_only, std::move(callback));
 }
 
 void YBTransaction::Commit(CoarseTimePoint deadline, CommitCallback callback) {
@@ -2770,7 +2777,8 @@ ConsistentReadPoint& YBTransaction::read_point() {
 std::future<Status> YBTransaction::CommitFuture(
     CoarseTimePoint deadline, SealOnly seal_only) {
   return MakeFuture<Status>([this, deadline, seal_only](auto callback) {
-    impl_->Commit(AdjustDeadline(deadline), seal_only, std::move(callback));
+    // Impl::Commit adjusts the deadline after the async-write drain; pass it through unchanged.
+    impl_->Commit(deadline, seal_only, std::move(callback));
   });
 }
 
