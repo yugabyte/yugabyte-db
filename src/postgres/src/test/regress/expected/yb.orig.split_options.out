@@ -132,6 +132,20 @@ SELECT * FROM test_mv_split_into ORDER BY k;
  3 | 30
 (3 rows)
 
+-- REFRESH (non-concurrent) must preserve the pre-split tablet count
+REFRESH MATERIALIZED VIEW test_mv_split_into;
+SELECT num_tablets FROM yb_table_properties('test_mv_split_into'::regclass);
+ num_tablets 
+-------------
+           3
+(1 row)
+
+SELECT reloptions FROM pg_class WHERE relname = 'test_mv_split_into';
+   reloptions    
+-----------------
+ {yb_presplit=3}
+(1 row)
+
 DROP MATERIALIZED VIEW test_mv_split_into;
 -- Test CREATE MATERIALIZED VIEW ... SPLIT INTO ... WITH NO DATA
 CREATE MATERIALIZED VIEW test_mv_split_nodata SPLIT INTO 5 TABLETS AS

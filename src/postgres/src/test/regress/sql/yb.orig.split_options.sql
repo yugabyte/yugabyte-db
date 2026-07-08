@@ -62,6 +62,10 @@ SELECT num_tablets FROM yb_table_properties('test_mv_split_into'::regclass);
 SELECT reloptions FROM pg_class WHERE relname = 'test_mv_split_into';
 -- Verify data
 SELECT * FROM test_mv_split_into ORDER BY k;
+-- REFRESH (non-concurrent) must preserve the pre-split tablet count
+REFRESH MATERIALIZED VIEW test_mv_split_into;
+SELECT num_tablets FROM yb_table_properties('test_mv_split_into'::regclass);
+SELECT reloptions FROM pg_class WHERE relname = 'test_mv_split_into';
 DROP MATERIALIZED VIEW test_mv_split_into;
 
 -- Test CREATE MATERIALIZED VIEW ... SPLIT INTO ... WITH NO DATA
