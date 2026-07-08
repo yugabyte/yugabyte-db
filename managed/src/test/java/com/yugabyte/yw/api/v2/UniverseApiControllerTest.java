@@ -45,7 +45,9 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
@@ -237,6 +239,20 @@ public class UniverseApiControllerTest extends UniverseTestBase {
               // Volumes
               universe.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo =
                   ApiUtils.getDummyDeviceInfo(2, 150);
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.masterInstanceType =
+                  "c5.4xlarge";
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.masterDeviceInfo =
+                  ApiUtils.getDummyDeviceInfo(1, 50);
+              PerProcessDetails tserverDetails = new PerProcessDetails();
+              tserverDetails.setInstanceType("c5.2xlarge");
+              tserverDetails.setDeviceInfo(ApiUtils.getDummyDeviceInfo(2, 200));
+              UserIntentOverrides userIntentOverrides = new UserIntentOverrides();
+              userIntentOverrides.setPerProcess(Map.of(ServerType.TSERVER, tserverDetails));
+              universe
+                  .getUniverseDetails()
+                  .getPrimaryCluster()
+                  .userIntent
+                  .setUserIntentOverrides(userIntentOverrides);
               // instanceTags
               universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags =
                   Map.of("tag1", "value1", "tag2", "value2");
