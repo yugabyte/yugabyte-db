@@ -42,6 +42,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/sync_point.h"
 
 using namespace std::literals;
 using namespace yb::size_literals;
@@ -298,11 +299,7 @@ Status TabletVectorIndexes::DoCreateIndex(
       indexes = std::make_shared<std::vector<docdb::DocVectorIndexPtr>>(1, it->second);
       return Status::OK();
     }
-    if (indexes.use_count() == 1) {
-      InsertVectorIndex(*indexes, it->second);
-      return Status::OK();
-    }
-
+    TEST_SYNC_POINT("TabletVectorIndexes::DoCreateIndex:BeforeListUpdate");
     auto new_indexes = std::make_shared<docdb::DocVectorIndexes>();
     new_indexes->reserve(indexes->size() + 1);
     *new_indexes = *indexes;
@@ -747,11 +744,6 @@ docdb::DocVectorIndexPtr TabletVectorIndexes::RemoveTableFromList(const TableId&
     if ((**it).table_id() == table_id) {
       auto result = *it;
       auto& indexes = vector_indexes_list_;
-      if (indexes.use_count() == 1) {
-        indexes->erase(it);
-        return result;
-      }
-
       auto new_indexes = std::make_shared<docdb::DocVectorIndexes>();
       new_indexes->reserve(indexes->size() - 1);
       new_indexes->insert(new_indexes->end(), vector_indexes_list_->begin(), it);

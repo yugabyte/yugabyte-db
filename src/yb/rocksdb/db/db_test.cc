@@ -6118,7 +6118,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
     ASSERT_OK(Put(Key(count), RandomString(&rnd, 1024), wo));
     ASSERT_OK(dbfull()->TEST_FlushMemTable(true));
     count++;
-    if (dbfull()->TEST_write_controler().IsStopped()) {
+    if (dbfull()->TEST_write_controller().IsStopped()) {
       sleeping_task_low.WakeUp();
       break;
     }
@@ -6148,7 +6148,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
     ASSERT_OK(Put(Key(count), RandomString(&rnd, 1024), wo));
     ASSERT_OK(dbfull()->TEST_FlushMemTable(true));
     count++;
-    if (dbfull()->TEST_write_controler().IsStopped()) {
+    if (dbfull()->TEST_write_controller().IsStopped()) {
       sleeping_task_low.WakeUp();
       break;
     }
@@ -7057,7 +7057,7 @@ TEST_F(DBTest, SoftLimit) {
     // Flush the file. File size is around 30KB.
     ASSERT_OK(Flush());
   }
-  ASSERT_TRUE(dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(dbfull()->TEST_write_controller().NeedsDelay());
 
   sleeping_task_low.WakeUp();
   sleeping_task_low.WaitUntilDone();
@@ -7068,7 +7068,7 @@ TEST_F(DBTest, SoftLimit) {
   // The L1 file size is around 30KB.
 
   ASSERT_EQ(NumTableFilesAtLevel(1), 1);
-  ASSERT_TRUE(!dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(!dbfull()->TEST_write_controller().NeedsDelay());
 
   // Only allow one compactin going through.
   yb::SyncPoint::GetInstance()->SetCallBack(
@@ -7105,7 +7105,7 @@ TEST_F(DBTest, SoftLimit) {
   // doesn't trigger soft_pending_compaction_bytes_limit. Another compaction
   // promoting the L1 file to L2 is unscheduled.
   ASSERT_EQ(NumTableFilesAtLevel(1), 1);
-  ASSERT_TRUE(!dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(!dbfull()->TEST_write_controller().NeedsDelay());
 
   // Create 3 L0 files, making score of L0 to be 3, higher than L0.
   for (int i = 0; i < 3; i++) {
@@ -7124,12 +7124,12 @@ TEST_F(DBTest, SoftLimit) {
   // Now there is one L2 file (around 60KB) which doesn't trigger
   // soft_pending_compaction_bytes_limit but the 3 L0 files do get the delay token
   ASSERT_EQ(NumTableFilesAtLevel(2), 1);
-  ASSERT_TRUE(dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(dbfull()->TEST_write_controller().NeedsDelay());
 
   sleeping_task_low.WakeUp();
   sleeping_task_low.WaitUntilSleeping();
 
-  ASSERT_TRUE(!dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(!dbfull()->TEST_write_controller().NeedsDelay());
 
   // shrink level base so L2 will hit soft limit easier.
   ASSERT_OK(dbfull()->SetOptions({
@@ -7138,7 +7138,7 @@ TEST_F(DBTest, SoftLimit) {
 
   ASSERT_OK(Put("", ""));
   ASSERT_OK(Flush());
-  ASSERT_TRUE(dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(dbfull()->TEST_write_controller().NeedsDelay());
 
   sleeping_task_low.WaitUntilSleeping();
   yb::SyncPoint::GetInstance()->DisableProcessing();
@@ -7172,11 +7172,11 @@ TEST_F(DBTest, LastWriteBufferDelay) {
     for (int j = 0; j < kNumKeysPerMemtable; j++) {
       ASSERT_OK(Put(Key(j), ""));
     }
-    ASSERT_TRUE(!dbfull()->TEST_write_controler().NeedsDelay());
+    ASSERT_TRUE(!dbfull()->TEST_write_controller().NeedsDelay());
   }
   // Inserting a new entry would create a new mem table, triggering slow down.
   ASSERT_OK(Put(Key(0), ""));
-  ASSERT_TRUE(dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(dbfull()->TEST_write_controller().NeedsDelay());
 
   sleeping_task.WakeUp();
   sleeping_task.WaitUntilDone();
@@ -7239,7 +7239,7 @@ TEST_F(DBTest, MaxFlushingBytes) {
            ++i, ++key_idx) {
         ASSERT_OK(Put(Key(key_idx), RandomString(&rnd, value_size)));
       }
-      auto& write_controller = dbfull()->TEST_write_controler();
+      auto& write_controller = dbfull()->TEST_write_controller();
       ASSERT_FALSE(write_controller.NeedsDelay());
       ASSERT_FALSE(write_controller.IsStopped());
       ASSERT_EQ(0, callback_count.load());

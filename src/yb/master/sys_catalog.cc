@@ -224,7 +224,8 @@ void SysCatalogTable::StartShutdown() {
   }
   auto peer = tablet_peer();
   if (peer) {
-    CHECK(peer->StartShutdown());
+    CHECK(peer->StartShutdown(
+        tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse));
   }
 
   if (multi_raft_manager_) {
@@ -235,7 +236,7 @@ void SysCatalogTable::StartShutdown() {
 void SysCatalogTable::CompleteShutdown() {
   auto peer = tablet_peer();
   if (peer) {
-    peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse);
+    peer->CompleteShutdown();
   }
   inform_removed_master_pool_->Shutdown();
   raft_pool_->Shutdown();

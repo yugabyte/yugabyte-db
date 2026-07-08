@@ -225,6 +225,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // backward compatibility.
   @ApiModelProperty public boolean useNewHelmNamingStyle = false;
 
+  @ApiModelProperty public UniverseSettings universeSettings = null;
+
   // Place all masters into default region flag.
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2025.2")
   @ApiModelProperty(
@@ -353,6 +355,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @ApiModelProperty(value = "YbaApi Internal. PA Collector UUID")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
   private UUID paCollectorUuid = null;
+
+  @Data
+  public static class UniverseSettings {
+    @ApiModelProperty public boolean expertMode = false;
+  }
 
   @Data
   public static class PerInstanceTypeReservation {
@@ -577,12 +584,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       if (userIntent.isMulticloudSupport()) {
         for (ProviderSpecification providerSpecification : userIntent.providerSpecifications) {
-
-          ProviderSpecification other =
-              userIntent.getProviderSpecification(providerSpecification.providerUUID);
-          if (other != null
-              && Provider.InstanceTagsModificationEnabledProviders.contains(other.providerType)
-              && !Objects.equals(other.instanceTags, providerSpecification.instanceTags)) {
+          if (!Provider.InstanceTagsModificationEnabledProviders.contains(
+              providerSpecification.providerType)) {
+            continue;
+          }
+          if (!Objects.equals(
+              providerSpecification.instanceTags,
+              cluster.userIntent.getInstanceTagsForProvider(providerSpecification.providerUUID))) {
             return false;
           }
         }

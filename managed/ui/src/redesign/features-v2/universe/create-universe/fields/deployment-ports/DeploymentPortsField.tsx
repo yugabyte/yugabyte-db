@@ -18,7 +18,7 @@ import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-import InfoIcon from '../../../../../assets/info-new.svg';
+import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { Box, styled, Typography } = mui;
 

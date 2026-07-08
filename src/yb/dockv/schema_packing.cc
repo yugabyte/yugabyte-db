@@ -228,6 +228,23 @@ inline PackedColumnDecoderV1 MakePackedColumnSkipDecoderV1(bool last) {
   return last ? &PackedColumnSkipDecoderV1<true> : &PackedColumnSkipDecoderV1<false>;
 }
 
+template <bool kCheckNull, bool kLast>
+UnsafeStatus PackedColumnSkipDecoderV2(
+    PackedColumnDecoderDataV2* data, const uint8_t* body, size_t projection_index,
+    const dockv::PackedColumnDecoderArgsUnion& decoder_args,
+    const PackedColumnDecoderEntry* proxy_chain) {
+  return CallNextDecoderV2<kCheckNull, kLast>(data, body, projection_index, proxy_chain);
+}
+
+inline PackedColumnDecodersV2 MakePackedColumnSkipDecoderV2(bool last) {
+  return PackedColumnDecodersV2 {
+    .with_nulls = last ? &PackedColumnSkipDecoderV2<true, true>
+                       : &PackedColumnSkipDecoderV2<true, false>,
+    .no_nulls = last ? &PackedColumnSkipDecoderV2<false, true>
+                     : &PackedColumnSkipDecoderV2<false, false>,
+  };
+}
+
 template <bool kCheckNull>
 UnsafeStatus PackedColumnTrackingDecoderV2(
     PackedColumnDecoderDataV2* data, const uint8_t* body, size_t projection_index,
@@ -303,12 +320,20 @@ inline PackedColumnEntry* PrepareColumnEntryV1(
 inline PackedColumnEntry* PrepareColumnEntryV2(
     PackedColumnEntry& column_entry, PackedColumnDecoderEntry decoder,
     bool last, const SchemaPacking& schema_packing, int64_t packed_index) {
-  column_entry.SetDecoders(
-      std::move(decoder),
-      PgTableRow::GetPackedColumnSkipperV2(
-          last, /* skip_projection_column */ true,
-          schema_packing.column_packing_data(packed_index).data_type, packed_index)
-  );
+  PackedColumnDecoderEntry skip_decoder;
+  if (packed_index != SchemaPacking::kSkippedColumnIdx) {
+    skip_decoder = PgTableRow::GetPackedColumnSkipperV2(
+        last, /* skip_projection_column */ true,
+        schema_packing.column_packing_data(packed_index).data_type, packed_index);
+  } else {
+    // Column is in the reader projection but absent from this row's schema packing
+    // (e.g. ADD COLUMN). There is no packed value to skip over.
+    skip_decoder = {
+      .decoder = { .v2 = MakePackedColumnSkipDecoderV2(last) },
+      .decoder_args = {}
+    };
+  }
+  column_entry.SetDecoders(std::move(decoder), std::move(skip_decoder));
   return &column_entry;
 }
 

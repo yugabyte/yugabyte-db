@@ -12,7 +12,7 @@ import { YSQL_FIELD, CONNECTION_POOLING_FIELD } from '../FieldNames';
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-import InfoIcon from '../../../../../assets/info-new.svg';
+import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { Box, Typography, styled, Link } = mui;
 

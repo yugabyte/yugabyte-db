@@ -42,6 +42,14 @@ struct WebserverWrapper;
 
 #define YB_PG_METRIC_NAME_LEN 120
 
+typedef void (*YbcDbCatalogCacheMetricVisitor)(unsigned int db_oid,
+                                              const char *metric_name,
+                                              const char *table_name,
+                                              uint64_t count,
+                                              void *arg);
+typedef void (*YbcIterateDbCatalogCacheMetricsFunc)(YbcDbCatalogCacheMetricVisitor visitor,
+                                                   void *arg);
+
 typedef struct YbcPgmEntry {
   char name[YB_PG_METRIC_NAME_LEN];
   char table_name[YB_PG_METRIC_NAME_LEN];
@@ -92,6 +100,7 @@ typedef struct {
 struct WebserverWrapper *CreateWebserver(char *listen_addresses, int port);
 void DestroyWebserver(struct WebserverWrapper *webserver);
 void RegisterMetrics(YbcPgmEntry *tab, int num_entries, char *metric_node_name);
+void RegisterDbCatalogCacheMetrics(YbcIterateDbCatalogCacheMetricsFunc fn);
 void RegisterRpczEntries(
     YbcPostgresCallbacks *callbacks, int *num_backends_ptr, YbcRpczEntry **rpczEntriesPointer,
     YbcConnectionMetrics *conn_metrics_ptr);

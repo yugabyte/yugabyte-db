@@ -2883,6 +2883,7 @@ void PgLibPqTest::AddTSToLoadBalanceMultipleInstances(
 }
 
 void PgLibPqTest::VerifyLoadBalance(const std::map<std::string, int>& ts_loads) {
+  DumpTabletDistribution(cluster_.get());
   constexpr int kNumDatabases = 3;
   // Ensure that the load is properly distributed.
   int min_load = kNumDatabases;
@@ -2934,13 +2935,31 @@ void PgLibPqTest::TestLoadBalanceMultipleColocatedDB(
   VerifyLoadBalance(ts_loads);
 }
 
+// Fixture for the multi-database load-balancing tests, which add a tserver and then assert that a
+// small set of single-tablet parent tablets (one per database) ends up near-evenly spread.
+class PgLibPqLoadBalanceMultipleDBsTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    // These tests add a 4th tserver and assert that the parent tablets are well balanced. Ensure
+    // that the other system / pg internal tables that get created have a multiple of 4 tablets, so
+    // that they distribute evenly across the 4 tservers and don't affect the global balancing of
+    // the parent tablets the test inspects. pg_auto_analyze_table is a single-tablet stateful
+    // service that cannot be made a multiple of 4, so disable its creation entirely.
+    options->transaction_table_num_tablets = 4;
+    options->extra_master_flags.push_back("--num_advisory_locks_tablets=4");
+    options->extra_master_flags.push_back("--ysql_enable_auto_analyze_infra=false");
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze_infra=false");
+  }
+};
+
 // Test that adding a tserver causes colocation tablets of colocation databases to offload
 // tablet-peers to the new tserver.
-TEST_F(PgLibPqTest, LoadBalanceMultipleColocatedDB) {
+TEST_F_EX(PgLibPqTest, LoadBalanceMultipleColocatedDB, PgLibPqLoadBalanceMultipleDBsTest) {
   TestLoadBalanceMultipleColocatedDB(GetColocatedDbDefaultTablegroupTabletLocations);
 }
 
-TEST_F(PgLibPqTest, LoadBalanceMultipleTablegroups) {
+TEST_F_EX(PgLibPqTest, LoadBalanceMultipleTablegroups, PgLibPqLoadBalanceMultipleDBsTest) {
   constexpr int num_databases = 3;
   const auto timeout = 60s * kTimeMultiplier;
   const std::string database_prefix = "test_db";
@@ -4242,77 +4261,81 @@ TEST_F(PgLibPqTest, CatalogCacheMemoryLeak) {
   }
 }
 
-static std::optional<std::string> GetCatalogTableNameFromIndexName(const string& index_name) {
+// Previously used regex pattern to filter and get catalog table name, not used currently
+// and kept for future uses.
+[[maybe_unused]] static std::optional<std::string> GetCatalogTableNameFromIndexName(
+  const string& index_name
+) {
   static const std::regex table_name_regex(
-      "(pg_publication_namespace|"
-      "pg_foreign_data_wrapper|"
-      "pg_largeobject_metadata|"
-      "pg_replication_origin|"
-      "pg_statistic_ext_data|"
-      "pg_yb_catalog_version|"
-      "pg_partitioned_table|"
-      "pg_subscription_rel|"
-      "pg_db_role_setting|"
-      "pg_publication_rel|"
-      "pg_yb_role_profile|"
-      "pg_foreign_server|"
-      "pg_event_trigger|"
-      "pg_foreign_table|"
-      "pg_parameter_acl|"
-      "pg_shdescription|"
-      "pg_statistic_ext|"
-      "pg_ts_config_map|"
-      "pg_yb_tablegroup|"
-      "pg_auth_members|"
-      "pg_subscription|"
-      "pg_user_mapping|"
-      "pg_yb_migration|"
-      "pg_default_acl|"
-      "pg_description|"
-      "pg_largeobject|"
-      "pg_publication|"
-      "pg_ts_template|"
-      "pg_constraint|"
-      "pg_conversion|"
-      "pg_init_privs|"
-      "pg_shseclabel|"
-      "pg_tablespace|"
-      "pg_yb_profile|"
-      "pg_aggregate|"
-      "pg_attribute|"
-      "pg_collation|"
-      "pg_extension|"
-      "pg_namespace|"
-      "pg_statistic|"
-      "pg_transform|"
-      "pg_ts_config|"
-      "pg_ts_parser|"
-      "pg_database|"
-      "pg_inherits|"
-      "pg_language|"
-      "pg_operator|"
-      "pg_opfamily|"
-      "pg_seclabel|"
-      "pg_sequence|"
-      "pg_shdepend|"
-      "pg_attrdef|"
-      "pg_opclass|"
-      "pg_rewrite|"
-      "pg_trigger|"
-      "pg_ts_dict|"
-      "pg_amproc|"
-      "pg_authid|"
-      "pg_depend|"
-      "pg_policy|"
-      "pg_class|"
-      "pg_index|"
-      "pg_range|"
-      "pg_amop|"
-      "pg_cast|"
-      "pg_enum|"
-      "pg_proc|"
-      "pg_type|"
-      "pg_am)_.*");
+    "(pg_publication_namespace|"
+    "pg_foreign_data_wrapper|"
+    "pg_largeobject_metadata|"
+    "pg_replication_origin|"
+    "pg_statistic_ext_data|"
+    "pg_yb_catalog_version|"
+    "pg_partitioned_table|"
+    "pg_subscription_rel|"
+    "pg_db_role_setting|"
+    "pg_publication_rel|"
+    "pg_yb_role_profile|"
+    "pg_foreign_server|"
+    "pg_event_trigger|"
+    "pg_foreign_table|"
+    "pg_parameter_acl|"
+    "pg_shdescription|"
+    "pg_statistic_ext|"
+    "pg_ts_config_map|"
+    "pg_yb_tablegroup|"
+    "pg_auth_members|"
+    "pg_subscription|"
+    "pg_user_mapping|"
+    "pg_yb_migration|"
+    "pg_default_acl|"
+    "pg_description|"
+    "pg_largeobject|"
+    "pg_publication|"
+    "pg_ts_template|"
+    "pg_constraint|"
+    "pg_conversion|"
+    "pg_init_privs|"
+    "pg_shseclabel|"
+    "pg_tablespace|"
+    "pg_yb_profile|"
+    "pg_aggregate|"
+    "pg_attribute|"
+    "pg_collation|"
+    "pg_extension|"
+    "pg_namespace|"
+    "pg_statistic|"
+    "pg_transform|"
+    "pg_ts_config|"
+    "pg_ts_parser|"
+    "pg_database|"
+    "pg_inherits|"
+    "pg_language|"
+    "pg_operator|"
+    "pg_opfamily|"
+    "pg_seclabel|"
+    "pg_sequence|"
+    "pg_shdepend|"
+    "pg_attrdef|"
+    "pg_opclass|"
+    "pg_rewrite|"
+    "pg_trigger|"
+    "pg_ts_dict|"
+    "pg_amproc|"
+    "pg_authid|"
+    "pg_depend|"
+    "pg_policy|"
+    "pg_class|"
+    "pg_index|"
+    "pg_range|"
+    "pg_amop|"
+    "pg_cast|"
+    "pg_enum|"
+    "pg_proc|"
+    "pg_type|"
+    "pg_am)_.*");
 
   std::smatch match;
   if (std::regex_search(index_name, match, table_name_regex)) {
@@ -4322,13 +4345,34 @@ static std::optional<std::string> GetCatalogTableNameFromIndexName(const string&
 }
 
 TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
-  auto conn = ASSERT_RESULT(Connect());
-  // Make a new connection to see more cache misses (by default we will only
-  // preload the catalog caches for the first connection).
-  conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value TEXT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 'hello')"));
-  auto result = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
+  auto conn_a = ASSERT_RESULT(Connect());
+  conn_a = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_a.Execute("CREATE TABLE t_a (key INT, value TEXT)"));
+  ASSERT_OK(conn_a.Execute("INSERT INTO t_a (key, value) VALUES (1, 'hello')"));
+  ASSERT_OK(conn_a.Fetch("SELECT * FROM t_a"));
+
+  const auto db_a_oid = ASSERT_RESULT(conn_a.FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = current_database()"));
+  const auto db_a_oid_str = std::to_string(db_a_oid);
+
+  constexpr auto kSecondDbName = "catalog_cache_metrics_db_b";
+  ASSERT_OK(conn_a.ExecuteFormat("CREATE DATABASE $0", kSecondDbName));
+  auto conn_b = ASSERT_RESULT(ConnectToDB(kSecondDbName));
+  ASSERT_OK(conn_b.Execute("CREATE TABLE t_b (key INT, value TEXT)"));
+  ASSERT_OK(conn_b.Execute("INSERT INTO t_b (key, value) VALUES (2, 'world')"));
+  ASSERT_OK(conn_b.Execute("DELETE FROM t_b WHERE key = 2"));
+  ASSERT_OK(conn_b.Fetch("SELECT * FROM t_b"));
+
+  const auto db_b_oid = ASSERT_RESULT(conn_b.FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = current_database()"));
+  const auto db_b_oid_str = std::to_string(db_b_oid);
+
+  ASSERT_NE(db_a_oid, db_b_oid)
+      << "Both connections resolved to the same database OID; per-DB attribution "
+         "cannot be tested. db_a=" << db_a_oid_str << ", db_b=" << db_b_oid_str;
+  LOG(INFO) << "Per-DB metric db_oids under test: " << db_a_oid_str
+            << " and " << db_b_oid_str;
+
   EasyCurl c;
   faststring buf;
 
@@ -4336,6 +4380,10 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   auto json_metrics = GetJsonMetrics();
 
   for (const auto& metrics : {json_metrics, prometheus_metrics}) {
+    auto is_per_db = [](const YsqlMetric& m) {
+      return m.labels.find("db_oid") != m.labels.end();
+    };
+
     int64_t expected_total_cache_misses = 0;
     for (const auto& metric : metrics) {
       if (metric.name.find("yb_ysqlserver_CatalogCacheMisses") != std::string::npos &&
@@ -4347,67 +4395,210 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
     ASSERT_GT(expected_total_cache_misses, 0);
     LOG(INFO) << "Expected total cache misses: " << expected_total_cache_misses;
 
-    // Go through the per-index metrics and aggregate them by table.
-    int64_t total_index_cache_misses = 0;
-    std::unordered_map<std::string, int64_t> per_table_index_cache_misses;
-    for (const auto& metric : metrics) {
-      if (metric.name.find("yb_ysqlserver_CatalogCacheMisses") != std::string::npos &&
-          metric.labels.find("table_name") != metric.labels.end()) {
-        auto table_name = GetCatalogTableNameFromIndexName(metric.labels.at("table_name"));
-        ASSERT_TRUE(table_name) << "Failed to get table name from index name: "
-                                << metric.labels.at("table_name");
+    // Bucket per-DB rows by metric and table.
+    using PerDbMap =
+        std::unordered_map<std::string, std::unordered_map<std::string, int64_t>>;
+    PerDbMap per_db_index;
+    PerDbMap per_db_table;
+    PerDbMap per_db_list;
+    PerDbMap per_db_neg;
+    std::unordered_set<std::string> observed_db_oids;
+    std::unordered_map<std::string, int64_t> per_db_total_by_db_oid;
+    size_t per_db_row_count = 0;
 
-        per_table_index_cache_misses[*table_name] += metric.value;
-        total_index_cache_misses += metric.value;
-        LOG_IF(INFO, metric.value > 0) << "Index " << metric.labels.at("table_name") << " has "
-                                       << metric.value << " cache misses";
+    for (const auto& metric : metrics) {
+      if (!is_per_db(metric) ||
+          metric.labels.find("table_name") == metric.labels.end()) {
+        continue;
       }
-    }
-    ASSERT_EQ(expected_total_cache_misses, total_index_cache_misses);
+      const auto& table_name = metric.labels.at("table_name");
 
-    // Check that the sum of the cache misses for all the indexes on each table is equal to the
-    // table-level cache miss metric.
-    int64_t total_table_cache_misses = 0;
-    std::unordered_map<std::string, int64_t> per_table_table_misses;
-    for (const auto& metric : metrics) {
+      PerDbMap* per_db_bucket = nullptr;
       if (metric.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos) {
-        auto table_name = metric.labels.at("table_name");
-        ASSERT_EQ(per_table_index_cache_misses[table_name], metric.value)
-            << "Expected sum of index cache misses for table " << table_name
-            << " to be equal to the table cache misses";
-        per_table_table_misses[table_name] = metric.value;
-        total_table_cache_misses += metric.value;
-        LOG_IF(INFO, metric.value > 0)
-            << "Table " << table_name << " has " << metric.value << " cache misses";
+        per_db_bucket = &per_db_table;
+      } else if (metric.name.find("yb_ysqlserver_CatalogCacheListMisses") != std::string::npos) {
+        per_db_bucket = &per_db_list;
+      } else if (metric.name.find("yb_ysqlserver_CatalogCacheNegMisses") != std::string::npos) {
+        per_db_bucket = &per_db_neg;
+      } else if (metric.name.find("yb_ysqlserver_CatalogCacheMisses") != std::string::npos) {
+        per_db_bucket = &per_db_index;
+      } else {
+        continue;
+      }
+
+      const auto& ns_id = metric.labels.at("db_oid");
+      (*per_db_bucket)[table_name][ns_id] += metric.value;
+      observed_db_oids.insert(ns_id);
+      per_db_total_by_db_oid[ns_id] += metric.value;
+      ++per_db_row_count;
+      LOG_IF(INFO, metric.value > 0)
+          << "Per-DB " << metric.name << " { table_name=" << table_name
+          << ", db_oid=" << ns_id << " } = " << metric.value;
+    }
+
+    ASSERT_GT(per_db_row_count, 0)
+        << "Expected at least one per-database catalog cache metric row to be emitted";
+
+    // Both test databases must show up in the per-DB rows
+    std::string observed_db_oids_str;
+    for (const auto& ns : observed_db_oids) {
+      if (!observed_db_oids_str.empty()) observed_db_oids_str += ", ";
+      observed_db_oids_str += ns;
+    }
+    ASSERT_TRUE(observed_db_oids.count(db_a_oid_str))
+        << "Expected per-DB metrics to include db_oid=" << db_a_oid_str
+        << " (database A), but only observed: [" << observed_db_oids_str << "]";
+    ASSERT_TRUE(observed_db_oids.count(db_b_oid_str))
+        << "Expected per-DB metrics to include db_oid=" << db_b_oid_str
+        << " (database B), but only observed: [" << observed_db_oids_str << "]";
+
+    // Each test database must have attributed a positive count somewhere across
+    // its per-DB rows. If db_b's counts were misattributed to db_a (or vice
+    // versa), one of these totals would be zero.
+    ASSERT_GT(per_db_total_by_db_oid[db_a_oid_str], 0)
+        << "Database A (" << db_a_oid_str
+        << ") has no per-DB catalog cache misses attributed to it";
+    ASSERT_GT(per_db_total_by_db_oid[db_b_oid_str], 0)
+        << "Database B (" << db_b_oid_str
+        << ") has no per-DB catalog cache misses attributed to it";
+
+    // Sum all per-DB CatalogCacheMisses rows (across every table_name and
+    // every db_oid) and verify it matches the total CatalogCacheMisses metric.
+    int64_t total_per_db_index_misses = 0;
+    for (const auto& [table_name, by_ns] : per_db_index) {
+      for (const auto& [ns_id, value] : by_ns) {
+        total_per_db_index_misses += value;
       }
     }
-    ASSERT_EQ(expected_total_cache_misses, total_table_cache_misses);
+    ASSERT_EQ(expected_total_cache_misses, total_per_db_index_misses)
+        << "Sum of per-DB CatalogCacheMisses rows (" << total_per_db_index_misses
+        << ") does not match the grand total (" << expected_total_cache_misses << ")";
 
-    // Verify that list miss and neg miss metrics are exported and
-    // that list_misses + neg_misses <= total table misses for each table.
+    // Make sure at least one per-DB list-miss or neg-miss row was emitted.
     int64_t total_list_misses = 0;
     int64_t total_neg_misses = 0;
-    for (const auto& metric : metrics) {
-      if (metric.name.find("yb_ysqlserver_CatalogCacheListMisses") != std::string::npos) {
-        auto table_name = metric.labels.at("table_name");
-        total_list_misses += metric.value;
-        ASSERT_LE(metric.value, per_table_table_misses[table_name])
-            << "List misses for " << table_name << " should not exceed total table misses";
-        LOG_IF(INFO, metric.value > 0)
-            << "Table " << table_name << " has " << metric.value << " list cache misses";
-      }
-      if (metric.name.find("yb_ysqlserver_CatalogCacheNegMisses") != std::string::npos) {
-        auto table_name = metric.labels.at("table_name");
-        total_neg_misses += metric.value;
-        LOG_IF(INFO, metric.value > 0)
-            << "Table " << table_name << " has " << metric.value << " negative cache misses";
-      }
+    for (const auto& [table_name, by_ns] : per_db_list) {
+      for (const auto& [ns_id, value] : by_ns) total_list_misses += value;
+    }
+    for (const auto& [table_name, by_ns] : per_db_neg) {
+      for (const auto& [ns_id, value] : by_ns) total_neg_misses += value;
     }
     LOG(INFO) << "Total list misses: " << total_list_misses
               << ", total neg misses: " << total_neg_misses;
     ASSERT_GT(total_list_misses + total_neg_misses, 0)
-        << "Expected at least some list or neg misses";
+        << "Expected at least some per-DB list or neg misses to be recorded";
   }
+}
+
+// Shrinks the per-DB catalog cache metrics array to 2 entries with a single per-DB slot
+// at index 0 and the catchall slot at index 1. Every DB metric that is recorded after the
+// dedicated slot is claimed should be aggregated into the catchall slot.
+class PgLibPqCatalogCacheCatchallTest : public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_pg_conf_csv=yb_pg_metrics.db_catalog_cache_metrics_max_entries=2");
+  }
+};
+
+TEST_F_EX(PgLibPqTest, CatalogCacheMetricsCatchallSlotTest,
+          PgLibPqCatalogCacheCatchallTest) {
+  constexpr int kNumTestDbs = 3;
+  std::vector<std::string> test_db_names;
+  std::vector<std::string> test_db_oids;
+  test_db_names.reserve(kNumTestDbs);
+  test_db_oids.reserve(kNumTestDbs);
+  for (int i = 0; i < kNumTestDbs; ++i) {
+    test_db_names.emplace_back(Format("catchall_db_$0", i));
+  }
+
+  auto conn_setup = ASSERT_RESULT(Connect());
+  for (const auto& db_name : test_db_names) {
+    ASSERT_OK(conn_setup.ExecuteFormat("CREATE DATABASE $0", db_name));
+  }
+  ASSERT_OK(conn_setup.Fetch("SELECT 1"));
+
+  for (const auto& db_name : test_db_names) {
+    auto conn = ASSERT_RESULT(ConnectToDB(db_name));
+    ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value TEXT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 'hello')"));
+    ASSERT_OK(conn.Fetch("SELECT * FROM t"));
+
+    const auto oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
+        "SELECT oid FROM pg_database WHERE datname = current_database()"));
+    test_db_oids.emplace_back(std::to_string(oid));
+    LOG(INFO) << "Test DB " << db_name << " oid=" << test_db_oids.back();
+  }
+
+  // Bucket per-DB catalog cache miss values by db_oid.
+  auto bucket_per_db_misses = [](const std::vector<YsqlMetric>& metrics) {
+    std::unordered_map<std::string, int64_t> totals;
+    for (const auto& m : metrics) {
+      if (m.labels.find("db_oid") == m.labels.end() ||
+          m.labels.find("table_name") == m.labels.end()) {
+        continue;
+      }
+      const bool is_cc_metric =
+          m.name.find("yb_ysqlserver_CatalogCacheMisses") != std::string::npos ||
+          m.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos ||
+          m.name.find("yb_ysqlserver_CatalogCacheListMisses") != std::string::npos ||
+          m.name.find("yb_ysqlserver_CatalogCacheNegMisses") != std::string::npos;
+      if (!is_cc_metric) continue;
+      totals[m.labels.at("db_oid")] += m.value;
+    }
+    return totals;
+  };
+
+  auto find_or_zero = [](const std::unordered_map<std::string, int64_t>& m,
+                       const std::string& k) -> int64_t {
+    auto it = m.find(k);
+    return it == m.end() ? 0 : it->second;
+  };
+
+  constexpr const char* kCatchallNamespaceId = "0";
+
+  // Snapshot the catchall before triggering another overflow DB.
+  const auto totals_before_json = bucket_per_db_misses(GetJsonMetrics());
+  const auto totals_before_prom = bucket_per_db_misses(GetPrometheusMetrics());
+  const int64_t catchall_before_json = find_or_zero(totals_before_json, kCatchallNamespaceId);
+  const int64_t catchall_before_prom = find_or_zero(totals_before_prom, kCatchallNamespaceId);
+  LOG(INFO) << "Catchall total before extra DB: json=" << catchall_before_json
+            << ", prom=" << catchall_before_prom;
+
+  ASSERT_GT(catchall_before_json, 0)
+      << "Expected catchall (json) to accumulate misses from initial overflow DBs";
+  ASSERT_GT(catchall_before_prom, 0)
+      << "Expected catchall (prom) to accumulate misses from initial overflow DBs";
+
+  // With only one dedicated per-DB slot, at most one test DB has its own row.
+  int test_dbs_with_own_slot = 0;
+  for (const auto& oid : test_db_oids) {
+    if (totals_before_json.count(oid)) ++test_dbs_with_own_slot;
+  }
+  ASSERT_LE(test_dbs_with_own_slot, 1)
+      << "With max_entries=2 only one test DB may claim the dedicated slot; "
+         "observed " << test_dbs_with_own_slot;
+
+  // Trigger more misses from new DB, should increment last slot
+  constexpr const char* kExtraDbName = "catchall_db_extra";
+  ASSERT_OK(conn_setup.ExecuteFormat("CREATE DATABASE $0", kExtraDbName));
+  auto extra_conn = ASSERT_RESULT(ConnectToDB(kExtraDbName));
+  ASSERT_OK(extra_conn.Execute("CREATE TABLE t (key INT, value TEXT)"));
+  ASSERT_OK(extra_conn.Execute("INSERT INTO t (key, value) VALUES (1, 'hi')"));
+  ASSERT_OK(extra_conn.Fetch("SELECT * FROM t"));
+
+  const auto totals_after_json = bucket_per_db_misses(GetJsonMetrics());
+  const auto totals_after_prom = bucket_per_db_misses(GetPrometheusMetrics());
+  const int64_t catchall_after_json = find_or_zero(totals_after_json, kCatchallNamespaceId);
+  const int64_t catchall_after_prom = find_or_zero(totals_after_prom, kCatchallNamespaceId);
+  LOG(INFO) << "Catchall total after extra DB: json=" << catchall_after_json
+            << ", prom=" << catchall_after_prom;
+
+  ASSERT_GT(catchall_after_json, catchall_before_json)
+      << "Catchall (json) did not grow after extra overflow DB";
+  ASSERT_GT(catchall_after_prom, catchall_before_prom)
+      << "Catchall (prom) did not grow after extra overflow DB";
 }
 
 // Base fixture for the ysql_preload_pg_authid_for_auth tests. Enables full

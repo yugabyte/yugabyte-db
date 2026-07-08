@@ -90,8 +90,8 @@ Status ExtractRemoteError(
 
 
 RemoteBootstrapFileDownloader::RemoteBootstrapFileDownloader(
-    const std::string* log_prefix, FsManager* fs_manager)
-    : log_prefix_(*log_prefix), fs_manager_(*fs_manager) {
+    const std::string* log_prefix, FsManager* fs_manager, std::function<bool()> is_cancelled)
+    : log_prefix_(*log_prefix), fs_manager_(*fs_manager), is_cancelled_(std::move(is_cancelled)) {
 }
 
 void RemoteBootstrapFileDownloader::Start(
@@ -200,6 +200,12 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
     auto status = RetryFunc(
         deadline, "FetchData", Format("FetchData timedout after deadline: $0", deadline),
         [&](CoarseTimePoint, bool *retry) -> Status {
+          if (IsCancelled()) {
+            *retry = false;
+            return STATUS(
+                ShutdownInProgress,
+                "Remote bootstrap download cancelled (tserver is shutting down)");
+          }
           resp.Clear();
           controller.Reset();
           req.set_session_id(session_id_);

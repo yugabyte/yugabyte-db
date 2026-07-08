@@ -15,6 +15,7 @@
 #include "yb/rocksdb/perf_context.h"
 #include "yb/rocksdb/port/stack_trace.h"
 
+#include "yb/util/format.h"
 #include "yb/util/random_util.h"
 
 using std::unique_ptr;

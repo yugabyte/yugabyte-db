@@ -842,3 +842,30 @@ h2 {
 .p-16 {
   padding: 16px;
 }
+
+.no-border-bottom > a {
+  border-bottom: none !important;
+  height: auto !important;
+}
+.menu-item-subtext-container {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+  line-height: normal;
+  margin: 12px 0px;
+  color: #333 !important;
+  &:hover, &:focus {
+    color: #333 !important;
+  }
+}
+.menu-item-subtext {
+  color: #4E5F6D;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 300;
+  line-height: normal;
+  flex-basis: 100%;
+  margin-left: 24px;
+  margin-top: 4px;
+}

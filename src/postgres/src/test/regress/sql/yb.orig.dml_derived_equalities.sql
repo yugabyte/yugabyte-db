@@ -359,8 +359,9 @@ CREATE TABLE t_const_expr (a int);
 CREATE INDEX NONCONCURRENTLY t_const_expr_idx ON t_const_expr ((1)) INCLUDE (a);
 INSERT INTO t_const_expr VALUES (10), (20);
 ANALYZE t_const_expr;
-:explain /*+ IndexScan(t_const_expr t_const_expr_idx) */ SELECT * FROM t_const_expr;
-SELECT * FROM t_const_expr ORDER BY a;
+\set hint '/*+ IndexScan(t_const_expr t_const_expr_idx) */'
+\set query ':P :hint SELECT * FROM t_const_expr ORDER BY a;'
+\i :iter_P2
 
 -- Mixed index where only some expression columns are constant: derived
 -- equalities should still fire for the non-constant expression column.
@@ -369,8 +370,85 @@ CREATE INDEX NONCONCURRENTLY t_mixed_expr_idx
     ON t_mixed_expr ((b + 1), (1)) INCLUDE (a);
 INSERT INTO t_mixed_expr VALUES (1, 9), (2, 4);
 ANALYZE t_mixed_expr;
-:explain /*+ IndexScan(t_mixed_expr t_mixed_expr_idx) */
-    SELECT * FROM t_mixed_expr WHERE b = 4;
+\set hint '/*+ IndexScan(t_mixed_expr t_mixed_expr_idx) */'
+\set query ':P :hint SELECT * FROM t_mixed_expr WHERE b = 4 ORDER BY a;'
+\i :iter_P2
 
 DROP TABLE t_const_expr;
 DROP TABLE t_mixed_expr;
+
+-- Derived equalities must not push a clause whose substituted RHS
+-- evaluates (or could evaluate) to NULL.  (see GH#31971)
+CREATE TABLE demo_a (id int PRIMARY KEY, x int);
+INSERT INTO demo_a SELECT g, g % 7 FROM generate_series(1, 70) g;
+CREATE INDEX demo_a_nullif_idx ON demo_a (nullif(x, 0));
+ANALYZE demo_a;
+CREATE TABLE demo_b (id int PRIMARY KEY, x int);
+INSERT INTO demo_b SELECT g, g % 7 FROM generate_series(1, 70) g;
+CREATE INDEX demo_b_nullif_idx ON demo_b (nullif(x, 0));
+ANALYZE demo_b;
+
+\set hint '/*+ IndexScan(demo_a demo_a_nullif_idx) */'
+
+-- Single-rel, NULL-yielding const (no derived clause emitted)
+\set query ':P :hint SELECT count(*) FROM demo_a WHERE x = 0;'
+\i :iter_P2
+
+-- Single-rel, non-NULL const (derived clause emitted)
+\set query ':P :hint SELECT count(*) FROM demo_a WHERE x = 3;'
+\i :iter_P2
+
+\set hint '/*+ NestLoop(a b) IndexScan(b demo_b_nullif_idx) */'
+
+-- Join with no constant predicate (no derived clause emitted)
+\set query ':P :hint SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x;'
+\i :iter_P2
+
+-- Join + WHERE on a join column = const (derived clause emitted)
+\set query ':P :hint SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x WHERE a.x = 5;'
+\i :iter_P2
+
+DROP TABLE demo_a, demo_b;
+
+-- Fold-error guard: an index expression that would error during constant
+-- folding (e.g. division by zero in (100 / 0)) must not propagate the
+-- error out of planning.  The PG_TRY in yb_safely_fold_substituted
+-- swallows the error and treats it as "can't derive, skip."
+CREATE TABLE demo_err (id int PRIMARY KEY, x int);
+INSERT INTO demo_err VALUES (1, 5), (2, 10);
+CREATE INDEX demo_err_div_idx ON demo_err ((100 / x));
+ANALYZE demo_err;
+-- WHERE x = 0 has no matching rows; without the PG_TRY the planner errors
+-- on (100 / 0) while folding the substituted side.
+SELECT count(*) FROM demo_err WHERE x = 0;
+DROP TABLE demo_err;
+
+-- OR-arm variant: the bitmap-OR path's clause-based derivation must apply
+-- the same NULL guard.  An arm like arr = '{}' would otherwise derive
+-- array_length(arr, 1) = array_length('{}', 1), which folds to NULL and
+-- silently drops the empty-array rows from that arm of the bitmap.
+SET yb_enable_bitmapscan = true;
+SET enable_bitmapscan = true;
+CREATE TABLE demo_or (
+    id int PRIMARY KEY,
+    arr varchar[],
+    bucket int GENERATED ALWAYS AS (array_length(arr, 1)) STORED
+);
+INSERT INTO demo_or (id, arr)
+    SELECT g,
+           CASE g % 3 WHEN 0 THEN '{}'::varchar[]
+                      WHEN 1 THEN ARRAY['a']
+                      ELSE ARRAY['a','b']
+           END
+    FROM generate_series(1, 30) g;
+CREATE INDEX demo_or_bucket_idx ON demo_or (bucket);
+ANALYZE demo_or;
+-- id = 1 matches one row (arr = ARRAY['a']); arr = '{}' matches 10 rows; no
+-- overlap.  Without the OR-arm guard the second arm derives bucket = NULL,
+-- returns zero rows, and the count drops to 1.
+\set hint '/*+ BitmapScan(demo_or) */'
+\set query ':P :hint SELECT count(*) FROM demo_or WHERE id = 1 OR arr = ''{}'';'
+\i :iter_P2
+DROP TABLE demo_or;
+RESET yb_enable_bitmapscan;
+RESET enable_bitmapscan;

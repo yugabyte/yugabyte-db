@@ -20300,8 +20300,15 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbcTableProperties properties,
 		 * Gated by the yb_dump_presplit_in_create AutoFlag: the sentinel is
 		 * only emitted once the folded-WITH form is safe for the restore
 		 * target (see ybDumpPresplitInCreate).
+		 *
+		 * Skip partitioned PARENT tables (RELKIND_PARTITIONED_TABLE): they
+		 * have no storage and never emit a SPLIT clause, so folding the
+		 * sentinel into their WITH clause produces a spurious
+		 * "PARTITION BY ... WITH (yb_presplit='')".  This mirrors the
+		 * SPLIT-clause emission which already excludes partitioned tables.
 		 */
 		if (ybDumpPresplitInCreate(fout) &&
+			relkind != RELKIND_PARTITIONED_TABLE &&
 			!extractYbPresplitFromReloptions(existing_reloptions))
 			appendPGArray(reloptions_buf, "yb_presplit=");
 	}
