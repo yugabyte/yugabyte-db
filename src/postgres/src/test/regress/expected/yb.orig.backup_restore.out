@@ -311,7 +311,6 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16708'::pg_catalog.o
 CREATE TABLE public.par (
     parc1 integer,
     parc2 text DEFAULT 'def'::text,
-    "........pg.dropped.3........" INTEGER /* dummy */,
     parc3 integer GENERATED ALWAYS AS ((parc1 + 5)) STORED,
     parc4 real NOT NULL,
     parc5 text,
@@ -319,13 +318,6 @@ CREATE TABLE public.par (
     parc10 integer DEFAULT 5
 )
 SPLIT INTO 2 TABLETS;
-
--- For binary upgrade, recreate dropped column.
-UPDATE pg_catalog.pg_attribute
-SET attlen = 4, attalign = 'i', attbyval = false
-WHERE attname = '........pg.dropped.3........'
-  AND attrelid = 'public.par'::pg_catalog.regclass;
-ALTER TABLE ONLY public.par DROP COLUMN "........pg.dropped.3........";
 
 
 \if :use_roles
@@ -357,12 +349,10 @@ SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16718'::pg_catalog.
 CREATE TABLE public.ch (
     parc1 integer,
     parc2 text DEFAULT 'def'::text,
-    "........pg.dropped.3........" INTEGER /* dummy */,
     parc3 integer GENERATED ALWAYS AS ((parc1 + 5)) STORED,
     parc4 real NOT NULL,
     parc5 text,
     chc1 text NOT NULL,
-    "........pg.dropped.8........" INTEGER /* dummy */,
     parc9 real NOT NULL,
     parc10 integer DEFAULT 5,
     CONSTRAINT ch_pkey PRIMARY KEY((chc1) HASH)
@@ -381,25 +371,11 @@ SET attislocal = false
 WHERE attname = 'parc2'
   AND attrelid = 'public.ch'::pg_catalog.regclass;
 
--- For binary upgrade, recreate dropped column.
-UPDATE pg_catalog.pg_attribute
-SET attlen = 4, attalign = 'i', attbyval = false
-WHERE attname = '........pg.dropped.3........'
-  AND attrelid = 'public.ch'::pg_catalog.regclass;
-ALTER TABLE ONLY public.ch DROP COLUMN "........pg.dropped.3........";
-
 -- For binary upgrade, recreate inherited column.
 UPDATE pg_catalog.pg_attribute
 SET attislocal = false
 WHERE attname = 'parc3'
   AND attrelid = 'public.ch'::pg_catalog.regclass;
-
--- For binary upgrade, recreate dropped column.
-UPDATE pg_catalog.pg_attribute
-SET attlen = 4, attalign = 'i', attbyval = false
-WHERE attname = '........pg.dropped.8........'
-  AND attrelid = 'public.ch'::pg_catalog.regclass;
-ALTER TABLE ONLY public.ch DROP COLUMN "........pg.dropped.8........";
 
 -- For binary upgrade, recreate inherited column.
 UPDATE pg_catalog.pg_attribute
