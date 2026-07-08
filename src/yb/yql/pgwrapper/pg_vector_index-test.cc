@@ -61,6 +61,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_table_owned_vector_reverse_mapping);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_use_custom_varz);
@@ -94,6 +95,7 @@ DECLARE_uint64(vector_index_max_merge_tasks);
 DECLARE_uint64(vector_index_task_size);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
+DECLARE_int32(TEST_delay_init_tablet_peer_ms);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
@@ -203,6 +205,12 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     itest::SetupQuickSplit(1_KB);
     // Most tests assume a stable tablet layout and perform manual splits explicitly.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_tables_with_vector_index) = false;
+
+    // Some tests (e.g. StatusResolutionDuringBootstrapBackfill) create a vector index while an
+    // uncommitted transaction still holds intents on the indexed table. Object-locking-based DDL
+    // serialization, which defaults on in release builds, would make CREATE INDEX wait for that
+    // transaction to finish, so disable it to keep behavior consistent across build types.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
 
     PgMiniTestBase::SetUp();
 
@@ -3475,5 +3483,90 @@ INSTANTIATE_TEST_SUITE_P(
       }
       FATAL_INVALID_ENUM_VALUE(PackingMode, param_info.param);
     });
+
+// Reproduces the SIGSEGV in MvccManager::SafeTimeForFollower during tablet bootstrap.
+//
+// On bootstrap, a tablet that has a vector index runs the index backfill from
+// Tablet::OpenKeyValueTablet -> TabletVectorIndexes::DoCreateIndex -> ScheduleBackfill, i.e. before
+// TabletPeer::InitTabletPeer publishes tablet_. The backfill reads the table; when it hits a
+// provisional record it resolves the transaction status (DecodeStrongWriteIntent ->
+// RequestStatusAt). If that transaction is aborted, the async status response
+// (RunningTransaction::DoStatusReceived) enqueues a remove and walks the remove queue
+// (ProcessRemoveQueueUnlocked -> SafeTimeForTransactionParticipant). The participant is not
+// closing, so the CheckClosing() guard from [#31374] does not apply, and tablet_ is not yet
+// assigned, so the raw access dereferences a null tablet. RF>1 is required so the transaction
+// status coordinator is available to answer the status request while the tablet reopens.
+TEST_P(PgVectorIndexTest, StatusResolutionDuringBootstrapBackfill) {
+  num_pre_split_tablets_ = 1;
+
+  // Hold the initial vector index backfill until the tablet starts shutting down, so it never
+  // finishes before we shut the target tserver down. On the restart below the predecessor is
+  // already cleared, so the backfill runs immediately.
+  auto* sync_point = yb::SyncPoint::GetInstance();
+  sync_point->LoadDependency({
+      {"Tablet::StartShutdown", "TabletVectorIndexes::Backfill:Start"}});
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearTrace();
+  });
+
+  auto conn = ASSERT_RESULT(MakeTable(/* dimensions= */ 1));
+
+  // The uncommitted-transaction connection lives on the PG tserver (kPgTsIndex), so shut a
+  // different tserver down to keep that connection alive for the abort below. With RF3 the target
+  // tserver hosts a replica of the single test tablet.
+  const size_t target_idx = kPgTsIndex == 0 ? 1 : 0;
+  const auto target_uuid = cluster_->mini_tablet_server(target_idx)->server()->permanent_uuid();
+
+  // Populate via an uncommitted transaction, leaving provisional records (intents) on the tablet.
+  auto txn_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(txn_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(InsertBatch(txn_conn, /* start_id= */ 1, /* count= */ 16));
+  // Intentionally not committed.
+
+  // Create the vector index. Its backfill blocks at the sync point above and CREATE INDEX blocks
+  // until backfill completes, so run it on a background thread; it is expected to fail when we shut
+  // the target tserver down.
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this] {
+    auto index_conn = ASSERT_RESULT(Connect());
+    WARN_NOT_OK(CreateIndex(index_conn), "CreateIndex interrupted by shutdown");
+  });
+
+  // Wait until the vector index is registered on the tserver we are going to shut down (by then it
+  // has also replicated the uncommitted transaction's intents).
+  ASSERT_OK(WaitFor([this, &target_uuid]() -> Result<bool> {
+    auto peers = VERIFY_RESULT(
+        ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kAll));
+    for (const auto& peer : peers) {
+      if (peer->permanent_uuid() != target_uuid) {
+        continue;
+      }
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (tablet && tablet->vector_indexes().TEST_HasIndexes()) {
+        return true;
+      }
+    }
+    return false;
+  }, 60s * kTimeMultiplier, "Vector index registered on target tserver"));
+
+  // Shut the target tserver down; its blocked backfill is released (and interrupted) by the tablet
+  // shutdown.
+  cluster_->mini_tablet_server(target_idx)->Shutdown();
+
+  // Abort the transaction; the coordinator (available on the surviving tservers) marks it ABORTED.
+  ASSERT_OK(txn_conn.RollbackTransaction());
+
+  // Delay InitTabletPeer so that, if the backfill were (incorrectly) launched during bootstrap, its
+  // aborted-status response would walk the remove queue while tablet_ is still null.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_init_tablet_peer_ms) = 5000 * kTimeMultiplier;
+
+  ASSERT_OK(cluster_->mini_tablet_server(target_idx)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(target_idx)->WaitStarted());
+
+  // Reaching here without the tserver crashing means the fix holds.
+  threads.Stop();
+}
 
 }  // namespace yb::pgwrapper

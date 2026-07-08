@@ -429,7 +429,8 @@ Result<HybridTime> TabletPeer::PreparePeerRequest() {
   // Get the current majority-replicated HT leader lease without any waiting.
   auto ht_lease = VERIFY_RESULT(HybridTimeLease(
       /* min_allowed= */ HybridTime::kMin, /* deadline */ CoarseTimePoint::max()));
-  return tablet_->mvcc_manager()->SafeTime(ht_lease);
+  auto safe_time = tablet_->mvcc_manager()->SafeTime(ht_lease);
+  return safe_time.ok() ? *safe_time : HybridTime::kInvalid;
 }
 
 Status TabletPeer::MajorityReplicated(const OpId& committed_op_id) {
@@ -491,13 +492,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
     RETURN_NOT_OK(UpdateState(RaftGroupStatePB::BOOTSTRAPPING, RaftGroupStatePB::RUNNING,
                               "Incorrect state to start TabletPeer, "));
   }
-  if (tablet_->transaction_coordinator()) {
-    tablet_->transaction_coordinator()->Start();
-  }
-
-  if (tablet_->transaction_participant()) {
-    tablet_->transaction_participant()->Start();
-  }
+  tablet_->Start();
 
   // The context tracks that the current caller does not hold the lock for consensus state.
   // So mark dirty callback, e.g., consensus->ConsensusState() for master consensus callback of
@@ -797,12 +792,25 @@ Status TabletPeer::SubmitUpdateTransaction(
 }
 
 HybridTime TabletPeer::SafeTimeForTransactionParticipant() {
-  return tablet_->mvcc_manager()->SafeTimeForFollower(
+  // During tablet bootstrap tablet_ is not yet assigned (InitTabletPeer), and during shutdown it is
+  // reset. Vector index backfill runs during bootstrap and can resolve a transaction's status,
+  // which walks the remove queue and calls this from a thread that does not hold lock_, so reading
+  // the raw tablet_ pointer here can dereference a null tablet. Callers treat an invalid HybridTime
+  // as "safe time unavailable".
+  auto tablet = shared_tablet_maybe_null();
+  if (!tablet) {
+    return HybridTime::kInvalid;
+  }
+  auto safe_time = tablet->mvcc_manager()->SafeTimeForFollower(
       /* min_allowed= */ HybridTime::kMin, /* deadline= */ CoarseTimePoint::min());
+  return safe_time.ok() ? *safe_time : HybridTime::kInvalid;
 }
 
 Result<HybridTime> TabletPeer::WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) {
-  return tablet_->SafeTime(RequireLease::kFallbackToFollower, safe_time, deadline);
+  // See SafeTimeForTransactionParticipant: tablet_ may not be assigned yet (bootstrap) or may have
+  // been reset (shutdown), and this can be called from vector index backfill without holding lock_.
+  auto tablet = VERIFY_RESULT(shared_tablet());
+  return tablet->SafeTime(RequireLease::kFallbackToFollower, safe_time, deadline);
 }
 
 Status TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
