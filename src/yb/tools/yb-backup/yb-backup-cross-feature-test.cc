@@ -708,7 +708,11 @@ TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLAutomaticTabletSplitRangeTable),
           YBBackupTestNumTablets) {
   constexpr int expected_num_tablets = 4;
-  ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_size_threshold_bytes", "2500"));
+  // Lowered from the 128 MB default so these tiny tablets can split at all. Large enough that
+  // GetMiddleKey finds a clean split point, small enough that the starting tablets exceed it.
+  constexpr int kSplitThresholdBytes = 30000;
+  ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_size_threshold_bytes",
+                                       IntToString(kSplitThresholdBytes)));
   // Enable automatic tablet splitting (overriden by YBBackupTestNumTablets).
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_automatic_tablet_splitting", "true"));
   ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_limit_per_table",
@@ -724,32 +728,46 @@ TEST_F_EX(YBBackupTest,
 
   // Create table.
   ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k TEXT, PRIMARY KEY(k ASC))"
-                                      " SPLIT AT VALUES (('4a'))", table_name)));
+                                      " SPLIT AT VALUES (('5.'))", table_name)));
 
   auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 2);
 
   // 'S' represents the KeyEntryType for String.
-  // "4a" is the split point value.
+  // "5." is the split point value.
   // two '\0' terminate a string value.
   // '!' indicates the end of the range group of a key.
-  ASSERT_TRUE(CheckPartitions(tablets, {"S4a\0\0!"s}));
+  ASSERT_TRUE(CheckPartitions(tablets, {"S5.\0\0!"s}));
 
-  // Insert data.
+  // Data is inserted on both sides of "5." so each starting tablet is split on its own. 1000..4999
+  // sort before "5.", and 5000..8999 after it (since '0' > '.').
   ASSERT_NO_FATALS(InsertRows(
-      Format("INSERT INTO $0 SELECT i||'a' FROM generate_series(101, 150) i", table_name), 50));
+      Format("INSERT INTO $0 SELECT i::text FROM generate_series(1000, 8999) i", table_name),
+      8000));
 
-  // Flush table so SST file size is accurate.
+  // The table is flushed first, otherwise the tablet's real on-disk size isn't visible to the
+  // split logic.
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
   ASSERT_OK(client_->FlushTables({table_id}));
 
-  // Wait for automatic split to complete.
+  // Wait until splitting settles and at least expected_num_tablets exist before taking the backup.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
+        if (!VERIFY_RESULT(test_admin_client_->IsTabletSplittingComplete(
+                /* wait_for_parent_deletion = */ true))) {
+          return false;
+        }
         auto res = VERIFY_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
-        return res.size() == expected_num_tablets;
-      }, 30s * kTimeMultiplier, Format("Waiting for tablet count: $0", expected_num_tablets)));
+        return res.size() >= expected_num_tablets;
+      }, 90s * kTimeMultiplier, Format("Waiting for tablet count: $0", expected_num_tablets)));
+
+  // Capture the actual tablet count reached so the post-restore check compares against it rather
+  // than a fixed number, verifying the partitioning is preserved regardless of the exact count.
+  auto tablets_before_backup =
+      ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
+  const auto num_tablets_before_backup = tablets_before_backup.size();
+  ASSERT_GE(num_tablets_before_backup, expected_num_tablets);
 
   // Backup.
   const string backup_dir = GetTempDir("backup");
@@ -763,7 +781,7 @@ TEST_F_EX(YBBackupTest,
 
   // Validate number of tablets after restore.
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
-  ASSERT_EQ(tablets.size(), expected_num_tablets);
+  ASSERT_EQ(tablets.size(), num_tablets_before_backup);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
