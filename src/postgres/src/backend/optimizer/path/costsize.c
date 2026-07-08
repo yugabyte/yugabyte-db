@@ -6918,7 +6918,7 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
 						Relation	indexrel = index_open(index->indexoid,
 														   NoLock);
 						Form_pg_attribute att = TupleDescAttr(indexrel->rd_att,
-															  i + 1);
+															  i);
 
 						if (att->attlen < 0)
 						{
