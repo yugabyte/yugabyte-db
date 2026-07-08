@@ -3703,9 +3703,19 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 bool *requires_autonomous_transaction)
 {
 	bool		is_ddl = true;
+	/*
+	 * During a YSQL major version upgrade the cluster runs in compatibility
+	 * mode and yb-master rejects (and in debug builds crashes on) writes to the
+	 * catalog version table until the upgrade is finalized; catalog versions are
+	 * fixed up later in UpdateCatalogVersions. So forced DDLs that are still
+	 * allowed to run during the upgrade (e.g. a forced COMMENT executed after
+	 * yb_force_catalog_update_on_next_ddl is set) must not bump the catalog
+	 * version by default.
+	 */
 	bool		should_increment_version_by_default =
-		yb_test_make_all_ddl_statements_incrementing ||
-		yb_always_increment_catalog_version_on_ddl;
+		(yb_test_make_all_ddl_statements_incrementing ||
+		 yb_always_increment_catalog_version_on_ddl) &&
+		!YBCPgYsqlMajorVersionUpgradeInProgress();
 	bool		is_version_increment = true;
 	bool		is_breaking_change = true;
 	bool		is_altering_existing_data = false;
