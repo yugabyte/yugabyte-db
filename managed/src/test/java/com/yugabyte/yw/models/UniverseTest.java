@@ -130,7 +130,7 @@ public class UniverseTest extends FakeDBApplication {
     Set<UUID> uuids =
         Sets.newHashSet(u1.getUniverseUUID(), u2.getUniverseUUID(), u3.getUniverseUUID());
 
-    Set<Universe> universes = Universe.getAllPresent(uuids);
+    Set<Universe> universes = Universe.getAllWithoutResources(uuids);
     assertNotNull(universes);
     assertEquals(universes.size(), 3);
   }

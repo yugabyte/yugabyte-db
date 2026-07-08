@@ -532,7 +532,7 @@ public class Util {
   }
 
   public static List<UniverseDetailSubset> getUniverseDetails(Set<Universe> universes) {
-    List<UniverseDetailSubset> details = new ArrayList<>();
+    List<UniverseDetailSubset> details = new ArrayList<>(universes.size());
     for (Universe universe : universes) {
       details.add(new UniverseDetailSubset(universe));
     }

@@ -384,14 +384,6 @@ public class Universe extends Model {
     return Optional.of(universe);
   }
 
-  public static Set<Universe> getAllPresent(Set<UUID> universeUUIDs) {
-    return universeUUIDs.stream()
-        .map(Universe::maybeGet)
-        .filter(Optional::isPresent)
-        .map(Optional::get)
-        .collect(Collectors.toSet());
-  }
-
   public static Universe getUniverseByName(String universeName) {
     return find.query().where().eq("name", universeName).findOne();
   }
@@ -1247,21 +1239,21 @@ public class Universe extends Model {
         .collect(Collectors.toSet());
   }
 
-  public static Set<Universe> universeDetailsIfReleaseExists(String version) {
-    Set<Universe> universes = new HashSet<Universe>();
-    Customer.getAll()
-        .forEach(customer -> universes.addAll(Customer.get(customer.getUuid()).getUniverses()));
+  public static Set<Universe> universeDetailsIfReleaseExists(String ybSoftwareVersion) {
     Set<Universe> universesWithGivenRelease = new HashSet<Universe>();
-    for (Universe u : universes) {
-      List<Cluster> clusters = u.getUniverseDetails().clusters;
-      for (Cluster c : clusters) {
-        if (c.userIntent.ybSoftwareVersion != null
-            && c.userIntent.ybSoftwareVersion.equals(version)) {
-          universesWithGivenRelease.add(u);
-          break;
-        }
-      }
-    }
+    Customer.getAll().stream()
+        .flatMap(customer -> customer.getUniverses().stream())
+        .forEach(
+            u -> {
+              List<Cluster> clusters = u.getUniverseDetails().clusters;
+              for (Cluster c : clusters) {
+                if (c.userIntent.ybSoftwareVersion != null
+                    && c.userIntent.ybSoftwareVersion.equals(ybSoftwareVersion)) {
+                  universesWithGivenRelease.add(u);
+                  break;
+                }
+              }
+            });
     return universesWithGivenRelease;
   }
 
