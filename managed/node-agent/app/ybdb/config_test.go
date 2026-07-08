@@ -82,7 +82,13 @@ func TestBuildConfigRedactsAllSources(t *testing.T) {
 
 func TestBuildConfigUnreadableFlagfile(t *testing.T) {
 	cmdArgs := []argKV{{key: "flagfile", value: "/conf/server.conf"}}
-	config := buildConfig("/conf/server.conf", true /* exists */, false /* readable */, cmdArgs, nil)
+	config := buildConfig(
+		"/conf/server.conf",
+		true,  /* exists */
+		false, /* readable */
+		cmdArgs,
+		nil,
+	)
 	if len(config.GetFlagfileArgs()) != 0 {
 		t.Errorf("expected no flagfile args when unreadable, got %+v", config.GetFlagfileArgs())
 	}
