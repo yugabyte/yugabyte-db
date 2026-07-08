@@ -7,9 +7,59 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
+
+// hardenedPath lists the standard directories where ss and pgrep are installed
+// across RHEL and Debian based distributions. It is used to resolve the tools
+// and is placed on the command environment so that detection works even when
+// the node-agent process runs with a minimal PATH (for example under systemd).
+const hardenedPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+// resolveTool returns an absolute path to the given tool. It first honors the
+// process PATH and falls back to the hardened directories. Go resolves the
+// binary at command construction time using the process PATH, so an explicit
+// lookup is required for the hardened directories to take effect. The bare name
+// is returned when the tool cannot be found so that exec surfaces a clear error.
+func resolveTool(name string) string {
+	if path, err := exec.LookPath(name); err == nil {
+		return path
+	}
+	for _, dir := range filepath.SplitList(hardenedPath) {
+		candidate := filepath.Join(dir, name)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() &&
+			info.Mode()&0111 != 0 {
+			return candidate
+		}
+	}
+	return name
+}
+
+// commandEnv returns the process environment with the hardened directories
+// ensured on PATH without changing the precedence of the existing PATH.
+func commandEnv() []string {
+	merged := hardenedPath
+	if existing := os.Getenv("PATH"); existing != "" {
+		merged = existing + string(os.PathListSeparator) + hardenedPath
+	}
+	env := os.Environ()
+	result := make([]string, 0, len(env)+1)
+	replaced := false
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "PATH=") {
+			result = append(result, "PATH="+merged)
+			replaced = true
+			continue
+		}
+		result = append(result, kv)
+	}
+	if !replaced {
+		result = append(result, "PATH="+merged)
+	}
+	return result
+}
 
 // System abstracts the operating system interactions needed for detection so
 // that the detector can be unit tested with fixtures.
@@ -37,7 +87,8 @@ func newOsSystem() System {
 }
 
 func (s *osSystem) Pgrep(ctx context.Context, pattern string) ([]int, error) {
-	cmd := exec.CommandContext(ctx, "pgrep", "-f", pattern)
+	cmd := exec.CommandContext(ctx, resolveTool("pgrep"), "-f", pattern)
+	cmd.Env = commandEnv()
 	out, err := cmd.Output()
 	if err != nil {
 		// pgrep exits with 1 when there is no match, which is not an error here.
@@ -75,7 +126,8 @@ func (s *osSystem) ReadCmdline(pid int) ([]string, error) {
 }
 
 func (s *osSystem) SsListeners(ctx context.Context) (string, error) {
-	cmd := exec.CommandContext(ctx, "ss", "-H", "-O", "-lntp")
+	cmd := exec.CommandContext(ctx, resolveTool("ss"), "-H", "-O", "-lntp")
+	cmd.Env = commandEnv()
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
