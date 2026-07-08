@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { FC, ReactNode, useState } from 'react';
 import { makeStyles, Typography } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 import {
   StyledContent,
   StyledHeader,
@@ -11,15 +12,18 @@ import {
   useEditUniverseContext,
   useIsUniverseReady
 } from '../../EditUniverseUtils';
+import { EditUniverseTabs } from '../../EditUniverseContext';
+import { getEditUniverseSettingsRoute } from '../../editUniverseTabUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { AuditLogSettingsPanel } from './db-audit-log/AuditLogSettingsPanel';
 import { LogConfigCard } from './LogConfigCard';
 import { QueryLogSettingsPanel } from './query-log/QueryLogSettingsPanel';
-import { useExportTelemetryConfigTaskStatus } from './useExportTelemetryConfigTaskStatus';
+import { useExportTelemetryConfigTaskStatus } from '../useExportTelemetryConfigTaskStatus';
 
 import QueryLogIcon from '@app/redesign/assets/approved/query-log.svg';
 import AuditLogIcon from '@app/redesign/assets/approved/audit-log.svg';
 import IdeaIcon from '@app/redesign/assets/approved/idea.svg';
+import InternalLinkIcon from '@app/redesign/assets/approved/internal-link.svg';
 
 const TRANSLATION_KEY_PREFIX = 'editUniverse.logs';
 const QUERY_LOG_DOCS_URL =
@@ -52,8 +56,44 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.grey[900],
     fontSize: '13px',
     lineHeight: '16px'
+  },
+  telemetryExportLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+
+    color: theme.palette.primary[600],
+    fontSize: '13px',
+    fontWeight: 500,
+    lineHeight: '16px',
+    textDecoration: 'none',
+
+    '&:hover': {
+      color: theme.palette.primary[600],
+      textDecoration: 'none'
+    }
   }
 }));
+
+interface TelemetryExportTabLinkProps {
+  children?: ReactNode;
+  universeUuid: string;
+  className?: string;
+}
+
+const TelemetryExportTabLink: FC<TelemetryExportTabLinkProps> = ({
+  children,
+  universeUuid,
+  className
+}) => (
+  <Link
+    to={getEditUniverseSettingsRoute(universeUuid, EditUniverseTabs.TELEMETRY_EXPORT)}
+    className={className}
+    data-testid="LogsTab-TelemetryExportLink"
+  >
+    {children}
+    <InternalLinkIcon width={24} height={24} />
+  </Link>
+);
 
 export const LogsTab = () => {
   const classes = useStyles();
@@ -135,8 +175,20 @@ export const LogsTab = () => {
       </StyledPanel>
       <div className={classes.noteBanner}>
         <IdeaIcon width={23} height={24} />
-        <Typography className={classes.noteText}>
-          <Trans t={t} i18nKey="telemetryExportNote" components={{ bold: <b /> }} />
+        <Typography variant="body2" className={classes.noteText}>
+          <Trans
+            t={t}
+            i18nKey="telemetryExportNote"
+            components={{
+              bold: <b />,
+              telemetryLink: (
+                <TelemetryExportTabLink
+                  universeUuid={universeUuid}
+                  className={classes.telemetryExportLink}
+                />
+              )
+            }}
+          />
         </Typography>
       </div>
       {isAuditLogSettingsModalOpen && universeUuid && (

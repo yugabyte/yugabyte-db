@@ -114,6 +114,7 @@ const EditUniverseComponent: FC<EditUniverseProps & WithRouterProps> = ({
           <TabItem value={EditUniverseTabs.ADVANCED} label={t('advanced')} />
           <StyledDivider orientation="horizontal" />
           <TabItem value={EditUniverseTabs.LOGS} label={t('logs')} />
+          <TabItem value={EditUniverseTabs.TELEMETRY_EXPORT} label={t('telemetryExport')} />
         </YBTabs>
       </Grid>
       <Grid item sx={{ flexGrow: 1, flex: 1 }}>

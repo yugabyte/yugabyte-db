@@ -7,6 +7,7 @@ import { SecurityTab } from './settings/SecurityTab';
 import { DatabaseTab } from './settings/DatabaseTab';
 import { AdvancedTab } from './settings/AdvancedTab';
 import { LogsTab } from './settings/logs-tab/LogsTab';
+import { TelemetryExportTab } from './settings/telemetry-export-tab/TelemetryExportTab';
 
 export const SwitchEditUniverseTabs = () => {
   const { activeTab } = useContext(EditUniverseContext);
@@ -25,6 +26,8 @@ export const SwitchEditUniverseTabs = () => {
       return <AdvancedTab />;
     case EditUniverseTabs.LOGS:
       return <LogsTab />;
+    case EditUniverseTabs.TELEMETRY_EXPORT:
+      return <TelemetryExportTab />;
     default:
       return null;
   }

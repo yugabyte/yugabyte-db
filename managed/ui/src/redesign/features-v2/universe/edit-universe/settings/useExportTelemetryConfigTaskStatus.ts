@@ -56,6 +56,7 @@ export function useExportTelemetryConfigTaskStatus(universeUuid: string) {
   return {
     isTelemetryConfigTaskInProgress,
     isQueryLogConfiguring: modifiedExportTypes.includes(ExportType.QUERY_LOGS),
-    isAuditLogConfiguring: modifiedExportTypes.includes(ExportType.AUDIT_LOGS)
+    isAuditLogConfiguring: modifiedExportTypes.includes(ExportType.AUDIT_LOGS),
+    isMetricsExportConfiguring: modifiedExportTypes.includes(ExportType.METRICS)
   };
 }

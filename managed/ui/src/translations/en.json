@@ -4293,7 +4293,8 @@
         "security": "Security",
         "database": "Database",
         "advanced": "Advanced",
-        "logs": "Logs"
+        "logs": "Logs",
+        "telemetryExport": "Telemetry Export"
       },
       "general": {
         "title": "General",
@@ -4489,7 +4490,7 @@
         "editDatabaseQueryLogging": "Edit Database Query Logging",
         "disableDatabaseQueryLogging": "Disable Database Query Logging",
         "enableAuditLogging": "Enable Audit Logging",
-        "telemetryExportNote": "<bold>Note:</bold> To send logs to external tools, go to Telemetry Export.",
+        "telemetryExportNote": "<bold>Note:</bold> To send logs to external tools, go to <telemetryLink>Telemetry Export</telemetryLink>.",
         "queryLogSettings": {
           "title": "Configure Database Query Logging",
           "selectParameters": "Select Parameters",
@@ -4588,6 +4589,71 @@
           "confirmation": {
             "title": "Confirm Configuration Change",
             "message": "Enabling database audit logging requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+            "back": "Back"
+          }
+        }
+      },
+      "telemetryExport": {
+        "title": "Telemetry Export",
+        "subtitle": "Export metrics and logs to external observability tools.",
+        "metricsExport": {
+          "title": "Export Metrics",
+          "description": "Export cluster's metrics to 3rd party monitoring dashboards.",
+          "exportOff": "Export Off",
+          "exportOn": "Export On",
+          "actionLabel": "Export Metrics",
+          "editActionLabel": "Edit",
+          "active": "Active",
+          "configuring": "Configuring",
+          "exportStatus": "Export Status",
+          "exportConfigurationName": "Export Configuration Name",
+          "exportingTo": "Exporting to",
+          "editMetricsExportConfiguration": "Metrics Export Configuration",
+          "editMetricsExport": "Edit Metrics Export Configuration",
+          "disableMetricsExport": "Disable Metrics Export"
+        },
+        "metricsExportSettings": {
+          "title": "Export Metrics",
+          "subtitle": "Select a destination for the metrics.",
+          "exportConfiguration": "Export Configuration",
+          "exportConfigurationPlaceholder": "Select export configuration",
+          "collectionSettings": "Collection Settings",
+          "collectionInterval": "Collection Interval (s)",
+          "collectionTimeout": "Collection Timeout (s)",
+          "advanced": "Advanced",
+          "collectionLevel": "Collection Level",
+          "collectionLevelHelper": "Select how much metric detail to collect. <learnMore>Learn more</learnMore>",
+          "metricSources": "Metric Sources",
+          "metricSourcesHelper": "Select the universe components to collect and export metrics from. <learnMore>Learn more</learnMore>",
+          "cancel": "Cancel",
+          "exportMetrics": "Export Metrics",
+          "applyChanges": "Apply Changes",
+          "enableInProgress": "Enabling metrics export",
+          "updateInProgress": "Updating metrics export configuration",
+          "collectionLevelOptions": {
+            "all": "All",
+            "normal": "Normal",
+            "tableOff": "Table Off",
+            "minimal": "Minimal"
+          },
+          "errors": {
+            "exportConfigurationRequired": "Select an export configuration",
+            "intervalRequired": "Enter a collection interval",
+            "intervalInteger": "Collection interval must be a whole number",
+            "intervalMin": "Collection interval must be at least 1 second",
+            "timeoutRequired": "Enter a collection timeout",
+            "timeoutInteger": "Collection timeout must be a whole number",
+            "timeoutMin": "Collection timeout must be at least 1 second",
+            "timeoutLessThanInterval": "Collection timeout must be less than collection interval",
+            "collectionLevelRequired": "Select a collection level",
+            "metricSourcesRequired": "Select at least one metric source"
+          },
+          "confirmation": {
+            "enableTitle": "Enable Metrics Export",
+            "editTitle": "Confirm Configuration Change",
+            "enableSubmit": "Enable Metrics Export",
+            "editSubmit": "Apply Changes",
+            "message": "Enable metrics export requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
             "back": "Back"
           }
         }
