@@ -81,7 +81,7 @@ To create, provision, and add nodes to your on-premises provider using legacy pr
 In YugabyteDB Anywhere, create an on-premises provider. This involves the following:
 
 - Defining the regions and availability zones where the provider will be deploying universes.
-- Providing SSH credentials for the root-privileged user.
+- Providing SSH credentials for the SSH user.
 - Providing NTP setup.
 - If the SSH user does not have passwordless sudo access, enabling Manual provisioning for the provider.
 
