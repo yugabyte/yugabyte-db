@@ -3072,7 +3072,7 @@ index_update_stats(Relation rel,
 	{
 		relpages = IsYBRelation(rel) ? 0 : RelationGetNumberOfBlocks(rel);
 
-		if (rel->rd_rel->relkind != RELKIND_INDEX)
+		if (!IsYBRelation(rel) && rel->rd_rel->relkind != RELKIND_INDEX)
 			visibilitymap_count(rel, &relallvisible, &relallfrozen);
 	}
 
@@ -4453,10 +4453,10 @@ reindex_relation(const ReindexStmt *stmt, Oid relid, int flags,
 		newparams.options &= ~(REINDEXOPT_MISSING_OK);
 		newparams.tablespaceOid = InvalidOid;
 		result |= reindex_relation(stmt, toast_relid, flags, &newparams,
-								   false /* is_yb_table_rewrite */,
+								   false /* is_yb_table_rewrite */ ,
 								   yb_copy_split_options,
-								   NIL /* changedIndexNames */,
-								   NIL /* changedIndexSplitOpts */);
+								   NIL /* changedIndexNames */ ,
+								   NIL /* changedIndexSplitOpts */ );
 	}
 
 	/*

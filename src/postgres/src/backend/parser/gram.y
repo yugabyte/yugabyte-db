@@ -4831,6 +4831,18 @@ ConstraintElem:
 					foreach(lc, $4)
 					{
 						IndexElem *index_elem = (IndexElem *)lfirst(lc);
+
+						/*
+						 * YB: expressions are not supported as primary key
+						 * columns.  Reject them here so that n->keys holds only
+						 * column names (also enforced in
+						 * transformIndexConstraint as a backstop).
+						 */
+						if (index_elem->expr != NULL)
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+									 errmsg("cannot create a primary key or unique constraint on expressions"),
+									 parser_errposition(@1)));
 						n->keys = lappend(n->keys, makeString(index_elem->name));
 					}
 					n->without_overlaps = $5;
