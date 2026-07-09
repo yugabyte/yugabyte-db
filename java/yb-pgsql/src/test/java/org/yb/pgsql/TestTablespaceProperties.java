@@ -99,6 +99,82 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
   }
 
   @Test
+  public void testAlterTablespacePlacementMovesExistingObjects() throws Exception {
+    Tablespace alteredTablespace = new Tablespace(tablespaceName, Arrays.asList(2, 3));
+    String tableName = "alter_tsp_base";
+    String indexName = "alter_tsp_idx";
+    String matViewName = "alter_tsp_mv";
+    String tablegroupName = "alter_tsp_tgroup";
+    String tablegroupTableName = "alter_tsp_tgroup_tbl";
+    String partitionedTableName = "alter_tsp_part";
+    String partitionName1 = "alter_tsp_part_p1";
+    String partitionName2 = "alter_tsp_part_p2";
+    // The partitioned parent does not own tablets, so verify its partitions.
+    List<String> relations = Arrays.asList(
+        tableName, indexName, matViewName, tablegroupTableName, partitionName1, partitionName2);
+
+    try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute(String.format(
+          "CREATE TABLE %s (a int) TABLESPACE %s", tableName, tablespaceName));
+      setupStatement.execute(String.format(
+          "CREATE INDEX %s ON %s(a) TABLESPACE %s", indexName, tableName, tablespaceName));
+      setupStatement.execute(String.format(
+          "CREATE MATERIALIZED VIEW %s TABLESPACE %s AS SELECT * FROM %s",
+          matViewName, tablespaceName, tableName));
+      setupStatement.execute(String.format(
+          "CREATE TABLEGROUP %s TABLESPACE %s", tablegroupName, tablespaceName));
+      setupStatement.execute(String.format(
+          "CREATE TABLE %s (a int) TABLEGROUP %s", tablegroupTableName, tablegroupName));
+      setupStatement.execute(String.format(
+          "CREATE TABLE %s (a int) PARTITION BY RANGE (a) TABLESPACE %s",
+          partitionedTableName, tablespaceName));
+      setupStatement.execute(String.format(
+          "CREATE TABLE %s PARTITION OF %s FOR VALUES FROM (0) TO (100) TABLESPACE %s",
+          partitionName1, partitionedTableName, tablespaceName));
+      setupStatement.execute(String.format(
+          "CREATE TABLE %s PARTITION OF %s FOR VALUES FROM (100) TO (200) TABLESPACE %s",
+          partitionName2, partitionedTableName, tablespaceName));
+    }
+
+    try {
+      verifyPlacement(relations, customTablespace);
+
+      try (Statement alterStatement = connection.createStatement()) {
+        alterStatement.execute(String.format(
+            "ALTER TABLESPACE %s SET (replica_placement='%s')",
+            tablespaceName, alteredTablespace.toJson()));
+      }
+
+      Thread.sleep(2 * 1000 * MASTER_REFRESH_TABLESPACE_INFO_SECS);
+      assertTrue(miniCluster.getClient().waitForLoadBalance(
+          MASTER_LOAD_BALANCER_WAIT_TIME_MS, miniCluster.getTabletServers().size()));
+      verifyPlacement(relations, alteredTablespace);
+
+      try (Statement resetStatement = connection.createStatement()) {
+        resetStatement.execute(String.format(
+            "ALTER TABLESPACE %s RESET (replica_placement)", tablespaceName));
+      }
+
+      Thread.sleep(2 * 1000 * MASTER_REFRESH_TABLESPACE_INFO_SECS);
+      assertTrue(miniCluster.getClient().waitForLoadBalance(
+          MASTER_LOAD_BALANCER_WAIT_TIME_MS, miniCluster.getTabletServers().size()));
+      verifyPlacement(relations, defaultTablespace);
+    } finally {
+      try (Statement cleanupStatement = connection.createStatement()) {
+        cleanupStatement.execute(String.format("DROP TABLE IF EXISTS %s", tablegroupTableName));
+        cleanupStatement.execute(String.format("DROP TABLEGROUP IF EXISTS %s", tablegroupName));
+        cleanupStatement.execute(String.format("DROP MATERIALIZED VIEW IF EXISTS %s", matViewName));
+        cleanupStatement.execute(String.format(
+            "DROP TABLE IF EXISTS %s CASCADE", partitionedTableName));
+        cleanupStatement.execute(String.format("DROP TABLE IF EXISTS %s CASCADE", tableName));
+        cleanupStatement.execute(String.format(
+            "ALTER TABLESPACE %s SET (replica_placement='%s')",
+            tablespaceName, customTablespace.toJson()));
+      }
+    }
+  }
+
+  @Test
   public void testDisabledTablespaces() throws Exception {
     // Create some tables with custom and default placements.
     // These tables will be placed according to their tablespaces
@@ -260,6 +336,45 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
     executeAndAssertErrorThrown(
         "ALTER MATERIALIZED VIEW validPlacementMv SET TABLESPACE insufficient_rf_tblspc",
         not_enough_tservers_msg);
+
+    Tablespace invalidAlterPlacement = new Tablespace(
+        "invalid_alter_tblspc",
+        2,
+        Arrays.asList(new PlacementBlock(2), new PlacementBlock("cloud3", "region1", "zone1", 1)));
+    executeAndAssertErrorThrown(
+        String.format(
+            "ALTER TABLESPACE valid_tblspc SET (replica_placement='%s')",
+            invalidAlterPlacement.toJson()),
+        not_enough_tservers_msg);
+
+    try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute("CREATE TABLESPACE alter_validation_tblspc LOCATION '/data'");
+    }
+    executeAndAssertErrorThrown(
+        "ALTER TABLESPACE alter_validation_tblspc "
+            + "SET (replica_placement='[{\"cloud\"}]')",
+        "JSON parsing of live placement option failed");
+    Tablespace readReplicaAlterTblspc =
+        new Tablespace("read_replica_alter_tblspc", Collections.singletonList(1));
+    executeAndAssertErrorThrown(
+        String.format(
+            "ALTER TABLESPACE alter_validation_tblspc SET (read_replica_placement='%s')",
+            readReplicaAlterTblspc.toJson()),
+        "read_replica_placement option requires replica_placement to be set");
+    Tablespace validAlterValidationTblspc =
+        new Tablespace("valid_alter_validation_tblspc", Arrays.asList(1, 2));
+    try (Statement setupStatement = connection.createStatement()) {
+      setupStatement.execute(String.format(
+          "ALTER TABLESPACE alter_validation_tblspc SET (replica_placement='%s', " +
+              "read_replica_placement='%s')",
+          validAlterValidationTblspc.toJson(), readReplicaAlterTblspc.toJson()));
+    }
+    executeAndAssertErrorThrown(
+        "ALTER TABLESPACE alter_validation_tblspc RESET (replica_placement)",
+        "read_replica_placement option requires replica_placement to be set");
+    try (Statement cleanupStatement = connection.createStatement()) {
+      cleanupStatement.execute("DROP TABLESPACE alter_validation_tblspc");
+    }
   }
 
   /*
@@ -493,6 +608,27 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
 
     verifyPlacement(tablesWithCustomPlacement, customTablespace);
 
+    try (Statement alterStatement = connection.createStatement()) {
+      alterStatement.execute(String.format(
+          "ALTER TABLESPACE %s SET (read_replica_placement='%s')",
+          tablespaceName, new Tablespace(
+              "read_replica_tablespace", Collections.singletonList(1)).toJson()));
+    }
+    waitForLoadBalancer(expectedTServers);
+    List<String> customTablesWithoutTransactionTable = tablesWithCustomPlacement.stream()
+        .filter(table -> !table.contains("transaction"))
+        .collect(Collectors.toList());
+    for (final String table : customTablesWithoutTransactionTable) {
+      verifyPlacementForReadReplica(table, customTablespace.numReplicas, 1);
+    }
+
+    try (Statement alterStatement = connection.createStatement()) {
+      alterStatement.execute(String.format(
+          "ALTER TABLESPACE %s RESET (read_replica_placement)", tablespaceName));
+    }
+    waitForLoadBalancer(expectedTServers);
+    verifyPlacement(tablesWithCustomPlacement, customTablespace);
+
     // Alter tables with custom tablespaces to move to pg_default.
     List<String> movedTables = moveCreatedTestDataToDefaultTablespace("read_replica");
 
@@ -503,9 +639,16 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
   }
 
   void verifyPlacementForReadReplica(final String table) throws Exception {
+    verifyPlacementForReadReplica(table, 1 /* expectedLiveReplicas */,
+        1 /* expectedReadReplicas */);
+  }
+
+  void verifyPlacementForReadReplica(
+      final String table, int expectedLiveReplicas, int expectedReadReplicas) throws Exception {
     LOG.info("Verifying placement for read replica for table " + table);
     final YBClient client = miniCluster.getClient();
-    client.waitForReplicaCount(getTableFromName(table), 2, DEFAULT_TIMEOUT_MS);
+    client.waitForReplicaCount(
+        getTableFromName(table), expectedLiveReplicas + expectedReadReplicas, DEFAULT_TIMEOUT_MS);
 
     List<LocatedTablet> tabletLocations =
         getTableFromName(table).getTabletsLocations(DEFAULT_TIMEOUT_MS);
@@ -519,11 +662,8 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
 
       long liveReplicas = replicas.size() - readReplicas;
 
-      // A live replica must be found.
-      assertEquals(1, liveReplicas);
-
-      // A read-only replica must be found.
-      assertEquals(1, readReplicas);
+      assertEquals(expectedLiveReplicas, liveReplicas);
+      assertEquals(expectedReadReplicas, readReplicas);
     }
   }
 
