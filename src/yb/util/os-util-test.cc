@@ -32,7 +32,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/util/os-util.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/test_macros.h"
 
 using std::string;

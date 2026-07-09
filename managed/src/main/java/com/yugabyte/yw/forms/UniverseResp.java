@@ -13,11 +13,11 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -107,9 +107,7 @@ public class UniverseResp {
                     universe,
                     null,
                     customer,
-                    context.getProvider(
-                        UUID.fromString(
-                            universe.getUniverseDetails().getPrimaryCluster().userIntent.provider)),
+                    context.getProvider(getProviderUUID(universe)),
                     UniverseResourceDetails.create(universe.getUniverseDetails(), context),
                     allowedTasks.get(universe.getUniverseUUID()),
                     suggests.get(universe.getUniverseUUID()),
@@ -131,6 +129,18 @@ public class UniverseResp {
       log.warn("Could not read YBA software version for UniverseResp: ", e);
       return null;
     }
+  }
+
+  private static UUID getProviderUUID(Universe universe) {
+    return universe
+        .getUniverseDetails()
+        .getPrimaryCluster()
+        .userIntent
+        .getAllProviderUUIDs()
+        .stream()
+        .sorted()
+        .findFirst()
+        .get();
   }
 
   private static void fillRegions(Collection<Universe> universes) {
@@ -282,8 +292,7 @@ public class UniverseResp {
         entity,
         taskUUID,
         Customer.get(entity.getCustomerId()),
-        Provider.getOrBadRequest(
-            UUID.fromString(entity.getUniverseDetails().getPrimaryCluster().userIntent.provider)),
+        Provider.getOrBadRequest(getProviderUUID(entity)),
         resources,
         allowedTasks,
         rollMaxBatchSize,
@@ -352,18 +361,12 @@ public class UniverseResp {
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
     String sampleAppCommand;
-    if (cluster.userIntent.providerType == null) {
-      return null;
-    }
-    boolean isKubernetesProvider =
-        cluster.userIntent.providerType.equals(Common.CloudType.kubernetes);
+    boolean isKubernetesProvider = Util.isKubernetesBasedUniverse(universe.getUniverseDetails());
     // Building --nodes param value of the command
     nodeDetailsSet.stream()
         .filter(
             nodeDetails ->
-                (nodeDetails.isTserver
-                    && nodeDetails.state != null
-                    && nodeDetails.state.name().equals("Live")))
+                (nodeDetails.isTserver && nodeDetails.state == NodeDetails.NodeState.Live))
         .forEach(
             nodeDetails ->
                 nodeBuilder.append(

@@ -25,7 +25,9 @@ You upgrade a universe in the following phases:
 <!-- (Roll back is available for universes being upgraded from YugabyteDB version 2.20.3 and later.) -->
 - Finalize - Depending on the changes included in the upgrade, you may need to finalize the upgrade to make the upgrade permanent. The system will tell you if this step is necessary. After finalizing, you can no longer roll back.
 
-For more information, refer to [Upgrade FAQ](/stable/faq/operations-faq/#upgrade).
+{{<tags/feature/ea idea="486">}}Optionally, you can perform a [canary upgrade](#canary-upgrade). A canary upgrade is a standard rolling upgrade with optional pauses so you can monitor the cluster and choose to resume or roll back before continuing.
+
+For more information on upgrading universes, refer to [Upgrade FAQ](/stable/faq/operations-faq/#upgrade).
 
 ## Perform the upgrade
 
@@ -144,6 +146,62 @@ To finalize an upgrade, do the following:
 
 1. Click **Proceed to finalize the upgrade** to confirm.
 
+## Canary upgrade
+
+{{<tags/feature/ea idea="486">}}A canary upgrade is a standard rolling upgrade with optional pauses so you can monitor the cluster and choose to resume or roll back before continuing.
+
+Canary upgrade is not supported on Kubernetes-based universes.
+
+While in Early Access, canary upgrade is not available by default. To make it available, set the **Enable Canary Upgrade** Universe Runtime Configuration option (config key `yb.upgrade.enable_canary_upgrade`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
+You perform a canary upgrade on a live universe deployment as follows:
+
+1. Navigate to **Universes** and select your universe.
+
+1. Click **Actions > Upgrade Database Version** to display the **Upgrade Database** dialog.
+
+1. Choose the target version you want to upgrade to.
+
+1. Choose **Canary Upgrade**.
+
+1. Configure your **Upgrade Plan**.
+
+    - Choose the upgrade order for AZs in the universe.
+    - Set pause points between zone upgrades.
+
+        The primary cluster is upgraded before the read replica (if present).
+
+        Pausing after the first AZ is upgraded is recommended so that you can evaluate and rollback early if needed.
+
+        Pause after all Masters is also recommended. When set, YugabyteDB Anywhere stops after every Master is upgraded, so you can validate leader health and metadata before TServers are restarted.
+
+1. Configure the **Upgrade Pace**.
+
+    Specify the maximum number of nodes to process per batch and the delay between node upgrades.
+
+1. Click **Upgrade**.
+
+While the upgrade is in progress, a banner is displayed at the top of the window. To monitor progress, click **Open Upgrade Monitor** on the banner to display the **Upgrade Monitor**.
+
+When YugabyteDB Anywhere reaches a pause point, the universe status is _Paused_, and the upgrade task stops until you act.
+
+While paused, you can resume the upgrade, roll back, or destroy the universe. Other actions (such as edit universe, GFlags changes, backups, or finalize) are not available until the upgrade progresses or is rolled back.
+
+At each pause:
+
+1. Review Upgrade Monitor to see completed AZs and the current step.
+1. Make sure workloads are running as expected, and there are no errors in the logs.
+1. Check that upgraded nodes are up and reachable.
+1. Review performance metrics for spikes or anomalies.
+
+If you have problems, in the **Upgrade Monitor**, click **Roll Back**, or click **Actions>Roll Back Upgrade**.
+
+To resume, in the **Upgrade Monitor**, click **Resume Upgrade**. Do not resume a universe you have not validated.
+
+If the upgrade task fails (universe status _Upgrade Failed_, not merely _Paused_), **Retry** the task to start a new upgrade run linked to the failed one. Zones already upgraded during the earlier attempt are preserved and skipped.
+
+If the failure happens in between the upgrade steps reported in the upgrade monitor side panel (that is, universe status reports the failure and there is a failure task banner), review the software upgrade task in the **Task** tab. To roll back the upgrade, go to universe **Actions>Roll Back Upgrade**.
+
 ## Upgrades with xCluster and xCluster DR
 
 During the upgrade process, xCluster Disaster Recovery continues to function, with the following caveats:
@@ -162,6 +220,10 @@ In {{<release "2025.1.2.0">}} or later, YugabyteDB Anywhere automatically disabl
 {{< note title="Note" >}}
 xCluster replication requires the target universe version to be the same or later than the source universe version. Setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source universe is finalized before the target universe.
 {{< /note >}}
+
+{{< warning title="TA-31533: Verify before upgrading" >}}
+For some xCluster setups, before upgrading, you should run a verification script to check if the universe is affected by TA-31533. For more information, refer to {{<ta 31533>}}.
+{{< /warning >}}
 
 To upgrade universes in DR or transactional xCluster, the sequence is as follows:
 

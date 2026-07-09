@@ -45,6 +45,7 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_value.h"
@@ -333,6 +334,9 @@ DEFINE_RUNTIME_bool(ysql_debug_log_write_requests, false,
     "Note: Enabling this flag might log sensitive information.");
 TAG_FLAG(ysql_debug_log_write_requests, advanced);
 TAG_FLAG(ysql_debug_log_write_requests, unsafe);
+
+DEFINE_test_flag(bool, cdc_fail_before_setting_barrier, false,
+  "Fail CreateTablet before setting CDC retention barriers");
 
 double TEST_delay_create_transaction_probability = 0;
 
@@ -1758,42 +1762,68 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
     hosted_services.insert((StatefulServiceKind)service_kind);
   }
 
+  bool cdc_sdk_setup_retention =
+      req->has_cdc_sdk_set_retention_barriers() && req->cdc_sdk_set_retention_barriers();
+
   auto const tablet_peer_result = server_->tablet_manager()->CreateNewTablet(
       table_info, req->tablet_id(), partition, req->config(), req->colocated(), snapshot_schedules,
       hosted_services);
   if (PREDICT_FALSE(!tablet_peer_result.ok())) {
     status = tablet_peer_result.status();
-    return status.IsAlreadyPresent()
-        ? status.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_ALREADY_EXISTS))
-        : status;
+    auto is_already_present = status.IsAlreadyPresent();
+    if (is_already_present && cdc_sdk_setup_retention) {
+      auto existing_peer_result = server_->tablet_manager()->GetTablet(req->tablet_id());
+      if (!existing_peer_result.ok()) {
+        return existing_peer_result.status().CloneAndAppend(
+            Format("Tablet peer not found for already present tablet $0", req->tablet_id()));
+      }
+
+      if ((*existing_peer_result)->state() != tablet::RaftGroupStatePB::FAILED) {
+        RETURN_NOT_OK(SetupCDCSDKRetentionOnNewTablet(timeout, resp, *existing_peer_result));
+      } else {
+        LOG_WITH_PREFIX(WARNING) << "Skipping CDC retention barrier setup for tablet "
+                                 << req->tablet_id() << " because the peer is in FAILED state";
+      }
+    }
+    return is_already_present ? status.CloneAndAddErrorCode(
+                                    TabletServerError(TabletServerErrorPB::TABLET_ALREADY_EXISTS))
+                              : status;
   }
-  bool cdc_sdk_setup_retention =
-      req->has_cdc_sdk_set_retention_barriers() && req->cdc_sdk_set_retention_barriers();
+
+  if (PREDICT_FALSE(FLAGS_TEST_cdc_fail_before_setting_barrier)) {
+    return STATUS_FORMAT(IllegalState, "TEST failing before attempting to set retention barrier");
+  }
+
   if (!cdc_sdk_setup_retention) {
     return Status::OK();
   }
-  auto tablet_peer = *tablet_peer_result;
-  status = SetupCDCSDKRetentionOnNewTablet(timeout, resp, tablet_peer);
-  if (!status.ok()) {
-     tablet_peer->SetFailed(status);
-     return status;
-  }
-  return Status::OK();
+  return SetupCDCSDKRetentionOnNewTablet(timeout, resp, *tablet_peer_result);
 }
 
 Status TabletServiceAdminImpl::SetupCDCSDKRetentionOnNewTablet(
     const MonoDelta& timeout, CreateTabletResponsePB* resp,
     const tablet::TabletPeerPtr& tablet_peer) {
-  RETURN_NOT_OK(tablet_peer->WaitUntilConsensusRunning(timeout));
+  auto set_failed_on_error = [&tablet_peer](const Status& status) {
+    if (!status.ok()) {
+      tablet_peer->SetFailed(status);
+    }
+    return status;
+  };
+
+  // Proceed only if the tablet is not in failed state.
+  RETURN_NOT_OK(set_failed_on_error(tablet_peer->WaitUntilConsensusRunning(timeout)));
 
   tablet::RemoveIntentsData data;
-  RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
+  RETURN_NOT_OK(set_failed_on_error(tablet_peer->GetLastReplicatedData(&data)));
 
   if (FLAGS_TEST_cdc_sdk_fail_setting_retention_barrier) {
-     return STATUS_FORMAT(IllegalState, "TEST failing before attempting to set retention barrier");
+    return set_failed_on_error(
+        STATUS_FORMAT(IllegalState, "TEST failing before attempting to set retention barrier"));
   }
-  RETURN_NOT_OK(ResultToStatus(tablet_peer->SetAllInitialCDCSDKRetentionBarriers(
-      data.op_id, server_->Clock()->Now(), false /* require_history_cutoff */)));
+
+  RETURN_NOT_OK(
+      set_failed_on_error(ResultToStatus(tablet_peer->SetAllInitialCDCSDKRetentionBarriers(
+          data.op_id, server_->Clock()->Now(), true /* require_history_cutoff */))));
 
   TEST_SYNC_POINT("SetupCDCSDKRetentionOnNewTablet::End");
 
@@ -1863,7 +1893,7 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
       req->tablet_id(), delete_type,
       tablet::ShouldAbortActiveTransactions(req->should_abort_active_txns()),
       cas_config_opid_index_less_or_equal, req->hide_only(), req->keep_data(), &error_code,
-      std::move(txn_id));
+      std::move(txn_id), resp);
   if (PREDICT_FALSE(!s.ok())) {
     HandleErrorResponse(resp, &context, s, error_code);
     return;
@@ -2484,10 +2514,8 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   // TODO(jason): come up with a more efficient connection reuse method for tserver-postgres
   // communication.  As of D19621, connections are spawned each request for YSQL upgrade, index
   // backfill, and this.  Creating the connection has a startup cost.
-  auto res = pgwrapper::CreateInternalPGConnBuilder(
-                 server_->pgsql_proxy_bind_address(), "template1",
-                 server_->GetSharedMemoryPostgresAuthKey(), modified_deadline)
-                 .Connect();
+  auto res = server_->CreateInternalPGConn(
+      "template1", kDefaultInternalPgUser, /*simple_query_protocol=*/false, modified_deadline);
   if (!res.ok()) {
     LOG_WITH_PREFIX_AND_FUNC(WARNING) << "failed to connect to local postgres: " << res.status();
     SetupErrorAndRespond(resp->mutable_error(), res.status(), &context);
@@ -2713,23 +2741,27 @@ void TabletServiceImpl::Write(const WriteRequestMsg* req,
 void TabletServiceImpl::WaitForAsyncWrite(
     const WaitForAsyncWriteRequestPB* req, WaitForAsyncWriteResponsePB* resp,
     rpc::RpcContext context) {
-  auto callback = [resp, context_ptr = std::make_shared<rpc::RpcContext>(std::move(context))](
+  auto callback = [op_id = OpId::FromPB(req->op_id()), resp,
+                   context_ptr = std::make_shared<rpc::RpcContext>(std::move(context))](
                       const Status& status) {
     if (!status.ok()) {
       SetupErrorAndRespond(resp->mutable_error(), status, context_ptr.get());
       return;
     }
+    TEST_SYNC_POINT_CALLBACK(
+        "TabletServiceImpl::WaitForAsyncWrite::Verified", const_cast<OpId*>(&op_id));
     context_ptr->RespondSuccess();
   };
 
-  // We dont need the leader check here because if the peer gracefully transitioned to a follower
-  // we still want to succeed previously committed async writes received by this peer.
+  // Don't need to do a leader check here: a follower or post-split parent can still verify writes
+  // from its log.
   auto tablet_result = LookupTabletPeer(server_->tablet_peer_lookup(), req->tablet_id());
   if (!tablet_result) {
     callback(tablet_result.status());
     return;
   }
 
+  DEBUG_ONLY_TEST_SYNC_POINT("TabletServiceImpl::WaitForAsyncWrite::BeforeRegister");
   tablet_result->tablet_peer->RegisterAsyncWriteCompletion(
       OpId::FromPB(req->op_id()), std::move(callback));
 }
@@ -3537,7 +3569,9 @@ void TabletServiceImpl::PgRemoteExec(
 
   // TODO(#30396): Maintain a pool of connections instead of creating a new connection
   auto conn = server_->CreateInternalPGConn(
-      req->database_name(), /* simple_query_protocol */ false, context.GetClientDeadline());
+      req->database_name(), /* user */ "yb_global_views_user",
+      /* simple_query_protocol */ false, context.GetClientDeadline(),
+      pgwrapper::YbInternalConnKindWireName::kGlobalView);
   if (!conn.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), conn.status(), &context);
     return;
@@ -3931,6 +3965,42 @@ void TabletServiceImpl::ReleaseObjectLocks(
   }
 }
 
+void TabletServiceImpl::WaitForLockersMultiple(
+    const WaitForLockersMultipleRequestPB* req, WaitForLockersMultipleResponsePB* resp,
+    rpc::RpcContext context) {
+  TRACE("Start WaitForLockersMultiple");
+  VLOG(2) << "Received WaitForLockersMultiple RPC: " << req->DebugString();
+  if (!FLAGS_enable_object_locking_for_table_locks) {
+    LOG_WITH_FUNC(INFO)
+        << "Flag enable_object_locking_for_table_locks disabled. "
+        << "Ignoring wait_for_lockers request.";
+    return context.RespondSuccess();
+  }
+  if (auto s = CheckLocalLeaseEpoch(GetRecipientLeaseEpoch(*req)); !s.ok()) {
+    return SetupErrorAndRespond(
+        resp->mutable_error(), s, TabletServerErrorPB::INVALID_YSQL_LEASE, &context);
+  }
+  auto ts_local_lock_manager = server_->ts_local_lock_manager();
+  if (!ts_local_lock_manager) {
+    VLOG_WITH_FUNC(1) << "TSLocalLockManager not found...";
+    return SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
+  }
+  TransactionId background_txn_id = TransactionId::Nil();
+  if (!req->background_transaction_id().empty()) {
+    auto res = FullyDecodeTransactionId(req->background_transaction_id());
+    if (!res.ok()) {
+      return SetupErrorAndRespond(resp->mutable_error(), res.status(), &context);
+    }
+    background_txn_id = *res;
+  }
+  const auto deadline = context.GetClientDeadline();
+  ts_local_lock_manager->WaitForLockersAsync(
+      req->object_locks(), deadline,
+      MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()),
+      background_txn_id);
+}
+
 Result<GetYSQLLeaseInfoResponsePB> TabletServiceImpl::GetYSQLLeaseInfo(
     const GetYSQLLeaseInfoRequestPB& req, CoarseTimePoint deadline) {
   auto lease_info = VERIFY_RESULT(server_->GetYSQLLeaseInfo());
@@ -3948,7 +4018,8 @@ void TabletServiceImpl::AdminExecutePgsql(
   auto execute_pg_sql = [&req, &context, &server = server_]() -> Status {
     const auto& deadline = context.GetClientDeadline();
     auto pg_conn = VERIFY_RESULT(
-        server->CreateInternalPGConn(req->database_name(), false, deadline));
+        server->CreateInternalPGConn(req->database_name(), kDefaultInternalPgUser, false,
+                                     deadline));
     for (const auto& stmt : req->pgsql_statements()) {
       SCHECK_LT(
           CoarseMonoClock::Now(), deadline, TimedOut, "Timed out while executing Ysql statements");
@@ -4066,10 +4137,18 @@ Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(
 
   uint64_t row_count = 0;
   uint64_t xor_hash = 0;
+  // Scope the hash by the requested table_id. A colocation parent table id (or an unset table_id)
+  // hashes every table in the tablet; any other table id restricts the scan to that single table.
+  TableId target_table_id;
+  if (req.has_table_id() && !req.table_id().empty() && !IsColocationParentTableId(req.table_id())) {
+    target_table_id = req.table_id();
+  }
+  Slice start_key = req.has_start_key() ? Slice(req.start_key()) : Slice();
+  Slice end_key = req.has_end_key() ? Slice(req.end_key()) : Slice();
   RETURN_NOT_OK(
       tablet::DumpTabletData(
           *peer_tablet.tablet, server_->client_future(), file.get(), read_ht, deadline, xor_hash,
-          row_count));
+          row_count, target_table_id, start_key, end_key));
   DumpTabletDataResponsePB resp;
   resp.set_row_count(row_count);
   resp.set_xor_hash(xor_hash);

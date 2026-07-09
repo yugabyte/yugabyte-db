@@ -772,6 +772,9 @@ typedef struct EState
 	 * FK relation. Used by YBCBuildYBTupleIdDescriptor().
 	 */
 	List	   *yb_es_pk_proutes;
+
+	/* YB: Indicates that execution state allows nodes to apply read ahead optimization (if any) */
+	bool yb_read_ahead_allowed;
 } EState;
 
 /*
@@ -3038,6 +3041,21 @@ typedef struct SetOpState
 	TupleHashIterator hashiter; /* for iterating through hash table */
 } SetOpState;
 
+typedef struct YbLockRowsStateInfo {
+	bool are_row_marks_for_yb_rels;	/* lr_arowMarks relates to YB * relations */
+	TupleTableSlot *result_slot;	/* Slot returned to callers.
+									   In the same format as slot returned by the outer plan */
+	TupleTableSlot *minimal_tuple_slot;	/* Intermediate slot for tuplestore retrieval */
+	Tuplestorestate *buffered_slots;
+	uint16_t buffered_slots_capacity;
+	uint16_t buffered_slot_index;
+	YbcIsExplicitlyLockedRowSkippedCheckHandleOptional *check_handles;
+	bool bounded;
+	uint64_t bound;
+	uint64_t rows_fetched;
+	bool end_reached;
+} YbLockRowsStateInfo;
+
 /* ----------------
  *	 LockRowsState information
  *
@@ -3050,8 +3068,7 @@ typedef struct LockRowsState
 	List	   *lr_arowMarks;	/* List of ExecAuxRowMarks */
 	EPQState	lr_epqstate;	/* for evaluating EvalPlanQual rechecks */
 
-	bool		yb_are_row_marks_for_yb_rels;	/* lr_arowMarks relates to YB
-												 * relations */
+	YbLockRowsStateInfo yb_info;
 } LockRowsState;
 
 /* ----------------

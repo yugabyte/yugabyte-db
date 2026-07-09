@@ -310,10 +310,19 @@ class Tablet : public AbstractTablet,
   // This transitions from kBootstrapping to kOpen state.
   void MarkFinishedBootstrapping();
 
+  // Starts tablet subsystems that must not run until the tablet is fully created and published by
+  // its TabletPeer (in particular vector index backfill, which resolves transaction statuses and
+  // therefore needs the TabletPeer to be able to serve safe time). Called from TabletPeer::Start.
+  void Start();
+
   // This can be called to proactively prevent new operations from being handled, even before
   // Shutdown() is called.
   // Returns true if it was the first call to StartShutdown.
-  bool StartShutdown();
+  // On the first call this also starts shutting the RocksDB instances down (StartShutdownStorages),
+  // so that writers parked in a RocksDB write stall are released before the peer strand is drained.
+  // See issue #32211. The resulting operation pauses are kept in shutdown_op_pauses_ until the
+  // RocksDB instances are destroyed in CompleteShutdownStorages.
+  bool StartShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
   bool IsShutdownRequested() const {
     return shutdown_requested_.load(std::memory_order::acquire);
   }
@@ -323,10 +332,9 @@ class Tablet : public AbstractTablet,
   // - transaction participant
   // - RocksDB instances
   // - etc.
-  // By default, RocksDB shutdown flushes the memtable. This behavior is overriden depending on the
-  // provided value of disable_flush_on_shutdown.
-  // If abort_ops is specified, aborts pending RocksDB operations that are abortable.
-  void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
+  // StartShutdown (which controls flush-on-shutdown and pending-operation aborting) must have been
+  // called first; CompleteShutdown consumes the operation pauses it produced.
+  void CompleteShutdown();
 
   // Triggered by a corresponding tablet peer when it has been moved into RUNNING state.
   Status CompleteStartup();
@@ -351,25 +359,37 @@ class Tablet : public AbstractTablet,
       docdb::ApplyTransactionState* stream_state);
 
   // Apply all of the row operations associated with this transaction.
+  //
+  // `apply_to_storages` selects which storages this write is materialized into -- the regular
+  // RocksDB (bit 0) and vector indexes (bits 1+); there is no intents-DB bit. It is honored only
+  // on the non-transactional (xCluster external-apply) path, where NonTransactionalBatchWriter
+  // skips applying to any storage whose bit is clear -- the regular-DB Put, and (via
+  // VectorIndexesUpdater) each vector index. Tablet-bootstrap replay narrows it -- clearing the
+  // bit for any storage a fused external WRITE_OP is already durably flushed to, so that storage
+  // is not written again (GH#31899); every other caller passes All(). The argument has no default,
+  // so each caller states its intent explicitly.
   Status ApplyRowOperations(
       WriteOperation* operation,
-      const docdb::StorageSet& apply_to_storages = {},
+      const docdb::StorageSet& apply_to_storages,
       bool skip_opid_update = false);
 
   Status UpdateOpIdForOperation(WriteOperation* operation);
 
+  // `apply_to_storages`: see ApplyRowOperations.
   Status ApplyOperation(
       const Operation& operation, int64_t batch_idx,
       const docdb::LWKeyValueWriteBatchPB& write_batch,
-      const docdb::StorageSet& apply_to_storages = {},
+      const docdb::StorageSet& apply_to_storages,
       bool skip_opid_update = false);
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
+  // `apply_to_storages`: see ApplyRowOperations.
   Status ApplyKeyValueRowOperations(
       int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers& frontiers,
-      HybridTime write_hybrid_time, HybridTime local_hybrid_time);
+      HybridTime write_hybrid_time, HybridTime local_hybrid_time,
+      const docdb::StorageSet& apply_to_storages);
 
   void WriteToRocksDB(
       const storage::UserFrontiers& frontiers,
@@ -1274,6 +1294,11 @@ class Tablet : public AbstractTablet,
   // prevent race conditions between destructing the RocksDB in-memory instance and read/write
   // operations.
   std::atomic_bool shutdown_requested_{false};
+
+  // Read/write operation pauses produced by StartShutdownStorages, populated by StartShutdown and
+  // consumed by CompleteShutdown. They keep operations paused while the RocksDB instances are being
+  // torn down, so they must stay alive across the gap between StartShutdown and CompleteShutdown.
+  TabletScopedRWOperationPauses shutdown_op_pauses_;
 
   // This is a special atomic counter per tablet that increases monotonically.
   // It is like timestamp, but doesn't need locks to read or update.

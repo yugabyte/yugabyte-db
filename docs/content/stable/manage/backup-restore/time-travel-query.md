@@ -4,7 +4,7 @@ headerTitle: Time travel query
 linkTitle: Time travel query
 description: Read data at a specific point in time for data recovery and analysis.
 tags:
-  feature: tech-preview
+  feature: early-access
 menu:
   stable:
     identifier: time-travel-query
@@ -24,11 +24,13 @@ Use time travel queries to read data as it was at a specific point in time, with
 
 The history retention period (that is, the period available for historical queries) is controlled by the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). This is a cluster-wide global flag that affects every YSQL database and YCQL keyspace.
 
-In addition, you must also set the `timestamp_syscatalog_history_retention_interval_sec` flag to cover the time interval you want to query.
+You should set the `timestamp_syscatalog_history_retention_interval_sec` flag to cover the time interval you want to query. You may also need to increase the history retention period if you are executing a long-running query in a time travel session.
 
-For example, to be able to query the data as of the last 24 hours (86000 seconds), set both flags to 86000.
+For example, to be able to query the data as of the last 24 hours (86400 seconds), set both flags to 86400.
 
 The default retention period is 900 seconds (15 minutes).
+
+If a long-running query fails (for example, with a Snapshot too old error because its execution time exceeded the retention window), increase the history retention period (by setting both flags) and re-run the query. Note that increasing the retention period cannot recover history that has already been compacted.
 
 ### Set the read time
 
@@ -47,7 +49,7 @@ When setting `yb_read_time`, keep in mind the following:
 - `yb_read_time` is defined on a YSQL session level. This means that all the read queries in the current session will read the data as of `yb_read_time`. Other YSQL sessions are not affected.
 - To reset the session to normal behavior (current time), set `yb_read_time` to 0.
 - Write DML queries (INSERT, UPDATE, DELETE) and DDL queries are not allowed in a session that has a read time in the past.
-- Currently, time travel queries can only read old data without schema changes. In other words, do not set the read time to a time earlier than the most recent DDL operation.
+- Currently, time travel queries can only read old data without schema changes. In other words, do not set the read time to a time earlier than the most recent DDL operation. This includes cluster-wide DDLs that affect global objects, such as a clone operation.
 
 ## Example
 
@@ -193,4 +195,5 @@ In cases where the deletion affected many tables in the database, you can use ti
 ## Limitations
 
 - Time travel queries are not supported for temporary tables.
-- Time travel queries currently do not support [vector indexes](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing). {{<issue 20829>}}
+- You cannot time travel to a time prior to the creation time of a database clone.
+- Time travel queries currently do not support [vector indexes](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing). {{<issue 20829>}} 

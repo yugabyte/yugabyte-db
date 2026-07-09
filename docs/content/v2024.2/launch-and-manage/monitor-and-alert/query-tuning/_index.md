@@ -68,6 +68,6 @@ Ensure that the threshold is high enough so that you don't flood the `postgres*l
 
 {{< /note >}}
 
-{{<lead link="/stable/explore/observability/logging/">}}
-Learn more about [YugabyteDB logging](/stable/explore/observability/logging/).
+{{<lead link="../../../explore/observability/logging/">}}
+Learn more about [YugabyteDB logging](../../../explore/observability/logging/).
 {{</lead>}}

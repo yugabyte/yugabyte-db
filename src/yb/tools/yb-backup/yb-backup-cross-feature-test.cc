@@ -11,6 +11,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gmock/gmock.h>
+
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
 #include "yb/client/ql-dml-test-base.h"
@@ -29,8 +31,9 @@
 using namespace std::chrono_literals;
 using namespace std::literals;
 
-DECLARE_int32(TEST_partitioning_version);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_int32(TEST_partitioning_version);
+DECLARE_int32(TEST_table_owned_vector_reverse_mapping);
 
 namespace {
 
@@ -2397,6 +2400,76 @@ TEST_F_EX(
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+class YBBackupTableOwnedVectorReverseMappingTest : public YBBackupTest {
+ protected:
+  Result<bool> GetTableOwnsVectorReverseMapping(
+      const std::string& table_name, const std::string& log_prefix, const std::string& ns = {}) {
+    const auto yb_table_name = VERIFY_RESULT(GetTableName(table_name, log_prefix, ns));
+    const auto table_info = VERIFY_RESULT(client_->GetYBTableInfo(yb_table_name));
+    return table_info.schema.table_properties().owns_vector_reverse_mapping();
+  }
+
+  Status ForceSetTableOwnedVectorReverseMapping(int32_t value) {
+    for (auto ms : cluster_->master_daemons()) {
+      ms->Shutdown();
+      ms->mutable_flags()->push_back(Format("--TEST_table_owned_vector_reverse_mapping=$0", value));
+      RETURN_NOT_OK(ms->Restart());
+    }
+    return cluster_->WaitForTabletServerCount(GetNumTabletServers(), kDefaultTimeout);
+  }
+
+  const std::string default_db_ = "yugabyte";
+};
+
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTableOwnedVectorReverseMapping),
+    YBBackupTableOwnedVectorReverseMappingTest) {
+  // Verify owns_vector_reverse_mapping is restored from backup metadata even when the master's
+  // create-time TEST flag differs at restore time. The vector column is not needed to check the
+  // reverse mapping ownership behavior.
+  constexpr auto kTableOwned = "tbl_table_owned";
+  constexpr auto kTableLegacy = "tbl_legacy";
+  constexpr auto kTableNew = "tbl_new";
+
+  // 1) Create one table-owned and one legacy base table.
+  ASSERT_OK(ForceSetTableOwnedVectorReverseMapping(1));
+  SetDbName(default_db_);
+  ASSERT_NO_FATALS(CreateTable(Format(
+    "CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableOwned)));
+
+  ASSERT_OK(ForceSetTableOwnedVectorReverseMapping(0));
+  ASSERT_NO_FATALS(CreateTable(Format(
+     "CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableLegacy)));
+
+  ASSERT_TRUE(ASSERT_RESULT(GetTableOwnsVectorReverseMapping(kTableOwned, "pre-backup")));
+  ASSERT_FALSE(ASSERT_RESULT(GetTableOwnsVectorReverseMapping(kTableLegacy, "pre-backup")));
+
+  // 2) Backup.
+  const std::string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // 3) Flip the create-time flag and restore. RecreateTable would stamp the current flag value,
+  // but ImportTableEntry must overwrite it from snapshot metadata.
+  ASSERT_OK(ForceSetTableOwnedVectorReverseMapping(1));
+  DropPsqlDatabase(default_db_);
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
+
+  // 4) Restored tables keep the values from the backup.
+  ASSERT_TRUE(ASSERT_RESULT(GetTableOwnsVectorReverseMapping(kTableOwned, "post-restore")));
+  ASSERT_FALSE(ASSERT_RESULT(GetTableOwnsVectorReverseMapping(kTableLegacy, "post-restore")));
+
+  // 5) A newly created table uses the current cluster flag (enabled).
+  SetDbName(default_db_);
+  ASSERT_NO_FATALS(CreateTable(Format(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableNew)));
+  ASSERT_TRUE(ASSERT_RESULT(
+      GetTableOwnsVectorReverseMapping(kTableNew, "post-restore", default_db_)));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 class YBBackupTestOneTablet : public YBBackupTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -2520,7 +2593,7 @@ TEST_F_EX(
   // Wait for compaction to complete.
   ASSERT_OK(WaitForTabletPostSplitCompacted(leader_idx, tablets[0].tablet_id()));
   ASSERT_OK(test_admin_client_->SplitTabletAndWait(
-      default_db_, table_name, /* wait_for_parent_deletion */ kWaitForParentDeletion,
+      db_name, table_name, /* wait_for_parent_deletion */ kWaitForParentDeletion,
       tablets[0].tablet_id()));
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(db_name, table_name));
   ASSERT_EQ(tablets.size(), /* expected_num_tablets = */ 3);
@@ -2947,6 +3020,9 @@ class YBDdlAtomicityBackupTest : public YBBackupTestBase, public pgwrapper::PgDd
     // Test enables TEST_pause_ddl_rollback which may block table locks for ddl from
     // being released. Hence blocking the following statements from failing to acquire locks.
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
     pgwrapper::PgDdlAtomicityTestBase::UpdateMiniClusterOptions(options);
   }
 
@@ -3820,6 +3896,335 @@ TEST_F_EX(
   ));
 }
 
+// Starts each base table with a single hash tablet so that we can drive
+// deterministic manual tablet splits, and disables auto-splitting so that the
+// only splits that happen during the test are the ones we trigger explicitly.
+class YBBackupTestVectorIndexOneTablet : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--enable_automatic_tablet_splitting=false");
+    options->extra_tserver_flags.push_back("--ysql_num_tablets=1");
+    options->extra_tserver_flags.push_back("--ycql_num_tablets=1");
+  }
+
+  string default_db_ = "yugabyte";
+};
+
+// While doing a restore the import snapshot meta handler might have to repartition a table. If this
+// table has a vector index, ImportSnapshotMeta must update the list of tablets of each child vector
+// index, and not just the indexed table. This test verifies this case.
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(VectorIndexBackupRestoreWithSplitAndDdl),
+    YBBackupTestVectorIndexOneTablet) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "yb_backup.py does not support vector indexes for this scenario.";
+  }
+
+  const std::string kTableName = "test_tbl";
+  const std::string kIndexName = "vec_idx";
+  constexpr int kNumRows = 200;
+  const std::string kQueryVector = "[1, 2, 3]";
+  constexpr int kTopK = 5;
+  const std::string kSourceDB = "yugabyte";
+  const std::string kTargetDB = "restored_db";
+
+  // Step 1: Create table DDLs and populate rows.
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kSourceDB));
+    ASSERT_OK(conn.Execute("CREATE EXTENSION IF NOT EXISTS vector"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (id int PRIMARY KEY, vec vector(3), label text)", kTableName));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX $0 ON $1 USING ybhnsw (vec vector_l2_ops)", kIndexName, kTableName));
+
+    for (int i = 1; i <= kNumRows; ++i) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0 VALUES ($1, '[$1, $2, $3]', 'label_$1')",
+          kTableName, i, i + 1, i + 2));
+    }
+
+    // Sanity-check the vector index returns rows pre-backup.
+    auto pre_result = ASSERT_RESULT(conn.FetchAllAsString(
+        Format("SELECT id FROM $0 ORDER BY vec <-> '$1' LIMIT $2",
+               kTableName, kQueryVector, kTopK)));
+    LOG(INFO) << "Pre-backup vector query result: " << pre_result;
+    ASSERT_FALSE(pre_result.empty());
+  }
+
+  // Step 2: Flush and manually split the base table twice so that
+  // it ends up with three tablets whose partition boundaries do NOT match the
+  // master's default 3-way uniform split. The first split divides the lone
+  // initial tablet in half (boundary near 0x8000); the second split divides
+  // the lower half again (boundary near 0x4000), producing a 3-tablet layout
+  // at roughly [, 0x4000), [0x4000, 0x8000), [0x8000, ). The default 3-way
+  // uniform layout would be [, 0x5555), [0x5555, 0xAAAA), [0xAAAA, ), so the
+  // import-time partition comparison will mismatch and RepartitionTable will
+  // run on restore.
+  ASSERT_OK(cluster_->WaitForAllIntentsApplied(10s));
+  auto table_id = ASSERT_RESULT(GetTableId(kTableName, "pre-split"));
+  auto index_id = ASSERT_RESULT(GetTableId(kIndexName, "pre-split"));
+  // YSQL doesn't support FlushTables with add_indexes=true (catalog_manager
+  // rejects "Getting indexes for YSQL table is not supported"); flush the
+  // base table and the vector index separately instead.
+  ASSERT_OK(client_->FlushTables({table_id}));
+  ASSERT_OK(client_->FlushTables({index_id}));
+
+  auto tablets =
+      ASSERT_RESULT(test_admin_client_->GetTabletLocations(kSourceDB, kTableName));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 1);
+
+  // First split: 1 -> 2 tablets.
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      kSourceDB, kTableName, /* wait_for_parent_deletion = */ true,
+      tablets[0].tablet_id()));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(kSourceDB, kTableName));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 2);
+
+  // Pick the tablet with the lowest partition_key_start to split next so that
+  // the resulting boundaries are deterministic regardless of the order in
+  // which GetTabletLocations returns tablets.
+  std::sort(tablets.begin(), tablets.end(),
+            [](const auto& a, const auto& b) {
+              return a.partition().partition_key_start() <
+                     b.partition().partition_key_start();
+            });
+
+  // Second split on the lower half: 2 -> 3 tablets with non-uniform boundaries.
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      kSourceDB, kTableName, /* wait_for_parent_deletion = */ true,
+      tablets[0].tablet_id()));
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(kSourceDB, kTableName));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 3);
+
+  // Step 3: Create backup of the database.
+  const std::string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace",
+       Format("ysql.$0", kSourceDB), "create"}));
+
+  // Step 4: Restore the database from the backup.
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace",
+       Format("ysql.$0", kTargetDB), "restore"}));
+
+  auto restored_db_conn = ASSERT_RESULT(cluster_->ConnectToDB(kTargetDB));
+  // Step 5: Verify db and tables are present.
+  ASSERT_EQ(
+      ASSERT_RESULT(restored_db_conn.FetchRow<int64_t>(Format(
+          "SELECT count(*) FROM pg_class WHERE relname = '$0' AND relkind = 'r'", kTableName))),
+      1);
+
+  // Step 6a: Row counts match what was backed up.
+  ASSERT_EQ(
+      ASSERT_RESULT(
+          restored_db_conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", kTableName))),
+      kNumRows);
+
+  // Step 6b: Schema matches what was backed up (id, vec, label).
+  auto column_names = ASSERT_RESULT(restored_db_conn.FetchRows<std::string>(Format(
+      "SELECT column_name FROM information_schema.columns "
+      "WHERE table_name = '$0' ORDER BY ordinal_position",
+      kTableName)));
+  EXPECT_THAT(column_names, testing::UnorderedElementsAre("id", "vec", "label"));
+
+  // Step 6c: Vector index queries should still work after restore.
+  auto post_result = ASSERT_RESULT(restored_db_conn.FetchRows<std::string>(Format(
+      "SELECT label FROM $0 ORDER BY vec <-> '$1' LIMIT $2", kTableName, kQueryVector, kTopK)));
+  ASSERT_FALSE(post_result.empty()) << "Vector index query returned no rows after restore";
+  ASSERT_EQ(post_result.size(), kTopK)
+      << "Expected " << kTopK << " rows from vector index query, got: " << post_result.size();
+}
+
+namespace {
+
+enum class VectorIndexColocationScenario {
+  kNonColocatedTable,
+  kColocatedTable,
+  kNonColocatedTableInColocatedDb,
+};
+
+Result<Oid> FetchIndexColocationId(pgwrapper::PGConn& conn, std::string_view index_name) {
+  return conn.FetchRow<pgwrapper::PGOid>(Format(
+      "SELECT props.colocation_id FROM pg_class c, yb_table_properties(c.oid) props "
+      "WHERE c.relname = '$0' AND c.relkind = 'i'",
+      index_name));
+}
+
+std::string VectorIndexColocationScenarioName(VectorIndexColocationScenario scenario) {
+  switch (scenario) {
+    case VectorIndexColocationScenario::kNonColocatedTable:
+      return "NonColocatedTable";
+    case VectorIndexColocationScenario::kColocatedTable:
+      return "ColocatedTable";
+    case VectorIndexColocationScenario::kNonColocatedTableInColocatedDb:
+      return "NonColocatedTableInColocatedDb";
+  }
+  return "Unknown";
+}
+
+}  // namespace
+
+class YBBackupTestVectorIndexColocationId
+    : public YBBackupTest,
+      public ::testing::WithParamInterface<VectorIndexColocationScenario> {
+ protected:
+  std::string GetSourceDBName() {
+    if (GetParam() == VectorIndexColocationScenario::kNonColocatedTable) {
+      return "yugabyte";
+    } else {
+      return "test_db";
+    }
+  }
+
+  Status InitializeSourceDB() {
+    auto scenario = GetParam();
+    if (scenario == VectorIndexColocationScenario::kColocatedTable ||
+        scenario == VectorIndexColocationScenario::kNonColocatedTableInColocatedDb) {
+      auto base_conn = VERIFY_RESULT(cluster_->ConnectToDB());
+      return base_conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION=TRUE", GetSourceDBName());
+    }
+    return Status::OK();
+  }
+
+  Status CreateTable(pgwrapper::PGConn& conn, std::string_view table_name) {
+    auto scenario = GetParam();
+    switch (scenario) {
+      case VectorIndexColocationScenario::kNonColocatedTable:
+      case VectorIndexColocationScenario::kColocatedTable:
+        RETURN_NOT_OK(
+            conn.ExecuteFormat("CREATE TABLE $0 (id int PRIMARY KEY, vec vector(3))", table_name));
+        break;
+      case VectorIndexColocationScenario::kNonColocatedTableInColocatedDb:
+        RETURN_NOT_OK(conn.ExecuteFormat(
+            "CREATE TABLE $0 (id int PRIMARY KEY, vec vector(3)) WITH (colocation = false)",
+            table_name));
+        break;
+    }
+    return Status::OK();
+  }
+};
+
+TEST_P(
+    YBBackupTestVectorIndexColocationId,
+    YB_DISABLE_TEST_IN_SANITIZERS(BackupRestorePreservesVectorIndexColocationId)) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "yb_backup.py does not support vector indexes for this scenario.";
+  }
+
+  constexpr std::string_view kTableName{"test_tbl"};
+  constexpr std::string_view kIndexName{"vec_idx"};
+  const auto kSourceDb = GetSourceDBName();
+  const auto kRestoreDb = kSourceDb + "_restored";
+
+  ASSERT_OK(InitializeSourceDB());
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kSourceDb));
+  ASSERT_OK(conn.Execute("CREATE EXTENSION IF NOT EXISTS vector"));
+  ASSERT_OK(CreateTable(conn, kTableName));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE INDEX $0 ON $1 USING ybhnsw (vec vector_l2_ops)", kIndexName, kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, '[1.0, 0.5, 0.25]')", kTableName));
+
+  const auto original_colocation_id = ASSERT_RESULT(FetchIndexColocationId(conn, kIndexName));
+  ASSERT_NE(original_colocation_id, static_cast<Oid>(0))
+      << "Vector index should have a non-zero colocation id";
+
+  const std::string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", kSourceDb), "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", kRestoreDb), "restore"}));
+
+  auto restored_conn = ASSERT_RESULT(cluster_->ConnectToDB(kRestoreDb));
+  const auto restored_colocation_id =
+      ASSERT_RESULT(FetchIndexColocationId(restored_conn, kIndexName));
+  ASSERT_EQ(original_colocation_id, restored_colocation_id);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    VectorIndexColocationScenarios, YBBackupTestVectorIndexColocationId,
+    ::testing::Values(
+        VectorIndexColocationScenario::kNonColocatedTable,
+        VectorIndexColocationScenario::kColocatedTable,
+        VectorIndexColocationScenario::kNonColocatedTableInColocatedDb),
+    [](const testing::TestParamInfo<VectorIndexColocationScenario>& info) {
+      return VectorIndexColocationScenarioName(info.param);
+    });
+
+TEST_F_EX(
+    YBBackupTest,
+    YB_DISABLE_TEST_IN_SANITIZERS(YBCBackupRestoreColocatedTablespaceVectorIndex),
+    YBBackupTestColocatedTablesWithTablespaces) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Test requires YBC.";
+  }
+
+  const std::string_view kBackupDbName{"backup_db"};
+  const std::string_view kRestoreDbName{"restore_db"};
+
+  const std::string placement_info_1 = R"#(
+    '{
+      "num_replicas" : 1,
+      "placement_blocks": [
+          {
+            "cloud"            : "cloud1",
+            "region"           : "datacenter1",
+            "zone"             : "rack1",
+            "min_num_replicas" : 1
+          }
+      ]
+    }'
+  )#";
+
+  {
+    auto admin_conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_OK(admin_conn.ExecuteFormat(
+        "CREATE TABLESPACE tsp1 WITH (replica_placement=$0)", placement_info_1));
+    ASSERT_OK(admin_conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION=TRUE", kBackupDbName));
+  }
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kBackupDbName));
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT, embedding vector(3)) TABLESPACE tsp1"));
+  ASSERT_OK(conn.Execute(
+      "CREATE INDEX t1_vec_idx ON t1 USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 SELECT g, 'row' || g, "
+      "ARRAY[random(), random(), random()]::vector FROM generate_series(1, 50) g"));
+
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(
+          "SELECT count(*) FROM pg_yb_tablegroup WHERE grpname LIKE 'colocation_%'")),
+      1);
+
+  const std::string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--use_tablespaces", "--keyspace",
+       Format("ysql.$0", kBackupDbName), "create"}));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--use_tablespaces", "--keyspace",
+       Format("ysql.$0", kRestoreDbName), "restore"}));
+
+  auto restore_conn = ASSERT_RESULT(cluster_->ConnectToDB(kRestoreDbName));
+  ASSERT_EQ(ASSERT_RESULT(restore_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM t1")), 50);
+  ASSERT_EQ(
+      ASSERT_RESULT(restore_conn.FetchRow<int64_t>(
+          "SELECT count(*) FROM pg_yb_tablegroup WHERE grpname LIKE 'colocation_%'")),
+      1);
+
+  auto nearest_id = ASSERT_RESULT(restore_conn.FetchRow<int32_t>(
+      "SELECT id FROM t1 ORDER BY embedding <-> '[0.1,0.2,0.3]' LIMIT 1"));
+  ASSERT_GE(nearest_id, 1);
+  ASSERT_LE(nearest_id, 50);
+}
+
 TEST_F(
     YBBackupTest,
     YB_DISABLE_TEST_IN_SANITIZERS(ColocatedDatabaseNonColocatedTableWithVectorIndex)) {
@@ -3827,8 +4232,8 @@ TEST_F(
     GTEST_SKIP()
         << "yb_backup.py does not support vector indexes when mixed with colocated databases.";
   }
-  const std::string db_name{"test_colo_db"};
-  const std::string table_name{"test_tbl"};
+  constexpr std::string_view db_name{"test_colo_db"};
+  constexpr std::string_view table_name{"test_tbl"};
   {
     auto base_conn = ASSERT_RESULT(cluster_->ConnectToDB());
     ASSERT_OK(base_conn.ExecuteFormat("CREATE DATABASE $0 with COLOCATION=TRUE", db_name));

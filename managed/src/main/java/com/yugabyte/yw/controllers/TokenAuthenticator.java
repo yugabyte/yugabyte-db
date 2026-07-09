@@ -248,14 +248,7 @@ public class TokenAuthenticator extends Action.Simple {
   }
 
   public boolean checkAuthentication(Http.Request request, Set<Users.Role> roles) {
-    String token = fetchToken(request, true);
-    Users user;
-    if (token != null) {
-      user = authWithToken(token, true);
-    } else {
-      token = fetchToken(request, false);
-      user = authWithToken(token, false);
-    }
+    Users user = getCurrentAuthenticatedUser(request);
     if (user != null) {
       boolean foundRole = false;
       boolean useNewAuthz = runtimeConfigCache.getBoolean(GlobalConfKeys.useNewRbacAuthz.getKey());
@@ -270,7 +263,7 @@ public class TokenAuthenticator extends Action.Simple {
       } else {
         for (Users.Role usersRole : roles) {
           Role role = Role.get(user.getCustomerUUID(), usersRole.name());
-          if (RoleBinding.checkUserHasRole(user.getUuid(), role.getRoleUUID())) {
+          if (role != null && RoleBinding.checkUserHasRole(user.getUuid(), role.getRoleUUID())) {
             UserWithFeatures userWithFeatures = new UserWithFeatures().setUser(user);
             RequestContext.put(USER, userWithFeatures);
             foundRole = true;

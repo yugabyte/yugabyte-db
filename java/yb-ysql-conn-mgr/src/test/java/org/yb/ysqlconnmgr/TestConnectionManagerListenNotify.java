@@ -22,7 +22,9 @@ import java.util.Map;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.util.RequiresLinux;
 import org.yb.pgsql.BasePgListenNotifyTest;
 import org.yb.pgsql.ConnectionEndpoint;
 
@@ -31,7 +33,8 @@ import org.yb.pgsql.ConnectionEndpoint;
  * backends, multi-route pool off) so {@link #testListenNotifySurvivesPoolChurn} can force backend
  * reuse;
  */
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestConnectionManagerListenNotify extends BaseYsqlConnMgr {
   private static final String CHANNEL = "test_channel";
   private static final String PAYLOAD = "test_payload";

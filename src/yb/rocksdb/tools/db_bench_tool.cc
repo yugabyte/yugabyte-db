@@ -880,8 +880,9 @@ class ReportFileOpEnv : public EnvWrapper {
 
       Status Truncate(uint64_t size) override { return target_->Truncate(size); }
       Status Close() override { return target_->Close(); }
-      Status Flush() override { return target_->Flush(); }
+      Status Flush(FlushMode mode) override { return target_->Flush(mode); }
       Status Sync() override { return target_->Sync(); }
+      uint64_t Size() const override { return target_->Size(); }
       const std::string& filename() const override { return target_->filename(); }
     };
 

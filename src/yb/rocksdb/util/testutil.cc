@@ -30,9 +30,12 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/rocksdb/port/port.h"
+#include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 
 #include "yb/storage/storage_test_util.h"
+
+#include "yb/util/mem_tracker.h"
 
 using std::unique_ptr;
 
@@ -119,6 +122,16 @@ std::string RandomName(Random* rnd, const size_t len) {
     ss << static_cast<char>(rnd->Uniform(26) + 'a');
   }
   return ss.str();
+}
+
+std::vector<CompressionType> GetSupportedCompressionTypes() {
+  std::vector<CompressionType> types;
+  for (auto type : kAllCompressionTypes) {
+    if (CompressionTypeSupported(type)) {
+      types.push_back(type);
+    }
+  }
+  return types;
 }
 
 CompressionType RandomCompressionType(Random* rnd) {

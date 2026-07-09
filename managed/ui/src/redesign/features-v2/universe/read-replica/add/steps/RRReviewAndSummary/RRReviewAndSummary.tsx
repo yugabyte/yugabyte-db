@@ -42,6 +42,7 @@ import ClusterIcon from '@app/redesign/assets/clusters.svg';
 
 import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
 import { getReadReplicaExitRoute } from '../../../readReplicaUtils';
+import { EditUniverseTabs } from '../../../../edit-universe/EditUniverseContext';
 
 const { Box } = mui;
 
@@ -139,19 +140,15 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     [pricingContext, regionsList]
   );
 
-  const proposedAsyncClusterUuid = useMemo(
-    () => crypto.randomUUID(),
-    [rrPricingFingerprint]
-  );
 
   const pricingSpec = useMemo(
     () =>
       buildUniverseSpecForReadReplicaPricing(
         pricingContext,
         regionsList as Region[],
-        proposedAsyncClusterUuid
+        ''
       ),
-    [pricingContext, regionsList, proposedAsyncClusterUuid]
+    [pricingContext, regionsList]
   );
 
   const { data: primaryPricingData, isLoading: isPrimaryPricingLoading } = useQuery(
@@ -295,7 +292,7 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
   ]);
 
   const redirectToUniverse = useCallback(() => {
-    window.location.href = getReadReplicaExitRoute(universeUuid);
+    window.location.href = getReadReplicaExitRoute(universeUuid, EditUniverseTabs.PLACEMENT);
   }, [universeUuid]);
 
   const runSubmitMutation = useCallback(

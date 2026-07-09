@@ -102,7 +102,8 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
   securitySettings: {
     enableClientToNodeEncryption: false,
     enableNodeToNodeEncryption: false,
-    enableIPV6: false
+    enableIPV6: false,
+    enableExposingService: false
   },
   resilienceType: ResilienceType.REGULAR,
   proxySettings: {

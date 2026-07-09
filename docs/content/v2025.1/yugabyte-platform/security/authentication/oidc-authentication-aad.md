@@ -232,4 +232,4 @@ The following are examples of possible rules:
 
 ## Manage users and roles
 
-{{< readfile "/stable/yugabyte-platform/security/authentication/oidc-manage-users-include.md" >}}
+{{< readfile "oidc-manage-users-include.md" >}}

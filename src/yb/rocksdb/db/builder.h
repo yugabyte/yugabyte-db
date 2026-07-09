@@ -31,7 +31,7 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/types.h"
 

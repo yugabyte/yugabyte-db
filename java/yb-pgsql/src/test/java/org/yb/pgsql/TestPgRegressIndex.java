@@ -18,10 +18,12 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 
 // Runs the pg_regress test suite on YB code.
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestPgRegressIndex extends BasePgRegressTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgRegressIndex.class);
 
@@ -38,7 +40,11 @@ public class TestPgRegressIndex extends BasePgRegressTest {
     // Disable auto analyze because it aborts the SQL snippet:
     // force_cache_refresh which increments catalog version explictly.
     flagMap.put("ysql_enable_auto_analyze", "false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     flagMap.put("enable_object_locking_for_table_locks", "false");
+    flagMap.put("ysql_enable_concurrent_ddl", "false");
+    flagMap.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
+        (e, a) -> e + "," + a);
     return flagMap;
   }
 

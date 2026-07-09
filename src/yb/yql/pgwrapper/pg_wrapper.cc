@@ -32,6 +32,7 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/version_info.h"
 #include "yb/common/ysql_operation_lease.h"
 
 #include "yb/rpc/secure_stream.h"
@@ -65,9 +66,6 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
-
-#include "ybgate/ybgate_api.h"
-#include "ybgate/ybgate_cpp_util.h"
 
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_int32(ysql_conn_mgr_max_pools);
@@ -327,6 +325,15 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_allow_dockey_bounds, kLocalVolatile, false,
     "If true, allow lower_bound/upper_bound fields of PgsqlReadRequestPB to be DocKeys. Only "
     "applicable for hash-sharded tables.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_dump_presplit_in_create, kExternal, false, true,
+    "If true, ysql_dump --include-yb-metadata folds a relation's yb_presplit reloption into the "
+    "CREATE statement's WITH clause alongside the emitted SPLIT clause (injecting an empty-string "
+    "suppress-auto-derive sentinel for relations whose source had no yb_presplit). If false, "
+    "yb_presplit is omitted from the WITH clause and re-emitted as a separate "
+    "ALTER TABLE/INDEX ... SET (yb_presplit=...). The folded form requires the restore target to "
+    "accept yb_presplit alongside a SPLIT clause, which older versions reject, so this AutoFlag is "
+    "promoted only after upgrade finalize once rollback to such a version is no longer possible.");
+
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_test_make_all_ddl_statements_incrementing,
     kLocalVolatile, false, true,
     "When set, all DDL statements will cause the catalog version to increment. This mainly "
@@ -481,6 +488,9 @@ DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_enable_mage, false,
                            "NOTE: This is for internal use only.");
 TAG_FLAG(ysql_yb_enable_mage, hidden);
 
+DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_yb_enable_pg_duckdb, false,
+    "Enable the use of pg_duckdb YSQL extension.");
+
 using gflags::CommandLineFlagInfo;
 using std::string;
 using std::vector;
@@ -633,6 +643,21 @@ static bool ValidateDocumentDB(const char* flag_name, bool value) {
 
 DEFINE_validator(ysql_enable_documentdb, &ValidateDocumentDB);
 
+static bool ValidatePgDuckDB(const char* flag_name, bool value) {
+#ifndef YB_ENABLE_YSQL_PG_DUCKDB_EXT
+  if (value) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+        << "pg_duckdb YSQL extension is not available in this build type "
+           "(not supported on sanitizer builds).";
+    return false;
+  }
+#endif
+
+  return true;
+}
+
+DEFINE_validator(ysql_yb_enable_pg_duckdb, &ValidatePgDuckDB);
+
 // Keep the value list in sync with `yb_cost_model_options` in `guc.c`.
 DEFINE_validator(ysql_yb_enable_cbo,
     FLAG_IN_SET_VALIDATOR("off", "on", "legacy_mode", "legacy_stats_mode",
@@ -733,6 +758,10 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf, const string& ysql
     metricsLibs.push_back("mage");
   }
 
+  if (FLAGS_ysql_yb_enable_pg_duckdb) {
+    metricsLibs.push_back("pg_duckdb");
+  }
+
   vector<string> lines;
   string line;
   while (std::getline(conf_file, line)) {
@@ -756,6 +785,18 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf, const string& ysql
     }
   }
 
+  // YB: pg_duckdb is a preview feature; enforce its opt-in here. If ysql_yb_enable_pg_duckdb is
+  // off, strip pg_duckdb from shared_preload_libraries (even if injected via ysql_pg_conf_csv).
+  if (!FLAGS_ysql_yb_enable_pg_duckdb) {
+    auto new_end = std::remove(metricsLibs.begin(), metricsLibs.end(), "pg_duckdb");
+    if (new_end != metricsLibs.end()) {
+      LOG(WARNING) << "Ignoring pg_duckdb in shared_preload_libraries: pg_duckdb is a preview "
+                   << "feature and requires the ysql_yb_enable_pg_duckdb preview flag (listed in "
+                   << "--allowed_preview_flags_csv) to be enabled.";
+      metricsLibs.erase(new_end, metricsLibs.end());
+    }
+  }
+
   // Add shared_preload_libraries to the ysql_pg.conf.
   lines.push_back(Format("shared_preload_libraries='$0'", boost::join(metricsLibs, ",")));
 
@@ -772,6 +813,10 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf, const string& ysql
 
   // Add cron.database_name
   lines.push_back(Format("cron.database_name='$0'", FLAGS_ysql_cron_database_name));
+
+  if (FLAGS_openssl_require_fips) {
+    lines.push_back("pgcrypto.builtin_crypto_enabled=fips");
+  }
 
   if (FLAGS_ysql_enable_documentdb) {
     auto gateway_config_path = VERIFY_RESULT(WriteDocumentDBGatewayConfig(conf));
@@ -830,6 +875,7 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf, const string& hba_con
   lines.insert(lines.begin(), {
       "# Internal configuration:",
       "# local all postgres yb-tserver-key",
+      "# local all yb_global_views_user yb-tserver-key",
   });
 
   const auto conf_path = JoinPathSegments(conf.data_dir, kYsqlHbaConfFileName);
@@ -1223,7 +1269,7 @@ string PgWrapper::MakeVersionedDataDir(int32_t version) {
 // directory.
 // This code is written to be identical for a tablet server hosting any major PG version.
 Status PgWrapper::InitDbLocalOnlyIfNeeded() {
-  int32_t current_pg_version = YbgGetPgVersion();
+  int32_t current_pg_version = static_cast<int32_t>(VersionInfo::YsqlMajorVersion());
 
   // One-time migration in case this installation is not yet using a symlink
   if (VERIFY_RESULT(Env::Default()->DoesDirectoryExist(conf_.data_dir)) &&
@@ -1279,7 +1325,7 @@ Status PgWrapper::InitDbLocalOnlyIfNeeded() {
 }
 
 Status PgWrapper::CleanupPgData(const std::string& data_dir) {
-  const auto current_pg_version = YbgGetPgVersion();
+  const auto current_pg_version = static_cast<int32_t>(VersionInfo::YsqlMajorVersion());
   const std::string versioned_data_dir =
       pgwrapper::MakeVersionedDataDir(data_dir, current_pg_version);
   auto env = Env::Default();
@@ -1525,7 +1571,7 @@ Status PgWrapper::CleanupLockFileAndKillHungPg(const std::string& lock_file) {
 // ------------------------------------------------------------------------------------------------
 
 PgSupervisor::PgSupervisor(PgProcessConf conf, PgWrapperContext* server)
-    : conf_(std::move(conf)), server_(server) {
+    : ProcessSupervisor(conf.cgroup), conf_(std::move(conf)), server_(server) {
   if (server_) {
     server_->RegisterCertificateReloader(std::bind(&PgSupervisor::ReloadConfig, this));
     server_->RegisterPgProcessRestarter(std::bind(&PgSupervisor::Restart, this));

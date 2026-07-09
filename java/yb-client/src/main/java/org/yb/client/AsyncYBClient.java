@@ -4054,6 +4054,7 @@ public class AsyncYBClient implements AutoCloseable {
    */
   private String getIP(final String host) {
     // We have seen rare instances where DNS won't resolve, but a retry will resolve the issue.
+    UnknownHostException lastException = null;
     for (int i = 0; i < 3; i++) {
      final long start = System.nanoTime();
      try {
@@ -4067,9 +4068,10 @@ public class AsyncYBClient implements AutoCloseable {
        }
        return ip;
      } catch (UnknownHostException e) {
+       lastException = e;
        LOG.warn(
            "Failed to resolve the IP of `" + host + "' in " + (System.nanoTime() - start) + "ns. " +
-           "Retrying.");
+           "Retrying.", e);
      }
      // Sleep for 1 second before retry.
      try {
@@ -4079,7 +4081,7 @@ public class AsyncYBClient implements AutoCloseable {
       return null;
      }
     }
-    LOG.error("Failed to resolve the IP of `" + host + "' after retries.");
+    LOG.error("Failed to resolve the IP of `" + host + "' after retries.", lastException);
     return null;
   }
 

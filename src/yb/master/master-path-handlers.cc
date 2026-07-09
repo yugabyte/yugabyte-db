@@ -597,13 +597,15 @@ void MasterPathHandlers::TServerDisplay(
     status = status.CloneAndPrepend("Unable to get preferred zone list");
     LOG(WARNING) << status.ToString();
   }
+  const auto lease_infos =
+      master_->catalog_manager_impl()->object_lock_info_manager()->GetLeaseInfos();
 
   auto html_table = html_print_helper.CreateTablePrinter(
       Format("$0_tserver", current_uuid),
       {"Server", "Time since heartbeat", "Status & Uptime", "User Tablet-Peers / Leaders",
        "System Tablet-Peers / Leaders", "RAM Used", "Num SST Files", "Total SST Files Size",
        "Uncompressed SST </br>Files Size", "Read ops/sec", "Write ops/sec", "Placement",
-       "Active Tablet-Peers"});
+       "Active Tablet-Peers", "Lease Expiry", "Lease Epoch"});
 
   int max_peers = 0;
   for (const auto& desc : descs) {
@@ -669,6 +671,21 @@ void MasterPathHandlers::TServerDisplay(
     html_row.AddColumn(tserver_info.placement);
 
     html_row.AddColumn(counts ? desc->num_live_replicas() : 0);
+
+    {
+      auto lease_it = lease_infos.find(desc->permanent_uuid());
+      const std::string kLeaseCellTemplate{"<font color=\"$0\">$1"};
+      if (lease_it != lease_infos.end() && lease_it->second.lease_info.live_lease()) {
+        html_row.AddColumn(
+            Format(kLeaseCellTemplate, "Green", lease_it->second.lease_expiry.ToString()));
+        html_row.AddColumn(Format(
+            kLeaseCellTemplate, "Green",
+            std::to_string(lease_it->second.lease_info.lease_epoch())));
+      } else {
+        html_row.AddColumn(Format(kLeaseCellTemplate, "Red", "NO LEASE"));
+        html_row.AddColumn(Format(kLeaseCellTemplate, "Red", "NO LEASE"));
+      }
+    }
   }
   html_table.Print();
 }
@@ -1077,6 +1094,10 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
           jw.Uint64(path_metric.second.used_space);
           jw.String("total_space_size");
           jw.Uint64(path_metric.second.total_space);
+          if (!path_metric.second.storage_tier.empty()) {
+            jw.String("storage_tier");
+            jw.String(path_metric.second.storage_tier);
+          }
           jw.EndObject();
         }
         jw.EndArray();
@@ -1297,14 +1318,19 @@ string GetOnDiskSizeInHtml(const TabletReplicaDriveInfo &info) {
   std::ostringstream disk_size_html;
   disk_size_html << "<ul>"
                  << "<li>" << "Total: "
-                 << HumanReadableNumBytes::ToString(info.sst_files_size + info.wal_files_size)
+                 << HumanReadableNumBytes::ToString(
+                        info.sst_files_size + info.wal_files_size + info.vector_index_size)
                  << "<li>" << "WAL Files: "
                  << HumanReadableNumBytes::ToString(info.wal_files_size)
                  << "<li>" << "SST Files: "
                  << HumanReadableNumBytes::ToString(info.sst_files_size)
                  << "<li>" << "SST Files Uncompressed: "
-                 << HumanReadableNumBytes::ToString(info.uncompressed_sst_file_size)
-                 << "</ul>";
+                 << HumanReadableNumBytes::ToString(info.uncompressed_sst_file_size);
+  if (info.vector_index_size > 0) {
+    disk_size_html << "<li>" << "Vector Indexes: "
+                   << HumanReadableNumBytes::ToString(info.vector_index_size);
+  }
+  disk_size_html << "</ul>";
 
   return disk_size_html.str();
 }
@@ -1405,6 +1431,7 @@ void MasterPathHandlers::HandleAllTables(
           aggregated_drive_info.sst_files_size += drive_info.get().sst_files_size;
           aggregated_drive_info.uncompressed_sst_file_size +=
               drive_info.get().uncompressed_sst_file_size;
+          aggregated_drive_info.vector_index_size += drive_info.get().vector_index_size;
         } else {
           show_missing_size_footer[table_cat] = true;
           table_has_missing_size = true;
@@ -1590,6 +1617,7 @@ void MasterPathHandlers::HandleAllTablesJSON(
           aggregated_drive_info.sst_files_size += drive_info.get().sst_files_size;
           aggregated_drive_info.uncompressed_sst_file_size +=
               drive_info.get().uncompressed_sst_file_size;
+          aggregated_drive_info.vector_index_size += drive_info.get().vector_index_size;
         } else {
           table_has_missing_size = true;
         }
@@ -1659,6 +1687,10 @@ void MasterPathHandlers::HandleAllTablesJSON(
             HumanReadableNumBytes::ToString(table.second.on_disk_size.uncompressed_sst_file_size));
         jw.String("uncompressed_sst_file_size_bytes");
         jw.Uint64(table.second.on_disk_size.uncompressed_sst_file_size);
+        jw.String("vector_index_size");
+        jw.String(HumanReadableNumBytes::ToString(table.second.on_disk_size.vector_index_size));
+        jw.String("vector_index_size_bytes");
+        jw.Uint64(table.second.on_disk_size.vector_index_size);
         jw.String("has_missing_size");
         jw.Bool(table.second.has_missing_size);
         jw.EndObject();

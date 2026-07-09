@@ -93,6 +93,8 @@ class RunningTransactionContext {
 
   virtual bool Closing() const = 0;
 
+  virtual Status CheckClosing() const = 0;
+
   virtual FastModeTransactionScope CreateFastModeTransactionScope(
       const TransactionMetadata& metadata) = 0;
 

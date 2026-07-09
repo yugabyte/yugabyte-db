@@ -304,6 +304,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, RemoveTablesFromCDCSDKStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsObjectPartOfXRepl);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsNamespacePartOfCDCSDK);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsBootstrapRequired);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUDTypeMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetTableSchemaFromSysCatalog);
@@ -990,6 +991,7 @@ Status YBClient::Data::BackfillIndex(YBClient* client,
                                      const YBTableName& index_name,
                                      const TableId& index_id,
                                      CoarseTimePoint deadline,
+                                     std::optional<TransactionMetadata> requester_transaction,
                                      bool wait) {
   BackfillIndexRequestPB req;
   BackfillIndexResponsePB resp;
@@ -999,6 +1001,9 @@ Status YBClient::Data::BackfillIndex(YBClient* client,
   }
   if (!index_id.empty()) {
     req.mutable_index_identifier()->set_table_id(index_id);
+  }
+  if (requester_transaction.has_value()) {
+    requester_transaction->ToPB(req.mutable_requester_transaction());
   }
 
   RETURN_NOT_OK((SyncLeaderMasterRpc(
@@ -2433,6 +2438,48 @@ class ReleaseObjectLocksGlobalRpc
   StdStatusCallback user_cb_;
 };
 
+class WaitForLockersMultipleGlobalRpc
+    : public ClientMasterRpc<
+          master::WaitForLockersMultipleGlobalRequestPB,
+          master::WaitForLockersMultipleGlobalResponsePB> {
+ public:
+  WaitForLockersMultipleGlobalRpc(
+      YBClient* client, master::WaitForLockersMultipleGlobalRequestPB request,
+      StdStatusCallback user_cb, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {
+    req_.CopyFrom(request);
+  }
+
+  string ToString() const override {
+    return Format(
+        "WaitForLockersMultipleGlobal (request: $0, num_attempts: $1)", req_.DebugString(),
+        num_attempts());
+  }
+
+  ~WaitForLockersMultipleGlobalRpc() override {}
+
+ private:
+  Status ResponseStatus() override {
+    return StatusFromResp(resp_);
+  }
+
+  void CallRemoteMethod() override {
+    VLOG(2) << "Calling WaitForLockersMultipleGlobal with request: " << req_.DebugString();
+    master_ddl_proxy()->WaitForLockersMultipleGlobalAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&WaitForLockersMultipleGlobalRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (!status.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status.ToString();
+    }
+    user_cb_(status);
+  }
+
+  StdStatusCallback user_cb_;
+};
+
 } // namespace internal
 
 Status YBClient::Data::GetTableSchema(YBClient* client,
@@ -2704,6 +2751,13 @@ void YBClient::Data::ReleaseObjectLocksGlobalAsync(
     YBClient* client, master::ReleaseObjectLocksGlobalRequestPB request, CoarseTimePoint deadline,
     StdStatusCallback callback) {
   auto rpc = StartRpc<internal::ReleaseObjectLocksGlobalRpc>(client, request, callback, deadline);
+}
+
+void YBClient::Data::WaitForLockersMultipleGlobalAsync(
+    YBClient* client, master::WaitForLockersMultipleGlobalRequestPB request,
+    CoarseTimePoint deadline, StdStatusCallback callback) {
+  auto rpc = StartRpc<internal::WaitForLockersMultipleGlobalRpc>(
+      client, request, callback, deadline);
 }
 
 void YBClient::Data::GetTableLocations(
@@ -3269,6 +3323,10 @@ void YBClient::Data::Shutdown() {
     messenger_holder_->Shutdown();
   }
   if (threadpool_) {
+    {
+      std::lock_guard lock(per_tag_tokens_mutex_);
+      per_tag_tokens_.clear();
+    }
     threadpool_->Shutdown();
     // Abort all in-progress rpcs using handle leader_master_rpc_.
     rpc::RpcCommandPtr rpc_to_abort = nullptr;

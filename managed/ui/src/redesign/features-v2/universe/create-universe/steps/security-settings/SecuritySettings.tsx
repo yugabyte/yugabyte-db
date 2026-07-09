@@ -30,11 +30,12 @@ const { Box } = mui;
 
 export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
-    { securitySettings, generalSettings },
+    { securitySettings, generalSettings, instanceSettings },
     { moveToNextPage, moveToPreviousPage, saveSecuritySettings }
   ] = useContext(CreateUniverseContext) as unknown as CreateUniverseContextMethods;
 
   const provider = generalSettings?.providerConfiguration;
+  const ebsKMSConfig = instanceSettings?.ebsKmsConfigUUID;
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.securitySettings'
@@ -82,19 +83,22 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
   return (
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '24px' }}>
-        <StyledPanel>
-          <StyledHeader>{t('networkAcessTitle')}</StyledHeader>
-          <StyledContent sx={{ gap: '16px' }}>
-            {provider && [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) && (
-              <AssignPublicIPField
-                disabled={false}
-                providerCode={generalSettings?.providerConfiguration?.code ?? ''}
-              />
-            )}
-            {provider?.code === CloudType.kubernetes && <IPV6Field disabled={false} />}
-            {provider?.code === CloudType.kubernetes && <NetworkAcessField disabled={false} />}
-          </StyledContent>
-        </StyledPanel>
+        {provider?.code !== CloudType.onprem && (
+          <StyledPanel>
+            <StyledHeader>{t('networkAcessTitle')}</StyledHeader>
+            <StyledContent sx={{ gap: '16px' }}>
+              {provider &&
+                [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) && (
+                  <AssignPublicIPField
+                    disabled={false}
+                    providerCode={generalSettings?.providerConfiguration?.code ?? ''}
+                  />
+                )}
+              {provider?.code === CloudType.kubernetes && <IPV6Field disabled={false} />}
+              {provider?.code === CloudType.kubernetes && <NetworkAcessField disabled={false} />}
+            </StyledContent>
+          </StyledPanel>
+        )}
         <StyledPanel>
           <StyledHeader>{t('eitTitle')}</StyledHeader>
           <StyledContent>
@@ -108,7 +112,7 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
         <StyledPanel>
           <StyledHeader>{t('earTitle')}</StyledHeader>
           <StyledContent>
-            <EARField disabled={false} />
+            <EARField disabled={false} ebsKMSConfig={ebsKMSConfig} />
           </StyledContent>
         </StyledPanel>
       </Box>

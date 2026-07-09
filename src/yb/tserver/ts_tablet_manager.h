@@ -69,6 +69,7 @@
 #include "yb/tablet/tablet_splitter.h"
 
 #include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_admin.fwd.h"
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/ts_data_size_metrics.h"
@@ -89,8 +90,6 @@ class HostPort;
 class Schema;
 class BackgroundTask;
 class XClusterSafeTimeTest;
-
-YB_STRONGLY_TYPED_BOOL(UserTabletsOnly);
 
 namespace consensus {
 class RaftConfigPB;
@@ -242,12 +241,15 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // returned.
   // If `hide_only` is true, then just hide tablet instead of deleting it.
   // If `keep_data` is true, then on disk data is not deleted.
+  // If `resp` is non-null, it is populated with metadata about the deleted
+  // tablet (directories involved in the delete)
   Status DeleteTablet(
       const TabletId& tablet_id, tablet::TabletDataState delete_type,
       tablet::ShouldAbortActiveTransactions should_abort_active_txns,
       const std::optional<int64_t>& cas_config_opid_index_less_or_equal, bool hide_only,
       bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code,
-      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt);
+      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt,
+      DeleteTabletResponsePB* resp = nullptr);
 
   // Lookup the given tablet peer by its ID. Returns nullptr if the tablet peer is not found.
   //
@@ -588,6 +590,15 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
     return state_;
   }
 
+  // Lock-free check that StartShutdown has been entered on this tablet manager. Flips once
+  // from false to true at the top of StartShutdown and stays true afterward. Intended as a
+  // cancellation signal for long-running operations (e.g. remote bootstrap verification)
+  // that must exit promptly so shutdown can drain `remote_bootstrap_clients_` inside its
+  // 30s deadline.
+  bool IsShutdownStarted() const {
+    return shutdown_started_.load(std::memory_order_acquire);
+  }
+
   bool ClosingUnlocked() const REQUIRES_SHARED(mutex_);
 
   bool IsOperational() const EXCLUDES(mutex_);
@@ -663,7 +674,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   template <class RemoteClient>
   std::unique_ptr<RemoteClient> InitRemoteClient(
       const std::string& log_prefix, const TabletId& tablet_id, const PeerId& source_uuid,
-      const std::string& source_addr, const std::string& debug_session_string);
+      const std::string& source_addr, const std::string& debug_session_string,
+      std::function<bool()> is_cancelled = {});
 
   void UpdateCompactFlushRateLimitBytesPerSec();
   void UpdateAllowCompactionFailures();
@@ -729,6 +741,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   MetricRegistry* metric_registry_;
 
   TSTabletManagerStatePB state_ GUARDED_BY(mutex_);
+
+  // Lock-free mirror of state_ transitioning to MANAGER_QUIESCING. See IsShutdownStarted.
+  std::atomic<bool> shutdown_started_{false};
 
   // Thread pool used to perform fsync operations corresponding to log::Log of each tablet_peer
   std::unique_ptr<ThreadPool> log_sync_pool_;

@@ -200,6 +200,8 @@ static inline int yb_od_skip_relay(char *data)
 	return 0;
 }
 
+// YB: We want to always process full packets, so commenting this out
+#ifndef YB_SUPPORT_FOUND
 static inline int od_relay_full_packet_required(char *data)
 {
 	kiwi_header_t *header;
@@ -208,12 +210,11 @@ static inline int od_relay_full_packet_required(char *data)
 	    header->type == KIWI_BE_READY_FOR_QUERY ||
 	    header->type == KIWI_BE_ERROR_RESPONSE ||
 	    header->type == KIWI_FE_PARSE || header->type == KIWI_FE_BIND ||
-		// For Ysql Connection Manager full packet is required for below headers as well
-		header->type == KIWI_FE_COPY_DATA || header->type == KIWI_FE_QUERY ||
 	    header->type == KIWI_FE_DESCRIBE)
 		return 1;
 	return 0;
 }
+#endif
 
 static inline od_frontend_status_t od_relay_on_packet_msg(od_relay_t *relay,
 							  machine_msg_t *msg)
@@ -224,6 +225,12 @@ static inline od_frontend_status_t od_relay_on_packet_msg(od_relay_t *relay,
 	int size = machine_msg_size(msg);
 
 	status = relay->on_packet(relay, data, size);
+
+	/* YB: skip relaying of custom packets back to the client */
+	if (yb_od_skip_relay(data)) {
+		machine_msg_free(msg);
+		return OD_OK;
+	}
 
 	switch (status) {
 	case OD_OK:
@@ -309,9 +316,12 @@ od_relay_process(od_relay_t *relay, int *progress, char *data, int size)
 		relay->packet = total - size;
 		relay->packet_skip = 0;
 
+		/* YB: Always process full packets */
+#ifndef YB_SUPPORT_FOUND
 		rc = od_relay_full_packet_required(data);
 		if (!rc)
 			return od_relay_on_packet(relay, data, size);
+#endif
 
 		relay->packet_full = machine_msg_create(total);
 		if (relay->packet_full == NULL)

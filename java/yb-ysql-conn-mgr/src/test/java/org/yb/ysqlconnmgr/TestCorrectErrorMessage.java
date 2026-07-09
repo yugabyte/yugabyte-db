@@ -16,13 +16,16 @@ package org.yb.ysqlconnmgr;
 import java.sql.Connection;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.util.RequiresLinux;
 import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestCorrectErrorMessage extends BaseYsqlConnMgr {
   private static final String CUSTOM_PG_HBA_CONFIG =
       "host    yugabyte    yugabyte   all   md5, " +

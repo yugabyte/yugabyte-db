@@ -31,7 +31,7 @@
 
 bool		YBCIsSingleRowModify(PlannedStmt *pstmt);
 
-bool		YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable);
+extern bool YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable);
 
 bool		YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs);
 
@@ -61,3 +61,13 @@ extern void YbClearSkippableEntities(YbSkippableEntities *skip_entities);
 extern struct YbUpdateAffectedEntities *YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
 																			 const Relation rel,
 																			 Bitmapset *update_attrs);
+
+struct PlannerInfo;
+struct RelOptInfo;
+struct RangeTblEntry;
+
+extern Bitmapset *YbExtractFederatedTserverFilter(struct PlannerInfo *root,
+												  struct RelOptInfo *rel,
+												  struct RangeTblEntry *rte,
+												  YbcServerDescriptor *servers,
+												  size_t nservers);

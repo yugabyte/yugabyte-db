@@ -1,0 +1,43 @@
+title: BackupKeyspaceTables
+description: Keyspace and table selection included in a backup.
+type: object
+properties:
+  keyspace:
+    description: Keyspace or namespace name.
+    type: string
+    readOnly: true
+  all_tables:
+    description: Whether all tables in the keyspace are included.
+    type: boolean
+    readOnly: true
+  tables_list:
+    description: Table names included in the backup.
+    type: array
+    items:
+      type: string
+    readOnly: true
+  table_uuid_list:
+    description: Table UUIDs included in the backup.
+    type: array
+    items:
+      type: string
+      format: uuid
+    readOnly: true
+  backup_size_in_bytes:
+    description: 'Backup size for this keyspace, in bytes.'
+    type: integer
+    format: int64
+    readOnly: true
+  default_location:
+    description: Default storage location for this keyspace backup.
+    type: string
+    readOnly: true
+  per_region_locations:
+    description: Per-region storage locations for this keyspace backup.
+    type: array
+    items:
+      $ref: "./BackupRegionLocation.yaml"
+    readOnly: true
+  backup_point_in_time_restore_window:
+    description: Point-in-time restore window for this keyspace backup.
+    $ref: "./BackupPointInTimeRestoreWindow.yaml"

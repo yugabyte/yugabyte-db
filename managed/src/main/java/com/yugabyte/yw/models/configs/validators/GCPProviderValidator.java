@@ -64,6 +64,8 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
       return;
     }
 
+    normalizeGcpProviderFields(provider);
+
     // add the jsonpath in the provider object
     JsonNode processedProvider = Util.addJsonPathToLeafNodes(Json.toJson(provider));
     JsonNode detailsJson = processedProvider.get("details");
@@ -466,6 +468,17 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
   private VPCType getVpcType(Provider provider) {
     GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
     return gcpCloudInfo.getVpcType();
+  }
+
+  /**
+   * Applies defaults for optional GCP provider fields before validation. Omitted fields are treated
+   * the same as in {@link com.yugabyte.yw.cloud.gcp.GCPProjectApiClient#buildComputeClient}.
+   */
+  private void normalizeGcpProviderFields(Provider provider) {
+    GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
+    if (gcpCloudInfo.getUseHostCredentials() == null) {
+      gcpCloudInfo.setUseHostCredentials(false);
+    }
   }
 
   public boolean checkSshPortFirewallRules(

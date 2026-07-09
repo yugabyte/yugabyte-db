@@ -2,6 +2,7 @@
 package com.yugabyte.yw.api.v2;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.ModelFactory.createFromConfig;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -19,11 +20,20 @@ import static org.mockito.Mockito.when;
 
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
+import com.yugabyte.yba.v2.client.models.AvailabilityZoneNodeSpec;
+import com.yugabyte.yba.v2.client.models.CheckResizeOptionsResp;
+import com.yugabyte.yba.v2.client.models.CheckResizeOptionsSpec;
+import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
+import com.yugabyte.yba.v2.client.models.ClusterSpec;
+import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
+import com.yugabyte.yba.v2.client.models.PerProcessNodeSpec;
+import com.yugabyte.yba.v2.client.models.ResizeUpdateOption;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseDeleteSpec;
 import com.yugabyte.yba.v2.client.models.UniverseListApiFilter;
 import com.yugabyte.yba.v2.client.models.UniversePagedQuerySpec;
 import com.yugabyte.yba.v2.client.models.UniversePagedResp;
+import com.yugabyte.yba.v2.client.models.UniverseSettings;
 import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
@@ -34,22 +44,33 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 
 /** Tests for Create/Get/Delete of Universe using v2.UniverseApiControllerImp */
+@Slf4j
 @RunWith(JUnitParamsRunner.class)
 public class UniverseApiControllerTest extends UniverseTestBase {
 
@@ -270,6 +291,115 @@ public class UniverseApiControllerTest extends UniverseTestBase {
   }
 
   @Test
+  public void testCreateUniverseV2WithAzPerProcessOverrides() throws ApiException, IOException {
+    UniverseApi api = new UniverseApi();
+    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
+    ClusterNodeSpec nodeSpec = universeCreateSpec.getSpec().getClusters().get(0).getNodeSpec();
+    nodeSpec.setDedicatedNodes(true);
+
+    PerProcessNodeSpec clusterMasterSpec = new PerProcessNodeSpec();
+    clusterMasterSpec.setInstanceType("c5.4xlarge");
+    nodeSpec.setMaster(clusterMasterSpec);
+
+    PerProcessNodeSpec clusterTserverSpec = new PerProcessNodeSpec();
+    clusterTserverSpec.setInstanceType("c5.2xlarge");
+    nodeSpec.setTserver(clusterTserverSpec);
+
+    UUID azUUID =
+        AvailabilityZone.getAZsForRegion(Region.getByProvider(providerUuid).get(0).getUuid())
+            .get(0)
+            .getUuid();
+
+    AvailabilityZoneNodeSpec azSpec = new AvailabilityZoneNodeSpec();
+    PerProcessNodeSpec azMasterSpec = new PerProcessNodeSpec();
+    azMasterSpec.setStorageSpec(new ClusterStorageSpec().volumeSize(50).numVolumes(1));
+    azSpec.setMaster(azMasterSpec);
+
+    PerProcessNodeSpec azTserverSpec = new PerProcessNodeSpec();
+    azTserverSpec.setStorageSpec(
+        new ClusterStorageSpec().volumeSize(300).diskIops(4000).numVolumes(2));
+    azSpec.setTserver(azTserverSpec);
+
+    Map<String, AvailabilityZoneNodeSpec> azNodeSpec = new HashMap<>();
+    azNodeSpec.put(azUUID.toString(), azSpec);
+    nodeSpec.setAzNodeSpec(azNodeSpec);
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
+    when(mockGFlagsValidation.getGFlagDetails(anyString(), anyString(), anyString()))
+        .thenReturn(Optional.empty());
+    YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
+    assertThat(createTask.getTaskUuid(), is(fakeTaskUUID));
+    ArgumentCaptor<UniverseDefinitionTaskParams> v1CreateParamsCapture =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), v1CreateParamsCapture.capture());
+    UniverseDefinitionTaskParams v1CreateParams = v1CreateParamsCapture.getValue();
+
+    UserIntent userIntent = v1CreateParams.getPrimaryCluster().userIntent;
+    assertThat(userIntent.dedicatedNodes, is(true));
+    assertThat(userIntent.getUserIntentOverrides(), is(notNullValue()));
+    assertThat(userIntent.getUserIntentOverrides().getAzOverrides(), is(notNullValue()));
+
+    AZOverrides azOverrides = userIntent.getUserIntentOverrides().getAzOverrides().get(azUUID);
+    assertThat(azOverrides, is(notNullValue()));
+    assertThat(azOverrides.getPerProcess(), is(notNullValue()));
+    assertThat(azOverrides.getPerProcess().get(ServerType.MASTER), is(notNullValue()));
+    assertThat(azOverrides.getPerProcess().get(ServerType.TSERVER), is(notNullValue()));
+    assertEquals(
+        Integer.valueOf(50),
+        azOverrides.getPerProcess().get(ServerType.MASTER).getDeviceInfo().volumeSize);
+    assertEquals(
+        Integer.valueOf(300),
+        azOverrides.getPerProcess().get(ServerType.TSERVER).getDeviceInfo().volumeSize);
+    assertEquals(
+        Integer.valueOf(4000),
+        azOverrides.getPerProcess().get(ServerType.TSERVER).getDeviceInfo().diskIops);
+
+    NodeDetails azMasterNode = new NodeDetails();
+    azMasterNode.azUuid = azUUID;
+    azMasterNode.dedicatedTo = ServerType.MASTER;
+    assertEquals("c5.4xlarge", userIntent.getInstanceTypeForNode(azMasterNode));
+
+    NodeDetails azTserverNode = new NodeDetails();
+    azTserverNode.azUuid = azUUID;
+    azTserverNode.dedicatedTo = ServerType.TSERVER;
+    assertEquals("c5.2xlarge", userIntent.getInstanceTypeForNode(azTserverNode));
+    assertEquals(Integer.valueOf(300), userIntent.getDeviceInfoForNode(azTserverNode).volumeSize);
+
+    validateUniverseCreateSpec(universeCreateSpec, v1CreateParams);
+  }
+
+  @Test
+  public void testCreateUniverseV2WithUniverseSettings() throws ApiException, IOException {
+    UniverseApi api = new UniverseApi();
+    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
+    universeCreateSpec.getSpec().universeSettings(new UniverseSettings().expertMode(true));
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
+    when(mockGFlagsValidation.getGFlagDetails(anyString(), anyString(), anyString()))
+        .thenReturn(Optional.empty());
+    YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
+    assertThat(createTask.getTaskUuid(), is(fakeTaskUUID));
+    ArgumentCaptor<UniverseDefinitionTaskParams> v1CreateParamsCapture =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), v1CreateParamsCapture.capture());
+
+    Universe dbUniverse = Universe.getOrBadRequest(createTask.getResourceUuid());
+    assertThat(getExpertMode(dbUniverse), is(true));
+    assertThat(
+        api.getUniverse(customer.getUuid(), createTask.getResourceUuid())
+            .getSpec()
+            .getUniverseSettings()
+            .getExpertMode(),
+        is(true));
+  }
+
+  @Test
   public void testCreateUniverseWithRRV2() throws ApiException {
     UniverseApi api = new UniverseApi();
     UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecWithRRV2();
@@ -391,5 +521,46 @@ public class UniverseApiControllerTest extends UniverseTestBase {
     assertThat(destroyParams.getValue().isForceDelete, is(isForceDelete));
     assertThat(destroyParams.getValue().isDeleteBackups, is(isDeleteBackups));
     assertThat(destroyParams.getValue().isDeleteAssociatedCerts, is(isDeleteAssociatedCerts));
+  }
+
+  @Test
+  public void testGetResizeOptions() throws ApiException, IOException {
+    Universe universe =
+        createFromConfig(
+            Provider.getOrBadRequest(providerUuid),
+            "Existing",
+            "r1-z1r1-3-2;r1-z2r1-3-2;r1-z3r1-3-1");
+    UUID uUUID = universe.getUniverseUUID();
+    UniverseApi api = new UniverseApi();
+    com.yugabyte.yba.v2.client.models.Universe universeResp =
+        api.getUniverse(customer.getUuid(), uUUID);
+    ClusterSpec clusterSpec = universeResp.getSpec().getClusters().get(0);
+    String newInstanceType = "c4.xlarge";
+    InstanceType i =
+        InstanceType.upsert(
+            providerUuid, newInstanceType, 10, 5.5, new InstanceType.InstanceTypeDetails());
+    ClusterNodeSpec nodeSpec = universeResp.getSpec().getClusters().get(0).getNodeSpec();
+    nodeSpec.getStorageSpec().volumeSize(500000);
+
+    CheckResizeOptionsSpec spec =
+        new CheckResizeOptionsSpec().nodeSpec(nodeSpec).clusterUuid(clusterSpec.getUuid());
+
+    CheckResizeOptionsResp checkResizeOptionsResp =
+        api.checkResizeOptions(customer.getUuid(), uUUID, spec);
+    assertThat(
+        new HashSet<>(checkResizeOptionsResp.getOptions()),
+        is(Set.of(ResizeUpdateOption.SMART_RESIZE_NON_RESTART, ResizeUpdateOption.FULL_MOVE)));
+
+    nodeSpec.instanceType(newInstanceType);
+    checkResizeOptionsResp = api.checkResizeOptions(customer.getUuid(), uUUID, spec);
+    assertThat(
+        new HashSet<>(checkResizeOptionsResp.getOptions()),
+        is(Set.of(ResizeUpdateOption.FULL_MOVE, ResizeUpdateOption.SMART_RESIZE)));
+
+    nodeSpec.getStorageSpec().numVolumes(100);
+    checkResizeOptionsResp = api.checkResizeOptions(customer.getUuid(), uUUID, spec);
+    assertThat(
+        new HashSet<>(checkResizeOptionsResp.getOptions()),
+        is(Set.of(ResizeUpdateOption.FULL_MOVE)));
   }
 }

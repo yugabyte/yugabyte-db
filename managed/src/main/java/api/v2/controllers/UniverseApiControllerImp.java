@@ -7,6 +7,8 @@ import static play.mvc.Results.ok;
 import api.v2.handlers.UniverseManagementHandler;
 import api.v2.handlers.UniverseUpgradesManagementHandler;
 import api.v2.models.AttachUniverseSpec;
+import api.v2.models.CheckResizeOptionsResp;
+import api.v2.models.CheckResizeOptionsSpec;
 import api.v2.models.CleanupCollectionInfo;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.CollectFilesRequest;
@@ -40,9 +42,12 @@ import api.v2.models.UniverseSoftwareUpgradePrecheckResp;
 import api.v2.models.UniverseSoftwareUpgradeStart;
 import api.v2.models.UniverseSystemdEnableStart;
 import api.v2.models.UniverseThirdPartySoftwareUpgradeStart;
+import api.v2.models.UniverseUpdateProxyConfig;
+import api.v2.models.UniverseValidateKubernetesOverrides;
 import api.v2.models.YBATask;
+import api.v2.models.YBAValidationResponse;
+import com.google.inject.Inject;
 import com.yugabyte.yw.models.Audit;
-import jakarta.inject.Inject;
 import java.io.InputStream;
 import java.util.UUID;
 import play.mvc.Http;
@@ -192,6 +197,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
     return universeUpgradeHandler.editKubernetesOverrides(request, cUUID, uniUUID, spec);
   }
 
+  @Override
+  public YBAValidationResponse validateKubernetesOverrides(
+      Request request, UUID cUUID, UniverseValidateKubernetesOverrides spec) throws Exception {
+    return universeHandler.validateKubernetesOverrides(request, cUUID, spec);
+  }
+
   // Overrode this method to improve response handling in clients - the Content-Disposition lets the
   // client know to handle this response as a downloaded file named "attachDetachSpec.tar.gz". Also,
   // the content type is specified as "application/gzip" to set the MIME type of the response. If we
@@ -229,6 +240,13 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   }
 
   @Override
+  public CheckResizeOptionsResp checkResizeOptions(
+      Request request, UUID cUUID, UUID uniUUID, CheckResizeOptionsSpec checkResizeOptionsSpec)
+      throws Exception {
+    return universeHandler.checkResizeOptions(cUUID, uniUUID, checkResizeOptionsSpec);
+  }
+
+  @Override
   public void deleteAttachDetachMetadata(Request request, UUID cUUID, UUID uniUUID)
       throws Exception {
     universeHandler.deleteAttachDetachMetadata(request, cUUID, uniUUID);
@@ -262,6 +280,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
       Request request, UUID cUUID, UUID uniUUID, ExportTelemetryConfigSpec reqBody)
       throws Exception {
     return universeUpgradeHandler.configureExportTelemetryConfig(request, cUUID, uniUUID, reqBody);
+  }
+
+  @Override
+  public api.v2.models.TelemetryConfig getExportTelemetryConfig(
+      Request request, UUID cUUID, UUID uniUUID) throws Exception {
+    return universeUpgradeHandler.getExportTelemetryConfig(cUUID, uniUUID);
   }
 
   @Override
@@ -343,5 +367,11 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask resizeNodes(Request request, UUID cUUID, UUID uniUUID, UniverseResizeNodes spec)
       throws Exception {
     return universeUpgradeHandler.resizeNodes(request, cUUID, uniUUID, spec);
+  }
+
+  @Override
+  public YBATask updateProxyConfig(
+      Request request, UUID cUUID, UUID uniUUID, UniverseUpdateProxyConfig spec) throws Exception {
+    return universeUpgradeHandler.updateProxyConfig(request, cUUID, uniUUID, spec);
   }
 }

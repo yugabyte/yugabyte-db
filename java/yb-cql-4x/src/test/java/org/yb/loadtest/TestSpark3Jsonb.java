@@ -34,9 +34,11 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.BaseMiniClusterTest;
-import org.yb.util.YBTestRunnerNonMac;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 
-@RunWith(value = YBTestRunnerNonMac.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestSpark3Jsonb extends BaseMiniClusterTest {
   private Logger logger = LoggerFactory.getLogger(TestSpark3Jsonb.class);
   private static String KEYSPACE = "test";

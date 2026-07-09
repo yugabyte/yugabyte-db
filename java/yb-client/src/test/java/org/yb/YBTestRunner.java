@@ -21,7 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.util.ConfForTesting;
-import org.yb.util.RequiresReleaseBuild;
+import org.yb.util.TestFilterUtil;
 
 import java.util.Collections;
 import java.util.List;
@@ -33,20 +33,12 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
 
   private static final Logger LOG = LoggerFactory.getLogger(YBTestRunner.class);
 
-  // TODO(#31675): Replace shouldRunTests() and custom runner subclasses with annotation-based
-  // filtering (like @RequiresReleaseBuild) so that build-type and platform conditions can be
-  // expressed per-method without needing a new runner class per condition.
-  protected boolean shouldRunTests() {
-    return true;
-  }
-
   private Stream<FrameworkMethod> getFilteredChildren() {
-    List<FrameworkMethod> methods = super.getChildren();
-    if (TestUtils.isReleaseBuild()) {
-      return methods.stream();
+    if (TestFilterUtil.shouldSkip(getTestClass().getJavaClass().getAnnotations())) {
+      return Stream.empty();
     }
-    return methods.stream()
-        .filter(m -> m.getAnnotation(RequiresReleaseBuild.class) == null);
+    return super.getChildren().stream()
+        .filter(m -> !TestFilterUtil.shouldSkip(m.getAnnotations()));
   }
 
   public YBTestRunner(Class<?> klass) throws InitializationError {
@@ -55,9 +47,6 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
     assert !Modifier.isAbstract(klass.getModifiers()) :
            "YBTestRunner constructor invoked for an abstract class " + specifiedClassName;
 
-    if (!shouldRunTests()) {
-      return;
-    }
     if (ConfForTesting.onlyCollectingTests()) {
       getFilteredChildren().forEach(method -> {
         Class declaringClass = method.getDeclaringClass();
@@ -79,7 +68,7 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
 
   @Override
   protected List<FrameworkMethod> getChildren() {
-    if (ConfForTesting.onlyCollectingTests() || !shouldRunTests()) {
+    if (ConfForTesting.onlyCollectingTests()) {
       return Collections.emptyList();
     }
     return getFilteredChildren().collect(Collectors.toList());

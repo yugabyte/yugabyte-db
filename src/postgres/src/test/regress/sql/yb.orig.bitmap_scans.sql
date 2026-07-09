@@ -443,6 +443,87 @@ ANALYZE test_and;
 \set query ':explain :Q1 SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 48 AND a < 7);'
 :query
 
+-- #32132, 32123: bitmap scan storage filter reading wrong col
+--
+-- Postgres passes column references for filter columns to the execution layer
+-- and further to DocDB to execute the filters. These column references are the
+-- index of the key in the index columns. This works for secondary indexes, but
+-- primary indexes in YB are part of the base table and ordering of columns in
+-- the base table can be different from the ordering of the primary index keys
+-- and we must send the index of the column in the base table.
+--
+-- However, this logic was incorrectly implemented in case of Bitmap Index Scan
+-- and incorrect column references were passed.
+--
+-- This can lead to different types of errors if the type of the column doesn't
+-- match the type expected by the filter, but this can also lead to wrong
+-- results if the type matched because the filter would get executed on the
+-- wrong column. These errors may be harder to spot.
+-- A non-key column (v1) is declared before the range key (k2), so k2's position
+-- among the index key columns (2) differs from its position in the base table
+-- (3). Without this fix, the LIKE filter would be executed on a column of type
+-- numeric and fail with 'invalid byte sequence for encoding "UTF8"'.
+CREATE TABLE bitmap_pk_diff_type_1 (k1 int NOT NULL, v1 numeric, k2 varchar NOT NULL,
+                                  PRIMARY KEY (k1 HASH, k2 ASC));
+INSERT INTO bitmap_pk_diff_type_1 VALUES (1, 10, 'aa'), (1, 20, 'bb');
+EXPLAIN (COSTS OFF) /*+ BitmapScan(bitmap_pk_diff_type_1) */
+SELECT k2 FROM bitmap_pk_diff_type_1 WHERE k2 LIKE '%a' AND k1 = 1;
+/*+ BitmapScan(bitmap_pk_diff_type_1) */
+SELECT k2 FROM bitmap_pk_diff_type_1 WHERE k2 LIKE '%a' AND k1 = 1 ORDER BY k2;
+
+-- In the following case, ILIKE filter would be executed on a column of type
+-- date and fail with 'ERROR:  recvmsg error: Connection reset by peer'
+-- instead of the encoding error.
+CREATE TABLE bitmap_pk_diff_type_2 (k1 int NOT NULL, v1 date, k2 varchar NOT NULL,
+                                  PRIMARY KEY (k1 HASH, k2 ASC));
+INSERT INTO bitmap_pk_diff_type_2 VALUES (1, '2026-06-01', 'aa'), (1, '2026-06-02', 'bb');
+EXPLAIN (COSTS OFF) /*+ BitmapScan(bitmap_pk_diff_type_2) */
+SELECT k2 FROM bitmap_pk_diff_type_2 WHERE k2 LIKE '%a' AND k1 = 1;
+/*+ BitmapScan(bitmap_pk_diff_type_2) */
+SELECT k2 FROM bitmap_pk_diff_type_2 WHERE k2 LIKE '%a' AND k1 = 1 ORDER BY k2;
+
+-- Same layout but v1 and k2 share a type, so there is no encoding error.
+-- Without this fix, the filter on k2 silently runs against v1 instead,
+-- returning the wrong result.
+-- The following query should return 'y2', but without this fix it returned 'x1'
+-- when bitmap scan was used and 'y2' when bitmap scan was not used.
+CREATE TABLE bitmap_pk_same_type (k1 int NOT NULL, v1 text NOT NULL, k2 text NOT NULL,
+                                  PRIMARY KEY (k1 HASH, k2 ASC));
+INSERT INTO bitmap_pk_same_type VALUES (1, 'x1', 'x2'), (1, 'y2', 'y1');
+EXPLAIN (COSTS OFF) /*+ BitmapScan(bitmap_pk_same_type) */
+SELECT v1 FROM bitmap_pk_same_type WHERE k2 LIKE '%1' AND k1 = 1;
+/*+ BitmapScan(bitmap_pk_same_type) */
+SELECT v1 FROM bitmap_pk_same_type WHERE k2 LIKE '%1' AND k1 = 1;
+-- Cross-check: the bitmap result must equal the non-bitmap (seq scan) result.
+/*+ SeqScan(bitmap_pk_same_type) */
+SELECT v1 FROM bitmap_pk_same_type WHERE k2 LIKE '%1' AND k1 = 1;
+
+DROP TABLE bitmap_pk_diff_type_1;
+DROP TABLE bitmap_pk_diff_type_2;
+DROP TABLE bitmap_pk_same_type;
+
+-- In a Bitmap Index Scan, filters pushed down as Storage Index Filters must be
+-- included in the recheck conditions.
+CREATE TABLE bitmap_recheck (a float4, b INT, c INT);
+INSERT INTO bitmap_recheck (a, b, c) (SELECT s::float4/10, s, s % 10 FROM generate_series(1,40) s);
+
+CREATE INDEX bitmap_recheck_a ON bitmap_recheck (a ASC);
+CREATE INDEX bitmap_recheck_b_c ON bitmap_recheck (b ASC) INCLUDE (c) WHERE c > 2;
+
+-- In the Bitmap Index Scan plan, recheck is triggered because the filter
+-- `a = 0.4` is pushed down as Index Condition, but not enforced during the
+-- index scan because of type mismatch. The column `a` is of type `float4` but
+-- PG assigns type `float8` to the literal decimal `0.4`.
+-- The filter `c > 5` is pushed down as a Storage Index Filter on
+-- index `bitmap_recheck_b_c` and it must be included in the recheck conditions.
+\set Pnext :iter_Q2
+\set Q1 '/*+ SeqScan(bitmap_recheck) */'
+\set Q2 '/*+ BitmapScan(bitmap_recheck) */'
+\set query ':P :Q SELECT count(*) FROM bitmap_recheck WHERE a = 0.4 OR c > 5;'
+\i :iter_P2
+
+DROP TABLE bitmap_recheck;
+
 RESET yb_fetch_size_limit;
 RESET yb_fetch_row_limit;
 RESET yb_enable_base_scans_cost_model;

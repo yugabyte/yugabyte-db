@@ -52,6 +52,7 @@ public class DevopsReleaseManifestTest {
                   "freeze_python_requirements.sh",
                   "refresh_roles_in_release_manifest.py",
                   "remove_leaf_yaml_nodes.py",
+                  "run_add_superadmin_tests.sh",
                   "run_in_virtualenv.sh",
                   "run_tests.sh",
                   "yb_platform_util.py"))

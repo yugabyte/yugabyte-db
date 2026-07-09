@@ -13,7 +13,7 @@ type: docs
 
 [Finalize the schema](../../../migrate/migrate-steps/#finalize-schema-post-data-import) post the import of data into YugabyteDB database.
 
-Create indexes and triggers in the target schema, and refresh the materialized views. Must be done after [import data](../../../migrate/migrate-steps/#import-data) is complete.
+Create [NOT VALID](https://www.postgresql.org/docs/current/sql-altertable.html#SQL-ALTERTABLE-DESC-ADD-TABLE-CONSTRAINT) constraints in the target schema, and refresh materialized views on the target after [import data](../../../migrate/migrate-steps/#import-data) is complete.
 
 ## Syntax
 
@@ -64,6 +64,15 @@ finalize-schema-post-data-import:
 ```
 
 |Refreshes the materialized views on target during the post-import-data phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
+| --target-db-type |
+
+```yaml
+finalize-schema-post-data-import:
+  target-db-type
+```
+
+| Target database type to import into. <br> Accepted values: yugabytedb (default), yugabytedb-amp (more details coming soon) |
 
 | --target-db-host |
 

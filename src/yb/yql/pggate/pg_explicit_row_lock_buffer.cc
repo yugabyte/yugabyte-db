@@ -13,77 +13,239 @@
 
 #include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 
+#include <algorithm>
+#include <unordered_set>
 #include <utility>
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 
-#include "yb/util/scope_exit.h"
 
 #include "yb/yql/pggate/util/ybc_util.h"
 
 namespace yb::pggate {
+namespace {
 
-Status ExplicitRowLockBuffer::Add(
-    const Info& info, const LightweightTableYbctid& key,
-    const YbcPgTableLocalityInfo& locality_info,
-    std::optional<ErrorStatusAdditionalInfo>& error_info) {
-  if (info_ && *info_ != info) {
-    RETURN_NOT_OK(DoFlush(error_info));
+struct SkippableLockInfo {
+  YbcIsExplicitlyLockedRowSkippedCheckHandle handle;
+  LightweightTableYbctid ybctid;
+  uint32_t handle_idx;
+};
+
+using LightweightYbctidSet =
+    std::unordered_set<LightweightTableYbctid, TableYbctidHasher, TableYbctidComparator>;
+
+} // namespace
+
+class ExplicitRowLockBuffer::Impl {
+ public:
+  explicit Impl(PgSession& session) : ybctid_reader_(session) {}
+
+  Status Add(const AddLockData& data) {
+    return DoAdd(data);
   }
-  if (!info_) {
-    info_ = info;
-  } else if (intents_.contains(key)) {
+
+  Result<YbcIsExplicitlyLockedRowSkippedCheckHandle> AddSkippable(
+      const AddLockData& data, std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> handle) {
+    RETURN_NOT_OK(DoAdd(data, &handle));
+    return *handle;
+  }
+
+  Status Flush(std::optional<ErrorStatusAdditionalInfo>& error_info) {
+    const auto has_pending = HasPendingLocks();
+    VLOG(5) << "Flush has pending: " <<  has_pending << " intents size: " << intents_.size();
+    return has_pending ? DoFlush(error_info) : Status::OK();
+  }
+
+  void Clear() {
+    ClearIntents();
+    skipped_.clear();
+  }
+
+  bool HasPendingLocks() const {
+    return !intents_.empty();
+  }
+
+  Result<bool> IsSkipped(
+      YbcIsExplicitlyLockedRowSkippedCheckHandle handle,
+      std::optional<ErrorStatusAdditionalInfo>& error_info) {
+
+    if (skipped_.erase(handle)) {
+      return true;
+    }
+
+    if (skippable_.empty()) {
+      return false;
+    }
+
+    RETURN_NOT_OK(DoFlush(error_info));
+    return skipped_.erase(handle);
+  }
+
+ private:
+  Status DoAdd(
+      const AddLockData& data,
+      std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle>* handle = nullptr) {
+    if (info_ && *info_ != data.lock_info && HasPendingLocks()) {
+      RETURN_NOT_OK(DoFlush(data.error_info));
+    }
+
+    if (!info_) {
+      info_ = data.lock_info;
+    }
+    const auto& ybctid = data.lock_key.ybctid;
+    const auto& table_id = data.lock_key.table_id;
+
+    auto ipair = intents_.emplace(table_id, ybctid);
+    if (ipair.second) {
+      table_locality_map_.Add(table_id, data.table_locality);
+    }
+
+    if (handle) {
+      size_t handle_idx = 0;
+      // Handle is kind of a signature to indicate that multiple ybctids belongs to it.
+      // It is expected that all the ybctids for same handle are added one after another,
+      // so only the latest handle is valid.
+      if (handle->has_value()) {
+          RSTATUS_DCHECK(
+              !skippable_.empty() && **handle == skippable_.back().handle,
+              IllegalState, "Latest known skip locked handle is only expected");
+          handle_idx = skippable_.back().handle_idx + 1;
+      } else {
+        handle->emplace(next_check_handle_++);
+      }
+      skippable_.emplace_back(**handle, *ipair.first, handle_idx);
+    }
+
+    return narrow_cast<int>(intents_.size()) >= yb_explicit_row_locking_batch_size
+        ? DoFlush(data.error_info) : Status::OK();
+  }
+
+  void ClearIntents() {
+    info_.reset();
+    intents_.clear();
+    table_locality_map_.Clear();
+    ybctids_set_.clear();
+    skippable_.clear();
+  }
+
+  Status DoFlush(std::optional<ErrorStatusAdditionalInfo>& error_info) {
+    DCHECK(HasPendingLocks());
+    auto status = DoFlushImpl();
+    if (!status.ok()) {
+      error_info.emplace(
+          info_->pg_wait_policy,
+          TransactionError(status).value() == TransactionErrorCode::kNone
+              ? kInvalidOid
+              : RelationOid::ValueFromStatus(status).value_or(kInvalidOid));
+    }
+    ClearIntents();
+    return status;
+  }
+
+  auto DoRead(YbctidReader::BatchAccessor& batch) {
+    return batch.Read(
+        info_->database_id, table_locality_map_,
+        {.rowmark = info_->rowmark,
+        .pg_wait_policy = info_->pg_wait_policy,
+        .docdb_wait_policy = info_->docdb_wait_policy,
+        .run_marker = PgSessionRunOperationMarker::ExplicitRowLock});
+  }
+
+  Status DoFlushImpl() {
+    return skippable_.empty() ? DoFlushRegular() : DoFlushSkippable();
+  }
+
+  Status DoFlushRegular() {
+    DCHECK(skippable_.empty());
+    const auto intents_count = intents_.size();
+    auto batch = ybctid_reader_.StartNewBatch(intents_count);
+    for (const auto& intent : intents_) {
+      batch.Add(intent);
+    }
+    const auto ybctids_count = VERIFY_RESULT(DoRead(batch)).size();
+    SCHECK_EQ(ybctids_count, intents_count, NotFound, "Some of the requested ybctids are missing");
     return Status::OK();
   }
 
-  table_locality_map_.Add(key.table_id, locality_info);
-  intents_.emplace(key.table_id, key.ybctid);
-  return narrow_cast<int>(intents_.size()) >= yb_explicit_row_locking_batch_size
-      ? DoFlush(error_info) : Status::OK();
+  Status DoFlushSkippable() {
+    DCHECK(!skippable_.empty());
+    const auto intents_count = intents_.size();
+    std::ranges::sort(
+        skippable_,
+        [](const auto& lhs, const auto& rhs) { return lhs.handle_idx < rhs.handle_idx; });
+    for(auto i = skippable_.begin(); i != skippable_.end();) {
+      auto batch = ybctid_reader_.StartNewBatch(intents_count);
+      size_t batch_size = 0;
+      const auto group_start = i;
+      const auto group_handle_idx = group_start->handle_idx;
+      for(; i != skippable_.end() && i->handle_idx == group_handle_idx; ++i) {
+        if (!skipped_.contains(i->handle)) {
+          batch.Add(i->ybctid);
+          ++batch_size;
+        }
+      }
+      if (!batch_size) {
+        break;
+      }
+
+      auto ybctids = VERIFY_RESULT(DoRead(batch));
+      if (ybctids.size() != batch_size) {
+        ybctids_set_.clear();
+        std::ranges::copy(ybctids, std::inserter(ybctids_set_, ybctids_set_.begin()));
+        for (auto j = group_start; j != i; ++j) {
+          if (!ybctids_set_.contains(j->ybctid)) {
+            skipped_.insert(j->handle);
+          }
+        }
+        ybctids_set_.clear();
+      }
+    }
+    return Status::OK();
+  }
+
+  YbctidReader ybctid_reader_;
+  std::optional<LockInfo> info_;
+  MemoryOptimizedTableYbctidSet intents_;
+  TableLocalityMap table_locality_map_;
+
+  YbcIsExplicitlyLockedRowSkippedCheckHandle next_check_handle_{0};
+  LightweightYbctidSet ybctids_set_;
+  std::unordered_set<YbcIsExplicitlyLockedRowSkippedCheckHandle> skipped_;
+  std::vector<SkippableLockInfo> skippable_;
+};
+
+ExplicitRowLockBuffer::ExplicitRowLockBuffer(PgSession& session)
+    : impl_(new Impl(session)) {}
+
+ExplicitRowLockBuffer::~ExplicitRowLockBuffer() = default;
+
+Status ExplicitRowLockBuffer::Add(const AddLockData& data) {
+  return impl_->Add(data);
+}
+
+Result<YbcIsExplicitlyLockedRowSkippedCheckHandle> ExplicitRowLockBuffer::AddSkippable(
+    const AddLockData& data,
+    std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> handle) {
+  return impl_->AddSkippable(data, handle);
 }
 
 Status ExplicitRowLockBuffer::Flush(std::optional<ErrorStatusAdditionalInfo>& error_info) {
-  const auto empty = IsEmpty();
-  VLOG(5) << "Flush is_empty:" <<  empty << " intents_count= " << intents_.size();
-  return empty ? Status::OK() : DoFlush(error_info);
-}
-
-Status ExplicitRowLockBuffer::DoFlush(std::optional<ErrorStatusAdditionalInfo>& error_info) {
-  DCHECK(!IsEmpty());
-  auto scope = ScopeExit([this] { Clear(); });
-  auto status = DoFlushImpl();
-  if (!status.ok()) {
-    error_info.emplace(
-        info_->pg_wait_policy,
-        TransactionError(status).value() == TransactionErrorCode::kNone
-            ? kInvalidOid
-            : RelationOid::ValueFromStatus(status).value_or(kInvalidOid));
-  }
-  return status;
-}
-
-Status ExplicitRowLockBuffer::DoFlushImpl() {
-  const auto intents_count = intents_.size();
-  auto batch = ybctid_reader_.StartNewBatch(intents_count);
-  for (const auto& intent : intents_) {
-    batch.Add(intent);
-  }
-  const auto existing_ybctids_count = VERIFY_RESULT(batch.Read(
-      info_->database_id, table_locality_map_,
-      {.rowmark = info_->rowmark,
-       .pg_wait_policy = info_->pg_wait_policy,
-       .docdb_wait_policy = info_->docdb_wait_policy,
-       .run_marker = PgSessionRunOperationMarker::ExplicitRowLock})).size();
-  SCHECK_EQ(
-      existing_ybctids_count, intents_count, NotFound, "Some of the requested ybctids are missing");
-  return Status::OK();
+  return impl_->Flush(error_info);
 }
 
 void ExplicitRowLockBuffer::Clear() {
-  intents_.clear();
-  info_.reset();
-  table_locality_map_.Clear();
+  impl_->Clear();
+}
+
+bool ExplicitRowLockBuffer::HasPendingLocks() const {
+  return impl_->HasPendingLocks();
+}
+
+Result<bool> ExplicitRowLockBuffer::IsSkipped(
+    YbcIsExplicitlyLockedRowSkippedCheckHandle handle,
+    std::optional<ErrorStatusAdditionalInfo>& error_info) {
+  return impl_->IsSkipped(handle, error_info);
 }
 
 } // namespace yb::pggate

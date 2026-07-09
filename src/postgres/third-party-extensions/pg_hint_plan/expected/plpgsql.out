@@ -5,10 +5,6 @@ SET search_path TO public;
 SET client_min_messages TO log;
 \set SHOW_CONTEXT always
 LOAD 'pg_hint_plan';
-ERROR:  LOAD not supported yet
-LINE 1: LOAD 'pg_hint_plan';
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 SET pg_hint_plan.debug_print TO on;
 SELECT setting <> 'off' FROM pg_settings WHERE name = 'compute_query_id';
  ?column?

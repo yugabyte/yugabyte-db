@@ -21,6 +21,7 @@
 #include "yb/docdb/transaction_dump.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
@@ -143,7 +144,7 @@ Result<TransactionStatusCache::GetCommitDataResult> TransactionStatusCache::DoGe
             .safe_time = {},
         };
       }
-      LOG(WARNING)
+      VLOG(5)
           << "Failed to request transaction " << transaction_id << " status: "
           <<  txn_status_result.status();
       if (!txn_status_result.status().IsTryAgain()) {
@@ -153,7 +154,8 @@ Result<TransactionStatusCache::GetCommitDataResult> TransactionStatusCache::DoGe
         return StatusWaitTimedOut(transaction_id);
       }
     } else {
-      LOG(INFO) << "TXN: " << transaction_id << ": Timed out waiting txn status, waited: "
+      YB_LOG_EVERY_N_SECS(WARNING, 10)
+                << "TXN: " << transaction_id << ": Timed out waiting txn status, waited: "
                 << MonoDelta(CoarseMonoClock::now() - wait_start)
                 << ", future status: " << std::to_underlying(future_status)
                 << ", left to deadline: " << MonoDelta(deadline_ - CoarseMonoClock::now());

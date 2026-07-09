@@ -65,6 +65,14 @@ public class ApiUtils {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
         userIntent.providerType = cloudType;
+        if (cloudType != null) {
+          Customer c = Customer.get(universe.getCustomerId());
+          List<Provider> providerList = Provider.get(c.getUuid(), cloudType);
+          if (providerList.size() > 0) {
+            userIntent.provider = providerList.get(0).getUuid().toString();
+          }
+        }
+
         userIntent.accessKeyCode = DEFAULT_ACCESS_KEY_CODE;
         // Add a desired number of nodes.
         userIntent.numNodes = userIntent.replicationFactor;
@@ -425,13 +433,17 @@ public class ApiUtils {
     };
   }
 
+  public static void configureDedicatedMasterFields(UserIntent userIntent) {
+    userIntent.dedicatedNodes = true;
+    userIntent.masterInstanceType = userIntent.instanceType;
+    userIntent.masterDeviceInfo = userIntent.deviceInfo.clone();
+  }
+
   public static Universe.UniverseUpdater mockUniverseUpdaterSetDedicated() {
     return universe -> {
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-      userIntent.dedicatedNodes = true;
-      userIntent.masterInstanceType = userIntent.instanceType;
-      userIntent.masterDeviceInfo = userIntent.deviceInfo.clone();
+      configureDedicatedMasterFields(userIntent);
       universe
           .getUniverseDetails()
           .nodeDetailsSet
@@ -626,7 +638,7 @@ public class ApiUtils {
   }
 
   public static UserIntent getTestUserIntent(Region r, Provider p, InstanceType i, int numNodes) {
-    return getTestUserIntent(r, p, i, numNodes, 100, 50);
+    return getTestUserIntent(r, p, i, numNodes, 100, 0);
   }
 
   public static UserIntent getTestUserIntent(
@@ -640,6 +652,7 @@ public class ApiUtils {
       ui.instanceType = i.getInstanceTypeCode();
     }
     ui.deviceInfo = getDummyDeviceInfo(1, tserverDiskSize);
+    // masterDeviceInfo can only be set when dedicatedNodes is true.
     if (masterDiskSize > 0) {
       ui.masterDeviceInfo = getDummyDeviceInfo(1, masterDiskSize);
     }

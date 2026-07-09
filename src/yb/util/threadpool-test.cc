@@ -162,7 +162,7 @@ TEST_F(TestThreadPool, TestSubmitAfterShutdown) {
   ASSERT_OK(BuildMinMaxTestPool(1, 1, &thread_pool));
   thread_pool->Shutdown();
   Status s = thread_pool->SubmitFunc(&IssueTraceStatement);
-  ASSERT_EQ("Service unavailable: The pool has been shut down.",
+  ASSERT_EQ("Shutdown in progress: The pool has been shut down.",
             s.ToString(/* no file/line */ false));
 }
 
@@ -492,7 +492,7 @@ TEST_P(TestThreadPoolTokenTypes, TestTokenShutdown) {
   t1->Shutdown();
 
   // We can no longer submit to t1 but we can still submit to t2.
-  ASSERT_TRUE(t1->SubmitFunc([](){}).IsServiceUnavailable());
+  ASSERT_TRUE(t1->SubmitFunc([](){}).IsShutdownInProgress());
   ASSERT_OK(t2->SubmitFunc([](){}));
 
   // Unblock t2's tasks.
@@ -572,7 +572,7 @@ TEST_F(TestThreadPool, TestFuzz) {
         // Sleep a little first to increase task overlap.
         SleepFor(MonoDelta::FromMilliseconds(sleep_ms));
       });
-      ASSERT_TRUE(s.ok() || s.IsServiceUnavailable()) << s;
+      ASSERT_TRUE(s.ok() || s.IsShutdownInProgress()) << s;
     } else if (op < 85) {
       // Allocate a token with a randomly selected policy.
       ThreadPool::ExecutionMode mode = r.Next() % 2 ?
@@ -709,7 +709,7 @@ TEST_F(TestThreadPool, TestTokenConcurrency) {
           // Sleep a little first so that tasks are running during other events.
           SleepFor(MonoDelta::FromMilliseconds(sleep_ms));
         });
-        ASSERT_TRUE(s.ok() || s.IsServiceUnavailable());
+        ASSERT_TRUE(s.ok() || s.IsShutdownInProgress());
         num_tokens_submitted++;
       }
       total_num_tokens_submitted += num_tokens_submitted;

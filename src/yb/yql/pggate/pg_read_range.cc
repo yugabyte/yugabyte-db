@@ -21,7 +21,6 @@
 
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
-#include "yb/yql/pggate/util/pg_tuple.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 
 namespace yb::pggate {
@@ -37,6 +36,39 @@ dockv::KeyBytes ToKeyBytes(const dockv::DocKey& doc_key) {
 
 } // namespace
 
+bool PgReadRange::Equals(const PgReadRange& other) const {
+  return (empty_ && other.empty_) ||
+         (!empty_ && !other.empty_ &&
+          lower_bound_.CompareTo(other.lower_bound_) == 0 &&
+          upper_bound_.CompareTo(other.upper_bound_) == 0 &&
+          lower_bound_is_inclusive_ == other.lower_bound_is_inclusive_ &&
+          upper_bound_is_inclusive_ == other.upper_bound_is_inclusive_);
+}
+
+bool PgReadRange::Intersects(const PgReadRange& other) const {
+  if (empty_ || other.empty_) {
+    return false;
+  }
+  // No intersection if the lower bound is higher than other's upper bound.
+  // Special case: empty upper bound is higher than anything.
+  if (!other.upper_bound_.empty()) {
+    auto cmp = lower_bound_.CompareTo(other.upper_bound_);
+    if (cmp > 0 ||
+        (cmp == 0 && !(lower_bound_is_inclusive_ && other.upper_bound_is_inclusive_))) {
+      return false;
+    }
+  }
+  // Same, other way around.
+  if (!upper_bound_.empty()) {
+    auto cmp = upper_bound_.CompareTo(other.lower_bound_);
+    if (cmp < 0 ||
+        (cmp == 0 && !(upper_bound_is_inclusive_ && other.lower_bound_is_inclusive_))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void PgReadRange::SetHashCodeBound(uint16_t hash_code, bool is_inclusive, bool is_lower) {
   if (!is_inclusive) {
     if (is_lower) {
@@ -47,23 +79,12 @@ void PgReadRange::SetHashCodeBound(uint16_t hash_code, bool is_inclusive, bool i
       --hash_code;
     }
   }
-  if (is_lower) {
-    SetLowerBound(HashCodeToBound(hash_code, true /* is_lower */), false /* is_inclusive */);
-  } else {
-    SetUpperBound(HashCodeToBound(hash_code, false /* is_lower */), false /* is_inclusive */);
-  }
-  ComputeEmpty();
+  SetBound(HashCodeToBound(hash_code, is_lower), false /* is_inclusive */, is_lower);
 }
 
 template <class T>
 void PgReadRange::SetDocKeyBound(const T& doc_key, bool is_inclusive, bool is_lower) {
-  auto bound = ToKeyBytes(doc_key);
-  if (is_lower) {
-    SetLowerBound(std::move(bound), is_inclusive);
-  } else {
-    SetUpperBound(std::move(bound), is_inclusive);
-  }
-  ComputeEmpty();
+  SetBound(ToKeyBytes(doc_key), is_inclusive, is_lower);
 }
 
 void PgReadRange::SetPartitionBounds(size_t partition) {
@@ -98,6 +119,18 @@ void PgReadRange::SetPartitionBounds(size_t partition) {
   ComputeEmpty();
 }
 
+void PgReadRange::SetRequestBounds(const LWPgsqlReadRequestPB& req) {
+  if (req.has_lower_bound()) {
+    auto bound = ToKeyBytes(req.lower_bound().key());
+    SetLowerBound(std::move(bound), req.lower_bound().is_inclusive());
+  }
+  if (req.has_upper_bound()) {
+    auto bound = ToKeyBytes(req.upper_bound().key());
+    SetUpperBound(std::move(bound), req.upper_bound().is_inclusive());
+  }
+  ComputeEmpty();
+}
+
 bool PgReadRange::ApplyBounds(LWPgsqlReadRequestPB& req) const {
   if (empty_) {
     return false;
@@ -115,12 +148,9 @@ Status PgReadRange::ConvertBoundsToHashCode(LWPgsqlReadRequestPB& req) {
     return Status::OK();
   }
 
-  // If the bounds are hash code already, there is nothing to do.
-  if (client::AreBoundsHashCode(req)) {
-    return Status::OK();
-  }
-
-  if (req.has_lower_bound()) {
+  // Skip if the bound is a hash code bound already.
+  if (req.has_lower_bound() &&
+      !dockv::PartitionSchema::IsValidHashPartitionKeyBound(req.lower_bound().key())) {
     RETURN_NOT_OK(CheckBoundDerivedFromHashCode(req.lower_bound().key(), /* is_lower = */ true));
     const auto hash_code = VERIFY_RESULT(dockv::DocKey::DecodeHash(req.lower_bound().key()));
     const auto& bound = dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code);
@@ -128,7 +158,9 @@ Status PgReadRange::ConvertBoundsToHashCode(LWPgsqlReadRequestPB& req) {
     req.mutable_lower_bound()->set_is_inclusive(true);
   }
 
-  if (req.has_upper_bound()) {
+  // Skip if the bound is a hash code bound already.
+  if (req.has_upper_bound() &&
+      !dockv::PartitionSchema::IsValidHashPartitionKeyBound(req.upper_bound().key())) {
     RETURN_NOT_OK(CheckBoundDerivedFromHashCode(req.upper_bound().key(), /* is_lower = */ false));
     const auto hash_code = VERIFY_RESULT(dockv::DocKey::DecodeHash(req.upper_bound().key()));
     const auto& bound = dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code);

@@ -1366,7 +1366,7 @@ Default: `4194304` (4MB)
 
 Max size (in bytes) of changes sent from CDC Service to [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication)(VWAL) for a particular tablet.
 
-Default: `1 MB`
+Default: `1048576` (1MB)
 
 ##### --ysql_cdc_active_replication_slot_window_ms
 
@@ -1377,6 +1377,16 @@ Default: `60000`
 ##### --cdc_send_null_before_image_if_not_exists
 
 When true, the CDC service returns a null before-image if it is not able to find one.
+
+Default: `false`
+
+##### --cdc_enable_intra_transactional_before_image
+
+Available in v2024.2.9.1 and later, v2025.2.4.0 and later.
+
+When true, CDC populates before-image values for DML operations that occur within the same transaction. For example, if a row is inserted and then updated or deleted in one transaction, each UPDATE or DELETE change record includes the row values immediately before that operation within the transaction (not only the pre-transaction state).
+
+This flag requires a YB-TServer restart. Enable it on all YB-TServers in the universe when you need accurate before images for intra-transactional changes with logical replication or gRPC CDC.
 
 Default: `false`
 

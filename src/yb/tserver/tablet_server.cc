@@ -116,6 +116,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
+#include "yb/util/string_util.h"
 
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -235,9 +236,15 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_port, yb::pgwrapper::PgProcessConf::kDef
 DEFINE_NON_RUNTIME_bool(start_pgsql_proxy, false,
             "Whether to run a PostgreSQL server as a child process of the tablet server");
 
-DEFINE_RUNTIME_uint32(ysql_min_new_version_ignored_count, 10,
-    "Minimum consecutive number of times that a tserver is allowed to ignore an older catalog "
-    "version that is retrieved from a tserver-master heartbeat response.");
+DEPRECATE_FLAG(uint32, ysql_min_new_version_ignored_count, "2026_05");
+
+DEFINE_RUNTIME_uint32(ysql_stale_catalog_version_min_seconds, 30,
+    "Minimum duration in seconds that a tserver may receive only older per-db catalog versions "
+    "(without ever seeing an advance) from the master before crashing itself to resync. A "
+    "random per-episode threshold is picked from [min, min+150]. Replaces the count-based check "
+    "controlled by ysql_min_new_version_ignored_count, which was sensitive to heartbeat "
+    "frequency (a burst of zero-delay heartbeats could trip the count even though the master "
+    "had only been stale for tens of milliseconds).");
 
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 
@@ -261,6 +268,7 @@ TAG_FLAG(min_invalidation_message_retention_time_secs, advanced);
 
 DECLARE_bool(enable_qos);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
+DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint64(ysql_lease_refresher_rpc_timeout_ms);
@@ -355,6 +363,17 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
     return HostPortFromPB(DesiredHostPort(reg, tablet_server_.options().MakeCloudInfoPB()));
   }
 
+  bool ShouldLocalPeerUpdateOwnBarriers() const override {
+    return FLAGS_enable_update_local_peer_min_index;
+  }
+
+#ifdef __linux__
+  Cgroup* SystemHighCgroup() const override {
+    auto* cm = tablet_server_.cgroup_manager();
+    return cm ? cm->SystemHighCgroup() : nullptr;
+  }
+#endif
+
  private:
   TabletServer& tablet_server_;
 };
@@ -423,6 +442,12 @@ void TabletServer::SetupAsyncClientInit(client::AsyncClientInitializer* async_cl
       client->SetLocalTabletServer(uuid, proxy, tserver);
     });
   }
+#ifdef __linux__
+  async_client_init->AddPostCreateHook([this](client::YBClient* client) {
+    client->SetCallbackCgroupProvider(
+        [this](uint64_t tag) { return PerDbCgroupProvider(tag); });
+  });
+#endif
 }
 
 Status TabletServer::ValidateMasterAddressResolution() const {
@@ -433,10 +458,10 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
                                            bool is_master_leader) {
   shared_ptr<server::MasterAddresses> new_master_addresses;
   if (is_master_leader) {
-    SetCurrentMasterIndex(new_config.opid_index());
+    SetCurrentMasterIndex(new_config.committed_op_index());
     new_master_addresses = make_shared<server::MasterAddresses>();
 
-    SetCurrentMasterIndex(new_config.opid_index());
+    SetCurrentMasterIndex(new_config.committed_op_index());
 
     for (const auto& peer : new_config.peers()) {
       std::vector<HostPort> list;
@@ -478,7 +503,7 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
   }
 
   LOG(INFO) << "Got new list of " << new_config.peers_size() << " masters at index "
-            << new_config.opid_index() << " old masters = "
+            << new_config.committed_op_index() << " old masters = "
             << yb::ToString(opts_.GetMasterAddresses())
             << " new masters = " << yb::ToString(new_master_addresses) << " from "
             << (is_master_leader ? "leader." : "follower.");
@@ -678,7 +703,8 @@ std::map<std::string, std::string> TabletServer::ValidateConfCsvViaPg(
   if (!paths_result.ok()) return fail_all(paths_result.status());
   auto paths = std::move(*paths_result);
 
-  auto conn_result = CreateInternalPGConn("yugabyte", /*simple_query_protocol=*/false, deadline);
+  auto conn_result = CreateInternalPGConn(
+      "yugabyte", kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline);
   if (!conn_result.ok()) return fail_all(conn_result.status());
   auto conn = std::move(*conn_result);
 
@@ -827,9 +853,9 @@ Status TabletServer::RegisterServices() {
   if (FLAGS_ysql_enable_auto_analyze_infra) {
     auto connect_to_pg = [this](const std::string& database_name,
                                 const CoarseTimePoint& deadline) {
-      return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
-                                                    GetSharedMemoryPostgresAuthKey(),
-                                                    deadline, true).Connect();
+      return CreateInternalPGConn(
+          database_name, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline,
+          pgwrapper::YbInternalConnKindWireName::kAutoAnalyze);
     };
     auto pg_auto_analyze_service =
         std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future(),
@@ -871,7 +897,7 @@ Status TabletServer::Start() {
     Cgroup* conn_cgroup = nullptr;
 #ifdef __linux__
     if (cgroup_manager_) {
-      conn_cgroup = cgroup_manager_->SystemMedCgroup();
+      conn_cgroup = cgroup_manager_->SystemHighCgroup();
     }
 #endif
     RETURN_NOT_OK(connectivity_poller_->Start(conn_cgroup));
@@ -946,8 +972,30 @@ void TabletServer::Shutdown() {
 
   client()->RequestAbortAllRpcs();
 
+  // Mark the transaction manager as closing before aborting tablet operations below. Aborting
+  // in-flight transaction status operations (e.g. heartbeats) completes their client RPCs, and
+  // unless the manager is already flagged as closing those completions are treated as retryable
+  // failures and re-registered as new operations on tablets that are already shutting down. Those
+  // late operations never get aborted (their tablet peers finish shutdown only after the txn
+  // manager), leaving the RPCs stuck until the txn manager's shutdown deadline elapses, which
+  // trips a CHECK(calls_.empty()) fatal failure. See DbServerBase::Shutdown for the later call.
+  if (auto* txn_manager = transaction_manager_.load()) {
+    txn_manager->SetClosing();
+  }
+
+  // Start shutting the remote bootstrap service down before the tablets, so peers bootstrapping
+  // from this server fail fast (terminal error) instead of retrying a source whose tablets are
+  // shutting down, which would otherwise wedge their own shutdown. See issue #32211.
+  if (auto remote_bootstrap_service = remote_bootstrap_service_.lock()) {
+    remote_bootstrap_service->StartShutdown();
+  }
+
   tablet_manager_->StartShutdown();
   WARN_NOT_OK(relinquish_lease_future.get(), "Couldn't relinquish ysql lease");
+
+  // Unblock PG backends still waiting on a relcache-init connection before we join reactors below;
+  // otherwise their orphaned RPCs keep their connections open and wedge reactor shutdown.
+  AbortInFlightRelcacheInitConnections();
 
   DbServerBase::Shutdown();
   RpcAndWebServerBase::Shutdown();
@@ -1326,7 +1374,9 @@ Status TabletServer::SetTserverCatalogMessageList(
       existing_entry.last_breaking_version = new_catalog_version;
     }
     UpdateCatalogVersionsFingerprintUnlocked();
-    existing_entry.new_version_ignored_count = 0;
+    // Track the time the entry was updated so we can alert if master is stale.
+    existing_entry.stale_since = MonoTime();
+    existing_entry.stale_fatal_threshold = MonoDelta();
     shm_index = existing_entry.shm_index;
     CHECK(shm_index >= 0 &&
           shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions))
@@ -1380,17 +1430,30 @@ void TabletServer::TriggerRelcacheInitConnection(
   const std::string dbname = req.database_name();
 
   bool started_superuser_connection = false;
+  bool aborted_due_to_shutdown = false;
   {
     std::lock_guard l(lock_);
-    auto& callbacks = in_flight_superuser_connections_[dbname];
-    if (callbacks.empty()) {
-      started_superuser_connection = true;
-      LOG(INFO) << "Relcache init connection request to database " << dbname
-                << " starting from tserver " << this << " to " << pgsql_proxy_bind_address();
+    // Registering under lock_ while reading shutting_down_ keeps us ordered against
+    // AbortInFlightRelcacheInitConnections: either we observe the shutdown and bail here, or our
+    // entry is already in the map when the drain runs and it completes our callback.
+    if (shutting_down_) {
+      aborted_due_to_shutdown = true;
     } else {
-      LOG(INFO) << "Relcache init connection request to database " << dbname << " in progress";
+      auto& callbacks = in_flight_superuser_connections_[dbname];
+      if (callbacks.empty()) {
+        started_superuser_connection = true;
+        LOG(INFO) << "Relcache init connection request to database " << dbname
+                  << " starting from tserver " << this << " to " << pgsql_proxy_bind_address();
+      } else {
+        LOG(INFO) << "Relcache init connection request to database " << dbname << " in progress";
+      }
+      callbacks.push_back(std::move(callback));
     }
-    callbacks.push_back(std::move(callback));
+  }
+
+  if (aborted_due_to_shutdown) {
+    callback(STATUS(ShutdownInProgress, "TabletServer is shutting down"));
+    return;
   }
 
   if (!started_superuser_connection) {
@@ -1399,6 +1462,11 @@ void TabletServer::TriggerRelcacheInitConnection(
 
   messenger()->scheduler().Schedule(
       [this, dbname](const Status& status) {
+        // Don't open a new (blocking) connection once shutdown has begun; the drain owns completion
+        // of the already-registered callbacks for this database.
+        if (shutting_down_) {
+          return;
+        }
         if (!status.ok()) {
           LOG(INFO) << status;
           RelcacheInitConnectionDone(dbname, status);
@@ -1416,7 +1484,10 @@ void TabletServer::RelcacheInitConnectionDone(
     std::lock_guard l(lock_);
     auto it = in_flight_superuser_connections_.find(dbname);
     if (it == in_flight_superuser_connections_.end()) {
-      LOG(DFATAL) << "Cannot find in-flight superuser connection for database " << dbname;
+      // During shutdown AbortInFlightRelcacheInitConnections may have already drained this entry
+      // before an in-flight connection finished, so a missing entry is expected then.
+      LOG_IF(DFATAL, !shutting_down_)
+          << "Cannot find in-flight superuser connection for database " << dbname;
       return;
     }
     callbacks = std::move(it->second);
@@ -1427,9 +1498,40 @@ void TabletServer::RelcacheInitConnectionDone(
   }
 }
 
+void TabletServer::AbortInFlightRelcacheInitConnections() {
+  std::map<std::string, std::vector<StdStatusCallback>> pending;
+  {
+    std::lock_guard l(lock_);
+    pending.swap(in_flight_superuser_connections_);
+  }
+
+  size_t num_callbacks = 0;
+  for (const auto& [dbname, callbacks] : pending) {
+    num_callbacks += callbacks.size();
+  }
+  if (num_callbacks == 0) {
+    return;
+  }
+  LOG(INFO) << "Aborting " << num_callbacks << " in-flight relcache-init connection callback(s) "
+            << "across " << pending.size() << " database(s) due to shutdown";
+
+  const auto status = STATUS(ShutdownInProgress, "TabletServer is shutting down");
+  for (auto& [dbname, callbacks] : pending) {
+    for (auto& cb : callbacks) {
+      cb(status);
+    }
+  }
+}
+
 void TabletServer::MakeRelcacheInitConnection(const std::string& dbname) {
   auto deadline = CoarseMonoClock::Now() + default_client_timeout();
-  auto status = ResultToStatus(CreateInternalPGConn(dbname, false, deadline));
+  // Identify this connection as the dedicated relcache-init builder so the
+  // backend takes on YB_RELCACHE_INIT_BACKEND, runs with minimal preload, and
+  // does not recursively trigger another internal connection
+  // (relcache.c:RelationCacheInitializePhase3).
+  auto status = ResultToStatus(CreateInternalPGConn(
+      dbname, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline,
+      pgwrapper::YbInternalConnKindWireName::kRelcacheInit));
   if (status.ok()) {
     LOG(INFO) << "Relcache init connection to database " << dbname << " succeeded";
   } else {
@@ -1496,11 +1598,13 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
     // refresh which involves a call to YBIsDBConnectionValid, thus terminates that connection.
     // Also in per-db catalog version mode we will reject a connection if we cannot find a slot
     // in db_catalog_versions_ that is allocated for its MyDatabaseId.
-    const auto it = ysql_db_catalog_version_map_.insert(
-      std::make_pair(db_oid, CatalogVersionInfo({.current_version = new_version,
-                                                 .last_breaking_version = new_breaking_version,
-                                                 .shm_index = -1,
-                                                 .new_version_ignored_count = 0})));
+    const auto it = ysql_db_catalog_version_map_.insert(std::make_pair(
+        db_oid, CatalogVersionInfo(
+                    {.current_version = new_version,
+                     .last_breaking_version = new_breaking_version,
+                     .shm_index = -1,
+                     .stale_since = MonoTime(),
+                     .stale_fatal_threshold = MonoDelta()})));
     bool row_inserted = it.second;
     bool row_updated = false;
     int shm_index = -1;
@@ -1509,7 +1613,9 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
       if (new_version > existing_entry.current_version) {
         existing_entry.current_version = new_version;
         existing_entry.last_breaking_version = new_breaking_version;
-        existing_entry.new_version_ignored_count = 0;
+        // Advance ends any current stale episode.
+        existing_entry.stale_since = MonoTime();
+        existing_entry.stale_fatal_threshold = MonoDelta();
         row_updated = true;
         db_oids_updated.insert({db_oid, new_version});
         shm_index = existing_entry.shm_index;
@@ -1519,24 +1625,28 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
             << "Invalid shm_index: " << shm_index;
       } else if (new_version < existing_entry.current_version) {
         if (!db_catalog_version_data.ignore_catalog_version_staleness_check()) {
-          ++existing_entry.new_version_ignored_count;
-          // If the new version is continuously older than what we have seen, it implies that
-          // master's current version has somehow gone backwards which isn't expected. Crash this
-          // tserver to sync up with master again. Do so with RandomUniformInt to reduce the chance
-          // that all tservers are crashed at the same time.
-          auto new_version_ignored_count = RandomUniformInt<uint32_t>(
-              FLAGS_ysql_min_new_version_ignored_count,
-              FLAGS_ysql_min_new_version_ignored_count + 180);
+          // First stale update for this episode: stamp the start time and pick a per-episode
+          // random fatal threshold so all tservers don't crash simultaneously. We use a
+          // duration-based check (not a count-based one) because heartbeats can sometimes
+          // be sent at different frequency during full reports.
+          if (!existing_entry.stale_since.Initialized()) {
+            existing_entry.stale_since = MonoTime::Now();
+            existing_entry.stale_fatal_threshold =
+                MonoDelta::FromSeconds(RandomUniformInt<uint32_t>(
+                    FLAGS_ysql_stale_catalog_version_min_seconds,
+                    FLAGS_ysql_stale_catalog_version_min_seconds + 150));
+          }
+          const auto stale_for = MonoTime::Now() - existing_entry.stale_since;
+          const bool fatal = stale_for >= existing_entry.stale_fatal_threshold;
           // Because the session that executes the DDL sets its incremented new version in the
-          // local tserver, for this local tserver it is possible the heartbeat response has
-          // not read the latest version from master yet. It is legitimate to see the following
-          // as a WARNING. However we should not see this continuously for new_version_ignored_count
-          // times.
-          (existing_entry.new_version_ignored_count >= new_version_ignored_count ? LOG(FATAL)
-                                                                                 : LOG(WARNING))
+          // local tserver before the master sees it, brief master-side lag is expected and is
+          // logged as a WARNING. Persistent lag (over the per-episode threshold) is treated as
+          // a real divergence and we crash to resync.
+          (fatal ? LOG(FATAL) : LOG(WARNING))
               << "Ignoring ysql db " << db_oid << " catalog version update: new version too old. "
               << "New: " << new_version << ", Old: " << existing_entry.current_version
-              << ", ignored count: " << existing_entry.new_version_ignored_count
+              << ", stale_for: " << stale_for
+              << ", threshold: " << existing_entry.stale_fatal_threshold
               << ", debug_id: " << debug_id;
         }
       } else {
@@ -1567,7 +1677,9 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
           CHECK_EQ(new_breaking_version, existing_entry.last_breaking_version)
               << "db_oid: " << db_oid << ", new_version: " << new_version;
         }
-        existing_entry.new_version_ignored_count = 0;
+        // Master sent us the version we already have, so end the staleness check window
+        existing_entry.stale_since = MonoTime();
+        existing_entry.stale_fatal_threshold = MonoDelta();
       }
     } else {
       auto& inserted_entry = it.first->second;
@@ -2019,7 +2131,8 @@ void TabletServer::DoGarbageCollectionOfInvalidationMessages(
 
 Status TabletServer::CheckYsqlLaggingCatalogVersions() {
   auto deadline = CoarseMonoClock::Now() + default_client_timeout();
-  auto pg_conn = VERIFY_RESULT(CreateInternalPGConn("template1", false, deadline));
+  auto pg_conn = VERIFY_RESULT(
+      CreateInternalPGConn("template1", kDefaultInternalPgUser, false, deadline));
   const std::string query = "SELECT datid, local_catalog_version FROM "
                             "yb_pg_stat_get_backend_local_catalog_version(NULL) "
                             "ORDER BY datid ASC, local_catalog_version ASC";
@@ -2234,10 +2347,8 @@ Status TabletServer::CreateXClusterConsumer() {
     return tablet_peer->LeaderTerm();
   };
   auto connect_to_pg = [this](const std::string& database_name, const CoarseTimePoint& deadline) {
-    return pgwrapper::CreateInternalPGConnBuilder(
-               pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(),
-               deadline)
-        .Connect();
+    return CreateInternalPGConn(
+        database_name, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline);
   };
   auto get_namespace_info =
       [this](const TabletId& tablet_id) -> Result<std::pair<NamespaceId, NamespaceName>> {
@@ -2508,6 +2619,10 @@ Status TabletServer::ClearMetacache(const std::string& namespace_id) {
   return client()->ClearMetacache(namespace_id);
 }
 
+void TabletServer::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {
+  client()->MarkTServersAsFollowers(ts_uuids);
+}
+
 Status TabletServer::ClearYCQLMetaDataCache() {
   auto* cql_server_api = cql_server_external_.load();
   SCHECK_NOTNULL(cql_server_api);
@@ -2609,10 +2724,18 @@ void TabletServer::SetCronLeaderLease(MonoTime cron_leader_lease_end) {
 }
 
 Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(
-    const std::string& database_name, bool simple_query_protocol,
-    const std::optional<CoarseTimePoint>& deadline) {
+    const std::string& database_name, std::string_view user, bool simple_query_protocol,
+    const std::optional<CoarseTimePoint>& deadline,
+    std::string_view yb_internal_conn_kind) {
   return pgwrapper::CreateInternalPGConnBuilder(
-             pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(), deadline)
+             pgsql_proxy_bind_address(), database_name, user, GetSharedMemoryPostgresAuthKey(),
+             deadline, yb_internal_conn_kind,
+             // Abort the connect retry loop as soon as shutdown begins. Internal connects run on
+             // messenger threads and can hold the triggering backend's inbound RpcContext alive
+             // until they return; retrying the (also shutting-down) postgres for the full deadline
+             // keeps that RPC connection non-idle and makes Messenger::Shutdown() time out joining
+             // the reactor.
+             [this] { return static_cast<bool>(shutting_down_); })
       .Connect(simple_query_protocol);
 }
 

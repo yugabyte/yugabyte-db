@@ -14,15 +14,16 @@
 
 #pragma once
 
-#include <string>
-
-#include "yb/common/schema.h"
 #include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_bytes.h"
 
+#include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_table.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
 
 namespace yb::pggate {
 
@@ -38,6 +39,14 @@ class PgReadRange {
  public:
   explicit PgReadRange(const PgTable& table) : table_(table) {}
   bool IsEmpty() const { return empty_; }
+  bool Equals(const PgReadRange& other) const;
+  bool Intersects(const PgReadRange& other) const;
+  bool operator==(const PgReadRange& other) const {
+    return Equals(other);
+  }
+  bool operator!=(const PgReadRange& other) const {
+    return !Equals(other);
+  }
 
   // The SetXXX methods update the range bounds. After the change the empty_ flag is updated, so
   // it is not required to compare bounds to check if the range is empty.
@@ -46,8 +55,46 @@ class PgReadRange {
   // Set the doc key as the range bound.
   template <class T>
   void SetDocKeyBound(const T& doc_key, bool is_inclusive, bool is_lower);
+
+  template <class Collection>
+  Status SetHashAndRangeValuesBound(
+      uint16_t hash, const Collection& values, bool is_inclusive, bool is_lower) {
+    auto num_hash_key_columns = table_->schema().num_hash_key_columns();
+    auto num_range_key_columns = table_->schema().num_range_key_columns();
+    DCHECK_GT(num_hash_key_columns, 0);
+    auto null_type = is_lower ? dockv::KeyEntryType::kLowest : dockv::KeyEntryType::kHighest;
+    bool null_found = false;
+    auto hashed_group = VERIFY_RESULT(MakeGroup(
+        values, 0, num_hash_key_columns, null_type, &null_found));
+    dockv::KeyBytes out;
+    dockv::DocKeyEncoderAfterTableIdStep encoder(&out);
+    auto after_hash = encoder.Hash(hash, hashed_group);
+    auto range_group = VERIFY_RESULT(MakeGroup(
+        values, num_hash_key_columns, num_range_key_columns, null_type, &null_found));
+    after_hash.Range(range_group);
+    SetBound(std::move(out), is_inclusive && !null_found, is_lower);
+    return Status::OK();
+  }
+
+  template <class Collection>
+  Status SetRangeValuesBound(const Collection& values, bool is_inclusive, bool is_lower) {
+    auto num_range_key_columns = table_->schema().num_range_key_columns();
+    DCHECK_EQ(table_->schema().num_hash_key_columns(), 0);
+    auto null_type = is_lower ? dockv::KeyEntryType::kLowest : dockv::KeyEntryType::kHighest;
+    bool null_found = false;
+    auto range_group = VERIFY_RESULT(MakeGroup(
+        values, 0, num_range_key_columns, null_type, &null_found));
+    dockv::KeyBytes out;
+    dockv::DocKeyEncoderAfterTableIdStep encoder(&out);
+    encoder.NoHash().Range(range_group);
+    SetBound(std::move(out), is_inclusive && !null_found, is_lower);
+    return Status::OK();
+  }
+
   // Set the partition's bounds as the range bounds.
   void SetPartitionBounds(size_t partition);
+  // Set the request's bounds as the range bounds.
+  void SetRequestBounds(const LWPgsqlReadRequestPB& req);
 
   // Update the bounds on the specified read request. If requests already has bounds, they are
   // updated if the respective new bound is stricter. If the resulting bounds represent an empty
@@ -61,6 +108,41 @@ class PgReadRange {
   // method to be two-byte hash code, or error out if the bound is not derived from hash code.
   static Status ConvertBoundsToHashCode(LWPgsqlReadRequestPB& req);
  private:
+  static Result<dockv::KeyEntryValue> AsKeyEntryValue(
+      const LWQLValuePB* value, const PgColumn& column, const dockv::KeyEntryType& null_type,
+      bool* null_found) {
+    if (value == nullptr || yb::IsNull(*value)) {
+      if (null_found) {
+        *null_found = true;
+      }
+      return dockv::KeyEntryValue(null_type);
+    }
+    return dockv::KeyEntryValue::FromQLValuePB(*value, column.desc().sorting_type());
+  }
+  static Result<dockv::KeyEntryValue> AsKeyEntryValue(
+      PgExpr* value, const PgColumn& column, const dockv::KeyEntryType& null_type,
+      bool* null_found) {
+    return AsKeyEntryValue(
+        value ? VERIFY_RESULT(value->Eval()) : nullptr, column, null_type, null_found);
+  }
+  template <class Collection>
+  Result<std::vector<dockv::KeyEntryValue>> MakeGroup(
+      const Collection& values, size_t offset, size_t size,
+      const dockv::KeyEntryType& null_type, bool* null_found) {
+    std::vector<dockv::KeyEntryValue> group;
+    group.reserve(size);
+    const auto& columns = table_.columns();
+    DCHECK_LE(offset + size, columns.size());
+    for (size_t i = offset; i < offset + size; ++i) {
+      if ((null_found && *null_found) || i >= columns.size() || i > values.size()) {
+        break;
+      }
+      // Missing trailing values are allowed, they are equivalent to NULLs.
+      group.emplace_back(VERIFY_RESULT(AsKeyEntryValue(
+          i < values.size() ? values[i] : nullptr, columns[i], null_type, null_found)));
+    }
+    return group;
+  }
   static Status CheckBoundDerivedFromHashCode(Slice bound, bool is_lower);
   dockv::KeyBytes HashCodeToBound(uint16_t hash_code, bool is_lower) const;
   // After bounds change, check if the range is empty and update the empty flag.
@@ -69,6 +151,14 @@ class PgReadRange {
   void SetLowerBound(dockv::KeyBytes&& bound, bool is_inclusive);
   // Set the new upper bound.
   void SetUpperBound(dockv::KeyBytes&& bound, bool is_inclusive);
+  void SetBound(dockv::KeyBytes&& bound, bool is_inclusive, bool is_lower) {
+    if (is_lower) {
+      SetLowerBound(std::move(bound), is_inclusive);
+    } else {
+      SetUpperBound(std::move(bound), is_inclusive);
+    }
+    ComputeEmpty();
+  }
   // Check if boundaries set on the request define valid (not empty) range.
   static bool CheckScanBounds(const LWPgsqlReadRequestPB& req);
   // Set the lower bound on the request.

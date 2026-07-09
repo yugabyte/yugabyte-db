@@ -1,0 +1,217 @@
+-- Test all ALTER TABLE commands supported by pgduckdb_get_alterdef
+-- Set up a test table
+SET duckdb.force_execution = false;
+CREATE TEMP TABLE alter_test(
+    id INT,
+    name TEXT,
+    value DOUBLE PRECISION DEFAULT 0.0,
+    created_at TIMESTAMP
+) USING duckdb;
+INSERT INTO alter_test VALUES (1, 'test1', 10.5, '2023-01-01 12:00:00');
+INSERT INTO alter_test VALUES (2, 'test2', 20.5, '2023-01-02 12:00:00');
+-- Verify initial state
+SELECT * FROM alter_test ORDER BY id;
+ id | name  | value |        created_at        
+----+-------+-------+--------------------------
+  1 | test1 |  10.5 | Sun Jan 01 12:00:00 2023
+  2 | test2 |  20.5 | Mon Jan 02 12:00:00 2023
+(2 rows)
+
+SELECT * FROM duckdb.query('DESCRIBE pg_temp.alter_test');
+ column_name | column_type | null | key | default | extra 
+-------------+-------------+------+-----+---------+-------
+ id          | INTEGER     | YES  |     |         | 
+ name        | VARCHAR     | YES  |     |         | 
+ value       | DOUBLE      | YES  |     | 0.0     | 
+ created_at  | TIMESTAMP   | YES  |     |         | 
+(4 rows)
+
+-- ADD COLUMN
+ALTER TABLE alter_test ADD COLUMN description TEXT;
+ALTER TABLE alter_test ADD COLUMN active BOOLEAN DEFAULT true;
+ALTER TABLE alter_test ADD COLUMN score INT DEFAULT 100 NULL;
+ALTER TABLE alter_test ADD COLUMN score2 INT DEFAULT 100 NOT NULL;
+ERROR:  (PGDuckDB/duckdb_alter_table_trigger_cpp) Parser Error: Adding columns with constraints not yet supported
+ALTER TABLE alter_test ADD COLUMN score3 INT DEFAULT 100 CHECK (score3 >= score);
+ERROR:  (PGDuckDB/duckdb_alter_table_trigger_cpp) Parser Error: Adding columns with constraints not yet supported
+ALTER TABLE alter_test ADD COLUMN id2 INT PRIMARY KEY;
+ERROR:  (PGDuckDB/duckdb_alter_table_trigger_cpp) Parser Error: Adding columns with constraints not yet supported
+ALTER TABLE alter_test ADD COLUMN id3 INT UNIQUE;
+ERROR:  (PGDuckDB/duckdb_alter_table_trigger_cpp) Parser Error: Adding columns with constraints not yet supported
+ALTER TABLE alter_test ADD COLUMN german text COLLATE "de-x-icu";
+ERROR:  Column collations are not supported in DuckDB
+-- Verify columns were added
+SELECT * FROM alter_test ORDER BY id;
+ id | name  | value |        created_at        | description | active | score 
+----+-------+-------+--------------------------+-------------+--------+-------
+  1 | test1 |  10.5 | Sun Jan 01 12:00:00 2023 |             | t      |   100
+  2 | test2 |  20.5 | Mon Jan 02 12:00:00 2023 |             | t      |   100
+(2 rows)
+
+SELECT * FROM duckdb.query('DESCRIBE pg_temp.alter_test');
+ column_name | column_type | null | key |       default        | extra 
+-------------+-------------+------+-----+----------------------+-------
+ id          | INTEGER     | YES  |     |                      | 
+ name        | VARCHAR     | YES  |     |                      | 
+ value       | DOUBLE      | YES  |     | 0.0                  | 
+ created_at  | TIMESTAMP   | YES  |     |                      | 
+ description | VARCHAR     | YES  |     |                      | 
+ active      | BOOLEAN     | YES  |     | CAST('t' AS BOOLEAN) | 
+ score       | INTEGER     | YES  |     | 100                  | 
+(7 rows)
+
+-- ALTER COLUMN TYPE
+ALTER TABLE alter_test ALTER COLUMN id TYPE BIGINT;
+ALTER TABLE alter_test ALTER COLUMN value TYPE REAL;
+-- Verify column types were changed
+SELECT * FROM duckdb.query('DESCRIBE pg_temp.alter_test');
+ column_name | column_type | null | key |       default        | extra 
+-------------+-------------+------+-----+----------------------+-------
+ id          | BIGINT      | YES  |     |                      | 
+ name        | VARCHAR     | YES  |     |                      | 
+ value       | FLOAT       | YES  |     | 0.0                  | 
+ created_at  | TIMESTAMP   | YES  |     |                      | 
+ description | VARCHAR     | YES  |     |                      | 
+ active      | BOOLEAN     | YES  |     | CAST('t' AS BOOLEAN) | 
+ score       | INTEGER     | YES  |     | 100                  | 
+(7 rows)
+
+-- DROP COLUMN
+ALTER TABLE alter_test DROP COLUMN description;
+-- Verify column was dropped
+SELECT * FROM duckdb.query('DESCRIBE pg_temp.alter_test');
+ column_name | column_type | null | key |       default        | extra 
+-------------+-------------+------+-----+----------------------+-------
+ id          | BIGINT      | YES  |     |                      | 
+ name        | VARCHAR     | YES  |     |                      | 
+ value       | FLOAT       | YES  |     | 0.0                  | 
+ created_at  | TIMESTAMP   | YES  |     |                      | 
+ active      | BOOLEAN     | YES  |     | CAST('t' AS BOOLEAN) | 
+ score       | INTEGER     | YES  |     | 100                  | 
+(6 rows)
+
+-- SET/DROP DEFAULT
+ALTER TABLE alter_test ALTER COLUMN name SET DEFAULT 'unnamed';
+INSERT INTO alter_test(id) VALUES (3);
+SELECT * FROM alter_test ORDER BY id;
+ id |  name   | value |        created_at        | active | score 
+----+---------+-------+--------------------------+--------+-------
+  1 | test1   |  10.5 | Sun Jan 01 12:00:00 2023 | t      |   100
+  2 | test2   |  20.5 | Mon Jan 02 12:00:00 2023 | t      |   100
+  3 | unnamed |     0 |                          | t      |   100
+(3 rows)
+
+ALTER TABLE alter_test ALTER COLUMN name DROP DEFAULT;
+INSERT INTO alter_test(id) VALUES (4);
+SELECT * FROM alter_test ORDER BY id;
+ id |  name   | value |        created_at        | active | score 
+----+---------+-------+--------------------------+--------+-------
+  1 | test1   |  10.5 | Sun Jan 01 12:00:00 2023 | t      |   100
+  2 | test2   |  20.5 | Mon Jan 02 12:00:00 2023 | t      |   100
+  3 | unnamed |     0 |                          | t      |   100
+  4 |         |     0 |                          | t      |   100
+(4 rows)
+
+-- Delete this one before adding the NOT NULL constraint
+DELETE FROM alter_test WHERE id = 4;
+-- SET/DROP NOT NULL
+ALTER TABLE alter_test ALTER COLUMN name SET NOT NULL;
+-- This should fail
+UPDATE alter_test SET name = NULL WHERE id = 1;
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Constraint Error: NOT NULL constraint failed: alter_test.name
+ALTER TABLE alter_test ALTER COLUMN name DROP NOT NULL;
+-- This should succeed
+UPDATE alter_test SET name = NULL WHERE id = 1;
+SELECT * FROM alter_test WHERE id = 1;
+ id | name | value |        created_at        | active | score 
+----+------+-------+--------------------------+--------+-------
+  1 |      |  10.5 | Sun Jan 01 12:00:00 2023 | t      |   100
+(1 row)
+
+-- ADD CONSTRAINT (CHECK)
+ALTER TABLE alter_test ADD CONSTRAINT positive_id CHECK (id > 0);
+ERROR:  (PGDuckDB/duckdb_alter_table_trigger_cpp) Not implemented Error: No support for that ALTER TABLE option yet!
+-- This should fail
+INSERT INTO alter_test(id, name) VALUES (-1, 'negative');
+-- ADD CONSTRAINT (PRIMARY KEY)
+ALTER TABLE alter_test ADD PRIMARY KEY (id);
+-- This should fail due to duplicate key
+INSERT INTO alter_test(id, name) VALUES (1, 'duplicate');
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Constraint Error: Duplicate key "id: 1" violates primary key constraint.
+-- ADD CONSTRAINT (UNIQUE)
+ALTER TABLE alter_test ADD CONSTRAINT unique_name UNIQUE (name);
+ERROR:  (PGDuckDB/duckdb_alter_table_trigger_cpp) Not implemented Error: No support for that ALTER TABLE option yet!
+-- This should fail due to duplicate name
+UPDATE alter_test SET name = 'test2' WHERE id = 3;
+-- DROP CONSTRAINT
+ALTER TABLE alter_test DROP CONSTRAINT unique_name;
+ERROR:  constraint "unique_name" of relation "alter_test" does not exist
+-- This should now succeed
+UPDATE alter_test SET name = 'test2' WHERE id = 3;
+SELECT * FROM alter_test WHERE id = 3;
+ id | name  | value | created_at | active | score 
+----+-------+-------+------------+--------+-------
+  3 | test2 |     0 |            | t      |   100
+(1 row)
+
+ALTER TABLE alter_test DROP CONSTRAINT positive_id;
+ERROR:  constraint "positive_id" of relation "alter_test" does not exist
+-- This should now succeed
+INSERT INTO alter_test(id, name) VALUES (-1, 'negative');
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Constraint Error: Duplicate key "id: -1" violates primary key constraint.
+SELECT * FROM alter_test WHERE id = -1;
+ id |   name   | value | created_at | active | score 
+----+----------+-------+------------+--------+-------
+ -1 | negative |     0 |            | t      |   100
+(1 row)
+
+-- SET/RESET table options
+-- Note: DuckDB supports limited table options compared to PostgreSQL
+ALTER TABLE alter_test SET (fillfactor = 90);
+ERROR:  (PGDuckDB/duckdb_alter_table_trigger_cpp) Not implemented Error: No support for that ALTER TABLE option yet!
+ALTER TABLE alter_test RESET (fillfactor);
+ERROR:  (PGDuckDB/duckdb_alter_table_trigger_cpp) Not implemented Error: No support for that ALTER TABLE option yet!
+ALTER TABLE alter_test RENAME TO alter_test2;
+SELECT * FROM duckdb.query('DESCRIBE pg_temp.alter_test2');
+ column_name | column_type | null | key |       default        | extra 
+-------------+-------------+------+-----+----------------------+-------
+ id          | BIGINT      | NO   | PRI |                      | 
+ name        | VARCHAR     | YES  |     |                      | 
+ value       | FLOAT       | YES  |     | 0.0                  | 
+ created_at  | TIMESTAMP   | YES  |     |                      | 
+ active      | BOOLEAN     | YES  |     | CAST('t' AS BOOLEAN) | 
+ score       | INTEGER     | YES  |     | 100                  | 
+(6 rows)
+
+SELECT * from alter_test2 ORDER BY id;
+ id |   name   | value |        created_at        | active | score 
+----+----------+-------+--------------------------+--------+-------
+ -1 | negative |     0 |                          | t      |   100
+  1 |          |  10.5 | Sun Jan 01 12:00:00 2023 | t      |   100
+  2 | test2    |  20.5 | Mon Jan 02 12:00:00 2023 | t      |   100
+  3 | test2    |     0 |                          | t      |   100
+(4 rows)
+
+ALTER TABLE alter_test2 RENAME COLUMN active TO active2;
+SELECT * FROM duckdb.query('DESCRIBE pg_temp.alter_test2');
+ column_name | column_type | null | key |       default        | extra 
+-------------+-------------+------+-----+----------------------+-------
+ id          | BIGINT      | NO   | PRI |                      | 
+ name        | VARCHAR     | YES  |     |                      | 
+ value       | FLOAT       | YES  |     | 0.0                  | 
+ created_at  | TIMESTAMP   | YES  |     |                      | 
+ active2     | BOOLEAN     | YES  |     | CAST('t' AS BOOLEAN) | 
+ score       | INTEGER     | YES  |     | 100                  | 
+(6 rows)
+
+SELECT * from alter_test2 ORDER BY id;
+ id |   name   | value |        created_at        | active2 | score 
+----+----------+-------+--------------------------+---------+-------
+ -1 | negative |     0 |                          | t       |   100
+  1 |          |  10.5 | Sun Jan 01 12:00:00 2023 | t       |   100
+  2 | test2    |  20.5 | Mon Jan 02 12:00:00 2023 | t       |   100
+  3 | test2    |     0 |                          | t       |   100
+(4 rows)
+
+-- Clean up
+DROP TABLE alter_test2;

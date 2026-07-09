@@ -37,6 +37,8 @@
 
 #include <string>
 
+#include <boost/range/iterator_range.hpp>
+
 #include <google/protobuf/message.h>
 #include <google/protobuf/repeated_field.h>
 

@@ -922,7 +922,7 @@ create_plain_partial_paths(PlannerInfo *root, RelOptInfo *rel)
 
 		parallel_workers =
 			yb_compute_parallel_worker(rel,
-									   YbGetTableDistribution(rte->relid),
+									   YbGetTableDistributionById(rte->relid),
 									   max_parallel_workers_per_gather);
 	}
 	else
@@ -3181,6 +3181,30 @@ generate_gather_paths(PlannerInfo *root, RelOptInfo *rel, bool override_rows)
 										subpath->pathkeys, NULL, rowsp);
 		add_path(rel, &path->path);
 	}
+
+	/*
+	 * YB: Also Gather any non-cheapest partial path whose subtree contains a
+	 * Parallel Hash Join (shared hash table) so the planner can surface that
+	 * variant.
+	 */
+	if (IsYugaByteEnabled() &&
+		yb_test_force_parallel != YB_FORCE_PARALLEL_OFF)
+	{
+		foreach(lc, rel->partial_pathlist)
+		{
+			Path	   *subpath = (Path *) lfirst(lc);
+
+			if (subpath == cheapest_partial_path)
+				continue;
+			if (!yb_path_contains_parallel_hash(subpath))
+				continue;
+
+			rows = subpath->rows * subpath->parallel_workers;
+			add_path(rel, (Path *)
+					 create_gather_path(root, rel, subpath, rel->reltarget,
+										NULL, rowsp));
+		}
+	}
 }
 
 /*
@@ -4560,6 +4584,16 @@ yb_compute_parallel_worker(RelOptInfo *rel,
 						   YbTableDistribution yb_dist, int max_workers)
 {
 	int			parallel_workers = 0;
+
+	/*
+	 * Test-only: bypass the parallel_workers reloption and the
+	 * per-distribution-type enable checks below and just use the
+	 * caller-supplied cap.  Exclude system tables unless
+	 * yb_enable_parallel_scan_system = true.
+	 */
+	if (yb_test_force_parallel == YB_FORCE_PARALLEL_FORCE &&
+		(yb_dist != YB_SYSTEM || yb_enable_parallel_scan_system))
+		return max_workers;
 
 	/*
 	 * If the user has set the parallel_workers reloption, use that; otherwise

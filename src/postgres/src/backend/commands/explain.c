@@ -1465,8 +1465,11 @@ ExplainOneUtility(Node *utilityStmt, IntoClause *into, ExplainState *es,
 
 		rewritten = QueryRewrite(castNode(Query, copyObject(ctas->query)));
 		Assert(list_length(rewritten) == 1);
+		/* YB: parallel query is disabled for DDLs by default. */
 		ExplainOneQuery(linitial_node(Query, rewritten),
-						CURSOR_OPT_PARALLEL_OK, ctas->into, es,
+						(IsYugaByteEnabled() && yb_disable_parallel_query_in_ddl) ?
+						0 : CURSOR_OPT_PARALLEL_OK,
+						ctas->into, es,
 						queryString, params, queryEnv);
 	}
 	else if (IsA(utilityStmt, DeclareCursorStmt))
@@ -3410,6 +3413,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	/* YB aggregate pushdown */
 	if (yb_is_agg_pushdown)
 		ExplainPropertyBool("Partial Aggregate", true, es);
+
+	if (IsYugaByteEnabled() && es->yb_debug && planstate->instrument->yb_instr.max_read_ahead)
+		ExplainPropertyUInteger("Max Read Ahead", NULL, planstate->instrument->yb_instr.max_read_ahead, es);
 
 	/*
 	 * Prepare per-worker JIT instrumentation.  As with the overall JIT

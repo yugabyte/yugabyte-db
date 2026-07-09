@@ -93,9 +93,12 @@ DEFINE_RUNTIME_CONN_MGR_FLAG(string, log_settings, "",
     "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'. Only the "
     "log settings present in this string will be enabled. Omitted settings will remain disabled.");
 
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, true,
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, false,
     "Enable the use of the auth-backend for authentication of logical connections. "
-    "When false, the older auth-passthrough implementation is used."
+    "When false, the auth-passthrough implementation is used. Auth Backend mode involves "
+    "spawning a fresh PG backend to perform authentication for each incoming auth request."
+    "Auth Passthrough mode allows reusing spawned 'control backends' to authenticate clients "
+    "and thus is faster as it skips needing to spawn a new backend process each time."
     );
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_auth_msg_timeout, 15000,
@@ -118,11 +121,11 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_readahead_buffer_size, 8192,
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive, 15,
     "TCP keepalive time in Ysql Connection Manager. Set to zero, to disable keepalive");
 
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_keep_interval, 75,
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_keep_interval, 20,
     "TCP keepalive interval in Ysql Connection Manager. This is applicable if "
     "'ysql_conn_mgr_tcp_keepalive' is enabled.");
 
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_probes, 9,
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_probes, 4,
     "TCP keepalive probes in Ysql Connection Manager. This is applicable if "
     "'ysql_conn_mgr_tcp_keepalive' is enabled.");
 
@@ -189,11 +192,17 @@ DEFINE_RUNTIME_CONN_MGR_FLAG(bool, enable_parse_queue_tracking, true,
     "disabled, the Connection Manager's view of prepared statements can drift out of sync with "
     "the backend, which may surface as errors such as 'prepared statement does not exist'.");
 
-DEFINE_RUNTIME_CONN_MGR_FLAG(bool, wait_for_rfq_on_sync, true,
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, wait_for_rfq_on_sync, true,
     "When enabled, the YSQL Connection Manager stops reading further client packets after "
     "forwarding a Sync message and resumes only once the matching ReadyForQuery from the "
     "backend is received, preventing cross-Sync-boundary pipelining. if set to false, there"
     " can be correctness issues with pipelining.");
+
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, enable_dealloc_reconciliation, true,
+    "When enabled, the YSQL Connection Manager tracks prepared statements that have been "
+    "deallocated on the backend in a per-server hashmap and defers evicting them from "
+    "server hashmap till Sync boundary. If set to false, there can be correctness issues "
+    "on sending deallocate and parse for same name of prep stmt within Sync boundary.");
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcmalloc_sample_period, 1024 * 1024,
     "Sets the interval at which TCMalloc should sample allocations for connection manager. "
@@ -214,6 +223,11 @@ DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, backend_drain_timeout_ms, 100,
     "skips the wait entirely, which may cause subsequent connection attempts to fail with "
     "'sorry, too many clients already'. Setting it too high can cause Connection Manager "
     "worker threads to block on closing sockets, reducing throughput.");
+
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, socket_listen_backlog, 128,
+    "Maximum number of pending TCP connections queued by the kernel on "
+    "Connection Manager's listening socket (the backlog argument to listen(2)). "
+    "Incoming connections beyond this limit may be refused or dropped during connection bursts.");
 
 namespace {
 
@@ -248,6 +262,9 @@ DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
 
 DEFINE_validator(ysql_conn_mgr_enable_prep_stmt_close,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_optimized_extended_query_protocol));
+
+DEFINE_validator(ysql_conn_mgr_enable_dealloc_reconciliation,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_wait_for_rfq_on_sync));
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -376,7 +393,7 @@ Status YsqlConnMgrWrapper::UpdateAndReloadConfig() {
 }
 
 YsqlConnMgrSupervisor::YsqlConnMgrSupervisor(const YsqlConnMgrConf& conf, key_t stat_shm_key)
-    : conf_(conf), stat_shm_key_(stat_shm_key) {}
+    : ProcessSupervisor(conf.cgroup), conf_(conf), stat_shm_key_(stat_shm_key) {}
 
 std::shared_ptr<ProcessWrapper> YsqlConnMgrSupervisor::CreateProcessWrapper() {
   return std::make_shared<YsqlConnMgrWrapper>(conf_, stat_shm_key_);

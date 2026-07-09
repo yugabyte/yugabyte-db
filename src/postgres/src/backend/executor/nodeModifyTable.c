@@ -2631,6 +2631,19 @@ ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
 												   NULL, NIL);
 	}
 
+	/*
+	 * YB: Skip the AFTER ROW UPDATE trigger call when the planner has
+	 * determined that no row triggers apply (single-row UPDATE fast-path):
+	 * in that mode the old tuple is not fetched, so calling into
+	 * ExecARUpdateTriggers would crash inside the RI checks.
+	 *
+	 * ExecARUpdateTriggers is also the codepath that copies each affected row
+	 * into mt_transition_capture's tuplestore for AFTER STATEMENT triggers
+	 * with REFERENCING OLD/NEW TABLE.  This matters in the inheritance/
+	 * partition case: a child relation may have no triggers of its own, but
+	 * its rows still need to be aggregated into the query target's transition
+	 * table, so we must take this branch for the child too.
+	 */
 	if (!((ModifyTable *) mtstate->ps.plan)->no_row_trigger)
 	{
 		/* AFTER ROW UPDATE Triggers */
@@ -2638,9 +2651,9 @@ ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
 							 NULL, NULL,
 							 tupleid, oldtuple, slot,
 							 recheckIndexes,
-							 (mtstate->operation == CMD_INSERT ?
-							  mtstate->mt_oc_transition_capture :
-							  mtstate->mt_transition_capture),
+							 mtstate->operation == CMD_INSERT ?
+							 mtstate->mt_oc_transition_capture :
+							 mtstate->mt_transition_capture,
 							 false);
 	}
 
@@ -4948,16 +4961,46 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 					 * but attnum passed down from the planner is invalid.
 					 * So, check if the partition requires the "wholerow" before
 					 * extracting the attnum.
-					 * TODO: Skip fetching the target tuples altogether for such
-					 * partitions.
+					 *
+					 * Pass rootResultRelInfo's relation -- the table named in
+					 * the SQL statement (e.g. B for `DELETE FROM B` in an
+					 * A->B->C->D hierarchy) -- so YbWholeRowAttrRequired() can
+					 * account for an AFTER DELETE transition-table trigger on
+					 * it.  No intermediate parents (A, C above) are checked
+					 * because PG only fires statement-level triggers on the
+					 * relation explicitly named in the query.
+					 * TODO: Skip fetching the target tuples altogether for
+					 * partitions that don't need them.
 					 */
 					if (YbWholeRowAttrRequired(resultRelInfo->ri_RelationDesc,
+											   mtstate->rootResultRelInfo->ri_RelationDesc,
 											   operation))
 					{
 						resultRelInfo->ri_YbWholeRowAttNo =
 							ExecFindJunkAttributeInTlist(subplan->targetlist, "wholerow");
 						if (!AttributeNumberIsValid(resultRelInfo->ri_YbWholeRowAttNo))
-							elog(ERROR, "could not find junk wholerow column");
+							/*
+							 * YB: If we need a wholerow attribute but it's not present in the plan,
+							 * it means the plan was generated with an older PG catalog version
+							 * (e.g., before an index was added concurrently) but the executor sees
+							 * the newer catalog. Throw a retryable error.
+							 *
+							 * Note on terminology: Strictly speaking, this is a PG catalog version
+							 * mismatch, not a DocDB table schema version mismatch. However, we intentionally
+							 * use the error message "schema version mismatch" alongside
+							 * ERRCODE_T_R_SERIALIZATION_FAILURE. This explicitly escapes the internal
+							 * backend retry loop (which cannot properly re-plan prepared statements for this
+							 * error), forces a transaction abort, and is already recognized as a benign,
+							 * retryable concurrency error by client-side retry logic and our test frameworks.
+							 * Before the client retries, background catalog propagation or object lock release
+							 * (when enabled) will pull the new catalog and invalidate the stale plan cache.
+							 */
+							ereport(ERROR,
+									(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+									 errmsg("schema version mismatch"),
+									 errdetail("Could not find junk wholerow column. "
+											   "This can happen if a concurrent DDL operation "
+											   "added an index after this query was planned.")));
 					}
 				}
 			}
@@ -5610,6 +5653,21 @@ YbFlushSlotsFromBatch(ModifyTableContext *context,
 			/* ExecModifyTable sets these each iteration */
 			context->planSlot = planSlot;
 			EvalPlanQualSetSlot(&mtstate->mt_epqstate, context->planSlot);
+
+			/*
+			 * YB: For partitioned inserts with AFTER STATEMENT triggers using
+			 * REFERENCING NEW TABLE, ExecPrepareTupleRouting stashed a slot
+			 * pointer in mt_transition_capture->tcs_original_insert_tuple
+			 * when the row was originally routed.  By now that pointer is
+			 * stale -- the input plan has moved on (and may be exhausted),
+			 * so the pointed-to slot's contents have been overwritten or
+			 * cleared.  Re-point it at the deep-copied root-format planSlot
+			 * we kept for this batched row so TransitionTableAddTuple
+			 * captures the right tuple.
+			 */
+			if (mtstate->mt_transition_capture != NULL)
+				mtstate->mt_transition_capture->tcs_original_insert_tuple =
+					planSlot;
 
 			ExprContext *econtext;
 			TupleTableSlot *save_scantuple;

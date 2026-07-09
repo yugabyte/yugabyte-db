@@ -1,8 +1,8 @@
 ---
-title: YugabyteDB Psycopg2 Smart Driver
+title: Yugabyte Psycopg 2 Smart Driver
 headerTitle: Python drivers
 linkTitle: Python drivers
-description: YugabyteDB Psycopg2 Smart Driver for YSQL
+description: Yugabyte Psycopg 2 Smart Driver for YSQL
 tags:
   other: ysql
 aliases:
@@ -20,27 +20,33 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../yugabyte-psycopg2-reference/" class="nav-link active">
-      <img src="/icons/yugabyte.svg"></i>
-      Yugabyte Psycopg2
+      <img src="/icons/yugabyte.svg">
+      YB Psycopg 2
+    </a>
+  </li>
+  <li >
+    <a href="../yugabyte-psycopg3-reference/" class="nav-link">
+      <img src="/icons/yugabyte.svg">
+      YB Psycopg 3
     </a>
   </li>
   <li >
     <a href="../postgres-psycopg2-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG Psycopg2
+      PG Psycopg 2
     </a>
   </li>
   <li >
     <a href="../postgres-psycopg3-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG Psycopg3
+      PG Psycopg 3
     </a>
   </li>
 </ul>
 
-Yugabyte Psycopg2 smart driver is a Python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional connection load balancing features.
+Yugabyte Psycopg 2 smart driver is a Python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional connection load balancing features.
 
-For more information on the YugabyteDB psycopg2 smart driver, see the following:
+For more information on the Yugabyte Psycopg 2 smart driver, see the following:
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
 - [CRUD operations](../yugabyte-psycopg2/)
@@ -49,9 +55,9 @@ For more information on the YugabyteDB psycopg2 smart driver, see the following:
 
 ## Download the driver dependency
 
-Building Psycopg2 requires a few prerequisites (a C compiler and some development packages). Check the [installation instructions](https://www.psycopg.org/docs/install.html#build-prerequisites) and [the FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) for details.
+Building Psycopg 2 requires a few prerequisites (a C compiler and some development packages). Check the [installation instructions](https://www.psycopg.org/docs/install.html#build-prerequisites) and [the FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) for details.
 
-The YugabyteDB Psycopg2 driver requires PostgreSQL version 12 or later (preferably 14).
+The Yugabyte Psycopg 2 driver requires PostgreSQL version 12 or later (preferably 14).
 
 If prerequisites are met, you can install psycopg2-yugabytedb like any other Python package, using pip to download it from [PyPI](https://pypi.org/project/psycopg2-yugabytedb/):
 
@@ -68,7 +74,7 @@ $ sudo python setup.py install
 
 ## Fundamentals
 
-Learn how to perform common tasks required for Python application development using the YugabyteDB Psycopg2 smart driver.
+Learn how to perform common tasks required for Python application development using the YugabyteDB Psycopg 2 smart driver.
 
 ### Load balancing connection properties
 
@@ -129,7 +135,7 @@ conn = yb_pool.getconn()
 
 ## Try it out
 
-This tutorial shows how to use the Yugabyte Psycopg2 driver with YugabyteDB. It starts by creating a 3 node cluster with a replication factor of 3.
+This tutorial shows how to use the Yugabyte Psycopg 2 driver with YugabyteDB. It starts by creating a 3 node cluster with a replication factor of 3.
 
 Next, you use a Python shell terminal to demonstrate the driver's load balancing features by running a few python scripts.
 
@@ -230,4 +236,4 @@ When you're done experimenting, run the following command to destroy the local c
 
 ## Limitations
 
-Currently, [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2) and [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) _cannot_ be used in the same environment.
+Currently, [PostgreSQL Psycopg 2 driver](https://github.com/psycopg/psycopg2) and [Yugabyte Psycopg 2 smart driver](https://github.com/yugabyte/psycopg2) _cannot_ be used in the same environment.

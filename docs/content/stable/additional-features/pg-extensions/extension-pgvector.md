@@ -3,6 +3,8 @@ title: pgvector extension
 headerTitle: pgvector extension
 linkTitle: pgvector
 description: Using the pgvector extension in YugabyteDB
+tags:
+  feature: early-access
 menu:
   stable:
     identifier: extension-pgvector
@@ -241,7 +243,7 @@ SET hnsw.ef_search = 100;
 
     Unlike concurrent index creation on non-vector data types, the index backfill will take an exclusive lock (ACCESS_EXCLUSIVE) on the table, and writes to the table are blocked while index backfill is in progress. {{<issue 26402>}}
 
-- Partial indexes on vector columns are not supported yet.
+- Partial indexes on vector columns are not supported yet. {{<issue 31441>}}
 - Vector indexes are not supported for [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 - [Time travel queries](../../../manage/backup-restore/time-travel-query/) are not currently supported. {{<issue 20829>}}
 

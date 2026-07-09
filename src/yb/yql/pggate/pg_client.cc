@@ -227,9 +227,28 @@ class PgTimeout {
 };
 
 constexpr int32_t kUnknownClusterConfigVersion = -1;
-} // namespace
 
-namespace {
+class BigSharedMemoryDescriptor {
+ public:
+  uint64_t id() const { return id_; }
+  void* data() const { return region_.get_address(); }
+
+  static Result<BigSharedMemoryDescriptor> Make(const std::string& instance_id, uint64_t id) {
+    auto object = VERIFY_RESULT(InterprocessSharedMemoryObject::Open(
+        tserver::MakeSharedMemoryBigSegmentName(instance_id, id)));
+    return BigSharedMemoryDescriptor(id, std::move(object), VERIFY_RESULT(object.Map()));
+  }
+
+ private:
+  BigSharedMemoryDescriptor(
+      uint64_t id, InterprocessSharedMemoryObject&& object, InterprocessMappedRegion&& region)
+      : id_(id), object_(std::move(object)), region_(std::move(region)) {
+  }
+
+  uint64_t id_;
+  InterprocessSharedMemoryObject object_;
+  InterprocessMappedRegion region_;
+};
 
 class FetchBigDataCallback {
  public:
@@ -249,6 +268,11 @@ class BigDataFetcher {
  public:
   virtual void FetchBigData(uint64_t data_id, FetchBigDataCallback* callback) = 0;
   virtual Result<Slice> FetchBigSharedMemory(uint64_t id, size_t size) = 0;
+  // Marks whether a response stored in a big shared memory segment has been announced via the
+  // exchange but not yet loaded and released. Used as a sanity check: the exchange must not be
+  // reused for the next request while such a response is pending, otherwise the tserver could
+  // reclaim the still-in-use segment.
+  virtual void SetBigSharedMemoryResponsePending(bool pending) = 0;
   virtual ~BigDataFetcher() = default;
 };
 
@@ -445,24 +469,26 @@ struct PgClientData : public FetchBigDataCallback {
   template <class Res>
   Res FetchBigSharedMemory(size_t encoded_id_and_size) {
     if constexpr (std::is_same_v<Res, bool>) {
+      // The response is ready, but its load is deferred to the blocking fetch below. Mark the
+      // segment as pending, so that reusing the exchange before the deferred load releases the
+      // segment is caught as a sanity check.
+      big_data_fetcher->SetBigSharedMemoryResponsePending(true);
       return true;
-    }
-    using Traits = ResponseReadyTraits<Res>;
-    auto id = encoded_id_and_size >> tserver::kBigSharedMemoryIdShift;
-    auto size = encoded_id_and_size & ((1ULL << tserver::kBigSharedMemoryIdShift) - 1);
-    auto slice_res = big_data_fetcher->FetchBigSharedMemory(id, size);
-    if (!slice_res) {
-      if constexpr (std::is_same_v<Res, bool>) {
-        return true;
-      } else {
+    } else {
+      using Traits = ResponseReadyTraits<Res>;
+      auto id = encoded_id_and_size >> tserver::kBigSharedMemoryIdShift;
+      auto size = encoded_id_and_size & ((1ULL << tserver::kBigSharedMemoryIdShift) - 1);
+      auto slice_res = big_data_fetcher->FetchBigSharedMemory(id, size);
+      big_data_fetcher->SetBigSharedMemoryResponsePending(false);
+      if (!slice_res) {
         return slice_res.status();
       }
+      auto slice = *slice_res;
+      auto& in_use = *pointer_cast<std::atomic<bool>*>(slice.mutable_data());
+      auto result = Traits::FromSlice(slice.WithoutPrefix(sizeof(std::atomic<bool>)));
+      in_use.store(false);
+      return result;
     }
-    auto slice = *slice_res;
-    auto& in_use = *pointer_cast<std::atomic<bool>*>(slice.mutable_data());
-    auto result = Traits::FromSlice(slice.WithoutPrefix(sizeof(std::atomic<bool>)));
-    in_use.store(false);
-    return result;
   }
 
   template <class Res>
@@ -672,7 +698,8 @@ static PggateRPC kDebugLogRPCs[] = {
   PggateRPC::kReleaseAdvisoryLock,
   PggateRPC::kAcquireObjectLock,
   PggateRPC::kTruncateTable,
-  PggateRPC::kReleaseSessionObjectLock
+  PggateRPC::kReleaseSessionObjectLock,
+  PggateRPC::kWaitForLockersMultiple
 };
 
 class PgClient::Impl : public BigDataFetcher {
@@ -850,6 +877,17 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Status ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id) {
+    tserver::PgResetAutoAnalyzeMutationCountersRequestPB req;
+    tserver::PgResetAutoAnalyzeMutationCountersResponsePB resp;
+    req.set_database_oid(table_id.database_oid);
+    req.set_table_relfilenode_oid(table_id.object_oid);
+    RETURN_NOT_OK(DoSyncRPC(
+        &PgClientServiceProxy::ResetAutoAnalyzeMutationCounters, req, resp,
+        PggateRPC::kResetAutoAnalyzeMutationCounters));
+    return ResponseStatus(resp);
+  }
+
   Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode) {
     tserver::PgFinishTransactionRequestPB req;
     req.set_session_id(session_id_);
@@ -898,6 +936,20 @@ class PgClient::Impl : public BigDataFetcher {
     RETURN_NOT_OK(proxy_.GetDatabaseInfo(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.info();
+  }
+
+  Result<PgClient::DbColocationInfo> IsDatabaseColocated(uint32_t oid) {
+    tserver::PgIsDatabaseColocatedRequestPB req;
+    req.set_database_oid(oid);
+
+    tserver::PgIsDatabaseColocatedResponsePB resp;
+
+    RETURN_NOT_OK(DoSyncRPC(
+        &PgClientServiceProxy::IsDatabaseColocated, req, resp, PggateRPC::kIsDatabaseColocated));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return PgClient::DbColocationInfo{
+        .colocated = resp.colocated(),
+        .legacy_colocated_database = resp.legacy_colocated_database()};
   }
 
   Result<bool> PollVectorIndexReady(const PgObjectId& table_id) {
@@ -1058,6 +1110,12 @@ class PgClient::Impl : public BigDataFetcher {
       constexpr size_t kHeaderSize = sizeof(uint8_t) + sizeof(uint64_t);
       const size_t kMetadataSize = metadata.SerializedSize();
       auto& exchange = session_shared_mem_->exchange();
+      // Sanity check: the exchange must not be reused while a big shared memory response from a
+      // previous request has been announced but not yet loaded and released. Otherwise the tserver
+      // would observe the in-use segment on this request and reclaim it as abandoned, while we
+      // still intend to load it (see PgClientSession::ReleaseAbandonedBigSharedMemSegment).
+      LOG_IF(DFATAL, big_shared_memory_response_pending_)
+          << "Reusing shared exchange while a big shared memory response is still pending";
       auto out = exchange.Obtain(kHeaderSize + kMetadataSize + data->req.SerializedSize());
       if (out) {
         data->StartSharedMemorySpan();
@@ -1195,16 +1253,16 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<Slice> FetchBigSharedMemory(uint64_t id, size_t size) override {
-    if (id != big_shared_memory_id_) {
-      big_mapped_region_ = {};
-      big_shared_memory_object_ = {};
-      big_shared_memory_object_ = VERIFY_RESULT(InterprocessSharedMemoryObject::Open(
-          tserver::MakeSharedMemoryBigSegmentName(session_shared_mem_->instance_id(), id)));
-      big_mapped_region_ = VERIFY_RESULT(big_shared_memory_object_.Map());
+    if (!big_shared_memory_ || big_shared_memory_->id() != id) {
+      big_shared_memory_.emplace(
+          VERIFY_RESULT(BigSharedMemoryDescriptor::Make(session_shared_mem_->instance_id(), id)));
     }
     return Slice(
-        static_cast<const char*>(big_mapped_region_.get_address()),
-        size + sizeof(std::atomic<bool>));
+        static_cast<const char*>(big_shared_memory_->data()), size + sizeof(std::atomic<bool>));
+  }
+
+  void SetBigSharedMemoryResponsePending(bool pending) override {
+    big_shared_memory_response_pending_ = pending;
   }
 
   void PrepareOperations(tserver::LWPgPerformRequestPB* req, const PgsqlOps& operations) {
@@ -1463,6 +1521,18 @@ class PgClient::Impl : public BigDataFetcher {
       return StatusFromPB(resp.status());
     }
     return resp.is_object_part_of_xrepl();
+  }
+
+  Result<bool> IsNamespacePartOfCDCSDK(uint32_t database_oid) {
+    tserver::PgIsNamespacePartOfCDCSDKRequestPB req;
+    tserver::PgIsNamespacePartOfCDCSDKResponsePB resp;
+    req.set_database_oid(database_oid);
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::IsNamespacePartOfCDCSDK,
+        req, resp, PggateRPC::kIsNamespacePartOfCDCSDK));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+    return resp.is_namespace_part_of_cdcsdk();
   }
 
   Status EnumerateActiveTransactions(
@@ -2052,9 +2122,8 @@ class PgClient::Impl : public BigDataFetcher {
 
   const WaitEventWatcher& wait_event_watcher_;
 
-  uint64_t big_shared_memory_id_;
-  InterprocessSharedMemoryObject big_shared_memory_object_;
-  InterprocessMappedRegion big_mapped_region_;
+  std::optional<BigSharedMemoryDescriptor> big_shared_memory_;
+  bool big_shared_memory_response_pending_ = false;
   ThreadSafeArena object_locks_arena_;
   std::atomic<uint64_t>& next_perform_op_serial_no_;
 
@@ -2127,9 +2196,17 @@ Result<tserver::PgQueryAutoAnalyzeResponsePB> PgClient::QueryAutoAnalyze(PgOid d
     return impl_->QueryAutoAnalyze(db_oid);
 }
 
+Status PgClient::ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id) {
+  return impl_->ResetAutoAnalyzeMutationCounters(table_id);
+}
+
 
 Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oid) {
   return impl_->GetDatabaseInfo(oid);
+}
+
+Result<PgClient::DbColocationInfo> PgClient::IsDatabaseColocated(uint32_t oid) {
+  return impl_->IsDatabaseColocated(oid);
 }
 
 Result<bool> PgClient::PollVectorIndexReady(const PgObjectId& table_id) {
@@ -2289,6 +2366,10 @@ Result<bool> PgClient::CheckIfPitrActive() {
 
 Result<bool> PgClient::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return impl_->IsObjectPartOfXRepl(table_id);
+}
+
+Result<bool> PgClient::IsNamespacePartOfCDCSDK(uint32_t database_oid) {
+  return impl_->IsNamespacePartOfCDCSDK(database_oid);
 }
 
 Result<TableKeyRanges> PgClient::GetTableKeyRanges(

@@ -169,6 +169,10 @@ struct VisitDoDecodeValueV2 {
     return Binary();
   }
 
+  Status Bson() const {
+    return Binary();
+  }
+
   template <class T>
   Status Primitive() const {
 #ifdef IS_LITTLE_ENDIAN
@@ -357,6 +361,10 @@ struct EncoderProvider {
   PgWireEncoder Vector() const {
     return EncodeVector<kLast>;
   }
+
+  PgWireEncoder Bson() const {
+    return EncodeBinary<kLast>;
+  }
 };
 
 Result<const char*> StripHybridTime(const char* begin, const char* end) {
@@ -475,13 +483,18 @@ struct PrimitiveValueDecoder<bool> {
   }
 };
 
-template <bool kAppendZero, char kValueType>
+template <char... kValueTypes>
+bool MatchesValueType(char c) {
+  return ((c == kValueTypes) || ...);
+}
+
+template <bool kAppendZero, char... kValueTypes>
 struct BinaryValueDecoder {
   bool V1(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
     if (PREDICT_FALSE(begin == end)) {
       return false;
     }
-    if (PREDICT_FALSE(*begin != kValueType)) {
+    if (PREDICT_FALSE(!MatchesValueType<kValueTypes...>(*begin))) {
       return false;
     }
     row->SetBinary(projection_index, Slice(++begin, end), kAppendZero);
@@ -590,6 +603,11 @@ struct GetPackedColumnDecoderVisitorV2 {
   }
 
   PackedColumnDecoderV2 Vector() const {
+    return Apply<BinaryValueDecoder<
+        false, ValueEntryTypeAsChar::kString, ValueEntryTypeAsChar::kVector>>();
+  }
+
+  PackedColumnDecoderV2 Bson() const {
     return Binary();
   }
 
@@ -620,6 +638,11 @@ struct GetPackedColumnDecoderVisitorV1 {
   }
 
   PackedColumnDecoderV1 Vector() const {
+    return Apply<BinaryValueDecoder<
+        false, ValueEntryTypeAsChar::kString, ValueEntryTypeAsChar::kVector>>();
+  }
+
+  PackedColumnDecoderV1 Bson() const {
     return Binary();
   }
 

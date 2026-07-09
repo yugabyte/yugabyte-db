@@ -345,9 +345,15 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 		"Target-Session-Attrs", "", 15, /* sizeof("prefer-standby") = 15 */
 	offsetof(struct pg_conn, target_session_attrs)},
 
-	{"yb_auto_analyze", NULL, NULL, NULL,
-		"YB-Auto-Analyze", "", 6, /* sizeof("false") = 6 */
-	offsetof(struct pg_conn, yb_auto_analyze)},
+	/*
+	 * Wire name of one of the YbInternalConnKind values (see
+	 * src/include/yb_internal_conn.h). The tserver sets this on connections
+	 * it opens to its own postgres so the backend knows which dedicated
+	 * BackendType to take on (and which preload/auth behavior to apply).
+	 */
+	{"yb_internal_conn_kind", NULL, NULL, NULL,
+		"YB-Internal-Conn-Kind", "", 32,
+	offsetof(struct pg_conn, yb_internal_conn_kind)},
 
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL, NULL, NULL,
@@ -4185,8 +4191,8 @@ freePGconn(PGconn *conn)
 		free(conn->rowBuf);
 	if (conn->target_session_attrs)
 		free(conn->target_session_attrs);
-	if (conn->yb_auto_analyze)
-		free(conn->yb_auto_analyze);
+	if (conn->yb_internal_conn_kind)
+		free(conn->yb_internal_conn_kind);
 	termPQExpBuffer(&conn->errorMessage);
 	termPQExpBuffer(&conn->workBuffer);
 

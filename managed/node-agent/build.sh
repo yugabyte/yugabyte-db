@@ -209,7 +209,14 @@ run_test() {
     pushd "$project_dir"
     echo "Running tests in ${dir}..."
     set +e
-    go clean -testcache && go test -short --tags testonly -v ./"$dir"/...
+    go clean -testcache
+    mkdir -p "target/test-reports/${dir}"
+    local json_file="target/test-reports/${dir}/tmp_results.json"
+    local xml_file="target/test-reports/${dir}/node_agent_test_results.xml"
+    go test -json -short --tags testonly ./"$dir"/... > "$json_file"
+    if [ -s "$json_file" ]; then
+        go-junit-report -parser gojson -set-exit-code -iocopy -out "$xml_file" < "$json_file"
+    fi
     status=$?
     set -e
     popd
@@ -220,12 +227,16 @@ run_tests() {
     local testone_path="${1-}"
     # Run all tests if one fails.
     local failed_tests=()
+    go install github.com/jstemmer/go-junit-report/v2@v2.1.0
     pushd "$project_dir"
+    mkdir -p target/test-reports
     if [ -n "$testone_path" ]; then
-        run_test "$testone_path"
-        if [ $? -ne 0 ]; then
-            failed_tests+=("$testone_path")
-        fi
+        # E.g testone app/task/module.
+        local test_files=$(find "${testone_path}" -name '*_test.go')
+        for test_file in $test_files; do
+            local test_dir=$(dirname "$test_file")
+            run_test "$test_dir"
+        done
     else
         for dir in */ ; do
             # Remove trailing slash.

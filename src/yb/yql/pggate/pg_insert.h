@@ -35,9 +35,9 @@ class PgInsert final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kInsert> {
   static Result<std::unique_ptr<PgInsert>> Make(
       const PgSessionPtr& pg_session, const PgObjectId& table_id,
       const YbcPgTableLocalityInfo& locality_info,
-      YbcPgTransactionSetting transaction_setting, bool packed) {
+      YbcPgTransactionSetting transaction_setting, bool skip_intents_write, bool packed) {
     std::unique_ptr<PgInsert> result{new PgInsert{pg_session, transaction_setting, packed}};
-    RETURN_NOT_OK(result->Prepare(table_id, locality_info));
+    RETURN_NOT_OK(result->Prepare(table_id, locality_info, skip_intents_write));
     return result;
   }
 

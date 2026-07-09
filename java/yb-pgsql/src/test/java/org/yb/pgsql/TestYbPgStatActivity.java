@@ -22,13 +22,14 @@ import java.sql.Connection;
 import java.sql.Statement;
 
 import org.junit.Test;
-import org.junit.Assume;
 import org.junit.runner.RunWith;
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.SystemUtil;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestYbPgStatActivity extends BasePgSQLTest {
   private final class MemoryStats {
     final Long allocatedMem;
@@ -148,9 +149,8 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
   }
 
   @Test
+  @BypassConnMgr(reason = CATALOG_CACHE_MISS_NEED_UNIQUE_PHYSICAL_CONN)
   public void testSetMemoryTracking() throws Exception {
-    Assume.assumeFalse(CATALOG_CACHE_MISS_NEED_UNIQUE_PHYSICAL_CONN,
-          isTestRunningWithConnectionManager());
     forceCatalogCacheRefresh();
     try (Statement stmt = connection.createStatement()) {
       consumeMem(stmt);
@@ -203,8 +203,8 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
   }
 
   @Test
+  @BypassConnMgr(reason = BasePgSQLTest.SAME_PHYSICAL_CONN_AFFECTING_DIFF_LOGICAL_CONNS_MEM)
   public void testMemUsageFuncsWithMultipleBackends() throws Exception {
-    skipYsqlConnMgr(BasePgSQLTest.SAME_PHYSICAL_CONN_AFFECTING_DIFF_LOGICAL_CONNS_MEM);
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Connection connection2 = getConnectionBuilder().withTServer(0).connect();
          Connection connection3 = getConnectionBuilder().withTServer(0).connect();
@@ -277,9 +277,8 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
   }
 
   @Test
+  @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testMemUsageOfQueryFromPgStatActivity() throws Exception {
-    skipYsqlConnMgr(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED);
-
     // Skip test if the current yb instance is a sanitized build.
     // as the test checks o/p of columns in pg_stat_activity and not the
     // called function.

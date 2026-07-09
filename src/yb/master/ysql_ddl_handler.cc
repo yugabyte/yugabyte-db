@@ -16,6 +16,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master.h"
+#include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/object_lock_info_manager.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
@@ -23,6 +24,7 @@
 
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 
 DEFINE_RUNTIME_bool(retry_if_ddl_txn_verification_pending, true,
@@ -60,6 +62,7 @@ DEFINE_test_flag(int32, ysql_ddl_atomicity_alter_table_request_delay_ms, 0,
   "Inject delay before sending ALTER TABLE request as part of DDL atomicity rollback.");
 
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 
 using namespace std::placeholders;
 using std::shared_ptr;
@@ -140,6 +143,7 @@ bool CatalogManager::CreateOrUpdateDdlTxnVerificationState(
             << " for schema comparison for transaction " << txn;
   ysql_ddl_txn_verfication_state_map_.emplace(txn.transaction_id,
       YsqlDdlTransactionState{TxnState::kUnknown,
+                              txn.status_tablet,
                               YsqlDdlVerificationState::kDdlInProgress,
                               {table}, {} /* processed_tables */, {} /* nochange_tables */});
   return true;
@@ -371,8 +375,15 @@ Status CatalogManager::ReportYsqlDdlTxnStatus(
       "Received ReportYsqlDdlTxnStatus request without transaction id");
   // When req->is_committed() is known (i.e., not kNoChange), the first argument table is not
   // needed.
-  return YsqlDdlTxnCompleteCallback(nullptr /* table */, req_txn, req->is_committed(),
-                                    epoch, __FUNCTION__);
+  RETURN_NOT_OK(YsqlDdlTxnCompleteCallback(
+      nullptr /* table */, req_txn, req->is_committed(), epoch, __FUNCTION__));
+
+  if (FLAGS_enable_heartbeat_pg_catalog_versions_cache) {
+    // Best effort refresh of catalog version cache. Bg task
+    // will refresh it anyway.
+    (void)RefreshPgCatalogVersionCache();
+  }
+  return Status::OK();
 }
 
 struct YsqlTableDdlTxnState {
@@ -980,22 +991,26 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
 }
 
 void CatalogManager::TriggerDdlVerificationForPostProcessingFailedTxns(const LeaderEpoch& epoch) {
-  std::vector<TransactionId> txn_ids;
+  std::vector<TransactionMetadata> txns;
   {
     LockGuard lock(ddl_txn_verifier_mutex_);
     for (const auto& [txn_id, verifier_state] : ysql_ddl_txn_verfication_state_map_) {
       if (verifier_state.state == YsqlDdlVerificationState::kDdlPostProcessingFailed) {
-        txn_ids.push_back(txn_id);
+        DCHECK(!verifier_state.txn_status_tablet.empty())
+            << Format("Missing status tablet for DDL verification txn $0", txn_id);
+        TransactionMetadata txn_meta;
+        txn_meta.transaction_id = txn_id;
+        txn_meta.status_tablet = verifier_state.txn_status_tablet;
+        txns.push_back(txn_meta);
       }
     }
   }
 
-  for (const auto& txn_id : txn_ids) {
-    TransactionMetadata txn_meta;
-    txn_meta.transaction_id = txn_id;
+  for (const auto& txn_meta : txns) {
     WARN_NOT_OK(
         TriggerDdlVerificationIfNeeded(txn_meta, epoch),
-        Format("Failed to re-trigger DDL verification for transaction $0", txn_meta));
+        Format(
+            "Failed to re-trigger DDL verification for transaction $0", txn_meta.transaction_id));
   }
 }
 

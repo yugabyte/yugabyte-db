@@ -37,6 +37,8 @@ properties:
     x-yba-api-visibility: internal
   networking_spec:
     $ref: "./UniverseNetworkingSpec.yaml"
+  universe_settings:
+    $ref: "./UniverseSettings.yaml"
   clusters:
     type: array
     items:

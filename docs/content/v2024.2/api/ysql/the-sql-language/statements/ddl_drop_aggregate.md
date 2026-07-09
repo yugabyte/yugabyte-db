@@ -72,6 +72,7 @@ yugabyte=# DROP AGGREGATE newcnt(*) CASCADE;
 
 ## See also
 
+- [ALTER AGGREGATE](../ddl_alter_aggregate)
 - [CREATE AGGREGATE](../ddl_create_aggregate)
 
 [postgresql-docs-drop-aggregate]: https://www.postgresql.org/docs/11/sql-dropaggregate.html

@@ -12,6 +12,7 @@ import java.sql.Statement;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.After;
@@ -22,7 +23,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.YBTestRunner;
-import org.yb.util.BuildTypeUtil;
 import org.yb.util.json.Checker;
 import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
@@ -309,9 +309,9 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
 
   @Test
   public void testParallelReadWithConcurrentAlters() throws Exception {
-    final int NUM_ITERATIONS =
-        (BuildTypeUtil.isASAN() || BuildTypeUtil.isTSAN()) ? 20 : 100;
+    final int NUM_ITERATIONS = 100;
     final AtomicBoolean stop = new AtomicBoolean(false);
+    final AtomicInteger ddlIterations = new AtomicInteger(0);
     final AtomicReference<Exception> readerError = new AtomicReference<>();
     final AtomicReference<Exception> ddlError = new AtomicReference<>();
     final CountDownLatch readerStarted = new CountDownLatch(1);
@@ -331,6 +331,8 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
         }
       } catch (Exception e) {
         readerError.set(e);
+      } finally {
+        stop.set(true);
       }
     });
 
@@ -342,7 +344,7 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
                  .withAutoCommit(ENABLED)
                  .connect();
              Statement stmt = conn.createStatement()) {
-          for (int i = 0; i < NUM_ITERATIONS && readerError.get() == null; i++) {
+          for (int i = 0; i < NUM_ITERATIONS && !stop.get(); i++) {
             String colName = "ddl_col_" + i;
             stmt.execute(String.format(
                 "ALTER TABLE %s ADD COLUMN %s INT DEFAULT %d",
@@ -352,6 +354,7 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
             stmt.execute(String.format(
                 "ALTER TABLE %s DROP COLUMN %s", MAIN_TABLE, colName));
             LOG.info("Dropped column {}", colName);
+            ddlIterations.incrementAndGet();
           }
         }
       } catch (Exception e) {
@@ -365,7 +368,13 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
     ddlThread.start();
 
     ddlThread.join(120_000);
-    readerThread.join(10_000);
+    // Signal stop to the reader thread so it can exit if ddlThread is stuck.
+    LOG.info("Stopping the threads");
+    stop.set(true);
+    readerThread.join(30_000);
+    LOG.info("Reader thread has joined or timed out");
+    ddlThread.join(30_000);
+    LOG.info("DDL thread has joined or timed out");
 
     if (ddlError.get() != null) {
       throw new AssertionError("DDL thread failed", ddlError.get());
@@ -374,6 +383,16 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
       throw new AssertionError(
           "Parallel reader failed during concurrent DDL",
           readerError.get());
+    }
+    if (ddlIterations.get() == 0) {
+      throw new AssertionError("DDL thread failed to execute any DDLs");
+    }
+
+    if (ddlThread.isAlive() || readerThread.isAlive()) {
+      throw new AssertionError(String.format(
+          "Worker threads did not exit before timeout "
+              + "(ddlAlive=%s, readerAlive=%s); @After cleanup may fail",
+          ddlThread.isAlive(), readerThread.isAlive()));
     }
   }
 }

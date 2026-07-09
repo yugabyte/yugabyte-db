@@ -625,12 +625,12 @@ public class TestRelcacheUpdate extends BasePgSQLTest {
   }
 
   @Test
+  @BypassConnMgr(reason = BasePgSQLTest.RELCACHE_INIT_NEEDS_NEW_BACKEND)
   public void testRelcacheInitConnectionStress() throws Exception {
-    skipYsqlConnMgr(BasePgSQLTest.RELCACHE_INIT_NEEDS_NEW_BACKEND);
     boolean isSanitizerBuild = BuildTypeUtil.isASAN() || BuildTypeUtil.isTSAN();
     // Number of databases and connections per DB.
-    final int NUM_DATABASES = 10;
-    final int CONNECTIONS_PER_DB = isSanitizerBuild ? 10 : 20;
+    final int NUM_DATABASES = isSanitizerBuild ? 2 : 10;
+    final int CONNECTIONS_PER_DB = isSanitizerBuild ? 5 : 20;
     final String TEST_USER = "test_user";
 
     // --- Setup ---
@@ -692,6 +692,8 @@ public class TestRelcacheUpdate extends BasePgSQLTest {
       if (isSanitizerBuild) {
         // Set to 60 second timeout for slower builds.
         props.setProperty("sslResponseTimeout", "60000");
+        props.setProperty("loginTimeout", "120");
+        props.setProperty("socketTimeout", "120");
       }
       for (String dbName : dbNames) {
         for (int j = 0; j < CONNECTIONS_PER_DB; j++) {
@@ -780,9 +782,24 @@ public class TestRelcacheUpdate extends BasePgSQLTest {
     double avgRSS = (double)totalRSS / count;
     LOG.info("minRSS {}, maxRSS {}", minRSS, maxRSS);
     LOG.info("count {}, totalRSS {}, avgRSS {}", count, totalRSS, avgRSS);
-    // Assert the variations between connections are less than 20%.
-    double maxVariationPercent = (double)(maxRSS - minRSS) / minRSS;
-    LOG.info("maxVariationPercent {}", maxVariationPercent);
-    assertTrue("Expected maxVariationPercent less than 20%", maxVariationPercent < 0.20);
+    // Sanitizer build types take up a lot more overall memory. We do different
+    // types of assertion for santizier builds and non-santizier builds.
+    if (isSanitizerBuild) {
+      // Assert the variations between connections are less than 60% for ASAN
+      // and 30% for TSAN.
+      double maxVariationPercent = (double)(maxRSS - minRSS) / minRSS;
+      double expectedPercent = BuildTypeUtil.isASAN() ? 0.60 : 0.30;
+      LOG.info("maxVariationPercent {}", maxVariationPercent);
+      assertTrue(String.format("Expected maxVariationPercent less than %.2f%%, but was %.2f%%",
+                               expectedPercent, maxVariationPercent),
+                 maxVariationPercent < expectedPercent);
+    } else {
+      // Assert the absolute variation between connections is less than 30 MB.
+      long maxVariationKB = maxRSS - minRSS;
+      LOG.info("maxVariationKB {}", maxVariationKB);
+      assertTrue(String.format("Expected maxVariationKB less than 30 MB, but was %d KB",
+                               maxVariationKB),
+                 maxVariationKB < 30 * 1024);
+    }
   }
 }

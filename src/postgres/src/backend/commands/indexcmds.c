@@ -1023,208 +1023,13 @@ DefineIndex(Oid relationId,
 		!YbIsConnectedToTemplateDb() &&
 		YbGetTableProperties(rel)->is_colocated;
 
-	if (IsYugaByteEnabled())
-	{
-		/* Use tablegroup of the indexed table, if any. */
-		tablegroupId = YbTablegroupCatalogExists && IsYBRelation(rel) ?
-			YbGetTableProperties(rel)->tablegroup_oid :
-			InvalidOid;
-
-		bool		is_colocated_via_database = is_colocated && MyDatabaseColocated;
-		bool		is_colocated_tables_with_tablespace_enabled =
-			*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
-
-		/*
-		 * For colocated index tables in a colocation database, the implicit
-		 * tablegroup of the index depends on tablespace specified. If no tablespace
-		 * is specified we use the default implicit tablegroup.
-		 */
-		if (is_colocated_tables_with_tablespace_enabled &&
-			is_colocated_via_database && !MyColocatedDatabaseLegacy)
-		{
-			char	   *tablegroup_name = NULL;
-
-			if (OidIsValid(tablespaceId))
-			{
-				/*
-				 * We look in pg_shdepend rather than directly use the derived name,
-				 * as later we might need to associate an existing implicit tablegroup to a tablespace
-				 */
-				shdepFindImplicitTablegroup(tablespaceId, &tablegroupId);
-
-				/*
-				 * If we do not find a tablegroup corresponding to the given tablespace, we
-				 * would have to create one. We derive the name from tablespace OID.
-				 */
-				tablegroup_name = OidIsValid(tablegroupId) ? get_tablegroup_name(tablegroupId) :
-					get_implicit_tablegroup_name(tablespaceId);
-
-			}
-			else if (yb_binary_restore && OidIsValid(binary_upgrade_next_tablegroup_oid))
-			{
-				/*
-				 * In yb_binary_restore if tablespaceId is not valid but
-				 * binary_upgrade_next_tablegroup_oid is valid, that implies either:
-				 * 1. it is a default tablespace.
-				 * 2. we are restoring without tablespace information.
-				 * In this case all tables are restored to default tablespace,
-				 * while maintaining the colocation properties, and tablegroup's name
-				 * will be colocation_restore_tablegroupId, while default tablegroup's
-				 * name would still be default.
-				 */
-				tablegroup_name = (binary_upgrade_next_tablegroup_default ?
-								   DEFAULT_TABLEGROUP_NAME :
-								   get_restore_tablegroup_name(binary_upgrade_next_tablegroup_oid));
-				binary_upgrade_next_tablegroup_default = false;
-				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
-			}
-			else if (yb_binary_restore && OidIsValid(tablegroupId))
-			{
-				/*
-				 * This case handles Primary Key's tablegroup id. The variable
-				 * tablegroupId stores the tablegroupId of the parent table.
-				 */
-				tablegroup_name = get_tablegroup_name(tablegroupId);
-			}
-			else
-			{
-				tablegroup_name = DEFAULT_TABLEGROUP_NAME;
-				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
-			}
-
-			char	   *tablespace_name = (OidIsValid(tablespaceId) ?
-										   get_tablespace_name(tablespaceId) :
-										   NULL);
-
-			/* Tablegroup doesn't exist, so create it. */
-			if (!OidIsValid(tablegroupId))
-			{
-				/*
-				 * Regardless of the current user, let postgres be the owner of the
-				 * implicit tablegroup in a colocated database.
-				 */
-				RoleSpec   *spec = makeNode(RoleSpec);
-
-				spec->roletype = ROLESPEC_CSTRING;
-				spec->rolename = pstrdup("postgres");
-
-				YbCreateTableGroupStmt *tablegroup_stmt = makeNode(YbCreateTableGroupStmt);
-
-				tablegroup_stmt->tablegroupname = tablegroup_name;
-				tablegroup_stmt->tablespacename = tablespace_name;
-				tablegroup_stmt->implicit = true;
-				tablegroup_stmt->owner = spec;
-				tablegroupId = CreateTableGroup(tablegroup_stmt);
-			}
-		}
-		/*
-		 * Reset the binary_upgrade params as these are not needed anymore (only
-		 * required in CreateTableGroup), to ensure these parameter values are
-		 * not reused in subsequent unrelated statements.
-		 */
-		binary_upgrade_next_tablegroup_oid = InvalidOid;
-		binary_upgrade_next_tablegroup_default = false;
-
-
-		if (stmt->split_options)
-		{
-			if (MyDatabaseColocated && is_colocated)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("cannot create colocated index with split option")));
-			else if (OidIsValid(tablegroupId))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("cannot use TABLEGROUP with SPLIT")));
-		}
-
-		colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
-
-		if (OidIsValid(colocation_id))
-		{
-			if (!is_colocated)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("cannot set colocation_id for non-colocated index")));
-			if (OidIsValid(yb_binary_upgrade_next_colocation_id))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("cannot set yb_binary_upgrade_next_colocation_id for colocated index")));
-		}
-		else if (OidIsValid(yb_binary_upgrade_next_colocation_id))
-		{
-			if (!is_colocated)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("cannot set colocation_id for non-colocated index")));
-			colocation_id = yb_binary_upgrade_next_colocation_id;
-			yb_binary_upgrade_next_colocation_id = InvalidOid;
-		}
-
-		/*
-		 * Fail if the index is colocated via tablegroup and tablespace
-		 * is specified while creation.
-		 */
-		if (OidIsValid(tablespaceId) && is_colocated && !MyDatabaseColocated)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
-
-		/*
-		 * YB: Check permissions for tablegroup. To create an index within a
-		 * tablegroup, a user must either be a superuser, the owner of the
-		 * tablegroup, or have create perms on it. Skip the check in a colocated
-		 * database because any user can create tables in an implicit
-		 * tablegroup. Skip the check during binary upgrade because ACLs have
-		 * not yet been restored, and CREATE INDEX, unlike CREATE TABLE, is
-		 * normally run as the table owner due to CVE-2022-1552. (See upstream
-		 * PG commit a117cebd638dd02e5c2e791c25e43745f233111b for details.)
-		 */
-		if (!MyDatabaseColocated && !IsBinaryUpgrade &&
-			OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
-		{
-			AclResult	aclresult;
-
-			aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
-			if (aclresult != ACLCHECK_OK)
-				aclcheck_error(aclresult, OBJECT_YBTABLEGROUP,
-							   get_tablegroup_name(tablegroupId));
-		}
-	}
-
 	/*
-	 * Force shared indexes into the pg_global tablespace.  This is a bit of a
-	 * hack but seems simpler than marking them in the BKI commands.  On the
-	 * other hand, if it's not shared, don't allow it to be placed there.
-	 */
-	if (relIsShared)
-		tablespaceId = GLOBALTABLESPACE_OID;
-	else if (tablespaceId == GLOBALTABLESPACE_OID)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("only shared relations can be placed in pg_global tablespace")));
-
-	/*
-	 * Choose the index column names.
-	 */
-	indexColNames = ChooseIndexColumnNames(allIndexParams);
-
-	/*
-	 * Select name for index if caller didn't specify
-	 */
-	indexRelationName = stmt->idxname;
-	if (indexRelationName == NULL)
-		indexRelationName = ChooseIndexName(RelationGetRelationName(rel),
-											namespaceId,
-											indexColNames,
-											stmt->excludeOpNames,
-											stmt->primary,
-											stmt->isconstraint);
-
-	/*
+	 * YB: the access method computation block has been moved up here so the implicit tablegroup
+	 * selection code can pivot on whether this index is copartitioned.
+	 *
 	 * look up the access method, verify it can handle the requested features
 	 */
-	accessMethodName = stmt->accessMethod;
+	accessMethodName = stmt->accessMethod; /* YB move access method computation */
 
 	/*
 	 * In Yugabyte mode, switch index method from "btree" or "hash" to "lsm" depending on whether
@@ -1292,10 +1097,228 @@ DefineIndex(Oid relationId,
 					 errmsg("access method \"%s\" does not exist",
 							accessMethodName)));
 	}
-
 	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
 	accessMethodId = accessMethodForm->oid;
 	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);
+	/* YB end of moved access method computation hunk */
+
+	if (IsYugaByteEnabled())
+	{
+		/* Use tablegroup of the indexed table, if any. */
+		tablegroupId = YbTablegroupCatalogExists && IsYBRelation(rel) ?
+			YbGetTableProperties(rel)->tablegroup_oid :
+			InvalidOid;
+
+		bool		is_colocated_via_database = is_colocated && MyDatabaseColocated;
+		bool		is_colocated_tables_with_tablespace_enabled =
+			*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+
+		/*
+		 * A copartitioned index (e.g. a ybhnsw vector index) stores its rows
+		 * co-located with the indexed table's own tablets, so it must live in
+		 * the indexed table's implicit tablegroup rather than the default one.
+		 */
+		bool		index_is_copartitioned = amRoutine->yb_amiscopartitioned;
+
+		/*
+		 * For colocated index tables in a colocation database, the implicit
+		 * tablegroup of the index depends on tablespace specified. If no tablespace
+		 * is specified we use the default implicit tablegroup.
+		 */
+		if (is_colocated_tables_with_tablespace_enabled &&
+			is_colocated_via_database && !MyColocatedDatabaseLegacy)
+		{
+			char	   *tablegroup_name = NULL;
+
+			if (OidIsValid(tablespaceId))
+			{
+				/*
+				 * We look in pg_shdepend rather than directly use the derived name,
+				 * as later we might need to associate an existing implicit tablegroup to a tablespace
+				 */
+				shdepFindImplicitTablegroup(tablespaceId, &tablegroupId);
+
+				/*
+				 * If we do not find a tablegroup corresponding to the given tablespace, we
+				 * would have to create one. We derive the name from tablespace OID.
+				 */
+				tablegroup_name = OidIsValid(tablegroupId) ? get_tablegroup_name(tablegroupId) :
+					get_implicit_tablegroup_name(tablespaceId);
+
+			}
+			else if (yb_binary_restore && OidIsValid(binary_upgrade_next_tablegroup_oid))
+			{
+				Oid			preserved_tablegroup_oid = binary_upgrade_next_tablegroup_oid;
+				bool		is_default = binary_upgrade_next_tablegroup_default;
+
+				binary_upgrade_next_tablegroup_default = false;
+
+				/*
+				 * In yb_binary_restore if tablespaceId is not valid but
+				 * binary_upgrade_next_tablegroup_oid is valid, that implies
+				 * either:
+				 * 1. it is a default tablespace.
+				 * 2. we are restoring without tablespace information.
+				 * In this case all tables are restored to default tablespace,
+				 * while maintaining the colocation properties, and tablegroup's
+				 * name will be colocation_restore_tablegroupId, while default
+				 * tablegroup's name would still be default.
+				 *
+				 * The implicit tablegroup may already exist from an earlier
+				 * restore step (e.g. the indexed table was restored with
+				 * --use_tablespaces using the colocation_<tablespace_oid>
+				 * name). Look up by OID before falling back to the restore
+				 * name.
+				 */
+				tablegroup_name = get_tablegroup_name(preserved_tablegroup_oid);
+				if (tablegroup_name != NULL)
+				{
+					tablegroupId = preserved_tablegroup_oid;
+					binary_upgrade_next_tablegroup_oid = InvalidOid;
+				}
+				else
+				{
+					tablegroup_name = (is_default ?
+									   DEFAULT_TABLEGROUP_NAME :
+									   get_restore_tablegroup_name(preserved_tablegroup_oid));
+					tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+				}
+			}
+			else if (yb_binary_restore && OidIsValid(tablegroupId))
+			{
+				/*
+				 * This case handles Primary Key's tablegroup id. The variable
+				 * tablegroupId stores the tablegroupId of the parent table.
+				 */
+				tablegroup_name = get_tablegroup_name(tablegroupId);
+			}
+			else if (index_is_copartitioned && OidIsValid(tablegroupId))
+			{
+				/*
+				 * A copartitioned index (e.g. a ybhnsw vector index) has no
+				 * tablespace of its own and its rows are stored co-located
+				 * with the indexed table's tablets. It must therefore share
+				 * the indexed table's implicit tablegroup. Falling through to
+				 * the default tablegroup below would create a spurious empty
+				 * implicit tablegroup (an empty colocation parent) that holds
+				 * no data and cannot be reproduced on the restore/clone side,
+				 * breaking snapshot import.
+				 */
+				tablegroup_name = get_tablegroup_name(tablegroupId);
+			}
+			else
+			{
+				tablegroup_name = DEFAULT_TABLEGROUP_NAME;
+				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+			}
+
+			char	   *tablespace_name = (OidIsValid(tablespaceId) ?
+										   get_tablespace_name(tablespaceId) :
+										   NULL);
+
+			/* Tablegroup doesn't exist, so create it. */
+			if (!OidIsValid(tablegroupId))
+			{
+				/*
+				 * Regardless of the current user, let postgres be the owner of the
+				 * implicit tablegroup in a colocated database.
+				 */
+				RoleSpec   *spec = makeNode(RoleSpec);
+
+				spec->roletype = ROLESPEC_CSTRING;
+				spec->rolename = pstrdup("postgres");
+
+				YbCreateTableGroupStmt *tablegroup_stmt = makeNode(YbCreateTableGroupStmt);
+
+				tablegroup_stmt->tablegroupname = tablegroup_name;
+				tablegroup_stmt->tablespacename = tablespace_name;
+				tablegroup_stmt->implicit = true;
+				tablegroup_stmt->owner = spec;
+				tablegroupId = CreateTableGroup(tablegroup_stmt);
+			}
+		}
+		/*
+		 * Reset the binary_upgrade params as these are not needed anymore (only
+		 * required in CreateTableGroup), to ensure these parameter values are
+		 * not reused in subsequent unrelated statements.
+		 */
+		binary_upgrade_next_tablegroup_oid = InvalidOid;
+		binary_upgrade_next_tablegroup_default = false;
+
+
+		if (stmt->split_options)
+		{
+			if (MyDatabaseColocated && is_colocated)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("cannot create colocated index with split option")));
+			else if (OidIsValid(tablegroupId))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("cannot use TABLEGROUP with SPLIT")));
+		}
+
+		colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
+
+		/*
+		 * Fail if the index is colocated via tablegroup and tablespace
+		 * is specified while creation.
+		 */
+		if (OidIsValid(tablespaceId) && is_colocated && !MyDatabaseColocated)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
+
+		/*
+		 * YB: Check permissions for tablegroup. To create an index within a
+		 * tablegroup, a user must either be a superuser, the owner of the
+		 * tablegroup, or have create perms on it. Skip the check in a colocated
+		 * database because any user can create tables in an implicit
+		 * tablegroup. Skip the check during binary upgrade because ACLs have
+		 * not yet been restored, and CREATE INDEX, unlike CREATE TABLE, is
+		 * normally run as the table owner due to CVE-2022-1552. (See upstream
+		 * PG commit a117cebd638dd02e5c2e791c25e43745f233111b for details.)
+		 */
+		if (!MyDatabaseColocated && !IsBinaryUpgrade &&
+			OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
+		{
+			AclResult	aclresult;
+
+			aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
+			if (aclresult != ACLCHECK_OK)
+				aclcheck_error(aclresult, OBJECT_YBTABLEGROUP,
+							   get_tablegroup_name(tablegroupId));
+		}
+	}
+
+	/*
+	 * Force shared indexes into the pg_global tablespace.  This is a bit of a
+	 * hack but seems simpler than marking them in the BKI commands.  On the
+	 * other hand, if it's not shared, don't allow it to be placed there.
+	 */
+	if (relIsShared)
+		tablespaceId = GLOBALTABLESPACE_OID;
+	else if (tablespaceId == GLOBALTABLESPACE_OID)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("only shared relations can be placed in pg_global tablespace")));
+
+	/*
+	 * Choose the index column names.
+	 */
+	indexColNames = ChooseIndexColumnNames(allIndexParams);
+
+	/*
+	 * Select name for index if caller didn't specify
+	 */
+	indexRelationName = stmt->idxname;
+	if (indexRelationName == NULL)
+		indexRelationName = ChooseIndexName(RelationGetRelationName(rel),
+											namespaceId,
+											indexColNames,
+											stmt->excludeOpNames,
+											stmt->primary,
+											stmt->isconstraint);
 
 	if (IsYBRelation(rel) && !amRoutine->yb_amisforybrelation)
 		ereport(ERROR,
@@ -1338,6 +1361,32 @@ DefineIndex(Oid relationId,
 
 	amcanorder = amRoutine->amcanorder;
 	amoptions = amRoutine->amoptions;
+
+	if (IsYugaByteEnabled())
+	{
+		bool		index_is_copartitioned = amRoutine->yb_amiscopartitioned;
+
+		if (OidIsValid(colocation_id))
+		{
+			if (!is_colocated && !index_is_copartitioned)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("cannot set colocation_id for non-colocated index")));
+			if (OidIsValid(yb_binary_upgrade_next_colocation_id))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("cannot set yb_binary_upgrade_next_colocation_id for colocated index")));
+		}
+		else if (OidIsValid(yb_binary_upgrade_next_colocation_id))
+		{
+			if (!is_colocated && !index_is_copartitioned)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("cannot set colocation_id for non-colocated index")));
+			colocation_id = yb_binary_upgrade_next_colocation_id;
+			yb_binary_upgrade_next_colocation_id = InvalidOid;
+		}
+	}
 
 	pfree(amRoutine);
 	ReleaseSysCache(tuple);
@@ -2382,7 +2431,8 @@ YbDefineIndexHelper(Oid relationId,
 	 * YB: Do backfill if this is a separate DocDB table from the main
 	 * table.
 	 */
-	HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
+	HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId,
+									  !yb_should_run_in_autonomous_transaction));
 
 	Relation	yb_baserel = table_open(relationId, NoLock);
 
@@ -5315,7 +5365,7 @@ YbWaitForBackendsCatalogVersion()
 
 		if (!s)					/* ok */
 			continue;
-		if (YBCStatusIsTryAgain(s))
+		if (YBCStatusIsTryAgain(s) || YBCStatusIsTimedOut(s))
 		{
 			YBCFreeStatus(s);
 			continue;

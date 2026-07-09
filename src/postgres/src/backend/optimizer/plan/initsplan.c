@@ -44,6 +44,7 @@
 #include "parser/parse_coerce.h"
 #include "pg_yb_utils.h"
 #include "rewrite/rewriteHandler.h"
+#include "utils/fmgroids.h"
 
 /* These parameters are set by GUC */
 int			from_collapse_limit;
@@ -93,7 +94,7 @@ static void check_hashjoinable(RestrictInfo *restrictinfo);
 static void check_memoizable(RestrictInfo *restrictinfo);
 
 /* YB declarations */
-static void check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo);
+static void yb_check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo);
 static ListCell *yb_find_wholerow_of_record_type(List *expr);
 
 
@@ -1925,7 +1926,7 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 	check_mergejoinable(restrictinfo);
 	if (IsYugaByteEnabled())
 	{
-		check_batchable(root, restrictinfo);
+		yb_check_batchable(root, restrictinfo);
 	}
 
 	/*
@@ -2514,7 +2515,7 @@ build_implied_join_equality(PlannerInfo *root,
 
 	if (IsYugaByteEnabled())
 	{
-		check_batchable(root, restrictinfo);
+		yb_check_batchable(root, restrictinfo);
 	}
 	return restrictinfo;
 }
@@ -2764,7 +2765,7 @@ check_hashjoinable(RestrictInfo *restrictinfo)
 }
 
 /*
- * check_batchable
+ * yb_check_batchable
  *	  If the restrictinfo's clause can potentially be a batched join clause
  *	  then yb_batched_rinfo is filled in with candidate batched versions of
  *	  this clause.
@@ -2775,7 +2776,7 @@ check_hashjoinable(RestrictInfo *restrictinfo)
  *	  var_1 op YbBatchedExpr(var_2) and var_2 op YbBatchedExpr(var_1).
  */
 static void
-check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
+yb_check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 {
 	Expr	   *clause = restrictinfo->clause;
 	Node	   *leftarg;
@@ -2826,13 +2827,32 @@ check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 		inner = args[i];
 		outer = args[1 - i];
 		Node	   *inner_var = inner;
+		int			inner_varno = 0;
 
 		if (IsA(inner_var, RelabelType))
 			inner_var = (Node *) ((RelabelType *) inner_var)->arg;
-		if (!IsA(inner_var, Var))
+
+		if (IsA(inner_var, Var))
+		{
+			inner_varno = ((Var *) inner_var)->varno;
+		}
+		else if (yb_enable_base_scans_cost_model)
+		{
+			/* Expression key column disabled in the legacy mode */
+			Relids		inner_relids = pull_varnos(root, inner);
+			bool		single_rel = bms_membership(inner_relids) == BMS_SINGLETON;
+
+			if (single_rel)
+				inner_varno = bms_singleton_member(inner_relids);
+			bms_free(inner_relids);
+
+			if (!single_rel)
+				continue;
+		}
+		else
 			continue;
 
-		RangeTblEntry *rte = root->simple_rte_array[((Var *) inner_var)->varno];
+		RangeTblEntry *rte = root->simple_rte_array[inner_varno];
 
 		/* Skip batching if inner relation is not a YB relation */
 		if (rte->rtekind == RTE_RELATION && !IsYBRelationById(rte->relid))
@@ -3082,10 +3102,13 @@ yb_try_substitute_ec_members(PlannerInfo *root, Expr *expr, Index rti,
 
 /*
  * yb_create_derived_clause
- *   Create inferrable_expr = substituted_expr clause
- *   Returns NULL if can't create proper equality operator.
+ *	  Create inferrable_expr = substituted_expr clause.
+ *	  Returns NULL if can't create proper equality operator.
+ *
+ * Shared by the equivalence-class (yb_try_derive_equal_from_ec) and OR-arm
+ * (yb_try_derive_equal_from_clauses) derivation paths.
  */
-static OpExpr *
+OpExpr *
 yb_create_derived_clause(Expr *inferrable_expr, Expr *substituted_expr,
 						 Oid opfamily)
 {
@@ -3102,8 +3125,19 @@ yb_create_derived_clause(Expr *inferrable_expr, Expr *substituted_expr,
 									InvalidOid, collation);
 }
 
-static RestrictInfo *
-yb_get_clause_restrictinfo(PlannerInfo *root, OpExpr *clause, Relids nullable_relids)
+/*
+ * yb_make_derived_restrictinfo
+ *	  Wrap a derived equality clause in a RestrictInfo, tagging it with the
+ *	  current qual security level and running the mergejoinable/batchable
+ *	  checks.  nullable_relids is the set of outer-join-nullable rels whose
+ *	  Vars appear in the clause; pass NULL for a single-rel clause (e.g. when
+ *	  the substituted side is a Const).
+ *
+ * Shared by the equivalence-class (yb_try_derive_equal_from_ec) and OR-arm
+ * (yb_try_derive_equal_from_clauses) derivation paths.
+ */
+RestrictInfo *
+yb_make_derived_restrictinfo(PlannerInfo *root, OpExpr *clause, Relids nullable_relids)
 {
 	Relids		clause_relids = pull_varnos(root, (Node *) clause);
 	bool		outerjoin_delayed = !bms_is_empty(nullable_relids);
@@ -3120,14 +3154,121 @@ yb_get_clause_restrictinfo(PlannerInfo *root, OpExpr *clause, Relids nullable_re
 											nullable_relids);
 
 	check_mergejoinable(rinfo);
-	check_batchable(root, rinfo);
+	yb_check_batchable(root, rinfo);
 	return rinfo;
 }
 
+/*
+ * yb_expr_safe_to_derive
+ *	  True if expr matches one of the allowlisted index-expression shapes.
+ *	  Used to gate derivation when the substituted side cannot be
+ *	  const-folded at plan time.
+ *
+ *	  Currently allows yb_hash_code(...) and yb_hash_code(...) % const_int,
+ *	  matching the cases the derived-equalities feature was built around
+ *	  (sharding/bucket helpers).  Other shapes can be added here as needed.
+ */
+static bool
+yb_expr_safe_to_derive(Expr *expr)
+{
+	if (expr == NULL)
+		return false;
+
+	/* The expression itself may be wrapped in a no-op cast. */
+	while (expr && IsA(expr, RelabelType))
+		expr = ((RelabelType *) expr)->arg;
+
+	if (IsA(expr, FuncExpr) &&
+		((FuncExpr *) expr)->funcid == F_YB_HASH_CODE)
+		return true;
+
+	/* yb_hash_code(...) % const */
+	if (IsA(expr, OpExpr))
+	{
+		OpExpr	   *op = (OpExpr *) expr;
+		Node	   *lhs;
+		Node	   *rhs;
+
+		/* int4 modulus operator oid */
+		if (op->opno != 530 || list_length(op->args) != 2)
+			return false;
+		lhs = (Node *) linitial(op->args);
+		rhs = (Node *) lsecond(op->args);
+		while (lhs && IsA(lhs, RelabelType))
+			lhs = (Node *) ((RelabelType *) lhs)->arg;
+		while (rhs && IsA(rhs, RelabelType))
+			rhs = (Node *) ((RelabelType *) rhs)->arg;
+		if (lhs && IsA(lhs, FuncExpr) &&
+			((FuncExpr *) lhs)->funcid == F_YB_HASH_CODE &&
+			rhs && IsA(rhs, Const) &&
+			!((Const *) rhs)->constisnull)
+			return true;
+	}
+
+	return false;
+}
+
+/*
+ * yb_safely_fold_substituted
+ *	  Constant-fold and null-check the substituted side of a derived
+ *	  equality.  Returns the folded Node on success, NULL if the
+ *	  derivation should be skipped because:
+ *	  - folding itself errored (e.g. divide-by-zero in a folded
+ *	    subexpression); we'd rather skip the derivation than fail
+ *	    planning, so PG_TRY converts that outcome into NULL, or
+ *	  - the folded result is a NULL Const, which would make the
+ *	    derived clause f(col) = NULL silently drop rows under SQL
+ *	    three-valued logic.
+ *
+ *	  Callers may further inspect the returned Node (e.g. to dispatch
+ *	  on Const vs. Var-bearing) -- see yb_try_derive_equal_from_ec.
+ */
+Node *
+yb_safely_fold_substituted(PlannerInfo *root, Expr *substituted)
+{
+	Node	   *folded = NULL;
+	MemoryContext oldcxt = CurrentMemoryContext;
+	ResourceOwner oldowner = CurrentResourceOwner;
+	ResourceOwner tmpowner = ResourceOwnerCreate(oldowner,
+												 "yb_safely_fold_substituted");
+
+	/*
+	 * Run the fold under tmpowner so syscache refs acquired before an error
+	 * (which FlushErrorState doesn't release) pin to tmpowner instead of
+	 * oldowner.  Releasing tmpowner with isCommit=false silently drops them;
+	 * oldowner's eventual isCommit=true release would emit a "cache reference
+	 * leak" warning otherwise.
+	 */
+	CurrentResourceOwner = tmpowner;
+
+	PG_TRY();
+	{
+		folded = eval_const_expressions(root, (Node *) substituted);
+	}
+	PG_CATCH();
+	{
+		FlushErrorState();
+	}
+	PG_END_TRY();
+
+	MemoryContextSwitchTo(oldcxt);
+	CurrentResourceOwner = oldowner;
+	ResourceOwnerRelease(tmpowner, RESOURCE_RELEASE_BEFORE_LOCKS, false, false);
+	ResourceOwnerRelease(tmpowner, RESOURCE_RELEASE_LOCKS,        false, false);
+	ResourceOwnerRelease(tmpowner, RESOURCE_RELEASE_AFTER_LOCKS,  false, false);
+	ResourceOwnerDelete(tmpowner);
+
+	if (folded == NULL)
+		return NULL;
+	if (IsA(folded, Const) && ((Const *) folded)->constisnull)
+		return NULL;
+	return folded;
+}
+
 RestrictInfo *
-yb_try_create_derived_clause(PlannerInfo *root, Index rti, Index target_rti,
-							 Expr *inferrable_expr, Expr *generation_expr,
-							 Oid opfamily)
+yb_try_derive_equal_from_ec(PlannerInfo *root, Index rti, Index target_rti,
+							Expr *inferrable_expr, Expr *generation_expr,
+							Oid opfamily)
 {
 	Expr	   *substituted = NULL;
 	Relids		nullable_relids = NULL;
@@ -3137,10 +3278,28 @@ yb_try_create_derived_clause(PlannerInfo *root, Index rti, Index target_rti,
 											   target_rti,
 											   &nullable_relids);
 	if (substituted)
+	{
+		/*
+		 * Skip the derivation if yb_safely_fold_substituted reports the
+		 * substituted side is unsafe (fold errored or folded to NULL
+		 * Const).  Otherwise, when the folded result still contains a Var
+		 * (typical join derivation), we can't determine nullness at plan
+		 * time, so restrict to allowlisted shapes guaranteed non-NULL on
+		 * non-NULL inputs.
+		 */
+		Node	   *folded = yb_safely_fold_substituted(root, substituted);
+
+		if (folded == NULL ||
+			(!IsA(folded, Const) && !yb_expr_safe_to_derive(generation_expr)))
+		{
+			bms_free(nullable_relids);
+			return NULL;
+		}
 		clause = yb_create_derived_clause(inferrable_expr, substituted,
 										  opfamily);
+	}
 	if (clause)
-		return yb_get_clause_restrictinfo(root, clause, nullable_relids);
+		return yb_make_derived_restrictinfo(root, clause, nullable_relids);
 	bms_free(nullable_relids);
 	return NULL;
 }

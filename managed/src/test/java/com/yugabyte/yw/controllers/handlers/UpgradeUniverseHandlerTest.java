@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers.handlers;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
@@ -18,7 +19,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
@@ -31,6 +34,7 @@ import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -41,13 +45,16 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.CanaryUpgradeConfig;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -62,6 +69,12 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
@@ -118,7 +131,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             mock(AutoFlagUtil.class),
             mock(XClusterUniverseService.class),
             mock(TelemetryProviderService.class),
-            mock(SoftwareUpgradeHelper.class));
+            mock(SoftwareUpgradeHelper.class),
+            mock(GFlagsValidation.class));
 
     lenient()
         .when(
@@ -430,6 +444,190 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     assertEquals(
         SpecificGFlags.construct(masterGFlags, tserverGFlags),
         newParams.getPrimaryCluster().userIntent.specificGFlags);
+  }
+
+  @Test
+  public void testUpgradeGFlagsRestoresRedactedRrYsqlHbaInSpecificGFlags() throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    String rrSecret = "rr-ldap-secret-xyz";
+    String hbaWithSecret = "host all all 0.0.0.0/0 ldap ldapbindpasswd=\"\"" + rrSecret + "\"\"";
+    String hbaRedacted =
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=\"\""
+            + RedactingService.SECRET_REPLACEMENT
+            + "\"\"";
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(ImmutableMap.of("m", "1"), ImmutableMap.of("t", "1"));
+              universe.setUniverseDetails(details);
+            });
+    UniverseDefinitionTaskParams.UserIntent rrUserIntent =
+        u.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    rrUserIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of(),
+            ImmutableMap.of("ysql_hba_conf_csv", hbaWithSecret, "log_min_messages", "WARNING"));
+    rrUserIntent.specificGFlags.setInheritFromPrimary(false);
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithReadReplica(rrUserIntent, null));
+
+    ObjectMapper mapper = Json.mapper();
+    JavaType clusterListType =
+        mapper
+            .getTypeFactory()
+            .constructCollectionType(List.class, UniverseDefinitionTaskParams.Cluster.class);
+    List<UniverseDefinitionTaskParams.Cluster> requestClusters =
+        mapper.readValue(
+            mapper.writeValueAsString(u.getUniverseDetails().clusters), clusterListType);
+    UniverseDefinitionTaskParams.Cluster rrInRequest =
+        requestClusters.stream()
+            .filter(cl -> cl.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC)
+            .findFirst()
+            .orElseThrow(AssertionError::new);
+    rrInRequest
+        .userIntent
+        .specificGFlags
+        .getPerProcessFlags()
+        .value
+        .get(ServerType.TSERVER)
+        .put("ysql_hba_conf_csv", hbaRedacted);
+    rrInRequest
+        .userIntent
+        .specificGFlags
+        .getPerProcessFlags()
+        .value
+        .get(ServerType.TSERVER)
+        .put("log_min_messages", "ERROR");
+
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = requestClusters;
+
+    handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+
+    ArgumentCaptor<UpgradeTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner).submit(any(), paramsArgumentCaptor.capture());
+    GFlagsUpgradeParams submitted = (GFlagsUpgradeParams) paramsArgumentCaptor.getValue();
+    UniverseDefinitionTaskParams.Cluster rrSubmitted = submitted.getReadOnlyClusters().get(0);
+    String mergedHba =
+        rrSubmitted
+            .userIntent
+            .specificGFlags
+            .getPerProcessFlags()
+            .value
+            .get(ServerType.TSERVER)
+            .get("ysql_hba_conf_csv");
+    assertTrue(mergedHba.contains(rrSecret));
+    assertFalse(mergedHba.contains(RedactingService.SECRET_REPLACEMENT));
+    assertEquals(
+        "ERROR",
+        rrSubmitted
+            .userIntent
+            .specificGFlags
+            .getPerProcessFlags()
+            .value
+            .get(ServerType.TSERVER)
+            .get("log_min_messages"));
+  }
+
+  @Test
+  public void testUpgradeGFlagsRestoresRedactedRrYsqlHbaInMasterTserverMaps() throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    String rrSecret = "rr-ldap-secret-xyz";
+    String hbaWithSecret = "host all all 0.0.0.0/0 ldap ldapbindpasswd=\"\"" + rrSecret + "\"\"";
+    String hbaRedacted =
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=\"\""
+            + RedactingService.SECRET_REPLACEMENT
+            + "\"\"";
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(ImmutableMap.of("m", "1"), ImmutableMap.of("t", "1"));
+              universe.setUniverseDetails(details);
+            });
+    UniverseDefinitionTaskParams.UserIntent rrUserIntent =
+        u.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    rrUserIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of(),
+            ImmutableMap.of("ysql_hba_conf_csv", hbaWithSecret, "log_min_messages", "WARNING"));
+    rrUserIntent.specificGFlags.setInheritFromPrimary(false);
+    rrUserIntent.tserverGFlags = new HashMap<>();
+    rrUserIntent.tserverGFlags.put("ysql_hba_conf_csv", hbaWithSecret);
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithReadReplica(rrUserIntent, null));
+
+    ObjectMapper mapper = Json.mapper();
+    JavaType clusterListType =
+        mapper
+            .getTypeFactory()
+            .constructCollectionType(List.class, UniverseDefinitionTaskParams.Cluster.class);
+    List<UniverseDefinitionTaskParams.Cluster> requestClusters =
+        mapper.readValue(
+            mapper.writeValueAsString(u.getUniverseDetails().clusters), clusterListType);
+    UniverseDefinitionTaskParams.Cluster rrInRequest =
+        requestClusters.stream()
+            .filter(cl -> cl.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC)
+            .findFirst()
+            .orElseThrow(AssertionError::new);
+    rrInRequest
+        .userIntent
+        .specificGFlags
+        .getPerProcessFlags()
+        .value
+        .get(ServerType.TSERVER)
+        .put("ysql_hba_conf_csv", hbaRedacted);
+    rrInRequest
+        .userIntent
+        .specificGFlags
+        .getPerProcessFlags()
+        .value
+        .get(ServerType.TSERVER)
+        .put("log_min_messages", "ERROR");
+    if (rrInRequest.userIntent.tserverGFlags == null) {
+      rrInRequest.userIntent.tserverGFlags = new HashMap<>();
+    }
+    rrInRequest.userIntent.tserverGFlags.put("ysql_hba_conf_csv", hbaRedacted);
+
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = requestClusters;
+
+    handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+
+    ArgumentCaptor<UpgradeTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner).submit(any(), paramsArgumentCaptor.capture());
+    GFlagsUpgradeParams submitted = (GFlagsUpgradeParams) paramsArgumentCaptor.getValue();
+    UniverseDefinitionTaskParams.Cluster rrSubmitted = submitted.getReadOnlyClusters().get(0);
+    String mergedFromMaps = rrSubmitted.userIntent.tserverGFlags.get("ysql_hba_conf_csv");
+    assertTrue(mergedFromMaps.contains(rrSecret));
+    assertFalse(mergedFromMaps.contains(RedactingService.SECRET_REPLACEMENT));
   }
 
   @Test
@@ -1956,5 +2154,181 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
 
     CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
     assertEquals(CertsRotateParams.CertRotationType.ServerCert, capturedParams.rootCARotationType);
+  }
+
+  // ==================== submitExportTelemetryConfigs dispatch tests ====================
+
+  private ExportTelemetryConfigParams buildExportTelemetryParams(
+      Universe u,
+      AuditLogConfig auditLogConfig,
+      QueryLogConfig queryLogConfig,
+      MetricsExportConfig metricsExportConfig) {
+    ExportTelemetryConfigParams params = new ExportTelemetryConfigParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.nodePrefix = u.getUniverseDetails().nodePrefix;
+    params.setTelemetryConfig(
+        TelemetryConfig.of(auditLogConfig, queryLogConfig, metricsExportConfig));
+    params.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+    return params;
+  }
+
+  @Test
+  public void testSubmitExportTelemetryConfigsDispatchesToVmTaskForVmUniverse() {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.ConfigureExportTelemetryConfig);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+
+    ExportTelemetryConfigParams params = buildExportTelemetryParams(u, null, null, null);
+
+    handler.submitExportTelemetryConfigs(params, c, u);
+
+    verify(mockCommissioner)
+        .submit(
+            eq(TaskType.ConfigureExportTelemetryConfig), any(ExportTelemetryConfigParams.class));
+  }
+
+  @Test
+  public void testSubmitExportTelemetryConfigsDispatchesToK8sTaskForK8sUniverse() {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.KubernetesConfigureExportTelemetryConfig);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverse(c);
+
+    ExportTelemetryConfigParams params = buildExportTelemetryParams(u, null, null, null);
+
+    handler.submitExportTelemetryConfigs(params, c, u);
+
+    verify(mockCommissioner)
+        .submit(
+            eq(TaskType.KubernetesConfigureExportTelemetryConfig),
+            any(ExportTelemetryConfigParams.class));
+  }
+
+  @Test
+  public void testSubmitExportTelemetryConfigsRejectsActiveMetricsOnK8s() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverse(c);
+
+    MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
+    UniverseMetricsExporterConfig exporter = new UniverseMetricsExporterConfig();
+    exporter.setExporterUuid(UUID.randomUUID());
+    metricsExportConfig.setUniverseMetricsExporterConfig(Collections.singletonList(exporter));
+
+    ExportTelemetryConfigParams params =
+        buildExportTelemetryParams(u, null, null, metricsExportConfig);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.submitExportTelemetryConfigs(params, c, u));
+    assertTrue(
+        "Error message must mention k8s metrics rejection, got: " + ex.getMessage(),
+        ex.getMessage().contains("Metrics export is not yet supported for kubernetes"));
+  }
+
+  @Test
+  public void testSubmitExportTelemetryConfigsRejectsLogExportOnOldK8sVersion() {
+    Customer c = ModelFactory.testCustomer();
+    // createKubernetesUniverseInternal default uses 2.28.0.0-b0 (supported). Use an older version
+    // that is below MIN_VERSION_OTEL_SUPPORT_STABLE/_PREVIEW so isExporterSupported returns false.
+    Universe u = createKubernetesUniverseInternal(c, null, false, false, "2.20.0.0-b1");
+
+    AuditLogConfig auditLogConfig = new AuditLogConfig();
+    YSQLAuditConfig ysql = new YSQLAuditConfig();
+    ysql.setEnabled(true);
+    auditLogConfig.setYsqlAuditConfig(ysql);
+    UniverseLogsExporterConfig exporter = new UniverseLogsExporterConfig();
+    exporter.setExporterUuid(UUID.randomUUID());
+    auditLogConfig.setUniverseLogsExporterConfig(Collections.singletonList(exporter));
+
+    ExportTelemetryConfigParams params = buildExportTelemetryParams(u, auditLogConfig, null, null);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.submitExportTelemetryConfigs(params, c, u));
+    assertTrue(
+        "Error message must mention exporter version requirement, got: " + ex.getMessage(),
+        ex.getMessage().contains("Log exporter is not supported for universe"));
+  }
+
+  @Test
+  public void testSubmitExportTelemetryConfigsRejectsAuditExportActiveWithoutExporter() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+
+    // exportActive=true but no exporter configured - the inconsistent state the UI can produce by
+    // toggling export on without selecting a config. Must be rejected.
+    AuditLogConfig auditLogConfig = new AuditLogConfig();
+    YSQLAuditConfig ysql = new YSQLAuditConfig();
+    ysql.setEnabled(true);
+    auditLogConfig.setYsqlAuditConfig(ysql);
+    auditLogConfig.setExportActive(true);
+    auditLogConfig.setUniverseLogsExporterConfig(Collections.emptyList());
+
+    ExportTelemetryConfigParams params = buildExportTelemetryParams(u, auditLogConfig, null, null);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.submitExportTelemetryConfigs(params, c, u));
+    assertTrue(
+        "Error must mention audit export-active without exporter, got: " + ex.getMessage(),
+        ex.getMessage()
+            .contains("Audit log config is set to export active, but no exporter configured"));
+  }
+
+  @Test
+  public void testSubmitExportTelemetryConfigsRejectsQueryExportActiveWithoutExporter() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setExportActive(true);
+    queryLogConfig.setUniverseLogsExporterConfig(Collections.emptyList());
+
+    ExportTelemetryConfigParams params = buildExportTelemetryParams(u, null, queryLogConfig, null);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.submitExportTelemetryConfigs(params, c, u));
+    assertTrue(
+        "Error must mention query export-active without exporter, got: " + ex.getMessage(),
+        ex.getMessage()
+            .contains("Query log config is set to export active, but no exporter configured"));
+  }
+
+  @Test
+  public void testSubmitExportTelemetryConfigsAllowsAuditOnlyWithoutExporter() {
+    // Audit logging enabled with export turned off (exportActive=false) and no exporter is a valid
+    // "logs to file only" config - it must not be rejected by the export-active validation.
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.ConfigureExportTelemetryConfig);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+
+    AuditLogConfig auditLogConfig = new AuditLogConfig();
+    YSQLAuditConfig ysql = new YSQLAuditConfig();
+    ysql.setEnabled(true);
+    auditLogConfig.setYsqlAuditConfig(ysql);
+    auditLogConfig.setExportActive(false);
+    auditLogConfig.setUniverseLogsExporterConfig(Collections.emptyList());
+
+    ExportTelemetryConfigParams params = buildExportTelemetryParams(u, auditLogConfig, null, null);
+
+    handler.submitExportTelemetryConfigs(params, c, u);
+
+    verify(mockCommissioner)
+        .submit(
+            eq(TaskType.ConfigureExportTelemetryConfig), any(ExportTelemetryConfigParams.class));
   }
 }

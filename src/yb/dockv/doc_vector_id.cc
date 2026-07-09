@@ -21,6 +21,8 @@
 #include "yb/dockv/value_packing_v2.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/util/format.h"
+
 namespace yb::dockv {
 
 namespace {
@@ -82,9 +84,6 @@ Result<vector_index::VectorId> EncodedDocVectorValue::DecodeId() const {
 
 template <class Buffer>
 void DocVectorValue::AppendVectorId(Buffer* buffer) const {
-  if (IsNull()) {
-    return;
-  }
   char* out = GrowAtLeast(buffer, kEncodedVectorIdSize);
 
   *out = ValueEntryTypeAsChar::kVectorId;
@@ -94,9 +93,23 @@ void DocVectorValue::AppendVectorId(Buffer* buffer) const {
   *out = kEncodedVectorIdValueSize;
 }
 
-void DocVectorValue::EncodeTo(std::string* buffer) const {
-  AppendEncodedValue(value_, buffer);
+template <class Buffer>
+void DocVectorValue::AppendEncodedVectorValue(Buffer* buffer) const {
+  if (IsNull()) {
+    return AppendEncodedNullValue(buffer);
+  }
+
+  AppendEncodedBinaryValue(value_type_prefix_, value_, buffer);
   AppendVectorId(buffer);
+}
+
+void DocVectorValue::EncodeTo(std::string* buffer) const {
+  AppendEncodedVectorValue(buffer);
+}
+
+char DocVectorValue::ValueTypePrefix(VectorValueFormat format) {
+  return format == VectorValueFormat::kTyped
+      ? ValueEntryTypeAsChar::kVector : ValueEntryTypeAsChar::kString;
 }
 
 Slice DocVectorValue::SanitizeValue(Slice encoded) {
@@ -120,8 +133,7 @@ size_t DocVectorValue::PackedSizeV1() const {
 }
 
 void DocVectorValue::PackToV1(ValueBuffer* buffer) const {
-  AppendEncodedValue(value_, buffer);
-  AppendVectorId(buffer);
+  AppendEncodedVectorValue(buffer);
 }
 
 size_t DocVectorValue::PackedSizeV2() const {
@@ -130,7 +142,9 @@ size_t DocVectorValue::PackedSizeV2() const {
 
 void DocVectorValue::PackToV2(ValueBuffer* buffer) const {
   PackQLValueV2(value_, DataType::VECTOR, buffer);
-  AppendVectorId(buffer);
+  if (!IsNull()) {
+    AppendVectorId(buffer);
+  }
 }
 
 namespace {

@@ -65,7 +65,8 @@ set(YSQL_BINARY_RUNNER_SRCS
     ysql_binary_runner.cc)
 set(YSQL_BINARY_RUNNER_LIBS
     yb_util
-    yb_pgwrapper)
+    yb_pgwrapper
+    pq_utils)
 ADD_YB_LIBRARY(yb_ysql_binary_runner
                SRCS ${YSQL_BINARY_RUNNER_SRCS}
                DEPS ${YSQL_BINARY_RUNNER_LIBS})
@@ -145,6 +146,7 @@ ADD_YB_TEST(pg_cancel_transaction-test)
 ADD_YB_TEST(pg_catalog_perf-test)
 ADD_YB_TEST(pg_catalog_snapshot_too_old-test)
 ADD_YB_TEST(pg_catalog_version-test)
+ADD_YB_TEST(pg_skip_intents_metrics-test)
 ADD_YB_TEST(pg_cbo_dependent_flags-test)
 if (NOT APPLE)
   # We disable this test when running on Apple platform as it does not support cgroups.
@@ -187,8 +189,11 @@ ADD_YB_TEST(pg_packed_insert-test)
 ADD_YB_TEST(pg_packed_row-test)
 ADD_YB_TEST(pg_perf-test)
 ADD_YB_TEST(pg_read_after_commit_visibility-test)
+ADD_YB_TEST(pg_read_restart_memory-test)
 ADD_YB_TEST(pg_read_time-test)
 ADD_YB_TEST(pg_relcache_corruption_fallback-test)
+ADD_YB_TEST(pg_relcache_init_internal_conn-test)
+ADD_YB_TEST(pg_relcache_preload_mem-test)
 ADD_YB_TEST(pg_row_lock-test)
 ADD_YB_TEST(pg_server_restart-test)
 ADD_YB_TEST(pg_shared_mem-test)
@@ -202,6 +207,7 @@ ADD_YB_TEST(pg_tablet_split-test)
 ADD_YB_TEST(pg_temp_toast-test)
 ADD_YB_TEST(pg_terminate_backend-test)
 ADD_YB_TEST(pg_type-test)
+YB_TEST_TARGET_LINK_LIBRARIES(pg_type-test yb_pgbackend)
 ADD_YB_TEST(pg_txn-test)
 ADD_YB_TEST(pg_txn_status-test)
 ADD_YB_TEST(pg_vector_index-itest)

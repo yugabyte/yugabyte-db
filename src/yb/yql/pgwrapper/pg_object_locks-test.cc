@@ -40,6 +40,7 @@
 
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
@@ -63,6 +64,9 @@ DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_bool(TEST_olm_serve_redundant_lock);
 DECLARE_uint64(TEST_delay_release_locks_ms);
 DECLARE_int32(master_ts_rpc_timeout_ms);
+DECLARE_uint32(ysql_max_invalidation_message_queue_size);
+DECLARE_bool(TEST_pause_session_lock_before_release);
+DECLARE_bool(TEST_pause_session_lock_after_release);
 
 using namespace std::literals;
 
@@ -551,6 +555,13 @@ class PgObjectLocksTest : public LibPqTestBase {
         yb::Format("libpq_utils=1,ts_local_lock_manager=2,$0", FLAGS_vmodule);
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--enable_object_locking_for_table_locks=$0", EnableTableLocks()));
+    // Concurrent DDL requires object locking, so when object locking is disabled, disable
+    // concurrent DDL too; otherwise the cross-flag validator would FATAL if concurrent DDL defaults
+    // on. When object locking is enabled, leave concurrent DDL at its default.
+    if (!EnableTableLocks()) {
+      opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+      AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    }
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", EnableTransactionalDdl()));
     opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
@@ -762,6 +773,13 @@ TEST_P(PgObjectLocksTestAbortTxnsInMixedMode, TestDDLAbortsTxnsInMixedMode) {
   // precedence over value set by GetParam()
   ts1->mutable_flags()->push_back(yb::Format(
       "--enable_object_locking_for_table_locks=$0", ts1_should_use_table_locks ? "true" : "false"));
+  // When object locking is disabled on the restarted TServer, disable concurrent DDL too;
+  // otherwise the cross-flag validator would FATAL if concurrent DDL defaults on. When object
+  // locking is enabled, leave concurrent DDL at its default.
+  if (!ts1_should_use_table_locks) {
+    ts1->mutable_flags()->push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(*ts1->mutable_flags(), "ysql_enable_concurrent_ddl");
+  }
   ASSERT_OK(ts1->Restart(ExternalMiniClusterOptions::kDefaultStartCqlProxy));
   ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
 
@@ -1789,6 +1807,143 @@ TEST_F_EX(
     PgObjectLocksTest, TestConcurrentDdlSyncReleaseForGlobalLocksAndDdls,
     PgObjectLocksWithConcurrentDdl) {
   testSyncReleaseForGlobalLocksAndDdls();
+}
+
+// In YB, CREATE INDEX acquires session locks against the session level txn's by bumping up the
+// active subtxn id, and the releases all those locks at the end by rolling back the subtxn.
+// The below test asserts that consectuive CREATE INDEX from the same session don't deadlock
+// when there's another waiting txn on the create index. Also, it asserts that the session
+// advisory locks taken are still honored (as they are tagged to the same session level txn).
+TEST_F_EX(
+    PgObjectLocksTest, YB_DISABLE_TEST_IN_SANITIZERS(ConsecutiveCreateIndexDontDeadlock),
+    PgObjectLocksWithConcurrentDdl) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k int primary key, v int, v1 int)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test select i,i,i from generate_series(1, 100) as i"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_session_lock_before_release", "true"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("vmodule", "object_lock_manager=1"));
+  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(1)"));
+
+  LogWaiter log_waiter1(ts1, "Pausing due to flag TEST_pause_session_lock_before_release");
+  auto status_future1 = std::async(std::launch::async, [&]() -> Status {
+    return conn1.Execute("CREATE INDEX test_idx on test(v)");
+  });
+  ASSERT_OK(log_waiter1.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+
+  LogWaiter log_waiter2(cluster_->GetLeaderMaster(), "added to wait-queue");
+  auto status_future2 = std::async(std::launch::async, [&]() -> Status {
+    RETURN_NOT_OK(conn2.Execute("begin transaction isolation level repeatable read"));
+    return conn2.Execute("LOCK TABLE test in ACCESS EXCLUSIVE mode");
+  });
+  ASSERT_OK(log_waiter2.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_session_lock_before_release", "false"));
+  ASSERT_OK(status_future1.get());
+  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(2)"));
+
+  LogWaiter log_waiter3(cluster_->GetLeaderMaster(), "added to wait-queue");
+  auto status_future3 = std::async(std::launch::async, [&]() -> Status {
+    return conn1.Execute("CREATE INDEX test_idx2 on test(v1)");
+  });
+  ASSERT_OK(log_waiter3.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
+
+  ASSERT_OK(status_future2.get());
+  ASSERT_OK(conn2.Execute("ALTER TABLE test add column v2 int"));
+  ASSERT_OK(conn2.CommitTransaction());
+  ASSERT_OK(status_future3.get());
+  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(2)"));
+  auto num_locks = ASSERT_RESULT(
+      conn1.FetchRow<PGUint64>("select count(*) from pg_locks where locktype=\'advisory\'"));
+  ASSERT_EQ(num_locks, 3);
+}
+
+// Assert that REFRESH MATERIALIZED VIEW when run in concurrent to CREATE INDEX CONCURRENTLY
+// on the same mv relation gets blocked and doesn't progress until the create index commits
+// the internal transaction in phase 3. Regression test to catch a bug where refresh mv
+// wrongly resumed after the SHARE session lock on the mv relation was released in create
+// index phase 3 but before its commit.
+TEST_F_EX(
+    PgObjectLocksTest, TxnLocksGoToTServerWhenSessionLockIsSoleOwner,
+    PgObjectLocksWithConcurrentDdl) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  auto pg_locks_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+
+  ASSERT_OK(conn1.Execute("create table test(k int primary key, v1 int, v2 int)"));
+  ASSERT_OK(conn1.Execute("insert into test select i,i,i from generate_series(1, 10) as i"));
+  ASSERT_OK(conn1.Execute("create materialized view test_mv as select k, v1 from test"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_session_lock_before_release", "true"));
+
+  LogWaiter log_waiter(ts1, "Pausing due to flag TEST_pause_session_lock_before_release");
+  auto status_future1 = std::async(std::launch::async, [&]() -> Status {
+    return conn1.Execute("create unique index test_mv_idx on test_mv(v1)");
+  });
+  ASSERT_OK(log_waiter.WaitFor(20s * kTimeMultiplier));
+
+  auto status_future2 = std::async(std::launch::async, [&]() -> Status {
+    return conn2.Execute("refresh materialized view test_mv");
+  });
+
+  const auto waiting_locks_query = "select count(*) from pg_locks where not granted";
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    const auto num_waiting_locks =
+        VERIFY_RESULT(pg_locks_conn.FetchRow<PGUint64>(waiting_locks_query));
+    return num_waiting_locks >= 1;
+  }, 10s * kTimeMultiplier, "REFRESH MV should have been blocked, but wasn't???"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_session_lock_after_release", "true"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_session_lock_before_release", "false"));
+
+  const auto granted_locks_query =
+      "select count(*) from pg_locks where granted and mode = \'ShareUpdateExclusiveLock\'";
+  EXPECT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(pg_locks_conn.FetchRow<PGUint64>(granted_locks_query)) == 1;
+  }, 5s * kTimeMultiplier, "Timed out waiting for session locks to be released"));
+  EXPECT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(pg_locks_conn.FetchRow<PGUint64>(waiting_locks_query)) == 1;
+  }, 5s * kTimeMultiplier, "REFRESH MV should still stay blocked, but wasn't???"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_session_lock_after_release", "false"));
+  ASSERT_OK(status_future1.get());
+  ASSERT_OK(status_future2.get());
+}
+
+class PgObjectLocksTestFullInval : public PgObjectLocksTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTest::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--ysql_max_invalidation_message_queue_size=0");
+  }
+};
+
+TEST_F_EX(PgObjectLocksTest, ConcurrentAlterSelectFullInvalidation, PgObjectLocksTestFullInval) {
+  testConcurrentAlterSelect(false);
+}
+
+TEST_F_EX(
+    PgObjectLocksTest, ConcurrentAlterSelectFreshCacheFullInvalidation,
+    PgObjectLocksTestFullInval) {
+  testConcurrentAlterSelect(true);
+}
+
+TEST_F_EX(PgObjectLocksTest, ConcurrentAlterSelectConcurrentDdl, PgObjectLocksWithConcurrentDdl) {
+  testConcurrentAlterSelect(false);
+}
+
+TEST_F_EX(
+    PgObjectLocksTest, ConcurrentAlterSelectFreshCacheConcurrentDdl,
+    PgObjectLocksWithConcurrentDdl) {
+  testConcurrentAlterSelect(true);
 }
 
 }  // namespace yb::pgwrapper

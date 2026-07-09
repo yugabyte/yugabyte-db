@@ -31,6 +31,7 @@
 /* YB includes */
 #include "nodes/execnodes.h"
 #include "pg_yb_utils.h"
+#include "utils/relcache.h"
 
 
 typedef struct
@@ -698,27 +699,54 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				 */
 				if (splan->yb_idx_pushdown.quals)
 				{
-					indexed_tlist *index_itlist;
+					Relation	index = RelationIdGetRelation(splan->indexid);
+					bool		is_primary = index->rd_index->indisprimary;
 
-					index_itlist = build_tlist_index(splan->indextlist);
-					splan->yb_idx_pushdown.quals = (List *)
-						fix_upper_expr(root,
-									   (Node *) splan->yb_idx_pushdown.quals,
-									   index_itlist,
-									   INDEX_VAR,
-									   rtoffset,
-									   NUM_EXEC_QUAL(plan));
-					splan->yb_idx_pushdown.colrefs = (List *)
-						fix_upper_expr(root,
-									   (Node *) splan->yb_idx_pushdown.colrefs,
-									   index_itlist,
-									   INDEX_VAR,
-									   rtoffset,
-									   NUM_EXEC_TLIST(plan));
-					splan->indextlist =
-						fix_scan_list(root, splan->indextlist, rtoffset,
-									  NUM_EXEC_TLIST(plan));
-					pfree(index_itlist);
+					RelationClose(index);
+
+					if (is_primary)
+					{
+						/*
+						 * For a bitmap index scan on a primary index, we must
+						 * use base-table attnums instead of index-relative
+						 * attnums because the primary index is part
+						 * of the base table and ordering of the columns in the
+						 * base table can be different from ordering of the
+						 * columns in the primary index.
+						 */
+						splan->yb_idx_pushdown.quals = (List *)
+							fix_scan_list(root,
+										  splan->yb_idx_pushdown.quals,
+										  rtoffset,
+										  NUM_EXEC_QUAL(plan));
+						splan->indextlist =
+							fix_scan_list(root, splan->indextlist, rtoffset,
+										  NUM_EXEC_TLIST(plan));
+					}
+					else
+					{
+						indexed_tlist *index_itlist;
+
+						index_itlist = build_tlist_index(splan->indextlist);
+						splan->yb_idx_pushdown.quals = (List *)
+							fix_upper_expr(root,
+										   (Node *) splan->yb_idx_pushdown.quals,
+										   index_itlist,
+										   INDEX_VAR,
+										   rtoffset,
+										   NUM_EXEC_QUAL(plan));
+						splan->yb_idx_pushdown.colrefs = (List *)
+							fix_upper_expr(root,
+										   (Node *) splan->yb_idx_pushdown.colrefs,
+										   index_itlist,
+										   INDEX_VAR,
+										   rtoffset,
+										   NUM_EXEC_TLIST(plan));
+						splan->indextlist =
+							fix_scan_list(root, splan->indextlist, rtoffset,
+										  NUM_EXEC_TLIST(plan));
+						pfree(index_itlist);
+					}
 				}
 			}
 			break;
@@ -2399,64 +2427,83 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 			{
 				Expr	   *clause = (Expr *) lfirst(l);
 				Oid			hashOp = current_hinfo->hashOp;
+				bool		valid_hash_info = false;
 
-				if (OidIsValid(hashOp))
+				if (OidIsValid(hashOp) &&
+					IsA(clause, OpExpr))
 				{
-					Assert(IsA(clause, OpExpr));
 					OpExpr	   *opexpr = (OpExpr *) clause;
 
-					Assert(list_length(opexpr->args) == 2);
-					Expr	   *leftArg = linitial(opexpr->args);
-					Expr	   *rightArg = lsecond(opexpr->args);
-
-					if (IsA(leftArg, RelabelType))
-						leftArg = ((RelabelType *) leftArg)->arg;
-
-					if (IsA(rightArg, RelabelType))
-						rightArg = ((RelabelType *) rightArg)->arg;
-
-					Var		   *innerArg;
-					Expr	   *outerArg;
-
-					if (IsA((Expr *) leftArg, Var) &&
-						((Var *) leftArg)->varno == INNER_VAR)
+					if (list_length(opexpr->args) == 2)
 					{
-						innerArg = (Var *) leftArg;
-						outerArg = rightArg;
-					}
-					else
-					{
-						outerArg = leftArg;
-						innerArg = (Var *) rightArg;
-					}
+						Expr	   *leftArg = linitial(opexpr->args);
+						Expr	   *rightArg = lsecond(opexpr->args);
+						Var		   *innerArg = NULL;
+						Expr	   *outerArg = NULL;
 
-					Assert(innerArg->varno = INNER_VAR);
+						if (IsA(leftArg, RelabelType))
+							leftArg = ((RelabelType *) leftArg)->arg;
 
-					current_hinfo->innerHashAttNo =
-						((Var *) innerArg)->varattno;
-					current_hinfo->outerParamExpr = outerArg;
-					current_hinfo->orig_expr = clause;
+						if (IsA(rightArg, RelabelType))
+							rightArg = ((RelabelType *) rightArg)->arg;
+
+						if (IsA((Expr *) leftArg, Var) &&
+							((Var *) leftArg)->varno == INNER_VAR)
+						{
+							innerArg = (Var *) leftArg;
+							outerArg = rightArg;
+						}
+						else if (IsA((Expr *) rightArg, Var) &&
+								 ((Var *) rightArg)->varno == INNER_VAR)
+						{
+							outerArg = leftArg;
+							innerArg = (Var *) rightArg;
+						}
+
+						if (innerArg)
+						{
+							Assert(innerArg->varno == INNER_VAR);
+
+							current_hinfo->innerHashAttNo =
+								((Var *) innerArg)->varattno;
+							current_hinfo->outerParamExpr = outerArg;
+							current_hinfo->orig_expr = clause;
+							valid_hash_info = true;
+						}
+					}
 				}
+				if (OidIsValid(hashOp) && !valid_hash_info)
+					current_hinfo->hashOp = InvalidOid;
+
 				current_hinfo++;
 			}
 
-			qsort(batchednl->hashClauseInfos, join->joinqual->length,
-				  sizeof(YbBNLHashClauseInfo), YbBNL_hinfo_cmp_inner_att);
-
-			YbBNLHashClauseInfo *valid_bnl_hinfos = batchednl->hashClauseInfos;
-			int			num_invalid = 0;
-
-			while (num_invalid < batchednl->num_hashClauseInfos &&
-				   !OidIsValid(valid_bnl_hinfos->hashOp))
+			if (join->joinqual == NIL)
 			{
-				valid_bnl_hinfos++;
-				num_invalid++;
+				batchednl->hashClauseInfos = NULL;
+				batchednl->num_hashClauseInfos = 0;
 			}
-			if (num_invalid == batchednl->num_hashClauseInfos)
-				valid_bnl_hinfos = NULL;
+			else
+			{
+				YbBNLHashClauseInfo *valid_bnl_hinfos;
+				int			num_invalid = 0;
 
-			batchednl->hashClauseInfos = valid_bnl_hinfos;
-			batchednl->num_hashClauseInfos -= num_invalid;
+				qsort(batchednl->hashClauseInfos, join->joinqual->length,
+					  sizeof(YbBNLHashClauseInfo), YbBNL_hinfo_cmp_inner_att);
+
+				valid_bnl_hinfos = batchednl->hashClauseInfos;
+				while (num_invalid < batchednl->num_hashClauseInfos &&
+					   !OidIsValid(valid_bnl_hinfos->hashOp))
+				{
+					valid_bnl_hinfos++;
+					num_invalid++;
+				}
+				if (num_invalid == batchednl->num_hashClauseInfos)
+					valid_bnl_hinfos = NULL;
+
+				batchednl->hashClauseInfos = valid_bnl_hinfos;
+				batchednl->num_hashClauseInfos -= num_invalid;
+			}
 		}
 
 	}

@@ -11,6 +11,12 @@
 // under the License.
 //
 
+#include <gmock/gmock.h>
+
+#include "yb/integration-tests/external_mini_cluster.h"
+
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
 #include "yb/util/monotime.h"
@@ -50,24 +56,48 @@ class PgGlobalViewsTest : public LibPqTestBase {
  protected:
   Status SetupGlobalView() {
     RETURN_NOT_OK(conn_->Execute(R"(
-        CREATE VIEW partial_pgss_with_tserver_uuid AS
+        CREATE VIEW partial_pgss_with_server_uuid AS
             SELECT
-                yb_get_local_tserver_uuid() AS tserver_uuid,
+                yb_get_local_tserver_uuid() AS server_uuid,
                 queryid,
                 query,
                 calls
             FROM pg_stat_statements)"));
     RETURN_NOT_OK(conn_->Execute(R"(
         CREATE FOREIGN TABLE IF NOT EXISTS "gv$partial_pg_stat_statements" (
-            tserver_uuid UUID,
+            server_uuid UUID,
             queryid BIGINT,
             query TEXT,
             calls BIGINT
         )
         SERVER gv_server
-        OPTIONS (schema_name 'public', table_name 'partial_pgss_with_tserver_uuid'))"));
+        OPTIONS (schema_name 'public',
+                 table_name 'partial_pgss_with_server_uuid'))"));
+    RETURN_NOT_OK(conn_->Execute(R"(
+        CREATE VIEW partial_ash_with_server_uuid AS
+            SELECT
+                yb_get_local_tserver_uuid() AS server_uuid,
+                sample_time,
+                root_request_id,
+                rpc_request_id,
+                wait_event_component,
+                wait_event_class,
+                wait_event,
+                top_level_node_id,
+                query_id,
+                pid,
+                client_node_ip,
+                wait_event_aux,
+                sample_weight,
+                wait_event_type,
+                ysql_dbid,
+                wait_event_code,
+                pss_mem_bytes,
+                ysql_userid
+            FROM pg_catalog.yb_active_session_history)"));
     RETURN_NOT_OK(conn_->Execute(R"(
         CREATE FOREIGN TABLE IF NOT EXISTS "gv$partial_ash" (
+            server_uuid UUID,
             sample_time TIMESTAMPTZ,
             root_request_id UUID,
             rpc_request_id BIGINT,
@@ -87,20 +117,32 @@ class PgGlobalViewsTest : public LibPqTestBase {
             ysql_userid OID
         )
         SERVER gv_server
-        OPTIONS (schema_name 'pg_catalog', table_name 'yb_active_session_history'))"));
+        OPTIONS (schema_name 'public',
+                 table_name 'partial_ash_with_server_uuid'))"));
     RETURN_NOT_OK(conn_->Execute(R"(
         CREATE VIEW partial_pg_stat_all_tables AS
             SELECT
+                yb_get_local_tserver_uuid() AS server_uuid,
                 schemaname,
                 relname
             FROM pg_stat_all_tables)"));
-    return conn_->Execute(R"(
+    RETURN_NOT_OK(conn_->Execute(R"(
         CREATE FOREIGN TABLE IF NOT EXISTS "gv$partial_pg_stat_all_tables" (
+            server_uuid UUID,
             schemaname NAME,
             relname NAME
         )
         SERVER gv_server
-        OPTIONS (schema_name 'public', table_name 'partial_pg_stat_all_tables'))");
+        OPTIONS (schema_name 'public',
+                 table_name 'partial_pg_stat_all_tables'))"));
+    // Remote partial-view queries run as the non-superuser yb_global_views_user role
+    // (a member of pg_read_all_stats), so the partial views must grant it read
+    // access.
+    return conn_->Execute(R"(
+        GRANT SELECT ON partial_pgss_with_server_uuid,
+                        partial_ash_with_server_uuid,
+                        partial_pg_stat_all_tables
+            TO pg_read_all_stats)");
   }
 
   Status LoadData() {
@@ -140,7 +182,7 @@ class PgGlobalViewsTest : public LibPqTestBase {
     }
 
     auto res = VERIFY_RESULT((conn.FetchRows<Uuid, std::string, int64_t>(R"(
-        SELECT tserver_uuid, query, calls FROM gv$partial_pg_stat_statements
+        SELECT server_uuid, query, calls FROM gv$partial_pg_stat_statements
         WHERE query LIKE 'INSERT INTO tbl %'
         ORDER BY calls ASC)")));
     SCHECK_EQ(expected_result, res, IllegalState,
@@ -199,7 +241,7 @@ TEST_F(PgGlobalViewsTest, TestLimitIsNotPushedDown) {
   TestThreadHolder log_waiter_threads;
   VerifyQueryPushdowns(&log_waiter_threads,
     "SELECT query, calls "
-    "FROM public.partial_pgss_with_tserver_uuid "
+    "FROM public.partial_pgss_with_server_uuid "
     "WHERE ((query ~~ 'INSERT INTO tbl %')) ORDER BY calls DESC NULLS FIRST");
 
   auto res = ASSERT_RESULT((conn_->FetchRow<std::string, int64_t>(R"(
@@ -213,7 +255,7 @@ TEST_F(PgGlobalViewsTest, TestDistinctIsNotPushedDown) {
   TestThreadHolder log_waiter_threads;
   VerifyQueryPushdowns(&log_waiter_threads,
     "SELECT query "
-    "FROM public.partial_pgss_with_tserver_uuid");
+    "FROM public.partial_pgss_with_server_uuid");
 
   auto res = ASSERT_RESULT((conn_->FetchRows<std::string>(
       "SELECT DISTINCT(query) FROM gv$partial_pg_stat_statements")));
@@ -228,7 +270,7 @@ TEST_F(PgGlobalViewsTest, TestGroupByIsNotPushedDown) {
   TestThreadHolder log_waiter_threads;
   VerifyQueryPushdowns(&log_waiter_threads,
     "SELECT query, calls "
-    "FROM public.partial_pgss_with_tserver_uuid "
+    "FROM public.partial_pgss_with_server_uuid "
     "WHERE ((query ~~ 'INSERT INTO tbl %'))");
 
   auto res = ASSERT_RESULT((conn_->FetchRow<std::string, int64_t>(R"(
@@ -251,9 +293,9 @@ TEST_F(PgGlobalViewsTest, TestJoinsAreNotPushedDown) {
 
   // there can only be one log waiter at a time, so we need to run the tests sequentially
   for (const auto& log_pattern : {
-      "SELECT queryid, query FROM public.partial_pgss_with_tserver_uuid",
+      "SELECT queryid, query FROM public.partial_pgss_with_server_uuid",
       "SELECT sample_time, wait_event_component, query_id, wait_event_type "
-      "FROM pg_catalog.yb_active_session_history" }) {
+      "FROM public.partial_ash_with_server_uuid" }) {
     TestThreadHolder log_waiter_threads;
     VerifyQueryPushdowns(&log_waiter_threads, log_pattern);
     auto res = ASSERT_RESULT((
@@ -368,7 +410,7 @@ TEST_F(PgGlobalViewsTest, TestPermissions) {
 TEST_F(PgGlobalViewsTest, TestTserverDownBetweenPrepareAndExecute) {
   ASSERT_OK(conn_->Execute(R"(
       PREPARE gv_stmt AS
-      SELECT tserver_uuid, query, calls FROM gv$partial_pg_stat_statements
+      SELECT server_uuid, query, calls FROM gv$partial_pg_stat_statements
       WHERE query LIKE 'INSERT INTO tbl %'
       ORDER BY calls ASC)"));
 
@@ -464,6 +506,410 @@ TEST_F(PgGlobalViewsExceedRpcMaxSizeTest, YB_DISABLE_TEST_IN_SANITIZERS(TestData
   for (auto& conn : ts_conns) {
     ASSERT_OK(conn.Fetch("SELECT * FROM gv$partial_ash"));
   }
+}
+
+// Listener that counts log lines containing a substring. Used to verify how
+// many remote PgRemoteExec RPCs each tserver actually receives - relies on
+// the test setup enabling --vmodule=tablet_service=1 which makes
+// TabletServiceImpl::PgRemoteExec log "received remote pg exec query: ..."
+// for every incoming federated remote query.
+class RemoteExecCounter : public ExternalDaemon::StringListener {
+ public:
+  explicit RemoteExecCounter(std::string needle) : needle_(std::move(needle)) {}
+
+  void Handle(const GStringPiece& s) override {
+    if (s.contains(needle_)) {
+      count_.fetch_add(1, std::memory_order_relaxed);
+    }
+  }
+
+  int count() const { return count_.load(std::memory_order_relaxed); }
+
+ private:
+  const std::string needle_;
+  std::atomic<int> count_{0};
+};
+
+TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
+  const auto kNumTservers = GetNumTabletServers();
+  ASSERT_GE(kNumTservers, 2) << "Test requires at least 2 tservers";
+
+  // EXPLAIN VERBOSE emits a "Tablet Server: <uuid>" line per surviving per-tserver
+  // Foreign Scan; collect those into the set of tserver UUIDs the plan visits.
+  const auto plan_visits = [&](const std::string& sql) -> Result<std::set<std::string>> {
+    auto plan = VERIFY_RESULT(conn_->FetchAllAsString(
+        Format("EXPLAIN (VERBOSE, COSTS OFF) $0", sql)));
+    std::set<std::string> uuids;
+    size_t pos = 0;
+    constexpr auto kNeedle = "Tablet Server: ";
+    while ((pos = plan.find(kNeedle, pos)) != std::string::npos) {
+      pos += strlen(kNeedle);
+      // FetchAllAsString joins columns with ";"; the UUID may also be
+      // followed by whitespace, a newline, a comma, or a closing paren in
+      // other contexts. Stop at the first such delimiter.
+      auto end = plan.find_first_of(" \n,);", pos);
+      uuids.insert(plan.substr(pos, end - pos));
+    }
+    return uuids;
+  };
+
+  // Returns the full EXPLAIN VERBOSE plan text, so callers can assert on
+  // structure (e.g. "One-Time Filter: false") beyond just the visited set.
+  const auto plan_text = [&](const std::string& sql) -> Result<std::string> {
+    return conn_->FetchAllAsString(
+        Format("EXPLAIN (VERBOSE, COSTS OFF) $0", sql));
+  };
+
+  // Execute the given SELECT, then return the per-tserver count of
+  // "received remote pg exec query: ... <needle> ..." log lines emitted
+  // during the execution. The needle matches the remote SQL that
+  // postgres_fdw sends (it references the underlying VIEW/TABLE name, not
+  // the foreign-table name), which makes the match specific enough to
+  // ignore unrelated background remote-exec traffic.
+  const auto rpcs_per_tserver = [&](const std::string& sql) -> std::vector<int> {
+    constexpr auto kNeedle = "partial_pgss_with_server_uuid";
+
+    std::vector<std::unique_ptr<RemoteExecCounter>> counters;
+    counters.reserve(kNumTservers);
+    for (int i = 0; i < kNumTservers; ++i) {
+      counters.push_back(std::make_unique<RemoteExecCounter>(kNeedle));
+      cluster_->tablet_server(i)->SetLogListener(counters[i].get());
+    }
+
+    // Run the query for its side effects (we want the remote RPCs, not the
+    // rows). Errors here are still reported to the caller via the eventual
+    // assertion.
+    auto ignored = conn_->FetchAllAsString(sql);
+    // The remote-side VLOG fires inline in the RPC handler before the client
+    // sees the response, but the local LogTailerThread reads stderr
+    // asynchronously, so give it a brief window to drain before sampling.
+    SleepFor(MonoDelta::FromMilliseconds(500));
+
+    std::vector<int> counts(kNumTservers);
+    for (int i = 0; i < kNumTservers; ++i) {
+      cluster_->tablet_server(i)->RemoveLogListener(counters[i].get());
+      counts[i] = counters[i]->count();
+    }
+    return counts;
+  };
+
+  const auto base_query =
+      "SELECT server_uuid FROM \"gv$$partial_pg_stat_statements\" "
+      "WHERE $0 query LIKE 'INSERT INTO tbl %' ORDER BY server_uuid";
+
+  const auto tserver0_uuid = cluster_->tablet_server(0)->uuid();
+  const auto tserver1_uuid = cluster_->tablet_server(1)->uuid();
+  const auto tserver2_uuid = cluster_->tablet_server(2)->uuid();
+  const std::set<std::string> all_uuids{tserver0_uuid, tserver1_uuid, tserver2_uuid};
+
+  // No filter -> all tservers visited.
+  //
+  // The base_query passes its sql argument verbatim through Format()'s "$0"
+  // placeholder; arguments are not re-substituted, so user-facing literals
+  // need a single $, while strings used as Format() format-strings need $$.
+  {
+    const auto sql = Format(base_query, "");
+    ASSERT_EQ(ASSERT_RESULT(plan_visits(sql)), all_uuids);
+    ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(1, 1, 1));
+  }
+
+  // Equality filter on one specific UUID -> only that tserver visited and
+  // queried over RPC.
+  {
+    const auto sql = Format(base_query, Format("server_uuid IN ('$0') AND", tserver0_uuid));
+    ASSERT_EQ(ASSERT_RESULT(plan_visits(sql)),
+              std::set<std::string>{tserver0_uuid});
+    ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(1, 0, 0));
+  }
+
+  // IN-list with two known UUIDs -> exactly those two visited, the third
+  // tserver receives no RPC.
+  {
+    const auto sql = Format(base_query,
+        Format("server_uuid IN ('$0', '$1') AND", tserver0_uuid, tserver1_uuid));
+    ASSERT_EQ(ASSERT_RESULT(plan_visits(sql)),
+              (std::set<std::string>{tserver0_uuid, tserver1_uuid}));
+    ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(1, 1, 0));
+  }
+
+  // No-match UUID -> no tservers visited. With every per-tserver child pruned
+  // away, the planner collapses the Append into a dummy Result with
+  // "One-Time Filter: false", so no Foreign Scan (and no remote RPC) survives.
+  {
+    const auto sql = Format(base_query,
+        "server_uuid IN ('00000000-0000-0000-0000-000000000001') AND");
+    auto plan = ASSERT_RESULT(plan_text(sql));
+    ASSERT_NE(plan.find("One-Time Filter: false"), std::string::npos)
+        << "expected dummy Result in plan, got:\n" << plan;
+    ASSERT_EQ(plan.find("Tablet Server:"), std::string::npos)
+        << "expected no Foreign Scan in plan, got:\n" << plan;
+    ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(0, 0, 0));
+  }
+
+  // OR on the same column is intentionally not pruned by this pass - it should
+  // still produce all per-tserver children (and not crash). baserestrictinfo
+  // is an implicit-AND list, so a top-level OR appears as one BoolExpr(OR_EXPR)
+  // entry that our IsA(OpExpr)/IsA(ScalarArrayOpExpr) checks deliberately skip.
+  const auto two_tservers_query_with_or_clause = Format(base_query,
+      Format("(server_uuid IN ('$0') OR server_uuid = '$1') AND",
+             tserver0_uuid, tserver1_uuid));
+  ASSERT_EQ(ASSERT_RESULT(plan_visits(two_tservers_query_with_or_clause)), all_uuids);
+
+  // AND of two recognized clauses intersects -> only the overlap is visited and
+  // gets an RPC.
+  {
+    const auto sql = Format(base_query,
+        Format("server_uuid IN ('$0', '$1') AND server_uuid = '$0' AND",
+               tserver0_uuid, tserver1_uuid));
+    ASSERT_EQ(ASSERT_RESULT(plan_visits(sql)),
+              std::set<std::string>{tserver0_uuid});
+    ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(1, 0, 0));
+  }
+
+  // a OR (b AND c) with each of a/b/c on server_uuid: top-level is an OR
+  // BoolExpr, so we don't prune anything.
+  ASSERT_EQ(ASSERT_RESULT(plan_visits(Format(base_query,
+      Format("(server_uuid = '$0' OR (server_uuid = '$1' AND "
+             "server_uuid IN ('$1', '$2'))) AND",
+             tserver0_uuid, tserver1_uuid, tserver2_uuid)))),
+      all_uuids);
+
+  // (a OR b) AND c with three distinct UUIDs, no overlap because of
+  // the GUC constraint_exclusion = 'partition'
+  {
+    const auto sql = Format(base_query,
+        Format("(server_uuid = '$0' OR server_uuid = '$1') AND "
+               "server_uuid = '$2' AND",
+               tserver0_uuid, tserver1_uuid, tserver2_uuid));
+    auto plan = ASSERT_RESULT(plan_text(sql));
+    ASSERT_NE(plan.find("One-Time Filter: false"), std::string::npos)
+        << "expected dummy Result in plan, got:\n" << plan;
+    ASSERT_EQ(plan.find("Tablet Server:"), std::string::npos)
+        << "expected no Foreign Scan in plan, got:\n" << plan;
+    ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(0, 0, 0));
+  }
+
+  // (a OR b) AND a: c overlaps with the OR branch, so the qual is
+  // satisfiable on exactly one tserver. Our pass prunes to {a} via the bare
+  // AND-conjunct; the OR clause remains as a residual filter that's
+  // trivially satisfied.
+  {
+    const auto sql = Format(base_query,
+        Format("(server_uuid = '$0' OR server_uuid = '$1') AND "
+               "server_uuid = '$0' AND",
+               tserver0_uuid, tserver1_uuid));
+    ASSERT_EQ(ASSERT_RESULT(plan_visits(sql)),
+              std::set<std::string>{tserver0_uuid});
+    ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(1, 0, 0));
+  }
+
+  // server_uuid = NULL: uuid_eq is strict, so the qual is folded to NULL
+  // before reaching baserestrictinfo; the parent rel becomes dummy, no
+  // tserver receives an RPC, and FetchRows returns 0 rows.
+  {
+    const auto sql = Format(base_query, "server_uuid = NULL AND");
+    auto plan = ASSERT_RESULT(plan_text(sql));
+    ASSERT_NE(plan.find("One-Time Filter: false"), std::string::npos)
+        << "expected dummy Result in plan, got:\n" << plan;
+    ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(0, 0, 0));
+    auto rows = ASSERT_RESULT((conn_->FetchRows<Uuid>(sql)));
+    ASSERT_EQ(rows.size(), 0);
+  }
+
+  // server_uuid IN (NULL, NULL, NULL): the parser rewrites IN-list to
+  // OR-of-equalities, every disjunct is `uuid_eq(var, NULL)` which folds to
+  // NULL, the whole OR folds to NULL, the rel becomes dummy. Same observable
+  // behavior as `= NULL`, but exercises the all-NULL IN-list path that
+  // could otherwise surface a NULL Const inside our SAOP branch.
+  {
+    const auto sql = Format(base_query, "server_uuid IN (NULL, NULL, NULL) AND");
+    auto plan = ASSERT_RESULT(plan_text(sql));
+    ASSERT_NE(plan.find("One-Time Filter: false"), std::string::npos)
+        << "expected dummy Result in plan, got:\n" << plan;
+    ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(0, 0, 0));
+    auto rows = ASSERT_RESULT((conn_->FetchRows<Uuid>(sql)));
+    ASSERT_EQ(rows.size(), 0);
+  }
+
+  // NULL elements inside an IN-list are silently skipped; the surviving real
+  // UUIDs still drive pruning to exactly two tservers.
+  {
+    const auto sql = Format(base_query,
+        Format("server_uuid IN ('$0', NULL, '$1') AND",
+               tserver0_uuid, tserver1_uuid));
+    ASSERT_EQ(ASSERT_RESULT(plan_visits(sql)),
+              (std::set<std::string>{tserver0_uuid, tserver1_uuid}));
+    ASSERT_THAT(rpcs_per_tserver(sql), ::testing::ElementsAre(1, 1, 0));
+  }
+
+  // UNION ALL over disjoint tserver UUID sets: each branch prunes
+  // independently, the two branches together visit all three tservers
+  // exactly once, and rows from each tserver appear in only one branch.
+  const auto union_query = Format(
+      "SELECT server_uuid FROM \"gv$$partial_pg_stat_statements\" "
+      "WHERE server_uuid IN ('$0') AND query LIKE 'INSERT INTO tbl %' "
+      "UNION ALL "
+      "SELECT server_uuid FROM \"gv$$partial_pg_stat_statements\" "
+      "WHERE server_uuid IN ('$1', '$2') AND query LIKE 'INSERT INTO tbl %'",
+      tserver0_uuid, tserver1_uuid, tserver2_uuid);
+  ASSERT_EQ(ASSERT_RESULT(plan_visits(union_query)), all_uuids);
+  ASSERT_THAT(rpcs_per_tserver(union_query), ::testing::ElementsAre(1, 1, 1));
+
+  // Execution sanity check: filter returns rows only from the tservers in the OR
+  // filter (ts0 and ts1). Each tserver has one pgss row for the INSERT query, so
+  // expect exactly 2 rows total. Also confirms that the OR path actually
+  // round-trips to all three tservers (since the OR is opaque to our pass) -
+  // ts2 is queried, just returns zero rows.
+  auto rows = ASSERT_RESULT((conn_->FetchRows<Uuid>(two_tservers_query_with_or_clause)));
+  ASSERT_EQ(rows.size(), 2);
+  std::vector<Uuid> expected_uuids = {
+      ASSERT_RESULT(Uuid::FromHexStringBigEndian(tserver0_uuid)),
+      ASSERT_RESULT(Uuid::FromHexStringBigEndian(tserver1_uuid)),
+  };
+  std::sort(expected_uuids.begin(), expected_uuids.end());
+  ASSERT_EQ(rows, expected_uuids);
+  ASSERT_THAT(rpcs_per_tserver(two_tservers_query_with_or_clause),
+              ::testing::ElementsAre(1, 1, 1));
+}
+
+// The remote query on each tserver must run as the dedicated non-superuser
+// yb_global_views_user role, not the postgres superuser the internal connection used to
+// authenticate as. It is also registered as the YB_INTERNAL_CONN_KIND_GLOBAL_VIEW
+// internal-connection kind, so it reports a distinct pg_stat_activity backend_type.
+TEST_F(PgGlobalViewsTest, TestRemoteRunsAsReadOnlyRole) {
+  // The remote backend reports its own role and backend_type from its
+  // pg_stat_activity row.
+  ASSERT_OK(conn_->Execute(R"(
+      CREATE VIEW partial_current_user AS
+          SELECT yb_get_local_tserver_uuid() AS server_uuid,
+                 current_user::text AS rolename,
+                 (SELECT backend_type FROM pg_stat_activity
+                  WHERE pid = pg_backend_pid()) AS backend_type)"));
+  ASSERT_OK(conn_->Execute(R"(
+      CREATE FOREIGN TABLE "gv$current_user" (
+          server_uuid UUID,
+          rolename TEXT,
+          backend_type TEXT
+      )
+      SERVER gv_server
+      OPTIONS (schema_name 'public', table_name 'partial_current_user'))"));
+  ASSERT_OK(conn_->Execute(
+      "GRANT SELECT ON partial_current_user TO pg_read_all_stats"));
+
+  auto rows = ASSERT_RESULT((conn_->FetchRows<std::string, std::string>(
+      "SELECT rolename, backend_type FROM gv$current_user")));
+  ASSERT_EQ(rows, (decltype(rows){
+      {"yb_global_views_user", "yb global view backend"},
+      {"yb_global_views_user", "yb global view backend"},
+      {"yb_global_views_user", "yb global view backend"}}));
+}
+
+// The read-only reader cannot read superuser-only catalogs such as pg_authid;
+// the remote query fails permission and the tserver is skipped with a WARNING.
+TEST_F(PgGlobalViewsTest, TestRemoteCannotReadPgAuthid) {
+  // SECURITY INVOKER function, so the pg_authid read is checked against the
+  // running role (yb_global_views_user) rather than the view owner.
+  ASSERT_OK(conn_->Execute(R"(
+      CREATE FUNCTION read_authid() RETURNS text
+      LANGUAGE plpgsql AS $$
+      DECLARE v text;
+      BEGIN
+        SELECT string_agg(rolname, ',') INTO v FROM pg_authid;
+        RETURN v;
+      END $$)"));
+  ASSERT_OK(conn_->Execute(R"(
+      CREATE VIEW partial_authid AS
+          SELECT yb_get_local_tserver_uuid() AS server_uuid,
+                 read_authid() AS rolenames)"));
+  ASSERT_OK(conn_->Execute(R"(
+      CREATE FOREIGN TABLE "gv$authid" (
+          server_uuid UUID,
+          rolenames TEXT
+      )
+      SERVER gv_server
+      OPTIONS (schema_name 'public', table_name 'partial_authid'))"));
+  ASSERT_OK(conn_->Execute(
+      "GRANT SELECT ON partial_authid TO pg_read_all_stats"));
+
+  std::vector<std::string> warnings;
+  conn_->SetNoticeProcessor(
+      [](void* arg, const char* message) {
+        static_cast<std::vector<std::string>*>(arg)->emplace_back(message);
+      },
+      &warnings);
+
+  auto rows = ASSERT_RESULT(conn_->FetchRows<std::string>(
+      "SELECT rolenames FROM gv$authid"));
+  // Every tserver is skipped (permission denied), so no rows come back.
+  ASSERT_TRUE(rows.empty()) << "pg_authid was readable: " << AsString(rows);
+  ASSERT_EQ(warnings.size(), GetNumTabletServers());
+  for (const auto& w : warnings) {
+    ASSERT_STR_CONTAINS(w, "permission denied");
+  }
+}
+
+// A directly-injected DML query must be rejected: the remote backend runs as
+// the non-superuser yb_global_views_user, which has no write privileges.
+// postgres_fdw never generates write queries, so the RemoteExec RPC is crafted
+// by hand to exercise the raw query path an attacker could attempt.
+TEST_F(PgGlobalViewsTest, TestRemoteRejectsWrites) {
+  // template1 (conn_'s db) disallows CREATE TABLE, so use the default db.
+  auto db_conn = ASSERT_RESULT(Connect());
+  const auto db_name = ASSERT_RESULT(db_conn.FetchRow<std::string>(
+      "SELECT current_database()::text"));
+  ASSERT_OK(db_conn.Execute("CREATE TABLE write_target (k INT)"));
+
+  rpc::RpcController controller;
+  controller.set_timeout(30s);
+  auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(
+      cluster_->tablet_server(0));
+
+  tserver::PgRemoteExecRequestPB req;
+  req.set_database_name(db_name);
+  req.set_query("INSERT INTO write_target VALUES (1)");
+  tserver::PgRemoteExecResponsePB resp;
+  ASSERT_OK(proxy.PgRemoteExec(req, &resp, &controller));
+
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  ASSERT_EQ(resp.pg_result().exec_status(), PGRES_FATAL_ERROR);
+  ASSERT_STR_CONTAINS(resp.pg_result().error_message(), "permission denied");
+
+  // The write must not have taken effect.
+  ASSERT_EQ(ASSERT_RESULT(db_conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM write_target")), 0);
+}
+
+// A remote query must not be able to signal other backends on the tserver.
+// yb_global_views_user is not a superuser nor a member of pg_signal_backend, so
+// pg_terminate_backend against a backend it does not own is rejected.
+TEST_F(PgGlobalViewsTest, TestRemoteCannotSignalBackends) {
+  // Keep a live backend owned by an unrelated non-superuser on tserver 0 to be
+  // the (failed) signal target.
+  ASSERT_OK(conn_->Execute("CREATE ROLE signal_target LOGIN"));
+  // ConnectToTsAsUser uses the simple query protocol, so results come back in
+  // text format; fetch the pid as a string.
+  auto target_conn = ASSERT_RESULT(
+      ConnectToTsAsUser(*cluster_->tablet_server(0), "signal_target"));
+  const auto target_pid = ASSERT_RESULT(target_conn.FetchRow<std::string>(
+      "SELECT pg_backend_pid()::text"));
+
+  rpc::RpcController controller;
+  controller.set_timeout(30s);
+  auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(
+      cluster_->tablet_server(0));
+
+  tserver::PgRemoteExecRequestPB req;
+  req.set_database_name(kInitialDB);
+  req.set_query(Format("SELECT pg_terminate_backend($0)", target_pid));
+  tserver::PgRemoteExecResponsePB resp;
+  ASSERT_OK(proxy.PgRemoteExec(req, &resp, &controller));
+
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  ASSERT_EQ(resp.pg_result().exec_status(), PGRES_FATAL_ERROR);
+  ASSERT_STR_CONTAINS(resp.pg_result().error_message(), "pg_signal_backend");
+
+  // The target backend must still be alive and usable.
+  ASSERT_EQ(ASSERT_RESULT(target_conn.FetchRow<std::string>("SELECT (1)::text")), "1");
 }
 
 } // namespace yb::pgwrapper

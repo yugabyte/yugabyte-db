@@ -51,6 +51,7 @@ DECLARE_bool(TEST_skip_aborting_active_transactions_during_schema_change);
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
@@ -92,7 +93,9 @@ class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase>,
 class PgPackedRowTestDisableTableLocks : public PgPackedRowTest {
  protected:
   void SetUp() override {
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     PgPackedRowTest::SetUp();
   }
 
@@ -675,7 +678,12 @@ TEST_P(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentColocatedCompaction)) 
   static const auto kRetryableErrors = {
       "Try again",
       "Snapshot too old",
-      "Restart read required"
+      "Restart read required",
+      // Concurrent colocated DDLs can conflict on pg_yb_catalog_version, and a CREATE TABLE that
+      // races with another backend's catalog bump can leave this backend's local cache stale
+      // until the next refresh, surfacing as "relation does not exist" on the following INSERT.
+      "could not serialize access due to concurrent update",
+      "does not exist",
   };
   const auto retry_until_success = [&](PGConn& conn, const std::string& stmt) {
     while (true) {
@@ -736,6 +744,7 @@ TEST_P(PgPackedRowTest, Serial) {
 }
 
 TEST_P(PgPackedRowTest, PackDuringCompaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
 
   const auto kNumKeys = 10;

@@ -14,19 +14,55 @@
 #pragma once
 
 #include <atomic>
+#include <optional>
 #include <shared_mutex>
 #include <utility>
 
 #include "yb/rocksdb/util/heap.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/two_group_mutex.h"
 
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/vector_index_if.h"
 
+namespace rocksdb {
+class Cache;
+}
+
 DECLARE_bool(TEST_vector_index_exact);
 
 namespace yb::vector_index {
+
+// RAII handle for space reserved in a block cache. While alive it keeps `bytes` of the cache's
+// capacity consumed -- which forces the cache to evict other blocks -- and releases that space on
+// destruction. Move-only.
+class BlockCacheReservation {
+ public:
+  BlockCacheReservation() = default;
+  // Consumes `bytes` of `cache`, unless `cache` is null, `bytes` is zero, or the reservation is
+  // disabled via the gflag -- in those cases the reservation stays empty.
+  BlockCacheReservation(rocksdb::Cache* cache, size_t bytes);
+
+  BlockCacheReservation(BlockCacheReservation&& rhs) noexcept;
+  BlockCacheReservation& operator=(BlockCacheReservation&& rhs) noexcept;
+
+  BlockCacheReservation(const BlockCacheReservation&) = delete;
+  void operator=(const BlockCacheReservation&) = delete;
+
+  ~BlockCacheReservation();
+
+  explicit operator bool() const {
+    return cache_ != nullptr;
+  }
+
+  // Releases the reserved space back to the cache.
+  void Reset();
+
+ private:
+  rocksdb::Cache* cache_ = nullptr;
+  size_t bytes_ = 0;
+};
 
 // Base class for index wrappers.
 // Contains common parts of index wrapper implementations.
@@ -42,6 +78,10 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
       std::unique_lock lock(TEST_search_exact_mutex_);
       return impl().DoInsert(vector_id, v);
     }
+    // Take the write side: concurrent inserts run together (the backend coordinates them via its
+    // own per-node locks) but exclude searches, whose lock-free traversal must not observe a
+    // half-applied insert.
+    TwoGroupMutex::WriteLock lock(search_insert_mutex_);
     return impl().DoInsert(vector_id, v);
   }
 
@@ -66,6 +106,12 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     if (PREDICT_FALSE(FLAGS_TEST_vector_index_exact)) {
       std::shared_lock lock(TEST_search_exact_mutex_);
       return SearchExact(query_vector, options);
+    }
+    // Take the read side while the index is still mutable, so searches never overlap an insert.
+    // Immutable (flushed/loaded) indexes have no writers and are searched lock-free.
+    std::optional<TwoGroupMutex::ReadLock> lock;
+    if (!immutable()) {
+      lock.emplace(search_insert_mutex_);
     }
     return impl().DoSearch(query_vector, options);
   }
@@ -93,6 +139,22 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     return obj;
   }
 
+ protected:
+  // True once the index has been saved/loaded and can no longer be modified. Subclasses use this
+  // to skip search-vs-insert coordination on immutable indexes (no concurrent writers possible).
+  bool immutable() const {
+    return immutable_.load(std::memory_order_acquire);
+  }
+
+  // Reserve `bytes` of `block_cache` space for this index's in-memory footprint, replacing any
+  // prior reservation. Reserving lowers the cache's effective capacity, so the cache evicts other
+  // blocks instead of letting the index grow total memory consumption past the limits (#32357).
+  // Subclasses call this from their Reserve() with the backend-specific estimate of the chunk's
+  // footprint; the reservation is a no-op when `block_cache` is null, `bytes` is zero, or disabled.
+  void ReserveBlockCacheSpace(rocksdb::Cache* block_cache, size_t bytes) {
+    block_cache_reservation_ = BlockCacheReservation(block_cache, bytes);
+  }
+
  private:
   Impl& impl() {
     return *static_cast<Impl*>(this);
@@ -105,6 +167,17 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
   std::atomic<bool> immutable_{false};
   std::shared_ptr<void> attached_;
   mutable std::shared_mutex TEST_search_exact_mutex_;
+
+  // Block cache space reserved for this index's footprint (#32357). Held for the index's lifetime
+  // and released on destruction. Empty when no block cache is set or the feature is disabled.
+  BlockCacheReservation block_cache_reservation_;
+
+  // Coordinates lock-free searches against concurrent inserts on a mutable index: many inserts run
+  // together and many searches run together, but a search phase and an insert phase never overlap,
+  // so a search never observes a partially-applied insert. Backends whose concurrent inserts and
+  // concurrent searches are each internally safe rely on this for cross-group exclusion. Taken only
+  // while the index is mutable; immutable indexes have no writers and stay lock-free.
+  mutable TwoGroupMutex search_insert_mutex_;
 };
 
 template <typename Vector, typename IteratorImpl>

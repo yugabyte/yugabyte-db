@@ -181,7 +181,8 @@ Status CleanupAllChildCgroups(const std::string& cgroup) {
 // afterwards).
 class CgroupManager {
  public:
-  Status Init(ClearChildCgroups clear) {
+  Status Init(
+      ClearChildCgroups clear, const std::function<Result<Cgroup&>(Cgroup&)>& default_cgroup_init) {
     RSTATUS_DCHECK(!initialized_, IllegalState, "CgroupManager already initialized");
     version_ = VERIFY_RESULT(GetCgroupVersion());
     auto cpu_cgroup = VERIFY_RESULT(ReadCpuGroup(getpid(), version_));
@@ -196,20 +197,18 @@ class CgroupManager {
     }
     root_ = std::make_unique<Cgroup>(nullptr /* parent */, "" /* name */);
     RETURN_NOT_OK(root_->Init(true /* is_root */));
-    default_group_.store(
-        &VERIFY_RESULT_REF(root_->CreateOrLoadChild(kDefaultThreadCgroupName)),
-        std::memory_order_release);
-    RETURN_NOT_OK(default_group_.load(std::memory_order_relaxed)->MoveCurrentThreadToGroup());
+
+    default_group_ = default_cgroup_init
+        ? &VERIFY_RESULT_REF(default_cgroup_init(*root_))
+        : &VERIFY_RESULT_REF(root_->CreateOrLoadChild(kDefaultThreadCgroupName));
+    RETURN_NOT_OK(default_group_->MoveCurrentThreadToGroup());
 
     initialized_ = true;
     return Status::OK();
   }
 
   Cgroup* root_group() { return root_.get(); }
-  Cgroup* default_thread_group() { return default_group_.load(std::memory_order_acquire); }
-  void set_default_thread_group(Cgroup* cg) {
-    default_group_.store(cg, std::memory_order_release);
-  }
+  Cgroup* default_thread_group() { return default_group_; }
   CgroupVersion version() { return version_; }
   std::string_view cpu_group() { return process_cpu_cgroup_; }
   std::string_view cpu_root_path() { return cpu_root_path_; }
@@ -223,7 +222,7 @@ class CgroupManager {
   std::string cpu_root_path_;
   std::string process_cpu_cgroup_path_;
   std::unique_ptr<Cgroup> root_;
-  std::atomic<Cgroup*> default_group_{nullptr};
+  Cgroup* default_group_ = nullptr;
   bool initialized_ = false;
 };
 
@@ -447,7 +446,9 @@ Status Cgroup::MoveProcessToGroup(int64_t pid) {
   return WriteConfig("cgroup.procs", AsString(pid));
 }
 
-void Cgroup::VisitChildren(const std::function<void(Cgroup&)>& visitor) {
+void Cgroup::VisitChildren(
+    const std::function<void(Cgroup&)>& visitor,
+    const std::function<void(std::span<Cgroup*>)>& sort) {
   std::vector<Cgroup*> children;
   {
     std::lock_guard lock(mutex_);
@@ -456,20 +457,24 @@ void Cgroup::VisitChildren(const std::function<void(Cgroup&)>& visitor) {
       children.push_back(&child);
     }
   }
+  if (sort) {
+    sort(children);
+  }
   for (auto& child : children) {
     visitor(*child);
   }
 }
 
 void Cgroup::VisitTree(
-    const std::function<void(Cgroup&, size_t)>& visitor, size_t current_depth, size_t max_depth) {
+    const std::function<void(Cgroup&, size_t)>& visitor,
+    const std::function<void(std::span<Cgroup*>)>& sort, size_t current_depth, size_t max_depth) {
   visitor(*this, current_depth);
   if (current_depth == max_depth) {
     return;
   }
   VisitChildren([&](Cgroup& child) {
-    child.VisitTree(visitor, current_depth + 1, max_depth);
-  });
+    child.VisitTree(visitor, sort, current_depth + 1, max_depth);
+  }, sort);
 }
 
 Result<std::vector<int64_t>> Cgroup::ReadThreadIds() {
@@ -589,8 +594,9 @@ std::string Cgroup::ToString() const {
   return YB_STRUCT_TO_STRING(name_, cpu_period_us_, cpu_max_fraction_, cpu_weight_);
 }
 
-Status SetupCgroupManagement(ClearChildCgroups clear) {
-  return cgroup_manager.Init(clear);
+Status SetupCgroupManagement(
+    ClearChildCgroups clear, const std::function<Result<Cgroup&>(Cgroup&)>& default_cgroup_init) {
+  return cgroup_manager.Init(clear, default_cgroup_init);
 }
 
 bool CgroupManagementEnabled() {
@@ -603,10 +609,6 @@ Cgroup* RootCgroup() {
 
 Cgroup* DefaultThreadCgroup() {
   return cgroup_manager.default_thread_group();
-}
-
-void SetDefaultThreadCgroup(Cgroup* cgroup) {
-  cgroup_manager.set_default_thread_group(cgroup);
 }
 
 Result<std::string> GetProcessCpuCgroup(int64_t process_id, bool check_controllers) {

@@ -16,11 +16,15 @@ import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.oracle.bmc.keymanagement.model.Key;
+import com.oracle.bmc.keymanagement.responses.CreateKeyResponse;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
@@ -66,15 +70,15 @@ public class OciEARServiceTest extends FakeDBApplication {
     this.universe = ModelFactory.createUniverse(customer.getId());
 
     fakeAuthConfig.put("name", authConfigName);
-    fakeAuthConfig.put(OciKmsAuthConfigField.TENANCY_OCID.fieldName, "ocid1.tenancy.oc1..fake");
-    fakeAuthConfig.put(OciKmsAuthConfigField.USER_OCID.fieldName, "ocid1.user.oc1..fake");
-    fakeAuthConfig.put(OciKmsAuthConfigField.FINGERPRINT.fieldName, "fake-fingerprint");
-    fakeAuthConfig.put(OciKmsAuthConfigField.PRIVATE_KEY.fieldName, "fake-pem-key");
+    fakeAuthConfig.put(OciKmsAuthConfigField.ociTenancyId.fieldName, "ocid1.tenancy.oc1..fake");
+    fakeAuthConfig.put(OciKmsAuthConfigField.ociUserId.fieldName, "ocid1.user.oc1..fake");
+    fakeAuthConfig.put(OciKmsAuthConfigField.ociFingerprint.fieldName, "fake-fingerprint");
+    fakeAuthConfig.put(OciKmsAuthConfigField.ociPrivateKeyContent.fieldName, "fake-pem-key");
     fakeAuthConfig.put(
-        OciKmsAuthConfigField.OCI_COMPARTMENT_OCID.fieldName, "ocid1.compartment.oc1..fake");
-    fakeAuthConfig.put(OciKmsAuthConfigField.OCI_VAULT_OCID.fieldName, "ocid1.vault.oc1..fake");
-    fakeAuthConfig.put(OciKmsAuthConfigField.OCI_REGION.fieldName, "us-phoenix-1");
-    fakeAuthConfig.put(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName, keyOcid);
+        OciKmsAuthConfigField.ociCompartmentId.fieldName, "ocid1.compartment.oc1..fake");
+    fakeAuthConfig.put(OciKmsAuthConfigField.ociVaultId.fieldName, "ocid1.vault.oc1..fake");
+    fakeAuthConfig.put(OciKmsAuthConfigField.ociRegion.fieldName, "us-phoenix-1");
+    fakeAuthConfig.put(OciKmsAuthConfigField.ociKeyOcid.fieldName, keyOcid);
 
     doReturn(mockOciEARServiceUtil).when(mockOciEARService).getOciEarServiceUtil();
 
@@ -90,22 +94,11 @@ public class OciEARServiceTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateAuthConfigWithService_withKeyOcid() throws Exception {
+  public void testCreateAuthConfigWithService_keyExists_resolvesOcid() throws Exception {
+    // OCI_KEY_NAME is the only user-facing input; the OCID is derived and cached.
     ObjectNode fakeAuthConfigCopy = fakeAuthConfig.deepCopy();
-    fakeAuthConfigCopy.put(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName, keyOcid);
-
-    ObjectNode createdAuthConfig =
-        mockOciEARService.createAuthConfigWithService(configUUID, fakeAuthConfigCopy);
-    assertNotNull(createdAuthConfig);
-    assertEquals(
-        keyOcid, createdAuthConfig.path(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName).asText());
-  }
-
-  @Test
-  public void testCreateAuthConfigWithService_withKeyname() throws Exception {
-    ObjectNode fakeAuthConfigCopy = fakeAuthConfig.deepCopy();
-    fakeAuthConfigCopy.remove(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName);
-    fakeAuthConfigCopy.put(OciKmsAuthConfigField.OCI_KEY_NAME.fieldName, keyName);
+    fakeAuthConfigCopy.remove(OciKmsAuthConfigField.ociKeyOcid.fieldName);
+    fakeAuthConfigCopy.put(OciKmsAuthConfigField.ociKeyName.fieldName, keyName);
 
     doReturn(keyOcid)
         .when(mockOciEARServiceUtil)
@@ -115,9 +108,34 @@ public class OciEARServiceTest extends FakeDBApplication {
         mockOciEARService.createAuthConfigWithService(configUUID, fakeAuthConfigCopy);
     assertNotNull(createdAuthConfig);
     assertEquals(
-        keyOcid, createdAuthConfig.path(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName).asText());
+        keyOcid, createdAuthConfig.path(OciKmsAuthConfigField.ociKeyOcid.fieldName).asText());
     assertEquals(
-        keyName, createdAuthConfig.path(OciKmsAuthConfigField.OCI_KEY_NAME.fieldName).asText());
+        keyName, createdAuthConfig.path(OciKmsAuthConfigField.ociKeyName.fieldName).asText());
+  }
+
+  @Test
+  public void testCreateAuthConfigWithService_keyDoesNotExist_createsAndCachesOcid()
+      throws Exception {
+    ObjectNode fakeAuthConfigCopy = fakeAuthConfig.deepCopy();
+    fakeAuthConfigCopy.remove(OciKmsAuthConfigField.ociKeyOcid.fieldName);
+    fakeAuthConfigCopy.put(OciKmsAuthConfigField.ociKeyName.fieldName, keyName);
+
+    doReturn(null).when(mockOciEARServiceUtil).getKeyOcidByName(eq(configUUID), any(), eq(keyName));
+
+    Key createdKey = mock(Key.class);
+    when(createdKey.getId()).thenReturn(keyOcid);
+    CreateKeyResponse createKeyResponse = mock(CreateKeyResponse.class);
+    when(createKeyResponse.getKey()).thenReturn(createdKey);
+    doReturn(createKeyResponse)
+        .when(mockOciEARServiceUtil)
+        .createKey(eq(configUUID), any(), eq(keyName));
+
+    ObjectNode createdAuthConfig =
+        mockOciEARService.createAuthConfigWithService(configUUID, fakeAuthConfigCopy);
+    assertNotNull(createdAuthConfig);
+    assertEquals(
+        keyOcid, createdAuthConfig.path(OciKmsAuthConfigField.ociKeyOcid.fieldName).asText());
+    verify(mockOciEARServiceUtil, times(1)).createKey(eq(configUUID), any(), eq(keyName));
   }
 
   @Test

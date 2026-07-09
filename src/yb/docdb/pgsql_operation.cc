@@ -85,6 +85,8 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+#include "ybgate/ybgate_api.h"
+
 using namespace std::literals;
 
 DECLARE_bool(ysql_disable_index_backfill);
@@ -92,45 +94,46 @@ DECLARE_bool(ysql_disable_index_backfill);
 DEPRECATE_FLAG(double, ysql_scan_timeout_multiplier, "10_2022");
 
 DEFINE_UNKNOWN_uint64(ysql_scan_deadline_margin_ms, 1000,
-              "Scan deadline is calculated by adding client timeout to the time when the request "
-              "was received. It defines the moment in time when client has definitely timed out "
-              "and if the request is yet in processing after the deadline, it can be canceled. "
-              "Therefore to prevent client timeout, the request handler should return partial "
-              "result and paging information some time before the deadline. That's what the "
-              "ysql_scan_deadline_margin_ms is for. It should account for network and processing "
-              "delays.");
+    "Scan deadline is calculated by adding client timeout to the time when the request "
+    "was received. It defines the moment in time when client has definitely timed out "
+    "and if the request is yet in processing after the deadline, it can be canceled. "
+    "Therefore to prevent client timeout, the request handler should return partial "
+    "result and paging information some time before the deadline. That's what the "
+    "ysql_scan_deadline_margin_ms is for. It should account for network and processing "
+    "delays.");
 
 DEFINE_UNKNOWN_bool(pgsql_consistent_transactional_paging, true,
-            "Whether to enforce consistency of data returned for second page and beyond for YSQL "
-            "queries on transactional tables. If true, read restart errors could be returned to "
-            "prevent inconsistency. If false, no read restart errors are returned but the data may "
-            "be stale. The latter is preferable for long scans. The data returned for the first "
-            "page of results is never stale regardless of this flag.");
+    "Whether to enforce consistency of data returned for second page and beyond for YSQL "
+    "queries on transactional tables. If true, read restart errors could be returned to "
+    "prevent inconsistency. If false, no read restart errors are returned but the data may "
+    "be stale. The latter is preferable for long scans. The data returned for the first "
+    "page of results is never stale regardless of this flag.");
 
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
-                 "If set > 0, slows down the response to pgsql aggregate read by this amount.");
+    "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
 // Disable packed row by default in debug builds.
 constexpr bool kYsqlEnablePackedRowTargetVal = !yb::kIsDebug;
 DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kExternal,
-                         !kYsqlEnablePackedRowTargetVal, kYsqlEnablePackedRowTargetVal,
-                         "Whether packed row is enabled for YSQL.");
+    !kYsqlEnablePackedRowTargetVal, kYsqlEnablePackedRowTargetVal,
+    "Whether packed row is enabled for YSQL.");
 
 DEFINE_RUNTIME_bool(ysql_enable_packed_row_for_colocated_table, true,
-                    "Whether to enable packed row for colocated tables.");
+    "Whether to enable packed row for colocated tables.");
 
 DEFINE_UNKNOWN_uint64(ysql_packed_row_size_limit, 0,
     "Packed row size limit for YSQL in bytes. 0 to make this equal to SSTable block size.");
 
 DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
-                    "Whether to enable packed row for full row update.");
+    "Whether to enable packed row for full row update.");
 
 DEFINE_RUNTIME_bool(ysql_mark_update_packed_row, false,
-                    "Whether to mark packed rows created from UPDATE operations with a flag. "
-                    "This allows CDC to differentiate between INSERT and UPDATE packed rows."
-                    "Default is false.");
-DEFINE_RUNTIME_PREVIEW_bool(ysql_use_packed_row_v2, false,
-                            "Whether to use packed row V2 when row packing is enabled.");
+    "Whether to mark packed rows created from UPDATE operations with a flag. "
+    "This allows CDC to differentiate between INSERT and UPDATE packed rows."
+    "Default is false.");
+
+DEFINE_RUNTIME_AUTO_bool(ysql_use_packed_row_v2, kExternal, false, true,
+    "Whether to use packed row V2 when row packing is enabled.");
 
 DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
     "By default DocDB operations for YSQL take row-level locks. If set to true, DocDB will instead "
@@ -138,7 +141,7 @@ DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
     "data integrity for operations with implicit dependencies between columns.");
 
 DEFINE_RUNTIME_bool(vector_index_skip_filter_check, false,
-                    "Whether to skip filter check during vector index search.");
+    "Whether to skip filter check during vector index search.");
 
 DEFINE_RUNTIME_bool(vector_index_no_deletions_skip_filter_check, true,
     "Whether to skip filter check during vector index search if table does not have "
@@ -150,6 +153,7 @@ DECLARE_bool(vector_index_dump_stats);
 
 namespace yb::docdb {
 
+bool TEST_vector_index_clear_result_entries_once = false;
 bool TEST_vector_index_filter_allowed = true;
 size_t TEST_vector_index_max_checked_entries = std::numeric_limits<size_t>::max();
 
@@ -931,8 +935,17 @@ class VectorIndexKeyProvider {
       result_entries_.erase(range.begin(), range.end());
     }
 
-    VLOG_WITH_FUNC(4) << vector_index_.ToString()
+    // Simulates reverse-mapping misses shrinking the result entries below the skip count.
+    // There are several scenarios where this can happen in production, for example: intents
+    // deduplication (a couple of lines above), reverse-mapping misses, etc.
+    if (TEST_vector_index_clear_result_entries_once && num_top_vectors_to_remove_ > 0) {
+      result_entries_.clear();
+      ANNOTATE_UNPROTECTED_WRITE(TEST_vector_index_clear_result_entries_once) = false;
+    }
+
+    VLOG_WITH_FUNC(1) << vector_index_.ToString()
                       << ", could_have_more_data_: " << could_have_more_data_
+                      << ", found_intents_: " << found_intents_
                       << ", result_entries_.size(): " << result_entries_.size()
                       << ", max_results_: " << max_results_
                       << ", num_top_vectors_to_remove_: " << num_top_vectors_to_remove_;
@@ -941,8 +954,10 @@ class VectorIndexKeyProvider {
       std::ranges::sort(result_entries_, [](const auto& lhs, const auto& rhs) {
         return lhs.encoded_distance < rhs.encoded_distance;
       });
+
+      const auto num_to_skip = std::min(num_top_vectors_to_remove_, result_entries_.size());
       result_entries_.erase(
-          result_entries_.begin(), result_entries_.begin() + num_top_vectors_to_remove_);
+          result_entries_.begin(), result_entries_.begin() + num_to_skip);
       std::ranges::sort(result_entries_, cmp_keys);
     }
 
@@ -1474,7 +1489,8 @@ Status PgsqlWriteOperation::InsertColumn(
     return DoInsertColumn(data, column_id, column, value, pack_context);
   }
 
-  dockv::DocVectorValue vector_value(value, vector_index::VectorId::GenerateRandom());
+  dockv::DocVectorValue vector_value(
+    doc_read_context_->vector_value_format(), value, vector_index::VectorId::GenerateRandom());
   return DoInsertColumn(data, column_id, column, vector_value, pack_context);
 }
 
@@ -1537,6 +1553,11 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
       key_bytes.AppendRawBytes(*it++);
       auto key = key_bytes.AsSlice();
       Slice packed_value(*it++);
+      // TODO(vector_index): This pass-through writes the pggate-packed row (from BindPackedRow)
+      // directly without intercepting vector columns. Vector columns won't get a VectorId
+      // assigned. When owns_vector_reverse_mapping tables are enabled, vector columns must be
+      // intercepted here (e.g. by falling through to the unpack-repack path below for tables
+      // with vectors).
       if (pack_row &&
           packed_value.size() < dockv::PackedSizeLimit(FLAGS_ysql_packed_row_size_limit)) {
         RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
@@ -1650,7 +1671,9 @@ Status PgsqlWriteOperation::UpdateColumn(
     return DoUpdateColumn(data, column_id, column, result->Value(), pack_context);
   }
 
-  dockv::DocVectorValue vector_value(result->Value(), vector_index::VectorId::GenerateRandom());
+  dockv::DocVectorValue vector_value(
+      doc_read_context_->vector_value_format(), result->Value(),
+      vector_index::VectorId::GenerateRandom());
   return DoUpdateColumn(data, column_id, column, vector_value, pack_context);
 }
 
@@ -3014,8 +3037,19 @@ Result<bool> PgsqlReadOperation::SetPagingState(
   auto* paging_state = response_.mutable_paging_state();
   auto encoded_row_key = row_key.Encode().ToStringBuffer();
   if (schema.num_hash_key_columns() > 0) {
-    paging_state->dup_next_partition_key(
-        dockv::PartitionSchema::EncodeMultiColumnHashValue(row_key.doc_key().hash()));
+    auto hash_code = row_key.doc_key().hash();
+    if (request_.is_forward_scan()) {
+      paging_state->dup_next_partition_key(
+          dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code));
+    } else {
+      // In backward scan the partition key is exclusive.
+      if (hash_code == dockv::PartitionSchema::kMaxPartitionKey) {
+        paging_state->clear_next_partition_key();
+      } else {
+        paging_state->dup_next_partition_key(
+            dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code + 1));
+      }
+    }
   } else {
     paging_state->dup_next_partition_key(encoded_row_key);
   }

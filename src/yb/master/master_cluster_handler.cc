@@ -19,13 +19,23 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/status_log.h"
+
+DECLARE_bool(ysql_yb_enable_listen_notify);
 
 DEFINE_RUNTIME_int32(blacklist_progress_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,
     "When a master leader failsover, the time until which the progress of load movement "
     "off the blacklisted tservers is reported as 0. This initial delay "
     "gives sufficient time for heartbeats so that we don't report"
     " a premature incorrect completion.");
+
+DEFINE_RUNTIME_bool(delay_leader_blacklist_completion_percent_until_tservers_heartbeat, true,
+    "When set, the master will wait for all live tservers to heartbeat before reporting "
+    "leader blacklist completion percent.");
+TAG_FLAG(delay_leader_blacklist_completion_percent_until_tservers_heartbeat, advanced);
 
 namespace yb::master {
 
@@ -102,6 +112,9 @@ Status MasterClusterHandler::SetClusterConfig(
     }
   }
 
+  auto old_leader_blacklist = ToBlacklistSet(
+      GetBlacklist(l->pb, /*blacklist_leader=*/true));
+
   l.mutable_data()->pb.CopyFrom(config);
   // Bump the config version, to indicate an update.
   l.mutable_data()->pb.set_version(config.version() + 1);
@@ -113,6 +126,12 @@ Status MasterClusterHandler::SetClusterConfig(
   RETURN_NOT_OK(catalog_manager_->sys_catalog()->Upsert(epoch.leader_term, cluster_config.get()));
 
   l.Commit();
+
+  auto new_leader_blacklist = ToBlacklistSet(
+      GetBlacklist(config, /*blacklist_leader=*/true));
+  if (new_leader_blacklist.size() > old_leader_blacklist.size()) {
+    ts_manager_->MarkTServersForLeaderBlacklistNotification();
+  }
 
   return Status::OK();
 }
@@ -188,7 +207,18 @@ Status MasterClusterHandler::RemoveTabletServer(
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   auto blacklist = VERIFY_RESULT(catalog_manager_->BlacklistSetFromPB());
   auto tables = catalog_manager_->GetTables(GetTablesMode::kAll, PrimaryTablesOnly::kTrue);
-  return ts_manager_->RemoveTabletServer(req->permanent_uuid(), blacklist, tables, epoch);
+  RETURN_NOT_OK(
+      ts_manager_->RemoveTabletServer(req->permanent_uuid(), blacklist, tables, epoch));
+
+  if (FLAGS_ysql_yb_enable_listen_notify) {
+    WARN_NOT_OK(
+        catalog_manager_->DeleteNotificationsReplicationSlot(req->permanent_uuid()),
+        Format(
+            "Failed to delete notifications replication slot for removed tserver $0",
+            req->permanent_uuid()));
+  }
+
+  return Status::OK();
 }
 
 Status MasterClusterHandler::GetLoadMoveCompletionPercent(
@@ -241,6 +271,21 @@ Status MasterClusterHandler::GetLoadMoveCompletionPercent(
   resp->set_remaining(blacklist_replicas);
   resp->set_total(initial_load);
 
+  if (blacklist_leader && blacklist_replicas == 0 &&
+      FLAGS_delay_leader_blacklist_completion_percent_until_tservers_heartbeat) {
+    // Best effort wait to ensure all tservers have updated their meta-cache and marked
+    // the leader blacklisted tservers with no leaders as followers.
+    const auto start_time = MonoTime::Now();
+    WARN_NOT_OK(
+        WaitFor([&]() {
+          TSDescriptorVector descs;
+          ts_manager_->GetAllLiveDescriptors(&descs);
+          return std::all_of(descs.begin(), descs.end(), [&](const auto& desc) {
+            return desc->LastHeartbeatTime() > start_time;
+          });
+        }, 10s, "Wait for live tservers to heartbeat before reporting leader blacklist completion"),
+        "Timed out waiting for master to propagate leader blacklisted tserver info on heartbeats.");
+  }
   return Status::OK();
 }
 

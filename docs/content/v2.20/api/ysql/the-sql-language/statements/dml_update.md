@@ -32,7 +32,7 @@ See the section [The WITH clause and common table expressions](../../with-clause
 
 ## Semantics
 
-Updating columns that are part of an index key including PRIMARY KEY is not yet supported.
+You can update columns that are part of an index key, including `PRIMARY KEY` columns. The updated values must still satisfy all applicable constraints, such as primary key and unique index constraints.
 
 - While the `WHERE` clause allows a wide range of operators, the exact conditions used in the where clause have significant performance considerations (especially for large datasets). For the best performance, use a `WHERE` clause that provides values for all columns in `PRIMARY KEY` or `INDEX KEY`.
 
@@ -113,7 +113,7 @@ yugabyte=# SELECT * FROM sample ORDER BY k1;
   1 |  2 |  3 | a
   2 |  3 |  7 | 7
   3 |  4 |  5 | c
-(2 rows)
+(3 rows)
 ```
 
 ## See also

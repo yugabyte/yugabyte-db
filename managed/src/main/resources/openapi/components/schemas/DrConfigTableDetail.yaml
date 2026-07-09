@@ -1,0 +1,51 @@
+title: DrConfigTableDetail
+description: Per-table replication details for a DR config.
+type: object
+properties:
+  table_id:
+    description: Table ID.
+    type: string
+    readOnly: true
+  stream_id:
+    description: 'Stream ID when replication is set up, or bootstrap ID when bootstrapped.'
+    type: string
+    readOnly: true
+  status:
+    $ref: "./DrConfigReplicationDetailStatus.yaml"
+    readOnly: true
+  index_table:
+    description: Whether this is an index table whose main table is in replication.
+    type: boolean
+    readOnly: true
+  need_bootstrap:
+    description: Whether this table needs bootstrap for replication setup.
+    type: boolean
+    readOnly: true
+  replication_setup_done:
+    description: Whether replication is set up for this table.
+    type: boolean
+    readOnly: true
+  bootstrap_create_time:
+    description: Time when bootstrap for this table was created.
+    type: string
+    format: date-time
+    readOnly: true
+  restore_time:
+    description: Time of the last restore attempt to the target universe.
+    type: string
+    format: date-time
+    readOnly: true
+  replication_status_errors:
+    description: 'Human-readable replication error messages, if any.'
+    type: array
+    items:
+      type: string
+    readOnly: true
+  source_table_info:
+    description: 'Table metadata from the primary universe, when available.'
+    $ref: "./TableInfo.yaml"
+    readOnly: true
+  target_table_info:
+    description: 'Table metadata from the DR replica universe, when available.'
+    $ref: "./TableInfo.yaml"
+    readOnly: true

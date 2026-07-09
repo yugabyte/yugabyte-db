@@ -161,6 +161,16 @@ import-data:
 ```
 
 | Truncate tables on target YugabyteDB database before importing data. This option is only valid if `--start-clean` is set to true. <br>Default: false |
+
+| --target-db-type |
+
+```yaml
+import-data:
+  target-db-type
+```
+
+| Target database type to import into. <br> Accepted values: yugabytedb (default), yugabytedb-amp (more details coming soon) |
+
 | --use-public-ip |
 
 ```yaml{.nocopy}

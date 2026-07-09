@@ -59,13 +59,17 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   uint32_t get_oid_cache_invalidations_count() const override { return 0; }
 
-  // Get the global catalog versions.
+  // Get the global catalog versions. When use_cache is true and the heartbeat catalog version
+  // cache is enabled, reads from the cache (stale-tolerant). Otherwise reads from disk.
   void get_ysql_catalog_version(uint64_t* current_version,
-                                uint64_t* last_breaking_version) const override;
-  // Get the per-db catalog versions for database db_oid.
+                                uint64_t* last_breaking_version,
+                                bool use_cache = false) const override;
+  // Get the per-db catalog versions for database db_oid. See get_ysql_catalog_version for
+  // use_cache semantics.
   void get_ysql_db_catalog_version(uint32_t db_oid,
                                    uint64_t* current_version,
-                                   uint64_t* last_breaking_version) const override;
+                                   uint64_t* last_breaking_version,
+                                   bool use_cache = false) const override;
   Status get_ysql_db_oid_to_cat_version_info_map(
       const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB *resp) const override;
@@ -170,8 +174,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
  private:
   Result<pgwrapper::PGConn> CreateInternalPGConn(
-      const std::string& database_name, bool simple_query_protocol = false,
-      const std::optional<CoarseTimePoint>& deadline = std::nullopt) override;
+      const std::string& database_name, std::string_view user = tserver::kDefaultInternalPgUser,
+      bool simple_query_protocol = false,
+      const std::optional<CoarseTimePoint>& deadline = std::nullopt,
+      std::string_view yb_internal_conn_kind = {}) override;
 
   Master* master_ = nullptr;
   scoped_refptr<MetricEntity> metric_entity_;

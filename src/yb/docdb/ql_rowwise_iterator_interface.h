@@ -19,15 +19,13 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
-#include "yb/util/status_fwd.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
 class Slice;
 
 namespace docdb {
-
-YB_STRONGLY_TYPED_BOOL(UpdateFilterKey);
 
 YB_DEFINE_ENUM(ReadKey, (kCurrent)(kNext));
 

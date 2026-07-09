@@ -32,9 +32,11 @@
 #include "yb/util/crc.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/monotime.h"
 #include "yb/util/net/rate_limiter.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 
 using namespace yb::size_literals;
@@ -44,6 +46,11 @@ DEFINE_RUNTIME_int32(remote_bootstrap_max_chunk_size, 64_MB,
              "Maximum chunk size to be transferred at a time during remote bootstrap.");
 
 DEPRECATE_FLAG(int64, remote_boostrap_rate_limit_bytes_per_sec, "10_2022");
+
+DEFINE_RUNTIME_int64(remote_bootstrap_fetch_data_slow_rate_threshold_bytes_per_sec, 100_KB,
+    "Log a warning when a successful remote bootstrap FetchData RPC completes slower than this "
+    "rate (bytes/sec). Set to 0 to disable slow-fetch warnings.");
+TAG_FLAG(remote_bootstrap_fetch_data_slow_rate_threshold_bytes_per_sec, hidden);
 
 DEFINE_RUNTIME_int64(remote_bootstrap_rate_limit_bytes_per_sec, 256_MB,
              "Maximum transmission rate during a remote bootstrap. This is across all the remote "
@@ -83,8 +90,8 @@ Status ExtractRemoteError(
 
 
 RemoteBootstrapFileDownloader::RemoteBootstrapFileDownloader(
-    const std::string* log_prefix, FsManager* fs_manager)
-    : log_prefix_(*log_prefix), fs_manager_(*fs_manager) {
+    const std::string* log_prefix, FsManager* fs_manager, std::function<bool()> is_cancelled)
+    : log_prefix_(*log_prefix), fs_manager_(*fs_manager), is_cancelled_(std::move(is_cancelled)) {
 }
 
 void RemoteBootstrapFileDownloader::Start(
@@ -189,9 +196,16 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
   while (!done) {
     FetchDataResponsePB resp;
     auto deadline = CoarseMonoClock::Now() + session_idle_timeout_;
+    const auto fetch_start = MonoTime::Now();
     auto status = RetryFunc(
         deadline, "FetchData", Format("FetchData timedout after deadline: $0", deadline),
         [&](CoarseTimePoint, bool *retry) -> Status {
+          if (IsCancelled()) {
+            *retry = false;
+            return STATUS(
+                ShutdownInProgress,
+                "Remote bootstrap download cancelled (tserver is shutting down)");
+          }
           resp.Clear();
           controller.Reset();
           req.set_session_id(session_id_);
@@ -230,6 +244,14 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
         });
     RETURN_NOT_OK_UNWIND_PREPEND(status, controller, "Unable to fetch data from remote");
     const auto chunk_size = resp.chunk().data().size();
+    if (const auto threshold =
+            FLAGS_remote_bootstrap_fetch_data_slow_rate_threshold_bytes_per_sec) {
+      const auto fetch_rate_bytes_per_sec =
+          chunk_size / MonoTime::Now().GetDeltaSince(fetch_start).ToSeconds();
+      YB_LOG_IF_EVERY_N(WARNING, fetch_rate_bytes_per_sec < threshold, 50)
+          << LogPrefix() << "Remote bootstrap FetchData slow: fetched " << chunk_size
+          << " bytes (" << fetch_rate_bytes_per_sec << " bytes/sec)";
+    }
     DCHECK_LE(chunk_size, max_length);
     iterations++;
 

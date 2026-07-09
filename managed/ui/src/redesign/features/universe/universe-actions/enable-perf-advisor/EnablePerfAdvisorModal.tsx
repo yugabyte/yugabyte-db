@@ -23,13 +23,13 @@ interface EnablePerfAdvisorModalProps {
   paUuid: string;
   onClose: () => void;
   paModalIntention?: PerfAdvisorModalIntentionType;
-  isPerformanceTabEnabled: boolean;
+  isEmbeddedPAEnabled: boolean;
 }
 export const EnablePerfAdvisorModal = ({
   universeData,
   perfAdvisorStatus,
   paUuid,
-  isPerformanceTabEnabled,
+  isEmbeddedPAEnabled,
   open,
   onClose,
   paModalIntention = PerfAdvisorModalIntention.ENABLE_OR_DISABLE_PA_COLLECTOR
@@ -117,7 +117,8 @@ export const EnablePerfAdvisorModal = ({
       },
       onError: (e: any) => {
         toast.error(
-          `${e?.response?.data?.error}.Check if Yugabyte Anywhere is registered with Perf Advisor Service`
+          e?.response?.data?.error ??
+            t('universeActions.paUniverseStatus.enablePaUniverseFailure')
         );
       }
     }
@@ -129,8 +130,11 @@ export const EnablePerfAdvisorModal = ({
       onSuccess: (resp: any) => {
         handleTaskSuccess(resp);
       },
-      onError: () => {
-        toast.error(t('universeActions.paUniverseStatus.disablePaUniverseFailure'));
+      onError: (e: any) => {
+        toast.error(
+          e?.response?.data?.error ??
+            t('universeActions.paUniverseStatus.disablePaUniverseFailure')
+        );
       }
     }
   );
@@ -171,7 +175,7 @@ export const EnablePerfAdvisorModal = ({
           }}
         />
       </span>
-      {!isUniverseRegisteredToPA && isPerformanceTabEnabled && (
+      {!isUniverseRegisteredToPA && isEmbeddedPAEnabled && (
         <Box mt={2}>
           <YBCheckbox
             checked={advancedObservability}

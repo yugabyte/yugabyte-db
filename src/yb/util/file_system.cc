@@ -64,11 +64,14 @@ Status RandomAccessFileWrapper::InvalidateCache(size_t offset, size_t length) {
   return target_->InvalidateCache(offset, length);
 }
 
-} // namespace yb
-
-namespace rocksdb {
-
 WritableFile::~WritableFile() {
+}
+
+Status WritableFile::AppendSlices(const Slice* slices, size_t num) {
+  for (size_t i = 0; i < num; ++i) {
+    RETURN_NOT_OK(Append(slices[i]));
+  }
+  return Status::OK();
 }
 
 void WritableFile::PrepareWrite(size_t offset, size_t len) {
@@ -123,6 +126,10 @@ Status WritableFileWrapper::Append(const Slice& data) {
   return target_->Append(data);
 }
 
+Status WritableFileWrapper::AppendSlices(const Slice* slices, size_t num) {
+  return target_->AppendSlices(slices, num);
+}
+
 Status WritableFileWrapper::PositionedAppend(const Slice& data, uint64_t offset) {
   return target_->PositionedAppend(data, offset);
 }
@@ -135,8 +142,8 @@ Status WritableFileWrapper::Close() {
   return target_->Close();
 }
 
-Status WritableFileWrapper::Flush() {
-  return target_->Flush();
+Status WritableFileWrapper::Flush(FlushMode mode) {
+  return target_->Flush(mode);
 }
 
 Status WritableFileWrapper::Sync() {
@@ -159,4 +166,4 @@ Status WritableFileWrapper::RangeSync(uint64_t offset, uint64_t nbytes) {
   return target_->RangeSync(offset, nbytes);
 }
 
-} // namespace rocksdb
+} // namespace yb

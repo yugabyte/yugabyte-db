@@ -963,6 +963,11 @@ class DB {
   // Used in testing to make the old memtable immutable and start writing to a new one.
   virtual void TEST_SwitchMemtable() {}
 
+  // Returns the sum of SeekOffsetOf(key) across all SSTs in the current version.
+  virtual yb::Result<uint64_t> TEST_Cross(Slice key) {
+    return STATUS(NotSupported, "");
+  }
+
  private:
   // No copying allowed
   DB(const DB&);

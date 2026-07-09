@@ -5,13 +5,23 @@ package com.yugabyte.yw.forms;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
+import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -19,7 +29,67 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.Test;
 
-public class UniverseDefinitionTaskParamsTest {
+public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
+
+  private static final String MASTER_FIELDS_ERROR =
+      "masterDeviceInfo and masterInstanceType can only be set when dedicated nodes for "
+          + "master and tserver are selected.";
+
+  @Test
+  public void validateRejectsMasterDeviceInfoWhenDedicatedNodesDisabled() {
+    Cluster cluster =
+        buildClusterForMasterFieldsValidation(false, true, false, Common.CloudType.kubernetes);
+
+    IllegalStateException ex =
+        assertThrows(
+            IllegalStateException.class,
+            () -> cluster.validate(false, false, false, Collections.emptySet()));
+
+    assertTrue(ex.getMessage().contains(MASTER_FIELDS_ERROR));
+
+    Cluster clusterGcp =
+        buildClusterForMasterFieldsValidation(false, true, false, Common.CloudType.gcp);
+
+    IllegalStateException exGcp =
+        assertThrows(
+            IllegalStateException.class,
+            () -> clusterGcp.validate(false, false, false, Collections.emptySet()));
+
+    assertTrue(exGcp.getMessage().contains(MASTER_FIELDS_ERROR));
+  }
+
+  @Test
+  public void validateRejectsMasterInstanceTypeWhenDedicatedNodesDisabled() {
+    Cluster cluster =
+        buildClusterForMasterFieldsValidation(false, false, true, Common.CloudType.kubernetes);
+
+    IllegalStateException ex =
+        assertThrows(
+            IllegalStateException.class,
+            () -> cluster.validate(false, false, false, Collections.emptySet()));
+
+    assertTrue(ex.getMessage().contains(MASTER_FIELDS_ERROR));
+
+    Cluster clusterGcp =
+        buildClusterForMasterFieldsValidation(false, false, true, Common.CloudType.gcp);
+
+    IllegalStateException exGcp =
+        assertThrows(
+            IllegalStateException.class,
+            () -> clusterGcp.validate(false, false, false, Collections.emptySet()));
+
+    assertTrue(exGcp.getMessage().contains(MASTER_FIELDS_ERROR));
+  }
+
+  @Test
+  public void validateAllowsMasterFieldsWhenDedicatedNodesEnabled() {
+    Cluster cluster =
+        buildClusterForMasterFieldsValidation(true, true, true, Common.CloudType.kubernetes);
+    cluster.validate(false, false, false, Collections.emptySet());
+    Cluster clusterGcp =
+        buildClusterForMasterFieldsValidation(true, true, true, Common.CloudType.gcp);
+    clusterGcp.validate(false, false, false, Collections.emptySet());
+  }
 
   @Test
   public void testUpdateAZVolumeOverrides_BasicCase() {
@@ -289,7 +359,6 @@ public class UniverseDefinitionTaskParamsTest {
     currentTserverDeviceInfo.numVolumes = 2;
 
     AZOverrides currentAzOverride = new AZOverrides();
-    currentAzOverride.setDeviceInfo(currentDeviceInfo);
 
     Map<ServerType, PerProcessDetails> currentPerProcess = new HashMap<>();
     PerProcessDetails currentTserverDetails = new PerProcessDetails();
@@ -304,15 +373,6 @@ public class UniverseDefinitionTaskParamsTest {
     // Verify initial state
     assertNotNull(currentIntent.getUserIntentOverrides());
     assertNotNull(currentIntent.getUserIntentOverrides().getAzOverrides().get(az1));
-    assertNotNull(currentIntent.getUserIntentOverrides().getAzOverrides().get(az1).getDeviceInfo());
-    assertEquals(
-        Integer.valueOf(100),
-        currentIntent
-            .getUserIntentOverrides()
-            .getAzOverrides()
-            .get(az1)
-            .getDeviceInfo()
-            .volumeSize);
     assertNotNull(
         currentIntent
             .getUserIntentOverrides()
@@ -581,5 +641,38 @@ public class UniverseDefinitionTaskParamsTest {
 
     // Verify: azOverrides should be null since cgroupSize was the only value
     assertNull(overrides.getAzOverrides());
+  }
+
+  private Cluster buildClusterForMasterFieldsValidation(
+      boolean dedicatedNodes,
+      boolean setMasterDeviceInfo,
+      boolean setMasterInstanceType,
+      Common.CloudType cloudType) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = cloudType;
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.dedicatedNodes = dedicatedNodes;
+    if (setMasterDeviceInfo) {
+      userIntent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 50);
+    }
+    if (setMasterInstanceType) {
+      userIntent.masterInstanceType = "m5.large";
+    }
+    if (cloudType.equals(Common.CloudType.kubernetes)) {
+      userIntent.deviceInfo.storageType = null;
+      if (userIntent.masterDeviceInfo != null) {
+        userIntent.masterDeviceInfo.storageType = null;
+      }
+    } else if (cloudType.equals(Common.CloudType.gcp)) {
+      userIntent.deviceInfo.storageType = StorageType.Persistent;
+      if (userIntent.masterDeviceInfo != null) {
+        userIntent.masterDeviceInfo.storageType = StorageType.Persistent;
+      }
+    }
+
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+    cluster.uuid = UUID.randomUUID();
+    cluster.placementInfo = new PlacementInfo();
+    return cluster;
   }
 }

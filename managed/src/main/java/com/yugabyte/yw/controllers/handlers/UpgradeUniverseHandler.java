@@ -13,9 +13,11 @@ import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -27,7 +29,9 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
@@ -54,6 +58,7 @@ import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
@@ -65,6 +70,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -76,7 +82,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import play.libs.Json;
 
@@ -94,6 +99,7 @@ public class UpgradeUniverseHandler {
   private final XClusterUniverseService xClusterUniverseService;
   private final TelemetryProviderService telemetryProviderService;
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
+  private final GFlagsValidation gFlagsValidation;
 
   @Inject
   public UpgradeUniverseHandler(
@@ -106,7 +112,8 @@ public class UpgradeUniverseHandler {
       AutoFlagUtil autoFlagUtil,
       XClusterUniverseService xClusterUniverseService,
       TelemetryProviderService telemetryProviderService,
-      SoftwareUpgradeHelper softwareUpgradeHelper) {
+      SoftwareUpgradeHelper softwareUpgradeHelper,
+      GFlagsValidation gFlagsValidation) {
     this.commissioner = commissioner;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
@@ -117,6 +124,7 @@ public class UpgradeUniverseHandler {
     this.xClusterUniverseService = xClusterUniverseService;
     this.telemetryProviderService = telemetryProviderService;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
+    this.gFlagsValidation = gFlagsValidation;
   }
 
   public UUID restartUniverse(
@@ -269,6 +277,69 @@ public class UpgradeUniverseHandler {
         taskType, CustomerTask.TaskType.RollbackUpgrade, requestParams, customer, universe);
   }
 
+  private void mergeSensitiveMasterTserverGFlagsForRequestClusters(
+      UpgradeWithGFlags requestParams, Universe universe) {
+    if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      return;
+    }
+    if (requestParams.clusters == null) {
+      return;
+    }
+    for (UniverseDefinitionTaskParams.Cluster clusterParam : requestParams.clusters) {
+      if (clusterParam.userIntent == null || clusterParam.uuid == null) {
+        continue;
+      }
+      UniverseDefinitionTaskParams.Cluster universeCluster = universe.getCluster(clusterParam.uuid);
+      if (universeCluster == null || universeCluster.userIntent == null) {
+        continue;
+      }
+      String ybSoftwareVersion = universeCluster.userIntent.ybSoftwareVersion;
+      if (clusterParam.userIntent.masterGFlags != null) {
+        clusterParam.userIntent.masterGFlags =
+            GFlagsUtil.mergeSensitiveGFlags(
+                universeCluster.userIntent.masterGFlags,
+                clusterParam.userIntent.masterGFlags,
+                gFlagsValidation,
+                ybSoftwareVersion);
+      }
+      if (clusterParam.userIntent.tserverGFlags != null) {
+        clusterParam.userIntent.tserverGFlags =
+            GFlagsUtil.mergeSensitiveGFlags(
+                universeCluster.userIntent.tserverGFlags,
+                clusterParam.userIntent.tserverGFlags,
+                gFlagsValidation,
+                ybSoftwareVersion);
+      }
+    }
+  }
+
+  private void mergeSensitiveSpecificGFlagsForRequestClusters(
+      UpgradeWithGFlags requestParams, Universe universe) {
+    if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      return;
+    }
+    if (requestParams.clusters == null) {
+      return;
+    }
+    for (UniverseDefinitionTaskParams.Cluster clusterParam : requestParams.clusters) {
+      if (clusterParam.userIntent == null
+          || clusterParam.userIntent.specificGFlags == null
+          || clusterParam.uuid == null) {
+        continue;
+      }
+      UniverseDefinitionTaskParams.Cluster universeCluster = universe.getCluster(clusterParam.uuid);
+      if (universeCluster == null || universeCluster.userIntent == null) {
+        continue;
+      }
+      clusterParam.userIntent.specificGFlags =
+          GFlagsUtil.mergeSensitiveSpecificGFlags(
+              universeCluster.userIntent.specificGFlags,
+              clusterParam.userIntent.specificGFlags,
+              gFlagsValidation,
+              universeCluster.userIntent.ybSoftwareVersion);
+    }
+  }
+
   public UUID upgradeGFlags(
       GFlagsUpgradeParams requestParams, Customer customer, Universe universe) {
     UserIntent userIntent;
@@ -282,11 +353,37 @@ public class UpgradeUniverseHandler {
       userIntent.tserverGFlags = GFlagsUtil.trimFlags(userIntent.tserverGFlags);
       requestParams.masterGFlags = userIntent.masterGFlags;
       requestParams.tserverGFlags = userIntent.tserverGFlags;
+
+      mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
+      mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
     } else {
       userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
       GFlagsUtil.trimFlags(userIntent.specificGFlags);
       requestParams.masterGFlags = GFlagsUtil.trimFlags(requestParams.masterGFlags);
       requestParams.tserverGFlags = GFlagsUtil.trimFlags((requestParams.tserverGFlags));
+
+      // Merge sensitive gflags to preserve actual values when REDACTED is received
+      if (RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        UniverseDefinitionTaskParams.Cluster primaryUniverseCluster =
+            universeDetails != null ? universeDetails.getPrimaryCluster() : null;
+        if (primaryUniverseCluster != null && primaryUniverseCluster.userIntent != null) {
+          requestParams.masterGFlags =
+              GFlagsUtil.mergeSensitiveGFlags(
+                  primaryUniverseCluster.userIntent.masterGFlags,
+                  requestParams.masterGFlags,
+                  gFlagsValidation,
+                  primaryUniverseCluster.userIntent.ybSoftwareVersion);
+          requestParams.tserverGFlags =
+              GFlagsUtil.mergeSensitiveGFlags(
+                  primaryUniverseCluster.userIntent.tserverGFlags,
+                  requestParams.tserverGFlags,
+                  gFlagsValidation,
+                  primaryUniverseCluster.userIntent.ybSoftwareVersion);
+        }
+      }
+      mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
+      mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
     }
 
     // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
@@ -332,7 +429,7 @@ public class UpgradeUniverseHandler {
    * @return true if successfully synchronized old fields into specificGFlags.
    */
   private boolean checkGFlagsProvidedInOldSchema(
-      Universe universe, GFlagsUpgradeParams requestParams) {
+      Universe universe, UpgradeWithGFlags requestParams) {
     boolean cloudEnabled =
         confGetter.getConfForScope(
             Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
@@ -371,7 +468,7 @@ public class UpgradeUniverseHandler {
         if (!universe.getUniverseDetails().getReadOnlyClusters().isEmpty()) {
           SpecificGFlags specificGFlagsForRR =
               universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.specificGFlags;
-          if (specificGFlagsForRR.hasPerAZOverrides()) {
+          if (specificGFlagsForRR != null && specificGFlagsForRR.hasPerAZOverrides()) {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 "Cannot upgrade gflags using old fields because there are overrides per az"
@@ -552,6 +649,28 @@ public class UpgradeUniverseHandler {
     // Verify request params
     requestParams.verifyParams(universe, true);
 
+    if (RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      UniverseDefinitionTaskParams.Cluster primaryUniverseCluster =
+          universeDetails != null ? universeDetails.getPrimaryCluster() : null;
+      if (primaryUniverseCluster != null && primaryUniverseCluster.userIntent != null) {
+        requestParams.masterGFlags =
+            GFlagsUtil.mergeSensitiveGFlags(
+                primaryUniverseCluster.userIntent.masterGFlags,
+                requestParams.masterGFlags,
+                gFlagsValidation,
+                primaryUniverseCluster.userIntent.ybSoftwareVersion);
+        requestParams.tserverGFlags =
+            GFlagsUtil.mergeSensitiveGFlags(
+                primaryUniverseCluster.userIntent.tserverGFlags,
+                requestParams.tserverGFlags,
+                gFlagsValidation,
+                primaryUniverseCluster.userIntent.ybSoftwareVersion);
+      }
+    }
+    mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
+    mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
+
     return submitUpgradeTask(
         Util.isKubernetesBasedUniverse(universe)
             ? TaskType.UpdateKubernetesDiskSize
@@ -597,20 +716,7 @@ public class UpgradeUniverseHandler {
           "Cannot modify audit log config while YSQL major version upgrade is in progress.");
     }
 
-    // Verify if exporter config is set to export active.
-    if (requestParams.auditLogConfig.isExportActive()) {
-      // If exporter config is set to export active, verify if any exporter is configured.
-      if (CollectionUtils.isEmpty(requestParams.auditLogConfig.getUniverseLogsExporterConfig())) {
-        String errorMessage =
-            String.format(
-                "Audit log config is set to export active, but no exporter configured on universe"
-                    + " '%s'.",
-                universe.getUniverseUUID());
-        log.error(errorMessage);
-        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
-      }
-
-      // If exporter config is set to export active, verify if given exporter uuid(s) are empty.
+    if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(requestParams.auditLogConfig)) {
       for (UniverseLogsExporterConfig exporterConfig :
           requestParams.auditLogConfig.getUniverseLogsExporterConfig()) {
         UUID exporterUUID = exporterConfig.getExporterUuid();
@@ -674,23 +780,16 @@ public class UpgradeUniverseHandler {
 
     requestParams.verifyParams(universe, true);
     userIntent.auditLogConfig = requestParams.auditLogConfig;
-    if (Util.isKubernetesBasedUniverse(universe)) {
-      return submitUpgradeTask(
-          TaskType.ModifyKubernetesAuditLoggingConfig,
-          CustomerTask.TaskType.ModifyAuditLoggingConfig,
-          requestParams,
-          customer,
-          universe);
-    }
+    // Preserve the query log and metrics export configs this audit-only request is not changing,
+    // sourcing them from the source of truth (see getCurrentTelemetryConfig).
+    TelemetryConfig currentTelemetryConfig = getCurrentTelemetryConfig(universe);
     ExportTelemetryConfigParams exportParams =
-        buildExportTelemetryConfigParamsFromUniverse(universe);
-    // Override the audit log config in the export params with the requested config.
+        UniverseControllerRequestBinder.deepCopy(requestParams, ExportTelemetryConfigParams.class);
     exportParams.setTelemetryConfig(
         TelemetryConfig.of(
             requestParams.auditLogConfig,
-            exportParams.getQueryLogConfig(),
-            exportParams.getMetricsExportConfig()));
-    exportParams.upgradeOption = requestParams.upgradeOption;
+            currentTelemetryConfig.getQueryLogConfig(),
+            currentTelemetryConfig.getMetricsExportConfig()));
     return submitExportTelemetryConfigs(exportParams, customer, universe);
   }
 
@@ -718,20 +817,7 @@ public class UpgradeUniverseHandler {
           "Cannot modify query log config while YSQL major version upgrade is in progress.");
     }
 
-    // Verify if exporter config is set to export active.
-    if (requestParams.queryLogConfig.isExportActive()) {
-      // If exporter config is set to export active, verify if any exporter is configured.
-      if (CollectionUtils.isEmpty(requestParams.queryLogConfig.getUniverseLogsExporterConfig())) {
-        String errorMessage =
-            String.format(
-                "Query log config is set to export active, but no exporter configured on universe"
-                    + " '%s'.",
-                universe.getUniverseUUID());
-        log.error(errorMessage);
-        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
-      }
-
-      // If exporter config is set to export active, verify if given exporter uuid(s) are empty.
+    if (OtelCollectorUtil.isQueryLogExportEnabledInUniverse(requestParams.queryLogConfig)) {
       for (UniverseQueryLogsExporterConfig exporterConfig :
           requestParams.queryLogConfig.getUniverseLogsExporterConfig()) {
         UUID exporterUUID = exporterConfig.getExporterUuid();
@@ -790,44 +876,20 @@ public class UpgradeUniverseHandler {
         log.error(errorMessage);
         throw new PlatformServiceException(BAD_REQUEST, errorMessage);
       }
-
-      // // For Kubernetes provider, verify the universe version is compatible with otel exporter.
-      // if (userIntent.providerType.equals(CloudType.kubernetes)
-      //     && !KubernetesUtil.isExporterSupported(userIntent.ybSoftwareVersion)) {
-      //   String errorMessage =
-      //       String.format(
-      //           "Query log exporter is not supported for universe '%s' running version '%s'.
-      // Please"
-      //               + " upgrade to version '%s' or '%s'. Alternatively, disable the exporter to"
-      //               + " only enable query logs on the universe.",
-      //           universe.getUniverseUUID(),
-      //           userIntent.ybSoftwareVersion,
-      //           KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_STABLE,
-      //           KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_PREVIEW);
-      //   log.error(errorMessage);
-      //   throw new PlatformServiceException(BAD_REQUEST, errorMessage);
-      // }
     }
 
     requestParams.verifyParams(universe, true);
     userIntent.queryLogConfig = requestParams.queryLogConfig;
-    // if (isK8s) {
-    //   return submitUpgradeTask(
-    //       TaskType.ModifyKubernetesQueryLoggingConfig,
-    //       CustomerTask.TaskType.ModifyQueryLoggingConfig,
-    //       requestParams,
-    //       customer,
-    //       universe);
-    // }
+    // Preserve the audit log and metrics export configs this query-log-only request is not
+    // changing, sourcing them from the source of truth (see getCurrentTelemetryConfig).
+    TelemetryConfig currentTelemetryConfig = getCurrentTelemetryConfig(universe);
     ExportTelemetryConfigParams exportParams =
-        buildExportTelemetryConfigParamsFromUniverse(universe);
-    // Override the query log config in the export params with the requested config.
+        UniverseControllerRequestBinder.deepCopy(requestParams, ExportTelemetryConfigParams.class);
     exportParams.setTelemetryConfig(
         TelemetryConfig.of(
-            exportParams.getAuditLogConfig(),
+            currentTelemetryConfig.getAuditLogConfig(),
             requestParams.queryLogConfig,
-            exportParams.getMetricsExportConfig()));
-    exportParams.upgradeOption = requestParams.upgradeOption;
+            currentTelemetryConfig.getMetricsExportConfig()));
     return submitExportTelemetryConfigs(exportParams, customer, universe);
   }
 
@@ -1194,40 +1256,77 @@ public class UpgradeUniverseHandler {
     return newTaskUUID;
   }
 
-  /**
-   * Builds ExportTelemetryConfigParams from current universe state (audit, query, metrics from
-   * userIntent). Caller sets the one telemetry config being updated and upgrade options.
-   */
-  @VisibleForTesting
-  public ExportTelemetryConfigParams buildExportTelemetryConfigParamsFromUniverse(
-      Universe universe) {
-    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
-    UserIntent userIntent = details.getPrimaryCluster().userIntent;
-    ExportTelemetryConfigParams params = new ExportTelemetryConfigParams();
-    params.setUniverseUUID(universe.getUniverseUUID());
-    params.nodePrefix = details.nodePrefix;
-    params.clusters = details.clusters;
-    params.setTelemetryConfig(
-        TelemetryConfig.of(
-            userIntent.auditLogConfig, userIntent.queryLogConfig, userIntent.metricsExportConfig));
-    params.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
-    params.sleepAfterMasterRestartMillis = details.sleepAfterMasterRestartMillis;
-    params.sleepAfterTServerRestartMillis = details.sleepAfterTServerRestartMillis;
-    return params;
-  }
-
   public UUID submitExportTelemetryConfigs(
       ExportTelemetryConfigParams params, Customer customer, Universe universe) {
     params.setUniverseUUID(universe.getUniverseUUID());
     if (params.expectedUniverseVersion == null) {
       params.expectedUniverseVersion = universe.getVersion();
     }
+    // Record which telemetry config sections this task is actually changing, so the UI can show
+    // accurate per-type status on the telemetry cards. The request body carries the full desired
+    // state for all sections (null section == disabled), so we diff it against the currently
+    // stored config rather than infer from the request alone.
+    params.setModifiedExportTypes(computeModifiedExportTypes(params, universe));
     params.verifyParams(universe, true);
+    TaskType taskType =
+        Util.isKubernetesBasedUniverse(universe)
+            ? TaskType.KubernetesConfigureExportTelemetryConfig
+            : TaskType.ConfigureExportTelemetryConfig;
     return submitUpgradeTask(
-        TaskType.ConfigureExportTelemetryConfig,
-        CustomerTask.TaskType.ConfigureExportTelemetryConfig,
-        params,
-        customer,
-        universe);
+        taskType, CustomerTask.TaskType.ConfigureExportTelemetryConfig, params, customer, universe);
+  }
+
+  /**
+   * Diffs the requested telemetry config (in {@code params}) against the currently configured one
+   * and returns the sections that differ. The current config is read from the {@link
+   * ExportTelemetryConfig} table (the source of truth); when no row exists yet (first-time config
+   * or legacy universe) it falls back to the synced copies in the primary cluster userIntent.
+   */
+  private List<ExportType> computeModifiedExportTypes(
+      ExportTelemetryConfigParams params, Universe universe) {
+    TelemetryConfig current = getCurrentTelemetryConfig(universe);
+    List<ExportType> modified = new ArrayList<>();
+    if (!Objects.equals(
+        params.getAuditLogConfig(), current == null ? null : current.getAuditLogConfig())) {
+      modified.add(ExportType.AUDIT_LOGS);
+    }
+    if (!Objects.equals(
+        params.getQueryLogConfig(), current == null ? null : current.getQueryLogConfig())) {
+      modified.add(ExportType.QUERY_LOGS);
+    }
+    if (!Objects.equals(
+        params.getMetricsExportConfig(),
+        current == null ? null : current.getMetricsExportConfig())) {
+      modified.add(ExportType.METRICS);
+    }
+    return modified;
+  }
+
+  /**
+   * Returns the currently configured telemetry config for the universe. The {@link
+   * ExportTelemetryConfig} table is the source of truth, but audit/query/metrics are also mirrored
+   * into the primary cluster userIntent by paths that do not update the table (e.g. edit universe),
+   * so the table row can lag userIntent for those sections. To avoid silently dropping a
+   * still-configured section, each of audit, query and metrics is resolved separately: use the
+   * table value when present, otherwise fall back to the userIntent copy. Callers that modify a
+   * single telemetry section should source the sections they are not changing from this, so those
+   * sections are preserved rather than clobbered.
+   */
+  public TelemetryConfig getCurrentTelemetryConfig(Universe universe) {
+    TelemetryConfig fromTable =
+        ExportTelemetryConfig.getForUniverse(universe.getUniverseUUID())
+            .map(ExportTelemetryConfig::getTelemetryConfig)
+            .orElseGet(TelemetryConfig::new);
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    return TelemetryConfig.of(
+        fromTable.getAuditLogConfig() != null
+            ? fromTable.getAuditLogConfig()
+            : userIntent.auditLogConfig,
+        fromTable.getQueryLogConfig() != null
+            ? fromTable.getQueryLogConfig()
+            : userIntent.queryLogConfig,
+        fromTable.getMetricsExportConfig() != null
+            ? fromTable.getMetricsExportConfig()
+            : userIntent.metricsExportConfig);
   }
 }

@@ -24,15 +24,11 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "access/htup_details.h"
-#include "catalog/pg_authid.h"
-#include "catalog/pg_database.h"
 #include "common/ip.h"
 #include "datatype/timestamp.h"
 #include "executor/instrument.h"
 #include "funcapi.h"
 #include "miscadmin.h"
-#include "parser/parsetree.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
@@ -50,11 +46,16 @@
 #include "utils/syscache.h"
 #include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb_internal_conn.h"
 
 #define YSQL_METRIC_PREFIX "yb_ysqlserver_"
 #define YSQL_LATENCY_METRIC_PREFIX "handler_latency_yb_ysqlserver_SQLProcessor_"
 
 #define NumBackendStatSlots (MaxBackends + NUM_AUXPROCTYPES)
+
+#define YbPgmDbCatalogCacheMetricsDefaultEntries (MaxConnections + 1)
+#define YbPgmDbCatalogCacheMetricsMinEntries 1
+#define YbPgmDbCatalogCacheMetricsMaxEntries 10001
 
 PG_MODULE_MAGIC;
 
@@ -75,191 +76,11 @@ typedef enum YbStatementType
 	CatCacheRefresh,
 	CatCacheDeltaRefresh,
 	CatCacheMisses,
-	CatCacheIdMisses_Start,
-	CatCacheIdMisses_0 = CatCacheIdMisses_Start,
-	CatCacheIdMisses_1,
-	CatCacheIdMisses_2,
-	CatCacheIdMisses_3,
-	CatCacheIdMisses_4,
-	CatCacheIdMisses_5,
-	CatCacheIdMisses_6,
-	CatCacheIdMisses_7,
-	CatCacheIdMisses_8,
-	CatCacheIdMisses_9,
-	CatCacheIdMisses_10,
-	CatCacheIdMisses_11,
-	CatCacheIdMisses_12,
-	CatCacheIdMisses_13,
-	CatCacheIdMisses_14,
-	CatCacheIdMisses_15,
-	CatCacheIdMisses_16,
-	CatCacheIdMisses_17,
-	CatCacheIdMisses_18,
-	CatCacheIdMisses_19,
-	CatCacheIdMisses_20,
-	CatCacheIdMisses_21,
-	CatCacheIdMisses_22,
-	CatCacheIdMisses_23,
-	CatCacheIdMisses_24,
-	CatCacheIdMisses_25,
-	CatCacheIdMisses_26,
-	CatCacheIdMisses_27,
-	CatCacheIdMisses_28,
-	CatCacheIdMisses_29,
-	CatCacheIdMisses_30,
-	CatCacheIdMisses_31,
-	CatCacheIdMisses_32,
-	CatCacheIdMisses_33,
-	CatCacheIdMisses_34,
-	CatCacheIdMisses_35,
-	CatCacheIdMisses_36,
-	CatCacheIdMisses_37,
-	CatCacheIdMisses_38,
-	CatCacheIdMisses_39,
-	CatCacheIdMisses_40,
-	CatCacheIdMisses_41,
-	CatCacheIdMisses_42,
-	CatCacheIdMisses_43,
-	CatCacheIdMisses_44,
-	CatCacheIdMisses_45,
-	CatCacheIdMisses_46,
-	CatCacheIdMisses_47,
-	CatCacheIdMisses_48,
-	CatCacheIdMisses_49,
-	CatCacheIdMisses_50,
-	CatCacheIdMisses_51,
-	CatCacheIdMisses_52,
-	CatCacheIdMisses_53,
-	CatCacheIdMisses_54,
-	CatCacheIdMisses_55,
-	CatCacheIdMisses_56,
-	CatCacheIdMisses_57,
-	CatCacheIdMisses_58,
-	CatCacheIdMisses_59,
-	CatCacheIdMisses_60,
-	CatCacheIdMisses_61,
-	CatCacheIdMisses_62,
-	CatCacheIdMisses_63,
-	CatCacheIdMisses_64,
-	CatCacheIdMisses_65,
-	CatCacheIdMisses_66,
-	CatCacheIdMisses_67,
-	CatCacheIdMisses_68,
-	CatCacheIdMisses_69,
-	CatCacheIdMisses_70,
-	CatCacheIdMisses_71,
-	CatCacheIdMisses_72,
-	CatCacheIdMisses_73,
-	CatCacheIdMisses_74,
-	CatCacheIdMisses_75,
-	CatCacheIdMisses_76,
-	CatCacheIdMisses_77,
-	CatCacheIdMisses_78,
-	CatCacheIdMisses_79,
-	CatCacheIdMisses_80,
-	CatCacheIdMisses_81,
-	CatCacheIdMisses_82,
-	CatCacheIdMisses_83,
-	CatCacheIdMisses_84,
-	CatCacheIdMisses_End = CatCacheIdMisses_84,
-	CatCacheTableMisses_Start,
-	CatCacheTableMisses_0 = CatCacheTableMisses_Start,
-	CatCacheTableMisses_1,
-	CatCacheTableMisses_2,
-	CatCacheTableMisses_3,
-	CatCacheTableMisses_4,
-	CatCacheTableMisses_5,
-	CatCacheTableMisses_6,
-	CatCacheTableMisses_7,
-	CatCacheTableMisses_8,
-	CatCacheTableMisses_9,
-	CatCacheTableMisses_10,
-	CatCacheTableMisses_11,
-	CatCacheTableMisses_12,
-	CatCacheTableMisses_13,
-	CatCacheTableMisses_14,
-	CatCacheTableMisses_15,
-	CatCacheTableMisses_16,
-	CatCacheTableMisses_17,
-	CatCacheTableMisses_18,
-	CatCacheTableMisses_19,
-	CatCacheTableMisses_20,
-	CatCacheTableMisses_21,
-	CatCacheTableMisses_22,
-	CatCacheTableMisses_23,
-	CatCacheTableMisses_24,
-	CatCacheTableMisses_25,
-	CatCacheTableMisses_26,
-	CatCacheTableMisses_27,
-	CatCacheTableMisses_28,
-	CatCacheTableMisses_29,
-	CatCacheTableMisses_30,
-	CatCacheTableMisses_31,
-	CatCacheTableMisses_32,
-	CatCacheTableMisses_33,
-	CatCacheTableMisses_34,
-	CatCacheTableMisses_35,
-	CatCacheTableMisses_36,
-	CatCacheTableMisses_37,
-	CatCacheTableMisses_38,
-	CatCacheTableMisses_39,
-	CatCacheTableMisses_40,
-	CatCacheTableMisses_41,
-	CatCacheTableMisses_42,
-	CatCacheTableMisses_43,
-	CatCacheTableMisses_44,
-	CatCacheTableMisses_45,
-	CatCacheTableMisses_46,
-	CatCacheTableMisses_47,
-	CatCacheTableMisses_48,
-	CatCacheTableMisses_49,
-	CatCacheTableMisses_50,
-	CatCacheTableMisses_End = CatCacheTableMisses_50,
 	HintCacheRefresh,
 	HintCacheHits,
 	HintCacheMisses,
 	AuthorizedConnection,
 	RelCachePreload,
-	CatCacheListMisses_Start,
-	CatCacheListMisses_0 = CatCacheListMisses_Start,
-	CatCacheListMisses_1, CatCacheListMisses_2, CatCacheListMisses_3,
-	CatCacheListMisses_4, CatCacheListMisses_5, CatCacheListMisses_6,
-	CatCacheListMisses_7, CatCacheListMisses_8, CatCacheListMisses_9,
-	CatCacheListMisses_10, CatCacheListMisses_11, CatCacheListMisses_12,
-	CatCacheListMisses_13, CatCacheListMisses_14, CatCacheListMisses_15,
-	CatCacheListMisses_16, CatCacheListMisses_17, CatCacheListMisses_18,
-	CatCacheListMisses_19, CatCacheListMisses_20, CatCacheListMisses_21,
-	CatCacheListMisses_22, CatCacheListMisses_23, CatCacheListMisses_24,
-	CatCacheListMisses_25, CatCacheListMisses_26, CatCacheListMisses_27,
-	CatCacheListMisses_28, CatCacheListMisses_29, CatCacheListMisses_30,
-	CatCacheListMisses_31, CatCacheListMisses_32, CatCacheListMisses_33,
-	CatCacheListMisses_34, CatCacheListMisses_35, CatCacheListMisses_36,
-	CatCacheListMisses_37, CatCacheListMisses_38, CatCacheListMisses_39,
-	CatCacheListMisses_40, CatCacheListMisses_41, CatCacheListMisses_42,
-	CatCacheListMisses_43, CatCacheListMisses_44, CatCacheListMisses_45,
-	CatCacheListMisses_46, CatCacheListMisses_47, CatCacheListMisses_48,
-	CatCacheListMisses_49, CatCacheListMisses_50,
-	CatCacheListMisses_End = CatCacheListMisses_50,
-	CatCacheNegMisses_Start,
-	CatCacheNegMisses_0 = CatCacheNegMisses_Start,
-	CatCacheNegMisses_1, CatCacheNegMisses_2, CatCacheNegMisses_3,
-	CatCacheNegMisses_4, CatCacheNegMisses_5, CatCacheNegMisses_6,
-	CatCacheNegMisses_7, CatCacheNegMisses_8, CatCacheNegMisses_9,
-	CatCacheNegMisses_10, CatCacheNegMisses_11, CatCacheNegMisses_12,
-	CatCacheNegMisses_13, CatCacheNegMisses_14, CatCacheNegMisses_15,
-	CatCacheNegMisses_16, CatCacheNegMisses_17, CatCacheNegMisses_18,
-	CatCacheNegMisses_19, CatCacheNegMisses_20, CatCacheNegMisses_21,
-	CatCacheNegMisses_22, CatCacheNegMisses_23, CatCacheNegMisses_24,
-	CatCacheNegMisses_25, CatCacheNegMisses_26, CatCacheNegMisses_27,
-	CatCacheNegMisses_28, CatCacheNegMisses_29, CatCacheNegMisses_30,
-	CatCacheNegMisses_31, CatCacheNegMisses_32, CatCacheNegMisses_33,
-	CatCacheNegMisses_34, CatCacheNegMisses_35, CatCacheNegMisses_36,
-	CatCacheNegMisses_37, CatCacheNegMisses_38, CatCacheNegMisses_39,
-	CatCacheNegMisses_40, CatCacheNegMisses_41, CatCacheNegMisses_42,
-	CatCacheNegMisses_43, CatCacheNegMisses_44, CatCacheNegMisses_45,
-	CatCacheNegMisses_46, CatCacheNegMisses_47, CatCacheNegMisses_48,
-	CatCacheNegMisses_49, CatCacheNegMisses_50,
-	CatCacheNegMisses_End = CatCacheNegMisses_50,
 	RegularBackendInitLatency,
 	AuthBackendInitLatency, /* Connmgr Auth backend only */
 	RelCacheInitFileRevalidated,
@@ -268,6 +89,35 @@ typedef enum YbStatementType
 } YbStatementType;
 int			num_entries = kMaxStatementType;
 YbcPgmEntry *ybpgm_table = NULL;
+
+/*
+ * Stores catalog cache miss metrics for individual DBs for per-DB metrics.
+ * db_oid is initialized to InvalidOid when unused.
+ */
+typedef struct YbpgmCatalogCacheMetricsEntry
+{
+	pg_atomic_uint32 db_oid;
+	pg_atomic_uint64 cache_id_misses[SysCacheSize];
+	pg_atomic_uint64 cache_table_misses[YbNumCatalogCacheTables];
+	pg_atomic_uint64 cache_list_misses[YbNumCatalogCacheTables];
+	pg_atomic_uint64 cache_neg_misses[YbNumCatalogCacheTables];
+} YbpgmCatalogCacheMetricsEntry;
+
+/*
+ * Array of catalog cache metrics entries for individual DBs. The last entry is used
+ * to aggregate and collect all metrics of DBs that does not have a slot in the array
+ * when every other slot is claimed. It will always have db_oid set to InvalidOid.
+ *
+ * This array currently does not have an eviction policy. Any DB that has published metrics
+ * and disconnects will take up the slot permanently.
+ */
+static YbpgmCatalogCacheMetricsEntry *ybpgm_catalog_cache_metrics_array = NULL;
+
+/*
+ * Size of ybpgm_catalog_cache_metrics_array, controlled by the
+ * yb_pg_metrics.db_catalog_cache_metrics_max_entries GUC.
+ */
+static int	yb_db_catalog_cache_metrics_max_entries;
 
 /* Statement nesting level is used when setting up dml statements.
  * - Some state variables are set up for the top-level query but not the nested query.
@@ -357,6 +207,15 @@ static void ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 static void ybpgm_Store(YbStatementType type, uint64_t time, uint64_t rows);
 static void ybpgm_StoreCount(YbStatementType type, uint64_t time, uint64_t count);
 
+static Size YbpgmCatalogCacheMetricsShmemSize(void);
+static YbpgmCatalogCacheMetricsEntry *ybpgm_find_or_claim_db_slot(Oid db_oid);
+static void ybpgm_update_db_catalog_cache_metrics(long *current_id_misses,
+												  long *current_table_misses,
+												  long *current_list_misses,
+												  long *current_neg_misses);
+static void ybpgm_iterate_db_catalog_cache_metrics(YbcDbCatalogCacheMetricVisitor visitor,
+												   void *arg);
+
 static void ws_sighup_handler(SIGNAL_ARGS);
 static void ws_sigterm_handler(SIGNAL_ARGS);
 
@@ -430,53 +289,6 @@ set_metric_names(void)
 	strcpy(ybpgm_table[CatCacheDeltaRefresh].name,
 		   YSQL_METRIC_PREFIX "CatCacheDeltaRefresh");
 	strcpy(ybpgm_table[CatCacheMisses].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
-	for (int i = CatCacheIdMisses_Start; i <= CatCacheIdMisses_End; ++i)
-	{
-		int			cache_id = i - CatCacheIdMisses_Start;
-
-		strcpy(ybpgm_table[i].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
-		const char *index_name = YbGetCatalogCacheIndexName(cache_id);
-
-		Assert(strlen(index_name) < YB_PG_METRIC_NAME_LEN);
-		snprintf(ybpgm_table[i].table_name, YB_PG_METRIC_NAME_LEN, "%s",
-				 index_name);
-	}
-
-	for (int i = CatCacheTableMisses_Start; i <= CatCacheTableMisses_End; ++i)
-	{
-		int			table_id = i - CatCacheTableMisses_Start;
-
-		strcpy(ybpgm_table[i].name, YSQL_METRIC_PREFIX "CatalogCacheTableMisses");
-		const char *table_name = YbGetCatalogCacheTableNameFromTableId(table_id);
-
-		Assert(strlen(table_name) < YB_PG_METRIC_NAME_LEN);
-		snprintf(ybpgm_table[i].table_name, YB_PG_METRIC_NAME_LEN, "%s",
-				 table_name);
-	}
-
-	for (int i = CatCacheListMisses_Start; i <= CatCacheListMisses_End; ++i)
-	{
-		int			table_id = i - CatCacheListMisses_Start;
-
-		strcpy(ybpgm_table[i].name, YSQL_METRIC_PREFIX "CatalogCacheListMisses");
-		const char *table_name = YbGetCatalogCacheTableNameFromTableId(table_id);
-
-		Assert(strlen(table_name) < YB_PG_METRIC_NAME_LEN);
-		snprintf(ybpgm_table[i].table_name, YB_PG_METRIC_NAME_LEN, "%s",
-				 table_name);
-	}
-
-	for (int i = CatCacheNegMisses_Start; i <= CatCacheNegMisses_End; ++i)
-	{
-		int			table_id = i - CatCacheNegMisses_Start;
-
-		strcpy(ybpgm_table[i].name, YSQL_METRIC_PREFIX "CatalogCacheNegMisses");
-		const char *table_name = YbGetCatalogCacheTableNameFromTableId(table_id);
-
-		Assert(strlen(table_name) < YB_PG_METRIC_NAME_LEN);
-		snprintf(ybpgm_table[i].table_name, YB_PG_METRIC_NAME_LEN, "%s",
-				 table_name);
-	}
 
 	strcpy(ybpgm_table[HintCacheRefresh].name,
 		   YSQL_METRIC_PREFIX "HintCacheRefresh");
@@ -571,38 +383,6 @@ set_metric_names(void)
 	strcpy(ybpgm_table[CatCacheMisses].count_help,
 		   "Total number of catalog cache misses");
 	strcpy(ybpgm_table[CatCacheMisses].sum_help, "Not applicable");
-
-	for (int i = CatCacheIdMisses_Start; i <= CatCacheIdMisses_End; ++i)
-	{
-		snprintf(ybpgm_table[i].count_help, YB_PG_METRIC_NAME_LEN,
-				 "Number of catalog cache misses for index %s",
-				 ybpgm_table[i].table_name);
-		strcpy(ybpgm_table[i].sum_help, "Not applicable");
-	}
-
-	for (int i = CatCacheTableMisses_Start; i <= CatCacheTableMisses_End; ++i)
-	{
-		snprintf(ybpgm_table[i].count_help, YB_PG_METRIC_NAME_LEN,
-				 "Number of catalog cache misses for table %s",
-				 ybpgm_table[i].table_name);
-		strcpy(ybpgm_table[i].sum_help, "Not applicable");
-	}
-
-	for (int i = CatCacheListMisses_Start; i <= CatCacheListMisses_End; ++i)
-	{
-		snprintf(ybpgm_table[i].count_help, YB_PG_METRIC_NAME_LEN,
-				 "Number of catalog cache list misses for table %s",
-				 ybpgm_table[i].table_name);
-		strcpy(ybpgm_table[i].sum_help, "Not applicable");
-	}
-
-	for (int i = CatCacheNegMisses_Start; i <= CatCacheNegMisses_End; ++i)
-	{
-		snprintf(ybpgm_table[i].count_help, YB_PG_METRIC_NAME_LEN,
-				 "Number of catalog cache negative misses for table %s",
-				 ybpgm_table[i].table_name);
-		strcpy(ybpgm_table[i].sum_help, "Not applicable");
-	}
 
 	strcpy(ybpgm_table[HintCacheRefresh].count_help,
 		   "Number of hint cache refreshes");
@@ -705,9 +485,10 @@ pullRpczEntries(void)
 			PGPROC	   *proc = NULL;
 
 			if (beentry->st_backendType == B_BACKEND ||
-				beentry->st_backendType == YB_AUTO_ANALYZE_BACKEND)
+				YbIsInternalConnBackendType(beentry->st_backendType))
 				proc = BackendPidGetProc(rpcz[i].proc_id);
-			else if (beentry->st_backendType != YB_YSQL_CONN_MGR)
+			else if (beentry->st_backendType != YB_YSQL_CONN_MGR &&
+					 beentry->st_backendType != YB_YSQL_CONN_MGR_CTRL)
 			{
 				/*
 				 * For an auxiliary process, retrieve process info from
@@ -873,6 +654,7 @@ webserver_worker_main(Datum unused)
 	webserver = CreateWebserver(ListenAddresses, port);
 
 	RegisterMetrics(ybpgm_table, num_entries, metric_node_name);
+	RegisterDbCatalogCacheMetrics(ybpgm_iterate_db_catalog_cache_metrics);
 
 	YbcPostgresCallbacks callbacks;
 
@@ -999,6 +781,18 @@ _PG_init(void)
 							0,
 							NULL, NULL, NULL);
 
+	DefineCustomIntVariable("yb_pg_metrics.db_catalog_cache_metrics_max_entries",
+							"Maximum number of entries in the per-DB catalog "
+							"cache metrics array.",
+							NULL,
+							&yb_db_catalog_cache_metrics_max_entries,
+							YbPgmDbCatalogCacheMetricsDefaultEntries,
+							YbPgmDbCatalogCacheMetricsMinEntries,
+							YbPgmDbCatalogCacheMetricsMaxEntries,
+							PGC_POSTMASTER,
+							0,
+							NULL, NULL, NULL);
+
 	BackgroundWorker worker;
 
 	if (!IsBinaryUpgrade)
@@ -1046,8 +840,6 @@ _PG_init(void)
 
 	prev_ProcessUtility = ProcessUtility_hook;
 	ProcessUtility_hook = ybpgm_ProcessUtility;
-	static_assert(SysCacheSize == CatCacheIdMisses_End - CatCacheIdMisses_Start + 1,
-				  "Wrong catalog cache number");
 }
 
 /*
@@ -1061,6 +853,7 @@ ybpgm_shmem_request(void)
 		prev_shmem_request_hook();
 
 	RequestAddinShmemSpace(ybpgm_memsize());
+	RequestAddinShmemSpace(YbpgmCatalogCacheMetricsShmemSize());
 	RequestNamedLWLockTranche("yb_pg_metrics", 1);
 }
 
@@ -1076,7 +869,9 @@ ybpgm_InitPostgres()
 						&conn_init_secs, &conn_init_usecs);
 	uint64_t	conn_latency_us = (uint64_t) (conn_init_secs * 1000000 + conn_init_usecs);
 	YbStatementType conn_type =
-		YbIsAuthBackend() ? AuthBackendInitLatency : RegularBackendInitLatency;
+		(YbIsAuthBackend() || YbIsAuthPassthroughControlBackend()) ?
+			AuthBackendInitLatency :
+			RegularBackendInitLatency;
 
 	ybpgm_Store(conn_type, conn_latency_us, 0);
 
@@ -1122,6 +917,34 @@ ybpgm_startup_hook(void)
 	ybpgm_table = ShmemInitStruct("yb_pg_metrics",
 								  num_entries * sizeof(struct YbcPgmEntry),
 								  &found);
+
+	ybpgm_catalog_cache_metrics_array =
+		ShmemInitStruct("yb_pg_catalog_cache_metrics_array",
+						YbpgmCatalogCacheMetricsShmemSize(),
+						&found);
+	if (!found)
+	{
+		/*
+		 * Initialize every slot's db_oid to InvalidOid so
+		 * the find-or-claim scan can recognise empty slots
+		 */
+		for (int i = 0; i < yb_db_catalog_cache_metrics_max_entries; i++)
+		{
+			YbpgmCatalogCacheMetricsEntry *slot =
+				&ybpgm_catalog_cache_metrics_array[i];
+
+			pg_atomic_init_u32(&slot->db_oid, (uint32) InvalidOid);
+			for (int c = 0; c < SysCacheSize; c++)
+				pg_atomic_init_u64(&slot->cache_id_misses[c], 0);
+			for (int t = 0; t < YbNumCatalogCacheTables; t++)
+			{
+				pg_atomic_init_u64(&slot->cache_table_misses[t], 0);
+				pg_atomic_init_u64(&slot->cache_list_misses[t], 0);
+				pg_atomic_init_u64(&slot->cache_neg_misses[t], 0);
+			}
+		}
+	}
+
 	set_metric_names();
 	YBCSetUpdateInitPostgresMetricsFn(&ybpgm_InitPostgres);
 }
@@ -1282,6 +1105,17 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 		long	   *current_cache_list_misses = YbGetCatCacheListMisses();
 		long	   *current_cache_neg_misses = YbGetCatCacheNegMisses();
 
+		/*
+		 * Per-cache-id / per-table breakdowns are recorded into the per-DB
+		 * catalog cache metrics array. ybpgm_update_db_catalog_cache_metrics
+		 * is also responsible for advancing last_cache_*_val so the deltas
+		 * stay correct across calls.
+		 */
+		ybpgm_update_db_catalog_cache_metrics(current_cache_id_misses,
+											  current_cache_table_misses,
+											  current_cache_list_misses,
+											  current_cache_neg_misses);
+
 		total_delta = current_cache_misses - last_cache_misses_val;
 
 		last_cache_misses_val = current_cache_misses;
@@ -1292,49 +1126,6 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 		 * misses
 		 */
 		ybpgm_StoreCount(CatCacheMisses, 0, total_delta);
-		if (total_delta > 0)
-			for (int i = CatCacheIdMisses_Start; i <= CatCacheIdMisses_End; ++i)
-			{
-				int			j = i - CatCacheIdMisses_Start;
-
-				ybpgm_StoreCount(i, 0,
-								 (current_cache_id_misses[j] -
-								  last_cache_id_misses_val[j]));
-				last_cache_id_misses_val[j] = current_cache_id_misses[j];
-			}
-		for (int i = CatCacheTableMisses_Start;
-			 i <= CatCacheTableMisses_End;
-			 ++i)
-		{
-			int			j = i - CatCacheTableMisses_Start;
-
-			ybpgm_StoreCount(i, 0,
-							 (current_cache_table_misses[j] -
-							  last_cache_table_misses_val[j]));
-			last_cache_table_misses_val[j] = current_cache_table_misses[j];
-		}
-		for (int i = CatCacheListMisses_Start;
-			 i <= CatCacheListMisses_End;
-			 ++i)
-		{
-			int			j = i - CatCacheListMisses_Start;
-
-			ybpgm_StoreCount(i, 0,
-							 (current_cache_list_misses[j] -
-							  last_cache_list_misses_val[j]));
-			last_cache_list_misses_val[j] = current_cache_list_misses[j];
-		}
-		for (int i = CatCacheNegMisses_Start;
-			 i <= CatCacheNegMisses_End;
-			 ++i)
-		{
-			int			j = i - CatCacheNegMisses_Start;
-
-			ybpgm_StoreCount(i, 0,
-							 (current_cache_neg_misses[j] -
-							  last_cache_neg_misses_val[j]));
-			last_cache_neg_misses_val[j] = current_cache_neg_misses[j];
-		}
 
 		/* Hint cache metrics */
 		long		current_hint_cache_refreshes = YbGetHintCacheRefreshes();
@@ -1447,6 +1238,16 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		else
 			type = Other;
 
+		/*
+		 * Compute DDL mode before executing the statement. A CALL/DO
+		 * containing ROLLBACK will trigger AtAbort_Portals which frees
+		 * the outermost portal's cached plan, making pstmt a dangling
+		 * pointer by the time the hook's post-processing runs.
+		 */
+		bool		requires_autonomous_transaction = false;
+		YbDdlModeOptional ddl_mode =
+			YbGetDdlMode(pstmt, context, &requires_autonomous_transaction);
+
 		INSTR_TIME_SET_CURRENT(start);
 
 		IncBlockNestingLevel();
@@ -1469,10 +1270,6 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 
 		INSTR_TIME_SET_CURRENT(end);
 		INSTR_TIME_SUBTRACT(end, start);
-
-		bool		requires_autonomous_transaction = false;
-		YbDdlModeOptional ddl_mode =
-			YbGetDdlMode(pstmt, context, &requires_autonomous_transaction);
 
 		if (ddl_mode.has_value)
 			ybpgm_Store(Transaction, INSTR_TIME_GET_MICROSEC(end), 0);
@@ -1544,4 +1341,169 @@ ybpgm_StoreCount(YbStatementType type, uint64_t time, uint64_t count)
 	entry->total_time += time;
 	entry->calls += count;
 	entry->rows += count;
+}
+
+static Size
+YbpgmCatalogCacheMetricsShmemSize(void)
+{
+	return MAXALIGN(mul_size(yb_db_catalog_cache_metrics_max_entries,
+							 sizeof(YbpgmCatalogCacheMetricsEntry)));
+}
+
+/*
+ * Linear scan to find the slot that either:
+ * - already belongs to db_oid,
+ * - claim the first empty slot, or
+ * - the last slot(catchall slot)
+ */
+
+static YbpgmCatalogCacheMetricsEntry *
+ybpgm_find_or_claim_db_slot(Oid db_oid)
+{
+	uint32		want = (uint32) db_oid;
+
+	for (int i = 0; i < yb_db_catalog_cache_metrics_max_entries; i++)
+	{
+		YbpgmCatalogCacheMetricsEntry *slot =
+			&ybpgm_catalog_cache_metrics_array[i];
+		uint32		cur = pg_atomic_read_u32(&slot->db_oid);
+
+		/*
+		 * Return slot if either the slot is already claimed by the current db_oid or
+		 * the last slot (catchall slot) is reached
+		 */
+		if (cur == want || i == yb_db_catalog_cache_metrics_max_entries - 1)
+			return slot;
+
+		/* If a slot with InvalidOid that is not the last slot is found, claim it to record the current DB's metrics */
+		if (cur == (uint32) InvalidOid)
+		{
+			uint32		expected = (uint32) InvalidOid;
+
+			if (pg_atomic_compare_exchange_u32(&slot->db_oid, &expected, want))
+				return slot;
+
+			/*
+			 * Atomic swap failed, another thread claimed the slot. Use the slot if a
+			 * concurrent claim was made by another backend on the same db. Otherwise keep scanning.
+			 */
+			if (expected == want)
+				return slot;
+		}
+	}
+
+	return NULL;
+}
+
+static void
+ybpgm_update_db_catalog_cache_metrics(long *current_id_misses,
+									  long *current_table_misses,
+									  long *current_list_misses,
+									  long *current_neg_misses)
+{
+	/*
+	 * Decide whether to attribute deltas to a per-DB slot for this call similar to ybpgm_StoreCount
+	 * for the global CatCacheMisses counter: skip recording for internal-DDL helper SQL and
+	 * for backends that haven't bound a DB yet.
+	 */
+	YbpgmCatalogCacheMetricsEntry *entry = NULL;
+	const bool	record_per_db = (!yb_is_calling_internal_sql_for_ddl &&
+								 OidIsValid(MyDatabaseId) &&
+								 ybpgm_catalog_cache_metrics_array != NULL);
+
+	if (record_per_db)
+		entry = ybpgm_find_or_claim_db_slot(MyDatabaseId);
+
+	/*
+	 * Always advance last_cache_*_val[] (even when no metrics are recorded to a per-DB slot).
+	 * The underlying counters are per-process and tick regardless of DDL state, so leaving it
+	 * stale would cause increments accumulated during DDL helper SQL to be charged to the
+	 * next non-DDL statement that does record metrics.
+	 */
+	for (int c = 0; c < SysCacheSize; c++)
+	{
+		long		delta = current_id_misses[c] - last_cache_id_misses_val[c];
+
+		if (entry != NULL && delta > 0)
+			pg_atomic_fetch_add_u64(&entry->cache_id_misses[c],
+									(int64) delta);
+		last_cache_id_misses_val[c] = current_id_misses[c];
+	}
+	for (int t = 0; t < YbNumCatalogCacheTables; t++)
+	{
+		long		delta_table = (current_table_misses[t] -
+								   last_cache_table_misses_val[t]);
+		long		delta_list = (current_list_misses[t] -
+								  last_cache_list_misses_val[t]);
+		long		delta_neg = (current_neg_misses[t] -
+								 last_cache_neg_misses_val[t]);
+
+		if (entry != NULL)
+		{
+			if (delta_table > 0)
+				pg_atomic_fetch_add_u64(&entry->cache_table_misses[t],
+										(int64) delta_table);
+			if (delta_list > 0)
+				pg_atomic_fetch_add_u64(&entry->cache_list_misses[t],
+										(int64) delta_list);
+			if (delta_neg > 0)
+				pg_atomic_fetch_add_u64(&entry->cache_neg_misses[t],
+										(int64) delta_neg);
+		}
+
+		last_cache_table_misses_val[t] = current_table_misses[t];
+		last_cache_list_misses_val[t] = current_list_misses[t];
+		last_cache_neg_misses_val[t] = current_neg_misses[t];
+	}
+}
+
+static void
+ybpgm_iterate_db_catalog_cache_metrics(YbcDbCatalogCacheMetricVisitor visitor,
+									   void *arg)
+{
+	if (ybpgm_catalog_cache_metrics_array == NULL || visitor == NULL)
+		return;
+
+	for (int i = 0; i < yb_db_catalog_cache_metrics_max_entries; i++)
+	{
+		YbpgmCatalogCacheMetricsEntry *slot =
+			&ybpgm_catalog_cache_metrics_array[i];
+		Oid			db_oid = (Oid) pg_atomic_read_u32(&slot->db_oid);
+
+		if (!OidIsValid(db_oid) && i != yb_db_catalog_cache_metrics_max_entries - 1)
+			continue;
+
+		for (int c = 0; c < SysCacheSize; c++)
+		{
+			uint64_t	cnt = pg_atomic_read_u64(&slot->cache_id_misses[c]);
+
+			if (cnt == 0)
+				continue;
+			visitor((unsigned int) db_oid,
+					YSQL_METRIC_PREFIX "CatalogCacheMisses",
+					YbGetCatalogCacheIndexName(c),
+					cnt, arg);
+		}
+
+		for (int t = 0; t < YbNumCatalogCacheTables; t++)
+		{
+			const char *tname = YbGetCatalogCacheTableNameFromTableId(t);
+			uint64_t	tm = pg_atomic_read_u64(&slot->cache_table_misses[t]);
+			uint64_t	lm = pg_atomic_read_u64(&slot->cache_list_misses[t]);
+			uint64_t	nm = pg_atomic_read_u64(&slot->cache_neg_misses[t]);
+
+			if (tm > 0)
+				visitor((unsigned int) db_oid,
+						YSQL_METRIC_PREFIX "CatalogCacheTableMisses",
+						tname, tm, arg);
+			if (lm > 0)
+				visitor((unsigned int) db_oid,
+						YSQL_METRIC_PREFIX "CatalogCacheListMisses",
+						tname, lm, arg);
+			if (nm > 0)
+				visitor((unsigned int) db_oid,
+						YSQL_METRIC_PREFIX "CatalogCacheNegMisses",
+						tname, nm, arg);
+		}
+	}
 }

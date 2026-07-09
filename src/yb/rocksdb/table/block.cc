@@ -42,6 +42,7 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/stats/perf_step_timer.h"
 

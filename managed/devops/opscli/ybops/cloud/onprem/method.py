@@ -273,6 +273,10 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                  help='Skip check for time synchronization.')
         self.parser.add_argument("--yb_home_dir", default=YB_HOME_DIR,
                                  help="YB-Home directory path, if not default.")
+        self.parser.add_argument(
+            "--yb_user_home",
+            default=None,
+            help="Home directory for the yugabyte OS user (for testing overrides).")
 
     def test_file_readable(self, remote_shell, path):
         node_file_verify = remote_shell.run_command_raw("test -r {}".format(path))
@@ -304,7 +308,6 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
             scp_result = copy_to_tmp(self.extra_vars, get_datafile_path('preflight_checks.sh'),
                                      remote_tmp_dir=args.remote_tmp_dir)
             results["SSH Connection"] = scp_result == 0
-            sudo_pass_file = '{}/.yb_sudo_pass.sh'.format(args.remote_tmp_dir)
             ports_to_check = ",".join([str(p) for p in [args.master_http_port,
                                                         args.master_rpc_port,
                                                         args.tserver_http_port,
@@ -320,14 +323,16 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                                         args.node_exporter_http_port]
                                       if p is not None])
             cmd = "{}/preflight_checks.sh --type {} --yb_home_dir {} --mount_points {} " \
-                "--ports_to_check {} --sudo_pass_file {} --tmp_dir {} --cleanup".format(
+                "--ports_to_check {} --tmp_dir {} --cleanup".format(
                     args.remote_tmp_dir, args.precheck_type, args.yb_home_dir,
                     self.cloud.get_mount_points_csv(args),
-                    ports_to_check, sudo_pass_file, args.remote_tmp_dir)
+                    ports_to_check, args.remote_tmp_dir)
             if args.install_node_exporter:
                 cmd += " --install_node_exporter"
             if args.air_gap:
                 cmd += " --airgap"
+            if args.yb_user_home:
+                cmd += " --yb_user_home {}".format(args.yb_user_home)
 
             rc, stdout, stderr = remote_exec_command(self.extra_vars, cmd)
 
@@ -345,7 +350,7 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
             print(output)
         else:
             input = PreflightCheckInput()
-            input.ybHomeDir = YB_HOME_DIR
+            input.ybHomeDir = args.yb_home_dir
             input.airGapInstall = args.air_gap
             input.installNodeExporter = args.install_node_exporter
             input.mountPaths.extend(self.cloud.get_mount_points_csv(args).split(","))

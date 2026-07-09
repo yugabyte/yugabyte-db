@@ -35,8 +35,6 @@ class PgConcurrentDDLsTest : public LibPqTestBase {
         "--enable_object_locking_for_table_locks=true");
     opts->extra_tserver_flags.emplace_back(
         "--ysql_yb_ddl_transaction_block_enabled=true");
-    opts->extra_tserver_flags.emplace_back(
-        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=20000");
     opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
     AppendFlagToAllowedPreviewFlagsCsv(
         opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
@@ -96,6 +94,104 @@ TEST_F(PgConcurrentDDLsTest, CreateIndexAndConcurrentAnalyze) {
   thread_holder.JoinAll();
 }
 #endif
+
+TEST_F(PgConcurrentDDLsTest, WholerowRaceCondition) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test_wholerow (k INT PRIMARY KEY, v INT, v2 INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_wholerow VALUES (1, 100, 200)"));
+
+  TestThreadHolder thread_holder;
+
+  thread_holder.AddThreadFunctor([this] {
+    auto dml_conn = ASSERT_RESULT(Connect());
+
+    // Set GUCs to induce the race
+    ASSERT_OK(dml_conn.Execute("SET yb_test_sleep_before_executor_start_ms = 15000"));
+
+    // Prepare statement so it plans without any secondary indexes.
+    // We use a non-PK condition so it does a SeqScan, ensuring yb_fetch_target_tuple is true.
+    ASSERT_OK(dml_conn.Execute("PREPARE my_dml AS DELETE FROM test_wholerow WHERE v = 100"));
+
+    // Execute the statement. The test GUC will cause it to sleep inside standard_ExecutorStart
+    // for 15 seconds (between planning and actual execution).
+    // Meanwhile, the main thread creates an index and bumps the catalog version.
+    // Upon waking up and proceeding, the backend will process background catalog invalidation
+    // messages from the tablet server (due to object locking/heartbeats), causing it to
+    // realize the schema changed.
+    // It should throw schema version mismatch.
+    auto status = dml_conn.Execute("EXECUTE my_dml");
+
+    LOG(INFO) << "Execute returned status " << status;
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "schema version mismatch");
+  });
+
+  // Wait a little bit to ensure the DML thread starts executing and goes to sleep
+  std::this_thread::sleep_for(1s);
+
+  // Session 2: DDL
+  auto ddl_conn = ASSERT_RESULT(Connect());
+
+  // Disable wait so that CREATE INDEX CONCURRENTLY finishes instantly
+  // instead of hanging while waiting for the sleeping DML transaction.
+  ASSERT_OK(ddl_conn.Execute("SET yb_disable_wait_for_backends_catalog_version = true"));
+
+  LOG(INFO) << "Creating concurrent index...";
+  ASSERT_OK(ddl_conn.Execute("CREATE INDEX CONCURRENTLY idx_wholerow ON test_wholerow(v2)"));
+  LOG(INFO) << "Created concurrent index successfully.";
+
+  thread_holder.Stop();
+  thread_holder.JoinAll();
+}
+
+// Test for #32080.
+//
+// When object locking is enabled, the catalog version mismatch check is not required
+// since object locking and invalidation messages ensure that any concurrent DML/ DDL
+// reads the latest data.
+//
+// Before the fix, a concurrent transaction will result in a  MISMATCHED_SCHEMA ("the
+// catalog snapshot used for this transaction has been invalidated") error.
+TEST_F(PgConcurrentDDLsTest, CatalogVersionCheckDisabled) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE ctas_src (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO ctas_src SELECT s, s FROM generate_series(1, 2000) AS s"));
+
+  // An entirely unrelated table + index. Only the index will be renamed.
+  ASSERT_OK(conn.Execute("CREATE TABLE unrelated (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX unrelated_idx ON unrelated(v)"));
+
+  // Delay every transactional read so the paginated scan reliably spans the
+  // concurrent index rename.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_transactional_read_delay_ms", "800"));
+
+  TestThreadHolder thread_holder;
+  Status victim_status;
+  thread_holder.AddThreadFunctor([this, &victim_status] {
+    auto victim_conn = ASSERT_RESULT(Connect());
+    // Small fetch limit => the CTAS source scan issues many read RPCs over time, each
+    // carrying the catalog version pinned when the scan began.
+    ASSERT_OK(victim_conn.Execute("SET yb_fetch_row_limit = 100"));
+    victim_status =
+        victim_conn.Execute("CREATE TABLE ctas_dst AS SELECT * FROM ctas_src");
+    LOG(INFO) << "CTAS returned status: " << victim_status;
+  });
+
+  // Let the scan get a few read RPCs in, then bump the catalog version with a breaking
+  // ALTER INDEX ... RENAME on the unrelated index.
+  SleepFor(2s);
+  LOG(INFO) << "Renaming unrelated index concurrently with the scan";
+  ASSERT_OK(conn.Execute("ALTER INDEX unrelated_idx RENAME TO unrelated_idx_renamed"));
+
+  thread_holder.JoinAll();
+
+  // Renaming an unrelated index must not abort the scan: with object locking the
+  // catalog-version (last breaking version) check is disabled.
+  ASSERT_OK(victim_status);
+}
 
 TEST_F(PgConcurrentDDLsTest, ConcurrentCreateIndex) {
   auto kNumTables = 2;
@@ -443,4 +539,125 @@ TEST_F(PgConcurrentDDLsTest, ConcurrentCreateDropDatabase) {
 }
 #endif
 
+// https://github.com/yugabyte/yugabyte-db/issues/30908
+class PgDdlTransactionWithoutConcurrentDDLSupportTest : public LibPqTestBase {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    LibPqTestBase::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back(
+        "--enable_object_locking_for_table_locks=true");
+    opts->extra_tserver_flags.emplace_back(
+        "--ysql_yb_ddl_transaction_block_enabled=true");
+    // 30908 only appears when concurrent DDL is disabled.
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+  }
+};
+
+TEST_F(PgDdlTransactionWithoutConcurrentDDLSupportTest, ParallelDdlTransactionBlockCrash) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  std::atomic<bool> bug_reproduced{false};
+  std::string reproduced_msg;
+  std::mutex msg_mutex;
+
+  std::string table1 = "sample";
+  std::string table2 = "sample1";
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT PRIMARY KEY, v INT)", table1));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT PRIMARY KEY, v INT)", table2));
+
+  auto is_bug_reproduced = [&reproduced_msg, &msg_mutex](const yb::Status& status) {
+    if (status.ok()) return false;
+    const auto msg = status.ToString();
+    if (msg.find("server closed the connection unexpectedly") != std::string::npos ||
+        msg.find("unexpected state END") != std::string::npos) {
+      std::lock_guard<std::mutex> lock(msg_mutex);
+      reproduced_msg = msg;
+      return true;
+    }
+    return false;
+  };
+
+  auto run_ddl = [&bug_reproduced, &is_bug_reproduced, this](
+      const std::string& table_name) {
+    auto thread_conn = ASSERT_RESULT(Connect());
+
+    for (int iter = 0; iter < 40; ++iter) {
+      if (bug_reproduced.load(std::memory_order_acquire)) {
+        break;
+      }
+
+      ASSERT_OK(thread_conn.Execute("BEGIN"));
+
+      auto status = thread_conn.ExecuteFormat(
+          "ALTER TABLE $0 ADD COLUMN a_$1 INT", table_name, iter);
+
+      if (status.ok()) {
+        auto commit_status = thread_conn.Execute("COMMIT");
+        if (is_bug_reproduced(commit_status)) {
+          bug_reproduced.store(true, std::memory_order_release);
+          return;
+        }
+
+        ASSERT_OK(thread_conn.Execute("BEGIN"));
+
+        auto drop_status = thread_conn.ExecuteFormat(
+            "ALTER TABLE $0 DROP COLUMN a_$1", table_name, iter);
+        if (drop_status.ok()) {
+          commit_status = thread_conn.Execute("COMMIT");
+          if (is_bug_reproduced(commit_status)) {
+            bug_reproduced.store(true, std::memory_order_release);
+            return;
+          }
+        } else {
+          auto rollback_status = thread_conn.Execute("ROLLBACK");
+          if (is_bug_reproduced(rollback_status)) {
+            bug_reproduced.store(true, std::memory_order_release);
+            return;
+          }
+        }
+      } else {
+        auto rollback_status = thread_conn.Execute("ROLLBACK");
+        if (is_bug_reproduced(rollback_status)) {
+          bug_reproduced.store(true, std::memory_order_release);
+          return;
+        }
+      }
+    }
+  };
+
+  std::thread t1([&, table1] { run_ddl(table1); });
+  std::thread t2([&, table2] { run_ddl(table2); });
+
+  t1.join();
+  t2.join();
+
+  if (bug_reproduced.load(std::memory_order_acquire)) {
+    FAIL() << "Bug 30908 was reproduced successfully! Status message: " << reproduced_msg;
+  }
+}
+
+// Test that serialization error is properly translated to 40001 to the client
+// instead of internal error YB003.
+// See https://github.com/yugabyte/yugabyte-db/issues/31736
+
+TEST_F(PgDdlTransactionWithoutConcurrentDDLSupportTest,
+       TestReportProperSerializationErrorInRepeatableRead) {
+  auto conn0 = ASSERT_RESULT(Connect());
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  // Create initial schema
+  ASSERT_OK(conn0.Execute("CREATE TABLE tab1 (id SERIAL PRIMARY KEY)"));
+  ASSERT_OK(conn0.Execute("CREATE TABLE tab2 (id SERIAL PRIMARY KEY)"));
+
+  // Execute concurrent (interleaved) DDL
+  ASSERT_OK(conn1.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn2.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn1.Execute("ALTER TABLE tab1 ADD COLUMN new_col INT"));
+  ASSERT_OK(conn2.Execute("ALTER TABLE tab2 ADD COLUMN new_col INT"));
+  ASSERT_OK(conn1.Execute("COMMIT"));
+  ASSERT_NOK_STR_CONTAINS(conn2.Execute("COMMIT"), "pgsql error 40001");
+}
 }  // namespace yb::pgwrapper

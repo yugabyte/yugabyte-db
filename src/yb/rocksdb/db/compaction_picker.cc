@@ -46,6 +46,7 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/flags.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 

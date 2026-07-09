@@ -96,6 +96,13 @@ struct TabletCDCCheckpointInfo {
   HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
 };
 
+struct RollbackBarrierInfo {
+  int64_t cdc_min_replicated_index;
+  OpId cdc_sdk_min_checkpoint_op_id;
+  HybridTime cdc_sdk_safe_time;
+  MonoDelta cdc_sdk_op_id_expiration;
+};
+
 struct ReplicationSlotHashRange {
   ReplicationSlotHashRange() = delete;
   explicit ReplicationSlotHashRange(uint32_t start, uint32_t end)
@@ -112,8 +119,7 @@ using StreamIdSet = std::set<xrepl::StreamId>;
 using StreamIdHybridTimeMap = std::unordered_map<xrepl::StreamId, HybridTime>;
 using TableIdToStreamIdMap =
     std::unordered_map<TableId, std::pair<TabletId, std::unordered_set<xrepl::StreamId>>>;
-using RollBackTabletIdCheckpointMap =
-    std::unordered_map<const std::string*, std::pair<int64_t, OpId>>;
+using RollBackTabletIdCheckpointMap = std::unordered_map<const std::string*, RollbackBarrierInfo>;
 
 // Non-exhaustive list of simulated error codes for the errors that can occur in GetChanges().
 // Currently these error codes are being employed to test errors retryable by virtual WAL.
@@ -249,7 +255,7 @@ class CDCServiceImpl : public CDCServiceIf {
       bool initial_retention_barrier = false);
 
   void RollbackCdcReplicatedIndexEntry(
-      const std::string& tablet_id, const std::pair<int64_t, OpId>& rollback_checkpoint_info);
+      const std::string& tablet_id, const RollbackBarrierInfo& rollback_info);
 
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const SetCDCCheckpointRequestPB& req, CoarseTimePoint deadline) override;
@@ -498,8 +504,10 @@ class CDCServiceImpl : public CDCServiceIf {
   void CDCMasterBgTask();
 
   // Computes sys_catalog barrier info into TabletCDCCheckpointInfo. Also returns per-gRPC-stream
-  // min(cdc_sdk_safe_time) for gRPC slot entry updates.
-  Result<std::pair<TabletCDCCheckpointInfo, StreamIdHybridTimeMap>>
+  // min(cdc_sdk_safe_time) for gRPC slot entry updates. Returns std::nullopt when no CDCSDK
+  // stream entry is visible in cdc_state, signalling that there is nothing for the caller to
+  // advance or update on this BG task iteration.
+  Result<std::optional<std::pair<TabletCDCCheckpointInfo, StreamIdHybridTimeMap>>>
   PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* expired_tables_map);
 
   // Writes computed restart_time values to gRPC slot entries in cdc_state.

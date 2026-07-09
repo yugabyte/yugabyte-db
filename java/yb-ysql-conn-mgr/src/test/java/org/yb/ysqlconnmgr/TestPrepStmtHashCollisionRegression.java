@@ -31,6 +31,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBClusterBuilder;
 
 /**
@@ -46,7 +48,8 @@ import org.yb.minicluster.MiniYBClusterBuilder;
  * This test fails on a 32-bit hash build and passes once the hash is
  * widened to 64 bits.
  */
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestPrepStmtHashCollisionRegression extends BaseYsqlConnMgr {
   private static final Logger LOG =
       LoggerFactory.getLogger(TestPrepStmtHashCollisionRegression.class);

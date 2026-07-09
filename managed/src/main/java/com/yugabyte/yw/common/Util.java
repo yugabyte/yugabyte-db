@@ -12,13 +12,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.SetMultimap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -28,11 +29,13 @@ import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
+import com.yugabyte.yw.forms.HierarchicalNodesSpec;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AttachDetachSpec;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ImageBundle;
@@ -87,6 +90,7 @@ import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
@@ -116,7 +120,6 @@ import play.libs.Json;
 
 @Slf4j
 public class Util {
-  private static final int INITIAL_DELAY_MS = 500;
   private static final Map<UUID, Process> processMap = new ConcurrentHashMap<>();
 
   public static final UUID NULL_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
@@ -149,10 +152,20 @@ public class Util {
   public static final String USERS = "users";
   public static final String ROLE = "role";
   public static final String UNIVERSE_UUID = "universeUUID";
+  public static final String SOURCE_UNIVERSE_UUID = "sourceUniverseUUID";
+  public static final String TARGET_UNIVERSE_UUID = "targetUniverseUUID";
 
   public static final String AVAILABLE_MEMORY = "MemAvailable";
 
   public static final String UNIVERSE_NAME_REGEX = "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$";
+
+  /**
+   * Conservative safe-set for string values that are interpolated directly into shell or sed
+   * command fragments. Matches only ASCII letters, digits, dot, underscore, and hyphen. This is a
+   * security check (preventing shell-quote escape, command injection, and sed metacharacters), not
+   * a schema rule -- it must not be relaxed without auditing every interpolation site.
+   */
+  public static final Pattern SHELL_SAFE_IDENTIFIER = Pattern.compile("[A-Za-z0-9._-]+");
 
   public static final double EPSILON = 0.000001d;
 
@@ -450,6 +463,15 @@ public class Util {
     return univName.matches(UNIVERSE_NAME_REGEX);
   }
 
+  /**
+   * Whether the given value is safe to interpolate verbatim into a shell or sed command fragment
+   * (e.g., a single-quoted s-command separator). Returns false for null. Tighter than any product
+   * schema rule by design -- see {@link #SHELL_SAFE_IDENTIFIER}.
+   */
+  public static boolean isShellSafeIdentifier(String value) {
+    return value != null && SHELL_SAFE_IDENTIFIER.matcher(value).matches();
+  }
+
   // Helper API to create a CSV of any keys present in existing map but not in new
   // map.
   public static String getKeysNotPresent(Map<String, String> existing, Map<String, String> newMap) {
@@ -542,7 +564,7 @@ public class Util {
   }
 
   public static List<UniverseDetailSubset> getUniverseDetails(Set<Universe> universes) {
-    List<UniverseDetailSubset> details = new ArrayList<>();
+    List<UniverseDetailSubset> details = new ArrayList<>(universes.size());
     for (Universe universe : universes) {
       details.add(new UniverseDetailSubset(universe));
     }
@@ -960,8 +982,7 @@ public class Util {
 
   public static String getNodeHomeDir(UUID universeUUID, NodeDetails node) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    String providerUUID = universe.getCluster(node.placementUuid).userIntent.provider;
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(providerUUID));
+    Provider provider = getProviderForNode(node, universe);
     if (provider.getCloudCode().equals(CloudType.kubernetes)) {
       return "/root";
     }
@@ -973,12 +994,80 @@ public class Util {
   }
 
   public static boolean isOnPremManualProvisioning(UniverseDefinitionTaskParams params) {
-    UserIntent userIntent = params.getPrimaryCluster().userIntent;
-    if (userIntent.providerType == Common.CloudType.onprem) {
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
-      return provider.getDetails().skipProvisioning;
+    return checkAnyProviderMatches(params, Provider::isManualOnprem);
+  }
+
+  public static void mergeProviderSpecifications(
+      UserIntent userIntent,
+      UserIntent newUserIntent,
+      Consumer<HierarchicalNodesSpec.NodesSpecsMergeItem> merger) {
+    for (UUID providerUUID : userIntent.getAllProviderUUIDs()) {
+      UniverseDefinitionTaskParams.ProviderSpecification newProviderSpecification =
+          newUserIntent.getProviderSpecification(providerUUID);
+      UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
+          userIntent.getProviderSpecification(providerUUID);
+      if (newProviderSpecification == null) {
+        throw new IllegalStateException("Missing new provider specification for " + providerUUID);
+      }
+      if (providerSpecification == null) {
+        throw new IllegalStateException("Missing old provider specification for " + providerUUID);
+      }
+      providerSpecification.mergeNodesSpecification(newProviderSpecification, merger);
     }
-    return false;
+  }
+
+  public static boolean checkAnyProviderMatches(
+      UniverseDefinitionTaskParams params, Predicate<Provider> predicate) {
+    return params.clusters.stream()
+        .flatMap(c -> c.userIntent.getAllProviderUUIDs().stream())
+        .map(Provider::getOrBadRequest)
+        .anyMatch(predicate);
+  }
+
+  public static CloudType getSingleProviderType(UserIntent userIntent) {
+    Set<CloudType> allCloudTypes = new HashSet<>(userIntent.getAllCloudTypes());
+    if (allCloudTypes.size() > 1) {
+      throw new IllegalStateException(
+          "Expected to have a single provider, but " + allCloudTypes + " found");
+    }
+    return allCloudTypes.iterator().next();
+  }
+
+  public static Provider getSingleProvider(Cluster cluster) {
+    return getSingleProvider(cluster.userIntent);
+  }
+
+  public static Provider getSingleProvider(UserIntent userIntent) {
+    return Provider.getOrBadRequest(getSingleProviderUUID(userIntent));
+  }
+
+  public static UUID getSingleProviderUUID(Cluster cluster) {
+    return getSingleProviderUUID(cluster.userIntent);
+  }
+
+  public static UUID getSingleProviderUUID(UserIntent userIntent) {
+    if (!userIntent.isMulticloudSupport()) {
+      return userIntent.maybeGetSingleProviderUUID().orElseThrow();
+    }
+    Set<UUID> allProviderUUIDs = userIntent.getAllProviderUUIDs();
+    if (allProviderUUIDs.size() > 1) {
+      throw new IllegalStateException(
+          "Expected to have a single provider, but " + allProviderUUIDs.size() + " found");
+    }
+    return allProviderUUIDs.iterator().next();
+  }
+
+  public static Set<NodeDetails> filterByProviderType(
+      Collection<NodeDetails> nodes, Collection<Cluster> clusters, CloudType expectedType) {
+    Map<UUID, Cluster> clusterMap =
+        clusters.stream().collect(Collectors.toMap(c -> c.uuid, c -> c));
+    return nodes.stream()
+        .filter(
+            n -> {
+              Cluster cluster = clusterMap.get(n.placementUuid);
+              return cluster.getProviderCloudType(n) == expectedType;
+            })
+        .collect(Collectors.toSet());
   }
 
   /**
@@ -1201,26 +1290,22 @@ public class Util {
     return isKubernetesUniverse;
   }
 
-  public static UUID getSingleProviderUUID(Cluster cluster) {
-    return getSingleProviderUUID(cluster.userIntent);
-  }
-
-  public static UUID getSingleProviderUUID(UserIntent userIntent) {
-    return UUID.fromString(userIntent.provider);
-  }
-
-  public static Provider getSingleProvider(Cluster cluster) {
-    return getSingleProvider(cluster.userIntent);
-  }
-
-  public static Provider getSingleProvider(UserIntent userIntent) {
-    return Provider.getOrBadRequest(getSingleProviderUUID(userIntent));
-  }
-
+  /**
+   * Caching function to prevent multiple reads of provider.
+   *
+   * @param universe
+   * @return
+   */
   public static Function<NodeDetails, Provider> getProviderGetter(Universe universe) {
     return getProviderGetter(universe.getUniverseDetails());
   }
 
+  /**
+   * Caching function to prevent multiple reads of provider.
+   *
+   * @param params
+   * @return
+   */
   public static Function<NodeDetails, Provider> getProviderGetter(
       UniverseDefinitionTaskParams params) {
     // Caching by AZ.
@@ -1230,31 +1315,28 @@ public class Util {
             n.azUuid, uuid -> getProviderForNode(n, params.getClusterByUuid(n.placementUuid)));
   }
 
+  /**
+   * Caching function to prevent multiple reads of provider.
+   *
+   * @param cluster
+   * @return
+   */
+  public static Function<NodeDetails, Provider> getProviderGetter(
+      UniverseDefinitionTaskParams.Cluster cluster) {
+    // Caching by AZ.
+    Map<UUID, Provider> providerMap = new HashMap<>();
+    return (n) -> providerMap.computeIfAbsent(n.azUuid, uuid -> getProviderForNode(n, cluster));
+  }
+
   public static Set<UUID> getAllProviderUUIDs(Universe universe) {
     return universe.getUniverseDetails().clusters.stream()
         .flatMap(c -> c.userIntent.getAllProviderUUIDs().stream())
         .collect(Collectors.toSet());
   }
 
-  public static Provider getProviderForNode(NodeDetails nodeDetails, Universe universe) {
-    return getProviderForNode(nodeDetails, universe.getCluster(nodeDetails.placementUuid));
-  }
-
-  public static Provider getProviderForNode(NodeDetails nodeDetails, Cluster cluster) {
-    return getSingleProvider(cluster);
-  }
-
   public static boolean checkAnyProviderType(
       UserIntent userIntent, Predicate<CloudType> predicate) {
     return userIntent.getAllCloudTypes().stream().filter(predicate).findFirst().isPresent();
-  }
-
-  public static CloudType getSingleProviderType(Cluster cluster) {
-    return getSingleProviderType(cluster.userIntent);
-  }
-
-  public static CloudType getSingleProviderType(UserIntent userIntent) {
-    return userIntent.providerType;
   }
 
   public static String getYbcNodeIp(Universe universe) {
@@ -1450,6 +1532,21 @@ public class Util {
     return delay;
   }
 
+  public static Provider getProviderForNode(NodeDetails nodeDetails, Universe universe) {
+    return getProviderForNode(nodeDetails, universe.getCluster(nodeDetails.placementUuid));
+  }
+
+  public static Provider getProviderForNode(NodeDetails nodeDetails, Cluster cluster) {
+    if (!cluster.userIntent.isMulticloudSupport()) {
+      return getSingleProvider(cluster);
+    }
+    return Provider.getOrBadRequest(cluster.getProviderUUIDForNode(nodeDetails));
+  }
+
+  public static Provider getProviderByAz(UUID azUuid) {
+    return AvailabilityZone.getOrBadRequest(azUuid).getProvider();
+  }
+
   /**
    * Gets the path to "yb-data/" folder on the node (Ex: "/mnt/d0", "/mnt/disk0")
    *
@@ -1460,21 +1557,21 @@ public class Util {
    */
   public static String getDataDirectoryPath(Universe universe, NodeDetails node, Config config) {
     String dataDirPath = config.getString("yb.support_bundle.default_mount_point_prefix") + "0";
-    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
-    CloudType cloudType = userIntent.providerType;
+    Cluster cluster = universe.getCluster(node.placementUuid);
+    Provider provider = getProviderForNode(node, cluster);
 
-    if (cloudType == CloudType.onprem) {
+    if (provider.getCloudCode() == CloudType.onprem) {
       // On prem universes:
       // Onprem universes have to specify the mount points for the volumes at the time of provider
       // creation itself.
       // This is stored at universe.cluster.userIntent.deviceInfo.mountPoints
       try {
-        String mountPoints = userIntent.deviceInfo.mountPoints;
+        String mountPoints = cluster.userIntent.getDeviceInfoForNode(node).mountPoints;
         dataDirPath = mountPoints.split(",")[0];
       } catch (Exception e) {
         log.error(String.format("On prem invalid mount points. Defaulting to %s", dataDirPath), e);
       }
-    } else if (cloudType == CloudType.kubernetes) {
+    } else if (provider.getCloudCode() == CloudType.kubernetes) {
       // Kubernetes universes:
       // K8s universes have a default mount path "/mnt/diskX" with X = {0, 1, 2...} based on number
       // of volumes
@@ -1489,9 +1586,8 @@ public class Util {
       // "/mnt/d0"
       try {
         String nodeInstanceType = node.cloudInfo.instance_type;
-        String providerUUID = userIntent.provider;
         InstanceType instanceType =
-            InstanceType.getOrBadRequest(UUID.fromString(providerUUID), nodeInstanceType);
+            InstanceType.getOrBadRequest(provider.getUuid(), nodeInstanceType);
         List<VolumeDetails> volumeDetailsList =
             instanceType.getInstanceTypeDetails().volumeDetailsList;
         if (CollectionUtils.isNotEmpty(volumeDetailsList)) {
@@ -1563,10 +1659,8 @@ public class Util {
 
   public static UUID retreiveImageBundleUUID(
       Architecture arch, UserIntent userIntent, Provider provider) {
-    UUID imageBundleUUID = null;
-    if (userIntent.imageBundleUUID != null) {
-      imageBundleUUID = userIntent.imageBundleUUID;
-    } else if (provider.getUuid() != null) {
+    UUID imageBundleUUID = userIntent.getImageBundleUUIDForProvider(provider.getUuid());
+    if (imageBundleUUID == null && provider.getUuid() != null) {
       List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
       if (bundles.size() > 0) {
         ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
@@ -1782,6 +1876,18 @@ public class Util {
     }
   }
 
+  public static void validateSpecificationsIfPresent(
+      List<UniverseDefinitionTaskParams.ProviderSpecification> specs, boolean isPartialUpdate) {
+    if (specs != null) {
+      for (UniverseDefinitionTaskParams.ProviderSpecification spec : specs) {
+        if (spec == null) {
+          throw new PlatformServiceException(BAD_REQUEST, "Found null specification");
+        }
+        spec.validate(isPartialUpdate);
+      }
+    }
+  }
+
   public static List<String> getCheckProcessStatusCommand(String user, String processName) {
     return ImmutableList.<String>builder()
         .add("pgrep")
@@ -1821,5 +1927,106 @@ public class Util {
                     .filter(e -> FILTERED_INSTANCE_KEYS_FOR_LOGGING.contains(e.getKey()))
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)))
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Check if childPath is the same as parentPath or a descendant of parentPath.
+   *
+   * @param parentPath the parent path
+   * @param childPath the child path
+   * @return
+   */
+  public static boolean isPathSameOrDescendant(String parentPath, String childPath) {
+    // Normalize to remove redundant elements like "." and ".."
+    Path normalizedParent = Paths.get(parentPath).toAbsolutePath().normalize();
+    Path normalizedChild = Paths.get(childPath).toAbsolutePath().normalize();
+    return normalizedChild.startsWith(normalizedParent) || normalizedChild.equals(normalizedParent);
+  }
+
+  public static class TaskParamsUpdater {
+    private final UniverseDefinitionTaskParams taskParams;
+
+    private Map<String, SetMultimap<Object, UUID>> valuesTracker = new HashMap<>();
+
+    public TaskParamsUpdater(UniverseDefinitionTaskParams taskParams) {
+      this.taskParams = taskParams;
+    }
+
+    public void setYbcEnabled(Provider p, boolean value) {
+      verifyValues("Ybc enabled", p, value);
+      taskParams.setEnableYbc(value);
+    }
+
+    public void setInstallNodeExporter(Provider p, boolean value) {
+      verifyValues("Install node exporter", p, value);
+      taskParams.extraDependencies.installNodeExporter = value;
+    }
+
+    public void setNodeExporterPort(Provider p, Integer nodeExporterPort) {
+      verifyValues("Node exporter port", p, nodeExporterPort);
+      taskParams.communicationPorts.nodeExporterPort = nodeExporterPort;
+      if (taskParams.nodeDetailsSet != null) {
+        for (NodeDetails node : taskParams.nodeDetailsSet) {
+          node.nodeExporterPort = nodeExporterPort;
+        }
+      }
+    }
+
+    public void setNodeExporterUser(Provider p, String user) {
+      verifyValues("Node exporter user", p, user);
+      taskParams.nodeExporterUser = user;
+    }
+
+    public void setArch(Provider p, Architecture arch) {
+      verifyValues("Architecture", p, arch);
+      taskParams.arch = arch;
+    }
+
+    public void setOtelPort(Provider provider, int otelPort) {
+      verifyValues("Otel collector port", provider, otelPort);
+      taskParams.communicationPorts.otelCollectorMetricsPort = otelPort;
+      if (taskParams.nodeDetailsSet != null) {
+        for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
+          nodeDetails.otelCollectorMetricsPort = otelPort;
+        }
+      }
+    }
+
+    public void setOtelCollectorEnabled(Provider provider, boolean value) {
+      verifyValues("Otel collector enabled", provider, value);
+      taskParams.otelCollectorEnabled = value;
+    }
+
+    private void verifyValues(String property, Provider p, Object value) {
+      SetMultimap<Object, UUID> mmap =
+          valuesTracker.computeIfAbsent(property, (x) -> HashMultimap.create());
+      mmap.put(value, p.getUuid());
+      if (mmap.keys().size() > 1) {
+        List<String> list =
+            mmap.entries().stream()
+                .map(e -> e.getValue().toString() + " has " + e.getKey())
+                .collect(Collectors.toList());
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format("Found discrepancy between values for %s: %s ", property, list));
+      }
+    }
+  }
+
+  /**
+   * Find the diff between the given universe details and the database universe details.
+   *
+   * @param universe the universe.
+   * @return the diff between the current and the DB universe details. Null if they are same.
+   */
+  public static JsonNode findDiffJsonNode(Universe universe) {
+    // Get the database universe details.
+    UniverseDefinitionTaskParams dbTaskParams =
+        Universe.getOrBadRequest(universe.getUniverseUUID()).getUniverseDetails();
+    dbTaskParams.sequenceNumber = universe.getUniverseDetails().sequenceNumber;
+    JsonNode deltaTree =
+        DeltaEvaluator.buildDeltaJsonTree(
+            universe.getUniverseDetails(), dbTaskParams, new NodeDetailsArrayComparator());
+    return DeltaEvaluator.generateOnlyDelta(deltaTree);
   }
 }

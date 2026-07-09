@@ -267,10 +267,14 @@ message ReadRequestPB {
 
   optional int64 raft_config_opid_index = 18;
 
-  optional int64 leader_term = 19;
+  reserved 19; // leader_term is no longer used for async writes
 
   // If this read requires to perform write operations like locking rows, then use async write.
   optional bool use_async_write = 20;
+
+  // OpId of a pending async write on this tablet that the server should verify is present in
+  // its local log before serving the read (see TabletPeer::VerifyAsyncWriteReceived).
+  optional OpIdPB pending_async_write_op_id = 21;
 }
 
 message ReadResponsePB {
@@ -543,6 +547,21 @@ message ReleaseObjectLockRequestPB {
 }
 
 message ReleaseObjectLockResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
+message WaitForLockersMultipleRequestPB {
+  repeated docdb.ObjectLockPB object_locks = 1;
+  optional bytes session_host_uuid = 2;
+  optional uint64 lease_epoch = 3;
+  optional fixed64 propagated_hybrid_time = 4;
+  // The expected lease epoch of the recipient tserver.
+  optional uint64 recipient_lease_epoch = 5;
+  optional bytes background_transaction_id = 6;
+}
+
+message WaitForLockersMultipleResponsePB {
   optional TabletServerErrorPB error = 1;
   optional fixed64 propagated_hybrid_time = 2;
 }

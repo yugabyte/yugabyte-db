@@ -1639,8 +1639,8 @@ _readPlannedStmt(void)
 	READ_NODE_FIELD(paramExecTypes);
 	READ_NODE_FIELD(utilityStmt);
 	READ_LOCATION_FIELD(stmt_location);
-	READ_INT_FIELD(yb_num_referenced_relations);
 	READ_INT_FIELD(stmt_len);
+	READ_INT_FIELD(yb_num_referenced_relations);
 	READ_UINT64_FIELD(ybPlanId);
 
 	READ_DONE();
@@ -1675,6 +1675,7 @@ ReadCommonPlan(Plan *local_node)
 	READ_STRING_FIELD(ybInheritedHintAlias);
 	READ_BOOL_FIELD(ybIsHinted);
 	READ_BOOL_FIELD(ybHasHintedUid);
+	READ_BOOL_FIELD(ybReadAheadCapable);
 }
 
 /*

@@ -14,6 +14,7 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertFalse;
@@ -45,6 +46,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -85,6 +87,15 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
     flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
     flagMap.put("ysql_cdc_active_replication_slot_window_ms", "0");
+    return flagMap;
+  }
+
+  // TServer flags with the (preview) replication slot exclusive advisory lock enabled. The flag
+  // must be allowlisted in the same map; otherwise the tserver refuses to start.
+  private Map<String, String> getTServerFlagsWithExclusiveLock() {
+    Map<String, String> flagMap = getTServerFlags();
+    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replication_slot_exclusive_lock");
+    flagMap.put("ysql_yb_enable_replication_slot_exclusive_lock", "true");
     return flagMap;
   }
 
@@ -792,9 +803,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testReplicationConnectionConsumptionWithCreateIndex() throws Exception {
-    Map<String, String> tserverFlags = super.getTServerFlags();
-    tserverFlags.put("ysql_yb_wait_for_backends_catalog_version_timeout", "10000");
-    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+    Map<String, String> masterFlags = super.getMasterFlags();
+    masterFlags.put("master_ysql_operation_lease_ttl_ms", "10000");
+    restartClusterWithFlags(masterFlags, Collections.emptyMap());
 
     final String slotName = "test_slot";
     final String pluginName = YB_OUTPUT_PLUGIN_NAME;
@@ -995,10 +1006,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   public void setFlagsForDynamicTablesTest(Map<String, String> tserverFlags,
       Map<String, String> masterFlags, Boolean usePubRefresh, Boolean streamTablesWithoutPrimaryKey)
       throws Exception {
-    tserverFlags.put(
-        "allowed_preview_flags_csv",
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key,"
-            + "enable_table_rewrite_for_cdcsdk_table");
+    tserverFlags.put("allowed_preview_flags_csv", "enable_table_rewrite_for_cdcsdk_table");
     tserverFlags.put(
         "ysql_yb_enable_implicit_dynamic_tables_logical_replication",
         "" + !usePubRefresh);
@@ -1008,10 +1016,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     tserverFlags.put(
         "enable_table_rewrite_for_cdcsdk_table", "true");
 
-    masterFlags.put(
-        "allowed_preview_flags_csv",
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key,"
-            + "enable_table_rewrite_for_cdcsdk_table");
+    masterFlags.put("allowed_preview_flags_csv", "enable_table_rewrite_for_cdcsdk_table");
     masterFlags.put(
         "ysql_yb_enable_implicit_dynamic_tables_logical_replication",
         "" + !usePubRefresh);
@@ -1106,68 +1111,82 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     }
 
     List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
-    // 6 from first txn, 8 from second txn, 4 from third txn.
-    result.addAll(receiveMessage(stream, 18));
+    // Without pub refresh, ALTER PUBLICATION re-sends RELATION for all tables (matches PG15). With
+    // pub refresh, the timer record carries no metadata change, so there are no extra RELATIONs.
+    result.addAll(receiveMessage(stream, usePubRefresh ? 18 : 22));
 
-    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
-      {
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/5"), 2));
-        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
-          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
-            PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
-        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
-          Arrays.asList(
-            new PgOutputMessageTupleColumnValue("1"),
-            new PgOutputMessageTupleColumnValue("abcd")))));
-        add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
-          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
-            PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
-        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
-          Arrays.asList(
-            new PgOutputMessageTupleColumnValue("2"),
-            new PgOutputMessageTupleColumnValue("defg")))));
-        add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+    PgOutputRelationMessage relT1 = PgOutputRelationMessage.CreateForComparison("public", "t1",
+        'c', Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+          PgOutputRelationMessageColumn.CreateForComparison("b", 25)));
+    PgOutputRelationMessage relT2 = PgOutputRelationMessage.CreateForComparison("public", "t2",
+        'c', Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+          PgOutputRelationMessageColumn.CreateForComparison("b", 25)));
+    PgOutputRelationMessage relT3 = PgOutputRelationMessage.CreateForComparison("public", "t3",
+        'c', Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+          PgOutputRelationMessageColumn.CreateForComparison("b", 25)));
+    PgOutputRelationMessage relT4 = PgOutputRelationMessage.CreateForComparison("public", "t4",
+        'c', Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+          PgOutputRelationMessageColumn.CreateForComparison("b", 25)));
 
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 3));
-        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
-          Arrays.asList(
-            new PgOutputMessageTupleColumnValue("3"),
-            new PgOutputMessageTupleColumnValue("mnop")))));
-        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
-          Arrays.asList(
-            new PgOutputMessageTupleColumnValue("4"),
-            new PgOutputMessageTupleColumnValue("qrst")))));
-        add(PgOutputRelationMessage.CreateForComparison("public", "t3", 'c',
-          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
-            PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
-        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
-          Arrays.asList(
-            new PgOutputMessageTupleColumnValue("5"),
-            new PgOutputMessageTupleColumnValue("uvwx")))));
-        add(PgOutputRelationMessage.CreateForComparison("public", "t4", 'c',
-          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
-            PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
-        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
-          Arrays.asList(
-            new PgOutputMessageTupleColumnValue("6"),
-            new PgOutputMessageTupleColumnValue("wxyz")))));
-        add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>();
 
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/F"), 4));
-        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
-          Arrays.asList(
-            new PgOutputMessageTupleColumnValue("8"),
-            new PgOutputMessageTupleColumnValue("opqr")))));
-        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
-          Arrays.asList(
-            new PgOutputMessageTupleColumnValue("9"),
-            new PgOutputMessageTupleColumnValue("rstu")))));
-        add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/F"), LogSequenceNumber.valueOf("0/10")));
-      }
-    };
+    // Txn 1.
+    expectedResult.add(
+        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/5"), 2));
+    expectedResult.add(relT1);
+    expectedResult.add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple(
+        (short) 2, Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+          new PgOutputMessageTupleColumnValue("abcd")))));
+    expectedResult.add(relT2);
+    expectedResult.add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple(
+        (short) 2, Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
+          new PgOutputMessageTupleColumnValue("defg")))));
+    expectedResult.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+
+    // Txn 2.
+    expectedResult.add(
+        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 3));
+    if (!usePubRefresh) {
+      expectedResult.add(relT1);
+    }
+    expectedResult.add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple(
+        (short) 2, Arrays.asList(new PgOutputMessageTupleColumnValue("3"),
+          new PgOutputMessageTupleColumnValue("mnop")))));
+    if (!usePubRefresh) {
+      expectedResult.add(relT2);
+    }
+    expectedResult.add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple(
+        (short) 2, Arrays.asList(new PgOutputMessageTupleColumnValue("4"),
+          new PgOutputMessageTupleColumnValue("qrst")))));
+    expectedResult.add(relT3);
+    expectedResult.add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple(
+        (short) 2, Arrays.asList(new PgOutputMessageTupleColumnValue("5"),
+          new PgOutputMessageTupleColumnValue("uvwx")))));
+    expectedResult.add(relT4);
+    expectedResult.add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple(
+        (short) 2, Arrays.asList(new PgOutputMessageTupleColumnValue("6"),
+          new PgOutputMessageTupleColumnValue("wxyz")))));
+    expectedResult.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+
+    // Txn 3.
+    expectedResult.add(
+        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/F"), 4));
+    if (!usePubRefresh) {
+      expectedResult.add(relT3);
+    }
+    expectedResult.add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple(
+        (short) 2, Arrays.asList(new PgOutputMessageTupleColumnValue("8"),
+          new PgOutputMessageTupleColumnValue("opqr")))));
+    if (!usePubRefresh) {
+      expectedResult.add(relT4);
+    }
+    expectedResult.add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple(
+        (short) 2, Arrays.asList(new PgOutputMessageTupleColumnValue("9"),
+          new PgOutputMessageTupleColumnValue("rstu")))));
+    expectedResult.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/F"), LogSequenceNumber.valueOf("0/10")));
 
     assertEquals(expectedResult, result);
 
@@ -1225,14 +1244,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
       miniCluster.getClient().setFlag(
-          tServer, "allowed_preview_flags_csv", "ysql_yb_cdcsdk_stream_tables_without_primary_key");
-      miniCluster.getClient().setFlag(
           tServer, "ysql_yb_cdcsdk_stream_tables_without_primary_key", "true");
     }
 
     for (HostAndPort master : miniCluster.getMasters().keySet()) {
-      miniCluster.getClient().setFlag(
-          master, "allowed_preview_flags_csv", "ysql_yb_cdcsdk_stream_tables_without_primary_key");
       miniCluster.getClient().setFlag(
           master, "ysql_yb_cdcsdk_stream_tables_without_primary_key", "true");
     }
@@ -4977,7 +4992,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       stmt.execute("SELECT pg_replication_origin_create('" + originId2 + "')");
 
       // Create replication slot
-      createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+      createSlot(replConnection, slotName, PG_OUTPUT_PLUGIN_NAME);
 
       // Local insert
       stmt.execute("INSERT INTO tbl1 values (2,'b')");
@@ -5054,6 +5069,249 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       );
 
     List<PgOutputMessage> result = receiveMessage(stream, 22);
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  @Test
+  public void testPgoutputWithSharedOriginId() throws Exception {
+    final String slotName = "test_replication_with_shared_origin_id";
+    final String originId1 = "shared_origin1";
+    final String originId2 = "shared_origin2";
+
+    Connection replConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+        replConn.unwrap(PGConnection.class).getReplicationAPI();
+    Connection conn2 = getConnectionBuilder().withTServer(1).connect();
+
+    try (Statement stmt1 = connection.createStatement();
+         Statement stmt2 = conn2.createStatement()) {
+      stmt1.execute("DROP TABLE IF EXISTS shared_origin_tbl1");
+      stmt1.execute("DROP TABLE IF EXISTS shared_origin_tbl2");
+      stmt1.execute("CREATE TABLE shared_origin_tbl1 (a INT PRIMARY KEY, b TEXT)");
+      stmt1.execute("ALTER TABLE shared_origin_tbl1 REPLICA IDENTITY DEFAULT");
+      stmt1.execute("CREATE TABLE shared_origin_tbl2 (a INT PRIMARY KEY, b TEXT)");
+      stmt1.execute("ALTER TABLE shared_origin_tbl2 REPLICA IDENTITY DEFAULT");
+      stmt1.execute("CREATE PUBLICATION shared_origin_pub FOR ALL TABLES");
+
+      stmt1.execute("SELECT pg_replication_origin_create('" + originId1 + "')");
+      stmt1.execute("SELECT pg_replication_origin_create('" + originId2 + "')");
+      stmt1.execute("CREATE ROLE shared_origin_non_su LOGIN PASSWORD 'pwd'");
+      createSlot(replConnection, slotName, PG_OUTPUT_PLUGIN_NAME);
+
+      try (Connection nonSuConn = getConnectionBuilder()
+               .withUser("shared_origin_non_su").withPassword("pwd").connect();
+           Statement nonSuStmt = nonSuConn.createStatement()) {
+        runInvalidQuery(
+            nonSuStmt,
+            "SELECT yb_replication_origin_session_setup_shared('" + originId1 + "')",
+            "permission denied for function yb_replication_origin_session_setup_shared");
+        runInvalidQuery(
+            nonSuStmt,
+            "SELECT yb_replication_origin_session_reset_shared()",
+            "permission denied for function yb_replication_origin_session_reset_shared");
+      }
+
+      stmt1.execute("SELECT yb_replication_origin_session_setup_shared('" + originId1 + "')");
+      stmt2.execute("SELECT yb_replication_origin_session_setup_shared('" + originId2 + "')");
+
+      runInvalidQuery(
+          stmt1,
+          "SELECT pg_replication_origin_session_setup('" + originId2 + "')",
+          "replication origin session already setup");
+      runInvalidQuery(
+          stmt1,
+          "SELECT yb_replication_origin_session_setup_shared('" + originId2 + "')",
+          "replication origin session already setup");
+
+      stmt1.execute("CREATE TEMP TABLE shared_origin_temp(i int)");
+      stmt1.execute("INSERT INTO shared_origin_temp VALUES (1)");
+      stmt1.execute("DROP TABLE shared_origin_temp");
+      stmt1.execute("INSERT INTO shared_origin_tbl1 values (1, 'from_origin1')");
+      stmt2.execute("INSERT INTO shared_origin_tbl2 values (2, 'from_origin2')");
+
+      stmt1.execute("SELECT yb_replication_origin_session_reset_shared()");
+      stmt2.execute("SELECT yb_replication_origin_session_reset_shared()");
+      stmt1.execute("INSERT INTO shared_origin_tbl1 values (3, 'local_after_reset')");
+
+      stmt1.execute("SELECT pg_replication_origin_session_setup('" + originId1 + "')");
+      runInvalidQuery(
+          stmt1,
+          "SELECT yb_replication_origin_session_setup_shared('" + originId2 + "')",
+          "cannot use shared replication origin session while an exclusive one is active");
+      runInvalidQuery(
+          stmt1,
+          "SELECT yb_replication_origin_session_reset_shared()",
+          "cannot reset shared replication origin session while an exclusive one is active");
+      stmt1.execute("SELECT pg_replication_origin_session_reset()");
+
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "shared_origin_pub")
+                                     .start();
+
+    List<PgOutputMessage> result = receiveMessage(stream, 13);
+    int originMessages = 0;
+    int origin1Messages = 0;
+    int origin2Messages = 0;
+    for (PgOutputMessage message : result) {
+      if (message.messageType() == PgOutputMessageType.ORIGIN) {
+        originMessages++;
+      }
+      if (message.equals(PgOutputOriginMessage.Create(originId1))) {
+        origin1Messages++;
+      }
+      if (message.equals(PgOutputOriginMessage.Create(originId2))) {
+        origin2Messages++;
+      }
+    }
+    assertEquals(2, originMessages);
+    assertEquals(1, origin1Messages);
+    assertEquals(1, origin2Messages);
+
+    stream.close();
+    conn2.close();
+    replConn.close();
+  }
+
+  @Test
+  public void testSharedOriginIdDisabled() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    appendToYsqlPgConf(tserverFlags, "yb_enable_replication_origin_shared=false");
+    restartClusterWithFlags(getMasterFlags(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SELECT pg_replication_origin_create('disabled_shared_origin')");
+      runInvalidQuery(
+          stmt,
+          "SELECT yb_replication_origin_session_setup_shared('disabled_shared_origin')",
+          "yb_replication_origin_session_setup_shared requires "
+              + "yb_enable_replication_origin_shared to be enabled");
+      runInvalidQuery(
+          stmt,
+          "SELECT yb_replication_origin_session_reset_shared()",
+          "yb_replication_origin_session_reset_shared requires "
+              + "yb_enable_replication_origin_shared to be enabled");
+    }
+  }
+
+  @Test
+  public void testYboutputWithOriginIdCreatedAfterSlot() throws Exception {
+    final String slotName = "test_replication_with_origin_id_post_slot";
+    final String originId1 = "origin1_post";
+    final String originId2 = "origin2_post";
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS tbl1");
+      stmt.execute("DROP TABLE IF EXISTS tbl2");
+      stmt.execute("CREATE TABLE tbl1 (a INT PRIMARY KEY, b TEXT)");
+      stmt.execute("ALTER TABLE tbl1 REPLICA IDENTITY CHANGE");
+      stmt.execute("CREATE TABLE tbl2 (a TEXT primary key) SPLIT INTO 2 TABLETS");
+      stmt.execute("ALTER TABLE tbl2 REPLICA IDENTITY CHANGE");
+      stmt.execute("INSERT INTO tbl1 values (1,'a')");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+
+      // Create only origin1 BEFORE the slot.
+      stmt.execute("SELECT pg_replication_origin_create('" + originId1 + "')");
+
+      // Create replication slot. origin2 does not exist yet.
+      createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+      // Create origin2 AFTER the slot exists.
+      stmt.execute("SELECT pg_replication_origin_create('" + originId2 + "')");
+
+      stmt.execute("INSERT INTO tbl1 values (2,'b')");
+
+      // Single tablet non distributed insert from origin 1
+      stmt.execute("SELECT pg_replication_origin_session_setup('" + originId1 + "')");
+      stmt.execute("INSERT INTO tbl2 values ('row1')");
+
+      // Batch update from origin 2.
+      stmt.execute("SELECT pg_replication_origin_session_reset()");
+      stmt.execute("SELECT pg_replication_origin_session_setup('" + originId2 + "')");
+      stmt.execute("BEGIN");
+      stmt.execute("UPDATE tbl1 SET b = 'c' WHERE a = 1");
+      stmt.execute("UPDATE tbl1 SET b = 'd' WHERE a = 2");
+      stmt.execute("COMMIT");
+
+      // Transactional DML from origin 1
+      stmt.execute("SELECT pg_replication_origin_session_reset()");
+      stmt.execute("SELECT pg_replication_origin_session_setup('" + originId1 + "')");
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO tbl2 values ('row2')");
+      stmt.execute("DELETE FROM tbl1 WHERE a = 2");
+      stmt.execute("COMMIT");
+
+      stmt.execute("SELECT pg_replication_origin_session_reset()");
+      stmt.execute("DELETE FROM tbl2 WHERE a = 'row2'");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    List<PgOutputMessage> expectedResult = CreateMessages(
+        // Change 1: Local insert
+        PgOutputBeginMessage.Create("0/4", 2),
+        PgOutputRelationMessage.Create("public", "tbl1", 'c',
+            PgOutputRelationMessageColumn.Create("a", 23),
+            PgOutputRelationMessageColumn.Create("b", 25)),
+        PgOutputInsertMessage.Create("2", "b"),
+        PgOutputCommitMessage.Create("0/4", "0/5"),
+
+        // Change 2: Single tablet non distributed insert from origin 1 (pre-slot origin)
+        PgOutputBeginMessage.Create("0/7", 3),
+        PgOutputOriginMessage.Create(originId1),
+        PgOutputRelationMessage.Create(
+            "public", "tbl2", 'c', PgOutputRelationMessageColumn.Create("a", 25)),
+        PgOutputInsertMessage.Create("row1"),
+        PgOutputCommitMessage.Create("0/7", "0/8"),
+
+        // Change 3: Batch update from origin 2.
+        PgOutputBeginMessage.Create("0/B", 4),
+        PgOutputOriginMessage.Create(originId2),
+        PgOutputUpdateMessage.Create(true, "1", "c"),
+        PgOutputUpdateMessage.Create(true, "2", "d"),
+        PgOutputCommitMessage.Create("0/B", "0/C"),
+
+        // Change 4: Transactional DML from origin 1
+        PgOutputBeginMessage.Create("0/F", 5),
+        PgOutputOriginMessage.Create(originId1),
+        PgOutputInsertMessage.Create("row2"),
+        PgOutputDeleteMessage.Create(true, "2", null),
+        PgOutputCommitMessage.Create("0/F", "0/10"),
+
+        // Change 5: Local delete
+        PgOutputBeginMessage.Create("0/12", 6),
+        PgOutputDeleteMessage.Create(true, "row2"),
+        PgOutputCommitMessage.Create("0/12", "0/13")
+      );
+
+    long deadlineMs = System.currentTimeMillis() + 60_000;
+    List<PgOutputMessage> result = new ArrayList<>();
+    while (result.size() < 22 && System.currentTimeMillis() < deadlineMs) {
+      ByteBuffer buf = stream.readPending();
+      if (buf != null) {
+        result.add(PgOutputMessageDecoder.DecodeBytes(buf));
+      } else {
+        Thread.sleep(50);
+      }
+    }
+    LOG.info("Received {} messages (expected 22)", result.size());
     assertEquals(expectedResult, result);
 
     stream.close();
@@ -5229,6 +5487,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.close();
   }
 
+  // TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
+  @Ignore
   @Test
   public void testWithTableRewriteOnColocatedTable() throws Exception {
     setFlagsForDynamicTablesTest(getTServerFlags(), getMasterFlags(),
@@ -5518,6 +5778,52 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   @Test
+  public void testCdcStreamOnYbSystemBlocked() throws Exception {
+    // Currently yb_system is only created if ysql_yb_enable_listen_notify is enabled on master.
+    Map<String, String> masterFlags = super.getMasterFlags();
+    masterFlags.put("ysql_yb_enable_listen_notify", "true");
+    restartClusterWithFlags(masterFlags, Collections.emptyMap());
+    BasePgListenNotifyTest.waitForNotificationsTableReady(connection, getConnectionBuilder());
+
+    try (Connection ybSystemConn = getConnectionBuilder().withDatabase("yb_system").connect();
+         Statement stmt = ybSystemConn.createStatement()) {
+      stmt.execute("CREATE TABLE test_cdc_table (id INT PRIMARY KEY, val TEXT)");
+      stmt.execute("CREATE PUBLICATION test_pub FOR ALL TABLES");
+      try {
+        stmt.execute(
+            "SELECT pg_create_logical_replication_slot('test_cdc_slot', 'pgoutput')");
+        fail("Expected replication slot creation on yb_system to fail");
+      } catch (PSQLException e) {
+        assertTrue("Expected error about yb_system CDC streams not supported, got: "
+            + e.getMessage(),
+            e.getMessage().contains("CDC streams are not supported for yb_system database"));
+      } finally {
+        stmt.execute("DROP PUBLICATION test_pub");
+        stmt.execute("DROP TABLE test_cdc_table");
+      }
+    }
+  }
+
+  @Test
+  public void testReservedSlotNamePrefix() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE PUBLICATION test_pub FOR ALL TABLES");
+      try {
+        stmt.execute(
+            "SELECT pg_create_logical_replication_slot('yb_notifications_test', 'pgoutput')");
+        fail("Expected replication slot creation with reserved prefix to fail");
+      } catch (PSQLException e) {
+        assertTrue("Expected error about reserved slot name, got: " + e.getMessage(),
+            e.getMessage().contains("is reserved"));
+      } finally {
+        stmt.execute("DROP PUBLICATION test_pub");
+      }
+    }
+  }
+
+  // TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
+  @Ignore
+  @Test
   public void testColocatedDropPkThenDropIndex() throws Exception {
     setFlagsForDynamicTablesTest(getTServerFlags(), getMasterFlags(),
         false /* usePubRefresh */, true /* streamTablesWithoutPrimaryKey */);
@@ -5653,5 +5959,831 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       assertTrue(res.next());
       return res.getLong("yb_restart_commit_ht");
     }
+  }
+
+  @Test
+  public void testExclusiveReplicationSlotAcquireAcrossTservers() throws Exception {
+    restartClusterWithFlags(getMasterFlags(), getTServerFlagsWithExclusiveLock());
+
+    String slotName = "excl_slot_test";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t_excl");
+      stmt.execute("CREATE TABLE t_excl(k int primary key, v text)");
+      stmt.execute("INSERT INTO t_excl VALUES (1, 'a')");
+    }
+
+    Connection replConn0 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replApi0 =
+        replConn0.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replApi0, slotName, "test_decoding");
+
+    PGReplicationStream stream0 = replApi0.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .start();
+
+    try {
+      String expectedErrorMessage = "could not acquire replication slot";
+      boolean exceptionThrown = false;
+      Connection replConn2 = getConnectionBuilder().withTServer(2).replicationConnect();
+      PGReplicationConnection replApi2 =
+          replConn2.unwrap(PGConnection.class).getReplicationAPI();
+      try {
+        replApi2.replicationStream()
+            .logical()
+            .withSlotName(slotName)
+            .withStartPosition(LogSequenceNumber.valueOf(0L))
+            .start();
+      } catch (PSQLException e) {
+        exceptionThrown = true;
+        if (StringUtils.containsIgnoreCase(e.getMessage(), expectedErrorMessage)) {
+          LOG.info("Expected exception", e);
+        } else {
+          fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
+              e.getMessage(), expectedErrorMessage));
+        }
+      }
+      assertTrue("Expected slot acquire to fail for second consumer", exceptionThrown);
+      replConn2.close();
+    } finally {
+      stream0.close();
+      replConn0.close();
+    }
+  }
+
+  @Test
+  public void testSlotLockReleasedOnTserverCrash() throws Exception {
+    restartClusterWithFlags(getMasterFlags(), getTServerFlagsWithExclusiveLock());
+
+    String slotName = "crash_tserver_slot";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t_crash");
+      stmt.execute("CREATE TABLE t_crash(k int primary key, v text)");
+      stmt.execute("INSERT INTO t_crash VALUES (1, 'a')");
+    }
+
+    Connection replConn0 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replApi0 =
+        replConn0.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replApi0, slotName, "test_decoding");
+
+    PGReplicationStream stream0 = replApi0.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .start();
+
+    int numTservers = miniCluster.getNumTServers();
+
+    // Resolve tserver index 0's RPC HostAndPort deterministically.
+    // getTabletServers() returns a ConcurrentHashMap whose iteration order
+    // is unspecified, so we match by host against the ordered PG contact
+    // points list. Both share the same hostname per tserver (different
+    // ports: PG vs RPC).
+    String tserver0Host = miniCluster.getPostgresContactPoints().get(0).getHostString();
+    HostAndPort tserver0 = miniCluster.getTabletServers().keySet().stream()
+        .filter(hp -> hp.getHost().equals(tserver0Host))
+        .findFirst()
+        .orElseThrow(() -> new IllegalStateException(
+            "Could not find tserver for host " + tserver0Host));
+    LOG.info("Killing tserver at {} (index 0, holds the slot lock)", tserver0);
+    miniCluster.killTabletServerOnHostPort(tserver0);
+
+    miniCluster.startTServer(getTServerFlagsWithExclusiveLock());
+    assertTrue(miniCluster.waitForTabletServers(numTservers));
+    waitForTServerHeartbeat();
+
+    // The advisory lock is tied to a session-level transaction on the killed
+    // tserver. The transaction coordinator needs time to detect the dead
+    // heartbeat and abort the transaction before the lock is released.
+    final int maxAttempts = 30;
+    final int sleepBetweenAttemptsMs = 2000;
+    PGReplicationStream stream1 = null;
+    Connection replConn1 = null;
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        replConn1 = getConnectionBuilder().withTServer(1).replicationConnect();
+        PGReplicationConnection replApi1 =
+            replConn1.unwrap(PGConnection.class).getReplicationAPI();
+        stream1 = replApi1.replicationStream()
+            .logical()
+            .withSlotName(slotName)
+            .withStartPosition(LogSequenceNumber.valueOf(0L))
+            .start();
+        LOG.info("Successfully acquired slot after tserver crash on attempt {}", attempt);
+        break;
+      } catch (PSQLException e) {
+        if (replConn1 != null) {
+          replConn1.close();
+          replConn1 = null;
+        }
+        if (attempt == maxAttempts) {
+          throw e;
+        }
+        LOG.info("Attempt {} failed, retrying in {}ms: {}", attempt, sleepBetweenAttemptsMs,
+                 e.getMessage());
+        Thread.sleep(sleepBetweenAttemptsMs);
+      }
+    }
+    assertNotNull("Expected to acquire slot after tserver crash", stream1);
+
+    stream1.close();
+    replConn1.close();
+  }
+
+  /**
+   * Helper to verify that a publication with a specific {@code publish} option only streams the
+   * expected DML operation types. Creates a table, publication, slot, performs one INSERT, UPDATE,
+   * and DELETE, then asserts the stream contains only the allowed operations.
+   */
+  void testPublishFiltering(String publishOption, boolean expectInsert,
+      boolean expectUpdate, boolean expectDelete, String pluginName) throws Exception {
+    boolean isYbOutput = pluginName.equals(YB_OUTPUT_PLUGIN_NAME);
+    String suffix = publishOption.replaceAll("[, ]+", "_") + "_" + pluginName;
+    String tableName = "test_pub_filter_" + suffix;
+    String pubName = "pub_filter_" + suffix;
+    String slotName = "slot_filter_" + suffix;
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS " + tableName);
+      stmt.execute("CREATE TABLE " + tableName + " (a int primary key, b text)");
+      stmt.execute("ALTER TABLE " + tableName + " REPLICA IDENTITY "
+          + (isYbOutput ? "CHANGE" : "FULL"));
+      stmt.execute("CREATE PUBLICATION " + pubName + " FOR TABLE " + tableName
+          + " WITH (publish = '" + publishOption + "')");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName, pluginName);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO " + tableName + " VALUES (1, 'ins')");
+      stmt.execute("UPDATE " + tableName + " SET b = 'upd' WHERE a = 1");
+      stmt.execute("DELETE FROM " + tableName + " WHERE a = 1");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", pubName)
+        .start();
+
+    int publishedOps = (expectInsert ? 1 : 0) + (expectUpdate ? 1 : 0)
+        + (expectDelete ? 1 : 0);
+    int expectedCount = publishedOps * 3 + 1;
+
+    List<PgOutputMessage> result = new ArrayList<>();
+    result.addAll(receiveMessage(stream, expectedCount));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<>();
+    boolean relationSent = false;
+
+    PgOutputRelationMessage relation = PgOutputRelationMessage.CreateForComparison(
+        "public", tableName, isYbOutput ? 'c' : 'f',
+        Arrays.asList(
+            PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("b", 25)));
+
+    if (expectInsert) {
+      expectedResult.add(
+          PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
+      if (!relationSent) {
+        expectedResult.add(relation);
+        relationSent = true;
+      }
+      expectedResult.add(PgOutputInsertMessage.CreateForComparison(
+          new PgOutputMessageTuple((short) 2,
+              Arrays.asList(
+                  new PgOutputMessageTupleColumnValue("1"),
+                  new PgOutputMessageTupleColumnValue("ins")))));
+      expectedResult.add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+    }
+
+    if (expectUpdate) {
+      expectedResult.add(
+          PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
+      if (!relationSent) {
+        expectedResult.add(relation);
+        relationSent = true;
+      }
+      PgOutputMessageTuple updateOldTuple = isYbOutput ? null :
+          new PgOutputMessageTuple((short) 2,
+              Arrays.asList(
+                  new PgOutputMessageTupleColumnValue("1"),
+                  new PgOutputMessageTupleColumnValue("ins")));
+      expectedResult.add(PgOutputUpdateMessage.CreateForComparison(
+          updateOldTuple,
+          new PgOutputMessageTuple((short) 2,
+              Arrays.asList(
+                  new PgOutputMessageTupleColumnValue("1"),
+                  new PgOutputMessageTupleColumnValue("upd")))));
+      expectedResult.add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+    }
+
+    if (expectDelete) {
+      expectedResult.add(
+          PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
+      if (!relationSent) {
+        expectedResult.add(relation);
+        relationSent = true;
+      }
+      PgOutputMessageTuple deleteOldTuple = isYbOutput ?
+          new PgOutputMessageTuple((short) 2,
+              Arrays.asList(
+                  new PgOutputMessageTupleColumnValue("1"),
+                  new PgOutputMessageTupleColumnNull())) :
+          new PgOutputMessageTuple((short) 2,
+              Arrays.asList(
+                  new PgOutputMessageTupleColumnValue("1"),
+                  new PgOutputMessageTupleColumnValue("upd")));
+      expectedResult.add(PgOutputDeleteMessage.CreateForComparison(
+          isYbOutput, deleteOldTuple));
+      expectedResult.add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+    }
+
+    assertEquals(expectedResult, result);
+    stream.close();
+  }
+
+  @Test
+  public void testPublishFilterInsertOnly() throws Exception {
+    testPublishFiltering("insert",
+        true /* expectInsert */, false /* expectUpdate */, false /* expectDelete */,
+        YB_OUTPUT_PLUGIN_NAME);
+    testPublishFiltering("insert",
+        true /* expectInsert */, false /* expectUpdate */, false /* expectDelete */,
+        PG_OUTPUT_PLUGIN_NAME);
+  }
+
+  @Test
+  public void testPublishFilterUpdateOnly() throws Exception {
+    testPublishFiltering("update",
+        false /* expectInsert */, true /* expectUpdate */, false /* expectDelete */,
+        YB_OUTPUT_PLUGIN_NAME);
+    testPublishFiltering("update",
+        false /* expectInsert */, true /* expectUpdate */, false /* expectDelete */,
+        PG_OUTPUT_PLUGIN_NAME);
+  }
+
+  @Test
+  public void testPublishFilterDeleteOnly() throws Exception {
+    testPublishFiltering("delete",
+        false /* expectInsert */, false /* expectUpdate */, true /* expectDelete */,
+        YB_OUTPUT_PLUGIN_NAME);
+    testPublishFiltering("delete",
+        false /* expectInsert */, false /* expectUpdate */, true /* expectDelete */,
+        PG_OUTPUT_PLUGIN_NAME);
+  }
+
+  @Test
+  public void testAlterPublicationPublishOption() throws Exception {
+    String tableName = "test_alter_pub_filter";
+    String pubName = "pub_alter_filter";
+    String slotName = "slot_alter_filter";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS " + tableName);
+      stmt.execute("CREATE TABLE " + tableName + " (a int primary key, b text)");
+      stmt.execute("ALTER TABLE " + tableName + " REPLICA IDENTITY CHANGE");
+      stmt.execute("CREATE PUBLICATION " + pubName + " FOR TABLE " + tableName);
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", pubName)
+        .start();
+
+    // Phase 1: Publication publishes all. Stream 1 insert, update and delete each.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO " + tableName + " VALUES (1, 'row1')");
+      stmt.execute("UPDATE " + tableName + " SET b = 'upd1' WHERE a = 1");
+      stmt.execute("DELETE FROM " + tableName + " WHERE a = 1");
+    }
+
+    PgOutputRelationMessage relation = PgOutputRelationMessage.CreateForComparison(
+        "public", tableName, 'c',
+        Arrays.asList(
+            PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("b", 25)));
+
+    // All 3 ops should be streamed: 10 messages.
+    List<PgOutputMessage> phase1Result = new ArrayList<>();
+    phase1Result.addAll(receiveMessage(stream, 10));
+
+    List<PgOutputMessage> phase1Expected = new ArrayList<>();
+
+    phase1Expected.add(
+        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
+    phase1Expected.add(relation);
+    phase1Expected.add(PgOutputInsertMessage.CreateForComparison(
+        new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("row1")))));
+    phase1Expected.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+
+    phase1Expected.add(
+        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
+    phase1Expected.add(PgOutputUpdateMessage.CreateForComparison(
+        null,
+        new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("upd1")))));
+    phase1Expected.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+
+    phase1Expected.add(
+        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
+    phase1Expected.add(PgOutputDeleteMessage.CreateForComparison(true,
+        new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnNull()))));
+    phase1Expected.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+
+    assertEquals(phase1Expected, phase1Result);
+
+    // ALTER PUBLICATION to only publish update and delete.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ALTER PUBLICATION " + pubName + " SET (publish = 'update, delete')");
+    }
+
+    // Phase 2: Perform 1 insert, update and delete each.
+    // Only update and delete should be streamed.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO " + tableName + " VALUES (2, 'row2')");
+      stmt.execute("UPDATE " + tableName + " SET b = 'upd2' WHERE a = 2");
+      stmt.execute("DELETE FROM " + tableName + " WHERE a = 2");
+    }
+
+    // INSERT is filtered. RELATION is resent after cache invalidation. 7 messages.
+    List<PgOutputMessage> phase2Result = new ArrayList<>();
+    phase2Result.addAll(receiveMessage(stream, 7));
+
+    List<PgOutputMessage> phase2Expected = new ArrayList<>();
+
+    // The filtered INSERT consumed txn_id 5 (LSNs 0/B-0/D), so UPDATE starts at txn_id 6.
+    phase2Expected.add(
+        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/10"), 6));
+    phase2Expected.add(relation);
+    phase2Expected.add(PgOutputUpdateMessage.CreateForComparison(
+        null,
+        new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("upd2")))));
+    phase2Expected.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/11")));
+
+    phase2Expected.add(
+        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/13"), 7));
+    phase2Expected.add(PgOutputDeleteMessage.CreateForComparison(true,
+        new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnNull()))));
+    phase2Expected.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/14")));
+
+    assertEquals(phase2Expected, phase2Result);
+    stream.close();
+  }
+
+  @Test
+  public void testAlterPublicationSetTable() throws Exception {
+    String t1 = "test_set_table_t1";
+    String t2 = "test_set_table_t2";
+    String pubName = "pub_set_table";
+    String slotName = "slot_set_table";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS " + t1);
+      stmt.execute("DROP TABLE IF EXISTS " + t2);
+      stmt.execute("CREATE TABLE " + t1 + " (a int primary key, b text)");
+      stmt.execute("CREATE TABLE " + t2 + " (a int primary key, b text)");
+      stmt.execute("ALTER TABLE " + t1 + " REPLICA IDENTITY CHANGE");
+      stmt.execute("ALTER TABLE " + t2 + " REPLICA IDENTITY CHANGE");
+      stmt.execute("CREATE PUBLICATION " + pubName + " FOR TABLE " + t1);
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", pubName)
+        .start();
+
+    PgOutputRelationMessage relT1 = PgOutputRelationMessage.CreateForComparison(
+        "public", t1, 'c',
+        Arrays.asList(
+            PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("b", 25)));
+    PgOutputRelationMessage relT2 = PgOutputRelationMessage.CreateForComparison(
+        "public", t2, 'c',
+        Arrays.asList(
+            PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("b", 25)));
+
+    // Phase 1: publication is FOR TABLE t1. Write to both; only t1 is streamed (t2 filtered).
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO " + t1 + " VALUES (1, 't1a')");
+      stmt.execute("INSERT INTO " + t2 + " VALUES (1, 't2a')");
+    }
+
+    // Only t1's insert is streamed: 4 messages.
+    List<PgOutputMessage> phase1Result = new ArrayList<>();
+    phase1Result.addAll(receiveMessage(stream, 4));
+
+    List<PgOutputMessage> phase1Expected = new ArrayList<>();
+    phase1Expected.add(
+        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
+    phase1Expected.add(relT1);
+    phase1Expected.add(PgOutputInsertMessage.CreateForComparison(
+        new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("t1a")))));
+    phase1Expected.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+
+    assertEquals(phase1Expected, phase1Result);
+
+    // Replace the publication's table set: drop t1, add t2.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ALTER PUBLICATION " + pubName + " SET TABLE " + t2);
+    }
+
+    // Phase 2: write to both again. Now only t2 is streamed (t1 filtered), with a fresh RELATION.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO " + t1 + " VALUES (2, 't1b')");
+      stmt.execute("INSERT INTO " + t2 + " VALUES (2, 't2b')");
+    }
+
+    List<PgOutputMessage> phase2Result = new ArrayList<>();
+    phase2Result.addAll(receiveMessage(stream, 4));
+
+    List<PgOutputMessage> phase2Expected = new ArrayList<>();
+    phase2Expected.add(
+        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
+    phase2Expected.add(relT2);
+    phase2Expected.add(PgOutputInsertMessage.CreateForComparison(
+        new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("t2b")))));
+    phase2Expected.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+
+    assertEquals(phase2Expected, phase2Result);
+    stream.close();
+  }
+
+  @Test
+  public void testMultipleAlterPublicationLaggedStream() throws Exception {
+    String tableName = "test_multi_alter_lag";
+    String pubName = "pub_multi_alter_lag";
+    String slotName = "slot_multi_alter_lag";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS " + tableName);
+      stmt.execute("CREATE TABLE " + tableName + " (a int primary key, b text)");
+      stmt.execute("ALTER TABLE " + tableName + " REPLICA IDENTITY CHANGE");
+      stmt.execute("CREATE PUBLICATION " + pubName + " FOR TABLE " + tableName);
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    // Batch 1: publication = ALL (insert, update, delete).
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO " + tableName + " VALUES (1, 'b1_ins')");
+      stmt.execute("UPDATE " + tableName + " SET b = 'b1_upd' WHERE a = 1");
+      stmt.execute("DELETE FROM " + tableName + " WHERE a = 1");
+    }
+
+    // ALTER to publish = 'update' only.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ALTER PUBLICATION " + pubName + " SET (publish = 'update')");
+    }
+
+    // Batch 2: only UPDATE should be streamed.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO " + tableName + " VALUES (2, 'b2_ins')");
+      stmt.execute("UPDATE " + tableName + " SET b = 'b2_upd' WHERE a = 2");
+      stmt.execute("DELETE FROM " + tableName + " WHERE a = 2");
+    }
+
+    // ALTER to publish = 'insert' only.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ALTER PUBLICATION " + pubName + " SET (publish = 'insert')");
+    }
+
+    // Batch 3: only INSERT should be streamed.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO " + tableName + " VALUES (3, 'b3_ins')");
+      stmt.execute("UPDATE " + tableName + " SET b = 'b3_upd' WHERE a = 3");
+      stmt.execute("DELETE FROM " + tableName + " WHERE a = 3");
+    }
+
+    // ALTER to publish = 'delete' only.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ALTER PUBLICATION " + pubName + " SET (publish = 'delete')");
+    }
+
+    // Batch 4: only DELETE should be streamed.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO " + tableName + " VALUES (4, 'b4_ins')");
+      stmt.execute("UPDATE " + tableName + " SET b = 'b4_upd' WHERE a = 4");
+      stmt.execute("DELETE FROM " + tableName + " WHERE a = 4");
+    }
+
+    // Start the stream AFTER all DMLs and ALTERs -- lagged consumer.
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", pubName)
+        .start();
+
+    PgOutputRelationMessage relation = PgOutputRelationMessage.CreateForComparison(
+        "public", tableName, 'c',
+        Arrays.asList(
+            PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("b", 25)));
+
+    /*
+     * Expected messages (ALTER does not consume LSN/txn_id space):
+     *
+     * Batch 1 (ALL): txns 2,3,4 -- INSERT + UPDATE + DELETE.
+     *   begin, relation, insert, commit,
+     *   begin, update, commit,
+     *   begin, delete, commit  -> 10 messages
+     *
+     * Batch 2 (UPDATE only): txns 5(filtered),6(streamed),7(filtered).
+     *   begin, relation, update, commit  -> 4 messages
+     *
+     * Batch 3 (INSERT only): txns 8(streamed),9(filtered),10(filtered).
+     *   begin, relation, insert, commit  -> 4 messages
+     *
+     * Batch 4 (DELETE only): txns 11(filtered),12(filtered),13(streamed).
+     *   begin, relation, delete, commit  -> 4 messages
+     *
+     * Total = 22 messages.
+     */
+    List<PgOutputMessage> result = new ArrayList<>();
+    result.addAll(receiveMessage(stream, 22));
+
+    List<PgOutputMessage> expected = new ArrayList<>();
+
+    // -- Batch 1: ALL ops streamed (txns 2, 3, 4) --
+
+    // INSERT (txn 2)
+    expected.add(
+        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
+    expected.add(relation);
+    expected.add(PgOutputInsertMessage.CreateForComparison(
+        new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("b1_ins")))));
+    expected.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+
+    // UPDATE (txn 3)
+    expected.add(
+        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
+    expected.add(PgOutputUpdateMessage.CreateForComparison(
+        null,
+        new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("b1_upd")))));
+    expected.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+
+    // DELETE (txn 4)
+    expected.add(
+        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
+    expected.add(PgOutputDeleteMessage.CreateForComparison(true,
+        new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnNull()))));
+    expected.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+
+    // -- Batch 2: publish='update'; INSERT(txn 5) filtered, UPDATE(txn 6) streamed,
+    //    DELETE(txn 7) filtered --
+    expected.add(
+        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/10"), 6));
+    expected.add(relation);
+    expected.add(PgOutputUpdateMessage.CreateForComparison(
+        null,
+        new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("b2_upd")))));
+    expected.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/11")));
+
+    // -- Batch 3: publish='insert'; INSERT(txn 8) streamed, UPDATE(txn 9) filtered,
+    //    DELETE(txn 10) filtered --
+    expected.add(
+        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/16"), 8));
+    expected.add(relation);
+    expected.add(PgOutputInsertMessage.CreateForComparison(
+        new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("3"),
+                new PgOutputMessageTupleColumnValue("b3_ins")))));
+    expected.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/16"), LogSequenceNumber.valueOf("0/17")));
+
+    // -- Batch 4: publish='delete'; INSERT(txn 11) filtered, UPDATE(txn 12) filtered,
+    //    DELETE(txn 13) streamed --
+    expected.add(
+        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/25"), 13));
+    expected.add(relation);
+    expected.add(PgOutputDeleteMessage.CreateForComparison(true,
+        new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("4"),
+                new PgOutputMessageTupleColumnNull()))));
+    expected.add(PgOutputCommitMessage.CreateForComparison(
+        LogSequenceNumber.valueOf("0/25"), LogSequenceNumber.valueOf("0/26")));
+
+    assertEquals(expected, result);
+    stream.close();
+  }
+
+  @Test
+  public void testPublicationListEvolutionForColocatedTables() throws Exception {
+    setFlagsForDynamicTablesTest(getTServerFlags(), getMasterFlags(),
+        false /* usePubRefresh */, false /* streamTablesWithoutPrimaryKey */);
+
+    String slotName = "test_pub_list_evolution_colocated_slot";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("DROP DATABASE IF EXISTS col_db");
+      stmt.executeUpdate("CREATE DATABASE col_db WITH colocation = true");
+    }
+
+    Connection colConn = getConnectionBuilder().withDatabase("col_db").connect();
+    try (Statement stmt = colConn.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b text) WITH (COLOCATED = true)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b text) WITH (COLOCATED = true)");
+      stmt.execute("CREATE TABLE t3 (a int primary key, b text) WITH (COLOCATED = true)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1, t2");
+    }
+
+    Connection replConn =
+        getConnectionBuilder().withDatabase("col_db").withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+        replConn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    // Txn 1: Write to all three tables. Only t1 and t2 are in the publication.
+    try (Statement stmt = colConn.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 'abc')");
+      stmt.execute("INSERT INTO t2 VALUES (1, 'def')");
+      stmt.execute("INSERT INTO t3 VALUES (1, 'ghi')");
+      stmt.execute("COMMIT");
+    }
+
+    try (Statement stmt = colConn.createStatement()) {
+      stmt.execute("ALTER PUBLICATION pub DROP TABLE t2");
+    }
+
+    // Txn 2: Write to all three tables. Only t1 is in the publication.
+    try (Statement stmt = colConn.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (2, 'jkl')");
+      stmt.execute("INSERT INTO t2 VALUES (2, 'mno')");
+      stmt.execute("INSERT INTO t3 VALUES (2, 'pqr')");
+      stmt.execute("COMMIT");
+    }
+
+    try (Statement stmt = colConn.createStatement()) {
+      stmt.execute("ALTER PUBLICATION pub ADD TABLE t3");
+    }
+
+    // Txn 3: Write to all three tables. t1 and t3 are in the publication.
+    try (Statement stmt = colConn.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (3, 'stu')");
+      stmt.execute("INSERT INTO t2 VALUES (3, 'vwx')");
+      stmt.execute("INSERT INTO t3 VALUES (3, 'yza')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    // 6 from txn 1 (t1 + t2), 4 from txn 2 (t1 only, with RELATION re-sent),
+    // 6 from txn 3 (t1 + t3, with RELATION re-sent for t1).
+    // ALTER PUBLICATION ADD/DROP TABLE triggers syscache invalidation callbacks which cause
+    // pgoutput to re-send RELATION messages for all tables. This matches PG behavior (verified
+    // on vanilla PG15).
+    result.addAll(receiveMessage(stream, 16));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        // Txn 1: t1 and t2 inserts streamed.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/6"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("abc")))));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("def")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/6"), LogSequenceNumber.valueOf("0/7")));
+
+        // Txn 2: only t1 insert streamed (t2 dropped from pub, t3 not yet added).
+        // RELATION re-sent for t1 after ALTER PUBLICATION DROP TABLE t2.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 3));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("jkl")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+
+        // Txn 3: t1 and t3 inserts streamed (t2 still not in pub, t3 added).
+        // RELATION re-sent for t1 after ALTER PUBLICATION ADD TABLE t3.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/10"), 4));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("3"),
+                new PgOutputMessageTupleColumnValue("stu")))));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t3", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("3"),
+                new PgOutputMessageTupleColumnValue("yza")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/10"), LogSequenceNumber.valueOf("0/11")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    colConn.close();
+    replConn.close();
   }
 }

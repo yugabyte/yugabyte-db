@@ -24,15 +24,19 @@ import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.yb.YBParameterizedTestRunner;
+import org.yb.util.SkipOnASAN;
+import org.yb.util.SkipOnTSAN;
 import org.yb.util.TableProperties;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
-import org.yb.util.YBParameterizedTestRunnerNonTsanAsan;
 
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
-@RunWith(YBParameterizedTestRunnerNonTsanAsan.class)
+@SkipOnTSAN
+@SkipOnASAN
+@RunWith(YBParameterizedTestRunner.class)
 public class ParameterizedTestYbBackup extends BaseYbBackupTest {
   private static final Logger LOG = LoggerFactory.getLogger(ParameterizedTestYbBackup.class);
 

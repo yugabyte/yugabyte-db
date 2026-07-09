@@ -9,12 +9,16 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.models.Customer;
@@ -38,12 +42,18 @@ import org.junit.runner.RunWith;
 @RunWith(JUnitParamsRunner.class)
 public class UniverseCRUDHandlerTest extends FakeDBApplication {
 
+  private static final String MASTER_FIELDS_ERROR =
+      "masterDeviceInfo and masterInstanceType can only be set when dedicated nodes for "
+          + "master and tserver are selected.";
+
   private Customer customer;
+  private UniverseCRUDHandler universeCRUDHandler;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
     ModelFactory.awsProvider(customer);
+    universeCRUDHandler = app.injector().instanceOf(UniverseCRUDHandler.class);
   }
 
   @Parameters({
@@ -287,8 +297,7 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
       boolean expectError,
       String expectedFragment) {
     if (!expectError) {
-      UniverseCRUDHandler.validateMultiTenancyApiConfig(
-          enableYSQL, enableYCQL, skipYcqlPrecheck);
+      UniverseCRUDHandler.validateMultiTenancyApiConfig(enableYSQL, enableYCQL, skipYcqlPrecheck);
       return;
     }
     PlatformServiceException ex =
@@ -299,7 +308,10 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
                     enableYSQL, enableYCQL, skipYcqlPrecheck));
     assertEquals(BAD_REQUEST, ex.getHttpStatus());
     assertTrue(
-        "Expected message to contain '" + expectedFragment + "', got: " + ex.getUserVisibleMessage(),
+        "Expected message to contain '"
+            + expectedFragment
+            + "', got: "
+            + ex.getUserVisibleMessage(),
         ex.getUserVisibleMessage().contains(expectedFragment));
   }
 
@@ -322,6 +334,32 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
                     false /* enableYSQL */, false /* enableYCQL */, true /* skipYcqlPrecheck */));
     assertEquals(BAD_REQUEST, ex.getHttpStatus());
     assertTrue(ex.getUserVisibleMessage().contains("YSQL API should be enabled"));
+  }
+
+  @Test
+  public void configureRejectsMasterDeviceInfoWhenDedicatedNodesDisabled() {
+    UniverseConfigureTaskParams taskParams = buildConfigureTaskParams(false, true, false);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> universeCRUDHandler.configure(customer, taskParams));
+
+    assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    assertTrue(ex.getUserVisibleMessage().contains(MASTER_FIELDS_ERROR));
+  }
+
+  @Test
+  public void configureRejectsMasterInstanceTypeWhenDedicatedNodesDisabled() {
+    UniverseConfigureTaskParams taskParams = buildConfigureTaskParams(false, false, true);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> universeCRUDHandler.configure(customer, taskParams));
+
+    assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    assertTrue(ex.getUserVisibleMessage().contains(MASTER_FIELDS_ERROR));
   }
 
   @Test
@@ -360,5 +398,25 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         false);
     u = Universe.getOrBadRequest(u.getUniverseUUID());
     UniverseCRUDHandler.checkInstanceTypeConsistency(u);
+  }
+
+  private UniverseConfigureTaskParams buildConfigureTaskParams(
+      boolean dedicatedNodes, boolean setMasterDeviceInfo, boolean setMasterInstanceType) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.dedicatedNodes = dedicatedNodes;
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    if (setMasterDeviceInfo) {
+      userIntent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 50);
+    }
+    if (setMasterInstanceType) {
+      userIntent.masterInstanceType = "m5.large";
+    }
+
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+    UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
+    taskParams.currentClusterType = ClusterType.PRIMARY;
+    taskParams.clusterOperation = ClusterOperationType.EDIT;
+    taskParams.clusters.add(cluster);
+    return taskParams;
   }
 }

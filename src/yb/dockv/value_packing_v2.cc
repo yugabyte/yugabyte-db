@@ -17,6 +17,8 @@
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_packing.h"
 
+#include "yb/util/status_format.h"
+
 namespace yb::dockv {
 
 namespace {
@@ -77,6 +79,10 @@ struct PackQLValueVisitor {
   void Vector() const {
     Binary();
   }
+
+  void Bson() const {
+    out->append(value.bson_value());
+  }
 };
 
 template <class Value>
@@ -103,6 +109,10 @@ struct PackedQLValueSizeVisitor {
   ssize_t Vector() const {
     return Binary();
   }
+
+  ssize_t Bson() const {
+    return value.bson_value().size();
+  }
 };
 
 struct PackedAsVarlenVisitor {
@@ -124,6 +134,10 @@ struct PackedAsVarlenVisitor {
   }
 
   bool Vector() const {
+    return true;
+  }
+
+  bool Bson() const {
     return true;
   }
 };
@@ -165,6 +179,12 @@ struct UnpackQLValueVisitor {
 
   Result<QLValuePB> Vector() const {
     return Binary();
+  }
+
+  Result<QLValuePB> Bson() const {
+    QLValuePB result;
+    result.set_bson_value(value.cdata(), value.size());
+    return result;
   }
 };
 

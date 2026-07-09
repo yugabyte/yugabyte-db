@@ -59,6 +59,7 @@ import {
   UniverseState
 } from '@app/components/universes/helpers/universeHelpers';
 import { PollingIntervalMs } from '@app/components/xcluster/constants';
+import { fetchUniverseInfoResponse } from '@app/actions/universe';
 
 const useStyles = makeStyles((theme) => ({
   bannerContainer: {
@@ -103,7 +104,7 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
   const isNewTaskDetailsUIEnabled = useIsTaskNewUIEnabled();
 
   // This query is used to update the redux store with the latest task list.
-  const universeTasksQuery = useQuery(
+  useQuery(
     taskQueryKey.universe(universeUUID),
     () => api.fetchCustomerTasks(universeUUID),
     {
@@ -140,6 +141,12 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
   const queryClient = useQueryClient();
   const lastInvalidatedForTaskIdRef = useRef<string | undefined>(undefined);
 
+  const refreshUniverse = useCallback(() => {
+    return api.fetchUniverse(universeUUID).then((data) => {
+      dispatch(fetchUniverseInfoResponse({ data, status: 200 }));
+    });
+  }, [dispatch, universeUUID]);
+
   // Refetch v2 universe (useGetUniverse) when the banner's newest task for this universe reaches a
   // terminal state. Semantics: follows the latest customerTaskList row for universeUUID, not a specific edit.
   useEffect(() => {
@@ -154,9 +161,17 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
     if (lastInvalidatedForTaskIdRef.current === task.id) return;
 
     lastInvalidatedForTaskIdRef.current = task.id;
+    void refreshUniverse();
     void queryClient.invalidateQueries(getGetUniverseQueryKey(universeUUID));
     void queryClient.invalidateQueries(universeQueryKey.detailsV2(universeUUID));
-  }, [isNewTaskDetailsUIEnabled, universeUUID, task?.id, task?.status, queryClient]);
+  }, [
+    isNewTaskDetailsUIEnabled,
+    universeUUID,
+    task?.id,
+    task?.status,
+    queryClient,
+    refreshUniverse
+  ]);
 
   const toggleTaskDetailsDrawer = (flag: boolean) => {
     if (flag) {

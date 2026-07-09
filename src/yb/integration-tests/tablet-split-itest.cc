@@ -17,9 +17,11 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/meta_cache.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_value.h"
@@ -87,6 +89,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
@@ -286,19 +289,87 @@ TEST_F(TabletSplitITest, ParentTabletCleanup) {
   ASSERT_OK(CheckRowsCount(kNumRows));
 }
 
+// Test for #31936, ensure that marking all_tablets as stale forces a full tablet lookup, even if
+// each tablet in all_tablets is individually looked up and un-staled.
+TEST_F(TabletSplitITest, LookupAllTabletsRefreshesAfterSplit) {
+  // Keep parent around so a by-id lookup against it returns a location instead of "Tablet hidden".
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+
+  CreateSingleTablet();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
+
+  const client::YBTableName table_name = table_->name();
+  auto table_ptr = ASSERT_RESULT(client_->OpenTable(table_name));
+
+  // Populate all_tablets, it should just contain the parent tablet now.
+  auto initial_tablets =
+      ASSERT_RESULT(client_->LookupAllTabletsFuture(table_ptr, CoarseMonoClock::now() + 30s).get());
+  ASSERT_EQ(initial_tablets.size(), 1);
+  const TabletId parent_id = initial_tablets[0]->tablet_id();
+  ASSERT_FALSE(initial_tablets[0]->stale());
+
+  ASSERT_OK(SplitSingleTablet(split_hash_code));
+  ASSERT_OK(WaitForTabletSplitCompletion(
+      /*expected_non_split_tablets=*/2, /*expected_split_tablets=*/1));
+
+  // Trigger cache invalidation: mark partitions stale, then issue a lookup that refreshes them.
+  table_ptr->MarkPartitionsAsStale();
+
+  Synchronizer refresh_sync;
+  client_->LookupTabletByKey(
+      table_ptr, /*partition_key=*/std::string(), CoarseMonoClock::now() + 30s,
+      [&refresh_sync](const Result<client::internal::RemoteTabletPtr>& r) {
+        refresh_sync.StatusCB(r.ok() ? Status::OK() : r.status());
+      });
+  ASSERT_OK(refresh_sync.Wait());
+
+  // A by-id lookup on the parent refreshes its shared RemoteTablet (no longer marked stale now).
+  Synchronizer lookup_sync;
+  client_->LookupTabletById(
+      parent_id, table_ptr, master::IncludeHidden::kTrue, master::IncludeDeleted::kFalse,
+      CoarseMonoClock::now() + 30s,
+      [&lookup_sync](const Result<client::internal::RemoteTabletPtr>& r) {
+        lookup_sync.StatusCB(r.ok() ? Status::OK() : r.status());
+      },
+      client::UseCache::kFalse);
+  ASSERT_OK(lookup_sync.Wait());
+
+  // Now call LookupAllTablets and ensure it does the lookup (i.e., returns the children tablets).
+  auto post_split_tablets =
+      ASSERT_RESULT(client_->LookupAllTabletsFuture(table_ptr, CoarseMonoClock::now() + 30s).get());
+
+  EXPECT_EQ(post_split_tablets.size(), 2u)
+      << "LookupAllTabletsFuture should return both children after a split, "
+         "not the cached pre-split parent.";
+  for (const auto& tablet : post_split_tablets) {
+    EXPECT_NE(tablet->tablet_id(), parent_id) << "parent leaked back into all_tablets";
+  }
+}
+
 TEST_F(TabletSplitITest, BootstrapStateCopiedToChildren) {
   CreateSingleTablet();
   const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(
       kDefaultNumRows, /*wait_for_intents=*/true));
 
   for (auto& tablet_peer : ASSERT_RESULT(ListTestTableActiveTabletPeers())) {
-    ASSERT_OK(tablet_peer->FlushBootstrapState());
+    // A follower may not have applied the write op yet, in which case its retryable requests are
+    // empty and FlushBootstrapState finds nothing to save (no file on disk). Retry the flush until
+    // the state is actually persisted so the subsequent split copies it to every child replica.
+    ASSERT_OK(WaitFor([&tablet_peer]() -> bool {
+      WARN_NOT_OK(tablet_peer->FlushBootstrapState(), "Failed to flush bootstrap state");
+      return tablet_peer->TEST_HasBootstrapStateOnDisk();
+    }, 30s, "Parent bootstrap state flushed to disk on all replicas"));
   }
   StringWaiterLogSink yes_sink{": Initialized TabletBootstrapStateManager, found a file ? yes"};
   StringWaiterLogSink no_sink{": Initialized TabletBootstrapStateManager, found a file ? no"};
   ASSERT_OK(SplitSingleTablet(split_hash_code));
   ASSERT_OK(WaitForTestTableTabletPeersPostSplitCompacted(30s));
-  // 2 children * 3 replicas.
+  // 2 children * 3 replicas. A lagging replica may receive its children via remote bootstrap, which
+  // initializes the bootstrap state manager later than the post-split compaction wait completes, so
+  // wait for all 6 replicas to report the copied file instead of checking the count immediately.
+  ASSERT_OK(WaitFor([&yes_sink]() -> bool {
+    return yes_sink.GetEventCount() >= 6;
+  }, 30s, "All 6 child replicas initialized bootstrap state from copied file"));
   ASSERT_EQ(yes_sink.GetEventCount(), 6);
   ASSERT_EQ(no_sink.GetEventCount(), 0);
 }
@@ -2004,6 +2075,57 @@ TEST_F(AutomaticTabletSplitITest, FailedSplitIsRestarted) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 0;
   ASSERT_OK(WaitForTabletSplitCompletion(2));
+}
+
+// The below test asserts that the split validation logic on master doesn't gate
+// retry of split op in the following case -
+// 1. master initiated split which then bumped the table from low phase to high phase splitting.
+// 2. master encountered failure on the split rpc to the tserver for
+//    FLAGS_unresponsive_ts_rpc_retry_limit times, and gave up on the rpc.
+// 3. Child tablets are stuck in creating state, and are being accounted towards num_partitions.
+TEST_F(AutomaticTabletSplitITest, PhasePromotionAccountsForSplitRetry) {
+  constexpr int kNumRowsPerBatch = 1000;
+
+  ASSERT_EQ(cluster_->num_tablet_servers(), 3);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 8;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 1_GB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 2_GB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 1;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  CreateSingleTablet();
+  ASSERT_OK(WriteRowsAndFlush(kNumRowsPerBatch));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+
+  // Fail the split at the tserver, and bump the table to high phase splitting
+  // at the master.
+  StringWaiterLogSink log_waiter(
+      "Failing tablet split due to FLAGS_TEST_fail_tablet_split_probability");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+  ASSERT_OK(log_waiter.WaitFor(60s * kTimeMultiplier));
+  LOG(INFO) << "Split RPC failed. Grandchildren registered but split not applied.";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 0;
+
+  // Allow the split to proceed. The split manager should detect the CREATING grandchildren,
+  // add the parent to splits_to_restart, and successfully restart the split. With the fix
+  // (skipping ShouldSplitValidCandidate for tablets with registered children), this succeeds
+  // despite the table now being in the high phase.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 0;
+
+  ASSERT_OK(WaitForTabletSplitCompletion(
+    /* expected_non_split_tablets */ 2,
+    /* expected_split_tablets */ 0,
+    /* num_replicas_online */ 0,
+    /* table */ client::kTableName,
+    /* core_dump_on_failure */ false));
 }
 
 TEST_F(AutomaticTabletSplitITest, TabletSplitCandidatesMetric) {

@@ -78,6 +78,12 @@ YB_DEFINE_ENUM(YbSubProcessState, (kNotStarted)(kRunning)(kStopping)(kPaused));
 //       (none)
 class ProcessSupervisor {
  public:
+  explicit ProcessSupervisor([[maybe_unused]] Cgroup* cgroup = nullptr)
+#ifdef __linux__
+      : cgroup_(cgroup)
+#endif
+      {}
+
   virtual ~ProcessSupervisor() {}
   virtual void Stop();
   Status Start();
@@ -89,12 +95,6 @@ class ProcessSupervisor {
   Status Pause();
 
   std::optional<int64_t> ProcessId() EXCLUDES(mtx_);
-
-#ifdef __linux__
-  // Assign a cgroup for the supervised process. After each (re)start, the child
-  // process PID is moved into this cgroup.
-  void SetCgroup(Cgroup* cgroup) { cgroup_ = cgroup; }
-#endif
 
  protected:
   virtual std::shared_ptr<ProcessWrapper> CreateProcessWrapper() = 0;

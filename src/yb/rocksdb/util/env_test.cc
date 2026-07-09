@@ -1043,11 +1043,11 @@ TEST_F(EnvPosixTest, WritableFileWrapper) {
     Status Append(const Slice& data) override { inc(1); return Status::OK(); }
     Status Truncate(uint64_t size) override { return Status::OK(); }
     Status Close() override { inc(2); return Status::OK(); }
-    Status Flush() override { inc(3); return Status::OK(); }
+    Status Flush(FlushMode mode) override { inc(3); return Status::OK(); }
     Status Sync() override { inc(4); return Status::OK(); }
     Status Fsync() override { inc(5); return Status::OK(); }
     void SetIOPriority(yb::IOPriority pri) override { inc(6); }
-    uint64_t GetFileSize() override { inc(7); return 0; }
+    uint64_t Size() const override { inc(7); return 0; }
     void GetPreallocationStatus(size_t* block_size,
                                 size_t* last_allocated_block) override {
       inc(8);

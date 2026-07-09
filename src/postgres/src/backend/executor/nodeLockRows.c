@@ -31,14 +31,69 @@
 
 /* YB includes */
 #include "access/yb_scan.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
+static bool
+YbIsRowSkipped(const YbcIsExplicitlyLockedRowSkippedCheckHandleOptional *handle)
+{
+	bool result = false;
+	/*
+	 * Handle doesn't have a value in case row lock was not buffered (buffering is disabled due
+	 * to some reason for example). In this case the slot definitely was not skipped, no additional
+	 * check is required.
+	 */
+	if (handle->has_value)
+		HandleExplicitRowLockStatus(YBCIsExplicitlyLockedRowSkipped(handle->value, &result));
+	return result;
+}
+
+static void
+YbReleaseBufferedTuplestore(LockRowsState *lrstate)
+{
+	if (lrstate->yb_info.buffered_slots)
+	{
+		tuplestore_end(lrstate->yb_info.buffered_slots);
+		lrstate->yb_info.buffered_slots = NULL;
+		pfree(lrstate->yb_info.check_handles);
+		lrstate->yb_info.check_handles = NULL;
+	}
+}
+
+/*
+ * Function to fetch tuple from tuplestore in the same format as that of the outer plan.
+ */
+static TupleTableSlot *
+YbFetchTupleSlot(Tuplestorestate *store, TupleTableSlot *minimal_slot, TupleTableSlot *result_slot)
+{
+	TupleTableSlot *dst = result_slot;
+	bool		need_copy = false;
+	ExecClearTuple(dst);
+
+	/* minimal_slot is initialized when result_slot is in a different format. */
+	if (minimal_slot)
+	{
+		Assert(!TTS_IS_MINIMALTUPLE(result_slot));
+		dst = minimal_slot;
+		need_copy = true;
+	}
+
+	if (!tuplestore_gettupleslot(store, /* forward */ true, /* copy */ true , dst))
+		return NULL;
+
+	if (need_copy)
+		return ExecCopySlot(result_slot /* dstslot */, dst /* srcslot */ );
+
+	slot_getallattrs(dst);
+	return dst;
+}
 
 /* ----------------------------------------------------------------
  *		ExecLockRows
  * ----------------------------------------------------------------
  */
 static TupleTableSlot *			/* return: a tuple or NULL */
-ExecLockRows(PlanState *pstate)
+ExecLockRowsImpl(PlanState *pstate, bool yb_mode,
+				 YbcIsExplicitlyLockedRowSkippedCheckHandleOptional *handle)
 {
 	LockRowsState *node = castNode(LockRowsState, pstate);
 	TupleTableSlot *slot;
@@ -61,8 +116,7 @@ ExecLockRows(PlanState *pstate)
 lnext:
 	slot = ExecProcNode(outerPlan);
 
-	if (node->yb_are_row_marks_for_yb_rels &&
-		XactIsoLevel == XACT_SERIALIZABLE)
+	if (yb_mode && XactIsoLevel == XACT_SERIALIZABLE)
 	{
 		/*
 		 * For YB relations, we don't lock tuples using this node in SERIALIZABLE level. Instead we take
@@ -196,12 +250,17 @@ lnext:
 		if (!IsolationUsesXactSnapshot())
 			lockflags |= TUPLE_LOCK_FLAG_FIND_LAST_VERSION;
 
-		Assert(IsYBBackedRelation(erm->relation) ==
-			   node->yb_are_row_marks_for_yb_rels);
-		if (node->yb_are_row_marks_for_yb_rels)
+		Assert(IsYBBackedRelation(erm->relation) == yb_mode);
+		if (yb_mode)
 		{
-			test = YBCLockTuple(erm->relation, datum, erm->markType,
-								erm->waitPolicy, estate);
+			if (!YbCanSkipIntentsWrite(erm->relation))
+				test = YBCLockTuple(erm->relation, datum, erm->markType, erm->waitPolicy, estate,
+									handle);
+			else
+			{
+				elog(DEBUG1, "Skipping lock acquisition for relation %u since intents are skipped", erm->relation->rd_id);
+				test = TM_Ok;
+			}
 		}
 		else
 		{
@@ -243,13 +302,13 @@ lnext:
 				 *
 				 * YB: TODO(Piyush): If we use EvalPlanQual for READ
 				 * COMMITTED in future:
-				 * - remove !IsYBBackedRelation(erm->relation)
+				 * - remove !yb_mode
 				 * - In YBCLockTuple():
 				 *	- initialize tmfd.traversed to false
 				 *	- if the tuple being locked is updated, populate latest
 				 *    tuple version in markSlot and set tmfd.traversed to true
 				 */
-				if (!IsYBBackedRelation(erm->relation) && tmfd.traversed)
+				if (!yb_mode && tmfd.traversed)
 					epq_needed = true;
 				break;
 
@@ -260,8 +319,8 @@ lnext:
 				 * IsYBBackedRelation(erm->relation) with
 				 * IsolationUsesXactSnapshot().
 				 */
-				if (IsYBBackedRelation(erm->relation))
-					YBCHandleConflictError(erm->relation, erm->waitPolicy);
+				if (yb_mode)
+					YbHandleConflictError(erm->relation, erm->waitPolicy);
 
 				if (IsolationUsesXactSnapshot())
 					ereport(ERROR,
@@ -288,7 +347,7 @@ lnext:
 					 test);
 		}
 
-		if (!IsYBBackedRelation(erm->relation))
+		if (!yb_mode)
 		{
 			/*
 			 * Remember locked tuple's TID for EPQ testing and WHERE CURRENT
@@ -325,6 +384,74 @@ lnext:
 
 	/* Got all locks, so return the current tuple */
 	return slot;
+}
+
+static TupleTableSlot *			/* return: a tuple or NULL */
+ExecLockRows(PlanState *pstate)
+{
+	LockRowsState *lrstate = castNode(LockRowsState, pstate);
+	const bool yb_mode = lrstate->yb_info.are_row_marks_for_yb_rels;
+	if (!yb_mode || !lrstate->yb_info.buffered_slots_capacity)
+		return ExecLockRowsImpl(pstate, yb_mode, NULL);
+	YbLockRowsStateInfo *yb_info = &lrstate->yb_info;
+	for (Tuplestorestate *buffered = yb_info->buffered_slots; buffered; )
+	{
+		TupleTableSlot *result = NULL;
+		for (;!tuplestore_ateof(buffered);)
+		{
+			if ((result = YbFetchTupleSlot(buffered,
+										   yb_info->minimal_tuple_slot,
+										   yb_info->result_slot)) &&
+				!YbIsRowSkipped(yb_info->check_handles + (yb_info->buffered_slot_index++)))
+			{
+				++yb_info->rows_fetched;
+				return result;
+			}
+		}
+
+		if (yb_info->end_reached)
+			break;
+		tuplestore_clear(buffered);
+		yb_info->buffered_slot_index = 0;
+		uint64_t max_read_ahead = yb_info->buffered_slots_capacity;
+		if (yb_info->bounded)
+		{
+			Assert(yb_info->rows_fetched < yb_info->bound);
+			/* Avoid possible overflow in release, just use minimal read ahead equal 1 */
+			const uint64_t remain =
+				yb_info->rows_fetched < yb_info->bound ? (yb_info->bound - yb_info->rows_fetched)
+													   : 1;
+			if (remain < max_read_ahead)
+				max_read_ahead = remain;
+		}
+		Instrumentation *instr = pstate->instrument;
+		if (instr && instr->yb_instr.max_read_ahead < max_read_ahead)
+			instr->yb_instr.max_read_ahead = max_read_ahead;
+		for (int i = 0; i < max_read_ahead; ++i)
+		{
+			YbcIsExplicitlyLockedRowSkippedCheckHandleOptional handle = {};
+			TupleTableSlot *slot = ExecLockRowsImpl(pstate, true, &handle);
+			if (!slot)
+			{
+				yb_info->end_reached = true;
+				break;
+			}
+			tuplestore_puttupleslot(buffered, slot);
+			yb_info->check_handles[i] = handle;
+		}
+		if (!tuplestore_tuple_count(buffered))
+			break;
+	}
+	YbReleaseBufferedTuplestore(lrstate);
+	return NULL;
+}
+
+static bool
+YbIsSkipLockedReadAheadOptimizationAllowed(const LockRows *node, const EState *estate)
+{
+	return estate->yb_read_ahead_allowed &&
+		  (node->plan.ybReadAheadCapable ||
+		   *YBCGetGFlags()->TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization);
 }
 
 /* ----------------------------------------------------------------
@@ -390,7 +517,7 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 	epq_arowmarks = NIL;
 	bool		row_lock_for_yb_rel_found = false;
 	bool		row_lock_for_non_yb_rel_found = false;
-
+	bool		yb_has_skip_locked = false;
 	foreach(lc, node->rowMarks)
 	{
 		PlanRowMark *rc = lfirst_node(PlanRowMark, lc);
@@ -414,7 +541,10 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 		if (RowMarkRequiresRowShareLock(erm->markType))
 		{
 			if (IsYBBackedRelation(erm->relation))
+			{
+				yb_has_skip_locked = yb_has_skip_locked || (erm->waitPolicy == LockWaitSkip);
 				row_lock_for_yb_rel_found = true;
+			}
 			else
 				row_lock_for_non_yb_rel_found = true;
 
@@ -433,12 +563,37 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 	if (row_lock_for_non_yb_rel_found)
 		YbSetTxnUsesTempRel();
 
-	lrstate->yb_are_row_marks_for_yb_rels = row_lock_for_yb_rel_found;
-
 	/* Now we have the info needed to set up EPQ state */
 	EvalPlanQualInit(&lrstate->lr_epqstate, estate,
 					 outerPlan, epq_arowmarks, node->epqParam);
 
+	YbLockRowsStateInfo *yb_info = &lrstate->yb_info;
+	*yb_info = (YbLockRowsStateInfo) {};
+	if (row_lock_for_yb_rel_found)
+	{
+		yb_info->are_row_marks_for_yb_rels = true;
+		if (yb_has_skip_locked &&
+			yb_explicit_row_locking_batch_size > 1 &&
+			yb_explicit_row_lock_skip_locked_max_read_ahead > 1 &&
+			YbIsSkipLockedReadAheadOptimizationAllowed(node, estate))
+		{
+			TupleDesc desc = outerPlanState(lrstate)->ps_ResultTupleDesc;
+			yb_info->buffered_slots = tuplestore_begin_heap(false, false, work_mem);
+			yb_info->buffered_slots_capacity = yb_explicit_row_lock_skip_locked_max_read_ahead;
+			yb_info->result_slot = ExecInitExtraTupleSlot(estate, desc, lrstate->ps.resultops);
+
+			/*
+			 * If the slot returned by the outer plan is not a MinimalTuple slot,
+			 * initialize an explicit MinimalTuple slot to hold results from the
+			 * tuplestore.
+			 */
+			if (!TTS_IS_MINIMALTUPLE(yb_info->result_slot))
+				yb_info->minimal_tuple_slot =
+					ExecInitExtraTupleSlot(estate, desc, &TTSOpsMinimalTuple);
+			yb_info->check_handles =
+				palloc(sizeof(YbcIsExplicitlyLockedRowSkippedCheckHandleOptional) * yb_info->buffered_slots_capacity);
+		}
+	}
 	return lrstate;
 }
 
@@ -452,6 +607,7 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 void
 ExecEndLockRows(LockRowsState *node)
 {
+	YbReleaseBufferedTuplestore(node);
 	/* We may have shut down EPQ already, but no harm in another call */
 	EvalPlanQualEnd(&node->lr_epqstate);
 	ExecEndNode(outerPlanState(node));
@@ -461,6 +617,15 @@ ExecEndLockRows(LockRowsState *node)
 void
 ExecReScanLockRows(LockRowsState *node)
 {
+	YbLockRowsStateInfo *yb_info = &node->yb_info;
+	if (yb_info->buffered_slots)
+	{
+		tuplestore_clear(yb_info->buffered_slots);
+		yb_info->buffered_slot_index = 0;
+		yb_info->rows_fetched = 0;
+		yb_info->end_reached = false;
+	}
+
 	/*
 	 * if chgParam of subnode is not null then plan will be re-scanned by
 	 * first ExecProcNode.

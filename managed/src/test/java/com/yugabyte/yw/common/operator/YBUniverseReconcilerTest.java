@@ -1,8 +1,10 @@
 package com.yugabyte.yw.common.operator;
 
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -15,8 +17,10 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -25,6 +29,7 @@ import com.yugabyte.yw.common.operator.utils.KubernetesClientFactory;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
+import com.yugabyte.yw.common.operator.utils.ResourceAnnotationKeys;
 import com.yugabyte.yw.common.operator.utils.UniverseImporter;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
@@ -32,9 +37,11 @@ import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
+import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
+import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
@@ -48,6 +55,7 @@ import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.AvailabilityZoneDetails;
 import com.yugabyte.yw.models.AvailabilityZoneDetails.AZCloudInfo;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.OperatorResource;
@@ -76,13 +84,14 @@ import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.Resource;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.Master;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.master.Limits;
-import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -565,6 +574,93 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testEditUniverseTriggersTlsToggleWhenEncryptionToggledInCr() throws Exception {
+    String universeName = "test-toggle-tls-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    // Universe is created with both encryption flags disabled by ModelFactory.
+    assertFalse(
+        oldUniverse.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt);
+    assertFalse(
+        oldUniverse.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt);
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    // Enable client-to-node encryption in the CR to trigger a TLS toggle.
+    ybUniverse.getSpec().setEnableClientToNodeEncrypt(true);
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, oldUniverse, ybUniverse);
+
+    ArgumentCaptor<TlsToggleParams> paramsCaptor = ArgumentCaptor.forClass(TlsToggleParams.class);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .toggleTls(paramsCaptor.capture(), eq(defaultCustomer), eq(oldUniverse));
+    TlsToggleParams toggleParams = paramsCaptor.getValue();
+    assertTrue(
+        "toggle params should have client-to-node encryption enabled",
+        toggleParams.enableClientToNodeEncrypt);
+    assertFalse(toggleParams.enableNodeToNodeEncrypt);
+    // TLS toggle must always be non-rolling (PLAT-9434).
+    assertEquals(
+        com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption.NON_ROLLING_UPGRADE,
+        toggleParams.upgradeOption);
+    assertEquals(oldUniverse.getUniverseUUID(), toggleParams.getUniverseUUID());
+    // No regular edit/upgrade should be triggered.
+    Mockito.verifyNoInteractions(universeCRUDHandler);
+  }
+
+  @Test
+  public void testEditUniverseTriggersCertsRotateWhenRootCAChangedInCr() throws Exception {
+    String universeName = "test-rotate-certs-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    // Universe is created without a rootCA by ModelFactory.
+    assertNull(oldUniverse.getUniverseDetails().rootCA);
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    // Create a certificate and point the CR at it (by label) to trigger a rotation. Encryption
+    // flags are left unchanged so the TLS toggle branch is skipped and certs rotation is reached.
+    String certLabel = "test-root-ca-" + RandomStringUtils.randomAlphanumeric(8);
+    UUID rootCA = UUID.randomUUID();
+    createTempFile("yb_universe_reconciler_test_ca.crt", "test data");
+    CertificateInfo.create(
+        rootCA,
+        defaultCustomer.getUuid(),
+        certLabel,
+        new Date(),
+        new Date(),
+        "privateKey",
+        TestHelper.TMP_PATH + "/yb_universe_reconciler_test_ca.crt",
+        CertConfigType.SelfSigned);
+    ybUniverse.getSpec().setRootCA(certLabel);
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, oldUniverse, ybUniverse);
+
+    ArgumentCaptor<CertsRotateParams> paramsCaptor =
+        ArgumentCaptor.forClass(CertsRotateParams.class);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .rotateCerts(paramsCaptor.capture(), eq(defaultCustomer), eq(oldUniverse));
+    CertsRotateParams rotateParams = paramsCaptor.getValue();
+    assertEquals(rootCA, rotateParams.rootCA);
+    // For Kubernetes, rootCA and clientRootCA must be the same.
+    assertEquals(rootCA, rotateParams.getClientRootCA());
+    assertTrue(rotateParams.rootAndClientRootCASame);
+    assertEquals(oldUniverse.getUniverseUUID(), rotateParams.getUniverseUUID());
+    // No regular edit/upgrade should be triggered.
+    Mockito.verifyNoInteractions(universeCRUDHandler);
+  }
+
+  @Test
   public void testReconcileDeleteRemovesOperatorResource() {
     String universeName = "test-delete-tracked-universe";
     YBUniverse universe = ModelFactory.createYbUniverse(universeName, defaultProvider);
@@ -573,11 +669,9 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
     assertEquals(1, OperatorResource.getAll().size());
 
-    // Stub findByName to return empty list (universe "already deleted" in YBA).
-    // The YBUniverse has no finalizers, so the delete thread spawn is skipped.
-    Mockito.when(universeCRUDHandler.findByName(eq(defaultCustomer), anyString()))
-        .thenReturn(Collections.emptyList());
-
+    // The createUniverse handler is mocked, so no Universe is persisted; resolveExistingUniverse
+    // therefore finds nothing ("already deleted" in YBA). The YBUniverse has no finalizers, so the
+    // delete thread spawn is skipped and the tracked resources are cleaned up.
     ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.DELETE);
 
     assertTrue(
@@ -1432,6 +1526,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     seedTserverAZOverride(newUserIntent, az1.getUuid(), 100, "az1-old-sc");
     seedTserverAZOverride(newUserIntent, az2.getUuid(), 100, "az2-old-sc");
     UniverseConfigureTaskParams taskParams = buildPrimaryClusterTaskParams(newUserIntent, az1, az2);
+    taskParams.currentClusterType = ClusterType.PRIMARY;
 
     ybUniverseReconciler.applyKubernetesOperatorVolumeOverrides(
         taskParams, ybUniverse, defaultCustomer.getUuid(), existingUniverse);
@@ -1541,6 +1636,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     carriedMasterPpd.setDeviceInfo(carriedMasterDi);
     az1Carried.getPerProcess().put(ServerType.MASTER, carriedMasterPpd);
     UniverseConfigureTaskParams taskParams = buildPrimaryClusterTaskParams(newUserIntent, az1, az2);
+    taskParams.currentClusterType = ClusterType.PRIMARY;
 
     ybUniverseReconciler.applyKubernetesOperatorVolumeOverrides(
         taskParams, ybUniverse, defaultCustomer.getUuid(), existingUniverse);
@@ -1580,5 +1676,110 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     assertNotNull(az1Ov.getPerProcess().get(ServerType.MASTER));
     DeviceInfo az1MasterDi = az1Ov.getPerProcess().get(ServerType.MASTER).getDeviceInfo();
     assertEquals("az1-master-existing", az1MasterDi.storageClass);
+  }
+
+  // ---- PLAT-21329: existing-universe resolution (UUID -> dual-name, ambiguity) ----
+
+  @Test
+  public void testReconcileCreateResolvesByResourceIdAnnotation() throws Exception {
+    // When the yba-resource-id annotation is present it is authoritative: the operator resolves by
+    // UUID and never creates a duplicate, even if spec.universeName points elsewhere.
+    String universeName = "test-resolve-by-annotation";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseConfigureTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe existing = Universe.create(taskParams, defaultCustomer.getId());
+
+    ybUniverse.getSpec().setUniverseName("some-other-name");
+    Map<String, String> annotations = new HashMap<>();
+    annotations.put(ResourceAnnotationKeys.YBA_RESOURCE_ID, existing.getUniverseUUID().toString());
+    ybUniverse.getMetadata().setAnnotations(annotations);
+
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.CREATE);
+
+    Mockito.verify(universeCRUDHandler, Mockito.never())
+        .createUniverse(Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class));
+  }
+
+  @Test
+  public void testReconcileCreateAdoptsExistingUniverseDespiteSpecUniverseName() throws Exception {
+    // Reproduces PLAT-21329: a universe was created under the metadata-derived (hashed) name and
+    // the CR also sets spec.universeName. With no annotation, the operator must resolve by the
+    // metadata name and ADOPT the existing universe rather than create a duplicate.
+    String universeName = "test-adopt-existing";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseConfigureTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe existing = Universe.create(taskParams, defaultCustomer.getId());
+    // The universe carries the hashed name...
+    assertEquals(OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()), existing.getName());
+    // ...while the CR's spec.universeName has no matching universe.
+    ybUniverse.getSpec().setUniverseName(universeName);
+
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.CREATE);
+
+    Mockito.verify(universeCRUDHandler, Mockito.never())
+        .createUniverse(Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class));
+  }
+
+  @Test
+  public void testReconcileCreateAdoptsExistingUniverseBySpecUniverseName() throws Exception {
+    // A universe stored under spec.universeName (the legacy literal-name scheme) is still resolved,
+    // even though new universes are now named with the hashed scheme.
+    String universeName = "test-adopt-by-spec";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    String specName = "legacy-literal-name";
+    ybUniverse.getSpec().setUniverseName(specName);
+    // Existing universe named exactly spec.universeName, NOT the hashed metadata name.
+    ModelFactory.createUniverse(specName, defaultCustomer.getId());
+
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.CREATE);
+
+    Mockito.verify(universeCRUDHandler, Mockito.never())
+        .createUniverse(Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class));
+  }
+
+  @Test
+  public void testReconcileCreateFailsWhenMetadataAndSpecNamesMapToDifferentUniverses() {
+    // If the metadata-derived name and spec.universeName each map to a DIFFERENT universe, the
+    // operator cannot safely choose; it errors the CR status and creates nothing.
+    String universeName = "test-ambiguous";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    String metadataName = OperatorUtils.getYbaResourceName(ybUniverse.getMetadata());
+    String specName = "ambiguous-spec-name";
+    ybUniverse.getSpec().setUniverseName(specName);
+    ModelFactory.createUniverse(metadataName, defaultCustomer.getId());
+    ModelFactory.createUniverse(specName, defaultCustomer.getId());
+
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.CREATE);
+
+    Mockito.verify(universeCRUDHandler, Mockito.never())
+        .createUniverse(Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class));
+    Mockito.verify(kubernetesStatusUpdator, Mockito.atLeastOnce())
+        .updateUniverseState(
+            any(KubernetesResourceDetails.class), eq(UniverseState.ERROR_UPDATING));
+  }
+
+  @Test
+  public void testReconcileCreateNamesNewUniverseWithHashedNameNotSpecName() throws Exception {
+    // spec.universeName must NOT name a brand-new universe; the deterministic hashed name is used.
+    String universeName = "test-new-universe-naming";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    ybUniverse.getSpec().setUniverseName("user-chosen-name");
+    UniverseResp uResp = new UniverseResp(defaultUniverse, UUID.randomUUID());
+    Mockito.when(
+            universeCRUDHandler.createUniverse(
+                Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(uResp);
+
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.CREATE);
+
+    ArgumentCaptor<UniverseDefinitionTaskParams> captor =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    Mockito.verify(universeCRUDHandler, Mockito.times(1))
+        .createUniverse(Mockito.eq(defaultCustomer), captor.capture());
+    String createdName = captor.getValue().getPrimaryCluster().userIntent.universeName;
+    assertEquals(OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()), createdName);
+    assertFalse("user-chosen-name".equals(createdName));
   }
 }

@@ -424,6 +424,14 @@ func InitViper() {
 	viper.SetDefault("perfAdvisor.tls.sslProtocols", "")
 	viper.SetDefault("perfAdvisor.tls.hsts", true)
 	viper.SetDefault("perfAdvisor.tls.keystorePassword", "")
+	// NodeExporter defaults (always set, will be overridden by config file if present).
+	// InitViper initializes the legacy config file, so we need to set the defaults here.
+	viper.SetDefault("nodeExporter.enabled", true)
+	viper.SetDefault("nodeExporter.port", 9300)
+	viper.SetDefault("nodeExporter.scheme", "https")
+	viper.SetDefault("nodeExporter.enableAuth", false)
+	viper.SetDefault("nodeExporter.authUsername", "")
+	viper.SetDefault("nodeExporter.authPassword", "")
 	// Update the installRoot to home directory for non-root installs. Will honor custom install root.
 	if !HasSudoAccess() && viper.GetString("installRoot") == "/opt/yugabyte" {
 		viper.SetDefault("installRoot", filepath.Join(GetUserHomeDir(), "yugabyte"))
@@ -449,6 +457,11 @@ func IsPostgresEnabled() bool {
 // Checks if PerfAdvisor is enabled in config.
 func IsPerfAdvisorEnabled() bool {
 	return viper.GetBool("perfAdvisor.enabled")
+}
+
+// Checks if NodeExporter is enabled in config.
+func IsNodeExporterEnabled() bool {
+	return viper.GetBool("nodeExporter.enabled")
 }
 
 func GetUserHomeDir() string {

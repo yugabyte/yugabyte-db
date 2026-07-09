@@ -262,7 +262,8 @@ KIWI_API static inline int kiwi_fe_read_yb_server_keyhash(char *data, uint32_t s
 	if (kiwi_unlikely(rc != 0))
 		return -1;
 	if (kiwi_unlikely(header->type != YB_BE_PARSE_PREPARE_ERROR_RESPONSE) &&
-		kiwi_unlikely(header->type != YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME))
+		kiwi_unlikely(header->type != YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME) &&
+		kiwi_unlikely(header->type != YB_BE_FORCE_PARSE_COMPLETE))
 		return -1;
 	uint32_t pos_size = len;
 	char *pos = kiwi_header_data(header);

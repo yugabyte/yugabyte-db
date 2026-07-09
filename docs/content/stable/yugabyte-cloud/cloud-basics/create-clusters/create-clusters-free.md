@@ -22,7 +22,7 @@ Your Sandbox cluster includes the following:
 
 - Single node.
 - Up to 2 vCPUs, 4 GB memory, and 10 GB of storage, depending on the cloud provider.
-- Access to [Preview, Innovation, and Early Access release tracks](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on).
+- Access to [Extended and Rapid release tracks](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on).
 - Available in all [regions](../../create-clusters-overview/#cloud-provider-regions).
 - Built-in [connection pooling](../../../../additional-features/connection-manager-ysql/).
 
@@ -32,7 +32,9 @@ Share your feedback, questions, and suggestions with other users on the [Yugabyt
 
 To create a Sandbox cluster:
 
+<!--
 ![Create a Sandbox cluster](/images/yb-cloud/cloud-add-free-cluster.gif)
+-->
 
 1. On the **Clusters** page, click **Add Cluster**.
 
@@ -44,9 +46,10 @@ To create a Sandbox cluster:
     - **Provider**: Choose a cloud provider - AWS or GCP.
     - **Region**: Choose the region in which to deploy the cluster.
     - **Database Version**: Choose the release track.
-    - **Enhanced Postgres Compatibility**: Select this option to enable [Enhanced PostgreSQL Compatibility Mode](../../../../reference/configuration/postgresql-compatibility/).
 
-    Connection Pooling is always enabled for Sandbox clusters.
+1. Select **Enhanced Postgres Compatibility** to enable [Enhanced PostgreSQL Compatibility Mode](../../../../reference/configuration/postgresql-compatibility/).
+
+    Connection Pooling is always enabled for Sandbox clusters. Click **Next** when you are done.
 
 1. Click **Add Current IP Address** to add your computer to the cluster [IP allow list](../../../cloud-secure-clusters/add-connections/). This allows you to connect to the cluster after it's created. You can also add existing allow lists in your account, or create a new allow list and add addresses manually. Click **Next** when you are done.
 

@@ -86,6 +86,24 @@ DEFINE_test_flag(bool, invalidate_last_change_metadata_op, false,
 DEFINE_test_flag(bool, skip_metadata_backfill_done, false,
     "Used in tests to skip triggering of RaftGroupMetadata::OnBackfillDone().");
 
+// Forces RaftGroupMetadata::IsLazySuperblockFlushEnabled() to return true for ALL tablets in
+// this process, bypassing the usual gating on colocated() / IsSysCatalog() / etc.
+//
+// This exists only because TabletTestHarness (and YBTabletTest on top of it) currently hardcodes
+// colocated=false when constructing the tablet's RaftGroupMetadata, and there is no test hook to
+// flip RaftGroupMetadata::colocated_ post-construction. As a result, unit tests that need to
+// exercise code paths gated on IsLazySuperblockFlushEnabled() (e.g. the RBS log-shipping clamp
+// in RemoteBootstrapSession::InitBootstrapSession that keeps at least
+// kMinSegmentsToReplayWithLazySuperblockFlush trailing WAL segments) cannot reach those branches
+// without this flag.
+//
+// TODO: replace with a proper test fixture once TabletTestHarness gains a way to create colocated
+// tablet metadata (e.g. an Options::colocated knob plumbed through CreateTestTablet). Until then
+// callers should set this only in narrow unit tests and reset it immediately after.
+DEFINE_test_flag(bool, force_lazy_superblock_flush, false,
+    "If true, RaftGroupMetadata::IsLazySuperblockFlushEnabled() returns true regardless of "
+    "tablet metadata. Tests-only escape hatch; do not enable in production code paths.");
+
 // Only used for colocated table creation currently.
 // The flag is non-runtime so that if it is changed from true to false, the node restarts and the
 // unflushed committed CHANGE_METADATA_OP WAL entries are applied and flushed during the tablet
@@ -463,6 +481,8 @@ Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
     .deleted_cols = std::move(deleted_before_history_cutoff),
     .packed_row_version = docdb::PackedRowVersion(
         self->table_type, self->doc_read_context->schema().is_colocated()),
+    .table_owns_vector_reverse_mapping =
+        self->doc_read_context->schema().table_properties().owns_vector_reverse_mapping(),
   };
 }
 
@@ -1737,18 +1757,7 @@ Status RaftGroupMetadata::SetAllCDCRetentionBarriers(
   // WAL retention
   //  cdc_min_replicated_index : indicates if a WAL segment is being used by CDC
   //                             and thus impacts GC of the WAL segments
-  if (!initial_retention_barrier) {
-    if (cdc_min_replicated_index() < cdc_wal_index) {
-      VLOG_WITH_PREFIX(1) << "Moving cdc_min_replicated index WAL retention barrier to "
-                          << cdc_wal_index;
-      set_cdc_min_replicated_index_check = true;
-    } else {
-      VLOG_WITH_PREFIX(1) << "Skipping moving cdc_min_replicated index WAL retention barrier. "
-                          << "The barrier is set at " << cdc_min_replicated_index()
-                          << ", current requirement is for " << cdc_wal_index
-                          << ", cannot move the barrier backwards.";
-    }
-  } else if (cdc_min_replicated_index() > cdc_wal_index) {
+  if (!initial_retention_barrier || cdc_min_replicated_index() > cdc_wal_index) {
     VLOG_WITH_PREFIX(1) << "Setting cdc_min_replicated index WAL retention barrier to "
                         << cdc_wal_index;
     set_cdc_min_replicated_index_check = true;
@@ -1760,17 +1769,7 @@ Status RaftGroupMetadata::SetAllCDCRetentionBarriers(
 
   // History Retention
   if (require_history_cutoff) {
-    if (!initial_retention_barrier) {
-      if (cdc_sdk_safe_time() < cdc_sdk_history_cutoff) {
-        VLOG_WITH_PREFIX(1) << "Moving history retention barrier to " << cdc_sdk_history_cutoff;
-        set_cdc_sdk_safe_time_check = true;
-      } else {
-        VLOG_WITH_PREFIX(1) << "Skipping moving history retention barrier. "
-                            << "The barrier is set at " << cdc_sdk_safe_time()
-                            << ", current requirement is for " << cdc_sdk_history_cutoff
-                            << ", cannot move the barrier backwards.";
-      }
-    } else if (
+    if (!initial_retention_barrier ||
         cdc_sdk_safe_time() == HybridTime::kInvalid ||
         cdc_sdk_safe_time() > cdc_sdk_history_cutoff) {
       VLOG_WITH_PREFIX(1) << "Setting history retention barrier to " << cdc_sdk_history_cutoff;
@@ -1784,17 +1783,7 @@ Status RaftGroupMetadata::SetAllCDCRetentionBarriers(
 
   // Intents Retention
   //  set_cdc_sdk_min_checkpoint_op_id - opid beyond which GC will not happen
-  if (!initial_retention_barrier) {
-    if (cdc_sdk_min_checkpoint_op_id() < cdc_sdk_intents_op_id) {
-      VLOG_WITH_PREFIX(1) << "Moving intents retention barrier to " << cdc_sdk_intents_op_id;
-      set_cdc_min_checkpoint_op_id_check = true;
-    } else {
-      VLOG_WITH_PREFIX(1) << "Skipping moving intents retention barrier. "
-                          << "The barrier is set at " << cdc_sdk_min_checkpoint_op_id()
-                          << ", current requirement is for " << cdc_sdk_intents_op_id
-                          << ", cannot move the barrier backwards.";
-    }
-  } else if (
+  if (!initial_retention_barrier ||
       cdc_sdk_min_checkpoint_op_id() == OpId::Invalid() ||
       cdc_sdk_min_checkpoint_op_id() > cdc_sdk_intents_op_id) {
     VLOG_WITH_PREFIX(1) << "Setting intents retention barrier to " << cdc_sdk_intents_op_id;
@@ -1894,7 +1883,14 @@ bool RaftGroupMetadata::colocated() const {
 // only applicable on colocated table creation). This feature depends on
 // last_flushed_change_metadata_op_id to be valid. Hence, additionally requires
 // FLAGS_TEST_invalidate_last_change_metadata_op to be false.
+//
+// FLAGS_TEST_force_lazy_superblock_flush short-circuits everything to true so unit tests built on
+// the non-colocated TabletTestHarness can still exercise this branch. See the flag's definition
+// for the rationale and the TODO to replace it with a proper colocated test fixture.
 LazySuperblockFlushEnabled RaftGroupMetadata::IsLazySuperblockFlushEnabled() const {
+  if (PREDICT_FALSE(FLAGS_TEST_force_lazy_superblock_flush)) {
+    return LazySuperblockFlushEnabled::kTrue;
+  }
   bool lazy_superblock_flush_enabled = !FLAGS_TEST_invalidate_last_change_metadata_op &&
                                        FLAGS_lazily_flush_superblock && colocated() &&
                                        !IsSysCatalog();

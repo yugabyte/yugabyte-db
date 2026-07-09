@@ -11,7 +11,11 @@
 // under the License.
 //
 
-#pragma once
+// YB: include guard instead of pragma once: this header is installed into
+// the PostgreSQL server include directory, and pragma once does not
+// deduplicate identical copies of a header visible via two paths.
+#ifndef YB_YQL_PGGATE_YBC_DIST_TRACE_H
+#define YB_YQL_PGGATE_YBC_DIST_TRACE_H
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -75,3 +79,5 @@ void YBCDistTraceClearStack();
 #ifdef __cplusplus
 }  // extern "C"
 #endif
+
+#endif  // YB_YQL_PGGATE_YBC_DIST_TRACE_H

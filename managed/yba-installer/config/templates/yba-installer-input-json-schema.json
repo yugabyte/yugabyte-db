@@ -290,6 +290,31 @@
 
           }
         },
+        "nodeExporter": {
+          "description": "Node Exporter Config Parameters",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "port": {
+              "type": "integer"
+            },
+            "scheme": {
+              "type": "string",
+              "enum": ["http", "https"]
+            },
+            "enableAuth": {
+              "type": "boolean"
+            },
+            "authUsername": {
+              "type": "string"
+            },
+            "authPassword": {
+              "type": "string"
+            }
+          }
+        },
         "installRoot": {
           "type": "string"
         },

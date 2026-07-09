@@ -45,22 +45,25 @@ Result<std::vector<std::vector<std::string>>> GetHtmlTableRows(
   RETURN_NOT_OK(GetUrl(url, &result));
   const auto webpage = result.ToString();
   // Using [^]* to matches all characters instead of .* because . does not match newlines.
-  const std::regex table_regex(
-      Format("<table[^>]*id='$0'[^>]*>([^]*?)</table>", html_table_tag_id));
   const std::regex row_regex(Format("<tr>([^]*?)</tr>"));
   const std::regex col_regex(Format("<td[^>]*>([^]*?)</td>"));
-  const std::regex header_regex("<th[^>]*>([^>]*?)</th>");
+  const std::regex header_regex("<th[^>]*>([^]*?)</th>");
 
+  // Match only the short "<table ... id='<tag>' ...>" opening tag with a regex (html_table_tag_id
+  // is itself a regex, e.g. "[^']*_tserver"), then slice out the table body with plain string ops.
+  // The opening-tag regex uses only "[^>]*" groups, which stay within the tag and cannot recurse
+  // across the whole body. Because the libstdc++ regex implementation recurses one stack frame per
+  // matched character, we must be careful to only match the opening tag to handle pages with large
+  // table bodies (e.g. the heap snapshot).
+  const std::regex table_open_regex(Format("<table[^>]*id='$0'[^>]*>", html_table_tag_id));
   std::smatch match;
-  std::regex_search(webpage, match, table_regex);
-
-  // [0] is the full match.
-  if (match.size() < 1) {
+  if (!std::regex_search(webpage, match, table_open_regex)) {
     LOG(INFO) << "Full webpage: " << webpage;
     return STATUS_FORMAT(NotFound, "Table with id $0 not found", html_table_tag_id);
   }
-  // Match[1] is the first capture group, and contains everything inside the <table> tags.
-  std::string table = match[1];
+  const auto content_begin = match.position(0) + match.length(0);
+  const std::string table = webpage.substr(
+      content_begin, webpage.find("</table>", content_begin) - content_begin);
 
   std::vector<std::vector<std::string>> rows;
   // Start at the second row to skip the header.

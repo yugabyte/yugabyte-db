@@ -10,7 +10,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#pragma once
+// YB: include guard instead of pragma once: this header is installed into
+// the PostgreSQL server include directory, and pragma once does not
+// deduplicate identical copies of a header visible via two paths.
+#ifndef YB_YQL_PGGATE_WEBSERVER_YBC_PG_WEBSERVER_WRAPPER_H
+#define YB_YQL_PGGATE_WEBSERVER_YBC_PG_WEBSERVER_WRAPPER_H
 
 #include <sys/types.h>
 #ifdef __cplusplus
@@ -37,6 +41,14 @@ struct WebserverWrapper;
 #define YB_PG_METRIC_NAME_LEN 120
 
 #define YB_PG_METRIC_NAME_LEN 120
+
+typedef void (*YbcDbCatalogCacheMetricVisitor)(unsigned int db_oid,
+                                              const char *metric_name,
+                                              const char *table_name,
+                                              uint64_t count,
+                                              void *arg);
+typedef void (*YbcIterateDbCatalogCacheMetricsFunc)(YbcDbCatalogCacheMetricVisitor visitor,
+                                                   void *arg);
 
 typedef struct YbcPgmEntry {
   char name[YB_PG_METRIC_NAME_LEN];
@@ -88,6 +100,7 @@ typedef struct {
 struct WebserverWrapper *CreateWebserver(char *listen_addresses, int port);
 void DestroyWebserver(struct WebserverWrapper *webserver);
 void RegisterMetrics(YbcPgmEntry *tab, int num_entries, char *metric_node_name);
+void RegisterDbCatalogCacheMetrics(YbcIterateDbCatalogCacheMetricsFunc fn);
 void RegisterRpczEntries(
     YbcPostgresCallbacks *callbacks, int *num_backends_ptr, YbcRpczEntry **rpczEntriesPointer,
     YbcConnectionMetrics *conn_metrics_ptr);
@@ -117,3 +130,5 @@ void WriteDoubleArrayToJson(void *p1, const char *key, const double *values, con
 }  // extern "C"
 }  // namespace yb::pggate
 #endif
+
+#endif  // YB_YQL_PGGATE_WEBSERVER_YBC_PG_WEBSERVER_WRAPPER_H

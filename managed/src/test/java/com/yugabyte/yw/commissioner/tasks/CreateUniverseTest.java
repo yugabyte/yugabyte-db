@@ -321,10 +321,14 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
-                universeUUID, UniverseDefinitionTaskParams.ClusterType.PRIMARY, region1.getCode()),
+                universeUUID,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
+                region1.getCode()),
             nodesByAZ.get(zone1.getUuid()),
             DoCapacityReservation.getCapacityReservationGroupName(
-                universeUUID, UniverseDefinitionTaskParams.ClusterType.PRIMARY, region2.getCode()),
+                universeUUID,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
+                region2.getCode()),
             nonZ1Nodes));
   }
 
@@ -387,10 +391,14 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
-                universeUUID, UniverseDefinitionTaskParams.ClusterType.PRIMARY, region1.getCode()),
+                universeUUID,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
+                region1.getCode()),
             nodesByAZ.get(zone1.getUuid()),
             DoCapacityReservation.getCapacityReservationGroupName(
-                universeUUID, UniverseDefinitionTaskParams.ClusterType.PRIMARY, region2.getCode()),
+                universeUUID,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
+                region2.getCode()),
             nodesByAZ.get(zone2.getUuid())));
   }
 
@@ -477,7 +485,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
     String region2Group =
         DoCapacityReservation.getCapacityReservationGroupName(
-            universeUUID, UniverseDefinitionTaskParams.ClusterType.PRIMARY, region2.getCode());
+            universeUUID,
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
+            region2.getCode());
     verify(azuResourceGroupApiClient, times(0))
         .createCapacityReservation(
             Mockito.eq(region2Group),
@@ -494,7 +504,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
-                universeUUID, UniverseDefinitionTaskParams.ClusterType.PRIMARY, region1.getCode()),
+                universeUUID,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
+                region1.getCode()),
             nodesByAZ.get(zone1.getUuid())));
   }
 
@@ -564,19 +576,19 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         Map.of(
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-1",
                 universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             nodesByAZ.get(zone1.getUuid()),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-4",
                 universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             nodesByAZ.get(zone2.getUuid()),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-5",
                 universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             nodesByAZ.get(zone3.getUuid())));
@@ -652,10 +664,14 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
-                universeUUID, UniverseDefinitionTaskParams.ClusterType.PRIMARY, region1.getCode()),
+                universeUUID,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
+                region1.getCode()),
             Arrays.asList("host-n1", "host-n2", "host-n3"),
             DoCapacityReservation.getCapacityReservationGroupName(
-                universeUUID, UniverseDefinitionTaskParams.ClusterType.PRIMARY, region2.getCode()),
+                universeUUID,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
+                region2.getCode()),
             Arrays.asList("host-readonly1-n1", "host-readonly1-n2", "host-readonly1-n3")));
   }
 
@@ -726,25 +742,25 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         Map.of(
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-1",
                 universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             Arrays.asList("host-n1", "host-n2", "host-n3"),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-4",
                 rrInstanceType),
             Arrays.asList(readonlyNodes.get("4")),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-5",
                 rrInstanceType),
             Arrays.asList(readonlyNodes.get("5")),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "az-6",
                 rrInstanceType),
             Arrays.asList(readonlyNodes.get("6"))));

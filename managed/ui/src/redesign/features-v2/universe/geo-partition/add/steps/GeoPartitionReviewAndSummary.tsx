@@ -25,6 +25,7 @@ import {
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import PinIcon from '@app/redesign/assets/pin.svg';
 import { getReadReplicaExitRoute } from '../../../read-replica/readReplicaUtils';
+import { EditUniverseTabs } from '../../../edit-universe/EditUniverseContext';
 
 const { Box } = mui;
 
@@ -125,7 +126,10 @@ export const GeoPartitionReviewAndSummary = () => {
       },
       {
         onSuccess: () => {
-          window.location.href = getReadReplicaExitRoute(universeData!.info!.universe_uuid);
+          window.location.href = getReadReplicaExitRoute(
+            universeData!.info!.universe_uuid,
+            EditUniverseTabs.PLACEMENT
+          );
         },
         onError: (error) => {
           toast.error((error.response?.data as any).error || error.message);

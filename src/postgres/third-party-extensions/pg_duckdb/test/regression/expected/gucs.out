@@ -1,0 +1,27 @@
+show duckdb.memory_limit;
+ duckdb.memory_limit 
+---------------------
+ 4GB
+(1 row)
+
+select * from duckdb.query($$ select current_setting('memory_limit')$$);
+ current_setting('memory_limit') 
+---------------------------------
+ 4.0 GiB
+(1 row)
+
+CALL duckdb.recycle_ddb();
+set duckdb.memory_limit = 1024;
+select * from duckdb.query($$ select current_setting('memory_limit') $$);
+ current_setting('memory_limit') 
+---------------------------------
+ 1.0 GiB
+(1 row)
+
+-- Don't recycle DuckDB, make sure we get an error:
+set duckdb.memory_limit = '1GB';
+ERROR:  Cannot set this variable after DuckDB has been initialized. Reconnect to Postgres or use `duckdb.recycle_ddb()` to reset the DuckDB instance.
+set duckdb.threads = 42;
+ERROR:  Cannot set this variable after DuckDB has been initialized. Reconnect to Postgres or use `duckdb.recycle_ddb()` to reset the DuckDB instance.
+set duckdb.autoinstall_known_extensions = false;
+ERROR:  Cannot set this variable after DuckDB has been initialized. Reconnect to Postgres or use `duckdb.recycle_ddb()` to reset the DuckDB instance.

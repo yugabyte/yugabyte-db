@@ -4,6 +4,8 @@ headerTitle: YugabyteDB Anywhere releases
 linkTitle: YugabyteDB Anywhere releases
 description: An overview of YugabyteDB Anywhere releases, including preview and current stable releases.
 type: indexpage
+aliases:
+  - /stable/releases/yba-release-notes/stable-release/
 showRightNav: true
 cascade:
   unversioned: true
@@ -13,10 +15,10 @@ cascade:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
+| [v2026.1](v2026.1/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2026.1" release >}} | {{< yb-eol-dates "v2026.1" EOM >}} | {{< yb-eol-dates "v2026.1" EOL >}} |
 | [v2025.2](v2025.2/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2025.2" release >}} | {{< yb-eol-dates "v2025.2" EOM >}} | {{< yb-eol-dates "v2025.2" EOL >}} |
 | [v2025.1](v2025.1/) {{<tags/release/sts>}} | {{< yb-eol-dates "v2025.1" release >}} | {{< yb-eol-dates "v2025.1" EOM >}} | {{< yb-eol-dates "v2025.1" EOL >}} |
 | [v2024.2](v2024.2/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2024.2" release >}} | {{< yb-eol-dates "v2024.2" EOM >}} | {{< yb-eol-dates "v2024.2" EOL >}} |
-| [v2.20](v2.20/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
 
 For end-of-life releases, see [Releases at end of life](../ybdb-releases/#eol-releases).
 
@@ -30,6 +32,8 @@ YugabyteDB Anywhere is a control plane for deploying and managing YugabyteDB uni
 
 Qualification tests for each new version of YugabyteDB Anywhere are run on the latest version of YugabyteDB in each release series.
 
+You should run the latest version of YugabyteDB Anywhere that is compatible with the versions of YugabyteDB that are being used by your universes.
+
 ### Supported versions
 
 Every version of YugabyteDB Anywhere supports the then concurrently-released YugabyteDB version and all earlier then-supported versions of YugabyteDB.
@@ -38,7 +42,7 @@ For example, as of November 2024, the just-released YugabyteDB Anywhere v2024.2.
 
 - [v2024.2.x](../ybdb-releases/v2024.2/) (LTS)
 - [v2024.1.x](../ybdb-releases/v2024.1/) (STS)
-- [v2.20.x](../ybdb-releases/v2.20/) (LTS)
+- [v2.20.x](../ybdb-releases/end-of-life/v2.20/) (LTS)
 
 For information on YugabyteDB release support timelines, refer to [YugabyteDB releases](../ybdb-releases).
 

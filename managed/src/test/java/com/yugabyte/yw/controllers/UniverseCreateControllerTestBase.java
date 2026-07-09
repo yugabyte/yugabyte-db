@@ -85,6 +85,7 @@ import java.util.Map;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -96,6 +97,7 @@ import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
 
+@Slf4j
 @RunWith(JUnitParamsRunner.class)
 public abstract class UniverseCreateControllerTestBase extends UniverseControllerTestBase {
 
@@ -462,7 +464,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertBadRequest(result, "Enable atleast one endpoint among YSQL and YCQL");
+    assertBadRequest(result, "Enable at least one endpoint among YSQL and YCQL");
   }
 
   @Test
@@ -554,7 +556,9 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     InstanceType i =
         InstanceType.upsert(p.getUuid(), "small", 10, 5.5, new InstanceType.InstanceTypeDetails());
 
-    ModelFactory.createUniverse("K8sUniverse1", customer.getId(), Common.CloudType.kubernetes);
+    Universe universe = ModelFactory.createUniverse("K8sUniverse1", customer.getId(), kubernetes);
+    assertEquals(
+        p.getUuid(), Util.getSingleProviderUUID(universe.getUniverseDetails().getPrimaryCluster()));
 
     ObjectNode bodyJson = Json.newObject();
     ObjectNode userIntentJson =
@@ -1024,8 +1028,6 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
       },
       {Common.CloudType.kubernetes, "c3.xlarge", null, 1, 100, null, null, null, null},
       {Common.CloudType.onprem, "c3.xlarge", null, 1, 100, null, null, "/var", null},
-      // {Common.CloudType.other, "c3.xlarge", null, null, null, null, null, null, null},
-
       //  Failure cases
       {
         Common.CloudType.aws,
@@ -1168,7 +1170,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         -1,
         125,
         null,
-        "Disk IOPS for storage type GP3 should be in range [3000, 16000]"
+        rangeError(StorageType.GP3, true)
       },
       {
         Common.CloudType.aws,
@@ -1179,7 +1181,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         3000,
         -1,
         null,
-        "Disk throughput for storage type GP3 should be in range [125, 1000]"
+        rangeError(StorageType.GP3, false)
       },
       {
         Common.CloudType.gcp,
@@ -1303,6 +1305,21 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         "Mount points are mandatory for onprem cluster"
       },
     };
+  }
+
+  private String rangeError(StorageType storageType, boolean isIops) {
+    Pair<Integer, Integer> range;
+    String key;
+    if (isIops) {
+      key = "IOPS";
+      range = storageType.getIopsRange();
+    } else {
+      key = "throughput";
+      range = storageType.getThroughputRange();
+    }
+    return String.format(
+        "Disk %s for storage type %s should be in range [%d, %d]",
+        key, storageType, range.getFirst(), range.getSecond());
   }
 
   @Test

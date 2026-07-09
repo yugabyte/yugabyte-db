@@ -47,6 +47,7 @@
 #include "yb/rocksdb/util/random.h"
 
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/mem_tracker_fwd.h"
 #include "yb/util/slice.h"
 
 DECLARE_bool(never_fsync);
@@ -253,23 +254,21 @@ class StringSink: public WritableFile {
     return Status::OK();
   }
   virtual Status Close() override { return Status::OK(); }
-  virtual Status Flush() override {
-    if (reader_contents_ != nullptr) {
-      assert(reader_contents_->size() <= last_flush_);
-      size_t offset = last_flush_ - reader_contents_->size();
-      *reader_contents_ = Slice(
-          contents_.data() + offset,
-          contents_.size() - offset);
-      last_flush_ = contents_.size();
-    }
-
+  virtual Status Flush(FlushMode mode) override {
+    PublishToReader();
     return Status::OK();
   }
   virtual Status Sync() override { return Status::OK(); }
   virtual Status Append(const Slice& slice) override {
     contents_.append(slice.cdata(), slice.size());
+    // Make appended bytes immediately visible to a reader sharing reader_contents_, mirroring a
+    // real file where written data is readable without an explicit Flush. Previously this was done
+    // only in Flush(), but rocksdb's WritableFileWriter no longer issues a per-flush underlying
+    // Flush() (it would trigger a redundant sync_file_range() writeback).
+    PublishToReader();
     return Status::OK();
   }
+  uint64_t Size() const override { return contents_.size(); }
   void Drop(size_t bytes) {
     if (reader_contents_ != nullptr) {
       contents_.resize(contents_.size() - bytes);
@@ -285,6 +284,19 @@ class StringSink: public WritableFile {
   }
 
  private:
+  // Extends reader_contents_ to cover all data appended since the last publish, preserving the
+  // portion the reader has not yet consumed.
+  void PublishToReader() {
+    if (reader_contents_ != nullptr) {
+      assert(reader_contents_->size() <= last_flush_);
+      size_t offset = last_flush_ - reader_contents_->size();
+      *reader_contents_ = Slice(
+          contents_.data() + offset,
+          contents_.size() - offset);
+      last_flush_ = contents_.size();
+    }
+  }
+
   Slice* reader_contents_;
   size_t last_flush_;
 };
@@ -514,12 +526,13 @@ class StringEnv : public EnvWrapper {
       return Status::OK();
     }
     virtual Status Close() override { return Status::OK(); }
-    virtual Status Flush() override { return Status::OK(); }
+    virtual Status Flush(FlushMode mode) override { return Status::OK(); }
     virtual Status Sync() override { return Status::OK(); }
     virtual Status Append(const Slice& slice) override {
       contents_->append(slice.cdata(), slice.size());
       return Status::OK();
     }
+    uint64_t Size() const override { return contents_->size(); }
 
     const std::string& filename() const override {
       static const std::string kFilename = "StringSink";
@@ -714,6 +727,8 @@ class ChanglingCompactionFilterFactory : public CompactionFilterFactory {
  protected:
   std::string name_;
 };
+
+std::vector<CompressionType> GetSupportedCompressionTypes();
 
 CompressionType RandomCompressionType(Random* rnd);
 

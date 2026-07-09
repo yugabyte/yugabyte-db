@@ -31,6 +31,7 @@ import { YBButton, YBInputField } from '../../../../components';
 import { editUsersRolesBindings, getRoleBindingsForUser } from '../../api';
 import { convertRbacBindingsToUISchema } from './UserUtils';
 import { RbacValidator, hasNecessaryPerm } from '../../common/RbacApiPermValidator';
+import { ControlComp } from '../../common/validator/ValidatorUtils';
 import { ApiPermissionMap } from '../../ApiAndUserPermMapping';
 
 import { RbacUserWithResources } from '../interface/Users';
@@ -153,6 +154,30 @@ export const EditUser = () => {
     !!rbacPermissions &&
     isSuperAdminUser(rbacPermissions);
 
+  const loggedInUserId = localStorage.getItem('userId');
+  const isEditingSelf = currentUser?.uuid === loggedInUserId;
+  const canDeleteUser =
+    hasNecessaryPerm({
+      ...ApiPermissionMap.DELETE_USER,
+      onResource: { USER: currentUser?.uuid }
+    }) &&
+    !isEditingSelf &&
+    !isSuperAdmin;
+
+  const deleteUserButton = (
+    <YBButton
+      variant="secondary"
+      size="large"
+      startIcon={<Delete />}
+      onClick={() => {
+        toggleDeleteModal(true);
+      }}
+      data-testid={`rbac-resource-delete-user`}
+    >
+      {t('delete')}
+    </YBButton>
+  );
+
   return (
     <Container
       onCancel={() => {
@@ -185,35 +210,19 @@ export const EditUser = () => {
             />
             {t('title')}
           </div>
-          <RbacValidator
-            accessRequiredOn={{
-              ...ApiPermissionMap.DELETE_USER,
-              onResource: { USER: currentUser?.uuid }
-            }}
-            customValidateFunction={() => {
-              return (
-                hasNecessaryPerm({
-                  ...ApiPermissionMap.DELETE_USER,
-                  onResource: { USER: currentUser?.uuid }
-                }) &&
-                currentUser?.uuid !== localStorage.getItem('userId') &&
-                !isSuperAdmin
-              );
-            }}
-            isControl
-          >
-            <YBButton
-              variant="secondary"
-              size="large"
-              startIcon={<Delete />}
-              onClick={() => {
-                toggleDeleteModal(true);
+          {canDeleteUser ? (
+            <RbacValidator
+              accessRequiredOn={{
+                ...ApiPermissionMap.DELETE_USER,
+                onResource: { USER: currentUser?.uuid }
               }}
-              data-testid={`rbac-resource-delete-user`}
+              isControl
             >
-              {t('delete')}
-            </YBButton>
-          </RbacValidator>
+              {deleteUserButton}
+            </RbacValidator>
+          ) : (
+            ControlComp({ children: deleteUserButton })
+          )}
         </div>
         <FormProvider {...methods}>
           <form className={classes.form}>

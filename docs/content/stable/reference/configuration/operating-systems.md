@@ -15,7 +15,7 @@ type: docs
 
 The following table describes the operating system and architecture support for [deploying YugabyteDB](../../../deploy/manual-deployment/).
 
-Unless otherwise noted, operating systems are supported by all supported versions of YugabyteDB and YugabyteDB Anywhere. YugabyteDB Anywhere added support for deploying YugabyteDB to ARM-based systems for non-Kubernetes platforms in v2.18.
+Unless otherwise noted, operating systems are supported by all supported versions of YugabyteDB and YugabyteDB Anywhere. YugabyteDB Anywhere added support for deploying YugabyteDB to ARM-based systems for non-Kubernetes platforms in v2.18, and Kubernetes in v2024.2.1 {{<tags/feature/ea idea="1486">}}, with {{<tags/feature/ga idea="1486">}} in v2025.2.
 
 | Operating system | x86            | ARM            | Notes |
 | :--------------- | :------------- | :------------- | :---- |
@@ -32,6 +32,7 @@ Unless otherwise noted, operating systems are supported by all supported version
 | SUSE&nbsp;Linux&nbsp;Enterprise&nbsp;Server&nbsp;15&nbsp;SP5 | {{<icon/yes>}} |     | {{<tags/feature/ea>}} |
 | Ubuntu 20        | {{<icon/yes>}} | {{<icon/yes>}} |       |
 | Ubuntu 22        | {{<icon/yes>}} | {{<icon/yes>}} | Supported in v2.18.5, v2.20.1 |
+| Ubuntu 24        | {{<icon/yes>}} | {{<icon/yes>}} | Supported in v2024.2.5 and later, v2026.1 |
 
 The following table describes operating systems and architectures that are no longer supported for deploying YugabyteDB.
 
@@ -42,6 +43,7 @@ The following table describes operating systems and architectures that are no lo
 | Oracle Linux 7   | {{<icon/no>}}  |                | Deprecated in v2.20<br> Removed support in v2.21. |
 | Red Hat Enterprise Linux 7 | {{<icon/no>}} |       | Deprecated in v2.20<br> Removed support in v2.21. |
 | Ubuntu 18        | {{<icon/no>}}  | {{<icon/no>}}  | Deprecated in v2.20<br> Removed support in v2.21. |
+| Ubuntu 24        | {{<icon/yes>}} | {{<icon/yes>}} | Supported in v2024.2.5 and later, v2026.1 |
 
 ## Using CIS hardened operating systems
 

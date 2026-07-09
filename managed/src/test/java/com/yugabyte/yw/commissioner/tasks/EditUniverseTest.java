@@ -459,7 +459,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
                 universe.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 region.getCode()),
             Arrays.asList("host-n4", "host-n5")));
   }
@@ -494,7 +494,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         Map.of(
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
-                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY.name(),
                 "1",
                 universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             Arrays.asList("host-n4", "host-n5")));
@@ -726,6 +726,78 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testStateTransitionDeltaClearedOnSuccessfulExpand() {
+    Universe universe = defaultUniverse;
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertNull(universe.getStateTransitionDetails());
+  }
+
+  @Test
+  public void testStateTransitionDeltaCapturedOnFailedExpand() {
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                ShellResponse listResponse = new ShellResponse();
+                listResponse.message = "";
+                return listResponse;
+              }
+              ShellResponse shellResponse = new ShellResponse();
+              shellResponse.code = 100;
+              shellResponse.message = "Nope";
+              return shellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "false");
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertNotNull(universe.getStateTransitionDetails());
+    assertTrue(universe.getStateTransitionDetails().isRollbackSafe());
+    assertNotNull(universe.getStateTransitionDetails().getDelta());
+    JsonNode nodeDetailsDelta =
+        universe.getStateTransitionDetails().getDelta().get("nodeDetailsSet");
+    assertNotNull(nodeDetailsDelta);
+    boolean hasAdd = false;
+    for (JsonNode node : nodeDetailsDelta) {
+      if (node.has("$deltaType") && "ADD".equals(node.get("$deltaType").asText())) {
+        hasAdd = true;
+        break;
+      }
+    }
+    assertTrue(hasAdd);
+  }
+
+  @Test
+  public void testStateTransitionDeltaNotCapturedOnPrecheckFailure() {
+    UniverseDefinitionTaskParams taskParams = getTaskParamsForDiskSizeValidation(onPremUniverse);
+    mockMetrics(
+        taskParams,
+        taskParams.nodeDetailsSet,
+        n -> n.state != NodeState.ToBeAdded,
+        90.0 /* Used */,
+        59.0 /* Free */);
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+    assertNull(universe.getStateTransitionDetails());
+  }
+
+  @Test
   public void testExpandRollback() {
     doAnswer(
             invocation -> {
@@ -754,6 +826,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertTrue(universe.getUniverseDetails().autoRollbackPerformed);
     assertNotNull(universe.getUniverseDetails().updatingTaskUUID);
     assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
+    assertNull(universe.getStateTransitionDetails());
   }
 
   @Test
@@ -825,7 +898,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   private UniverseDefinitionTaskParams getTaskParamsForDiskSizeValidation(Universe universe) {
     Cluster primayCluster = universe.getUniverseDetails().getPrimaryCluster();
-    if (primayCluster.userIntent.providerType == CloudType.onprem) {
+    if (primayCluster.userIntent.getAllCloudTypes().iterator().next() == CloudType.onprem) {
       NodeDetails firstNode = Iterables.get(universe.getNodesInCluster(primayCluster.uuid), 0);
       AvailabilityZone zone = AvailabilityZone.getOrBadRequest(firstNode.getAzUuid());
       // Create two more nods.

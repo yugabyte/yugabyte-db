@@ -8,12 +8,18 @@ import glob
 import logging
 import os
 import psutil
+import re
 import shutil
 import signal
 import subprocess
 import tarfile
 
 from shlex import quote
+
+# Matches versioned ybc package names like ybc-1.0.0-b9-linux-x86_64.tar.gz.
+# Used to filter out non-versioned files (e.g. ybc-binary.tar.gz) which would
+# otherwise break LooseVersion sorting in identify_latest_pkg.
+YBC_PKG_RE = re.compile(r"^ybc-\d+(?:\.\d+)*.*\.tar\.gz$")
 
 CONTROLLER_DIR = "/tmp/yugabyte/controller"
 CONTROLLER_PID_FILE = CONTROLLER_DIR + "/yb-controller.pid"
@@ -37,7 +43,7 @@ class YBC:
     def identify_latest_pkg(self, path):
         if not os.path.exists(path):
             return ""
-        dir_list = os.listdir(path)
+        dir_list = [f for f in os.listdir(path) if YBC_PKG_RE.match(f)]
         dir_list.sort(reverse=True, key=LooseVersion)
         if len(dir_list) == 0:
             return ""

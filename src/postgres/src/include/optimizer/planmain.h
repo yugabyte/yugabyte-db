@@ -127,10 +127,16 @@ extern List *yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 									   List *scan_clauses);
 extern bool is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 										 bool bitmapindex);
-extern RestrictInfo *yb_try_create_derived_clause(PlannerInfo *root, Index rti,
-												  Index target_rti,
-												  Expr *inferrable_expr,
-												  Expr *generation_expr,
-												  Oid opfamily);
+extern RestrictInfo *yb_try_derive_equal_from_ec(PlannerInfo *root, Index rti,
+												 Index target_rti,
+												 Expr *inferrable_expr,
+												 Expr *generation_expr,
+												 Oid opfamily);
+extern OpExpr *yb_create_derived_clause(Expr *inferrable_expr,
+										Expr *substituted_expr, Oid opfamily);
+extern RestrictInfo *yb_make_derived_restrictinfo(PlannerInfo *root,
+												  OpExpr *clause,
+												  Relids nullable_relids);
+extern Node *yb_safely_fold_substituted(PlannerInfo *root, Expr *substituted);
 
 #endif							/* PLANMAIN_H */

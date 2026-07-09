@@ -17,7 +17,7 @@
 
 #include <string>
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

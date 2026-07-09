@@ -41,6 +41,9 @@
 #include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
 
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_object_locking_infra);
+
 namespace yb::tserver {
 
 // Non-template helpers.
@@ -280,7 +283,8 @@ void FillTabletConsensusInfoIfRequestOpIdStale(
     auto outgoing_tablet_consensus_info = resp->mutable_tablet_consensus_info();
     if (auto consensus = peer->GetRaftConsensus()) {
       auto cstate = consensus.get()->GetConsensusStateFromCache();
-      if (cstate.has_config() && req->raft_config_opid_index() < cstate.config().opid_index()) {
+      if (cstate.has_config() &&
+          req->raft_config_opid_index() < cstate.config().committed_op_index()) {
         if constexpr (rpc::IsGoogleProtobuf<Resp>) {
           outgoing_tablet_consensus_info->set_tablet_id(peer->tablet_id());
         } else {
@@ -337,11 +341,21 @@ class CatalogVersionChecker {
   template<class PB>
   Status operator()(const PB& request) {
     /*
-     * Disable catalog version checks during major version upgrade,
-     * as we don't expect the catalog version to be incremented during the upgrade.
+     * Skip catalog version checks when:
+     *  - the request does not carry a catalog version, or
+     *  - a major version upgrade is in progress as we don't expect the catalog version
+     *    to be incremented during the upgrade, or
+     *  - object locking (enable_object_locking_for_table_locks) is enabled because we
+     *    object locks and invalidation messages will ensure that any DML/ DDL reads the
+     *    latest catalog data that is required similar to PG. DocDB Schema-level
+     *    safety is still enforced separately via per-table schema version checks.
+     *    TODO(#32224): Checking for enable_object_locking_infra is not full-proof. We
+     *      should only disable the check if we are sure that no transactions operating
+     *      in the old mode are still active.
      */
     if (!(request.has_ysql_db_catalog_version() || request.has_ysql_catalog_version()) ||
-        tablet_server_.SkipCatalogVersionChecks()) {
+        tablet_server_.SkipCatalogVersionChecks() ||
+        (FLAGS_enable_object_locking_for_table_locks && FLAGS_ysql_enable_object_locking_infra)) {
       return Status::OK();
     }
     SCHECK(!(request.has_ysql_db_catalog_version() && request.has_ysql_catalog_version()),

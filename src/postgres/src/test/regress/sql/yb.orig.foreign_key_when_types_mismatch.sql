@@ -4,157 +4,182 @@
 -- This test ensures that the foreign key constraint check uses the
 -- batched DocDB lookup path when types mismatch.
 --
--- Covered cases include:
---  * int2 -> int4, int4 -> int8, int2 -> int8
+-- Templated type pairs run yb_commands/foreign_key_when_types_mismatch_helper.sql
+-- after CREATE TABLE, CREATE UNIQUE INDEX parent_v1_key ... SPLIT INTO 1 TABLETS,
+-- and setting v1-v5, trap_parent_val, trap_child_val.
+-- The helper covers: CASCADE, multi row insert, COPY, out of range,
+-- SET NULL, NO ACTION deferrable (including deferred COMMIT fail), RESTRICT deferrable,
+-- partial null composite update, SET DEFAULT composite, and MATCH FULL.
+--
+-- Covered type pairs (each runs the helper via \i):
+--  * int2 -> int4, int4 -> int8, int2 -> int8 (widening, implicit cast)
+--  * int4 -> int2, int8 -> int2, int8 -> int4 (narrowing, assignment cast)
 --  * int2 -> bigserial, int4 -> bigserial, int8 -> bigserial
---  * int2 -> serial, int4 -> serial
---  * int2 -> smallserial
---  * smallserial -> serial, serial -> bigserial, smallserial -> bigserial
+--  * int2 -> serial, int4 -> serial, int2 -> smallserial, smallserial -> bigserial
 --  * text -> varchar, varchar -> text
 --
--- In each test, we create a parent table and a child table with a foreign key constraint.
--- We then insert a row into the parent table and a row into the child table. We then update
--- the parent table and check that the row from the child table is also updated. We then delete
--- the row from the parent table and check that the row from the child table is also deleted.
--- We then drop the parent and child tables.
+-- Inline-only (structural or catalog-specific; not in helper):
+--  * VARCHAR(3)/TEXT length overflow (cannot use generic parent/child shape)
+--  * composite FK (3+ columns), multi-parent FK, partitioned/attach partition
+--  * pg_constraint/pg_cast/pg_proc cache, ON CONFLICT, self-referential FK
 --
 
 \set VERBOSITY default
 
--- int2_to_int4
-CREATE TABLE parent(h INT PRIMARY KEY, v1 INT UNIQUE) SPLIT INTO 1 TABLETS;
+SHOW yb_enable_fkey_batched_docdb_lookup_when_types_mismatch; -- should be true
+
+-- int2 to int4
+CREATE TABLE parent(h INT PRIMARY KEY, v1 INT) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
 CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
   ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-\set initial_v1 456
-\set updated_v1 457
+\set v1 456
+\set v2 458
+\set v3 457
+\set v4 460
+\set v5 999
+\set trap_parent_val -32767
+\set trap_child_val 32769
 \i yb_commands/foreign_key_when_types_mismatch_helper.sql
-
--- int4_to_int8
-CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGINT UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 INT, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-\set initial_v1 789
-\set updated_v1 790
-\i yb_commands/foreign_key_when_types_mismatch_helper.sql
-
--- int2_to_int8
-CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGINT UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-\set initial_v1 32000
-\set updated_v1 32001
-\i yb_commands/foreign_key_when_types_mismatch_helper.sql
-
--- int4_to_bigserial
-CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGSERIAL UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 INT, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-\set initial_v1 2023
-\set updated_v1 2024
-\i yb_commands/foreign_key_when_types_mismatch_helper.sql
-
--- int2_to_bigserial
-CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGSERIAL UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-\set initial_v1 4893
-\set updated_v1 4894
-\i yb_commands/foreign_key_when_types_mismatch_helper.sql
-
--- int8_to_bigserial
-CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGSERIAL UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 BIGINT, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-\set initial_v1 7890
-\set updated_v1 7891
-\i yb_commands/foreign_key_when_types_mismatch_helper.sql
-
--- int2_to_serial
-CREATE TABLE parent(h INT PRIMARY KEY, v1 SERIAL UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-\set initial_v1 8
-\set updated_v1 9
-\i yb_commands/foreign_key_when_types_mismatch_helper.sql
-
--- int4_to_serial
-CREATE TABLE parent(h INT PRIMARY KEY, v1 SERIAL UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 INT, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-\set initial_v1 2023
-\set updated_v1 2024
-\i yb_commands/foreign_key_when_types_mismatch_helper.sql
-
--- int2_to_smallserial
-CREATE TABLE parent(h INT PRIMARY KEY, v1 SMALLSERIAL UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-\set initial_v1 4
-\set updated_v1 5
-\i yb_commands/foreign_key_when_types_mismatch_helper.sql
-
--- smallserial_to_bigserial
-CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGSERIAL UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLSERIAL, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-\set initial_v1 49
-\set updated_v1 50
-\i yb_commands/foreign_key_when_types_mismatch_helper.sql
-
--- int4_to_int2 out-of-range should not match by truncation.
--- This test would fail if we implicitly typecast the INT4 value to INT2.
--- We do not implicitly typecast the INT4 value to INT2 right now.
-CREATE TABLE parent(h INT PRIMARY KEY, v1 SMALLINT UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 INT, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
--- 32769 does not fit SMALLINT. If FK validation incorrectly truncates to int2,
--- it can wrap to -32767 and falsely match this parent row.
-INSERT INTO parent VALUES (1, -32767);
-INSERT INTO child VALUES (100001, 32769);
-SELECT count(*) FROM child;
-DROP TABLE child;
-DROP TABLE parent;
-
--- int2_to_int4
--- out of range of int2 value update on parent should fail because it cannot fit child column.
-CREATE TABLE parent(h INT PRIMARY KEY, v1 INT UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-INSERT INTO parent VALUES (1, 456);
-INSERT INTO child VALUES (100001, 456);
-SELECT count(*) FROM child;
-UPDATE parent SET v1 = 32769 WHERE h = 1; -- should fail because it cannot fit child column.
-SELECT count(*) FROM child WHERE h = 100001 AND v1 = 456;
-DROP TABLE child;
-DROP TABLE parent;
 
 -- int4 to int8
--- out of range of int4 value update on parent should fail because it cannot fit child column.
-CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGINT UNIQUE) SPLIT INTO 1 TABLETS;
+CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGINT) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
 CREATE TABLE child(h INT PRIMARY KEY, v1 INT, FOREIGN KEY(v1) REFERENCES parent(v1)
   ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-INSERT INTO parent VALUES (1, 456);
-INSERT INTO child VALUES (100001, 456);
-SELECT count(*) FROM child;
-UPDATE parent SET v1 = 2147483648 WHERE h = 1; -- should fail because it cannot fit child column.
-SELECT count(*) FROM child WHERE h = 100001 AND v1 = 456;
-DROP TABLE child;
-DROP TABLE parent;
-
--- text_to_varchar
-CREATE TABLE parent(h INT PRIMARY KEY, v1 VARCHAR(12) UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 TEXT, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-\set initial_v1 hello
-\set updated_v1 hello_upd
+\set v1 789
+\set v2 791
+\set v3 790
+\set v4 792
+\set v5 999
+\set trap_parent_val -2147483648
+\set trap_child_val 2147483648
 \i yb_commands/foreign_key_when_types_mismatch_helper.sql
 
--- varchar_to_text
-CREATE TABLE parent(h INT PRIMARY KEY, v1 TEXT UNIQUE) SPLIT INTO 1 TABLETS;
+-- int2 to int8
+CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGINT) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
+CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
+  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
+\set v1 32000
+\set v2 32002
+\set v3 32001
+\set v4 32004
+\set v5 999
+\set trap_parent_val -32767
+\set trap_child_val 32769
+\i yb_commands/foreign_key_when_types_mismatch_helper.sql
+
+-- int4 to bigserial
+CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGSERIAL) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
+CREATE TABLE child(h INT PRIMARY KEY, v1 INT, FOREIGN KEY(v1) REFERENCES parent(v1)
+  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
+\set v1 2023
+\set v2 2025
+\set v3 2024
+\set v4 2026
+\set v5 999
+\set trap_parent_val -2147483648
+\set trap_child_val 2147483648
+\i yb_commands/foreign_key_when_types_mismatch_helper.sql
+
+-- int2 to smallserial
+CREATE TABLE parent(h INT PRIMARY KEY, v1 SMALLSERIAL) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
+CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
+  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
+\set v1 4
+\set v2 6
+\set v3 5
+\set v4 7
+\set v5 999
+\set trap_parent_val -32767
+\set trap_child_val 32769
+\i yb_commands/foreign_key_when_types_mismatch_helper.sql
+
+-- smallserial to bigserial
+CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGSERIAL) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
+CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLSERIAL, FOREIGN KEY(v1) REFERENCES parent(v1)
+  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
+\set v1 49
+\set v2 51
+\set v3 50
+\set v4 52
+\set v5 999
+\set trap_parent_val -32767
+\set trap_child_val 32769
+\i yb_commands/foreign_key_when_types_mismatch_helper.sql
+
+-- int4 to int2 (assignment cast): child INT references parent SMALLINT.
+CREATE TABLE parent(h INT PRIMARY KEY, v1 SMALLINT) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
+CREATE TABLE child(h INT PRIMARY KEY, v1 INT, FOREIGN KEY(v1) REFERENCES parent(v1)
+  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
+\set v1 100
+\set v2 200
+\set v3 101
+\set v4 10
+\set v5 999
+\set trap_parent_val -32767
+\set trap_child_val 32769
+\i yb_commands/foreign_key_when_types_mismatch_helper.sql
+
+-- int8 to int2 (assignment cast): child BIGINT references parent SMALLINT.
+CREATE TABLE parent(h INT PRIMARY KEY, v1 SMALLINT) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
+CREATE TABLE child(h INT PRIMARY KEY, v1 BIGINT, FOREIGN KEY(v1) REFERENCES parent(v1)
+  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
+\set v1 20000
+\set v2 20002
+\set v3 20001
+\set v4 10
+\set v5 999
+\set trap_parent_val -32767
+\set trap_child_val 32769
+\i yb_commands/foreign_key_when_types_mismatch_helper.sql
+
+-- int8 to int4 (assignment cast): child BIGINT references parent INT.
+CREATE TABLE parent(h INT PRIMARY KEY, v1 INT) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
+CREATE TABLE child(h INT PRIMARY KEY, v1 BIGINT, FOREIGN KEY(v1) REFERENCES parent(v1)
+  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
+\set v1 1000000
+\set v2 1000002
+\set v3 1000001
+\set v4 10
+\set v5 999
+\set trap_parent_val -2147483648
+\set trap_child_val 2147483648
+\i yb_commands/foreign_key_when_types_mismatch_helper.sql
+
+-- varchar to text
+CREATE TABLE parent(h INT PRIMARY KEY, v1 TEXT) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
 CREATE TABLE child(h INT PRIMARY KEY, v1 VARCHAR(12), FOREIGN KEY(v1) REFERENCES parent(v1)
   ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-\set initial_v1 world
-\set updated_v1 world_upd
+\set v1 world
+\set v2 beta
+\set v3 world_upd
+\set v4 alpha
+\set v5 missing
+\set trap_parent_val xy_no_parent
+\set trap_child_val xy_no_parent_text
+\i yb_commands/foreign_key_when_types_mismatch_helper.sql
+
+-- text to varchar
+CREATE TABLE parent(h INT PRIMARY KEY, v1 VARCHAR(12)) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
+CREATE TABLE child(h INT PRIMARY KEY, v1 TEXT, FOREIGN KEY(v1) REFERENCES parent(v1)
+  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
+\set v1 hello
+\set v2 beta
+\set v3 hello_upd
+\set v4 alpha
+\set v5 missing
+\set trap_parent_val xy_no_parent
+\set trap_child_val xy_no_parent_text
 \i yb_commands/foreign_key_when_types_mismatch_helper.sql
 
 -- Overflow case: parent VARCHAR(3), child TEXT
@@ -163,23 +188,24 @@ CREATE TABLE child(h INT PRIMARY KEY, v1 VARCHAR(12), FOREIGN KEY(v1) REFERENCES
 CREATE TABLE parent(h INT PRIMARY KEY, v1 VARCHAR(3) UNIQUE) SPLIT INTO 1 TABLETS;
 CREATE TABLE child(h INT PRIMARY KEY, v1 TEXT, FOREIGN KEY(v1) REFERENCES parent(v1)
   ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-INSERT INTO parent VALUES (1, 'abcdef'); -- should fail because it cannot fit parent column.
+INSERT INTO parent VALUES (1, 'abcdef'); -- should fail: cannot fit parent column
 INSERT INTO parent VALUES (2, 'abc');
-INSERT INTO child VALUES (100001, 'abcdef'); -- should fail because it cannot exist in parent table.
-UPDATE parent SET v1 = 'abcdef' WHERE h = 2; -- should fail because it cannot fit parent column.
+INSERT INTO child VALUES (100001, 'abcdef'); -- should fail: cannot exist in parent table
+UPDATE parent SET v1 = 'abcdef' WHERE h = 2; -- should fail: cannot fit parent column
 DROP TABLE child;
 DROP TABLE parent;
 
 -- Overflow case: parent TEXT, child VARCHAR(3)
--- out of range of text value update on parent should fail because it cannot fit child column.
-CREATE TABLE parent(h INT PRIMARY KEY, v1 TEXT UNIQUE) SPLIT INTO 1 TABLETS;
+-- Parent text update should fail: cannot fit child column.
+CREATE TABLE parent(h INT PRIMARY KEY, v1 TEXT) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
 CREATE TABLE child(h INT PRIMARY KEY, v1 VARCHAR(3), FOREIGN KEY(v1) REFERENCES parent(v1)
   ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
 INSERT INTO parent VALUES (1, 'abcdef');
 INSERT INTO parent VALUES (2, 'abc');
-INSERT INTO child VALUES (100001, 'abcdef'); -- should fail because it cannot fit in child column.
+INSERT INTO child VALUES (100001, 'abcdef'); -- should fail: cannot fit child column
 INSERT INTO child VALUES (100002, 'abc');
-UPDATE parent SET v1 = 'hello' WHERE h = 2; -- should fail because it cannot fit child column.
+UPDATE parent SET v1 = 'hello' WHERE h = 2; -- should fail: cannot fit child column
 DROP TABLE child;
 DROP TABLE parent;
 
@@ -206,25 +232,26 @@ SELECT count(*) FROM child;
 DROP TABLE child;
 DROP TABLE parent;
 
--- Composite FK with 2 explicit and 2 implicit casts ==> 3 read requests total
-CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGINT, v2 INT, v3 TEXT, v4 serial,
+-- Composite FK with 1 explicit and 3 implicit casts ==> 1 explicit cast
+-- because this is a composite key, we ultimately use an explicit cast.
+CREATE TABLE parent(h INT PRIMARY KEY, v1 INT, v2 SMALLINT, v3 TEXT, v4 VARCHAR(6),
   UNIQUE(v1, v2, v3, v4)) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 INT, v2 BIGINT, v3 VARCHAR(6), v4 BIGINT,
+CREATE TABLE child(h INT PRIMARY KEY, v1 BIGINT, v2 INT, v3 VARCHAR(6), v4 CHAR(6),
   FOREIGN KEY(v1, v2, v3, v4) REFERENCES parent(v1, v2, v3, v4)
   ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-INSERT INTO parent VALUES (1, 123, 98765432, 'hello', 13890);
-INSERT INTO child VALUES (1, 123, 98765432, 'hello', 13890); -- warm up catalog cache
+INSERT INTO parent VALUES (1, 100, 123, 'hello', 'world');
+INSERT INTO child VALUES (1, 100, 123, 'hello', 'world'); -- warm up catalog cache
 DELETE FROM child WHERE h = 1; -- undo changes due to warm up
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, 123, 98765432, 'hello', 13890);
+EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, 100, 123, 'hello', 'world');
 COMMIT;
 SELECT count(*) FROM child;
 ALTER TABLE child DROP CONSTRAINT child_v1_v2_v3_v4_fkey;
 ALTER TABLE child ADD CONSTRAINT child_v1_v2_v3_v4_fkey FOREIGN KEY(v1, v2, v3, v4)
   REFERENCES parent(v1, v2, v3, v4) ON DELETE CASCADE ON UPDATE CASCADE;
-UPDATE parent SET v1 = 124, v2 = 98765433, v3 = 'hello2', v4 = 13891 WHERE h = 1;
-SELECT count(*) FROM child WHERE h = 100001 AND v1 = 124 AND v2 = 98765433 AND
-  v3 = 'hello2' AND v4 = 13891;
+UPDATE parent SET v1 = 101, v2 = 124, v3 = 'hello2', v4 = 'world2' WHERE h = 1;
+SELECT count(*) FROM child WHERE h = 100001 AND v1 = 101 AND v2 = 124 AND
+  v3 = 'hello2' AND v4 = 'world2';
 DELETE FROM parent WHERE h = 1;
 SELECT count(*) FROM child;
 DROP TABLE child;
@@ -250,10 +277,10 @@ ALTER TABLE child ADD CONSTRAINT child_v1_fkey
   FOREIGN KEY(v1) REFERENCES parent1(v1) ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE child ADD CONSTRAINT child_v1_fkey1
   FOREIGN KEY(v1) REFERENCES parent2(v1) ON DELETE CASCADE ON UPDATE CASCADE;
-UPDATE parent1 SET v1 = 2 WHERE h = 1; -- should fail because parent2 does not have this value.
-SELECT count(*) FROM child WHERE h = 100001 AND v1 = 2;
-DELETE FROM parent2 WHERE h = 101; -- should fail because parent1 does not have this value.
-SELECT count(*) FROM child WHERE h = 100001 AND v1 = 2;
+UPDATE parent1 SET v1 = 2 WHERE h = 1; -- should fail: no matching parent key
+SELECT count(*) FROM child WHERE v1 = 2;
+DELETE FROM parent2 WHERE h = 101;
+SELECT count(*) FROM child;
 DELETE FROM parent1 WHERE h = 1;
 SELECT count(*) FROM child;
 DELETE FROM parent2 WHERE h = 101;
@@ -262,136 +289,33 @@ DROP TABLE child;
 DROP TABLE parent1;
 DROP TABLE parent2;
 
--- Foreign key with multiple inserts should use fast path.
-CREATE TABLE parent(h INT PRIMARY KEY, v1 INT UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 INT, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-INSERT INTO parent VALUES (1, 1);
-INSERT INTO child VALUES (1, 1); -- warm up catalog cache
-DELETE FROM child WHERE h = 1; -- undo changes due to warm up
-BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, 1), (100002, 1), (100003, 1);
-COMMIT;
-SELECT count(*) FROM child;
-UPDATE parent SET v1 = 2 WHERE h = 1;
-SELECT count(*) FROM child WHERE v1 = 2;
-DELETE FROM parent WHERE h = 1;
-SELECT count(*) FROM child;
--- Foreign key with multiple inserts with different lookup key should use fast path.
-INSERT INTO parent VALUES (1, 1);
-INSERT INTO parent VALUES (2, 2);
-INSERT INTO child VALUES (1, 1); -- warm up catalog cache
-DELETE FROM child WHERE h = 1; -- undo changes due to warm up
-BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, 1), (100002, 2);
-COMMIT;
-SELECT count(*) FROM child;
-UPDATE parent SET v1 = 3 WHERE h = 2;
-SELECT count(*) FROM child WHERE h = 100002 AND v1 = 3;
-DELETE FROM parent WHERE h = 1;
-SELECT count(*) FROM child;
-DROP TABLE child;
-DROP TABLE parent;
-
--- update with NULL value ==> should not update child table
-CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGINT, v2 TEXT, UNIQUE(v1, v2))
-  SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 INT, v2 VARCHAR(12),
-  FOREIGN KEY(v1, v2) REFERENCES parent(v1, v2)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-INSERT INTO parent VALUES (1, 1, 'hello');
-INSERT INTO child VALUES (100001, 1, 'hello');
-SELECT count(*) FROM child;
-UPDATE parent SET v1 = NULL, v2 = 'hello2' WHERE h = 1; -- should pass even when hello2 is not in parent table.
-SELECT count(*) FROM child WHERE h = 100001 AND v1 IS NULL AND v2 = 'hello2';
-UPDATE parent SET v1 = 4, v2 = 'hello' WHERE h = 1; -- this should not update child table now.
-SELECT count(*) FROM child WHERE h = 100001 AND v1 IS NULL AND v2 = 'hello2';
-DROP TABLE child;
-DROP TABLE parent;
-
--- ON UPDATE / ON DELETE NO ACTION
-CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGINT UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 INT, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE NO ACTION ON UPDATE NO ACTION DEFERRABLE INITIALLY DEFERRED) SPLIT INTO 1 TABLETS;
-INSERT INTO parent VALUES (1, 10), (2, 20);
-INSERT INTO child VALUES (100001, 10), (100002, 20);
-SELECT count(*) FROM child;
-UPDATE parent SET v1 = 11 WHERE h = 1; -- should fail because parent1 does not have this value.
-DELETE FROM parent WHERE h = 2; -- should fail
-SELECT count(*) FROM child;
-BEGIN;
-  UPDATE parent SET v1 = 11 WHERE h = 1; -- should pass for now
-  INSERT INTO parent VALUES (3, 10);
-COMMIT; -- should pass
-SELECT count(*) FROM parent WHERE v1 = 11;
-BEGIN;
-  DELETE FROM parent WHERE h = 2; -- should pass for now
-  INSERT INTO parent VALUES (4, 20);
-COMMIT; -- should pass
-SELECT count(*) FROM parent WHERE h = 2;
-DROP TABLE child;
-DROP TABLE parent;
-
--- ON UPDATE / ON DELETE RESTRICT
-CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGINT UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 INT,
-  FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE RESTRICT ON UPDATE RESTRICT DEFERRABLE INITIALLY DEFERRED) SPLIT INTO 1 TABLETS;
-INSERT INTO parent VALUES (1, 10), (2, 20);
-INSERT INTO child VALUES (100001, 10), (100002, 20);
-SELECT count(*) FROM child;
-UPDATE parent SET v1 = 11 WHERE h = 1; -- should fail because parent1 does not have this value.
-DELETE FROM parent WHERE h = 2; -- should fail
-SELECT count(*) FROM child;
-BEGIN;
-  UPDATE parent SET v1 = 11 WHERE h = 1; -- should fail
-  INSERT INTO parent VALUES (3, 10);
-COMMIT; -- should fail
-SELECT count(*) FROM parent WHERE v1 = 11;
-BEGIN;
-  DELETE FROM parent WHERE h = 2; -- should fail
-  INSERT INTO parent VALUES (4, 20);
-COMMIT; -- should fail
-SELECT count(*) FROM parent WHERE h = 2;
-DROP TABLE child;
-DROP TABLE parent;
-
--- ON UPDATE / ON DELETE SET NULL
-CREATE TABLE parent(h INT PRIMARY KEY, v1 TEXT UNIQUE) SPLIT INTO 1 TABLETS;
+-- INSERT ... ON CONFLICT: varchar -> text FK mismatch.
+CREATE TABLE parent(h INT PRIMARY KEY, v1 TEXT) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
 CREATE TABLE child(h INT PRIMARY KEY, v1 VARCHAR(12), FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE SET NULL ON UPDATE SET NULL) SPLIT INTO 1 TABLETS;
-INSERT INTO parent VALUES (1, 'hello'), (2, 'world');
-INSERT INTO child VALUES (100001, 'hello'), (100002, 'world');
-SELECT count(*) FROM child;
-UPDATE parent SET v1 = 'hello2' WHERE h = 1;
-SELECT count(*) FROM child WHERE h = 100001 AND v1 IS NULL;
-DELETE FROM parent WHERE h = 2;
-SELECT count(*) FROM child WHERE h = 100002 AND v1 IS NULL;
+  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
+INSERT INTO parent VALUES (1, 'alpha'), (2, 'beta'), (3, 'gamma');
+INSERT INTO child VALUES (100001, 'alpha'), (100002, 'beta');
+INSERT INTO child VALUES (100001, 'alpha') ON CONFLICT (h) DO UPDATE SET v1 = 'gamma';
+SELECT * from child ORDER BY h;
+INSERT INTO child VALUES (100001, 'beta') ON CONFLICT (h) DO UPDATE SET v1 = 'delta';
+SELECT * from child ORDER BY h;
 DROP TABLE child;
 DROP TABLE parent;
 
--- ON UPDATE / ON DELETE SET DEFAULT
-CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGINT, v2 TEXT NOT NULL, UNIQUE(v1, v2))
- SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 INT DEFAULT 1, v2 VARCHAR(12) DEFAULT 'default',
-  FOREIGN KEY(v1, v2) REFERENCES parent(v1, v2)
-  ON DELETE SET DEFAULT ON UPDATE SET DEFAULT) SPLIT INTO 1 TABLETS;
-INSERT INTO parent VALUES (1, 1, 'hello'), (2, 70, 'world'), (3, 80, 'yugabyte');
-INSERT INTO child VALUES (100001, 70, 'world'), (100002, 80, 'yugabyte');
-SELECT count(*) FROM child;
--- should fail because (1, 'default') is not in parent table.
-UPDATE parent SET v1 = 71, v2 = 'world2' WHERE h = 2;
-INSERT INTO parent VALUES (4, 1, 'default');
-UPDATE parent SET v1 = 71, v2 = 'world2' WHERE h = 2; -- should pass now
-SELECT count(*) FROM child WHERE h = 100001 AND v1 = 71 AND v2 = 'world2';
-SELECT count(*) FROM child WHERE h = 100001 AND v1 = 1 AND v2 = 'default';
-DELETE FROM parent WHERE h = 3;
-SELECT count(*) FROM child WHERE v1 = 1 AND v2 = 'default';
-DROP TABLE child;
+-- Self-referential FK: int4 -> int8 (ref_id references id).
+CREATE TABLE parent(id INT8 PRIMARY KEY, ref_id INT4 REFERENCES parent(id)) SPLIT INTO 1 TABLETS;
+INSERT INTO parent VALUES (1, NULL);
+INSERT INTO parent VALUES (2, 1);
+INSERT INTO parent VALUES (3, 2);
+SELECT * FROM parent ORDER BY id;
+INSERT INTO parent VALUES (4, 999); -- should fail: no matching parent key
+INSERT INTO parent VALUES (5, 5);
 DROP TABLE parent;
 
 -- Tests for partitioned table
-CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGINT UNIQUE) SPLIT INTO 1 TABLETS;
+CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGINT) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
 CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT) PARTITION BY RANGE (h);
 CREATE TABLE child_p1 PARTITION OF child FOR VALUES FROM (0) TO (100) SPLIT INTO 1 TABLETS;
 CREATE TABLE child_p2 PARTITION OF child FOR VALUES FROM (100) TO (200) SPLIT INTO 1 TABLETS;
@@ -403,7 +327,7 @@ BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (11, 100), (111, 200), (112, 100);
 COMMIT;
 SELECT count(*) FROM child;
-INSERT INTO child VALUES (120, 999); -- should fail: no matching parent row for FK value.
+INSERT INTO child VALUES (120, 999); -- should fail: no matching parent key
 UPDATE parent SET v1 = 101 WHERE h = 1;
 SELECT count(*) FROM child WHERE v1 = 101;
 DELETE FROM parent WHERE h = 2;
@@ -424,7 +348,7 @@ BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (11, 100, 'alpha'), (111, 200, 'beta');
 COMMIT;
 SELECT count(*) FROM child;
-INSERT INTO child VALUES (120, 100, 'alpha2'); -- should fail: no matching parent row for FK value.
+INSERT INTO child VALUES (120, 100, 'alpha2'); -- should fail: no matching parent key
 UPDATE parent SET v1 = 101, v2 = 'alpha2' WHERE h = 1;
 SELECT count(*) FROM child WHERE v1 = 101 AND v2 = 'alpha2';
 DELETE FROM parent WHERE h = 2;
@@ -445,7 +369,7 @@ EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (11, 200, 'gamma'),
  (120, 300, 'delta'), (130, 400, 'epsilon');
 COMMIT;
 SELECT count(*) FROM child;
-INSERT INTO child VALUES (190, 100, 'alpha2'); -- should fail: no matching parent row for FK value.
+INSERT INTO child VALUES (190, 100, 'alpha2'); -- should fail: no matching parent key
 UPDATE parent SET v1 = 101 WHERE h = 10;
 SELECT count(*) FROM child WHERE v1 = 101 AND h = 10;
 DELETE FROM parent WHERE h = 110;
@@ -469,7 +393,7 @@ EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child
   VALUES (2, 10000), (11001, 20000), (12002, 30000);
 COMMIT;
 SELECT count(*) FROM child;
-INSERT INTO child VALUES (10, 10000); -- should fail: no matching parent row for FK value.
+INSERT INTO child VALUES (10, 10000); -- should fail: no matching parent key
 UPDATE parent SET v1 = 10001 WHERE h = 1;
 SELECT count(*) FROM child WHERE v1 = 10001 AND h = 1;
 DELETE FROM parent WHERE h = 11001;
@@ -519,7 +443,7 @@ EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child
   (100004, 10, 100, 1), (100005, 130, 400, 4);
 COMMIT;
 SELECT count(*) FROM child;
-INSERT INTO child VALUES (100010, 120, 300, 9); -- should fail: no matching parent row for FK value.
+INSERT INTO child VALUES (100010, 120, 300, 9); -- should fail: no matching parent key
 UPDATE parent SET v1 = 101 WHERE h = 10;
 SELECT count(*) FROM child WHERE id IN (100001, 100004) AND v1 = 101;
 DELETE FROM parent WHERE h = 120;
@@ -528,42 +452,174 @@ SELECT count(*) FROM child;
 DROP TABLE child;
 DROP TABLE parent;
 
--- Composite FK MATCH SIMPLE (explicit)
--- partial-null parent update still cascades with ON UPDATE CASCADE.
-CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGINT, v2 TEXT, UNIQUE(v1, v2));
-CREATE TABLE child(h INT PRIMARY KEY, v1 INT, v2 VARCHAR(12), FOREIGN KEY(v1, v2)
-  REFERENCES parent(v1, v2) MATCH SIMPLE ON DELETE CASCADE ON UPDATE CASCADE);
-INSERT INTO parent VALUES (1, 1, 'hello');
-INSERT INTO child VALUES (100001, 1, 'hello');
-SELECT count(*) FROM child;
-UPDATE parent SET v1 = NULL, v2 = 'hello2' WHERE h = 1;
-SELECT count(*) FROM child WHERE h = 100001 AND v1 IS NULL AND v2 = 'hello2';
-UPDATE parent SET v1 = 4, v2 = 'hello' WHERE h = 1;
-SELECT count(*) FROM child WHERE h = 100001 AND v1 IS NULL AND v2 = 'hello2';
+-- ATTACH PARTITION on partitioned child (varchar -> text FK): valid vs invalid rows.
+CREATE TABLE parent(h INT PRIMARY KEY, k TEXT UNIQUE) SPLIT INTO 1 TABLETS;
+INSERT INTO parent VALUES (1, 'alpha'), (2, 'beta');
+CREATE TABLE child(id INT PRIMARY KEY, rk VARCHAR(12) REFERENCES parent(k))
+  PARTITION BY RANGE (id);
+CREATE TABLE child_p1 PARTITION OF child FOR VALUES FROM (0) TO (100) SPLIT INTO 1 TABLETS;
+INSERT INTO child VALUES (1, 'alpha');
+-- Attach partition whose rows reference existing parent keys (validation should pass).
+CREATE TABLE child_p_good(id INT PRIMARY KEY, rk VARCHAR(12)) SPLIT INTO 1 TABLETS;
+INSERT INTO child_p_good VALUES (101, 'beta'), (111, 'alpha');
+ALTER TABLE child ATTACH PARTITION child_p_good FOR VALUES FROM (100) TO (200);
+INSERT INTO child VALUES (102, 'beta');
+SELECT * FROM child ORDER BY id;
+INSERT INTO child VALUES (122, 'missing'); -- should fail: no matching parent key
+-- Attach partition whose rows violate the FK (validation should fail).
+CREATE TABLE child_p_bad(id INT PRIMARY KEY, rk VARCHAR(12)) SPLIT INTO 1 TABLETS;
+INSERT INTO child_p_bad VALUES (201, 'missing');
+ALTER TABLE child ATTACH PARTITION child_p_bad FOR VALUES FROM (200) TO (300); -- should fail: FK validation fails
+DROP TABLE child_p_bad;
+DROP TABLE child_p_good;
+DROP TABLE child_p1;
 DROP TABLE child;
 DROP TABLE parent;
 
--- Composite FK MATCH FULL: cascaded UPDATE would set mixed null/non-null FK columns -- not allowed.
-CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGINT, v2 TEXT, UNIQUE(v1, v2));
-CREATE TABLE child(h INT PRIMARY KEY, v1 INT, v2 VARCHAR(12), FOREIGN KEY(v1, v2)
-  REFERENCES parent(v1, v2) MATCH FULL ON DELETE CASCADE ON UPDATE CASCADE);
-INSERT INTO parent VALUES (1, 1, 'hello');
-INSERT INTO child VALUES (100001, 1, 'hello');
+-- Partitioned child: int4 -> int2 FK mismatch.
+CREATE TABLE parent(h INT PRIMARY KEY, v1 SMALLINT) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
+CREATE TABLE child(h INT PRIMARY KEY, v1 INT) PARTITION BY RANGE (h);
+CREATE TABLE child_p1 PARTITION OF child FOR VALUES FROM (0) TO (100) SPLIT INTO 1 TABLETS;
+CREATE TABLE child_p2 PARTITION OF child FOR VALUES FROM (100) TO (200) SPLIT INTO 1 TABLETS;
+ALTER TABLE child ADD CONSTRAINT child_v1_fkey FOREIGN KEY(v1) REFERENCES parent(v1)
+  ON DELETE CASCADE ON UPDATE CASCADE;
+INSERT INTO parent VALUES (1, 100), (2, 200), (3, 300);
+INSERT INTO child VALUES (10, 100), (110, 200); -- warm up catalog cache
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (11, 100), (111, 200), (112, 100);
+COMMIT;
 SELECT count(*) FROM child;
-UPDATE parent SET v1 = NULL, v2 = 'hello2' WHERE h = 1;
-SELECT count(*) FROM child WHERE h = 100001 AND v1 = 1 AND v2 = 'hello';
+INSERT INTO child VALUES (120, 999); -- should fail: no matching parent key
+UPDATE parent SET v1 = 101 WHERE h = 1;
+SELECT count(*) FROM child WHERE v1 = 101;
+DELETE FROM parent WHERE h = 2;
+SELECT count(*) FROM child;
 DROP TABLE child;
 DROP TABLE parent;
 
--- yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = false
-CREATE TABLE parent(h INT PRIMARY KEY, v1 INT UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-SET yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = false;
-\set initial_v1 456
-\set updated_v1 457
-\i yb_commands/foreign_key_when_types_mismatch_helper.sql
-SET yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true;
+-- Partitioned child: int8 -> int2 FK mismatch.
+CREATE TABLE parent(h INT PRIMARY KEY, v1 SMALLINT) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
+CREATE TABLE child(h INT PRIMARY KEY, v1 BIGINT) PARTITION BY RANGE (h);
+CREATE TABLE child_p1 PARTITION OF child FOR VALUES FROM (0) TO (100) SPLIT INTO 1 TABLETS;
+CREATE TABLE child_p2 PARTITION OF child FOR VALUES FROM (100) TO (200) SPLIT INTO 1 TABLETS;
+ALTER TABLE child ADD CONSTRAINT child_v1_fkey FOREIGN KEY(v1) REFERENCES parent(v1)
+  ON DELETE CASCADE ON UPDATE CASCADE;
+INSERT INTO parent VALUES (1, 100), (2, 200), (3, 300);
+INSERT INTO child VALUES (10, 100), (110, 200); -- warm up catalog cache
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (11, 100), (111, 200), (112, 100);
+COMMIT;
+SELECT count(*) FROM child;
+INSERT INTO child VALUES (120, 999); -- should fail: no matching parent key
+UPDATE parent SET v1 = 101 WHERE h = 1;
+SELECT count(*) FROM child WHERE v1 = 101;
+DELETE FROM parent WHERE h = 2;
+SELECT count(*) FROM child;
+DROP TABLE child;
+DROP TABLE parent;
+
+-- Partitioned child: int8 -> int4 FK mismatch.
+CREATE TABLE parent(h INT PRIMARY KEY, v1 INT) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
+CREATE TABLE child(h INT PRIMARY KEY, v1 BIGINT) PARTITION BY RANGE (h);
+CREATE TABLE child_p1 PARTITION OF child FOR VALUES FROM (0) TO (100) SPLIT INTO 1 TABLETS;
+CREATE TABLE child_p2 PARTITION OF child FOR VALUES FROM (100) TO (200) SPLIT INTO 1 TABLETS;
+ALTER TABLE child ADD CONSTRAINT child_v1_fkey FOREIGN KEY(v1) REFERENCES parent(v1)
+  ON DELETE CASCADE ON UPDATE CASCADE;
+INSERT INTO parent VALUES (1, 100), (2, 200), (3, 300);
+INSERT INTO child VALUES (10, 100), (110, 200); -- warm up catalog cache
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (11, 100), (111, 200), (112, 100);
+COMMIT;
+SELECT count(*) FROM child;
+INSERT INTO child VALUES (120, 999); -- should fail: no matching parent key
+UPDATE parent SET v1 = 101 WHERE h = 1;
+SELECT count(*) FROM child WHERE v1 = 101;
+DELETE FROM parent WHERE h = 2;
+SELECT count(*) FROM child;
+DROP TABLE child;
+DROP TABLE parent;
+
+-- ATTACH PARTITION: int4 -> int2 assignment cast.
+CREATE TABLE parent(h INT PRIMARY KEY, k SMALLINT UNIQUE) SPLIT INTO 1 TABLETS;
+INSERT INTO parent VALUES (1, 100), (2, 200);
+CREATE TABLE child(id INT PRIMARY KEY, rk INT REFERENCES parent(k))
+  PARTITION BY RANGE (id);
+CREATE TABLE child_p1 PARTITION OF child FOR VALUES FROM (0) TO (100) SPLIT INTO 1 TABLETS;
+INSERT INTO child VALUES (1, 100);
+CREATE TABLE child_p_good(id INT PRIMARY KEY, rk INT) SPLIT INTO 1 TABLETS;
+INSERT INTO child_p_good VALUES (101, 200), (111, 100);
+ALTER TABLE child ATTACH PARTITION child_p_good FOR VALUES FROM (100) TO (200);
+INSERT INTO child VALUES (102, 200);
+SELECT * FROM child ORDER BY id;
+INSERT INTO child VALUES (122, 999); -- should fail: no matching parent key
+CREATE TABLE child_p_bad(id INT PRIMARY KEY, rk INT) SPLIT INTO 1 TABLETS;
+INSERT INTO child_p_bad VALUES (201, 999);
+ALTER TABLE child ATTACH PARTITION child_p_bad FOR VALUES FROM (200) TO (300); -- should fail: FK validation fails
+DROP TABLE child_p_bad;
+DROP TABLE child_p_good;
+DROP TABLE child_p1;
+DROP TABLE child;
+DROP TABLE parent;
+
+-- ATTACH PARTITION: int8 -> int2 assignment cast.
+CREATE TABLE parent(h INT PRIMARY KEY, k SMALLINT UNIQUE) SPLIT INTO 1 TABLETS;
+INSERT INTO parent VALUES (1, 100), (2, 200);
+CREATE TABLE child(id INT PRIMARY KEY, rk BIGINT REFERENCES parent(k))
+  PARTITION BY RANGE (id);
+CREATE TABLE child_p1 PARTITION OF child FOR VALUES FROM (0) TO (100) SPLIT INTO 1 TABLETS;
+INSERT INTO child VALUES (1, 100);
+CREATE TABLE child_p_good(id INT PRIMARY KEY, rk BIGINT) SPLIT INTO 1 TABLETS;
+INSERT INTO child_p_good VALUES (101, 200), (111, 100);
+ALTER TABLE child ATTACH PARTITION child_p_good FOR VALUES FROM (100) TO (200);
+INSERT INTO child VALUES (102, 200);
+SELECT * FROM child ORDER BY id;
+INSERT INTO child VALUES (122, 999); -- should fail: no matching parent key
+CREATE TABLE child_p_bad(id INT PRIMARY KEY, rk BIGINT) SPLIT INTO 1 TABLETS;
+INSERT INTO child_p_bad VALUES (201, 999);
+ALTER TABLE child ATTACH PARTITION child_p_bad FOR VALUES FROM (200) TO (300); -- should fail: FK validation fails
+DROP TABLE child_p_bad;
+DROP TABLE child_p_good;
+DROP TABLE child_p1;
+DROP TABLE child;
+DROP TABLE parent;
+
+-- ATTACH PARTITION: int8 -> int4 assignment cast.
+CREATE TABLE parent(h INT PRIMARY KEY, k INT UNIQUE) SPLIT INTO 1 TABLETS;
+INSERT INTO parent VALUES (1, 100), (2, 200);
+CREATE TABLE child(id INT PRIMARY KEY, rk BIGINT REFERENCES parent(k))
+  PARTITION BY RANGE (id);
+CREATE TABLE child_p1 PARTITION OF child FOR VALUES FROM (0) TO (100) SPLIT INTO 1 TABLETS;
+INSERT INTO child VALUES (1, 100);
+CREATE TABLE child_p_good(id INT PRIMARY KEY, rk BIGINT) SPLIT INTO 1 TABLETS;
+INSERT INTO child_p_good VALUES (101, 200), (111, 100);
+ALTER TABLE child ATTACH PARTITION child_p_good FOR VALUES FROM (100) TO (200);
+INSERT INTO child VALUES (102, 200);
+SELECT * FROM child ORDER BY id;
+INSERT INTO child VALUES (122, 999); -- should fail: no matching parent key
+CREATE TABLE child_p_bad(id INT PRIMARY KEY, rk BIGINT) SPLIT INTO 1 TABLETS;
+INSERT INTO child_p_bad VALUES (201, 999);
+ALTER TABLE child ATTACH PARTITION child_p_bad FOR VALUES FROM (200) TO (300); -- should fail: FK validation fails
+DROP TABLE child_p_bad;
+DROP TABLE child_p_good;
+DROP TABLE child_p1;
+DROP TABLE child;
+DROP TABLE parent;
+
+-- ALTER COLUMN on FK column: int4 -> int8 after narrowing child column to int4.
+CREATE TABLE parent(k BIGINT PRIMARY KEY);
+CREATE TABLE child(id INT PRIMARY KEY, v1 BIGINT NOT NULL REFERENCES parent(k));
+INSERT INTO parent VALUES (1), (2), (3);
+INSERT INTO child VALUES (10, 1), (20, 2);
+ALTER TABLE child ALTER COLUMN v1 TYPE INT USING v1::int;
+INSERT INTO child VALUES (30, 3000000000);
+INSERT INTO child VALUES (40, 3);
+SELECT * FROM child ORDER BY id;
+INSERT INTO child VALUES (50, 99); -- should fail: no matching parent key
+DROP TABLE child;
+DROP TABLE parent;
 
 -- test ensures that the constraint cache is updated correctly when the
 -- pg_constraint table is updated after the foreign key constraint is created.
@@ -587,7 +643,8 @@ DROP TABLE child;
 DROP TABLE parent;
 
 -- Test when pg_cast changes, cache must be invalidated.
-CREATE TABLE parent(h INT PRIMARY KEY, v1 INT UNIQUE) SPLIT INTO 1 TABLETS;
+CREATE TABLE parent(h INT PRIMARY KEY, v1 INT) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
 CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
   ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
 INSERT INTO parent VALUES (1, 100);
@@ -614,7 +671,8 @@ DROP TABLE child;
 DROP TABLE parent;
 
 -- Test when pg_proc changes, cache must be invalidated.
-CREATE TABLE parent(h INT PRIMARY KEY, v1 INT UNIQUE) SPLIT INTO 1 TABLETS;
+CREATE TABLE parent(h INT PRIMARY KEY, v1 INT) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
 CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
   ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
 INSERT INTO parent VALUES (1, 100);
@@ -643,76 +701,40 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = off;
 DROP TABLE child;
 DROP TABLE parent;
 
--- COPY: int4 -> int8 FK mismatch.
-CREATE TABLE parent(h INT PRIMARY KEY, v1 BIGINT UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 INT, FOREIGN KEY(v1) REFERENCES parent(v1)
+-- yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = false
+SET yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = false; -- should fail
+
+-- Connect to a new session and verify the GUC is set to false.
+\c "options='-c yb_enable_fkey_batched_docdb_lookup_when_types_mismatch=false'"
+
+SHOW yb_enable_fkey_batched_docdb_lookup_when_types_mismatch; -- should be false
+
+-- int2 to int4
+CREATE TABLE parent(h INT PRIMARY KEY, v1 INT) SPLIT INTO 1 TABLETS;
+CREATE UNIQUE INDEX parent_v1_key ON parent(v1) SPLIT INTO 1 TABLETS;
+CREATE TABLE child(h INT PRIMARY KEY, v1 SMALLINT, FOREIGN KEY(v1) REFERENCES parent(v1)
   ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-INSERT INTO parent VALUES (1, 100), (2, 200);
-COPY child FROM stdin;
-100001	100
-100002	200
-\.
+INSERT INTO parent VALUES (1, 456);
+INSERT INTO child VALUES (1, 456); -- warm up catalog cache
+DELETE FROM child WHERE h = 1; -- undo changes due to warm up
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+EXPLAIN (DIST, ANALYZE, COSTS OFF) INSERT INTO child VALUES (100001, 456);
+COMMIT;
 SELECT count(*) FROM child;
-INSERT INTO child VALUES (100003, 999); -- should fail: no matching parent row
+ALTER TABLE child DROP CONSTRAINT child_v1_fkey;
+ALTER TABLE child ADD CONSTRAINT child_v1_fkey FOREIGN KEY(v1) REFERENCES parent(v1)
+  ON DELETE CASCADE ON UPDATE CASCADE;
+UPDATE parent SET v1 = 457 WHERE h = 1;
+SELECT count(*) FROM child WHERE h = 100001 AND v1 = 457;
+DELETE FROM parent WHERE h = 1;
+SELECT count(*) FROM child;
+INSERT INTO parent VALUES (1, 456);
+INSERT INTO child VALUES (100002, 999); -- should fail: no matching parent key
+SELECT count(*) FROM child;
+TRUNCATE child, parent;
+-- cleanup
 DROP TABLE child;
 DROP TABLE parent;
 
--- INSERT ... ON CONFLICT: varchar -> text FK mismatch.
-CREATE TABLE parent(h INT PRIMARY KEY, v1 TEXT UNIQUE) SPLIT INTO 1 TABLETS;
-CREATE TABLE child(h INT PRIMARY KEY, v1 VARCHAR(12), FOREIGN KEY(v1) REFERENCES parent(v1)
-  ON DELETE CASCADE ON UPDATE CASCADE) SPLIT INTO 1 TABLETS;
-INSERT INTO parent VALUES (1, 'alpha'), (2, 'beta'), (3, 'gamma');
-INSERT INTO child VALUES (100001, 'alpha'), (100002, 'beta');
-INSERT INTO child VALUES (100001, 'alpha') ON CONFLICT (h) DO UPDATE SET v1 = 'gamma';
-SELECT * from child;
-INSERT INTO child VALUES (100001, 'beta') ON CONFLICT (h) DO UPDATE SET v1 = 'delta';
-SELECT * from child;
-DROP TABLE child;
-DROP TABLE parent;
-
--- ALTER COLUMN on FK column: int4 -> int8 after narrowing child column to int4.
-CREATE TABLE parent(k BIGINT PRIMARY KEY);
-CREATE TABLE child(id INT PRIMARY KEY, v1 BIGINT NOT NULL REFERENCES parent(k));
-INSERT INTO parent VALUES (1), (2), (3);
-INSERT INTO child VALUES (10, 1), (20, 2);
-ALTER TABLE child ALTER COLUMN v1 TYPE INT USING v1::int;
-INSERT INTO child VALUES (30, 3000000000);
-INSERT INTO child VALUES (40, 3);
-SELECT * FROM child;
-INSERT INTO child VALUES (50, 99); -- should fail: no matching parent key
-DROP TABLE child;
-DROP TABLE parent;
-
--- ATTACH PARTITION on partitioned child (varchar -> text FK): valid vs invalid rows.
-CREATE TABLE parent(h INT PRIMARY KEY, k TEXT UNIQUE) SPLIT INTO 1 TABLETS;
-INSERT INTO parent VALUES (1, 'alpha'), (2, 'beta');
-CREATE TABLE child(id INT PRIMARY KEY, rk VARCHAR(12) REFERENCES parent(k))
-  PARTITION BY RANGE (id);
-CREATE TABLE child_p1 PARTITION OF child FOR VALUES FROM (0) TO (100) SPLIT INTO 1 TABLETS;
-INSERT INTO child VALUES (1, 'alpha');
--- Attach partition whose rows reference existing parent keys (validation should pass).
-CREATE TABLE child_p_good(id INT PRIMARY KEY, rk VARCHAR(12)) SPLIT INTO 1 TABLETS;
-INSERT INTO child_p_good VALUES (101, 'beta'), (111, 'alpha');
-ALTER TABLE child ATTACH PARTITION child_p_good FOR VALUES FROM (100) TO (200);
-INSERT INTO child VALUES (102, 'beta');
-SELECT * FROM child;
-INSERT INTO child VALUES (122, 'missing'); -- should fail: no matching parent key
--- Attach partition whose rows violate the FK (validation should fail).
-CREATE TABLE child_p_bad(id INT PRIMARY KEY, rk VARCHAR(12)) SPLIT INTO 1 TABLETS;
-INSERT INTO child_p_bad VALUES (201, 'missing');
-ALTER TABLE child ATTACH PARTITION child_p_bad FOR VALUES FROM (200) TO (300); -- should fail
-DROP TABLE child_p_bad;
-DROP TABLE child_p_good;
-DROP TABLE child_p1;
-DROP TABLE child;
-DROP TABLE parent;
-
--- Self-referential FK: int4 -> int8 (ref_id references id).
-CREATE TABLE parent(id INT8 PRIMARY KEY, ref_id INT4 REFERENCES parent(id)) SPLIT INTO 1 TABLETS;
-INSERT INTO parent VALUES (1, NULL);
-INSERT INTO parent VALUES (2, 1);
-INSERT INTO parent VALUES (3, 2);
-SELECT * FROM parent;
-INSERT INTO parent VALUES (4, 999); -- should fail: no id=999
-INSERT INTO parent VALUES (5, 5);
-DROP TABLE parent;
+-- yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true
+SET yb_enable_fkey_batched_docdb_lookup_when_types_mismatch = true; -- should fail

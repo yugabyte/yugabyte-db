@@ -219,7 +219,9 @@ set(TSERVER_SHARED_SRCS
 set(TSERVER_SHARED_LIBS
   yb_docdb_shared
   yb_util
-  yb_util_shmem)
+  yb_util_shmem
+  consensus_proto
+  tserver_proto)
 ADD_YB_LIBRARY(tserver_shared
   SRCS ${TSERVER_SHARED_SRCS}
   DEPS ${TSERVER_SHARED_LIBS})
@@ -243,6 +245,7 @@ set(TSERVER_SRCS
   pg_client_service.cc
   pg_client_session.cc
   pg_create_table.cc
+  pg_db_cache.cc
   pg_mutation_counter.cc
   pg_response_cache.cc
   pg_session_guard.cc
@@ -278,6 +281,7 @@ set(TSERVER_SRCS
   tserver_metrics_heartbeat_data_provider.cc
   server_main_util.cc
   stateful_services/pg_auto_analyze_service.cc
+  stateful_services/pg_auto_analyze_table.cc
   stateful_services/pg_cron_leader_service.cc
   stateful_services/stateful_service_base.cc
   stateful_services/test_echo_service.cc

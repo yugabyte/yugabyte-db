@@ -4,18 +4,21 @@ import { useTranslation } from 'react-i18next';
 import {
   countRegionsAzsAndNodes,
   getClusterByType,
+  getPlacementSpecForCluster,
   getResilientType,
   useEditUniverseContext
 } from '../EditUniverseUtils';
 import { ClusterType } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { useGetEditPlacementContext } from './EditPlacementUtils';
+import { buildPrimaryPlacementEditPayload, useGetEditPlacementContext } from './EditPlacementUtils';
 import { getFaultToleranceNeeded, getNodeCount } from '../../create-universe/CreateUniverseUtils';
 import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
+import { AZ_NOT_PREFERRED } from '../../create-universe/helpers/constants';
 
 import pluralize from 'pluralize';
 import { keys } from 'lodash';
 import { ArrowDownward, ArrowUpward } from '@material-ui/icons';
 import NextLineIcon from '@app/redesign/assets/next-line.svg';
+import { ResilienceFormMode } from '../../create-universe/steps/resilence-regions/dtos';
 
 interface EditPlacementConfirmModalProps {
   visible: boolean;
@@ -98,20 +101,26 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
   if (!visible) return null;
   const primaryCluster = getClusterByType(universeData!, ClusterType.PRIMARY);
   const stats = countRegionsAzsAndNodes(primaryCluster!.placement_spec!);
+  const placementSpec = getPlacementSpecForCluster(primaryCluster!);
   const resilientType = getResilientType(
-    primaryCluster!.placement_spec!,
+    placementSpec!,
     primaryCluster?.replication_factor,
     t
-  ).replace('Resilient to ', '');
+  ).replace('t Resilient to ', '');
+
   const newNodeCount = getNodeCount(nodesAndAvailability!.availabilityZones!);
 
-  const newResilientType = t(`faultToleranceTypes.${resilience?.faultToleranceType}`, {
-    count: getFaultToleranceNeeded(resilience!.resilienceFactor) - 1
-  });
+  const targetPayload = buildPrimaryPlacementEditPayload(universeData!, resilience!, nodesAndAvailability!);
 
-  const currentRegions = universeData?.spec?.clusters
-    ?.find((cluster) => cluster.cluster_type === ClusterType.PRIMARY)
-    ?.placement_spec?.cloud_list.map((cloud) => cloud?.region_list)
+  const newReplicationFactor = resilience?.resilienceFormMode === ResilienceFormMode.GUIDED ?  resilience!.resilienceFactor : nodesAndAvailability?.replicationFactor ?? 0;
+  
+  const newResilientType = getResilientType(
+    targetPayload.placementSpec,
+    getFaultToleranceNeeded(newReplicationFactor),
+    t
+  ).replace('t Resilient to ', '');
+
+  const currentRegions = placementSpec?.cloud_list.map((cloud) => cloud?.region_list)
     .flat()
     .sort((a, b) => (a?.name ?? '').localeCompare(b?.name ?? ''));
 
@@ -151,6 +160,12 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
               </YBTag>
             </StyledItem>
             <StyledItem>
+              <Typography variant="body2">{t('replicationFactor')}</Typography>
+              <YBTag size="medium" variant="dark" color="primary">
+                {primaryCluster?.replication_factor}
+              </YBTag>
+            </StyledItem>
+            <StyledItem>
               <Typography variant="body2">{t('totalNodes')}</Typography>
               <YBTag size="medium" variant="dark" color="primary">
                 {stats.totalNodes}
@@ -170,7 +185,7 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
                     <YBTag size="medium" variant="dark" color="primary">
                       {az?.num_nodes_in_az}&nbsp;{pluralize(t('node'), az?.num_nodes_in_az)}
                     </YBTag>
-                    {az?.leader_preference ? (
+                    {(az?.leader_preference ?? AZ_NOT_PREFERRED) > AZ_NOT_PREFERRED ? (
                       <YBTag size="medium" variant="dark" color="primary">
                         {t('rank', { rank: az.leader_preference })}
                       </YBTag>
@@ -190,6 +205,12 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
               <Typography variant="body2">{t('faultTolerance')}</Typography>
               <YBTag size="medium" variant="dark" color="primary">
                 {newResilientType}
+              </YBTag>
+            </StyledItem>
+            <StyledItem>
+              <Typography variant="body2">{t('replicationFactor')}</Typography>
+              <YBTag size="medium" variant="dark" color="primary">
+                {newReplicationFactor}
               </YBTag>
             </StyledItem>
             <StyledItem>
@@ -224,9 +245,9 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
                           {az?.nodeCount}&nbsp;{pluralize(t('node'), az?.nodeCount)}
                         </YBTag>
                       </div>
-                      {az?.preffered > -1 ? (
+                      {az?.preffered > AZ_NOT_PREFERRED ? (
                         <YBTag size="medium" variant="dark" color="primary">
-                          {t('rank', { rank: az.preffered + 1 })}
+                          {t('rank', { rank: az.preffered })}
                         </YBTag>
                       ) : (
                         <YBTag size="medium" variant="dark">

@@ -10,11 +10,13 @@ import { AvailabilityZone, Region } from '../../../../helpers/dtos';
 import {
   FAULT_TOLERANCE_TYPE,
   REGIONS_FIELD,
+  REPLICATION_FACTOR,
   RESILIENCE_FORM_MODE,
   RESILIENCE_TYPE
 } from '../fields/FieldNames';
 import { getFaultToleranceNeeded, getEffectiveReplicationFactorForResilience } from './resilienceReplication';
 import { PlacementRegion } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { AZ_NOT_PREFERRED } from '../helpers/constants';
 
 export const getNodeCount = (availabilityZones: NodeAvailabilityProps['availabilityZones']) => {
   if (keys(availabilityZones).length === 0) {
@@ -56,7 +58,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
           {
             ...singleZone,
             nodeCount: 1,
-            preffered: 0
+            preffered: AZ_NOT_PREFERRED
           }
         ]
       };
@@ -83,7 +85,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
         {
           ...singleZone,
           nodeCount,
-          preffered: 0
+          preffered: AZ_NOT_PREFERRED
         }
       ]
     };
@@ -111,7 +113,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
         selectedZonesByRegion[region.code].push({
           ...region.zones[i],
           nodeCount: 1, // placeholder; distributed below.
-          preffered: i
+          preffered: AZ_NOT_PREFERRED
         });
       }
     });
@@ -131,7 +133,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
         selectedZonesByRegion[region.code].push({
           ...region.zones[zoneIndex],
           nodeCount: 1,
-          preffered: zoneIndex
+          preffered: AZ_NOT_PREFERRED
         });
         selectedAzCount += 1;
         progressed = true;
@@ -186,7 +188,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
       updatedRegions[region.code].push({
         ...zone,
         nodeCount: nodeCountForAz,
-        preffered: index
+        preffered: AZ_NOT_PREFERRED
       });
     });
   });
@@ -221,7 +223,6 @@ function pickZonesRoundRobin(
     usedSlots.set(r.code, 0);
   });
 
-  let preferred = 0;
   let added = 0;
   let rIdx = 0;
   const maxIter = Math.max(azCount * regions.length * 20, 100);
@@ -240,7 +241,7 @@ function pickZonesRoundRobin(
       name: '',
       uuid: '',
       nodeCount: 1,
-      preffered: preferred++
+      preffered: AZ_NOT_PREFERRED
     });
     added += 1;
   }
@@ -305,7 +306,8 @@ export function reduceExpertNodeCountsToAtMostRf(
         if (typeof nc !== 'number' || nc <= 1) {
           continue;
         }
-        const preferred = typeof zone.preffered === 'number' ? zone.preffered : -1;
+        const preferred =
+          typeof zone.preffered === 'number' ? zone.preffered : AZ_NOT_PREFERRED;
 
         if (!best) {
           best = { regionCode, zi, preferred, nodeCount: nc };
@@ -385,7 +387,7 @@ export function getExpertNodesStepDefaultPlacement(
           name: '',
           uuid: '',
           nodeCount: 1,
-          preffered: index
+          preffered: AZ_NOT_PREFERRED
         }))
       };
       distributeNodesUntilTotalAtLeastRf(availabilityZones, EXPERT_SINGLE_REGION_DEFAULT_RF);
@@ -400,7 +402,7 @@ export function getExpertNodesStepDefaultPlacement(
             name: '',
             uuid: '',
             nodeCount: EXPERT_SINGLE_REGION_DEFAULT_RF,
-            preffered: 0
+            preffered: AZ_NOT_PREFERRED
           }
         ]
       }
@@ -418,9 +420,97 @@ export function getExpertNodesStepDefaultPlacement(
   return { replicationFactor: spec.rf, availabilityZones };
 }
 
+export type AzReplicationSlot = {
+  nodeCount: number;
+  regionUuid: string;
+};
+
+/**
+ * Distributes cluster replication factor across AZ slots without exceeding each zone's node count.
+ * Mirrors YBA PlacementInfoUtil.setPerAZRF (always sums to targetRf).
+ */
+export function distributeReplicationFactorAcrossAzs(
+  slots: AzReplicationSlot[],
+  targetRf: number
+): number[] {
+  if (slots.length === 0) {
+    if (targetRf === 0) {
+      return [];
+    }
+    throw new Error('Unable to place replicas across zones');
+  }
+
+  const replicationFactors = slots.map(() => 0);
+  let placedReplicas = 0;
+
+  const sortedIndices = slots
+    .map((_, index) => index)
+    .sort((a, b) => {
+      const nodeDiff = slots[b].nodeCount - slots[a].nodeCount;
+      return nodeDiff !== 0 ? nodeDiff : a - b;
+    });
+
+  const regionsWithReplicas = new Set<string>();
+  for (const index of sortedIndices) {
+    if (placedReplicas >= targetRf) {
+      break;
+    }
+    const regionUuid = slots[index].regionUuid;
+    if (!regionsWithReplicas.has(regionUuid)) {
+      replicationFactors[index]++;
+      placedReplicas++;
+      regionsWithReplicas.add(regionUuid);
+    }
+  }
+
+  for (const index of sortedIndices) {
+    if (placedReplicas >= targetRf) {
+      break;
+    }
+    if (replicationFactors[index] === 0) {
+      replicationFactors[index]++;
+      placedReplicas++;
+    }
+  }
+
+  const activeIndices = sortedIndices.filter(
+    (index) => replicationFactors[index] < slots[index].nodeCount
+  );
+
+  let roundRobinIdx = 0;
+  const maxIter = targetRf * slots.length + 20;
+  let iter = 0;
+  while (placedReplicas < targetRf && activeIndices.length > 0 && iter < maxIter) {
+    iter += 1;
+    const slotIndex = activeIndices[roundRobinIdx % activeIndices.length];
+    replicationFactors[slotIndex]++;
+    placedReplicas++;
+
+    if (replicationFactors[slotIndex] === slots[slotIndex].nodeCount) {
+      const position = activeIndices.indexOf(slotIndex);
+      if (position >= 0) {
+        activeIndices.splice(position, 1);
+      }
+      if (activeIndices.length === 0) {
+        break;
+      }
+      roundRobinIdx %= activeIndices.length;
+    } else {
+      roundRobinIdx += 1;
+    }
+  }
+
+  if (placedReplicas < targetRf) {
+    throw new Error('Unable to place replicas across zones');
+  }
+
+  return replicationFactors;
+}
+
 export const getPlacementRegions = (
   resilienceAndRegionsSettings: ResilienceAndRegionsProps,
-  availabilityZones?: NodeAvailabilityProps['availabilityZones']
+  availabilityZones?: NodeAvailabilityProps['availabilityZones'],
+  nodesAvailability?: Pick<NodeAvailabilityProps, typeof REPLICATION_FACTOR>
 ) => {
   const { resilienceType } = resilienceAndRegionsSettings;
 
@@ -461,8 +551,10 @@ export const getPlacementRegions = (
     ];
   }
 
-  const replicationFactorTotal =
-    getEffectiveReplicationFactorForResilience(resilienceAndRegionsSettings);
+  const replicationFactorTotal = getEffectiveReplicationFactorForResilience(
+    resilienceAndRegionsSettings,
+    nodesAvailability
+  );
 
   // Filter out AZs with 0 nodes first, then calculate replication factor distribution
   // This ensures we only distribute replicas across AZs that actually have nodes
@@ -471,21 +563,23 @@ export const getPlacementRegions = (
     azsWithNodes[regionuuid] = azs[regionuuid].filter((az) => az.nodeCount > 0);
   });
 
-  // Calculate total number of AZs with nodes across all regions
-  const totalAZsWithNodes = Object.values(azsWithNodes).reduce(
-    (sum, zones) => sum + zones.length,
-    0
+  const flatSlots: AzReplicationSlot[] = [];
+  keys(azsWithNodes).forEach((regionCode) => {
+    const region = find(resilienceAndRegionsSettings.regions, { code: regionCode });
+    if (!region) {
+      throw new Error(`Region with code ${regionCode} not found in resilience and regions settings`);
+    }
+    azsWithNodes[regionCode].forEach((az) => {
+      flatSlots.push({ nodeCount: az.nodeCount, regionUuid: region.uuid });
+    });
+  });
+
+  const replicationFactors = distributeReplicationFactorAcrossAzs(
+    flatSlots,
+    replicationFactorTotal
   );
 
-  // Distribute replication factor across AZs that have nodes
-  // Each AZ should get at least 1 replica if possible, then distribute remaining evenly
-  // Ensure the sum of all AZ replication_factors equals the cluster replication_factor
-  const baseReplicasPerAZ =
-    totalAZsWithNodes > 0 ? Math.floor(replicationFactorTotal / totalAZsWithNodes) : 0;
-  const extraReplicas =
-    totalAZsWithNodes > 0 ? replicationFactorTotal % totalAZsWithNodes : 0;
-
-  let replicaIndex = 0;
+  let flatIndex = 0;
   const regionList: PlacementRegion[] = keys(azsWithNodes).map((regionuuid) => {
     const region = find(resilienceAndRegionsSettings.regions, { code: regionuuid });
     if (!region) {
@@ -499,11 +593,8 @@ export const getPlacementRegions = (
       code: region.code,
       az_list: azsWithNodes[regionuuid].map((az) => {
         const azFromRegion = find(region.zones, { uuid: az.uuid });
-        // Calculate replication factor for this AZ
-        // Distribute replicas: each AZ gets baseReplicasPerAZ, first extraReplicas AZs get one more
-        // This ensures the sum equals the total replication_factor
-        const azReplicationFactor = baseReplicasPerAZ + (replicaIndex < extraReplicas ? 1 : 0);
-        replicaIndex++;
+        const azReplicationFactor = replicationFactors[flatIndex];
+        flatIndex += 1;
 
         return {
           uuid: az.uuid,
@@ -512,7 +603,7 @@ export const getPlacementRegions = (
           subnet: azFromRegion!.subnet,
           leader_affinity: true,
           replication_factor: azReplicationFactor,
-          ...(az.preffered !== undefined ? { leader_preference: az.preffered + 1 } : {})
+          ...(az.preffered !== undefined ? { leader_preference: az.preffered } : {})
         };
       })
     };

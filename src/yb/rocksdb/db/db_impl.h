@@ -415,7 +415,11 @@ class DBImpl : public DB {
 
   Cache* TEST_table_cache() { return table_cache_.get(); }
 
-  WriteController& TEST_write_controler() { return write_controller_; }
+  WriteController& TEST_write_controller() { return write_controller_; }
+
+  // Forces writes to the default column family to stop until this DB is destroyed. Used in tests to
+  // simulate a write stall that never clears.
+  void TEST_StopWrites();
 
   // Return maximum background compaction alowed to be scheduled based on
   // compaction status.
@@ -514,6 +518,8 @@ class DBImpl : public DB {
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
   void TEST_SwitchMemtable() override;
+
+  Result<uint64_t> TEST_Cross(Slice key) override;
 
   // Used in testing to replace current exclude_from_compaction functor. Returns current functor.
   CompactionFileExcluderPtr TEST_SetExcludeFromCompaction(

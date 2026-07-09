@@ -1,0 +1,5 @@
+description: Paged list of customer tasks.
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/TaskPagedResp.yaml"

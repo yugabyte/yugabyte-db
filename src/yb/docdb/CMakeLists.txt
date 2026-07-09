@@ -38,6 +38,8 @@ set(DOCDB_SHARED_DEPS
         yb_util
         yb_common
         docdb_proto
+        yb_dockv
+        yb_util_shmem
         )
 
 ADD_YB_LIBRARY(yb_docdb_shared
@@ -98,24 +100,27 @@ set(DOCDB_SRCS
         wait_queue.cc
         )
 
+# yb_pgbackend (the embedded PostgreSQL backend, including the ybgate C API) is linked PRIVATE so
+# it does not leak through yb_docdb's public interface to docdb's consumers; a consumer that uses
+# ybgate directly depends on yb_pgbackend itself.  See docdb_pgapi_private.h.
 set(DOCDB_DEPS
-        ann_methods
-        docdb_proto
-        hnsw
-        ql_util
-        rocksdb
-        rpc_introspection_proto
-        server_common
-        vector_index
-        yb_ash
-        yb_common
-        yb_docdb_shared
-        yb_dockv
-        yb_pgbackend
-        yb_pggate
-        yb_pggate_util
-        yb_rocksutil
-        yb_util
+        PRIVATE yb_pgbackend
+        PUBLIC ann_methods
+        PUBLIC docdb_proto
+        PUBLIC hnsw
+        PUBLIC ql_util
+        PUBLIC rocksdb
+        PUBLIC rpc_introspection_proto
+        PUBLIC server_common
+        PUBLIC vector_index
+        PUBLIC yb_ash
+        PUBLIC yb_common
+        PUBLIC yb_docdb_shared
+        PUBLIC yb_dockv
+        PUBLIC yb_pggate
+        PUBLIC yb_pggate_util
+        PUBLIC yb_rocksutil
+        PUBLIC yb_util
         )
 
 ADD_YB_LIBRARY(yb_docdb
@@ -147,10 +152,12 @@ target_link_libraries(yb_docdb_test_common
 
 set(YB_TEST_LINK_LIBS yb_common_test_util yb_docdb_test_common ${YB_MIN_TEST_LIBS})
 
+ADD_YB_TEST(bounded_rocksdb_iterator-test)
 ADD_YB_TEST(doc_operation-test)
 ADD_YB_TEST(docdb_filter_policy-test)
 ADD_YB_TEST(docdb-perf-test)
 ADD_YB_TEST(docdb_pgapi-test)
+YB_TEST_TARGET_LINK_LIBRARIES(docdb_pgapi-test yb_pgbackend)
 ADD_YB_TEST(docdb_rocksdb_util-test)
 ADD_YB_TEST(docdb-test)
 ADD_YB_TEST(docdb-ttl-test)

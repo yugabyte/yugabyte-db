@@ -31,7 +31,8 @@ class CDCSDKConsistentSnapshotTest : public CDCSDKYsqlTest {
   void TestCSStreamSnapshotEstablishment(
       bool use_replication_slot, bool enable_replication_commands);
   void TestCSStreamFailureRollback(
-      std::string sync_point, std::string expected_error, bool poll_catalog_tables = false);
+      std::string sync_point, std::string expected_error, bool poll_catalog_tables = false,
+      bool use_batching_and_throttling = false);
 };
 
 void CDCSDKConsistentSnapshotTest::TestCSStreamSnapshotEstablishment(
@@ -121,17 +122,36 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotNameFromCreateReplicationSlot) 
 }
 
 void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
-    std::string sync_point, std::string expected_error, bool poll_catalog_tables) {
+    std::string sync_point, std::string expected_error, bool poll_catalog_tables,
+    bool use_batching_and_throttling) {
   // Make UpdatePeersAndMetrics and Catalog Manager background tasks run frequently.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
-  ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = poll_catalog_tables;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      poll_catalog_tables;
 
-  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
-  auto tablet_peer =
-      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
+  if (use_batching_and_throttling) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_create_stream_alter_table_dispatch_batch_size) = 2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_create_stream_alter_table_dispatch_delay_ms) = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_concurrent_alter_table_rpcs) = 5;
+  }
+
+  ASSERT_OK(SetUpWithParams(/*replication_factor=*/1, /*num_masters=*/1, /*colocated=*/false));
+
+  const int kNumTables = use_batching_and_throttling ? 5 : 1;
+  const uint32_t kNumTabletsPerTable = use_batching_and_throttling ? 3 : 1;
+
+  std::vector<TabletId> tablet_ids;
+  for (int i = 1; i <= kNumTables; ++i) {
+    const auto table_name = Format("test_table_$0", i);
+    auto table = ASSERT_RESULT(
+        CreateTable(&test_cluster_, test_namespace_name, table_name, kNumTabletsPerTable));
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /*partition_list_version=*/nullptr));
+    for (const auto& t : tablets) {
+      tablet_ids.push_back(t.tablet_id());
+    }
+  }
 
   std::atomic<bool> force_failure = true;
   yb::SyncPoint::GetInstance()->SetCallBack(sync_point, [&force_failure, &sync_point](void* arg) {
@@ -146,29 +166,49 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
   ASSERT_NOK(s);
   if (sync_point == "CreateCDCSDKStream::kWhileStoringConsistentSnapshotDetails") {
     auto error_message = s.status().message().AsStringView();
-    ASSERT_TRUE(
-        error_message.find("timed out") != std::string::npos ||
-        error_message.find("already exists") != std::string::npos);
+    ASSERT_TRUE(error_message.find("unexpectedly found Invalid") != std::string::npos)
+        << error_message;
   } else {
     ASSERT_NE(s.status().message().AsStringView().find(expected_error), std::string::npos)
         << s.status().message().AsStringView();
   }
   LOG(INFO) << "Asserted the stream creation failures";
 
-  auto condition = [this, tablet_peer]() -> Result<bool> {
+  auto metadata_cleanup_condition = [this]() -> Result<bool> {
     auto list_streams_resp = VERIFY_RESULT(ListDBStreams());
-    if(list_streams_resp.streams_size() != 0) {
+    if (list_streams_resp.streams_size() != 0) {
       LOG(INFO) << "Non empty streams: " << list_streams_resp.ShortDebugString();
       return false;
     }
 
-    return tablet_peer->get_cdc_sdk_safe_time() == HybridTime::kInvalid;
+    auto active_rows = VERIFY_RESULT(GetStateTableRowCount());
+    return active_rows == 0;
   };
 
-  // Allow the background UpdatePeersAndMetrics to clean up the stream.
-  auto timeout = MonoDelta::FromSeconds(
-      10 * FLAGS_update_min_cdc_indices_interval_secs * kTimeMultiplier);
-  ASSERT_OK(WaitFor(condition, timeout, "Wait streams cleaned"));
+  auto metadata_clean_timeout =
+      MonoDelta::FromSeconds(10 * FLAGS_catalog_manager_bg_task_wait_ms * kTimeMultiplier);
+  ASSERT_OK(WaitFor(
+      metadata_cleanup_condition, metadata_clean_timeout,
+      "Wait for stream_metadata and cdc_state entries cleanup"));
+
+  auto barriers_release_condition = [this, &tablet_ids]() -> Result<bool> {
+    for (const auto& tablet_id : tablet_ids) {
+      auto peer = VERIFY_RESULT(GetLeaderPeerForTablet(test_cluster(), tablet_id));
+      if (peer->get_cdc_sdk_safe_time() != HybridTime::kInvalid ||
+          peer->get_cdc_min_replicated_index() != std::numeric_limits<int64_t>::max() ||
+          peer->cdc_sdk_min_checkpoint_op_id() != OpId::Max()) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 5;
+  auto barriers_release_timeout = MonoDelta::FromSeconds(
+      10 * FLAGS_cdc_min_replicated_index_considered_stale_secs * kTimeMultiplier);
+  ASSERT_OK(WaitFor(
+      barriers_release_condition, barriers_release_timeout,
+      "Wait for the release of all tablets retention barriers"));
 
   // Future stream creations must succeed. Disable running UpdatePeersAndMetrics now so that it
   // doesn't interfere with the safe time.
@@ -177,20 +217,19 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
 
   LOG(INFO) << "Creating Consistent snapshot stream again.";
   auto stream1_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
-  const auto& snapshot_time_key_pair =
-      ASSERT_RESULT(GetSnapshotDetailsFromCdcStateTable(
-          stream1_id, tablet_peer->tablet_id(), test_client()));
-  auto checkpoint_result =
-      ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream1_id, tablet_peer->tablet_id()));
+  for (const auto& tablet_id : tablet_ids) {
+    const auto& snapshot_time_key_pair =
+        ASSERT_RESULT(GetSnapshotDetailsFromCdcStateTable(stream1_id, tablet_id, test_client()));
+    auto checkpoint_result = ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream1_id, tablet_id));
 
-  LogRetentionBarrierAndRelatedDetails(checkpoint_result, tablet_peer);
-  ASSERT_GT(checkpoint_result.checkpoint().op_id().term(), 0);
-  ASSERT_GT(checkpoint_result.checkpoint().op_id().index(), 0);
-  ASSERT_GT(std::get<0>(snapshot_time_key_pair), tablet_peer->get_cdc_sdk_safe_time().ToUint64());
-  ASSERT_LE(checkpoint_result.checkpoint().op_id().index(),
-            tablet_peer->get_cdc_min_replicated_index());
-  ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id().index,
-            tablet_peer->get_cdc_min_replicated_index());
+    auto peer = ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablet_id));
+    LogRetentionBarrierAndRelatedDetails(checkpoint_result, peer);
+    ASSERT_GT(checkpoint_result.checkpoint().op_id().term(), 0);
+    ASSERT_GT(checkpoint_result.checkpoint().op_id().index(), 0);
+    ASSERT_GT(std::get<0>(snapshot_time_key_pair), peer->get_cdc_sdk_safe_time().ToUint64());
+    ASSERT_LE(checkpoint_result.checkpoint().op_id().index(), peer->get_cdc_min_replicated_index());
+    ASSERT_EQ(peer->cdc_sdk_min_checkpoint_op_id().index, peer->get_cdc_min_replicated_index());
+  }
 
   auto list_streams_resp = ASSERT_RESULT(ListDBStreams());
   ASSERT_EQ(list_streams_resp.streams_size(), 1);
@@ -253,6 +292,81 @@ TEST_F(
       "Test failure for sync point CreateCDCSDKStream::kAfterStoringConsistentSnapshotDetails.");
 }
 
+TEST_F(
+    CDCSDKConsistentSnapshotTest, TestBatchedCSStreamFailureRollbackFailureBeforeSysCatalogEntry) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kBeforeSysCatalogEntry",
+      "Test failure for sync point CreateCDCSDKStream::kBeforeSysCatalogEntry.",
+      false /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest, TestBatchedCSStreamFailureRollbackFailureBeforeInMemoryCommit) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kBeforeInMemoryStateCommit",
+      "Test failure for sync point CreateCDCSDKStream::kBeforeInMemoryStateCommit.",
+      false /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest,
+    TestBatchedCSStreamFailureRollbackFailureAfterInMemoryStateCommit) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterInMemoryStateCommit",
+      "Test failure for sync point CreateCDCSDKStream::kAfterInMemoryStateCommit.",
+      false /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestBatchedCSStreamFailureRollbackFailureAfterDummy) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterDummyCDCStateEntries",
+      "Test failure for sync point CreateCDCSDKStream::kAfterDummyCDCStateEntries.",
+      false /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest,
+    TestBatchedCSStreamFailureRollbackFailureBeforeFinalAlterTableBatchFlush) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kBeforeFinalAlterTableBatchFlush",
+      "Test failure for sync point CreateCDCSDKStream::kBeforeFinalAlterTableBatchFlush.",
+      false /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest, TestBatchedCSStreamFailureRollbackFailureAfterRetentionBarriers) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterRetentionBarriers",
+      "Test failure for sync point CreateCDCSDKStream::kAfterRetentionBarriers.",
+      false /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest,
+    TestBatchedCSStreamFailureRollbackFailureAfterRetentionBarriersWithCatalogTables) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterRetentionBarriers",
+      "Test failure for sync point CreateCDCSDKStream::kAfterRetentionBarriers.",
+      true /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest,
+    TestBatchedCSStreamFailureRollbackFailureWhileStoringConsistentSnapshot) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kWhileStoringConsistentSnapshotDetails", "" /* ignored */,
+      false /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest,
+    TestBatchedCSStreamFailureRollbackFailureAfterStoringConsistentSnapshot) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterStoringConsistentSnapshotDetails",
+      "Test failure for sync point CreateCDCSDKStream::kAfterStoringConsistentSnapshotDetails.",
+      false /* poll_catalog_tables */, true /* use_batching_and_throttling */);
+}
+
 // The goal of this test is to confirm that the retention barriers are set
 // for the slowest consumer
 TEST_F(CDCSDKConsistentSnapshotTest, TestTwoCSStream) {
@@ -286,7 +400,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestTwoCSStream) {
 TEST_F(CDCSDKConsistentSnapshotTest, TestCreateStreamWithSlowAlterTable) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto table = EXPECT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 2));
+  auto table = EXPECT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 2));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 2);
@@ -647,29 +761,29 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestMultipleTableAlterWithSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 10_KB;
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   // Table having key:value_1 column
   ASSERT_OK(WriteRows(1 /* start */, 101 /* end */, &test_cluster_));
   // Add column value_2 column, Table Alter happen.
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue3ColumnName, &conn));
   ASSERT_OK(WriteRows(
       101 /* start */, 201 /* end */, &test_cluster_, {kValue2ColumnName, kValue3ColumnName}));
 
   // Drop value_2 column, Tablet Alter happen.
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(WriteRows(201 /* start */, 301 /* end */, &test_cluster_, {kValue3ColumnName}));
 
   // Add the 2 columns, value_2 and value_4
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue4ColumnName, &conn));
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue4ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(WriteRows(
       301 /* start */, 401 /* end */, &test_cluster_,
       {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
 
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, kTableName, kValue3ColumnName, &conn));
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
@@ -1068,7 +1182,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotForColocatedTablet) {
   ASSERT_OK(SetUpWithParams(3, 1, true /* colocated */));
 
   // ASSERT_OK(CreateColocatedObjects(&test_cluster_));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_2 int, value_3 int);"));
@@ -1076,7 +1190,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotForColocatedTablet) {
       conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key, value_2 int, value_3 int, "
                          "value_4 int);"));
 
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -1173,11 +1287,11 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestGetCheckpointOnAddedColocatedTableWithN
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key, value_2 int, value_3 int);"));
 
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
@@ -1306,19 +1420,19 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotRecordSnapshotKey) {
 TEST_F(CDCSDKConsistentSnapshotTest, TestConsistentSnapshotAcrossMultipleTables) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key);"));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key);"));
 
-  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets1;
   ASSERT_OK(test_client()->GetTablets(table1, 0, &tablets1, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets1.size(), 1);
 
-  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test2"));
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test2"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets2;
   ASSERT_OK(test_client()->GetTablets(table2, 0, &tablets2, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets2.size(), 1);
@@ -1419,21 +1533,21 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledTablets) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key);"));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key);"));
 
-  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test1"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets1;
   ASSERT_OK(test_client()->GetTablets(table1, 0, &tablets1, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets1.size(), 1);
   auto tablet1_peer =
       ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets1.begin()->tablet_id()));
 
-  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test2"));
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "test2"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets2;
   ASSERT_OK(test_client()->GetTablets(table2, 0, &tablets2, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets2.size(), 1);
@@ -1491,7 +1605,8 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledSplitTablets)
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, num_tablets));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
@@ -1572,11 +1687,11 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCreateReplicationSlotExportSnapshot) {
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
 
-  auto repl_conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto repl_conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   // 10K records inserted using a thread.
-  std::thread bg_writer([cluster = &test_cluster_]() {
+  std::thread bg_writer([cluster = &test_cluster_, this]() {
     ASSERT_OK(WriteRows(1 /* start */, 10001 /* end */, cluster));
   });
   auto result = ASSERT_RESULT(repl_conn.FetchFormat(
@@ -1606,7 +1721,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCreateReplicationSlotExportSnapshot) {
   uint32_t inserts_snapshot =
       ASSERT_RESULT(ConsumeInsertsAndVerifyCounts(xrepl_stream_id, tablets, change_resp));
 
-  auto conn2 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn2 = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   // Import snapshot in a transaction.
   ASSERT_OK(conn2.ExecuteFormat("SET TRANSACTION SNAPSHOT '$0'", snapshot_name));
@@ -1628,7 +1743,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestUseSnapshotWithTransaction) {
 
   ASSERT_OK(WriteRowsHelper(1 /* start */, 101 /* end */, &test_cluster_, true));
 
-  auto repl_conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+  auto repl_conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
   // Start a transaction with REPEATABLE READ isolation (required for USE_SNAPSHOT)
   ASSERT_OK(repl_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
 

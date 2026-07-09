@@ -87,6 +87,7 @@ static MemoryContext parsed_hba_context = NULL;
 static const char *const HardcodedHbaLines[] =
 {
 	"local all postgres yb-tserver-key",
+	"local all yb_global_views_user yb-tserver-key",
 };
 
 /*

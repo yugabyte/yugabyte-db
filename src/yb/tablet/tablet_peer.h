@@ -42,6 +42,7 @@
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_meta.h"
+#include "yb/consensus/log_fwd.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
@@ -82,9 +83,10 @@ struct TabletOnDiskSizeInfo {
   int64_t wal_files_disk_size = 0;
   int64_t sst_files_disk_size = 0;
   int64_t uncompressed_sst_files_disk_size = 0;
+  int64_t vector_index_disk_size = 0;
 
-  // Sum of consensus metadata, WALs, and SSTs. Excludes snapshots, retryable requests, MANIFEST,
-  // and other files in those directories. This is always up-to-date.
+  // Sum of consensus metadata, WALs, SSTs, and vector indexes. Excludes snapshots, retryable
+  // requests, MANIFEST, and other files in those directories. This is always up-to-date.
   int64_t active_on_disk_size = 0;
 
   // Estimated size of the tablet on disk, including snapshots, retryable requests, MANIFEST,
@@ -98,6 +100,7 @@ struct TabletOnDiskSizeInfo {
       .wal_files_disk_size = pb.wal_files_disk_size(),
       .sst_files_disk_size = pb.sst_files_disk_size(),
       .uncompressed_sst_files_disk_size = pb.uncompressed_sst_files_disk_size(),
+      .vector_index_disk_size = pb.vector_index_disk_size(),
       .active_on_disk_size = pb.active_on_disk_size(),
       .total_on_disk_size = pb.total_on_disk_size(),
     };
@@ -109,6 +112,7 @@ struct TabletOnDiskSizeInfo {
     pb->set_wal_files_disk_size(wal_files_disk_size);
     pb->set_sst_files_disk_size(sst_files_disk_size);
     pb->set_uncompressed_sst_files_disk_size(uncompressed_sst_files_disk_size);
+    pb->set_vector_index_disk_size(vector_index_disk_size);
     pb->set_active_on_disk_size(active_on_disk_size);
     pb->set_total_on_disk_size(total_on_disk_size);
   }
@@ -118,6 +122,7 @@ struct TabletOnDiskSizeInfo {
     wal_files_disk_size += other.wal_files_disk_size;
     sst_files_disk_size += other.sst_files_disk_size;
     uncompressed_sst_files_disk_size += other.uncompressed_sst_files_disk_size;
+    vector_index_disk_size += other.vector_index_disk_size;
     active_on_disk_size += other.active_on_disk_size;
     total_on_disk_size += other.total_on_disk_size;
   }
@@ -126,7 +131,8 @@ struct TabletOnDiskSizeInfo {
     active_on_disk_size =
         consensus_metadata_disk_size +
         sst_files_disk_size +
-        wal_files_disk_size;
+        wal_files_disk_size +
+        vector_index_disk_size;
   }
 };
 
@@ -194,15 +200,26 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   // Starts shutdown process.
   // Returns true if shutdown was just initiated, false if shutdown was already running.
-  MUST_USE_RESULT bool StartShutdown();
+  // The tablet starts shutting its RocksDB instances down here (see Tablet::StartShutdown), so
+  // disable_flush_on_shutdown and abort_ops -- which control flush-on-shutdown and pending
+  // operation aborting -- are supplied to StartShutdown (CompleteShutdown takes no such options).
+  MUST_USE_RESULT bool StartShutdown(
+      DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
   // Completes shutdown process and waits for it's completeness.
-  void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
+  // StartShutdown must have been called first (it carries the flush-on-shutdown / abort options).
+  void CompleteShutdown();
 
   // Abort active transactions on the tablet after shutdown is initiated.
   void AbortActiveTransactions(
       std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt) const;
 
-  Status Shutdown(
+  // Convenience helper that runs the full shutdown (StartShutdown, then CompleteShutdown if this
+  // call initiated the shutdown, otherwise WaitUntilShutdown). Tests only: production shutdown
+  // paths drive StartShutdown / CompleteShutdown explicitly. In particular, an RPC handler must not
+  // call this -- WaitUntilShutdown can block the RPC worker until another thread completes the
+  // shutdown, which deadlocks if that thread is in turn joining the RPC threadpool. See issue
+  // #32211.
+  Status TEST_Shutdown(
       ShouldAbortActiveTransactions should_abort_active_txns,
       DisableFlushOnShutdown disable_flush_on_shutdown,
       std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt);
@@ -328,11 +345,14 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void GetInFlightOperations(Operation::TraceType trace_type,
                              std::vector<consensus::OperationStatusPB>* out) const;
 
-  // Returns the minimum known log index that is in-memory or in-flight.
-  // Used for selection of log segments to delete during Log GC.
-  // If details is specified then this function appends explanation of how index was calculated
+  // Returns the op-index floors that bound Log GC for this tablet (see log::MinRetainLogIndexInfo):
+  // the earliest index needed by the tablet itself (in-memory / in-flight / durability) and the
+  // index xrepl (CDCSDK/xCluster) still needs retained. Both the Log GC path and remote bootstrap
+  // consume this.
+  // If details is specified then this function appends explanation of how the index was calculated
   // to it.
-  Result<int64_t> GetEarliestNeededLogIndex(std::string* details = nullptr) const;
+  Result<log::MinRetainLogIndexInfo> GetEarliestNeededLogIndex(
+      std::string* details = nullptr) const;
 
   Result<OpId> MaxPersistentOpId() const override;
 
@@ -528,6 +548,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallback&& callback)
       EXCLUDES(async_write_queries_mutex_) override;
 
+  // Verifies that this peer has the op_id in its local log.
+  Status VerifyAsyncWriteReceived(const OpId& op_id);
+
  protected:
   friend class RefCountedThreadSafe<TabletPeer>;
   friend class TabletPeerTest;
@@ -637,6 +660,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   bool FlushBootstrapStateEnabled() const;
 
   void MinReplayTxnFirstWriteTimeUpdated(HybridTime first_write_ht);
+
+  Status VerifyAsyncWriteCompletion(const OpId& op_id);
 
   MetricRegistry* metric_registry_;
 

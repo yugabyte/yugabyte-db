@@ -163,7 +163,7 @@ class TabletPeerTest : public YBTabletTest {
 
     consensus::RaftConfigPB config;
     config.add_peers()->CopyFrom(config_peer);
-    config.set_opid_index(consensus::kInvalidOpIdIndex);
+    config.set_committed_op_index(consensus::kInvalidOpIdIndex);
 
     std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
         tablet()->metadata()->fs_manager(), tablet()->tablet_id(),
@@ -266,7 +266,7 @@ class TabletPeerTest : public YBTabletTest {
     multi_raft_manager_->StartShutdown();
     messenger_->Shutdown();
     WARN_NOT_OK(
-        tablet_peer_->Shutdown(
+        tablet_peer_->TEST_Shutdown(
             ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kFalse),
         "Tablet peer shutdown failed");
     multi_raft_manager_->CompleteShutdown();
@@ -356,7 +356,8 @@ class TabletPeerTest : public YBTabletTest {
 
   // Assert that the Log GC() anchor is earlier than the latest OpId in the Log.
   void AssertLogAnchorEarlierThanLogLatest() {
-    int64_t earliest_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
+    int64_t earliest_index =
+        ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex()).earliest_needed_log_index;
     auto last_log_opid = tablet_peer_->log_->GetLatestEntryOpId();
     ASSERT_LE(earliest_index, last_log_opid.index)
       << "Expected valid log anchor, got earliest opid: " << earliest_index
@@ -405,8 +406,9 @@ TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
   // Ensure nothing gets deleted.
   auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
   ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
-  int64_t min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
-  ASSERT_OK(log->GC(min_log_index, &num_gced));
+  int64_t min_log_index =
+      ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex()).earliest_needed_log_index;
+  ASSERT_OK(log->TEST_GC(min_log_index, &num_gced));
   ASSERT_EQ(2, num_gced) << "Earliest needed: " << min_log_index;
 
   // Flush RocksDB to ensure that we don't have OpId in anchors.
@@ -417,8 +419,9 @@ TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
   // OpId in the log.
   int32_t earliest_needed = 0;
   auto total_segments = log_reader->num_segments();
-  min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
-  ASSERT_OK(log->GC(min_log_index, &num_gced));
+  min_log_index =
+      ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex()).earliest_needed_log_index;
+  ASSERT_OK(log->TEST_GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced) << "earliest needed: " << min_log_index;
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments - earliest_needed, segments.size());
@@ -448,8 +451,9 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
 
   int32_t earliest_needed = 1;
   auto total_segments = log_reader->num_segments();
-  int64_t min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
-  ASSERT_OK(log->GC(min_log_index, &num_gced));
+  int64_t min_log_index =
+      ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex()).earliest_needed_log_index;
+  ASSERT_OK(log->TEST_GC(min_log_index, &num_gced));
   // We will only GC 1, and have 1 left because the earliest needed OpId falls
   // back to the latest OpId written to the Log if no anchors are set.
   ASSERT_EQ(earliest_needed, num_gced);
@@ -486,9 +490,10 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
   earliest_needed = 4;
   std::string details;
-  min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex(&details));
+  min_log_index =
+      ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex(&details)).earliest_needed_log_index;
   LOG(INFO) << details;
-  ASSERT_OK(log->GC(min_log_index, &num_gced));
+  ASSERT_OK(log->TEST_GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced);
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments - earliest_needed, segments.size());
@@ -499,8 +504,9 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   // The last log OpId is the commit in the last segment, so it only anchors
   // that segment, not the previous, because it's not the first OpId in the
   // segment.
-  min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
-  ASSERT_OK(log->GC(min_log_index, &num_gced));
+  min_log_index =
+      ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex()).earliest_needed_log_index;
+  ASSERT_OK(log->TEST_GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced);
   ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments - earliest_needed, segments.size());
@@ -555,7 +561,7 @@ TEST_F(TabletPeerTest, TestAddTableUpdatesMetadataAndStoresNamespaceInfo) {
 }
 
 TEST_F(TabletPeerTest, TestRollLogAfterTabletPeerShutdown) {
-  ASSERT_OK(tablet_peer_->Shutdown(
+  ASSERT_OK(tablet_peer_->TEST_Shutdown(
       ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kFalse));
   auto s = tablet_peer_->log()->AsyncAllocateSegmentAndRollover();
   ASSERT_NOK_STR_CONTAINS(s, "Invalid log state");
@@ -885,7 +891,7 @@ TEST_F(TabletBootstrapStateFlusherTest, WaitFlushIdleBeforeShutdown) {
   ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kFlushing));
   thread_holder.AddThreadFunctor([&] {
     WARN_NOT_OK(
-        tablet_peer_->Shutdown(
+        tablet_peer_->TEST_Shutdown(
             ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kFalse),
             "Tablet peer shutdown failed");
     auto order = finish_order.fetch_add(1);

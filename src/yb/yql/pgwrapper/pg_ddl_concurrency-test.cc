@@ -30,14 +30,8 @@ Status SuppressAllowedErrors(const Status& s) {
   if (HasTransactionError(s) || IsRetryable(s)) {
     return Status::OK();
   }
-  // Usually PG backend will append to the error message with a line of text like
-  // Catalog Version Mismatch: A DDL occurred while processing this query. Try again.
-  // The "Try again" will be detected by IsRetryable(s) as true. But in uncommon
-  // cases, PG backend will not append this line, for this test we still want to
-  // suppress this error. The wait can time out either inside PG (after
-  // ysql_yb_wait_for_backends_catalog_version_timeout) or at the master RPC layer (after
-  // wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms), so allow both
-  // flavors of message.
+  // Concurrent CREATE INDEXes can race on WaitForBackendsCatalogVersion -- one waits for the
+  // others' backends to reach the new catalog version, which can exceed the per-RPC deadline.
   if (s.message().Contains("waiting for postgres backends to catch up") ||
       s.message().Contains("WaitForBackendsCatalogVersion RPC")) {
     return Status::OK();

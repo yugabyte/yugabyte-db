@@ -2411,7 +2411,7 @@ YbGetPrefetchableTableInfo(YbPFetchTable table)
 		[YB_PFETCH_TABLE_PG_ATTRIBUTE] =
 		(YbPFetchTableInfo) {AttributeRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {ATTNAME, ATTNUM}}},
 		[YB_PFETCH_TABLE_PG_AUTH_MEMBERS] =
-		(YbPFetchTableInfo) {AuthMemRelationId},
+		(YbPFetchTableInfo) {AuthMemRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {AUTHMEMMEMROLE, AUTHMEMROLEMEM}}},
 		[YB_PFETCH_TABLE_PG_AUTHID] =
 		(YbPFetchTableInfo) {AuthIdRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {AUTHOID, AUTHNAME}}},
 		[YB_PFETCH_TABLE_PG_CAST] =
@@ -2649,6 +2649,20 @@ YbPrefetcherStarterNoCacheCall(YbPrefetcherStarterFunctor *functor)
 	return false;
 }
 
+/*
+ * Whether a conn-mgr auth backend (or auth passthrough) should serve its
+ * connection-auth prefetch from the lifetime-bounded TRUST_CACHE_AUTH response
+ * cache. Combines the auth-backend/passthrough scoping with the (backend-type-
+ * agnostic) YbUseTserverResponseCacheForAuth gflag/precondition check. Shared by
+ * the two relcache-init call sites below.
+ */
+static bool
+YbAuthBackendUsesTserverResponseCache(uint64_t shared_catalog_version)
+{
+	return (YbIsAuthBackend() || YbIsAuthPassthroughInProgress(MyProcPort)) &&
+		YbUseTserverResponseCacheForAuth(shared_catalog_version);
+}
+
 static void
 YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 					bool keep_prefetcher)
@@ -2665,7 +2679,8 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 	 * latest master catalog version instead of the shared catalog version.
 	 */
 	const bool	use_tserver_cache_for_auth =
-		YbUseTserverResponseCacheForAuth(shared_catalog_version) && !YbNeedNewCacheFileForPgAuthBackend;
+		YbAuthBackendUsesTserverResponseCache(shared_catalog_version) &&
+		!YbNeedNewCacheFileForPgAuthBackend;
 	YbcPgSysTablePrefetcherCacheMode trust_mode =
 		use_tserver_cache_for_auth ? YB_YQL_PREFETCHER_TRUST_CACHE_AUTH
 		: YB_YQL_PREFETCHER_TRUST_CACHE;
@@ -6724,7 +6739,13 @@ RelationCacheInitializePhase3(void)
 			uint64_t	shared_catalog_version;
 
 			HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
-			if (YbUseTserverResponseCacheForAuth(shared_catalog_version))
+			/*
+			 * This branch is conn-mgr-auth-backend-specific: it either signals
+			 * "rebuild the init file from fresh master data" or skips the
+			 * relcache preload entirely (auth backends don't need a full
+			 * relcache).
+			 */
+			if (YbAuthBackendUsesTserverResponseCache(shared_catalog_version))
 			{
 				if (needNewCacheFile)
 					YbNeedNewCacheFileForPgAuthBackend = true;
@@ -6757,13 +6778,16 @@ RelationCacheInitializePhase3(void)
 		 * IsBinaryUpgrade=true indicates we are doing catalog restore during a
 		 * major version update. In this case local tserver is actually yb-master
 		 * which has not implemented YBCTriggerRelcacheInitConnection.
-		 * We allow internal connections to rebuild relcache init file.
+		 * The dedicated relcache-init builder backend (YB_RELCACHE_INIT_BACKEND)
+		 * is exempted so it actually rebuilds the file itself; other internal
+		 * connections (e.g. xCluster DDL queue, call-home) still go through the
+		 * trigger and get a separate relcache-init connection spawned for them.
 		 */
 		if (enable_relcache_init_optimization &&
 			YBIsDBCatalogVersionMode() &&
 			needNewCacheFile &&
 			!catalog_preload_required &&
-			!yb_is_internal_connection &&
+			MyBackendType != YB_RELCACHE_INIT_BACKEND &&
 			!IsBinaryUpgrade)
 		{
 			YbTriggerInternalRelcacheBuild();
@@ -9445,6 +9469,12 @@ write_relcache_init_file(bool shared)
 
 	if (shared && YBIsDBCatalogVersionMode())
 		Assert(OidIsValid(MyDatabaseId));
+
+	/*
+	 * YB mode uses local-tserver prefetching instead of relcache file.
+	 */
+	if (IsYugaByteEnabled() && YbCatalogPreloadRequired())
+		return;
 
 	/*
 	 * If we have already received any relcache inval events, there's no

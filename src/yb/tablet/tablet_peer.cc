@@ -82,6 +82,8 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
+#include "yb/tserver/tserver_error.h"
+
 #include "yb/util/fault_injection.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -106,6 +108,11 @@ DEFINE_test_flag(int32, delay_init_tablet_peer_ms, 0,
 DEFINE_UNKNOWN_int32(cdc_min_replicated_index_considered_stale_secs, 1800,
     "If cdc_min_replicated_index hasn't been replicated in this amount of time, we reset its"
     "value to max int64 to avoid retaining any logs");
+
+DEFINE_RUNTIME_int32(cdc_min_replicated_index_considered_stale_secs_master, 14400 /* 4 hours */,
+    "Same as cdc_min_replicated_index_considered_stale_secs but applied to the sys catalog tablet "
+    "on master. A higher default (4 hours) prevents premature reset of retention barriers on "
+    "master followers that receive less frequent barrier updates.");
 
 DEFINE_UNKNOWN_bool(propagate_safe_time, true,
     "Propagate safe time to read from leader to followers");
@@ -422,7 +429,8 @@ Result<HybridTime> TabletPeer::PreparePeerRequest() {
   // Get the current majority-replicated HT leader lease without any waiting.
   auto ht_lease = VERIFY_RESULT(HybridTimeLease(
       /* min_allowed= */ HybridTime::kMin, /* deadline */ CoarseTimePoint::max()));
-  return tablet_->mvcc_manager()->SafeTime(ht_lease);
+  auto safe_time = tablet_->mvcc_manager()->SafeTime(ht_lease);
+  return safe_time.ok() ? *safe_time : HybridTime::kInvalid;
 }
 
 Status TabletPeer::MajorityReplicated(const OpId& committed_op_id) {
@@ -436,8 +444,15 @@ Status TabletPeer::MajorityReplicated(const OpId& committed_op_id) {
 }
 
 void TabletPeer::BecomeReplica() {
-  FailAllAsyncWrites(
-      STATUS_FORMAT(Aborted, "Tablet $0 leader changed during async write", tablet_id()));
+  // For graceful stepdowns, this gets called after we wait for the protege to catch up (which also
+  // waits for any in-progress async writes to make it to the protege). Note that if that drain
+  // takes longer than FLAGS_protege_synchronization_timeout_ms, then ongoing async writes will
+  // likely abort - FailAllAsyncWrites will make the client retry on the new leader to validate.
+
+  // Return NOT_THE_LEADER so the client can retry on a different leader.
+  FailAllAsyncWrites(STATUS(
+      IllegalState, Format("Tablet $0 leader changed during async write", tablet_id()),
+      tserver::TabletServerError(tserver::TabletServerErrorPB::NOT_THE_LEADER)));
 }
 
 void TabletPeer::ChangeConfigReplicated(const RaftConfigPB& config) {
@@ -477,13 +492,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
     RETURN_NOT_OK(UpdateState(RaftGroupStatePB::BOOTSTRAPPING, RaftGroupStatePB::RUNNING,
                               "Incorrect state to start TabletPeer, "));
   }
-  if (tablet_->transaction_coordinator()) {
-    tablet_->transaction_coordinator()->Start();
-  }
-
-  if (tablet_->transaction_participant()) {
-    tablet_->transaction_participant()->Start();
-  }
+  tablet_->Start();
 
   // The context tracks that the current caller does not hold the lock for consensus state.
   // So mark dirty callback, e.g., consensus->ConsensusState() for master consensus callback of
@@ -496,7 +505,8 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   return tablet_->CompleteStartup();
 }
 
-bool TabletPeer::StartShutdown() {
+bool TabletPeer::StartShutdown(
+    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
 
   auto consensus = GetRaftConsensusUnsafe();
@@ -504,12 +514,16 @@ bool TabletPeer::StartShutdown() {
     consensus->StartShutdown();
   }
 
+  TabletPtr tablet;
   {
     std::lock_guard lock(lock_);
     DEBUG_ONLY_TEST_SYNC_POINT("TabletPeer::StartShutdown:1");
-    if (tablet_) {
-      tablet_->StartShutdown();
-    }
+    tablet = tablet_;
+  }
+  // Tablet::StartShutdown runs StartShutdownStorages, which may block waiting for in-flight read/
+  // write operations to drain, so it must not run while holding the lock_ spinlock.
+  if (tablet) {
+    tablet->StartShutdown(disable_flush_on_shutdown, abort_ops);
   }
 
   {
@@ -526,22 +540,30 @@ bool TabletPeer::StartShutdown() {
     }
   }
 
-  std::lock_guard l(state_change_lock_);
-  // Even though Tablet::Shutdown() also unregisters its ops, we have to do it here
-  // to ensure that any currently running operation finishes before we proceed with
-  // the rest of the shutdown sequence. In particular, a maintenance operation could
-  // indirectly end up calling into the log, which we are about to shut down.
-  UnregisterMaintenanceOps();
+  {
+    std::lock_guard l(state_change_lock_);
+    // Even though Tablet::Shutdown() also unregisters its ops, we have to do it here
+    // to ensure that any currently running operation finishes before we proceed with
+    // the rest of the shutdown sequence. In particular, a maintenance operation could
+    // indirectly end up calling into the log, which we are about to shut down.
+    UnregisterMaintenanceOps();
 
-  if (consensus) {
-    consensus->CompleteShutdown();
+    if (consensus) {
+      consensus->CompleteShutdown();
+    }
   }
+
+  // Fail parked WaitForAsyncWrite RPCs. During server shutdown, Messenger::Shutdown joins the
+  // reactor threads, which waits for all inbound calls to be responded to, and that runs before
+  // TabletPeer::CompleteShutdown. Return NOT_THE_LEADER so the client can retry on a new leader.
+  FailAllAsyncWrites(STATUS(
+      IllegalState, Format("Tablet $0 peer shutting down during async write", tablet_id()),
+      tserver::TabletServerError(tserver::TabletServerErrorPB::NOT_THE_LEADER)));
 
   return true;
 }
 
-void TabletPeer::CompleteShutdown(
-    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
+void TabletPeer::CompleteShutdown() {
   auto* strand = strand_.get();
   if (strand) {
     strand->Shutdown();
@@ -565,10 +587,8 @@ void TabletPeer::CompleteShutdown(
 
   VLOG_WITH_PREFIX(1) << "Shut down!";
 
-  FailAllAsyncWrites(STATUS(IllegalState, "Tablet peer is shutting down"));
-
   if (tablet_) {
-    tablet_->CompleteShutdown(disable_flush_on_shutdown, abort_ops);
+    tablet_->CompleteShutdown();
   }
 
   tablet_obj_state_.store(TabletObjectState::kDestroyed, std::memory_order_release);
@@ -629,11 +649,12 @@ void TabletPeer::WaitUntilShutdown() {
   }
 }
 
-Status TabletPeer::Shutdown(
+Status TabletPeer::TEST_Shutdown(
     ShouldAbortActiveTransactions should_abort_active_txns,
     DisableFlushOnShutdown disable_flush_on_shutdown,
     std::optional<TransactionId>&& exclude_aborting_txn_id) {
-  auto is_shutdown_initiated = StartShutdown();
+  auto is_shutdown_initiated =
+      StartShutdown(disable_flush_on_shutdown, AbortOps(should_abort_active_txns));
 
   if (should_abort_active_txns) {
     // Once raft group state enters QUIESCING state,
@@ -643,7 +664,7 @@ Status TabletPeer::Shutdown(
   }
 
   if (is_shutdown_initiated) {
-    CompleteShutdown(disable_flush_on_shutdown, AbortOps(should_abort_active_txns));
+    CompleteShutdown();
   } else {
     WaitUntilShutdown();
   }
@@ -771,12 +792,25 @@ Status TabletPeer::SubmitUpdateTransaction(
 }
 
 HybridTime TabletPeer::SafeTimeForTransactionParticipant() {
-  return tablet_->mvcc_manager()->SafeTimeForFollower(
+  // During tablet bootstrap tablet_ is not yet assigned (InitTabletPeer), and during shutdown it is
+  // reset. Vector index backfill runs during bootstrap and can resolve a transaction's status,
+  // which walks the remove queue and calls this from a thread that does not hold lock_, so reading
+  // the raw tablet_ pointer here can dereference a null tablet. Callers treat an invalid HybridTime
+  // as "safe time unavailable".
+  auto tablet = shared_tablet_maybe_null();
+  if (!tablet) {
+    return HybridTime::kInvalid;
+  }
+  auto safe_time = tablet->mvcc_manager()->SafeTimeForFollower(
       /* min_allowed= */ HybridTime::kMin, /* deadline= */ CoarseTimePoint::min());
+  return safe_time.ok() ? *safe_time : HybridTime::kInvalid;
 }
 
 Result<HybridTime> TabletPeer::WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) {
-  return tablet_->SafeTime(RequireLease::kFallbackToFollower, safe_time, deadline);
+  // See SafeTimeForTransactionParticipant: tablet_ may not be assigned yet (bootstrap) or may have
+  // been reset (shutdown), and this can be called from vector index backfill without holding lock_.
+  auto tablet = VERIFY_RESULT(shared_tablet());
+  return tablet->SafeTime(RequireLease::kFallbackToFollower, safe_time, deadline);
 }
 
 Status TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
@@ -857,7 +891,7 @@ Status TabletPeer::RunLogGC(bool rollover) {
   if (!s.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Unable to reset cdc min replicated index " << s;
   }
-  int64_t min_log_index;
+  log::MinRetainLogIndexInfo min_log_index;
   if (VLOG_IS_ON(2)) {
     std::string details;
     min_log_index = VERIFY_RESULT(GetEarliestNeededLogIndex(&details));
@@ -1000,7 +1034,8 @@ Result<OpId> TabletPeer::MaxPersistentOpId() const {
   return result;
 }
 
-Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) const {
+Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
+    std::string* details) const {
   if (PREDICT_FALSE(!log_)) {
     auto status = STATUS(Uninitialized, "Log not ready (tablet peer not yet initialized?)");
     LOG(DFATAL) << status;
@@ -1018,7 +1053,7 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
 
   // If we never have written to the log, no need to proceed.
   if (min_index == 0) {
-    return min_index;
+    return log::MinRetainLogIndexInfo{min_index};
   }
 
   // Next, we interrogate the anchor registry.
@@ -1123,11 +1158,18 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
     }
   }
 
+  // Index xrepl (CDCSDK/xCluster) still needs the source to retain. This is the same value Log GC
+  // applies as its soft xrepl floor; bundling it here gives remote bootstrap and GC one source of
+  // truth. Returns int64 max when no xrepl consumer constrains retention.
+  const int64_t log_index_needed_by_cdc = log_->GetXReplMinReplicatedIndex();
+
   if (details) {
     *details += Format("Earliest needed log index: $0\n", min_index);
+    *details += Format(
+        "Log index needed by xrepl (CDCSDK/xCluster): $0\n", log_index_needed_by_cdc);
   }
 
-  return min_index;
+  return log::MinRetainLogIndexInfo{min_index, log_index_needed_by_cdc};
 }
 
 Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootstrap() const {
@@ -1156,7 +1198,7 @@ Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootst
 
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   RETURN_NOT_OK(CheckRunning());
-  int64_t min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
+  const auto min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
   RETURN_NOT_OK(log_->GetGCableDataSize(min_op_idx, retention_size));
   return Status::OK();
 }
@@ -1182,9 +1224,10 @@ bool TabletPeer::is_cdc_min_replicated_index_stale(double* seconds_since_last_re
   if (seconds_since_last_refresh_ptr) {
     *seconds_since_last_refresh_ptr = seconds_since_last_refresh;
   }
-  return (
-      seconds_since_last_refresh >
-      FLAGS_cdc_min_replicated_index_considered_stale_secs);
+  auto stale_secs = meta_->IsSysCatalog()
+      ? FLAGS_cdc_min_replicated_index_considered_stale_secs_master
+      : FLAGS_cdc_min_replicated_index_considered_stale_secs;
+  return (seconds_since_last_refresh > stale_secs);
 }
 
 Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index) {
@@ -1642,6 +1685,7 @@ TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfoUnlocked() const {
     info.sst_files_disk_size = tablet_->GetCurrentVersionSstFilesSize();
     info.uncompressed_sst_files_disk_size =
         tablet_->GetCurrentVersionSstFilesUncompressedSize();
+    info.vector_index_disk_size = tablet_->vector_indexes().List().OnDiskSize();
   }
 
   auto log = log_atomic_.load(std::memory_order_acquire);
@@ -1978,36 +2022,56 @@ void TabletPeer::RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallba
     }
   }
 
-  // Write is not in progress. Check the term to make sure the write was received by the current
-  // peer.
-  // TODO(#28383): Handle graceful leader moves without failing user queries.
-  auto is_same_term = [this, &op_id]() -> Status {
-    auto committed_op_id = last_known_committed_op_id_.load(std::memory_order_acquire);
-    if (op_id.term == committed_op_id.term && op_id.index <= committed_op_id.index) {
-      return Status::OK();
-    }
+  callback(VerifyAsyncWriteCompletion(op_id));
+}
 
-    auto consensus = VERIFY_RESULT(GetRaftConsensus());
-    const auto leader_term = consensus->LeaderTerm();
-    SCHECK_FORMAT(
-        leader_term != OpId::kUnknownTerm, Aborted,
-        "Tablet $0 leader changed during async write", tablet_id());
-
-    SCHECK_FORMAT(
-        leader_term == op_id.term, Aborted,
-        "Tablet $0 leader changed during async write. New term: $1, expected term: $2", tablet_id(),
-        leader_term, op_id.term);
-
+Status TabletPeer::VerifyAsyncWriteReceived(const OpId& op_id) {
+  auto committed_op_id = last_known_committed_op_id_.load(std::memory_order_acquire);
+  if (op_id.term == committed_op_id.term && op_id.index <= committed_op_id.index) {
     return Status::OK();
-  }();
-
-  Status status;
-
-  if (!is_same_term.ok()) {
-    status = std::move(is_same_term);
   }
 
-  callback(status);
+  auto consensus = VERIFY_RESULT(GetRaftConsensus());
+  auto [leader_state, first_index] = consensus->GetLeaderStateAndFirstIndexOfCurrentTerm();
+  SCHECK_EC_FORMAT(
+      leader_state.ok(), IllegalState,
+      tserver::TabletServerError(tserver::TabletServerErrorPB::NOT_THE_LEADER),
+      "Tablet $0: not a ready leader ($1), cannot verify async write $2 for read", tablet_id(),
+      leader_state.status, op_id);
+
+  if (op_id.term == leader_state.term) {
+    // Same term - this peer appended the entry before acking the client.
+    return Status::OK();
+  }
+
+  if (op_id.term + 1 == leader_state.term) {
+    // One term ago - the current term's NO_OP committed everything before it. Also covers
+    // a split child on its first elected term, since first_index == split_op_id.index + 1.
+    if (op_id.index < first_index) {
+      return Status::OK();
+    }
+    // Write was lost/overwritten.
+    return STATUS_FORMAT(
+        NotFound,
+        "Tablet $0: tablet leader changed before async write $1 was replicated (first index of "
+        "term $2 is $3). Retry the transaction.",
+        tablet_id(), op_id, leader_state.term, first_index);
+  }
+
+  // Two or more terms ago - we can't verify presence without a log lookup.
+  return STATUS_FORMAT(
+      NotFound,
+      "Tablet $0: tablet leader moved more than once since async write $1 was issued "
+      "(write from term $2, current term is $3). Retry the transaction.",
+      tablet_id(), op_id, op_id.term, leader_state.term);
+}
+
+Status TabletPeer::VerifyAsyncWriteCompletion(const OpId& op_id) {
+  // Either the write completed on this leader and was already removed from the in-flight list, or
+  // we're not the original leader. Either way, verify by checking if we have the requested op_id.
+  // Replace NotFound with Aborted for the WaitForAsyncWriteRpc caller.
+  auto status = VerifyAsyncWriteReceived(op_id);
+  return status.IsNotFound() ? status.CloneAndReplaceCode(Status::kAborted) : status;
 }
 
 Status BackfillNamespaceIdIfNeeded(

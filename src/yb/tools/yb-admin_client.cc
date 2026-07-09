@@ -31,12 +31,14 @@
 //
 
 #include "yb/tools/yb-admin_client.h"
+#include "yb/tools/yb-admin_util.h"
 
+#include <iomanip>
 #include <sstream>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
-#include <iomanip>
+#include <unordered_set>
 
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
@@ -89,9 +91,7 @@
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/tools/tools_utils.h"
-#include "yb/tools/yb-admin_util.h"
 
-#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/encryption/encryption_util.h"
@@ -153,9 +153,6 @@ using client::YBTableName;
 using rpc::RpcController;
 using pb_util::ParseFromSlice;
 using tserver::TabletServerServiceProxy;
-using tserver::TabletServerAdminServiceProxy;
-using tserver::UpgradeYsqlRequestPB;
-using tserver::UpgradeYsqlResponsePB;
 
 using consensus::ConsensusServiceProxy;
 using consensus::LeaderStepDownRequestPB;
@@ -1352,6 +1349,7 @@ Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS(const PeerId& uuid)
 Status ClusterAdminClient::ListAllTabletServers(bool exclude_dead) {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
+  SortListTabletServerEntries(servers);
   char kSpaceSep = ' ';
 
   cout << RightPadToUuidWidth("Tablet Server UUID") << kSpaceSep
@@ -2506,33 +2504,11 @@ Status ClusterAdminClient::UpgradeYsql(bool use_single_connection) {
     // Otherwise, we can proceed.
   }
 
-  // Pick some alive TServer.
-  RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
-  RETURN_NOT_OK(ListTabletServers(&servers));
-  std::optional<HostPortPB> ts_rpc_addr;
-  for (const ListTabletServersResponsePB::Entry& server : servers) {
-    if (!server.has_alive() || !server.alive()) {
-      continue;
-    }
-
-    if (!server.has_registration() ||
-        server.registration().common().private_rpc_addresses().empty()) {
-      continue;
-    }
-
-    ts_rpc_addr.emplace(server.registration().common().private_rpc_addresses(0));
-    break;
-  }
-  if (!ts_rpc_addr.has_value()) {
-    return STATUS(IllegalState, "Couldn't find alive tablet server to connect to");
-  }
-
-  TabletServerAdminServiceProxy ts_admin_proxy(proxy_cache_.get(), HostPortFromPB(*ts_rpc_addr));
-
-  UpgradeYsqlRequestPB req;
+  // Ask the master to forward the upgrade to ensure that the closest tserver is used
+  master::ClientUpgradeYsqlRequestPB req;
   req.set_use_single_connection(use_single_connection);
-  const auto resp_result = InvokeRpc(&TabletServerAdminServiceProxy::UpgradeYsql,
-                                     ts_admin_proxy, req);
+  const auto resp_result = InvokeRpc(
+      &master::MasterAdminProxy::ClientUpgradeYsql, *master_admin_proxy_, req);
   if (!resp_result.ok()) {
     return resp_result.status();
   }
@@ -4023,7 +3999,8 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
     const TypedNamespaceName& ns, const std::string& checkpoint_type,
     const cdc::CDCRecordType record_type,
     const std::string& consistent_snapshot_option,
-    const bool& is_dynamic_tables_enabled) {
+    const bool& is_dynamic_tables_enabled,
+    const std::unordered_set<std::string>& bound_table_ids) {
   HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
 
@@ -4060,6 +4037,23 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
   } else {
     stream_create_options->set_cdcsdk_dynamic_tables_option(
         CDCSDKDynamicTablesOption::DYNAMIC_TABLES_DISABLED);
+  }
+
+  if (!bound_table_ids.empty()) {
+    if (ns.db_type != YQLDatabase::YQL_DATABASE_PGSQL) {
+      return STATUS(
+          InvalidArgument, "Bound table CDC streams are only supported for YSQL namespaces");
+    }
+
+    if (is_dynamic_tables_enabled) {
+      return STATUS(
+          InvalidArgument, "Bound table CDC streams cannot be created with dynamic tables enabled");
+    }
+
+    auto* bound = stream_create_options->mutable_bound_table_ids();
+    for (const auto& id : bound_table_ids) {
+      bound->add_table_ids(id);
+    }
   }
 
   RpcController rpc;
@@ -4963,9 +4957,27 @@ Status ClusterAdminClient::WriteSysCatalogEntryAction(
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetTableXorHash(const TableId& table_id, uint64_t read_ht) {
+namespace {
+// Returns true if a tablet covering partition keys [tablet_start, tablet_end) overlaps the
+// requested range [range_start, range_end). An empty bound is unbounded: -inf for a start, +inf
+// for an end.
+bool PartitionRangeOverlaps(
+    Slice tablet_start, Slice tablet_end, Slice range_start, Slice range_end) {
+  // tablet_start < range_end
+  const bool below_range_end =
+      range_end.empty() || tablet_start.empty() || tablet_start.compare(range_end) < 0;
+  // range_start < tablet_end
+  const bool above_range_start =
+      tablet_end.empty() || range_start.empty() || range_start.compare(tablet_end) < 0;
+  return below_range_end && above_range_start;
+}
+}  // namespace
+
+Status ClusterAdminClient::GetTableXorHash(
+    const TableId& table_id, uint64_t read_ht, Slice start_key, Slice end_key) {
   uint64_t xor_hash = 0;
   uint64_t row_count = 0;
+  const bool has_key_range = !start_key.empty() || !end_key.empty();
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablet_locations;
   RETURN_NOT_OK(yb_client_->GetTabletsFromTableId(table_id, /*max_tablets=*/0, &tablet_locations));
@@ -4981,6 +4993,16 @@ Status ClusterAdminClient::GetTableXorHash(const TableId& table_id, uint64_t rea
   std::cout << "Read HT: " << ht << std::endl;
 
   for (const auto& location : tablet_locations) {
+    // When a key range is requested, skip tablets that do not overlap it. Each cluster resolves the
+    // (logical) partition-key range to whatever tablets it happens to own, so this filtering is
+    // cluster-independent even when tablet boundaries differ across clusters.
+    if (has_key_range &&
+        !PartitionRangeOverlaps(
+            location.partition().partition_key_start(),
+            location.partition().partition_key_end(), start_key, end_key)) {
+      continue;
+    }
+
     auto leader_replica = std::find_if(
         location.replicas().begin(), location.replicas().end(),
         [](const auto& replica) { return replica.role() == PeerRole::LEADER; });
@@ -4997,6 +5019,15 @@ Status ClusterAdminClient::GetTableXorHash(const TableId& table_id, uint64_t rea
     rpc.set_timeout(timeout_);
     req.set_tablet_id(location.tablet_id());
     req.set_read_ht(ht.ToUint64());
+    req.set_table_id(table_id);
+    // The same global bounds are passed to every overlapping tablet unchanged: each tablet's scan
+    // only sees rows within its own partition, so the bounds effectively clamp to that tablet.
+    if (!start_key.empty()) {
+      req.set_start_key(start_key.cdata(), start_key.size());
+    }
+    if (!end_key.empty()) {
+      req.set_end_key(end_key.cdata(), end_key.size());
+    }
     RETURN_NOT_OK(tserver_proxy->DumpTabletData(req, &resp, &rpc));
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());

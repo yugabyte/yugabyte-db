@@ -26,6 +26,15 @@ DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
 TAG_FLAG(ysql_enable_reindex, advanced);
 TAG_FLAG(ysql_enable_reindex, hidden);
 
+DEFINE_RUNTIME_bool(ysql_bypass_anonymous_savepoint_ddl_check, true,
+    "If true, bypass the check for interleaving SAVEPOINT & DDL in anonymous subtransactions "
+    "(such as those created by PL/pgSQL EXCEPTION blocks) when DDL savepoint support is disabled. "
+    "Setting to false enables strict detection and prevents potential orphaned tables. "
+    "This flag should be deprecated when ysql_yb_enable_ddl_savepoint_support is moved out "
+    "of preview and turned on by default.");
+TAG_FLAG(ysql_bypass_anonymous_savepoint_ddl_check, advanced);
+DEFINE_NEW_INSTALL_VALUE(ysql_bypass_anonymous_savepoint_ddl_check, false);
+
 DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
     "If true, disables read, write, and execute of local server files. "
     "File access can be re-enabled if set to false.");
@@ -75,6 +84,16 @@ DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
     "ysql_catalog_preload_additional_table_list are set, we take a union of "
     "both the default list and the user-specified list.");
 
+DEFINE_RUNTIME_bool(ysql_preload_pg_authid_for_auth, true,
+    "If true, YSQL preloads the pg_authid catalog caches (by-name and by-OID) "
+    "before client authentication. Authentication reads pg_authid by role name "
+    "to fetch the stored password, and backend startup then reads it again by "
+    "role OID for session-user setup and the superuser check; both happen "
+    "before the regular catalog cache preload, so without this they incur a "
+    "catalog cache miss on every new connection. pg_authid is a shared catalog "
+    "that is already prefetched at backend startup, so this only builds the "
+    "cache entries from already-fetched data and adds no master read.");
+
 DEFINE_NON_RUNTIME_bool(ysql_disable_global_impact_ddl_statements, false,
     "If true, disable global impact ddl statements in per database catalog "
     "version mode.");
@@ -86,7 +105,7 @@ DEPRECATE_FLAG(bool, ysql_conn_mgr_version_matching, "2026_02");
 
 DEPRECATE_FLAG(bool, ysql_conn_mgr_version_matching_connect_higher_version, "2026_02");
 
-DEFINE_NON_RUNTIME_PREVIEW_string(ysql_conn_mgr_alter_guc_adoption_strategy, "fluctuating",
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(string, alter_guc_adoption_strategy, "gradual",
     "Defines strategy used by connection manager to adopt settings of ALTER statements modifying "
     "GUCs. The possible values are 'fluctuating', 'gradual' and 'connection_static'. 'fluctuating'"
     "means no handling is done, 'gradual' means existing sessions are gradually shifted to newer "
@@ -94,7 +113,7 @@ DEFINE_NON_RUNTIME_PREVIEW_string(ysql_conn_mgr_alter_guc_adoption_strategy, "fl
     "existing sessions will never see new GUC settings. In 'gradual' and 'connection_static' "
     "modes, new sessions will always see effects of ALTERs executed before they were created");
 
-DEFINE_NON_RUNTIME_PREVIEW_int32(ysql_conn_mgr_alter_guc_stale_backend_ttl_ms, -1,
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(int32, alter_guc_stale_backend_ttl_ms, 60000,
     "TTL of backends which don't have latest settings of ALTER GUC commands. When set to a "
     "positive value, stale backends will be terminated uniformly till the TTL period after "
     "execution of ALTER. -1 means that no action is taken on stale backends. 0 means that stale "
@@ -113,9 +132,19 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
     " right away without incurring a master lookup");
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_cache_for_connection_auth, false,
-    "If true, use tserver response cache for authorization processing "
-    "during connection setup. Only applicable when connection manager "
-    "is used.");
+    "If true, the connection-auth catalog prefetch (pg_authid, pg_database, "
+    "...) is served from the tserver response cache, turning per-connection "
+    "master reads for the auth catalogs into shared-cache hits under connection "
+    "churn. Applies to both connection manager auth backends and regular (non "
+    "connection manager) backends. Cached responses are keyed by catalog "
+    "version. Not used when login profiles are active, because "
+    "pg_yb_role_profile is written outside a DDL context and would go stale. "
+    "The connection-auth cache only affects the per-connection authentication "
+    "lookup; the backend still rebuilds its full catalog cache and the shared "
+    "relcache init file from fresh master data after authentication. "
+    "Connections opened immediately after a role DDL (e.g. CREATE ROLE r then "
+    "connect as r) may briefly observe the pre-DDL state until the new catalog "
+    "version propagates via heartbeat.");
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_scram_channel_binding, false,
     "Offer the option of SCRAM-SHA-256-PLUS (i.e. SCRAM with channel binding) as an SASL method if "
@@ -129,15 +158,18 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_relcache_init_optimization, true,
     "disconnected. Instead an internal super user connection is made to perform the "
     "relcache init file rebuild.");
 
-DEFINE_test_flag(bool, ysql_bypass_auto_analyze_auth_check, false,
-    "Bypass the yb-tserver-key authentication method check when connecting using "
-    "yb_auto_analyze backend type.");
-
 DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
     "Add this delay after each table is analyzed.");
 
 DEFINE_test_flag(bool, enable_obj_tuple_locks, false,
     "Enable object tuple locks in the lock manager.");
+
+DEFINE_test_flag(bool, force_use_explicit_row_lock_skip_locked_read_ahead_optimization, false,
+    "Force use read ahead optimization for explicit row lock SKIP LOCKED queries");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_slot_query_api, false,
+    "When set to true, enables the query API for logical replication in YSQL via the "
+    "pg_logical_slot_get/peek_changes functions.");
 
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
@@ -182,6 +214,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
   static YbcPgGFlagsAccessor accessor = {
       .log_ysql_catalog_versions                = &FLAGS_log_ysql_catalog_versions,
       .ysql_catalog_preload_additional_tables   = &FLAGS_ysql_catalog_preload_additional_tables,
+      .ysql_preload_pg_authid_for_auth          = &FLAGS_ysql_preload_pg_authid_for_auth,
       .ysql_disable_index_backfill              = &FLAGS_ysql_disable_index_backfill,
       .ysql_disable_server_file_access          = &FLAGS_ysql_disable_server_file_access,
       .ysql_enable_reindex                      = &FLAGS_ysql_enable_reindex,
@@ -206,6 +239,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
       .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file,
       .ysql_use_optimized_relcache_update       = &FLAGS_ysql_use_optimized_relcache_update,
+      .ysql_cdcsdk_enable_old_namespace_streams  = &FLAGS_ysql_cdcsdk_enable_old_namespace_streams,
       .ysql_enable_pg_per_database_oid_allocator =
           &FLAGS_ysql_enable_pg_per_database_oid_allocator,
       .TEST_hide_details_for_pg_regress =
@@ -231,6 +265,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_enable_object_locking_for_table_locks,
       .ysql_yb_enable_ddl_savepoint_support =
           &FLAGS_ysql_yb_enable_ddl_savepoint_support,
+      .ysql_bypass_anonymous_savepoint_ddl_check =
+          &FLAGS_ysql_bypass_anonymous_savepoint_ddl_check,
       .ysql_max_invalidation_message_queue_size =
           &FLAGS_ysql_max_invalidation_message_queue_size,
       .ysql_max_replication_slots = &FLAGS_max_replication_slots,
@@ -247,9 +283,10 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .placement_cloud = FLAGS_placement_cloud.c_str(),
       .placement_region = FLAGS_placement_region.c_str(),
       .placement_zone = FLAGS_placement_zone.c_str(),
-      .TEST_ysql_bypass_auto_analyze_auth_check = &FLAGS_TEST_ysql_bypass_auto_analyze_auth_check,
       .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
       .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
+      .TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization =
+          &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization
   };
   // clang-format on
   return &accessor;

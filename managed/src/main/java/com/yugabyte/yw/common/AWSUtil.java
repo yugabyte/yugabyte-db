@@ -21,8 +21,6 @@ import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -138,6 +136,7 @@ public class AWSUtil implements CloudUtil {
   public static final String YBC_AWS_ENDPOINT_FIELDNAME = "AWS_ENDPOINT";
   public static final String YBC_AWS_DEFAULT_REGION_FIELDNAME = "AWS_DEFAULT_REGION";
   public static final String YBC_AWS_ACCESS_TOKEN_FIELDNAME = "AWS_ACCESS_TOKEN";
+  public static final String YBC_AWS_SDK_UA_APP_ID_FIELDNAME = "AWS_SDK_UA_APP_ID";
   public static final String YBC_USE_AWS_IAM_FIELDNAME = "USE_AWS_IAM";
   private static final Pattern standardHostBaseCompiled =
       Pattern.compile(AWS_STANDARD_HOST_BASE_PATTERN);
@@ -1371,7 +1370,15 @@ public class AWSUtil implements CloudUtil {
     String hostBase = getOrCreateHostBase(s3Data, bucket, bucketRegion, region);
     s3CredsMap.put(YBC_AWS_ENDPOINT_FIELDNAME, hostBase);
     s3CredsMap.put(YBC_AWS_DEFAULT_REGION_FIELDNAME, bucketRegion);
+    String appId = getAwsSdkUaAppId();
+    if (StringUtils.isNotBlank(appId)) {
+      s3CredsMap.put(YBC_AWS_SDK_UA_APP_ID_FIELDNAME, appId);
+    }
     return s3CredsMap;
+  }
+
+  public String getAwsSdkUaAppId() {
+    return System.getenv(YBC_AWS_SDK_UA_APP_ID_FIELDNAME);
   }
 
   private void fillMapWithIAMCreds(
@@ -1711,33 +1718,16 @@ public class AWSUtil implements CloudUtil {
     }
   }
 
-  public UniverseInterruptionResult spotInstanceUniverseStatus(Universe universe) {
-    UniverseInterruptionResult result = new UniverseInterruptionResult(universe.getName());
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    Provider primaryClusterProvider =
-        Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
-    UUID primaryClusterUUID = universe.getUniverseDetails().getPrimaryCluster().uuid;
-
-    // For nodes in primary cluster
-    for (final NodeDetails nodeDetails : universe.getNodesInCluster(primaryClusterUUID)) {
-      result.addNodeStatus(
-          nodeDetails.nodeName,
-          isSpotInstanceInterrupted(nodeDetails, primaryClusterProvider)
-              ? InterruptionStatus.Interrupted
-              : InterruptionStatus.NotInterrupted);
-    }
-    // For nodes in read replicas
-    for (Cluster cluster : universe.getUniverseDetails().getReadOnlyClusters()) {
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      for (final NodeDetails nodeDetails : universe.getNodesInCluster(cluster.uuid)) {
-        result.addNodeStatus(
-            nodeDetails.nodeName,
-            isSpotInstanceInterrupted(nodeDetails, provider)
-                ? InterruptionStatus.Interrupted
-                : InterruptionStatus.NotInterrupted);
-      }
-    }
-    return result;
+  public void addSpotInstanceUniverseStatus(
+      UniverseInterruptionResult result,
+      NodeDetails nodeDetails,
+      Universe universe,
+      Provider provider) {
+    result.addNodeStatus(
+        nodeDetails.nodeName,
+        isSpotInstanceInterrupted(nodeDetails, provider)
+            ? InterruptionStatus.Interrupted
+            : InterruptionStatus.NotInterrupted);
   }
 
   private boolean isSpotInstanceInterrupted(NodeDetails nodeDetails, Provider provider) {

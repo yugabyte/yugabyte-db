@@ -29,6 +29,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "utils/reltrigger.h"
 
 
 typedef struct
@@ -876,10 +877,38 @@ add_row_identity_columns(PlannerInfo *root, Index rtindex,
 
 	if (IsYBRelation(target_relation))
 	{
+		bool		need_wholerow;
+
+		need_wholerow = YbWholeRowAttrRequired(target_relation, NULL,
+											   commandType);
+
 		/*
-		 * Emit wholerow if required.
+		 * If the basic check is inconclusive and this is a child relation in
+		 * an inheritance/partition hierarchy doing DELETE, also consult the
+		 * relation named in the SQL statement (e.g. B for `DELETE FROM B`
+		 * in an A->B->C->D hierarchy) for an AFTER DELETE transition-table
+		 * trigger.  No intermediate parents (A, C above) are checked because
+		 * PG only fires statement-level triggers on the relation explicitly
+		 * named in the query.  Defer the table_open() to here so the
+		 * relation isn't pinned across the syscache work
+		 * YbWholeRowAttrRequired() does in the basic check.
 		 */
-		if (YbWholeRowAttrRequired(target_relation, commandType))
+		if (!need_wholerow &&
+			rtindex != root->parse->resultRelation &&
+			commandType == CMD_DELETE)
+		{
+			RangeTblEntry *query_target_rte =
+				planner_rt_fetch(root->parse->resultRelation, root);
+			Relation	query_target_rel = table_open(query_target_rte->relid,
+													  NoLock);
+
+			need_wholerow = YbWholeRowAttrRequired(target_relation,
+												   query_target_rel,
+												   commandType);
+			table_close(query_target_rel, NoLock);
+		}
+
+		if (need_wholerow)
 		{
 			var = makeVar(rtindex, InvalidAttrNumber, RECORDOID, -1, InvalidOid,
 						  0);

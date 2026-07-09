@@ -1670,8 +1670,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       if (!newAzUUIDs.contains(az.uuid)) {
         continue;
       }
-      oldDeviceInfo = curIntent.getDeviceInfoForAz(az.uuid, false /* isDedicatedMaster */);
-      newDeviceInfo = newIntent.getDeviceInfoForAz(az.uuid, false /* isDedicatedMaster */);
+      oldDeviceInfo = curIntent.getDeviceInfoForAz(az.uuid, ServerType.TSERVER);
+      newDeviceInfo = newIntent.getDeviceInfoForAz(az.uuid, ServerType.TSERVER);
       if (oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo)) {
         tserverDiskSizeChanged = true;
         log.info(
@@ -1680,8 +1680,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             newDeviceInfo.volumeSize,
             az.name);
       }
-      oldDeviceInfo = curIntent.getDeviceInfoForAz(az.uuid, true /* isDedicatedMaster */);
-      newDeviceInfo = newIntent.getDeviceInfoForAz(az.uuid, true /* isDedicatedMaster */);
+      oldDeviceInfo = curIntent.getDeviceInfoForAz(az.uuid, ServerType.MASTER);
+      newDeviceInfo = newIntent.getDeviceInfoForAz(az.uuid, ServerType.MASTER);
       if (oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo)) {
         masterDiskSizeChanged = true;
         log.info(
@@ -1831,9 +1831,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         continue;
       }
       String newDiskSizeGi =
-          String.format(
-              "%dGi",
-              userIntent.getDeviceInfoForAz(azUUID, serverType == ServerType.MASTER).volumeSize);
+          String.format("%dGi", userIntent.getDeviceInfoForAz(azUUID, serverType).volumeSize);
 
       // Subtask groups( ignore Errors is false by default )
       SubTaskGroup validateExpansion =
@@ -1889,6 +1887,16 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       int numNodesInAZ = placement.tservers.getOrDefault(azUUID, 0);
       int numTservers = numNodesInAZ;
       PlacementInfoUtil.addPlacementZone(azUUID, azPI, rf, numNodesInAZ, true);
+      // Carry over the master and tserver STS index from the current placement so that the
+      // STS name generated for the delete/expand/helm-upgrade subtasks matches the existing
+      // StatefulSet (which can have a non-zero index, e.g. after a full move).
+      PlacementAZ placementAZ = placement.placementInfo.findByAZUUID(azUUID);
+      if (placementAZ != null) {
+        PlacementAZ azPlacementAZ = azPI.cloudList.get(0).regionList.get(0).azList.get(0);
+        azPlacementAZ.masterStsIndex = placementAZ.masterStsIndex;
+        azPlacementAZ.tsStsIndex = placementAZ.tsStsIndex;
+      }
+
       // Validate that the StorageClass has allowVolumeExpansion=true
       if (needsExpandPVCInZone) {
         // Only check for volume expansion if we are actually expanding the PVC.
@@ -2159,12 +2167,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               Map<ServerType, Integer> diskSizes = new HashMap<>();
               diskSizes.put(
                   ServerType.MASTER,
-                  cluster.userIntent.getDeviceInfoForAz(azUUID, true /* idDedicatedMaster */)
-                      .volumeSize);
+                  cluster.userIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER).volumeSize);
               diskSizes.put(
                   ServerType.TSERVER,
-                  cluster.userIntent.getDeviceInfoForAz(azUUID, false /* idDedicatedMaster */)
-                      .volumeSize);
+                  cluster.userIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER).volumeSize);
               originalDiskSizeMap.put(azUUID, diskSizes);
             });
     taskParams().getClusterByUuid(cluster.uuid).setOriginalDiskSize(originalDiskSizeMap);
@@ -2230,9 +2236,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             newCluster.placementInfo, newCluster.clusterType == ClusterType.ASYNC);
     for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {
       DeviceInfo taskDeviceInfo =
-          newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), false /* isDedicatedMaster */);
+          newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), ServerType.TSERVER);
       DeviceInfo existingDeviceInfo =
-          currCluster.userIntent.getDeviceInfoForAz(entry.getKey(), false /* isDedicatedMaster */);
+          currCluster.userIntent.getDeviceInfoForAz(entry.getKey(), ServerType.TSERVER);
       if (taskDeviceInfo != null
           && existingDeviceInfo != null
           && !taskDeviceInfo.equals(existingDeviceInfo)) {
@@ -2240,9 +2246,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         tserverVolumeChanged = true;
       }
       DeviceInfo taskMasterDeviceInfo =
-          newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), true /* isDedicatedMaster */);
+          newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), ServerType.MASTER);
       DeviceInfo existingMasterDeviceInfo =
-          currCluster.userIntent.getDeviceInfoForAz(entry.getKey(), true /* isDedicatedMaster */);
+          currCluster.userIntent.getDeviceInfoForAz(entry.getKey(), ServerType.MASTER);
       if (taskMasterDeviceInfo != null
           && existingMasterDeviceInfo != null
           && !taskMasterDeviceInfo.equals(existingMasterDeviceInfo)) {

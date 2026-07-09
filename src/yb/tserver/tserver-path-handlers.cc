@@ -46,6 +46,7 @@
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/quorum_util.h"
 
@@ -716,8 +717,12 @@ string GetOnDiskSizeInHtml(const yb::tablet::TabletOnDiskSizeInfo& info) {
                  << "<li>" << "WAL Files: "
                  << HumanReadableNumBytes::ToString(info.wal_files_disk_size)
                  << "<li>" << "Consensus Metadata: "
-                 << HumanReadableNumBytes::ToString(info.consensus_metadata_disk_size)
-                 << "</ul>"
+                 << HumanReadableNumBytes::ToString(info.consensus_metadata_disk_size);
+  if (info.vector_index_disk_size > 0) {
+    disk_size_html << "<li>" << "Vector Indexes: "
+                   << HumanReadableNumBytes::ToString(info.vector_index_disk_size);
+  }
+  disk_size_html << "</ul>"
                  << "</ul>";
   return disk_size_html.str();
 }
@@ -1397,6 +1402,10 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
     jw.String(HumanReadableNumBytes::ToString(info.uncompressed_sst_files_disk_size));
     jw.String("uncompressed_sst_files_size_bytes");
     jw.Uint64(info.uncompressed_sst_files_disk_size);
+    jw.String("vector_index_size");
+    jw.String(HumanReadableNumBytes::ToString(info.vector_index_disk_size));
+    jw.String("vector_index_size_bytes");
+    jw.Uint64(info.vector_index_disk_size);
     jw.EndObject();
 
     jw.String("raft_config");

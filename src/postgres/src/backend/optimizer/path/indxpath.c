@@ -42,6 +42,7 @@
 #include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
 #include "optimizer/yb_merge_scan.h"
+#include "parser/parse_coerce.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
 #include "rewrite/rewriteHandler.h"
@@ -218,11 +219,18 @@ static Cost yb_bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel,
 static bool yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index);
 static bool yb_can_pushdown_as_filter(PlannerInfo *root, IndexOptInfo *index, RestrictInfo *rinfo);
 static void yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel, IndexOptInfo *index,
-								 Relids relids, IndexClauseSet *clauseset);
+								 Relids relids, List *or_clauses,
+								 IndexClauseSet *clauseset);
 static List *yb_truncate_embedded_index_pathkeys(PlannerInfo *root,
 												 RelOptInfo *rel,
 												 IndexOptInfo *index,
 												 List *useful_pathkeys);
+static IndexClause *yb_match_clause_to_index(PlannerInfo *root,
+											 RestrictInfo *rinfo,
+											 IndexOptInfo *index);
+static IndexClause *yb_match_rowcompare_to_index(PlannerInfo *root,
+												 RestrictInfo *rinfo,
+												 IndexOptInfo *index);
 
 bool yb_enable_derived_equalities;
 
@@ -656,7 +664,7 @@ consider_index_join_outer_rels(PlannerInfo *root, RelOptInfo *rel,
 
 static bool
 yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
-						   IndexOptInfo *index, IndexClauseSet *clauses,
+						   IndexOptInfo *index, IndexClauseSet *clauseset,
 						   List **bitindexpaths)
 {
 	List	   *indexpaths;
@@ -666,24 +674,24 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 
 	Relids		batchedrelids = NULL;
 	Relids		unbatchablerelids = NULL;
+	Relids		total_relids = NULL;
+	Relids		inner_relids = bms_make_singleton(index->rel->relid);
 
 	Bitmapset  *batched_inner_attnos = NULL;
 
 	List	   *batched_rinfos = NIL;
-
-	Relids		inner_relids = bms_make_singleton(index->rel->relid);
+	List	   *unbatchable_clauses = NIL;
+	IndexClauseSet *batched_clauseset = clauseset;
 
 	bool		batched_paths_added = false;
-
-	Relids		total_relids = NULL;
 
 	/* Skip non-YB indexes */
 	if (!IsYBRelationById(index->indexoid))
 		return false;
 
-	for (size_t i = 0; i < INDEX_MAX_KEYS && clauses->nonempty; i++)
+	for (size_t i = 0; i < INDEX_MAX_KEYS && batched_clauseset->nonempty; i++)
 	{
-		List	   *colclauses = clauses->indexclauses[i];
+		List	   *colclauses = batched_clauseset->indexclauses[i];
 
 		foreach(lc, colclauses)
 		{
@@ -699,8 +707,11 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 													  inner_relids);
 			RestrictInfo *tmp_batched = NULL;
 
-			/* TODO: We don't support expression indexes yet. */
-			if (index->indexkeys[i] != 0)
+			/*
+			 * Skip expression key columns (indexkeys[i] == 0) in the legacy mode
+			 * for plan stability.
+			 */
+			if (index->indexkeys[i] != 0 || yb_enable_base_scans_cost_model)
 			{
 				tmp_batched =
 					yb_get_batched_restrictinfo(rinfo, outer_relids, inner_relids);
@@ -718,6 +729,22 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 				pull_varattnos(innervar,
 							   index->rel->relid,
 							   &batched_inner_attnos);
+			}
+			else if (yb_enable_base_scans_cost_model &&
+					 rinfo->yb_batched_rinfo == NIL)
+			{
+				/*
+				 * #31760 Defer this clause to the resolution loop below rather
+				 * than disabling batching of its outer rels outright, so it
+				 * can instead be relegated to the join filter.
+				 * Only clauses that have no batched form at all (e.g. an
+				 * inequality) are deferred: a clause that is batchable in some
+				 * other join direction (yb_batched_rinfo populated) but not
+				 * this one is left to disable batching here, so the join order
+				 * that can batch it is preferred over stranding the inner
+				 * relation on a non-batchable scan.
+				 */
+				unbatchable_clauses = lappend(unbatchable_clauses, rinfo);
 			}
 			else
 			{
@@ -778,14 +805,35 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			continue;
 
 		Assert(bms_overlap(rinfo->clause_relids, batchedrelids));
-		/*
-		 * If an unbatchable clause involves a batched relid, stop that relid
-		 * from being batched.
-		 */
 		if (!batched)
 		{
-			unbatchablerelids = bms_union(unbatchablerelids,
-										  rinfo->clause_relids);
+			/*
+			 * This qpqual references a batched relid but has no batched form
+			 * usable at this scan.  There are three cases:
+			 *
+			 * 1. It also references a relation not available here (neither this
+			 *    scan nor a batched outer relation), so it can't be enforced at
+			 *    this scan anyway.  Under CBO, leave it to the join above to
+			 *    enforce or relegate, keeping this scan batched.
+			 *
+			 * 2. It has no batched form at all: defer it for relegation to the
+			 *    join filter.
+			 *
+			 * 3. It has a batched form, just not one usable here: unbatch the
+			 *    relids it involves so a join order that can batch it is
+			 *    preferred.
+			 */
+			if (yb_enable_base_scans_cost_model &&
+				!bms_is_subset(rinfo->clause_relids,
+							   bms_union(inner_relids, batchedrelids)))
+				continue;
+
+			if (yb_enable_base_scans_cost_model &&
+				rinfo->yb_batched_rinfo == NIL)
+				unbatchable_clauses = lappend(unbatchable_clauses, rinfo);
+			else
+				unbatchablerelids = bms_union(unbatchablerelids,
+											  rinfo->clause_relids);
 			continue;
 		}
 
@@ -830,17 +878,110 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 									   index->rel->relid);
 	batchedrelids = bms_difference(batchedrelids, unbatchablerelids);
 
+	/*
+	 * An unbatchable clause can be relegated to the join filter only if
+	 * every relation it references is the inner relation or a batched outer
+	 * relation, so that the batched nested loop join just above the inner scan
+	 * can evaluate it.  A clause referencing any other relation cannot, so it
+	 * must stay in the inner scan; to keep batched and unbatched access to a
+	 * relation consistent (#20495), that forces every batched relation the
+	 * clause touches to become unbatched.  Unbatching one relation can make
+	 * another clause non-relegatable, so iterate to a fixed point.  Afterwards
+	 * every clause still overlapping batchedrelids is relegatable, so the
+	 * index-clause filtering below and the ppi_clauses filtering in
+	 * get_baserel_parampathinfo need only test for overlap.
+	 */
+	if (unbatchable_clauses != NIL)
+	{
+		bool		changed;
+
+		do
+		{
+			changed = false;
+			foreach(lc, unbatchable_clauses)
+			{
+				RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+				Relids		batched_touched;
+				Relids		relegatable_rels;
+
+				if (bms_is_empty(batchedrelids))
+					break;
+
+				batched_touched = bms_intersect(rinfo->clause_relids,
+												batchedrelids);
+				if (bms_is_empty(batched_touched))
+				{
+					bms_free(batched_touched);
+					continue;
+				}
+
+				relegatable_rels = bms_union(inner_relids, batchedrelids);
+				if (!bms_is_subset(rinfo->clause_relids, relegatable_rels))
+				{
+					/* not relegatable; force its batched rels unbatched */
+					batchedrelids = bms_difference(batchedrelids,
+												   batched_touched);
+					changed = true;
+				}
+				bms_free(relegatable_rels);
+				bms_free(batched_touched);
+			}
+		} while (changed && !bms_is_empty(batchedrelids));
+	}
+
 	Assert(!root->yb_cur_batched_relids);
 	root->yb_cur_batched_relids = batchedrelids;
 
 	/*
-	 * Build simple index paths using the clauses.  Allow ScalarArrayOpExpr
-	 * clauses only if the index AM supports them natively, and skip any such
-	 * clauses for index columns after the first (so that we produce ordered
-	 * paths if possible).
+	 * An index clause that references a batched outer relation but cannot
+	 * itself be batched must not become a (batched) index condition: a
+	 * non-equality such as "inner.col < outer.col" has no batched
+	 * "= ANY(ARRAY[...])" form, and pushing it down would reference the batched
+	 * outer relation with a scalar parameter, mixing batched and unbatched
+	 * access to it (#20495).  Build the batched index path from a clause set
+	 * that excludes such clauses; they are re-applied as a join filter.  The
+	 * original clause set is left intact for the unbatched paths built by the
+	 * caller.
+	 */
+	IndexClauseSet alt_batched_clauseset;
+	if (!bms_is_empty(batchedrelids))
+	{
+		bool		excluded_any = false;
+
+		MemSet(&alt_batched_clauseset, 0, sizeof(alt_batched_clauseset));
+		for (int i = 0; i < INDEX_MAX_KEYS; i++)
+		{
+			foreach(lc, clauseset->indexclauses[i])
+			{
+				IndexClause *iclause = (IndexClause *) lfirst(lc);
+				RestrictInfo *rinfo = iclause->rinfo;
+
+				if (bms_overlap(rinfo->clause_relids, batchedrelids) &&
+					!yb_get_batched_restrictinfo(rinfo, batchedrelids,
+												 index->rel->relids))
+				{
+					excluded_any = true;
+					continue;
+				}
+
+				alt_batched_clauseset.indexclauses[i] =
+					lappend(alt_batched_clauseset.indexclauses[i], iclause);
+				alt_batched_clauseset.nonempty = true;
+			}
+		}
+
+		if (excluded_any)
+			batched_clauseset = &alt_batched_clauseset;
+	}
+
+	/*
+	 * Build simple index paths using clauses in the clauseset.  Allow
+	 * ScalarArrayOpExpr clauses only if the index AM supports them natively,
+	 * and skip any such clauses for index columns after the first (so that
+	 * we produce ordered paths if possible).
 	 */
 	indexpaths = build_index_paths(root, rel,
-								   index, clauses,
+								   index, batched_clauseset,
 								   NIL /* yb_bitmap_idx_pushdowns */ ,
 								   index->predOK,
 								   ST_ANYSCAN,
@@ -856,7 +997,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	{
 		indexpaths = list_concat(indexpaths,
 								 build_index_paths(root, rel,
-												   index, clauses,
+												   index, batched_clauseset,
 												   NIL /* yb_bitmap_idx_pushdowns */ ,
 												   index->predOK,
 												   ST_ANYSCAN,
@@ -981,7 +1122,8 @@ get_join_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	 * YB: Add derived join clauses for these specific outer relations
 	 */
 	if (IsYugaByteEnabled() && yb_enable_derived_equalities)
-		yb_derive_equal_cond(root, rel, index, relids, &clauseset);
+		yb_derive_equal_cond(root, rel, index, relids,
+							 NULL /* or_clauses */ , &clauseset);
 
 	/*
 	 * YB: We collect batched paths first to prioritize them in the path queue.
@@ -1086,7 +1228,8 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	 * index expressions.
 	 */
 	if (IsYugaByteEnabled() && yb_enable_derived_equalities)
-		yb_derive_equal_cond(root, rel, index, NULL /* relids */ , clauses);
+		yb_derive_equal_cond(root, rel, index, NULL /* relids */ ,
+							 NULL /* or_clauses */ , clauses);
 
 	/*
 	 * Build simple index paths using the clauses.  Allow ScalarArrayOpExpr
@@ -1138,10 +1281,20 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		if (index->amhasgettuple)
 			add_path(rel, (Path *) ipath);
 
-		if (((index->amhasgetbitmap || index->yb_amhasgetbitmap) &&
-			 !IsA(ipath, UpperUniquePath)) &&
-			(ipath->path.pathkeys == NIL ||
-			 ipath->indexselectivity < 1.0))
+		/*
+		 * YB: Bitmap scan does not support distinct pushdown. Distinct pushdown
+		 * may be represented by an UpperUniquePath on top of a distinct index
+		 * scan path, or a bare distinct index scan path (IndexPath with
+		 * yb_distinct_prefixlen > 0). Refer to create_distinct_index_path for
+		 * more details.
+		 *
+		 * When either of the above conditions are true for a path, we do not add
+		 * the path to the bitindexpaths list.
+		 */
+		if ((index->amhasgetbitmap || index->yb_amhasgetbitmap) &&
+			!(IsA(ipath, UpperUniquePath) ||
+			  ipath->yb_index_path_info.yb_distinct_prefixlen > 0) &&
+			(ipath->path.pathkeys == NIL || ipath->indexselectivity < 1.0))
 			*bitindexpaths = lappend(*bitindexpaths, ipath);
 	}
 
@@ -1856,6 +2009,15 @@ build_paths_for_OR(PlannerInfo *root, RelOptInfo *rel,
 		 * create_indexscan_plan.
 		 */
 		match_clauses_to_index(root, other_clauses, index, &clauseset, NULL);
+
+		/*
+		 * YB: Add derived clauses for indexed generated columns and index
+		 * expressions.  Unlike the non-OR path, we derive from the OR-arm
+		 * clauses directly since they don't form equivalence classes.
+		 */
+		if (IsYugaByteEnabled() && yb_enable_derived_equalities)
+			yb_derive_equal_cond(root, rel, index, NULL /* relids */ ,
+								 clauses, &clauseset);
 
 		/*
 		 * Construct paths if possible.
@@ -2897,6 +3059,31 @@ match_clause_to_index(PlannerInfo *root,
 	if (!restriction_is_securely_promotable(rinfo, index->rel))
 		return;
 
+	/*
+	 * YB: In Yugabyte there are clauses that may match the whole index, not
+	 * just a single column.  For example, the yb_hash_code function may match
+	 * the hash code of a hash index, and a ROW comparison may start with
+	 * yb_hash_code followed by key columns.  Handle such expressions here,
+	 * before the per-column loop.
+	 */
+	{
+		/*
+		 * TODO it seems correct to associate the hash code clause with the
+		 * first index column, since the hash code is a function of one or more
+		 * first columns of the index. Later on we may consider to introduce a
+		 * field in the IndexClauseSet structure for that.
+		 */
+		IndexClause *yb_iclause = yb_match_clause_to_index(root, rinfo, index);
+
+		if (yb_iclause)
+		{
+			clauseset->indexclauses[0] =
+				lappend(clauseset->indexclauses[0], yb_iclause);
+			clauseset->nonempty = true;
+			return;
+		}
+	}
+
 	/* OK, check each index key column for a match */
 	for (indexcol = 0; indexcol < index->nkeycolumns; indexcol++)
 	{
@@ -2964,63 +3151,6 @@ yb_can_pushdown_as_filter(PlannerInfo *root,
 		return false;
 
 	return true;
-}
-
-static bool
-is_yb_hash_code_call(Node *clause)
-{
-	return (clause &&
-			IsA(clause, FuncExpr) &&
-			(((FuncExpr *) clause)->funcid == F_YB_HASH_CODE));
-}
-
-
-/*
- * yb_hash_code_call_matches_indexcol
- * 	  Returns true if the index is on yb_hash_code(a, b, ...) and this index column is
- *	  a matching yb_hash_code(a, b, ...) clause.
- */
-static bool
-yb_hash_code_call_matches_indexcol(Node *yb_hash_code_clause,
-								   IndexOptInfo *index,
-								   int indexcol)
-{
-	if (!index->indexprs)
-		return false;
-	int			pos;
-	ListCell   *indexpr_item;
-
-	/* Iterate over each column of the index until the column of interest. */
-	indexpr_item = list_head(index->indexprs);
-	for (pos = 0; pos <= indexcol; pos++)
-	{
-		if (index->indexkeys[pos] == 0)
-		{
-			/* The index column refers to the next expression of indexprs. */
-			Node	   *indexkey;
-
-			if (indexpr_item == NULL)
-			{
-				elog(WARNING, "too few entries in indexprs list");
-				return false;
-			}
-
-			if (pos == indexcol)
-			{
-				indexkey = (Node *) lfirst(indexpr_item);
-				if (indexkey && IsA(indexkey, RelabelType))
-					indexkey = (Node *) ((RelabelType *) indexkey)->arg;
-				if (equal(yb_hash_code_clause, indexkey))
-				{
-					return true;
-				}
-			}
-
-			indexpr_item = lnext(index->indexprs, indexpr_item);
-		}
-	}
-
-	return false;
 }
 
 /*
@@ -3312,28 +3442,6 @@ match_opclause_to_indexcol(PlannerInfo *root,
 		!contain_volatile_functions(rightop))
 	{
 		/*
-		 * Do not use the yb_hash_code special case if we have an applicable
-		 * functional index on yb_hash_code. For example, if the call is an
-		 * index on yb_hash_code(x, y) and the clause is yb_hash_code(x, y),
-		 * we will take the typical index path.
-		 */
-
-		if (is_yb_hash_code_call(leftop) &&
-			!yb_hash_code_call_matches_indexcol(leftop, index, indexcol))
-		{
-			if (!op_in_opfamily(expr_op, INTEGER_LSM_FAM_OID) || !is_opclause(clause))
-				return NULL;
-
-			iclause = makeNode(IndexClause);
-			iclause->rinfo = rinfo;
-			iclause->indexquals = list_make1(rinfo);
-			iclause->lossy = false;
-			iclause->indexcol = indexcol;
-			iclause->indexcols = NIL;
-			return iclause;
-		}
-
-		/*
 		 * YB: If the column in the filter clause is part of the hash key for
 		 * this index and the clause uses an inequality operator, then index
 		 * scan cannot be used. This is because a hash index is sorted by the
@@ -3376,32 +3484,6 @@ match_opclause_to_indexcol(PlannerInfo *root,
 		!bms_is_member(index_relid, rinfo->left_relids) &&
 		!contain_volatile_functions(leftop))
 	{
-		/*
-		 * Do not use the yb_hash_code special case if we have an applicable
-		 * functional index on yb_hash_code. For example, if the call is an
-		 * index on yb_hash_code(x, y) and the clause is yb_hash_code(x, y),
-		 * we will take the typical index path.
-		 */
-		if (is_yb_hash_code_call(rightop) &&
-			!yb_hash_code_call_matches_indexcol(rightop, index, indexcol))
-		{
-			if (!op_in_opfamily(expr_op, INTEGER_LSM_FAM_OID) || !is_opclause(clause))
-				return NULL;
-
-			Oid			comm_op = get_commutator(expr_op);
-			RestrictInfo *commrinfo;
-
-			/* Build a commuted OpExpr and RestrictInfo */
-			commrinfo = commute_restrictinfo(rinfo, comm_op);
-			iclause = makeNode(IndexClause);
-			iclause->rinfo = rinfo;
-			iclause->indexquals = list_make1(commrinfo);
-			iclause->lossy = false;
-			iclause->indexcol = indexcol;
-			iclause->indexcols = NIL;
-			return iclause;
-		}
-
 		/*
 		 * YB: If the column in the filter clause is part of the hash key for
 		 * this index and the clause uses an inequality operator, then index
@@ -4611,7 +4693,6 @@ indexcol_is_bool_constant_for_query(PlannerInfo *root,
 	return false;
 }
 
-
 /****************************************************************************
  *				----  ROUTINES TO CHECK OPERANDS  ----
  ****************************************************************************/
@@ -4649,102 +4730,6 @@ match_index_to_operand(Node *operand,
 	indkey = index->indexkeys[indexcol];
 	if (indkey != 0)
 	{
-		/* YB: yb_hash_code */
-		if (operand && IsA(operand, FuncExpr))
-		{
-			/*
-			 * YB: Forming an estimate to see if this call can be pushed down
-			 * by assessing whether or not its parameters are all column
-			 * variables and whether or not the number of arguments to the call
-			 * is the same as the number of hash columns in the primary key
-			 * of the index in question
-			 */
-			FuncExpr   *fn = (FuncExpr *) operand;
-
-			if (fn->funcid == F_YB_HASH_CODE
-				&& fn->args->length > 0
-				&& index->nhashcolumns == fn->args->length)
-			{
-				Relation	indrel = RelationIdGetRelation(index->indexoid);
-				Bitmapset  *hash_keys = NULL;
-
-				for (int natt = 1;
-					 natt <= indrel->rd_index->indnkeyatts; natt++)
-				{
-					if (indrel->rd_indoption[natt - 1] & INDOPTION_HASH)
-					{
-						int			table_att = index->indexkeys[natt - 1];
-
-						hash_keys = bms_add_member(hash_keys,
-												   YBAttnumToBmsIndex(indrel, table_att));
-					}
-				}
-				ListCell   *ls;
-				bool		can_pushdown_hash_call = true;
-				Bitmapset  *args_bms = NULL;
-				int			last_index_att = -1;
-
-				foreach(ls, fn->args)
-				{
-					Expr	   *arg = (Expr *) lfirst(ls);
-
-					if (!IsA(arg, Var))
-					{
-						can_pushdown_hash_call = false;
-						break;
-					}
-
-					Var		   *var = (Var *) arg;
-
-					if (index->rel->relid != var->varno)
-					{
-						can_pushdown_hash_call = false;
-						break;
-					}
-
-					/*
-					 * YB: Need to make sure that the arguments to
-					 * yb_hash_code are in the correct order we can make this
-					 * for loop to map from index att to table att slightly
-					 * more efficient by starting the loop from last_index_att
-					 */
-					int			index_att = -1;
-
-					for (int natt = 1;
-						 natt <= indrel->rd_index->indnkeyatts; natt++)
-					{
-						int			cand_table_att = index->indexkeys[natt - 1];
-
-						if (cand_table_att == var->varattno)
-						{
-							index_att = natt;
-							break;
-						}
-					}
-
-					if (index_att <= last_index_att)
-					{
-						can_pushdown_hash_call = false;
-						break;
-					}
-					else
-					{
-						last_index_att = index_att;
-					}
-
-					int			arg_bms_index = YBAttnumToBmsIndex(indrel,
-																   var->varattno);
-
-					args_bms = bms_add_member(args_bms, arg_bms_index);
-				}
-				can_pushdown_hash_call &= bms_equal(args_bms, hash_keys);
-
-				RelationClose(indrel);
-				bms_free(args_bms);
-				bms_free(hash_keys);
-				return can_pushdown_hash_call;
-			}
-		}
 		/*
 		 * Simple index column; operand must be a matching Var.
 		 */
@@ -4897,12 +4882,213 @@ yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index)
 }
 
 /*
+ * yb_op_is_btree_equality
+ *	  Return true if opno is an equality operator in some btree opfamily.
+ *
+ * This is a semantic equality test.  Testing the restriction estimator
+ * (get_oprrest == F_EQSEL) is not: many non-equality operators borrow eqsel
+ * (e.g. the geometric "same as" ~= operators), and treating such an operator
+ * as equality would derive a binding the clause does not imply.
+ */
+static bool
+yb_op_is_btree_equality(Oid opno)
+{
+	List	   *interpretations = get_op_btree_interpretation(opno);
+	ListCell   *lc;
+	bool		result = false;
+
+	foreach(lc, interpretations)
+	{
+		OpBtreeInterpretation *interp = (OpBtreeInterpretation *) lfirst(lc);
+
+		if (interp->strategy == BTEqualStrategyNumber)
+		{
+			result = true;
+			break;
+		}
+	}
+	list_free_deep(interpretations);
+	return result;
+}
+
+/*
+ * yb_find_eq_const_for_var_in_clauses
+ *	  Search a list of RestrictInfo clauses for an equality "var = const"
+ *	  matching the given Var.  Returns the Const node if found, NULL otherwise.
+ *
+ * Two limitations bound what this derives:
+ * - Binding source: only the passed-in clauses are searched.  For OR arms that
+ *   is the arm's own clauses; the caller's other_clauses (upper-level
+ *   restrictions, where process_duplicate_ors() parks equalities common to all
+ *   arms) and rel->baserestrictinfo are not consulted.
+ * - Direct Var = Const only: chains (z = y, y = x, x = 5) are not followed, and
+ *   a Var = Var equality is not used, though t1.x = t2.x could derive
+ *   f(t1.x) = f(t2.x) for an indexed expression or generated column f.
+ * Widening either would let more OR-arm cases derive.  See issue #31672.
+ */
+static Expr *
+yb_find_eq_const_for_var_in_clauses(Var *var, List *clauses)
+{
+	ListCell   *lc;
+
+	foreach(lc, clauses)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+		OpExpr	   *opexpr;
+		Node	   *leftop;
+		Node	   *rightop;
+
+		if (!IsA(rinfo->clause, OpExpr))
+			continue;
+
+		opexpr = (OpExpr *) rinfo->clause;
+		if (list_length(opexpr->args) != 2)
+			continue;
+
+		if (!yb_op_is_btree_equality(opexpr->opno))
+			continue;
+
+		leftop = (Node *) linitial(opexpr->args);
+		rightop = (Node *) lsecond(opexpr->args);
+
+		if (leftop && IsA(leftop, RelabelType))
+			leftop = (Node *) ((RelabelType *) leftop)->arg;
+		if (rightop && IsA(rightop, RelabelType))
+			rightop = (Node *) ((RelabelType *) rightop)->arg;
+
+		/*
+		 * The matched Const is substituted in place of the Var, so two things
+		 * must hold.  Its type must be binary-compatible with the Var's (e.g.
+		 * text for a varchar column); otherwise a cross-type equality such as
+		 * name_col = 'x'::text would splice a text Const where a name Var sat,
+		 * deriving a wrong value and silently dropping rows.  And it must be
+		 * non-null: a Var = NULL binding does not pin the column to a value, so
+		 * substituting it would derive a bogus condition.
+		 */
+		if (IsA(leftop, Var) && IsA(rightop, Const) &&
+			((Var *) leftop)->varno == var->varno &&
+			((Var *) leftop)->varattno == var->varattno &&
+			!((Const *) rightop)->constisnull &&
+			IsBinaryCoercible(((Const *) rightop)->consttype, var->vartype))
+			return (Expr *) rightop;
+
+		if (IsA(rightop, Var) && IsA(leftop, Const) &&
+			((Var *) rightop)->varno == var->varno &&
+			((Var *) rightop)->varattno == var->varattno &&
+			!((Const *) leftop)->constisnull &&
+			IsBinaryCoercible(((Const *) leftop)->consttype, var->vartype))
+			return (Expr *) leftop;
+	}
+	return NULL;
+}
+
+/* Context for yb_substitute_consts_mutator */
+typedef struct
+{
+	Index		relid;
+	List	   *clauses;
+	bool		failed;
+} YbSubstConstsContext;
+
+static Node *
+yb_substitute_consts_mutator(Node *node, void *context)
+{
+	YbSubstConstsContext *ctx = (YbSubstConstsContext *) context;
+
+	if (node == NULL || ctx->failed)
+		return NULL;
+
+	if (IsA(node, Var))
+	{
+		Var		   *var = (Var *) node;
+
+		if (var->varno == ctx->relid && var->varattno > 0)
+		{
+			Expr	   *constval =
+				yb_find_eq_const_for_var_in_clauses(var, ctx->clauses);
+
+			if (constval)
+				return (Node *) copyObject(constval);
+
+			ctx->failed = true;
+			return NULL;
+		}
+	}
+
+	return expression_tree_mutator(node, yb_substitute_consts_mutator, context);
+}
+
+/*
+ * yb_try_derive_equal_from_clauses
+ *	  Try to derive an equality clause for an index column by substituting
+ *	  Var = Const bindings from the given clause list into the generation
+ *	  expression.  Returns a RestrictInfo if successful, NULL otherwise.
+ *
+ * This is used for OR-arm clauses which don't form equivalence classes.
+ */
+static RestrictInfo *
+yb_try_derive_equal_from_clauses(PlannerInfo *root, Index relid,
+								 Expr *inferrable_expr, Expr *generation_expr,
+								 Oid opfamily, List *clauses)
+{
+	YbSubstConstsContext context;
+	Expr	   *substituted;
+	OpExpr	   *derived_clause;
+
+	context.relid = relid;
+	context.clauses = clauses;
+	context.failed = false;
+
+	substituted = (Expr *)
+		yb_substitute_consts_mutator((Node *) generation_expr, &context);
+	if (context.failed || substituted == NULL)
+		return NULL;
+
+	/*
+	 * Skip the derivation if yb_safely_fold_substituted reports the
+	 * substituted side is unsafe (fold errored or folded to NULL Const).
+	 * In the OR-arm case every Var was replaced by a Const above, so
+	 * the folded result is Const-only; no Var-bearing fallback is needed
+	 * here (cf. the EC path's yb_expr_safe_to_derive allowlist).
+	 */
+	if (yb_safely_fold_substituted(root, substituted) == NULL)
+		return NULL;
+
+	/*
+	 * Build the clause and its RestrictInfo with the same helpers as the
+	 * equivalence-class path, so the derived qual carries the query's security
+	 * level and is run through check_mergejoinable/check_batchable.
+	 * make_simple_restrictinfo would instead hardcode security_level 0.
+	 */
+	derived_clause = yb_create_derived_clause(inferrable_expr, substituted,
+											  opfamily);
+	if (derived_clause == NULL)
+		return NULL;
+
+	/*
+	 * Only a Const is substituted for the Var, so the derived clause references
+	 * just this relation: it is single-rel with no nullable relids.
+	 */
+	return yb_make_derived_restrictinfo(root, derived_clause,
+										NULL);	/* nullable_relids */
+}
+
+/*
  * yb_derive_equal_cond
- *   Add derived clauses for indexed generated columns and index expressions
+ *	  Add derived clauses for indexed generated columns and index expressions.
+ *
+ * When or_clauses != NULL (build_paths_for_OR case), derives from Var = Const
+ * bindings in those clauses directly, since individual OR arms don't create
+ * equivalence classes.
+ *
+ * When or_clauses == NULL, derives from equivalence classes via
+ * yb_try_derive_equal_from_ec, handling both restriction (relids == NULL) and
+ * join (relids != NULL) cases.
  */
 static void
 yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 					 IndexOptInfo *index, Relids relids,
+					 List *or_clauses,
 					 IndexClauseSet *clauseset)
 {
 	Relids		outer_relids = NULL;
@@ -4915,7 +5101,7 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 		return;
 
 	/* for joins, compute outer relations */
-	if (relids != NULL)
+	if (or_clauses == NULL && relids != NULL)
 	{
 		outer_relids = bms_difference(relids, rel->relids);
 		if (bms_is_empty(outer_relids))
@@ -4944,11 +5130,17 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 			Node	   *index_expr = copyObject(lfirst(expr_lc));
 
 			ChangeVarNodes(index_expr, 1, rel->relid, 0);
+			expr_lc = lnext(index->indexprs, expr_lc);
+
+			/*
+			 * A constant index expression (no Vars) would yield a trivial
+			 * "const = const" clause after EC substitution; skip it.
+			 */
+			if (!contain_var_clause(index_expr))
+				continue;
 
 			inferrable_expr = (Expr *) index_expr;
 			generation_expr = (Expr *) index_expr;
-
-			expr_lc = lnext(index->indexprs, expr_lc);
 		}
 		else
 		{
@@ -4966,28 +5158,48 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 											   attr->atttypmod, attr->attcollation, 0);
 		}
 
-		if (outer_relids == NULL)
+		if (or_clauses != NULL)
 		{
-			RestrictInfo *rinfo = yb_try_create_derived_clause(root, rel->relid, 0,
-															   inferrable_expr,
-															   generation_expr,
-															   index->opfamily[i]);
+			/* OR-arm: derive from clause-level Var = Const bindings */
+			RestrictInfo *rinfo =
+				yb_try_derive_equal_from_clauses(root,
+												 rel->relid,
+												 inferrable_expr,
+												 generation_expr,
+												 index->opfamily[i],
+												 or_clauses);
+
+			if (rinfo)
+				rinfos = list_make1(rinfo);
+		}
+		else if (outer_relids == NULL)
+		{
+			/* restriction: derive from equivalence classes */
+			RestrictInfo *rinfo =
+				yb_try_derive_equal_from_ec(root,
+											rel->relid,
+											0,	/* target_rti */
+											inferrable_expr,
+											generation_expr,
+											index->opfamily[i]);
 
 			if (rinfo)
 				rinfos = list_make1(rinfo);
 		}
 		else
 		{
+			/* join: derive from equivalence classes for each outer rel */
 			int			outer_relid = -1;
 
 			while ((outer_relid = bms_next_member(outer_relids, outer_relid)) >= 0)
 			{
-				RestrictInfo *rinfo = yb_try_create_derived_clause(root,
-																   rel->relid,
-																   (Index) outer_relid,
-																   inferrable_expr,
-																   generation_expr,
-																   index->opfamily[i]);
+				RestrictInfo *rinfo =
+					yb_try_derive_equal_from_ec(root,
+												rel->relid,
+												(Index) outer_relid,
+												inferrable_expr,
+												generation_expr,
+												index->opfamily[i]);
 
 				if (rinfo)
 					rinfos = lappend(rinfos, rinfo);
@@ -5079,4 +5291,352 @@ yb_truncate_embedded_index_pathkeys(PlannerInfo *root, RelOptInfo *rel,
 		++useful;
 	}
 	return useful_pathkeys;
+}
+
+/*
+ * yb_hash_code_match_index
+ *	  Check if the given expression matches the hash key columns of the index
+ *	  as a yb_hash_code call.
+ */
+bool
+yb_hash_code_match_index(Node *expr, IndexOptInfo *index)
+{
+	/* The expression must be a function call, maybe under a RelabelType */
+	if (!expr)
+		return false;
+	if (IsA(expr, RelabelType))
+		expr = (Node *) ((RelabelType *) expr)->arg;
+	if (!IsA(expr, FuncExpr))
+		return false;
+
+	/* The index must be a hash index */
+	if (index->nhashcolumns == 0)
+		return false;
+
+	/* The function is yb_hash_code with the matching number of arguments */
+	FuncExpr   *fn = (FuncExpr *) expr;
+	if (fn->funcid != F_YB_HASH_CODE ||
+		list_length(fn->args) != index->nhashcolumns)
+		return false;
+
+	/* The function arguments must match the index columns */
+	ListCell   *lc;
+	int			indexcol = 0;
+	foreach(lc, fn->args)
+	{
+		Expr	   *arg = (Expr *) lfirst(lc);
+		if (IsA(arg, RelabelType))
+			arg = ((RelabelType *) arg)->arg;
+
+		if (!IsA(arg, Var))
+			return false;
+
+		if (index->rel->relid != ((Var *) arg)->varno ||
+			index->indexkeys[indexcol] != ((Var *) arg)->varattno)
+			return false;
+
+		++indexcol;
+	}
+	return true;
+}
+
+/*
+ * yb_match_clause_to_index
+ * Like match_clause_to_indexcol, but without the index column.
+ * Currently matches yb_hash_code expressions to hash indexes, but may also
+ * be used to handle ybctid expressions and other YB-specific things.
+ */
+static IndexClause *
+yb_match_clause_to_index(PlannerInfo *root,
+						 RestrictInfo *rinfo,
+						 IndexOptInfo *index)
+{
+	if (IsA(rinfo->clause, OpExpr))
+	{
+		OpExpr	   *clause = (OpExpr *) rinfo->clause;
+		Node	   *leftop;
+		Node	   *rightop;
+
+		if (!op_in_opfamily(clause->opno, INTEGER_LSM_FAM_OID))
+			return NULL;
+		if (list_length(clause->args) != 2)
+			return NULL;
+
+		leftop = (Node *) linitial(clause->args);
+		rightop = (Node *) lsecond(clause->args);
+
+		if (yb_hash_code_match_index(leftop, index))
+		{
+			IndexClause *iclause;
+
+			if (!is_pseudo_constant_for_index(root, rightop, index))
+				return NULL;
+
+			iclause = makeNode(IndexClause);
+			iclause->rinfo = rinfo;
+			iclause->indexquals = list_make1(rinfo);
+			iclause->lossy = false;
+			iclause->indexcol = 0;
+			iclause->indexcols = NIL;
+			return iclause;
+		}
+		else if (yb_hash_code_match_index(rightop, index))
+		{
+			Oid			comm_op = get_commutator(clause->opno);
+
+			if (!is_pseudo_constant_for_index(root, leftop, index))
+				return NULL;
+
+			if (OidIsValid(comm_op) &&
+				op_in_opfamily(comm_op, INTEGER_LSM_FAM_OID))
+			{
+				RestrictInfo *commrinfo;
+				IndexClause *iclause;
+
+				/* Build a commuted OpExpr and RestrictInfo */
+				commrinfo = commute_restrictinfo(rinfo, comm_op);
+
+				/* Make an IndexClause showing that as a derived qual */
+				iclause = makeNode(IndexClause);
+				iclause->rinfo = rinfo;
+				iclause->indexquals = list_make1(commrinfo);
+				iclause->lossy = false;
+				iclause->indexcol = 0;
+				iclause->indexcols = NIL;
+				return iclause;
+			}
+		}
+	}
+	else if (IsA(rinfo->clause, RowCompareExpr))
+	{
+		return yb_match_rowcompare_to_index(root, rinfo, index);
+	}
+
+	return NULL;
+}
+
+/*
+ * yb_match_rowcompare_to_index
+ *	  Match a RowCompareExpr to a YB hash index when the leading element is
+ *	  yb_hash_code(hash_cols).  The remaining elements must reference the
+ *	  index key columns in order (hash columns first, then range columns),
+ *	  forming a prefix of the index key.  This ensures the ROW comparison
+ *	  can be converted to a DocDB row bound.
+ *
+ *	  Example: index (h1, h2) HASH, r1 ASC, r2 ASC
+ *	    Good:  (yb_hash_code(h1,h2), h1, h2, r1, r2) > (...)
+ *	    Good:  (yb_hash_code(h1,h2), h1, h2, r1) > (...)  -- partial prefix
+ *	    Bad:   (yb_hash_code(h1,h2), h1, r1) > (...)  -- skips h2
+ *	    Bad:   (h1, h2, r1) > (...)  -- no leading yb_hash_code
+ */
+static IndexClause *
+yb_match_rowcompare_to_index(PlannerInfo *root,
+							RestrictInfo *rinfo,
+							IndexOptInfo *index)
+{
+	RowCompareExpr *clause = (RowCompareExpr *) rinfo->clause;
+	List	   *var_args;
+	List	   *non_var_args;
+	Node	   *first_var;
+	Oid			first_opno;
+	int			hc_strategy;
+	int			matching_cols;
+	int			indexcol;
+	bool		var_on_left;
+
+	/* Only useful for hash indexes. */
+	if (index->nhashcolumns == 0)
+		return NULL;
+
+	/*
+	 * Determine which side has the index keys.  The first element on the
+	 * var side must be yb_hash_code(hash_cols).
+	 */
+	first_var = (Node *) linitial(clause->largs);
+	if (IsA(first_var, RelabelType))
+		first_var = (Node *) ((RelabelType *) first_var)->arg;
+
+	if (yb_hash_code_match_index(first_var, index))
+	{
+		var_on_left = true;
+		var_args = clause->largs;
+		non_var_args = castNode(List, clause->rargs);
+	}
+	else
+	{
+		Node	   *first_rarg;
+
+		first_rarg = (Node *) linitial(castNode(List, clause->rargs));
+		if (IsA(first_rarg, RelabelType))
+			first_rarg = (Node *) ((RelabelType *) first_rarg)->arg;
+
+		if (yb_hash_code_match_index(first_rarg, index))
+		{
+			var_on_left = false;
+			var_args = castNode(List, clause->rargs);
+			non_var_args = clause->largs;
+		}
+		else
+			return NULL;
+	}
+
+	/*
+	 * Check the operator on the yb_hash_code element.  It must be a range
+	 * comparison in INTEGER_LSM_FAM_OID.
+	 */
+	first_opno = linitial_oid(clause->opnos);
+	if (!var_on_left)
+	{
+		first_opno = get_commutator(first_opno);
+		if (!OidIsValid(first_opno))
+			return NULL;
+	}
+	hc_strategy = get_op_opfamily_strategy(first_opno, INTEGER_LSM_FAM_OID);
+	if (hc_strategy == InvalidStrategy ||
+		hc_strategy == BTEqualStrategyNumber)
+		return NULL;
+
+	if (!is_pseudo_constant_for_index(root,
+									  (Node *) linitial(non_var_args),
+									  index))
+		return NULL;
+
+	/*
+	 * Walk the remaining ROW elements.  Each must reference the next index
+	 * key column in order (forming a prefix), with a compatible operator.
+	 */
+	matching_cols = 1;
+	indexcol = 0;
+
+	while (matching_cols < list_length(var_args) &&
+		   indexcol < index->nkeycolumns)
+	{
+		Node	   *varop = (Node *) list_nth(var_args, matching_cols);
+		Node	   *constop = (Node *) list_nth(non_var_args, matching_cols);
+		Oid			opno;
+		int			col_strategy;
+
+		if (IsA(varop, RelabelType))
+			varop = (Node *) ((RelabelType *) varop)->arg;
+
+		/* Must be a Var referencing the expected index key column. */
+		if (!IsA(varop, Var))
+			break;
+		if (((Var *) varop)->varno != index->rel->relid)
+			break;
+		if (((Var *) varop)->varattno != index->indexkeys[indexcol])
+			break;
+
+		/* The constant side must not reference the indexed relation. */
+		if (bms_is_member(index->rel->relid, pull_varnos(root, constop)))
+			break;
+		if (contain_volatile_functions(constop))
+			break;
+
+		/* Operator must have the same strategy in the column's opfamily. */
+		opno = list_nth_oid(clause->opnos, matching_cols);
+		if (!var_on_left)
+		{
+			opno = get_commutator(opno);
+			if (!OidIsValid(opno))
+				break;
+		}
+		col_strategy = get_op_opfamily_strategy(opno,
+											   index->opfamily[indexcol]);
+		if (col_strategy != hc_strategy)
+			break;
+
+		/* Collation must match. */
+		if (!IndexCollMatchesExprColl(index->indexcollations[indexcol],
+									 list_nth_oid(clause->inputcollids,
+												 matching_cols)))
+			break;
+
+		++indexcol;
+		++matching_cols;
+	}
+
+	/*
+	 * Must have matched yb_hash_code + all remaining ROW elements as a
+	 * prefix.  We require at least yb_hash_code + one real column, and
+	 * all elements from the original ROW must have matched.  Broader
+	 * lossy prefix matching is left for a follow-up.
+	 */
+	if (matching_cols < 2)
+		return NULL;
+	if (matching_cols != list_length(clause->opnos))
+		return NULL;
+
+	{
+		IndexClause *iclause = makeNode(IndexClause);
+		int			i;
+
+		iclause->rinfo = rinfo;
+		iclause->indexcol = 0;
+		iclause->lossy = false;
+
+		if (var_on_left)
+		{
+			/* All columns matched and var is on left -- use as-is. */
+			iclause->indexquals = list_make1(rinfo);
+		}
+		else
+		{
+			/*
+			 * Var is on right -- commute all operators so that index keys
+			 * are on the left side as the executor expects.
+			 */
+			List	   *new_ops = NIL;
+			List	   *new_largs = NIL;
+			List	   *new_rargs = NIL;
+			List	   *new_collids = NIL;
+			List	   *new_opfamilies = NIL;
+			RowCompareExpr *rc;
+			RestrictInfo *new_rinfo;
+
+			for (i = 0; i < matching_cols; i++)
+			{
+				Oid			new_opno;
+				Oid			opfamily;
+
+				new_opno = get_commutator(list_nth_oid(clause->opnos, i));
+				if (!OidIsValid(new_opno))
+					return NULL;
+
+				new_ops = lappend_oid(new_ops, new_opno);
+				/* Swap largs and rargs to put index keys on left. */
+				new_largs = lappend(new_largs,
+									list_nth(castNode(List, clause->rargs), i));
+				new_rargs = lappend(new_rargs,
+									list_nth(clause->largs, i));
+				new_collids = lappend_oid(new_collids,
+										  list_nth_oid(clause->inputcollids, i));
+				opfamily = (i == 0) ? INTEGER_LSM_FAM_OID :
+					index->opfamily[i - 1];
+				new_opfamilies = lappend_oid(new_opfamilies, opfamily);
+			}
+
+			rc = makeNode(RowCompareExpr);
+			rc->rctype = (RowCompareType) hc_strategy;
+			rc->opnos = new_ops;
+			rc->opfamilies = new_opfamilies;
+			rc->inputcollids = new_collids;
+			rc->largs = new_largs;
+			rc->rargs = (Node *) new_rargs;
+
+			new_rinfo = make_simple_restrictinfo(root, (Expr *) rc);
+			iclause->indexquals = list_make1(new_rinfo);
+		}
+
+		/*
+		 * Build the indexcols list.  Element 0 is yb_hash_code which has no
+		 * real index column; use 0 as placeholder.  The rest map to index
+		 * columns 0, 1, 2, ...
+		 */
+		iclause->indexcols = list_make1_int(0);
+		for (i = 0; i < matching_cols - 1; i++)
+			iclause->indexcols = lappend_int(iclause->indexcols, i);
+
+		return iclause;
+	}
 }

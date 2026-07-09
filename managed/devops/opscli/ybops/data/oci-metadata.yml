@@ -1,0 +1,195 @@
+# Copyright 2019 YugabyteDB, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+# OCI (Oracle Cloud Infrastructure) metadata for YugabyteDB
+
+credential_vars:
+- OCI_TENANCY_ID
+- OCI_USER_ID
+- OCI_FINGERPRINT
+- OCI_REGION
+- OCI_COMPARTMENT_ID
+
+region_cidr_format: '{}.0.0/16'
+
+# OCI Regions with availability domains
+# Using Oracle Linux 8 as the default image (Platform Images)
+# Image OCIDs are region-specific - these are placeholders that should be updated
+# per deployment or use the OCI image lookup API
+regions:
+  us-ashburn-1:
+    cidr_prefix: '10.10'
+    # Oracle Linux 8 image - actual OCID varies by region
+    image: ''
+    zones:
+    - 'AD-1'
+    - 'AD-2'
+    - 'AD-3'
+  us-phoenix-1:
+    cidr_prefix: '10.11'
+    image: ''
+    zones:
+    - 'AD-1'
+    - 'AD-2'
+    - 'AD-3'
+  us-sanjose-1:
+    cidr_prefix: '10.12'
+    image: ''
+    zones:
+    - 'AD-1'
+  us-chicago-1:
+    cidr_prefix: '10.13'
+    image: ''
+    zones:
+    - 'AD-1'
+  ca-toronto-1:
+    cidr_prefix: '10.14'
+    image: ''
+    zones:
+    - 'AD-1'
+  ca-montreal-1:
+    cidr_prefix: '10.15'
+    image: ''
+    zones:
+    - 'AD-1'
+  eu-frankfurt-1:
+    cidr_prefix: '10.20'
+    image: ''
+    zones:
+    - 'AD-1'
+    - 'AD-2'
+    - 'AD-3'
+  eu-amsterdam-1:
+    cidr_prefix: '10.21'
+    image: ''
+    zones:
+    - 'AD-1'
+  eu-zurich-1:
+    cidr_prefix: '10.22'
+    image: ''
+    zones:
+    - 'AD-1'
+  eu-madrid-1:
+    cidr_prefix: '10.23'
+    image: ''
+    zones:
+    - 'AD-1'
+  eu-marseille-1:
+    cidr_prefix: '10.24'
+    image: ''
+    zones:
+    - 'AD-1'
+  eu-milan-1:
+    cidr_prefix: '10.25'
+    image: ''
+    zones:
+    - 'AD-1'
+  eu-paris-1:
+    cidr_prefix: '10.26'
+    image: ''
+    zones:
+    - 'AD-1'
+  eu-stockholm-1:
+    cidr_prefix: '10.27'
+    image: ''
+    zones:
+    - 'AD-1'
+  uk-london-1:
+    cidr_prefix: '10.30'
+    image: ''
+    zones:
+    - 'AD-1'
+    - 'AD-2'
+    - 'AD-3'
+  uk-cardiff-1:
+    cidr_prefix: '10.31'
+    image: ''
+    zones:
+    - 'AD-1'
+  ap-tokyo-1:
+    cidr_prefix: '10.40'
+    image: ''
+    zones:
+    - 'AD-1'
+  ap-osaka-1:
+    cidr_prefix: '10.41'
+    image: ''
+    zones:
+    - 'AD-1'
+  ap-seoul-1:
+    cidr_prefix: '10.42'
+    image: ''
+    zones:
+    - 'AD-1'
+  ap-chuncheon-1:
+    cidr_prefix: '10.43'
+    image: ''
+    zones:
+    - 'AD-1'
+  ap-singapore-1:
+    cidr_prefix: '10.44'
+    image: ''
+    zones:
+    - 'AD-1'
+  ap-sydney-1:
+    cidr_prefix: '10.45'
+    image: ''
+    zones:
+    - 'AD-1'
+  ap-melbourne-1:
+    cidr_prefix: '10.46'
+    image: ''
+    zones:
+    - 'AD-1'
+  ap-mumbai-1:
+    cidr_prefix: '10.47'
+    image: ''
+    zones:
+    - 'AD-1'
+  ap-hyderabad-1:
+    cidr_prefix: '10.48'
+    image: ''
+    zones:
+    - 'AD-1'
+  me-jeddah-1:
+    cidr_prefix: '10.50'
+    image: ''
+    zones:
+    - 'AD-1'
+  me-dubai-1:
+    cidr_prefix: '10.51'
+    image: ''
+    zones:
+    - 'AD-1'
+  il-jerusalem-1:
+    cidr_prefix: '10.52'
+    image: ''
+    zones:
+    - 'AD-1'
+  sa-saopaulo-1:
+    cidr_prefix: '10.60'
+    image: ''
+    zones:
+    - 'AD-1'
+  sa-santiago-1:
+    cidr_prefix: '10.61'
+    image: ''
+    zones:
+    - 'AD-1'
+  sa-vinhedo-1:
+    cidr_prefix: '10.62'
+    image: ''
+    zones:
+    - 'AD-1'
+  af-johannesburg-1:
+    cidr_prefix: '10.70'
+    image: ''
+    zones:
+    - 'AD-1'
+
+zone_cidr_format: '{}.{}.0/24'

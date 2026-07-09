@@ -78,16 +78,18 @@ void RpcController::Swap(RpcController* other) {
 void RpcController::Reset() {
   std::lock_guard l(lock_);
   if (call_) {
-    CHECK(finished());
+    CHECK(FinishedUnlocked());
   }
   call_.reset();
 }
 
 bool RpcController::finished() const {
-  if (call_) {
-    return call_->IsFinished();
-  }
-  return false;
+  std::lock_guard l(lock_);
+  return FinishedUnlocked();
+}
+
+bool RpcController::FinishedUnlocked() const {
+  return call_ && call_->IsFinished();
 }
 
 Status RpcController::status() const {

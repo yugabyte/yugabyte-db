@@ -2,7 +2,9 @@ import os
 import logging
 from contextlib import nullcontext
 from work_queue.task_router import TaskProcessor
+from work_queue.poller import Poller
 from db.connection_pool import ConnectionPool
+from db.system_connection_pool import SystemConnectionPool
 from models.work_queue_task import WorkQueueTask
 from rag_pipeline.rag_handler import RagPipelineHandler
 from db.source_document_tracking import SourceDocumentTracking
@@ -24,8 +26,74 @@ class DocumentPreprocessor(TaskProcessor):
         """
         self.logger = logging.getLogger(__name__)
         self.connection_pool = ConnectionPool()
+        self.system_connection_pool = SystemConnectionPool()
         self.rag_handler = RagPipelineHandler()
         self.source_document_tracking = SourceDocumentTracking()
+        # Used to finalize the work_queue row after process(). Without this
+        # the row stays in IN_PROGRESS forever and the SQL-side reaper
+        # re-queues it once the lease expires, causing already-completed
+        # documents to be reprocessed on every poll cycle.
+        self.poller = Poller()
+
+    def _short_circuit_if_already_finalized(
+        self, task: WorkQueueTask, document_id: UUID
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Skip processing if ``dist_rag.documents`` says the document is
+        already in a terminal state.
+
+        This is the idempotency guard against duplicate PREPROCESS tasks
+        for the same document. They can show up via:
+
+        - Historical work_queue rows from before MEKO-154 (mark_completed
+          was an UPDATE, the SQL reaper re-queued anything left in
+          IN_PROGRESS with an expired lease).
+        - Future reconciliation jobs that re-enqueue FAILED tasks.
+        - Manual re-enqueues during ops work.
+
+        Returns:
+            A result dict (and finalizes the work_queue row) if the
+            document is already ``COMPLETED`` or ``FAILED``. ``None``
+            otherwise, meaning the caller should proceed with normal
+            processing.
+
+        The work_queue side is always cleaned up so the queue doesn't
+        keep handing this row back to a worker.
+        """
+        status = self.source_document_tracking.get_document_status(document_id)
+        if status not in ("COMPLETED", "FAILED"):
+            return None
+
+        self.logger.warning(
+            f"Skipping task {task.id}: document {document_id} is already "
+            f"in terminal status '{status}'; finalizing work_queue row "
+            f"without reprocessing"
+        )
+        self._finalize_task(task, succeeded=(status == "COMPLETED"))
+        return {
+            "status": "skipped",
+            "task_id": task.id,
+            "document_id": document_id,
+            "reason": f"document already {status}",
+        }
+
+    def _finalize_task(self, task: WorkQueueTask, succeeded: bool) -> None:
+        """Mark the work_queue row terminal so it isn't re-queued by the reaper.
+
+        Wraps :meth:`Poller.mark_completed` / :meth:`Poller.mark_failed` so
+        finalization failures can't mask the original processing outcome --
+        the caller decides what status to return; we only log here.
+        """
+        try:
+            if succeeded:
+                self.poller.mark_completed(task.id)
+            else:
+                self.poller.mark_failed(task.id)
+        except Exception as e:
+            self.logger.error(
+                f"Failed to finalize work_queue row for task {task.id} "
+                f"(succeeded={succeeded}): {str(e)}"
+            )
 
     def validate(self, task: WorkQueueTask) -> bool:
         """
@@ -188,30 +256,45 @@ class DocumentPreprocessor(TaskProcessor):
         Parse the datapack_id from document_uri and return a Langfuse client
         initialised with the matching project keys, or None if unavailable.
         """
+        # The Langfuse project mapping lives in the meko_system DB, which may be
+        # a different database than the one served by the shared pool. When
+        # YUGABYTEDB_SYSTEM_CONN_STRING is set, use the dedicated system pool
+        # that points directly at that database; otherwise fall back to the
+        # shared connection pool.
+        pool = (
+            self.system_connection_pool
+            if os.getenv("YUGABYTEDB_SYSTEM_CONN_STRING")
+            else self.connection_pool
+        )
+        connection = None
         try:
-            connection = self.connection_pool.get_connection()
+            connection = pool.get_connection()
             cursor = connection.cursor()
             try:
-                cursor.execute(
-                    "SELECT langfuse_public_key, langfuse_secret_key "
-                    "FROM meko_system.langfuse_project_mapping WHERE datapack_id = %s::uuid",
-                    (datapack_id,),
-                )
-                row = cursor.fetchone()
-                if row:
-                    public_key = row[0]
-                    secret_key = row[1]
-                    return public_key, secret_key
-                else:
-                    self.logger.warning(f"No Langfuse keys found for datapack_id={datapack_id}")
+                return self._fetch_langfuse_keys(cursor, datapack_id)
             finally:
                 cursor.close()
-                self.connection_pool.return_connection(connection)
         except Exception as e:
             self.logger.warning(
                 f"Failed to resolve Langfuse keys for datapack_id={datapack_id}: {str(e)}"
             )
+        finally:
+            if connection is not None:
+                pool.return_connection(connection)
 
+        return None
+
+    def _fetch_langfuse_keys(self, cursor, datapack_id: str) -> Tuple[str, str] | None:
+        """Run the Langfuse key lookup on an already-open cursor."""
+        cursor.execute(
+            "SELECT langfuse_public_key, langfuse_secret_key "
+            "FROM meko_system.langfuse_project_mapping WHERE datapack_id = %s::uuid",
+            (datapack_id,),
+        )
+        row = cursor.fetchone()
+        if row:
+            return row[0], row[1]
+        self.logger.warning(f"No Langfuse keys found for datapack_id={datapack_id}")
         return None
 
     def process(self, task: WorkQueueTask) -> Dict[str, Any]:
@@ -282,6 +365,18 @@ class DocumentPreprocessor(TaskProcessor):
                             f"source_id: {source_id}, document_id: {document_id}, "
                             f"document_uri: {document_uri}"
                         )
+
+                    # Idempotency guard: bail out before any embedding work
+                    # if this document was already processed (or already
+                    # failed and is awaiting reconciliation).
+                    short_circuit = self._short_circuit_if_already_finalized(
+                        task, document_id
+                    )
+                    if short_circuit is not None:
+                        # Skip updating the langfuse span output for short-circuit
+                        # as the document is already processed or failed
+                        transform_span = None
+                        return short_circuit
 
                     # Retrieve required parameters
                     try:
@@ -356,8 +451,15 @@ class DocumentPreprocessor(TaskProcessor):
                         self.logger.error(f"Error retrieving RAG index name: {str(e)}")
                         raise
 
+                    trace_id = (
+                        transform_span.trace_id
+                        if transform_span and hasattr(transform_span, "trace_id")
+                        else None
+                    )
                     self.source_document_tracking.update_document_status(
-                        document_id=document_id, status="PROCESSING"
+                        document_id=document_id,
+                        status="PROCESSING",
+                        trace_id=trace_id,
                     )
 
                     # Start processing
@@ -378,6 +480,7 @@ class DocumentPreprocessor(TaskProcessor):
                         self.source_document_tracking.update_document_status(
                             document_id=document_id, status="COMPLETED"
                         )
+                        self._finalize_task(task, succeeded=True)
                         span_output = {
                             "status": "success",
                             "task_id": str(task.id),
@@ -398,6 +501,7 @@ class DocumentPreprocessor(TaskProcessor):
                         self.source_document_tracking.update_document_status(
                             document_id=document_id, status="FAILED"
                         )
+                    self._finalize_task(task, succeeded=False)
                     span_output = {
                         "status": "error",
                         "task_id": str(task.id),
@@ -419,6 +523,7 @@ class DocumentPreprocessor(TaskProcessor):
                         self.source_document_tracking.update_document_status(
                             document_id=document_id, status="FAILED"
                         )
+                    self._finalize_task(task, succeeded=False)
                     span_output = {
                         "status": "error",
                         "task_id": str(task.id),

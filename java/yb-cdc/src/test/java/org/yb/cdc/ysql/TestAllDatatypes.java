@@ -27,12 +27,14 @@ import org.yb.cdc.util.CDCTestUtils;
 import static org.yb.AssertionWrappers.*;
 import org.junit.Before;
 import org.junit.Test;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value = YBTestRunner.class)
 public class TestAllDatatypes extends CDCBaseClass {
   private final Logger LOG = LoggerFactory.getLogger(TestAllDatatypes.class);
 

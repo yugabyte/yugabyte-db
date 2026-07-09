@@ -1,0 +1,130 @@
+name: Build Docker
+
+permissions:
+  id-token: write
+  contents: write
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - Dockerfile
+      - docker-bake.hcl
+      - ".github/workflows/docker.yaml"
+  schedule:
+    - cron: "44 4 * * *"
+  workflow_dispatch:
+
+jobs:
+  docker_build:
+    name: Build Docker image for Postgres ${{ matrix.postgres }} on ${{ matrix.runner }}
+    strategy:
+      matrix:
+        postgres: ["14", "15", "16", "17", "18"]
+        runner: ["ubuntu-24.04", "ubuntu-24.04-arm"]
+
+    runs-on: ${{ matrix.runner }}
+
+    env:
+      BUILDKIT_PROGRESS: plain
+      POSTGRES_VERSION: ${{ matrix.postgres }}
+    outputs:
+      branch_tag: ${{ steps.params.outputs.branch_tag }}
+      target_repo: ${{ steps.params.outputs.target_repo }}
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: pgduckdb
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Checkout pg_duckdb extension code
+        uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+
+      - name: Compute job parameters
+        id: params
+        run: |
+          # Tag is XX-YYYYY-<branch>-latest so 16 + branch name length
+          # since maximum docker tag is 128 characters, we need to truncate the branch name to 112
+          BRANCH=$(echo "${{ github.head_ref || github.ref_name }}" \
+              | sed 's/[^a-zA-Z0-9\-\.]/-/g' \
+              | cut -c 1-112 | tr '[:upper:]' '[:lower:]' \
+              | sed -e 's/-*$//')
+
+          # Set platform depending on which runner we're using
+          if [ "${{ matrix.runner }}" = "ubuntu-24.04" ]; then
+            PLATFORM=amd64
+          else
+            PLATFORM=arm64
+          fi
+
+          # If main or tag, then push to `pgduckdb/pgduckdb`
+          git fetch --tags --force
+          if [ "$BRANCH" = "main" ] || git rev-parse --verify $BRANCH^{tag} > /dev/null 2>&1; then
+            TARGET_REPO='pgduckdb/pgduckdb'
+          else
+            TARGET_REPO='pgduckdb/ci-builds'
+          fi
+
+          echo "platform=$PLATFORM" >> "$GITHUB_OUTPUT"
+          echo "branch_tag=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "target_repo=$TARGET_REPO" >> "$GITHUB_OUTPUT"
+          echo "latest_image=pgduckdb/ci-builds:${{ matrix.postgres }}-${PLATFORM}-${BRANCH}-latest" >> "$GITHUB_OUTPUT"
+
+      - name: Attempt to pull previous image
+        run: |
+          docker pull ${{ steps.params.outputs.latest_image }} || true
+          docker pull moby/buildkit:buildx-stable-1
+
+      - name: Set up Docker buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/${{ steps.params.outputs.platform }}
+
+      - name: docker bake
+        uses: docker/bake-action@v5
+        with:
+          targets: pg_duckdb_${{ matrix.postgres }}
+          push: true
+          set: |
+            *.platform=linux/${{ steps.params.outputs.platform }}
+            *.cache-from=type=registry,ref=${{ steps.params.outputs.latest_image }}
+            *.cache-from=type=gha,scope=${{ github.workflow }}
+            *.cache-to=type=gha,mode=max,scope=${{ github.workflow }}
+            postgres.tags=pgduckdb/ci-builds:${{ matrix.postgres }}-${{ steps.params.outputs.platform }}-${{ github.sha }}
+            postgres.tags=${{ steps.params.outputs.latest_image }}
+
+  docker_merge:
+    name: Merge Docker image for Postgres ${{ matrix.postgres }}
+    strategy:
+      matrix:
+        postgres: ["14", "15", "16", "17", "18"]
+
+    runs-on: ubuntu-24.04
+    needs: docker_build
+    steps:
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: pgduckdb
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Merge images
+        run: |
+          docker pull --platform linux/amd64 pgduckdb/ci-builds:${{ matrix.postgres }}-amd64-${{ github.sha }}
+          docker pull --platform linux/arm64 pgduckdb/ci-builds:${{ matrix.postgres }}-arm64-${{ github.sha }}
+
+          BRANCH="${{ needs.docker_build.outputs.branch_tag }}"
+          TARGET_REPO="${{ needs.docker_build.outputs.target_repo }}"
+
+          echo "Will push merged image to '${TARGET_REPO}'."
+          docker buildx imagetools create \
+            --tag     ${TARGET_REPO}:${{ matrix.postgres }}-${BRANCH}         \
+            --tag pgduckdb/ci-builds:${{ matrix.postgres }}-${{ github.sha }} \
+            pgduckdb/ci-builds:${{ matrix.postgres }}-amd64-${{ github.sha }} \
+            pgduckdb/ci-builds:${{ matrix.postgres }}-arm64-${{ github.sha }}
+
+          docker buildx imagetools inspect pgduckdb/ci-builds:${{ matrix.postgres }}-${{ github.sha }}

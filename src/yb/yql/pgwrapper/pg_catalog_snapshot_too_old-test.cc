@@ -22,6 +22,7 @@
 #include "yb/util/test_macros.h"
 
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 

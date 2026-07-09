@@ -5,6 +5,7 @@ import { Provider } from 'react-redux';
 import { createStore } from 'redux';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { mainTheme } from '@app/redesign/theme/mainTheme';
+import { YBToastProvider } from '../../create-universe/helpers/ToastUtils';
 import { EditUniverseContext, EditUniverseTabs } from '../EditUniverseContext';
 import { GeoPartitionPlacementView } from './GeoPartitionPlacementView';
 import type { Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
@@ -79,15 +80,17 @@ function renderGeoView(universeData: Universe) {
     <ThemeProvider theme={mainTheme}>
       <Provider store={noopStore}>
         <QueryClientProvider client={queryClient}>
-          <EditUniverseContext.Provider
-            value={{
-              activeTab: EditUniverseTabs.PLACEMENT,
-              universeData,
-              providerRegions: makeProviderRegions()
-            }}
-          >
-            <GeoPartitionPlacementView />
-          </EditUniverseContext.Provider>
+          <YBToastProvider>
+            <EditUniverseContext.Provider
+              value={{
+                activeTab: EditUniverseTabs.PLACEMENT,
+                universeData,
+                providerRegions: makeProviderRegions()
+              }}
+            >
+              <GeoPartitionPlacementView />
+            </EditUniverseContext.Provider>
+          </YBToastProvider>
         </QueryClientProvider>
       </Provider>
     </ThemeProvider>

@@ -388,6 +388,33 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "XCluster/DR config GET API timeout in milliseconds",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> pitrListApiTimeoutMs =
+      new ConfKeyInfo<>(
+          "yb.pitr.list_api.snapshot_schedules.request_timeout_ms",
+          ScopeType.GLOBAL,
+          "PITR list API snapshot schedules request timeout",
+          "YB client admin operation timeout in milliseconds for PITR list APIs that call"
+              + " listSnapshotSchedules",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> pitrListSnapshotSchedulesCacheTtlMs =
+      new ConfKeyInfo<>(
+          "yb.pitr.list_api.snapshot_schedules.cache.ttl_ms",
+          ScopeType.GLOBAL,
+          "PITR list API snapshot schedules cache TTL",
+          "Per-universe cache TTL in milliseconds for listSnapshotSchedules results used by PITR"
+              + " list APIs",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> pitrListSnapshotSchedulesCacheMaxUniverses =
+      new ConfKeyInfo<>(
+          "yb.pitr.list_api.snapshot_schedules.cache.max_size",
+          ScopeType.GLOBAL,
+          "PITR list API snapshot schedules cache max size",
+          "Maximum number of universes whose listSnapshotSchedules results are cached for PITR"
+              + " list APIs",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 
   public static final ConfKeyInfo<Integer> ybcSocketReadTimeoutMs =
       new ConfKeyInfo<>(
@@ -552,7 +579,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow OTLP Exporter in Telemetry Provider",
           "Allow the usage of OTLP Exporter in Telemetry Provider.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> telemetrySkipConnectivityValidations =
       new ConfKeyInfo<>(
           "yb.telemetry.skip_connectivity_validations",
@@ -988,6 +1015,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Enables extra logging",
           "Enables extra logging for task params and request body",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableGFlagsSensitiveDataApiRedaction =
+      new ConfKeyInfo<>(
+          "yb.api.enable_gflags_sensitive_data_redaction",
+          ScopeType.GLOBAL,
+          "Enable gflags sensitive data API redaction",
+          "When true, API responses redact gflags sensitive data that is not covered by JsonPath "
+              + "(for example ldapbindpasswd in ysql_hba_conf_csv and audit additionalDetails). "
+              + "JsonPath based API redaction remains enabled.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> applicationLogFileNamePrefix =
@@ -1473,6 +1510,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "GCP provider validation",
           "Enables validation for GCP Provider and returns the validation errors json if any",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableOciProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.oci_provider_validation",
+          ScopeType.GLOBAL,
+          "OCI provider validation",
+          "Enable OCI Provider quick validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<String> ldapSearchFilter =
@@ -2248,5 +2293,42 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Time to live for GCP capacity reservation",
           "Time to live for GCP capacity reservation",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> paMemoryPerNodeAdvancedObservabilityMb =
+      new ConfKeyInfo<>(
+          "yb.pa.memory_per_node_advanced_observability_mb",
+          ScopeType.GLOBAL,
+          "Memory per node for advanced observability",
+          "Estimated memory usage per node when advanced observability is enabled (in MB). Used"
+              + " to precheck YBA node memory headroom before enabling advanced observability.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> paMemoryPerNodePaCollectorMb =
+      new ConfKeyInfo<>(
+          "yb.pa.memory_per_node_pa_collector_mb",
+          ScopeType.GLOBAL,
+          "Memory per node for PA collector",
+          "Estimated memory usage per node when PA collector is enabled without advanced"
+              + " observability (in MB). Used to precheck YBA node memory headroom before enabling"
+              + " PA collection.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> skipPaMemoryValidation =
+      new ConfKeyInfo<>(
+          "yb.pa.skip_memory_validation",
+          ScopeType.GLOBAL,
+          "Skip PA Collector memory validation",
+          "Skip memory availability validation when enabling Performance Advisor Collection",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> paEmbeddedUiReverseProxyEnabled =
+      new ConfKeyInfo<>(
+          "yb.pa.embedded_ui.reverse_proxy.enabled",
+          ScopeType.GLOBAL,
+          "Reverse-proxy API calls from embedded PA Collector UI via YBA",
+          "When true, embedded PA Collector UI traffic is proxied through YBA (same origin)"
+              + " so YBA performs all authentication and universe RBAC; requires PA Collector to"
+              + " accept the X-AUTH-TP-API-TOKEN service token as full user-request auth.",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

@@ -18,11 +18,13 @@ import api.v2.handlers.UniverseManagementHandler;
 import api.v2.models.CollectFilesRequest;
 import api.v2.models.CollectFilesResponse;
 import api.v2.models.FileCollectionOptions;
+import api.v2.models.NodeScriptResult;
 import api.v2.models.NodeSelection;
 import api.v2.models.RunScriptRequest;
 import api.v2.models.RunScriptResponse;
 import api.v2.models.ScriptOptions;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.FileCollectionDownloader;
 import com.yugabyte.yw.common.LocalhostAccessChecker;
@@ -35,12 +37,14 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import org.junit.Before;
@@ -93,6 +97,22 @@ public class NodeTroubleshootingApiTest extends FakeDBApplication {
     return Helpers.fakeRequest(method, path).remoteAddress("192.168.1.100").build();
   }
 
+  /** Persist a set of named Live nodes onto the default universe so node_names can be validated. */
+  private void addLiveNodes(String... nodeNames) {
+    Universe.UniverseUpdater updater =
+        u -> {
+          var details = u.getUniverseDetails();
+          int idx = 1;
+          for (String nodeName : nodeNames) {
+            NodeDetails node = ApiUtils.getDummyNodeDetails(idx++, NodeDetails.NodeState.Live);
+            node.nodeName = nodeName;
+            details.nodeDetailsSet.add(node);
+          }
+          u.setUniverseDetails(details);
+        };
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
+  }
+
   // ==================== RUN SCRIPT TESTS ====================
 
   @Test
@@ -138,6 +158,66 @@ public class NodeTroubleshootingApiTest extends FakeDBApplication {
     assertEquals(Integer.valueOf(3), response.getSummary().getTotalNodes());
     assertEquals(Integer.valueOf(3), response.getSummary().getSuccessfulNodes());
     assertEquals(Boolean.TRUE, response.getSummary().getAllSucceeded());
+  }
+
+  @Test
+  public void testRunScript_MapsStderrIntoResponse() {
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.nodeScriptEnabled)))
+        .thenReturn(true);
+
+    RunScriptRequest request = new RunScriptRequest();
+    ScriptOptions scriptOptions = new ScriptOptions();
+    scriptOptions.setScriptContent("echo err >&2; exit 1");
+    scriptOptions.setTimeoutSecs(60L);
+    request.setScriptOptions(scriptOptions);
+
+    // The handler must carry the stderr field through to the API response. Regression: the API
+    // stderr field was never populated, and a failing node's output was mislabeled as stdout.
+    NodeScriptRunner.NodeResult nodeResult =
+        NodeScriptRunner.NodeResult.builder()
+            .nodeName("n1")
+            .nodeAddress("10.0.0.1")
+            .exitCode(1)
+            .stdout("")
+            .stderr("stderr line")
+            .executionTimeMs(5L)
+            .success(false)
+            .build();
+    Map<String, NodeScriptRunner.NodeResult> nodeResults = new LinkedHashMap<>();
+    nodeResults.put("n1", nodeResult);
+
+    NodeScriptRunner.ExecutionResult result =
+        NodeScriptRunner.ExecutionResult.builder()
+            .totalNodes(1)
+            .successfulNodes(0)
+            .failedNodes(1)
+            .totalExecutionTimeMs(5L)
+            .allSucceeded(false)
+            .nodeResults(nodeResults)
+            .build();
+
+    when(mockNodeScriptRunner.runScript(any(Universe.class), any(), any())).thenReturn(result);
+
+    Request httpRequest =
+        createLocalhostRequest(
+            "POST",
+            "/api/v2/customers/"
+                + defaultCustomer.getUuid()
+                + "/universes/"
+                + defaultUniverse.getUniverseUUID()
+                + "/run-script");
+
+    RunScriptResponse response =
+        handler.runScript(
+            httpRequest, defaultCustomer.getUuid(), defaultUniverse.getUniverseUUID(), request);
+
+    NodeScriptResult nr = response.getResults().get("n1");
+    assertNotNull(nr);
+    assertEquals("stderr line", nr.getStderr());
+    assertEquals("", nr.getStdout());
+    assertEquals(Integer.valueOf(1), nr.getExitCode());
+    assertEquals(Boolean.FALSE, nr.getSuccess());
   }
 
   @Test
@@ -437,6 +517,98 @@ public class NodeTroubleshootingApiTest extends FakeDBApplication {
     assertTrue(exception.getMessage().contains("No nodes found"));
   }
 
+  @Test
+  public void testRunScript_UnknownNodeName_returnsBadRequest() {
+    // A node_names list mixing a valid name with a non-existent one must be rejected outright,
+    // rather than silently dropping the bad name, running on the subset, and reporting success.
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.nodeScriptEnabled)))
+        .thenReturn(true);
+
+    addLiveNodes("host-n1", "host-n2");
+
+    RunScriptRequest request = new RunScriptRequest();
+    ScriptOptions scriptOptions = new ScriptOptions();
+    scriptOptions.setScriptContent("echo 'test'");
+    request.setScriptOptions(scriptOptions);
+
+    NodeSelection nodeSelection = new NodeSelection();
+    nodeSelection.setNodeNames(Arrays.asList("host-n1", "ghost-node"));
+    request.setNodes(nodeSelection);
+
+    Request httpRequest =
+        createLocalhostRequest(
+            "POST",
+            "/api/v2/customers/"
+                + defaultCustomer.getUuid()
+                + "/universes/"
+                + defaultUniverse.getUniverseUUID()
+                + "/run-script");
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.runScript(
+                    httpRequest,
+                    defaultCustomer.getUuid(),
+                    defaultUniverse.getUniverseUUID(),
+                    request));
+
+    assertEquals(400, exception.getHttpStatus());
+    assertTrue(exception.getMessage().contains("ghost-node"));
+    assertTrue(exception.getMessage().contains("not found"));
+    // The valid name must NOT leak into the error, and nothing should have executed.
+    assertTrue(!exception.getMessage().contains("host-n1"));
+    verify(mockNodeScriptRunner, never()).runScript(any(), any(), any());
+  }
+
+  @Test
+  public void testRunScript_AllNodeNamesValid_executes() {
+    // When every requested node name exists, validation must pass and the script must run.
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.nodeScriptEnabled)))
+        .thenReturn(true);
+
+    addLiveNodes("host-n1", "host-n2");
+
+    RunScriptRequest request = new RunScriptRequest();
+    ScriptOptions scriptOptions = new ScriptOptions();
+    scriptOptions.setScriptContent("echo 'test'");
+    request.setScriptOptions(scriptOptions);
+
+    NodeSelection nodeSelection = new NodeSelection();
+    nodeSelection.setNodeNames(Arrays.asList("host-n1", "host-n2"));
+    request.setNodes(nodeSelection);
+
+    NodeScriptRunner.ExecutionResult mockResult = mock(NodeScriptRunner.ExecutionResult.class);
+    when(mockResult.getTotalNodes()).thenReturn(2);
+    when(mockResult.getSuccessfulNodes()).thenReturn(2);
+    when(mockResult.getFailedNodes()).thenReturn(0);
+    when(mockResult.isAllSucceeded()).thenReturn(true);
+    when(mockResult.getTotalExecutionTimeMs()).thenReturn(200L);
+    when(mockResult.getNodeResults()).thenReturn(new LinkedHashMap<>());
+
+    when(mockNodeScriptRunner.runScript(any(Universe.class), any(), any())).thenReturn(mockResult);
+
+    Request httpRequest =
+        createLocalhostRequest(
+            "POST",
+            "/api/v2/customers/"
+                + defaultCustomer.getUuid()
+                + "/universes/"
+                + defaultUniverse.getUniverseUUID()
+                + "/run-script");
+
+    RunScriptResponse response =
+        handler.runScript(
+            httpRequest, defaultCustomer.getUuid(), defaultUniverse.getUniverseUUID(), request);
+
+    assertNotNull(response);
+    assertEquals(Integer.valueOf(2), response.getSummary().getTotalNodes());
+    verify(mockNodeScriptRunner).runScript(any(Universe.class), any(), any());
+  }
+
   // ==================== CREATE FILE COLLECTION TESTS ====================
 
   @Test
@@ -647,6 +819,50 @@ public class NodeTroubleshootingApiTest extends FakeDBApplication {
     assertEquals(400, exception.getHttpStatus());
     assertTrue(
         exception.getMessage().contains("masters_only and tservers_only cannot both be true"));
+    verify(mockNodeFileCollector, never()).collectFiles(any(), any(), any(), any());
+  }
+
+  @Test
+  public void testCreateFileCollection_UnknownNodeName_returnsBadRequest() {
+    // Same node_names guard as run-script: a non-existent name must fail fast rather than be
+    // silently dropped while the collection runs on the matched subset and reports success.
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.nodeScriptEnabled)))
+        .thenReturn(true);
+
+    addLiveNodes("host-n1", "host-n2");
+
+    CollectFilesRequest request = new CollectFilesRequest();
+    FileCollectionOptions options = new FileCollectionOptions();
+    options.setFilePaths(Arrays.asList("/home/yugabyte/tserver/conf/server.conf"));
+    request.setCollectionOptions(options);
+
+    NodeSelection nodeSelection = new NodeSelection();
+    nodeSelection.setNodeNames(Arrays.asList("host-n1", "ghost-node"));
+    request.setNodes(nodeSelection);
+
+    Request httpRequest =
+        createLocalhostRequest(
+            "POST",
+            "/api/v2/customers/"
+                + defaultCustomer.getUuid()
+                + "/universes/"
+                + defaultUniverse.getUniverseUUID()
+                + "/file-collections");
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.createFileCollection(
+                    httpRequest,
+                    defaultCustomer.getUuid(),
+                    defaultUniverse.getUniverseUUID(),
+                    request));
+
+    assertEquals(400, exception.getHttpStatus());
+    assertTrue(exception.getMessage().contains("ghost-node"));
+    assertTrue(exception.getMessage().contains("not found"));
     verify(mockNodeFileCollector, never()).collectFiles(any(), any(), any(), any());
   }
 

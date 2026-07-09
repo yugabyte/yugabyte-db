@@ -902,6 +902,15 @@ public class MiniYBCluster implements AutoCloseable {
       }
       if (clusterParameters.startYsqlProxy) {
         masterCmdLine.add("--master_auto_run_initdb");
+        // Avoid GitHub #31029 startup race: initdb's postgres bootstrap calls CreateTable on the
+        // master (to create the global transaction status table) and fails with "Not enough live
+        // tablet servers ..." if no tservers have registered yet. Have the master wait for our
+        // tservers to register before launching initdb. numTservers is the right ceiling because
+        // (a) we are about to start exactly that many tservers immediately after, and (b) the
+        // master's own RF requirement is min(numTservers, FLAGS_replication_factor), so any test
+        // that survives the bootstrap eventually needs all numTservers to come up anyway.
+        masterCmdLine.add(
+            "--TEST_master_min_live_tservers_before_initdb=" + clusterParameters.numTservers);
       }
       final HostAndPort masterHostAndPort = HostAndPort.fromParts(masterBindAddress, masterRpcPort);
       masterProcesses.put(masterHostAndPort,
@@ -1106,6 +1115,21 @@ public class MiniYBCluster implements AutoCloseable {
             addr.getHostName().equals(hostPort.getHost())));
     destroyDaemonAndWait(ts);
     usedBindIPs.remove(hostPort.getHost());
+  }
+
+  /**
+   * Force-kills (SIGKILL) a tserver and restarts it with the same data directory and UUID.
+   * Masters are not affected. This simulates a tserver crash followed by restart.
+   */
+  public void crashAndRestartTServer(HostAndPort hostPort) throws Exception {
+    MiniYBDaemon ts = tserverProcesses.get(hostPort);
+    if (ts == null) {
+      throw new IllegalArgumentException("No tserver at " + hostPort);
+    }
+    ts.getProcess().destroyForcibly();
+    ts.getProcess().waitFor();
+    ts = restart(ts);
+    tserverProcesses.put(ts.getHostAndPort(), ts);
   }
 
   public Map<HostAndPort, MiniYBDaemon> getTabletServers() {

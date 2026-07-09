@@ -3,14 +3,15 @@ title: Instant database cloning
 headerTitle: Instant database cloning
 linkTitle: Instant database cloning
 description: Clone your database in YugabyteDB for data recovery, development, and testing.
-tags:
-  feature: early-access
+headcontent: Clone a database at a point in time for recovery, development, and testing
 menu:
   stable:
     identifier: instant-db-clone
     parent: backup-restore
     weight: 706
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 Instant database cloning in YugabyteDB allows you to quickly create a zero-copy, independent writable clone of your database that can be used for data recovery, development, and testing. Cloning is both fast and efficient because when initially created, it shares the same data files with the original database. Subsequently, as data is written to the clone, the clone stores its own changes as separate and independent delta files. Although they physically share some files, the two databases are logically isolated, which means you can freely play with the clone database, perform DDLs, read and write data, and delete it without affecting the original database.
@@ -24,22 +25,6 @@ Cloning has two main use cases:
 - Data recovery. To recover from data loss due to user error (for example, accidentally dropping a table) or application error (for example, updating rows with corrupted data), you can create a clone of your production database from a point in time when the database was in a good state. This allows you to perform forensic analysis, export the lost or corrupted data from the clone, and import it back to the original database. For instance, if you dropped a table by mistake at 9:01, then detected this error at 10.45, you want to recover the lost data as it was at 9:00 (just before the table drop). At the same time, you don't want to lose any new data added to other tables between 9:01 and 10:45. With database cloning, you can create a clone of the database as of 9:00 (before the table drop) and copy the data in the table from the cloned database to the production database.
 
 - Development and testing. Because the two databases are completely isolated, you can experiment with the cloned database, perform DDL operations, read and write data, and delete the clone without impacting the original. Developers can test their changes on an identical copy of the production database without affecting its performance.
-
-## Enable database cloning
-
-To enable database cloning in a cluster, set the yb-master flag `enable_db_clone` to true.
-
-For example, to set the flag when creating a cluster using yugabyted, use the `--master_flags` option of the [start](../../../reference/configuration/yugabyted/#start) command as follows:
-
-```sh
---master_flags "enable_db_clone=true"
-```
-
-You can also set the runtime flags while the yb-master process is running using the yb-ts-cli [set_flag](../../../admin/yb-ts-cli/#set-flag) command as follows:
-
-```sh
-./bin/yb-ts-cli --server-address=127.0.0.1:7100 set_flag enable_db_clone true
-```
 
 ## Clone databases
 
@@ -96,13 +81,15 @@ SELECT * FROM yb_database_clones();
 
 This shows that a new database named `staging_db` with db_oid 16386 is created as a clone of the database `src_db`. The clone is `COMPLETE` and created as of time `2026-05-12 21:10:19.191239+00`.
 
+#### Using yb-admin
+
 To check the status of clone operations performed on a database using [yb-admin](../../../admin/yb-admin/), use the `list_clones` command and provide the `source_database_id` (YSQL) or `source_namespace_id` (YCQL), as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses $MASTERS list_clones 00004000000030008000000000000000
 ```
 
-```output
+```output.json
 [
     {
         "aggregate_state": "COMPLETE",
@@ -131,7 +118,7 @@ You can check the status of a specific clone operation if you have both the `sou
 ./bin/yb-admin --master_addresses $MASTERS list_clones 00004000000030008000000000000000 2
 ```
 
-```output
+```output.json
 [
     {
         "aggregate_state": "COMPLETE",
@@ -147,6 +134,24 @@ Use the `list_clones` command to check whether a clone operation completed succe
 
 Note that the cluster doesn't allow you to perform two clone operations concurrently on the same source database. You have to wait for the first clone to finish until you can perform another clone.
 
+### Clone database ownership
+
+The owner of the clone is determined as follows:
+
+- OWNER is explicitly specified in the CREATE DATABASE command: The specified role is the owner. For example:
+
+    ```sql
+    CREATE DATABASE cloned_db TEMPLATE src_db OWNER some_role AS OF ...
+    ```
+
+    The role `some_role` is the owner.
+
+- OWNER is not specified: The current user executing the command becomes the owner of the clone.
+
+When using the yb-admin command `clone_namespace` directly, the cloned database retains the original template database's owner.
+
+Note that to clone a database that's not marked `datistemplate`, you must be a superuser or the owner of the source database.
+
 ### Example
 
 The following example demonstrates how to use a database clone to recover from an accidental table deletion.
@@ -155,7 +160,6 @@ The following example demonstrates how to use a database clone to recover from a
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.1 \
-        --master_flags "enable_db_clone=true"
     ```
 
 1. Start [ysqlsh](../../../api/ysqlsh/) and create the database:
@@ -291,3 +295,9 @@ Although creating a clone database is quick and initially doesn't take up much a
 - Increased disk use after compaction of either the clone or the original database. This is because both original and post-compaction data files must be kept on disk for access by whichever database did not do the compaction. For example, if compaction is performed on the original database, new compacted files are generated which serve reads for the original database. The old data files are retained on disk to serve reads for the clone database. Whenever the clone or original database is deleted, the cluster only cleans the unused data files.
 
 If you have [tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits) set, and creating the clone would lead to exceeding the limit, the clone operation will fail to respect the tablet limits.
+
+## Limitations
+
+- Cloning as of a time close to the limit of the history retention period may fail. For example, if you have a history retention period of 10 minutes and you create a clone as of 9 minutes ago, the clone operation may fail. Use a slightly larger history retention period than you think you need.
+- Cloning to a point in time during which a DDL was running may fail. See issue {{<issue 28814>}}.
+- Databases with many objects in multi-region deployments may take longer to clone. If the operation takes longer than 10 minutes, increase the `ysql_clone_pg_schema_rpc_timeout_ms` YB-TServer runtime flag.

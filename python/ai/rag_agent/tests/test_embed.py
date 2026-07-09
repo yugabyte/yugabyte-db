@@ -244,8 +244,10 @@ class TestGenerateEmbeddings:
     def test_generate_embeddings_embedding_failure(
         self, mock_oai_cls, mock_pdf, mock_pt
     ):
-        """Test generate_embeddings when embedding generation fails for a chunk.
-        The current implementation catches the error per-chunk and continues."""
+        """Embedding API failures must propagate so the pipeline can mark
+        the task FAILED. Previously the text path swallowed the exception
+        which caused docs to be reported as completed with zero embeddings
+        persisted. Verify it is re-raised."""
         test_content = "Test content for embedding failure."
 
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
@@ -256,12 +258,36 @@ class TestGenerateEmbeddings:
             gen, mock_embedder = _create_generator(mock_oai_cls)
             mock_embedder.embed_documents.side_effect = Exception("API Error")
 
-            # The current code catches per-chunk errors and continues,
-            # so no exception is raised - we just get no results
-            results = list(gen.generate_embeddings(
-                pipeline_id=PIPELINE_ID, file_location=temp_file
-            ))
-            assert len(results) == 0
+            with pytest.raises(Exception, match="API Error"):
+                list(gen.generate_embeddings(
+                    pipeline_id=PIPELINE_ID, file_location=temp_file
+                ))
+        finally:
+            os.unlink(temp_file)
+
+    @patch('embeddings.embed.PipelineTracking')
+    @patch('embeddings.embed.PDFProcessor')
+    @patch('embeddings.embed.OpenAIEmbeddings')
+    def test_generate_embeddings_zero_yielded_raises(
+        self, mock_oai_cls, mock_pdf, mock_pt
+    ):
+        """If embed_documents returns an empty vector list for every batch,
+        the post-condition guard must raise so a doc with non-empty chunks
+        cannot be silently marked completed with zero embeddings."""
+        test_content = "Test content with real text in it."
+
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+            f.write(test_content)
+            temp_file = f.name
+
+        try:
+            gen, mock_embedder = _create_generator(mock_oai_cls)
+            mock_embedder.embed_documents.return_value = []
+
+            with pytest.raises(RuntimeError, match="0 vectors"):
+                list(gen.generate_embeddings(
+                    pipeline_id=PIPELINE_ID, file_location=temp_file
+                ))
         finally:
             os.unlink(temp_file)
 

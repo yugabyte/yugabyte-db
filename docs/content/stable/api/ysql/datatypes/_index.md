@@ -33,7 +33,7 @@ The following table lists the primitive and compound data types in YSQL.
 | [double precision](type_numeric) | [float8](type_numeric) | Double precision floating-point number (8 bytes) |
 | `inet` <sup>1</sup> | | IPv4 or IPv6 host address |
 | [integer](type_numeric) | [int, int4](type_numeric) | Signed four-byte integer |
-| [interval [ fields ] [ (p) ]](type_datetime/) | | Time span |
+| [interval [ fields ] [ (p) ]](type_datetime/) <sup>1</sup> | | Time span |
 | [json](type_json/) <sup>1</sup> | | Textual JSON data |
 | [jsonb](type_json/) <sup>1</sup> | | JSON data, stored as decomposed binary |
 | `line` <sup>1</sup> | | Infinite line on a plane |
@@ -48,25 +48,23 @@ The following table lists the primitive and compound data types in YSQL.
 | `polygon` <sup>1</sup> | | Closed geometric path |
 | [real](type_numeric) | [float4](type_numeric) | Floating-point number (4 bytes) |
 | [smallint](type_numeric) | [int2](type_numeric) | Signed two-byte integer |
-| [int4range](type_range#synopsis) | | `integer` range |
-| [int8range](type_range#synopsis) | | `bigint` range |
-| [numrange](type_range#synopsis) | | `numeric` range |
-| [tsrange](type_range#synopsis) | | `timestamp without time zone` range |
-| [tstzrange](type_range#synopsis) | | `timestamp with time zone` range |
-| [daterange](type_range#synopsis) | | `date` range |
+| [int4range](type_range#synopsis) <sup>1</sup> | | `integer` range |
+| [int8range](type_range#synopsis) <sup>1</sup> | | `bigint` range |
+| [numrange](type_range#synopsis) <sup>1</sup> | | `numeric` range |
+| [tsrange](type_range#synopsis) <sup>1</sup> | | `timestamp without time zone` range |
+| [tstzrange](type_range#synopsis) <sup>1</sup> | | `timestamp with time zone` range |
+| [daterange](type_range#synopsis) <sup>1</sup> | | `date` range |
 | [smallserial](type_serial) | [serial2](type_serial) | Autoincrementing two-byte integer |
 | [serial](type_serial) | [serial4](type_serial) | Autoincrementing four-byte integer |
 | [text](type_character) | | Variable-length character string |
 | [time [ (p) ] [ without time zone ]](type_datetime/) | | Time of day (no time zone) |
-| [time [ (p) ] with time zone](type_datetime/) | [timetz](type_datetime/) | Time of day, including time zone |
+| [time [ (p) ] with time zone](type_datetime/) <sup>1</sup> | [timetz](type_datetime/) <sup>1</sup> | Time of day, including time zone |
 | [timestamp [ (p) ] [ without time zone ]](type_datetime/) | | Date and time (no time zone) |
 | [timestamp [ (p) ] with time zone](type_datetime/) | [timestamptz](type_datetime/) | Date and time, including time zone |
 | `tsquery` <sup>1</sup> | | Text search query |
 | `tsvector` <sup>1</sup> | | Text search document |
 | `txid_snapshot` <sup>1</sup> | | Transaction ID snapshot |
 | [uuid](type_uuid) | | Universally unique identifier |
-| `xml` <sup>2</sup> | | XML data |
+| [xml](type_xml/) | | XML data |
 
-<sup>1</sup> Table columns of this type cannot be part of an `INDEX` `KEY`.
-
-<sup>2</sup> Under development.
+<sup>1</sup> Table columns of this type cannot be part of an `INDEX` `KEY`. For an indexing pattern for `inet` and `cidr` containment queries, see [CIDR range lookups](../../../develop/data-modeling/cidr-range-lookups-ysql/).

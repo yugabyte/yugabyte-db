@@ -409,8 +409,11 @@ namespace {
 struct ReplayDecision {
   bool should_replay = false;
 
-  // This is true for transaction update operations that have already been applied to the regular
-  // RocksDB but not to the intents RocksDB.
+  // Which storages a replayed op still applies to. Restricted below All() when the op's effect is
+  // already durable in some storages but not others: an APPLYING transaction-update op already in
+  // the regular RocksDB but not the intents RocksDB; and (GH#31899) a fused xCluster external
+  // WRITE_OP, which is intents-gated on replay but writes the regular RocksDB, so its regular bit
+  // is cleared once the regular RocksDB already has it.
   docdb::StorageSet apply_to_storages = docdb::StorageSet::All();
 
   std::string ToString() const {
@@ -1116,6 +1119,22 @@ class TabletBootstrap {
     }
   }
 
+  // Computes which storages a replayed write must (re-)materialize into: the regular DB when this
+  // op is not yet flushed there, plus each vector index that is likewise behind.
+  static docdb::StorageSet ComputeApplyToStorages(
+      int64_t index, const DocDbOpIds& flushed_op_ids) {
+    docdb::StorageSet apply_to_storages;
+    if (index > flushed_op_ids.regular.index) {
+      apply_to_storages.SetRegularDB();
+    }
+    for (size_t idx = 0; idx != flushed_op_ids.vector_indexes.size(); ++idx) {
+      if (index > flushed_op_ids.vector_indexes[idx].index) {
+        apply_to_storages.SetVectorIndex(idx);
+      }
+    }
+    return apply_to_storages;
+  }
+
   ReplayDecision ShouldReplayOperation(
       consensus::OperationType op_type,
       const int64_t index,
@@ -1125,22 +1144,13 @@ class TabletBootstrap {
       bool write_op_has_transaction) {
     if (op_type == consensus::UPDATE_TRANSACTION_OP) {
       if (txn_status == TransactionStatus::APPLYING) {
-        docdb::StorageSet apply_to_storages;
-        if (index > flushed_op_ids.regular.index) {
-          apply_to_storages.SetRegularDB();
-        }
-        for (size_t idx = 0; idx != flushed_op_ids.vector_indexes.size(); ++idx) {
-          if (index > flushed_op_ids.vector_indexes[idx].index) {
-            apply_to_storages.SetVectorIndex(idx);
-          }
-        }
-
         // This was added as part of D17730 / #12730 to ensure we don't clean up transactions
         // before they are replicated to the CDC destination.
         //
         // TODO: Replaying even transactions that are flushed to both regular and intents RocksDB is
         // a temporary change. The long term change is to track write and apply operations
         // separately instead of a tracking a single "intents_flushed_index".
+        auto apply_to_storages = ComputeApplyToStorages(index, flushed_op_ids);
         VLOG_WITH_PREFIX_AND_FUNC(3)
             << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString()
             << ", apply_to_storages: " << apply_to_storages.ToString();
@@ -1171,10 +1181,22 @@ class TabletBootstrap {
     }
 
     if (op_type == consensus::WRITE_OP && write_op_has_transaction) {
-      // Write intents that have not been flushed into the intents DB.
+      // A transactional WRITE_OP writes external intents to the intents DB and -- for an
+      // xCluster external transaction whose APPLY is fused into the same op -- applies them
+      // inline to the regular DB and any vector indexes (see NonTransactionalBatchWriter). Replay
+      // it while it is unflushed in the intents DB, but gate the apply per storage on that
+      // storage's own flushed OpId, exactly as the APPLYING branch does: do not write to a storage
+      // this op is already durably flushed to. Otherwise an ungraceful restart whose intents
+      // flushed OpId lags applies an already-durable external write a second time -- in the regular
+      // DB, where after a packed-row repack the duplicate shadows the merged row and drops a column
+      // update (GH#31899); in a vector index, where it duplicates an already-present
+      // entry. The long-term "track write and apply separately" fix in the APPLYING branch's TODO
+      // above would subsume this.
+      auto apply_to_storages = ComputeApplyToStorages(index, flushed_op_ids);
       VLOG_WITH_PREFIX_AND_FUNC(3)
-          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
-      return {index > flushed_op_ids.intents.index};
+          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString()
+          << ", apply_to_storages: " << apply_to_storages.ToString();
+      return {index > flushed_op_ids.intents.index, apply_to_storages};
     }
 
     VLOG_WITH_PREFIX_AND_FUNC(3)
@@ -1352,7 +1374,6 @@ class TabletBootstrap {
     // We should be able to get rid of this requirement when we address:
     // https://github.com/yugabyte/yugabyte-db/issues/16684.
     const bool is_lazy_superblock_flush_enabled = meta_->IsLazySuperblockFlushEnabled();
-    const auto kMinSegmentsToReplayWithLazySuperblockFlush = 2;
 
     auto iter = segments.end();
     while (iter != segments.begin()) {
@@ -1411,7 +1432,8 @@ class TabletBootstrap {
         // if segments.size() >= kMinSegmentsToReplayWithLazySuperblockFlush.
         const auto older_segment_may_contain_unflushed_change_metadata_op =
             is_lazy_superblock_flush_enabled &&
-            segments.end() - iter < kMinSegmentsToReplayWithLazySuperblockFlush;
+            static_cast<size_t>(segments.end() - iter) <
+                kMinSegmentsToReplayWithLazySuperblockFlush;
         // Continue to older segment if it exists and it may contain unflushed change metadata op.
         if (older_segment_may_contain_unflushed_change_metadata_op &&
             iter != segments.begin()) {
@@ -1429,7 +1451,8 @@ class TabletBootstrap {
         const auto first_segment = *iter;
         const auto current_segment_may_contain_unflushed_change_metadata_op =
             is_lazy_superblock_flush_enabled &&
-            segments.end() - iter <= kMinSegmentsToReplayWithLazySuperblockFlush;
+            static_cast<size_t>(segments.end() - iter) <=
+                kMinSegmentsToReplayWithLazySuperblockFlush;
         if (FLAGS_skip_flushed_entries_in_first_replayed_segment &&
             is_first_op_id_low_enough_for_retryable_requests &&
             !current_segment_may_contain_unflushed_change_metadata_op &&
@@ -1583,9 +1606,17 @@ class TabletBootstrap {
     auto replay_from_offset = first_op_to_replay_offset_;
     for (; iter != segments.end(); ++iter, replay_from_offset = std::nullopt) {
       const scoped_refptr<ReadableLogSegment>& segment = *iter;
+      const int64_t read_start_offset =
+          replay_from_offset.value_or(segment->first_entry_offset());
+
+      const MonoTime read_start_ts = MonoTime::Now();
       auto read_result = segment->ReadEntries(
           /* max_entries_to_read = */ std::numeric_limits<int64_t>::max(),
           log::EntriesToRead::kAll, replay_from_offset);
+      stats_.wal_read_time_ms += (MonoTime::Now() - read_start_ts).ToMilliseconds();
+      if (read_result.end_offset > read_start_offset) {
+        stats_.wal_bytes_read_for_replay += read_result.end_offset - read_start_offset;
+      }
 
       last_committed_op_id = std::max(
           std::max(last_committed_op_id, read_result.committed_op_id),
@@ -1603,17 +1634,21 @@ class TabletBootstrap {
           test_hooks_->FirstOpIdReadFromReplayedSegment(segment->path(), OpId::Invalid());
         }
       }
-      for (size_t entry_idx = 0; entry_idx < read_result.entries.size(); ++entry_idx) {
-        const Status s = HandleEntry(
-            read_result.entry_metadata[entry_idx], &read_result.entries[entry_idx]);
-        if (!s.ok()) {
-          LOG_WITH_PREFIX(INFO) << "Dumping replay state to log: " << s;
-          DumpReplayStateToLog();
-          RETURN_NOT_OK_PREPEND(s, DebugInfo(tablet_->tablet_id(),
-                                             segment->header().sequence_number(),
-                                             entry_idx, segment->path(),
-                                             read_result.entries[entry_idx].get()));
+      {
+        const MonoTime apply_start_ts = MonoTime::Now();
+        for (size_t entry_idx = 0; entry_idx < read_result.entries.size(); ++entry_idx) {
+          const Status s = HandleEntry(
+              read_result.entry_metadata[entry_idx], &read_result.entries[entry_idx]);
+          if (!s.ok()) {
+            LOG_WITH_PREFIX(INFO) << "Dumping replay state to log: " << s;
+            DumpReplayStateToLog();
+            RETURN_NOT_OK_PREPEND(s, DebugInfo(tablet_->tablet_id(),
+                                               segment->header().sequence_number(),
+                                               entry_idx, segment->path(),
+                                               read_result.entries[entry_idx].get()));
+          }
         }
+        stats_.apply_time_ms += (MonoTime::Now() - apply_start_ts).ToMilliseconds();
       }
       if (!read_result.entry_metadata.empty()) {
         last_entry_time = read_result.entry_metadata.back().entry_time;
@@ -1690,6 +1725,8 @@ class TabletBootstrap {
         << "Number of orphaned replicates: " << consensus_info->orphaned_replicates.size()
         << ", last id: " << replay_state_->prev_op_id
         << ", committed id: " << replay_state_->committed_op_id;
+
+    LOG_WITH_PREFIX(INFO) << "WAL replay finished: " << stats_.ToString();
 
     SCHECK_FORMAT(
         replay_state_->prev_op_id.term >= replay_state_->committed_op_id.term &&
@@ -1834,14 +1871,14 @@ class TabletBootstrap {
     auto* change_config = replicate_msg->mutable_change_config_record();
     RaftConfigPB config = change_config->new_config().ToGoogleProtobuf();
 
-    int64_t cmeta_opid_index =  cmeta_->committed_config().opid_index();
+    int64_t cmeta_opid_index = cmeta_->committed_config().committed_op_index();
     if (replicate_msg->id().index() > cmeta_opid_index) {
-      SCHECK(!config.has_opid_index(),
+      SCHECK(!config.has_committed_op_index(),
              Corruption,
              "A config change record must have an opid_index");
-      config.set_opid_index(replicate_msg->id().index());
+      config.set_committed_op_index(replicate_msg->id().index());
       VLOG_WITH_PREFIX(1) << "WAL replay found Raft configuration with log index "
-                          << config.opid_index()
+                          << config.committed_op_index()
                           << " that is greater than the committed config's index "
                           << cmeta_opid_index
                           << ". Applying this configuration change.";
@@ -2019,9 +2056,11 @@ class TabletBootstrap {
 
     // Number of REPLICATE messages read from the log
     int ops_read = 0;
-
     // Number of REPLICATE messages which were overwritten by later entries.
     int ops_overwritten = 0;
+    int64_t wal_bytes_read_for_replay = 0;
+    int64_t wal_read_time_ms = 0;
+    int64_t apply_time_ms = 0;
   } stats_;
 
   HybridTime rocksdb_last_entry_hybrid_time_ = HybridTime::kMin;
@@ -2048,8 +2087,8 @@ class TabletBootstrap {
 // ============================================================================
 
 string TabletBootstrap::Stats::ToString() const {
-  return Format("Read operations: $0, overwritten operations: $1",
-                ops_read, ops_overwritten);
+  return YB_STRUCT_TO_STRING(
+      wal_bytes_read_for_replay, ops_read, ops_overwritten, wal_read_time_ms, apply_time_ms);
 }
 
 Status BootstrapTabletImpl(

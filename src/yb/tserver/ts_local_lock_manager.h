@@ -90,6 +90,12 @@ class TSLocalLockManager {
   Result<docdb::TxnBlockedTableLockRequests> ReleaseObjectLocks(
       const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline);
 
+  void WaitForLockersAsync(
+      const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& object_locks,
+      CoarseTimePoint deadline,
+      StdStatusCallback&& callback,
+      const TransactionId& background_txn_id = TransactionId::Nil());
+
   void TrackDeadlineForGlobalAcquire(
       const TransactionId& txn_id, const SubTransactionId& subtxn_id,
       CoarseTimePoint apply_after_ht);

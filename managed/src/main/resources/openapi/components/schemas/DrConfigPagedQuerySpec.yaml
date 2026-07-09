@@ -1,0 +1,7 @@
+title: DrConfigPagedQuerySpec
+description: |
+  Paged list of disaster recovery configs for a universe.
+  Rows are ordered by config name (case-insensitive), then UUID. The order is ascending by default.
+type: object
+allOf:
+  - $ref: "./PaginationSpec.yaml"

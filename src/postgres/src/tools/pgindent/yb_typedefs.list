@@ -96,6 +96,7 @@ YbFdwPlanState
 YbFetchKeysParam
 YbFetchStatus
 YbFlushTupleFn_t
+YbForceParallel
 YbFreeBatchFn_t
 YbFuncCallContext
 YbGateTestCase
@@ -202,6 +203,7 @@ YbSplitType
 YbStatLabel
 YbStatLabelData
 YbStatementType
+YbSubstConstsContext
 YbSubstituteContext
 YbSysCatalogModificationAspect
 YbSysScanBase
@@ -254,6 +256,8 @@ YbcDeleteMemoryContextFn
 YbcFlushDebugContext
 YbcGetTableKeyRangesCallback
 YbcHeapSnapshotSample
+YbcIsExplicitlyLockedRowSkippedCheckHandle
+YbcIsExplicitlyLockedRowSkippedCheckHandleOptional
 YbcLsnType
 YbcMetricsInfo
 YbcObjectLockId

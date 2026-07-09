@@ -79,7 +79,7 @@ void CDCSDKYsqlTest::VerifyCdcStateMatches(
 Status CDCSDKYsqlTest::WriteRowsToTwoTables(
     uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag,
     const char* const first_table_name, const char* const second_table_name, uint32_t num_cols) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
   RETURN_NOT_OK(conn.Execute("BEGIN"));
@@ -193,7 +193,7 @@ Status CDCSDKYsqlTest::DropDB(PostgresMiniCluster* cluster) {
   const std::string db_name = "testdatabase";
   RETURN_NOT_OK(CreateDatabase(&test_cluster_, db_name, true));
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(db_name));
-  RETURN_NOT_OK(conn.ExecuteFormat("DROP DATABASE $0", kNamespaceName));
+  RETURN_NOT_OK(conn.ExecuteFormat("DROP DATABASE $0", test_namespace_name));
   return Status::OK();
 }
 
@@ -208,7 +208,7 @@ Status CDCSDKYsqlTest::WriteRows(
     uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
     const vector<string>& optional_cols_name, pgwrapper::PGConn* conn) {
   if (conn == nullptr) {
-    auto conn_obj = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+    auto conn_obj = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
     return WriteRowsWithConn(start, end, cluster, &conn_obj, optional_cols_name);
   } else {
     return WriteRowsWithConn(start, end, cluster, conn, optional_cols_name);
@@ -261,7 +261,7 @@ Status CDCSDKYsqlTest::WriteRowsWithConn(
 Status CDCSDKYsqlTest::WriteRows(
     uint32_t start, uint32_t end, PostgresMiniCluster* cluster, uint32_t num_cols,
     std::string table_name) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   LOG(INFO) << "Writing " << end - start << " row(s)";
 
   for (uint32_t i = start; i < end; ++i) {
@@ -280,7 +280,7 @@ Status CDCSDKYsqlTest::WriteRows(
 }
 
 void CDCSDKYsqlTest::DropTable(PostgresMiniCluster* cluster, const char* table_name) {
-  auto conn = EXPECT_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = EXPECT_RESULT(cluster->ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table_name));
 }
 
@@ -289,7 +289,7 @@ Status CDCSDKYsqlTest::WriteRowsHelper(
     const char* const table_name, const vector<string>& optional_cols_name,
     const bool transaction_enabled, pgwrapper::PGConn* conn) {
   if (conn == nullptr) {
-    auto conn_obj = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+    auto conn_obj = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
     return WriteRowsHelperWithConn(
         start, end, cluster, flag, &conn_obj, num_cols, table_name, optional_cols_name,
         transaction_enabled);
@@ -350,7 +350,7 @@ Status CDCSDKYsqlTest::WriteRowsHelperWithConn(
 }
 
 Status CDCSDKYsqlTest::CreateTableWithoutPK(PostgresMiniCluster* cluster) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE test1_no_pk(id1 int, id2 int)"));
   return Status::OK();
 }
@@ -358,7 +358,7 @@ Status CDCSDKYsqlTest::CreateTableWithoutPK(PostgresMiniCluster* cluster) {
 Status CDCSDKYsqlTest::WriteAndUpdateRowsHelper(
     uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag,
     const std::multimap<uint32_t, uint32_t>& col_val_map, const std::string& table_id) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
   for (uint32_t i = start; i < end; ++i) {
@@ -391,7 +391,7 @@ Status CDCSDKYsqlTest::WriteAndUpdateRowsHelper(
 }
 
 Status CDCSDKYsqlTest::CreateColocatedObjects(PostgresMiniCluster* cluster) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLEGROUP tg1"));
   RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key) TABLEGROUP tg1;"));
   RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE test2(id2 text primary key) TABLEGROUP tg1;"));
@@ -401,7 +401,7 @@ Status CDCSDKYsqlTest::CreateColocatedObjects(PostgresMiniCluster* cluster) {
 Status CDCSDKYsqlTest::AddColocatedTable(
     PostgresMiniCluster* cluster, const TableName& table_name,
     const std::string& table_group_name) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   RETURN_NOT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(id2 text primary key) TABLEGROUP $1;", table_name, table_group_name));
   return Status::OK();
@@ -409,7 +409,7 @@ Status CDCSDKYsqlTest::AddColocatedTable(
 
 Status CDCSDKYsqlTest::PopulateColocatedData(
     PostgresMiniCluster* cluster, int insert_count, bool transaction) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   if (transaction) {
     RETURN_NOT_OK(conn.Execute("BEGIN"));
   }
@@ -426,8 +426,8 @@ Status CDCSDKYsqlTest::PopulateColocatedData(
 
 Status CDCSDKYsqlTest::WriteEnumsRows(
     uint32_t start, uint32_t end, PostgresMiniCluster* cluster, const string& enum_suffix,
-    string database_name, string table_name, string schema_name) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(database_name));
+    string table_name, string schema_name) {
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
   RETURN_NOT_OK(conn.Execute("BEGIN"));
@@ -443,7 +443,7 @@ Status CDCSDKYsqlTest::WriteEnumsRows(
 
 Result<YBTableName> CDCSDKYsqlTest::CreateCompositeTable(
     PostgresMiniCluster* cluster, const uint32_t num_tablets, const std::string& type_suffix) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
 
   RETURN_NOT_OK(conn.ExecuteFormat(
       "CREATE TYPE composite_name$0 AS (first text, last text);", type_suffix));
@@ -452,12 +452,12 @@ Result<YBTableName> CDCSDKYsqlTest::CreateCompositeTable(
       "CREATE TABLE emp(id int primary key, name composite_name) "
       "SPLIT INTO $0 TABLETS",
       num_tablets));
-  return GetTable(cluster, kNamespaceName, "emp");
+  return GetTable(cluster, test_namespace_name, "emp");
 }
 
 Status CDCSDKYsqlTest::WriteCompositeRows(
     uint32_t start, uint32_t end, PostgresMiniCluster* cluster) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
   RETURN_NOT_OK(conn.Execute("BEGIN"));
@@ -471,7 +471,7 @@ Status CDCSDKYsqlTest::WriteCompositeRows(
 
 Result<YBTableName> CDCSDKYsqlTest::CreateNestedCompositeTable(
     PostgresMiniCluster* cluster, const uint32_t num_tablets, const std::string& type_suffix) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
 
   RETURN_NOT_OK(
       conn.ExecuteFormat("CREATE TYPE part_name$0 AS (first text, middle text);", type_suffix));
@@ -483,12 +483,12 @@ Result<YBTableName> CDCSDKYsqlTest::CreateNestedCompositeTable(
       "CREATE TABLE emp_nested(id int primary key, name full_name$0) "
       "SPLIT INTO $1 TABLETS",
       type_suffix, num_tablets));
-  return GetTable(cluster, kNamespaceName, "emp_nested");
+  return GetTable(cluster, test_namespace_name, "emp_nested");
 }
 
 Status CDCSDKYsqlTest::WriteNestedCompositeRows(
     uint32_t start, uint32_t end, PostgresMiniCluster* cluster) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
   RETURN_NOT_OK(conn.Execute("BEGIN"));
@@ -502,7 +502,7 @@ Status CDCSDKYsqlTest::WriteNestedCompositeRows(
 
 Result<YBTableName> CDCSDKYsqlTest::CreateArrayCompositeTable(
     PostgresMiniCluster* cluster, const uint32_t num_tablets, const std::string& type_suffix) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
 
   RETURN_NOT_OK(
       conn.ExecuteFormat("CREATE TYPE emp_data$0 AS (name text[], phone int[]);", type_suffix));
@@ -511,12 +511,12 @@ Result<YBTableName> CDCSDKYsqlTest::CreateArrayCompositeTable(
       "CREATE TABLE emp_array(id int primary key, data emp_data$0) "
       "SPLIT INTO $1 TABLETS",
       type_suffix, num_tablets));
-  return GetTable(cluster, kNamespaceName, "emp_array");
+  return GetTable(cluster, test_namespace_name, "emp_array");
 }
 
 Status CDCSDKYsqlTest::WriteArrayCompositeRows(
     uint32_t start, uint32_t end, PostgresMiniCluster* cluster) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
   RETURN_NOT_OK(conn.Execute("BEGIN"));
@@ -532,7 +532,7 @@ Status CDCSDKYsqlTest::WriteArrayCompositeRows(
 
 Result<YBTableName> CDCSDKYsqlTest::CreateRangeCompositeTable(
     PostgresMiniCluster* cluster, const uint32_t num_tablets, const std::string& type_suffix) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
 
   RETURN_NOT_OK(conn.ExecuteFormat(
       "CREATE type range_composite$0 AS (r1 numrange, r2 int4range);", type_suffix));
@@ -541,12 +541,12 @@ Result<YBTableName> CDCSDKYsqlTest::CreateRangeCompositeTable(
       "CREATE TABLE range_composite_table(id int primary key, data range_composite$0) "
       "SPLIT INTO $1 TABLETS",
       type_suffix, num_tablets));
-  return GetTable(cluster, kNamespaceName, "range_composite_table");
+  return GetTable(cluster, test_namespace_name, "range_composite_table");
 }
 
 Status CDCSDKYsqlTest::WriteRangeCompositeRows(
     uint32_t start, uint32_t end, PostgresMiniCluster* cluster) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
   RETURN_NOT_OK(conn.Execute("BEGIN"));
@@ -561,7 +561,7 @@ Status CDCSDKYsqlTest::WriteRangeCompositeRows(
 
 Result<YBTableName> CDCSDKYsqlTest::CreateRangeArrayCompositeTable(
     PostgresMiniCluster* cluster, const uint32_t num_tablets, const std::string& type_suffix) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
 
   RETURN_NOT_OK(conn.ExecuteFormat(
       "CREATE type range_array_composite$0 AS (r1 numrange[], r2 int4range[]);", type_suffix));
@@ -571,12 +571,12 @@ Result<YBTableName> CDCSDKYsqlTest::CreateRangeArrayCompositeTable(
       "range_array_composite$0) "
       "SPLIT INTO $1 TABLETS",
       type_suffix, num_tablets));
-  return GetTable(cluster, kNamespaceName, "range_array_composite_table");
+  return GetTable(cluster, test_namespace_name, "range_array_composite_table");
 }
 
 Status CDCSDKYsqlTest::WriteRangeArrayCompositeRows(
     uint32_t start, uint32_t end, PostgresMiniCluster* cluster) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
   RETURN_NOT_OK(conn.Execute("BEGIN"));
@@ -592,7 +592,7 @@ Status CDCSDKYsqlTest::WriteRangeArrayCompositeRows(
 
 Status CDCSDKYsqlTest::UpdateRows(
     uint32_t key, uint32_t value, PostgresMiniCluster* cluster, std::string table_name) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   LOG(INFO) << "Updating row for key " << key << " with value " << value;
   RETURN_NOT_OK(conn.ExecuteFormat(
       "UPDATE $0 SET $1 = $2 WHERE $3 = $4", table_name, kValueColumnName, value, kKeyColumnName,
@@ -602,7 +602,7 @@ Status CDCSDKYsqlTest::UpdateRows(
 
 Status CDCSDKYsqlTest::UpdatePrimaryKey(
     uint32_t key, uint32_t value, PostgresMiniCluster* cluster) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   LOG(INFO) << "Updating primary key " << key << " with value " << value;
   RETURN_NOT_OK(conn.ExecuteFormat(
       "UPDATE $0 SET $1 = $2 WHERE $3 = $4", kTableName, kKeyColumnName, value, kKeyColumnName,
@@ -613,7 +613,7 @@ Status CDCSDKYsqlTest::UpdatePrimaryKey(
 Status CDCSDKYsqlTest::UpdateRows(
     uint32_t key, const std::map<std::string, uint32_t>& col_val_map,
     PostgresMiniCluster* cluster) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   std::stringstream log_buff;
   log_buff << "Updating row for key " << key << " with";
   for (auto& col_value_pair : col_val_map) {
@@ -639,7 +639,7 @@ Status CDCSDKYsqlTest::UpdateRowsHelper(
     uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t key,
     const std::map<std::string, uint32_t>& col_val_map1,
     const std::map<std::string, uint32_t>& col_val_map2, uint32_t num_cols) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   std::stringstream log_buff1, log_buff2;
   LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
@@ -703,7 +703,7 @@ Status CDCSDKYsqlTest::UpdateRowsHelper(
 Status CDCSDKYsqlTest::UpdateDeleteRowsHelper(
     uint32_t start, uint32_t end, PostgresMiniCluster* cluster, bool flag, uint32_t key,
     const std::map<std::string, uint32_t>& col_val_map, uint32_t num_cols) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   std::stringstream log_buff1, log_buff2;
   LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
 
@@ -763,7 +763,7 @@ Status CDCSDKYsqlTest::UpdateDeleteRowsHelper(
 
 Status CDCSDKYsqlTest::DeleteRows(
     uint32_t key, PostgresMiniCluster* cluster, std::string table_name) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(test_namespace_name));
   LOG(INFO) << "Deleting row for key " << key;
   RETURN_NOT_OK(
       conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = $2", table_name, kKeyColumnName, key));
@@ -792,7 +792,7 @@ Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>>
 CDCSDKYsqlTest::SetUpCluster() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_single_record_update) = false;
   RETURN_NOT_OK(SetUpWithParams(3, 1, false));
-  auto table = EXPECT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = EXPECT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   RETURN_NOT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   return tablets;
@@ -803,7 +803,7 @@ CDCSDKYsqlTest::SetUpClusterMultiColumnUsecase(uint32_t num_cols) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_single_record_update) = true;
   RETURN_NOT_OK(SetUpWithParams(3, 1, false));
   auto table = EXPECT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, false, "", "public",
+      &test_cluster_, test_namespace_name, kTableName, 1, true, false, 0, false, "", "public",
       num_cols));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   RETURN_NOT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
@@ -2327,18 +2327,18 @@ void CDCSDKYsqlTest::TestGetChanges(
     std::string tables_wo_pk[] = {"table_wo_pk_1", "table_wo_pk_2", "table_wo_pk_3"};
     for (const auto& table_name : tables_wo_pk) {
       auto temp = ASSERT_RESULT(
-          CreateTable(&test_cluster_, kNamespaceName, table_name, 1 /* num_tablets */, false));
+          CreateTable(&test_cluster_, test_namespace_name, table_name, 1 /* num_tablets */, false));
     }
   }
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(
       table, 0, &tablets,
       /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
@@ -2379,13 +2379,13 @@ void CDCSDKYsqlTest::TestIntentGarbageCollectionFlag(
 
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(
       test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
 
-  TabletId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TabletId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
@@ -2472,12 +2472,12 @@ void CDCSDKYsqlTest::TestIntentGarbageCollectionFlag(
 
 void CDCSDKYsqlTest::TestSetCDCCheckpoint(CDCCheckpointType checkpoint_type) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(
       test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
 
-  TabletId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TabletId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   auto stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
@@ -2598,11 +2598,13 @@ void CDCSDKYsqlTest::VerifyTablesInStreamMetadata(
 
           auto all_expected_table_ids = expected_table_ids;
           if (include_catalog_tables) {
-            auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+            auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
             const auto pg_database_oid = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGOid>(
-                Format("SELECT oid FROM pg_database WHERE datname = '$0'", kNamespaceName)));
+                Format("SELECT oid FROM pg_database WHERE datname = '$0'", test_namespace_name)));
             all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
             all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
+            all_expected_table_ids.insert(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
+            all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationOid));
           }
           const uint64_t table_info_size = get_resp->table_info_size();
 
@@ -2655,11 +2657,13 @@ void CDCSDKYsqlTest::VerifyTablesAndStateInStreamMetadata(
 
         auto all_expected_table_ids = expected_table_ids;
         if (include_catalog_tables) {
-          auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+          auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
           const auto pg_database_oid = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGOid>(
-              Format("SELECT oid FROM pg_database WHERE datname = '$0'", kNamespaceName)));
+              Format("SELECT oid FROM pg_database WHERE datname = '$0'", test_namespace_name)));
           all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
           all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
+          all_expected_table_ids.insert(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
+          all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationOid));
         }
 
         if (static_cast<size_t>(stream_lock->pb.table_id_size()) != all_expected_table_ids.size()) {
@@ -3246,14 +3250,14 @@ void CDCSDKYsqlTest::CDCSDKAddColumnsWithImplictTransaction(bool packed_row) {
 
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, false, "",
+      &test_cluster_, test_namespace_name, kTableName, num_tablets, true, false, 0, false, "",
       "public", 4, {kValue2ColumnName, kValue3ColumnName}));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
@@ -3262,7 +3266,7 @@ void CDCSDKYsqlTest::CDCSDKAddColumnsWithImplictTransaction(bool packed_row) {
   // Insert some records in transaction.
   ASSERT_OK(WriteRows(
       1 /* start */, 10 /* end */, &test_cluster_, {kValue2ColumnName, kValue3ColumnName}));
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, {kValue4ColumnName}, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, {kValue4ColumnName}, &conn));
   GetChangesResponsePB change_resp;
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
@@ -3312,19 +3316,19 @@ void CDCSDKYsqlTest::CDCSDKAddColumnsWithExplictTransaction(bool packed_row) {
 
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, false, "",
+      &test_cluster_, test_namespace_name, kTableName, num_tablets, true, false, 0, false, "",
       "public", 4, {kValue2ColumnName, kValue3ColumnName}));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(
@@ -3334,7 +3338,7 @@ void CDCSDKYsqlTest::CDCSDKAddColumnsWithExplictTransaction(bool packed_row) {
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue4ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue4ColumnName, &conn));
 
   GetChangesResponsePB change_resp;
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -3386,18 +3390,18 @@ void CDCSDKYsqlTest::CDCSDKDropColumnsWithRestartTServer(bool packed_row) {
 
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, false, "",
+      &test_cluster_, test_namespace_name, kTableName, num_tablets, true, false, 0, false, "",
       "public", 3, {kValue2ColumnName}));
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRows(1 /* start */, 10 /* end */, &test_cluster_, {kValue2ColumnName}));
 
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(WriteRows(11 /* start */, 20 /* end */, &test_cluster_));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
@@ -3437,24 +3441,24 @@ void CDCSDKYsqlTest::CDCSDKDropColumnsWithImplictTransaction(bool packed_row) {
 
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, false, "",
+      &test_cluster_, test_namespace_name, kTableName, num_tablets, true, false, 0, false, "",
       "public", 4, {kValue2ColumnName, kValue3ColumnName}));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRows(
       1 /* start */, 11 /* end */, &test_cluster_, {kValue2ColumnName, kValue3ColumnName}));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
 
   GetChangesResponsePB change_resp;
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -3503,19 +3507,19 @@ void CDCSDKYsqlTest::CDCSDKDropColumnsWithExplictTransaction(bool packed_row) {
 
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, false, "",
+      &test_cluster_, test_namespace_name, kTableName, num_tablets, true, false, 0, false, "",
       "public", 4, {kValue2ColumnName, kValue3ColumnName}));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(
@@ -3524,7 +3528,7 @@ void CDCSDKYsqlTest::CDCSDKDropColumnsWithExplictTransaction(bool packed_row) {
   ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
   GetChangesResponsePB change_resp;
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
@@ -3576,16 +3580,16 @@ void CDCSDKYsqlTest::CDCSDKRenameColumnsWithImplictTransaction(bool packed_row) 
 
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, false, "",
+      &test_cluster_, test_namespace_name, kTableName, num_tablets, true, false, 0, false, "",
       "public", 3, {kValue2ColumnName}));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
@@ -3594,7 +3598,8 @@ void CDCSDKYsqlTest::CDCSDKRenameColumnsWithImplictTransaction(bool packed_row) 
   // Insert some records in transaction.
   ASSERT_OK(WriteRows(1 /* start */, 10 /* end */, &test_cluster_, {kValue2ColumnName}));
   ASSERT_OK(RenameColumn(
-      &test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, kValue3ColumnName, &conn));
+      &test_cluster_, test_namespace_name, kTableName,
+      kValue2ColumnName, kValue3ColumnName, &conn));
   GetChangesResponsePB change_resp;
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
@@ -3642,19 +3647,19 @@ void CDCSDKYsqlTest::CDCSDKRenameColumnsWithExplictTransaction(bool packed_row) 
 
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, false, "",
+      &test_cluster_, test_namespace_name, kTableName, num_tablets, true, false, 0, false, "",
       "public", 3, {kValue2ColumnName}));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(
@@ -3663,7 +3668,8 @@ void CDCSDKYsqlTest::CDCSDKRenameColumnsWithExplictTransaction(bool packed_row) 
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
   ASSERT_OK(RenameColumn(
-      &test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, kValue3ColumnName, &conn));
+      &test_cluster_, test_namespace_name, kTableName,
+      kValue2ColumnName, kValue3ColumnName, &conn));
 
   GetChangesResponsePB change_resp;
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -3724,30 +3730,30 @@ void CDCSDKYsqlTest::CDCSDKMultipleAlterWithRestartTServer(bool packed_row) {
   // insert some records
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, false, "",
+      &test_cluster_, test_namespace_name, kTableName, num_tablets, true, false, 0, false, "",
       "public", 3, {kValue2ColumnName}));
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   // Insert some records in transaction.
   ASSERT_OK(WriteRows(1 /* start */, 6 /* end */, &test_cluster_, {kValue2ColumnName}));
 
   // Add a column
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue3ColumnName, &conn));
   ASSERT_OK(WriteRows(
       6 /* start */, 11 /* end */, &test_cluster_, {kValue2ColumnName, kValue3ColumnName}));
 
   // Drop one column
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(WriteRows(11 /* start */, 16 /* end */, &test_cluster_, {kValue3ColumnName}));
 
   // Add the 2 columns
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue4ColumnName, &conn));
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue4ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(WriteRows(
       16 /* start */, 21 /* end */, &test_cluster_,
       {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
@@ -3807,8 +3813,8 @@ void CDCSDKYsqlTest::CDCSDKMultipleAlterWithTabletLeaderSwitch(bool packed_row) 
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
   const uint32_t num_tablets = 1;
   auto table =
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, num_tablets));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
@@ -3818,7 +3824,7 @@ void CDCSDKYsqlTest::CDCSDKMultipleAlterWithTabletLeaderSwitch(bool packed_row) 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(WriteRowsHelper(1 /* start */, 11 /* end */, &test_cluster_, true));
   // Call Getchanges
@@ -3851,7 +3857,7 @@ void CDCSDKYsqlTest::CDCSDKMultipleAlterWithTabletLeaderSwitch(bool packed_row) 
   ValidateColumnCounts(change_resp, 2);
   ValidateInsertCounts(change_resp, 10);
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(WriteRowsHelper(
       21 /* start */, 31 /* end */, &test_cluster_, true, 3, kTableName, {kValue2ColumnName}));
   ASSERT_OK(WaitForFlushTables(
@@ -3866,7 +3872,7 @@ void CDCSDKYsqlTest::CDCSDKMultipleAlterWithTabletLeaderSwitch(bool packed_row) 
   // Add a new column and insert few more records.
   // Do LEADERship change.
   // Call Getchanges in the new leader.
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue3ColumnName, &conn));
   ASSERT_OK(WriteRows(31, 41, &test_cluster_, {kValue2ColumnName, kValue3ColumnName}));
   GetTabletLeaderAndAnyFollowerIndex(tablets, &first_leader_index, &first_follower_index);
   if (first_leader_index == 0) {
@@ -3893,13 +3899,13 @@ void CDCSDKYsqlTest::CDCSDKAlterWithSysCatalogCompaction(bool packed_row) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_dynamic_schema_changes) = false;
 
   auto table = ASSERT_RESULT(CreateTable(
-      &test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, false, "",
+      &test_cluster_, test_namespace_name, kTableName, num_tablets, true, false, 0, false, "",
       "public", 3, {kValue2ColumnName}));
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
@@ -3909,17 +3915,17 @@ void CDCSDKYsqlTest::CDCSDKAlterWithSysCatalogCompaction(bool packed_row) {
   ASSERT_OK(WriteRows(1 /* start */, 101 /* end */, &test_cluster_, {kValue2ColumnName}));
 
   // Add a column
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue3ColumnName, &conn));
   ASSERT_OK(WriteRows(
       101 /* start */, 201 /* end */, &test_cluster_, {kValue2ColumnName, kValue3ColumnName}));
 
   // Drop one column
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(WriteRows(201 /* start */, 301 /* end */, &test_cluster_, {kValue3ColumnName}));
 
   // Add the 2 columns
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue4ColumnName, &conn));
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue4ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(WriteRows(
       301 /* start */, 401 /* end */, &test_cluster_,
       {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
@@ -3971,12 +3977,12 @@ void CDCSDKYsqlTest::CDCSDKIntentsBatchReadWithAlterAndTabletLeaderSwitch(bool p
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
   const uint32_t num_tablets = 1;
   auto table =
-      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, num_tablets));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   // Create CDC stream.
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
@@ -3992,7 +3998,7 @@ void CDCSDKYsqlTest::CDCSDKIntentsBatchReadWithAlterAndTabletLeaderSwitch(bool p
   // Validate the columns and insert counts.
   ValidateColumnCounts(change_resp, 2);
 
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, test_namespace_name, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(WriteRowsHelper(
       101 /* start */, 201 /* end */, &test_cluster_, true, 3, kTableName, {kValue2ColumnName}));
   ASSERT_OK(WaitForFlushTables(
@@ -4561,7 +4567,7 @@ std::vector<int> CDCSDKYsqlTest::PerformSingleAndMultiShardInsertsInSeparateThre
 void CDCSDKYsqlTest::PerformSingleAndMultiShardInserts(
     const int& num_batches, const int& inserts_per_batch, int apply_update_latency,
     const int& start_index) {
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   for (int i = 0; i < num_batches; i++) {
     int multi_shard_inserts = inserts_per_batch / 2;
     int curr_start_id = start_index + i * inserts_per_batch;
@@ -4583,7 +4589,7 @@ void CDCSDKYsqlTest::PerformSingleAndMultiShardInserts(
 void CDCSDKYsqlTest::PerformSingleAndMultiShardQueries(
     const int& num_batches, const int& queries_per_batch, const string& query,
     int apply_update_latency, const int& start_index) {
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   for (int i = 0; i < num_batches; i++) {
     int multi_shard_queries = queries_per_batch / 2;
     int curr_start_id = start_index + i * queries_per_batch;
@@ -5059,7 +5065,8 @@ Status CDCSDKYsqlTest::CreateTables(
     std::optional<std::unordered_set<TabletId>*> expected_tablets) {
   for (size_t i = 0; i < num_tables; i++) {
     (*tables)[i] = VERIFY_RESULT(CreateTable(
-        &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true, Format("_$0", i)));
+        &test_cluster_, test_namespace_name, kTableName, 1, true, false, 0, true, Format(
+            "_$0", i)));
     if (expected_tables.has_value()) {
       (*expected_tables)->insert((*tables)[i].table_id());
     }
@@ -5073,8 +5080,7 @@ Status CDCSDKYsqlTest::CreateTables(
     }
 
     RETURN_NOT_OK(WriteEnumsRows(
-        0 /* start */, 100 /* end */, &test_cluster_, Format("_$0", i), kNamespaceName,
-        kTableName));
+        0 /* start */, 100 /* end */, &test_cluster_, Format("_$0", i), kTableName));
   }
 
   return Status::OK();

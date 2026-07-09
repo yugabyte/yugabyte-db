@@ -4,7 +4,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from 'react-query';
 import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
-import Select from 'react-select';
+import Select, { ValueType } from 'react-select';
 
 import {
   OptionProps,
@@ -31,9 +31,18 @@ interface InstallNodeAgentModalCommonProps {
   isReinstall: boolean;
 }
 
+type NodeNameOption = {
+  label: string;
+  value: string;
+};
+
 type InstallNodeAgentModalProps =
-  | (InstallNodeAgentModalCommonProps & { nodeNames: string[]; isUniverseAction: true })
-  | (InstallNodeAgentModalCommonProps & { nodeName: string; isUniverseAction: false });
+  | (InstallNodeAgentModalCommonProps & { isUniverseAction: true })
+  | (InstallNodeAgentModalCommonProps & {
+      nodeName: string;
+      universeName: string;
+      isUniverseAction: false;
+    });
 
 const useStyles = makeStyles((theme) => ({
   radioButtonGroup: {
@@ -45,7 +54,7 @@ const InstallationOption = {
   UNIVERSE: 'universe',
   NODE: 'node'
 } as const;
-type InstallationOption = typeof InstallationOption[keyof typeof InstallationOption];
+type InstallationOption = (typeof InstallationOption)[keyof typeof InstallationOption];
 
 const MODAL_NAME = 'InstallNodeAgentModal';
 const TRANSLATION_KEY_PREFIX = 'nodeAgent.installNodeAgentModal';
@@ -55,14 +64,16 @@ export const InstallNodeAgentModal = (props: InstallNodeAgentModalProps) => {
   const [installOption, setInstallOption] = useState<InstallationOption>(
     props.isUniverseAction ? InstallationOption.UNIVERSE : InstallationOption.NODE
   );
-  const [selectedNodeNameOption, setSelectedNodeNameOption] = useState<{ label: string }>();
+  const [selectedNodeNameOption, setSelectedNodeNameOption] = useState<NodeNameOption>();
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const theme = useTheme();
   const classes = useStyles();
 
-  const universeQuery = useQuery(universeQueryKey.detail(universeUuid), () =>
-    api.fetchUniverse(universeUuid)
+  const universeQuery = useQuery(
+    universeQueryKey.detail(universeUuid),
+    () => api.fetchUniverse(universeUuid),
+    { enabled: props.isUniverseAction }
   );
   const universeNodeNames =
     universeQuery.data?.universeDetails.nodeDetailsSet
@@ -70,22 +81,29 @@ export const InstallNodeAgentModal = (props: InstallNodeAgentModalProps) => {
       .map((nodeDetails) => nodeDetails.nodeName as string)
       .sort((nodeNameA, nodeNameB) => nodeNameA?.localeCompare(nodeNameB)) ?? [];
 
-  // If we successfully fetch the universe node names and we don't have a selected node
-  // name already, then we can set the default value to the first node name in the list.
+  // Default the node dropdown to the first node when installing from universe actions.
   const firstNodeName = universeNodeNames[0];
   useEffect(() => {
-    if (firstNodeName && !selectedNodeNameOption) {
-      setSelectedNodeNameOption({ label: firstNodeName });
+    if (props.isUniverseAction && firstNodeName && !selectedNodeNameOption) {
+      setSelectedNodeNameOption({ label: firstNodeName, value: firstNodeName });
     }
-  }, [firstNodeName]);
+  }, [firstNodeName, props.isUniverseAction]);
+
+  const getNodeNamesForInstall = (): string[] => {
+    if (installOption === InstallationOption.UNIVERSE) {
+      // The server will interpret an empty array as "all nodes in the universe".
+      return [];
+    }
+    if (props.isUniverseAction) {
+      return [selectedNodeNameOption?.value ?? ''];
+    }
+    return [props.nodeName];
+  };
 
   const installNodeAgentMutation = useMutation(
     () =>
       NodeAgentAPI.installNodeAgent(universeUuid, {
-        nodeNames:
-          installOption === InstallationOption.UNIVERSE
-            ? universeNodeNames
-            : [selectedNodeNameOption?.label ?? '']
+        nodeNames: getNodeNamesForInstall()
       }),
     {
       onSuccess: (response) => {
@@ -140,7 +158,11 @@ export const InstallNodeAgentModal = (props: InstallNodeAgentModalProps) => {
     const value = event.target.value as InstallationOption;
     setInstallOption(value);
   };
-  const handleSelectedNodeChange = (value: any) => setSelectedNodeNameOption(value);
+  const handleSelectedNodeChange = (value: ValueType<NodeNameOption>) => {
+    if (value && !Array.isArray(value)) {
+      setSelectedNodeNameOption(value as NodeNameOption);
+    }
+  };
 
   const INSTALLATION_OPTIONS: OptionProps[] = [
     { value: InstallationOption.UNIVERSE, label: t('allNodeInUniverse') },
@@ -157,7 +179,11 @@ export const InstallNodeAgentModal = (props: InstallNodeAgentModalProps) => {
   }));
 
   const isNodeNameFieldDisabled = installOption === InstallationOption.UNIVERSE;
-  const universe = universeQuery.data;
+  const isSubmitDisabled =
+    props.isUniverseAction &&
+    installOption === InstallationOption.NODE &&
+    !selectedNodeNameOption?.value;
+  const universeName = props.isUniverseAction ? universeQuery.data?.name : props.universeName;
 
   const installActionI18nKeySuffix = props.isReinstall ? 'reinstall' : 'install';
   const modalTitle = t(`title.${installActionI18nKeySuffix}`);
@@ -169,6 +195,7 @@ export const InstallNodeAgentModal = (props: InstallNodeAgentModalProps) => {
         cancelLabel={cancelLabel}
         submitTestId={`${MODAL_NAME}-SubmitButton`}
         cancelTestId={`${MODAL_NAME}-CancelButton`}
+        buttonProps={{ primary: { disabled: true } }}
         size="md"
         {...modalProps}
       >
@@ -184,6 +211,7 @@ export const InstallNodeAgentModal = (props: InstallNodeAgentModalProps) => {
         cancelLabel={cancelLabel}
         submitTestId={`${MODAL_NAME}-SubmitButton`}
         cancelTestId={`${MODAL_NAME}-CancelButton`}
+        buttonProps={{ primary: { disabled: true } }}
         size="md"
         {...modalProps}
       >
@@ -204,6 +232,7 @@ export const InstallNodeAgentModal = (props: InstallNodeAgentModalProps) => {
       cancelLabel={cancelLabel}
       onSubmit={onSubmit}
       isSubmitting={isSubmitting}
+      buttonProps={{ primary: { disabled: isSubmitDisabled } }}
       size="md"
       {...modalProps}
     >
@@ -218,7 +247,7 @@ export const InstallNodeAgentModal = (props: InstallNodeAgentModalProps) => {
               components={{
                 nodeAgentPrereqDocsLink: <YBExternalLink href={NODE_AGENT_PREREQ_DOCS_URL} />
               }}
-              values={{ universeName: universe?.name }}
+              values={{ universeName }}
             />
           </Typography>
         </YBBanner>

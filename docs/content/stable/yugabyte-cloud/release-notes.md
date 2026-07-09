@@ -21,6 +21,30 @@ rightNav:
 
 ### 2026
 
+#### June 30, 2026
+
+##### Improvements
+
+- {{<tags/feature/ga>}}Support for [point-in-time recovery](../cloud-clusters/aeon-pitr/) using database clones is now GA. Create a zero-copy, independent writable clone of your database at a point in time for recovery or testing.
+
+##### Database
+
+- Extended track updated to v2024.2.9.1.
+- Rapid track updated to v2025.2.3.2.
+
+#### May 27, 2026
+
+##### New features
+
+- [Release Tracks](../cloud-basics/create-clusters-overview/#yugabytedb-version) simplified. Release tracks have been reduced from four to two new tracks: _Extended_, for mission-critical workloads, and _Rapid_, for early access to the latest YugabyteDB capabilities. Clusters previously on the Innovation and Production tracks are now on Extended; and those on the Early Access and Preview tracks are now on Rapid.
+
+##### Database
+
+- Extended (previously Production) track updated to v2024.2.9.0.
+- Rapid (previously Early Access) track updated to v2025.2.3.0.
+- Innovation migrated to Extended.
+- Preview migrated to Rapid.
+
 #### April 28, 2026
 
 ##### New features

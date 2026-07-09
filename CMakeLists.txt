@@ -304,6 +304,14 @@ if(NOT APPLE AND NOT "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^(aarch64|arm64)$" )
   ADD_CXX_FLAGS("-DYB_ENABLE_YSQL_DOCUMENTDB_EXT")
 endif()
 
+# pg_duckdb links a prebuilt DuckDB bundle from yugabyte-db-thirdparty that is currently built
+# uninstrumented-only. Linking an uninstrumented DuckDB core into a sanitizer-instrumented backend 
+# gives broken TSAN / blind ASAN, so for now pg_duckdb is not available on sanitizer (ASAN/TSAN) builds.
+if(NOT IS_SANITIZER)
+  set(YB_ENABLE_YSQL_PG_DUCKDB_EXT TRUE)
+  ADD_CXX_FLAGS("-DYB_ENABLE_YSQL_PG_DUCKDB_EXT")
+endif()
+
 # -------------------------------------------------------------------------------------------------
 # Build type (debug, release, fastdebug, etc.)
 # -------------------------------------------------------------------------------------------------
@@ -457,6 +465,11 @@ endif()
 if(APPLE)
   ADD_CXX_FLAGS("-DOS_MACOSX")
   ADD_CXX_FLAGS("-D_DARWIN_UNLIMITED_STREAMS")
+  # Give inline functions (and their function-local statics) hidden visibility so they are not
+  # exported from every shared library. This greatly reduces the number of weak-def symbols that
+  # dyld must coalesce across all dynamic libraries at process launch, which is the dominant macOS
+  # startup cost for the dynamic build.
+  ADD_CXX_FLAGS("-fvisibility-inlines-hidden")
 endif()
 
 # compiler flags for different build types (run 'cmake -DCMAKE_BUILD_TYPE=<type> .')
@@ -752,26 +765,17 @@ set(TCMALLOC_STATIC_LIB_LD_FLAGS "")
 
 # Set flags based on whether we are using tcmalloc.
 if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR IS_SANITIZER)
-  message("Allowing undefined symbols "
+  message("Configuring linker undefined-symbol policy "
           "(YB_TCMALLOC_ENABLED=${YB_TCMALLOC_ENABLED}, build type is ${YB_BUILD_TYPE})")
-  if(APPLE)
-    # See https://bit.ly/3DrOibC on this Apple Clang specific flag.
-    ADD_LINKER_FLAGS("-undefined dynamic_lookup")
-    # To get rid of the following warning during linking on macOS:
-    #
-    # -undefined dynamic_lookup may not work with chained fixups
-    #
-    # See https://github.com/bazelbuild/bazel/issues/16413 for discussion.
-    ADD_LINKER_FLAGS("-Wl,-no_fixup_chains")
-    # Suppress warnings about unwind information in non-code sections from tcmalloc/gperftools
-    # symbols (e.g., malloc_hook, google_malloc). These warnings are harmless but noisy.
-    ADD_LINKER_FLAGS("-Wl,-w")
-  elseif(IS_GCC)
+  # macOS is handled by neither branch below: it links strictly by default (the macOS default is
+  # "-undefined error"). See the detailed rationale next to the yb_allow_flat_namespace_lookup()
+  # calls after the src/yb subdirectories are added.
+  if(IS_GCC)
     # Without this, yb_util cannot get linked with GCC 11 because it references some undefined
     # symbols belonging to tcmalloc, e.g. HeapProfilerStart.
     # https://gist.githubusercontent.com/mbautin/53e72fbc8c45b4b0d759673fba102ddf/raw
     ADD_LINKER_FLAGS("-Wl,--unresolved-symbols=ignore-all")
-  else()
+  elseif(NOT APPLE)
     # Allow undefined symbols when linking libs, so not resolved references to tcmalloc symbols
     # does not break libs linking.
     string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,--allow-shlib-undefined")
@@ -781,7 +785,9 @@ if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR IS_SANITIZER)
   endif()
 
   if(APPLE)
-    set(TCMALLOC_STATIC_LIB_LD_FLAGS "-force_load ${TCMALLOC_STATIC_LIB}")
+    # macOS links the shared tcmalloc (see the add_executable wrapper in YugabyteFunctions.cmake),
+    # which installs a malloc zone at load time; no force_load of the static archive is needed.
+    set(TCMALLOC_STATIC_LIB_LD_FLAGS "")
   else()
     set(TCMALLOC_STATIC_LIB_LD_FLAGS
         "-Wl,--whole-archive ${TCMALLOC_STATIC_LIB} -Wl,--no-whole-archive")
@@ -933,6 +939,31 @@ set(YB_SUBDIR_NAMES
 foreach(subdir_name IN LISTS YB_SUBDIR_NAMES)
   add_subdirectory("src/yb/${subdir_name}")
 endforeach()
+
+# macOS links shared libraries strictly by default (macOS default is "-undefined error"). Unlike
+# Linux, a symbol referenced inside a shared library but defined nowhere is NOT caught at the
+# executable link (there is no equivalent of -Wl,--no-allow-shlib-undefined) -- it is only caught
+# when linking the shared library itself. So strict shared-library linking is what gives us
+# build-time detection of missing symbols, and it also lets dyld use the faster chained-fixups load
+# format. Almost every library resolves this by declaring its real link dependencies (in its own
+# CMakeLists.txt). The libraries below cannot, and opt into flat dynamic lookup -- which defers
+# their unresolved symbols to runtime and keeps them on the legacy bind format (no chained fixups).
+# See https://bit.ly/3DrOibC on -undefined dynamic_lookup and
+# https://github.com/bazelbuild/bazel/issues/16413 on why flat lookup forces -no_fixup_chains.
+if(APPLE)
+  # PG-plugin family: loaded into the PostgreSQL backend and resolve backend symbols (PQ*, Ybg*) at
+  # runtime. Hard-linking the backend (libyb_pgbackend) or libpq would be a layering/bloat regression.
+  yb_allow_flat_namespace_lookup(yb-cql)
+  yb_allow_flat_namespace_lookup(yb_pgwrapper)
+  yb_allow_flat_namespace_lookup(yb_pgresult_util)
+  # yb_pggate_util and yb_dockv have a mutual (circular) dependency that cannot be expressed as a
+  # link edge between shared libraries, so yb_pggate_util resolves yb_dockv/yb_ash symbols at runtime.
+  yb_allow_flat_namespace_lookup(yb_pggate_util)
+  # Test-utility libraries form mutually circular dependencies (integration-tests depends on
+  # yb_client_test_util and tools_test_utils, which reference it back), which cannot be link edges.
+  yb_allow_flat_namespace_lookup(tools_test_utils)
+  yb_allow_flat_namespace_lookup(yb_client_test_util)
+endif()
 
 if(YB_BUILD_ODYSSEY)
   yb_setup_odyssey()

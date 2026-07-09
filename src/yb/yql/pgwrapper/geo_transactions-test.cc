@@ -32,6 +32,7 @@ DECLARE_bool(force_global_transactions);
 DECLARE_bool(use_tablespace_based_transaction_placement);
 DECLARE_bool(transaction_tables_use_preferred_zones);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(TEST_perform_ignore_pg_is_region_local);
 
@@ -331,7 +332,9 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
 class GeoTransactionsTestTableLocksDisabled : public GeoTransactionsTest {
  protected:
   void SetUp() override {
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
     GeoTransactionsTest::SetUp();
   }
@@ -895,7 +898,8 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPromotionAfterTablespace
 }
 
 // This test is for testing the behavior when table-level locks are disabled (checks that
-// catalog version mismatch error happens), so doesn't make sense to run with them enabled.
+// a concurrent ALTER TABLE causes the in-flight transaction to fail), so doesn't make sense to
+// run with them enabled.
 TEST_F_EX(
     GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAlterTableSetTablespaceMidTxn),
     GeoTransactionsTestTableLocksDisabled) {
@@ -917,13 +921,13 @@ TEST_F_EX(
   ASSERT_OK(conn2.ExecuteFormat("ALTER TABLE $0$1_1 SET TABLESPACE tablespace$2",
                                 kTablePrefix, kLocalRegion, kOtherRegion));
 
-  // The transaction should fail cleanly with a "Catalog Version Mismatch" error.
+  // The transaction should fail cleanly because the concurrent ALTER aborts it.
   Status commitStatus = conn1.CommitTransaction();
   // Verify that the transaction did not commit successfully.
   ASSERT_FALSE(commitStatus.ok());
-  // Check that the error message contains the expected text.
+  // The DETAIL line distinguishes a conflict abort from a plain transaction expiration.
   std::string msg = commitStatus.ToString();
-  ASSERT_NE(msg.find("Catalog Version Mismatch"), std::string::npos);
+  ASSERT_NE(msg.find("expired or aborted by a conflict"), std::string::npos) << msg;
 }
 
 class GeoTransactionsTablespaceBasedSelectionCandidatesTest : public GeoTransactionsTest {
@@ -996,7 +1000,9 @@ class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
 
   void SetUp() override {
     // These tests are failing when table-level locks are enabled due to #28317.
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
     GeoTransactionsTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;

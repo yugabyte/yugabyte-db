@@ -1,5 +1,6 @@
 import { FC, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { isUndefined } from 'lodash';
 import { useFormContext } from 'react-hook-form';
 import { mui, YBCheckboxField } from '@yugabyte-ui-library/core';
 import { FieldContainer } from '../../components/DefaultComponents';
@@ -31,7 +32,7 @@ export const AssignPublicIPField: FC<PublicIPFieldProps> = ({ disabled, provider
   });
 
   useEffect(() => {
-    if (!getValues(ASSIGN_PUBLIC_IP_FIELD)) {
+    if (isUndefined(getValues(ASSIGN_PUBLIC_IP_FIELD))) {
       providerCode === CloudType.azu
         ? setValue(ASSIGN_PUBLIC_IP_FIELD, false)
         : setValue(ASSIGN_PUBLIC_IP_FIELD, true);

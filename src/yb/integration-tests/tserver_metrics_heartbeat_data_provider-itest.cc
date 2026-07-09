@@ -11,11 +11,16 @@
 // under the License.
 //
 
-#include "yb/util/backoff_waiter.h"
+#include "yb/fs/fs_manager.h"
 
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/tsan_util.h"
+
+#include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/dockv/partition.h"
 
@@ -25,6 +30,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/mini_master.h"
 
@@ -34,6 +40,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_metrics_heartbeat_data_provider.h"
+#include "yb/tserver/ysql_advisory_lock_table.h"
 
 DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
@@ -74,6 +81,34 @@ class TServerMetricsHeartbeatDataProviderITest : public MiniClusterTestWithClien
   }
 };
 
+// Verify that the heartbeat carries a storage_tier label on every path_metric
+// entry.  In a default mini-cluster (no labeled --fs_data_dirs), all paths
+// should report "ssd" (kDefaultStorageTier).
+TEST_F(TServerMetricsHeartbeatDataProviderITest, PathMetricsCarryStorageTier) {
+  ASSERT_TRUE(ASSERT_RESULT(AddDataSatisfies(
+      [](const master::TSHeartbeatRequestPB& req) -> Result<bool> {
+        if (!req.has_metrics()) {
+          return false;
+        }
+        const auto& metrics = req.metrics();
+        // At least one path metric must be present.
+        if (metrics.path_metrics_size() == 0) {
+          return false;
+        }
+        for (const auto& pm : metrics.path_metrics()) {
+          // Every path metric must carry a storage_tier.
+          if (!pm.has_storage_tier()) {
+            return false;
+          }
+          // Default cluster: no labels set, so all tiers should equal the default.
+          if (pm.storage_tier() != FsManager::kDefaultStorageTier) {
+            return false;
+          }
+        }
+        return true;
+      })));
+}
+
 class TServerFullCompactionStatusMetricsHeartbeatDataProviderITest
     : public TServerMetricsHeartbeatDataProviderITest {
   void SetUp() override {
@@ -96,7 +131,47 @@ class TServerFullCompactionStatusMetricsHeartbeatDataProviderITest
     ASSERT_OK(client_->OpenTable(kTableName, &table));
     test_table_id_ = table->id();
 
+    // Wait for the master's background creation of the pg_advisory_locks system table to finish
+    // before pausing heartbeats. Otherwise the table will be stuck in "is being created" state
+    // because tablet assignment requires live tserver heartbeats.
+    ASSERT_OK(client_->WaitForCreateTableToFinish(
+        client::YBTableName(
+            YQL_DATABASE_CQL, master::kSystemNamespaceName,
+            std::string(kPgAdvisoryLocksTableName)),
+        CoarseMonoClock::Now() + 60s * kTimeMultiplier));
+
+    // Also wait until the master has no pending tablet assignments for any table, so that pausing
+    // heartbeats here won't strand any other lazy system table in a half-created state.
+    ASSERT_OK(WaitForNoPendingTabletAssignments(60s * kTimeMultiplier));
+
     PauseAllTserverHeartbeats(true);
+  }
+
+  Status WaitForNoPendingTabletAssignments(MonoDelta timeout) {
+    return WaitFor(
+        [this]() -> Result<bool> {
+          auto* leader_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+          auto& catalog_manager = leader_master->catalog_manager();
+          for (const auto& table : catalog_manager.GetTables(master::GetTablesMode::kAll)) {
+            auto tablets = VERIFY_RESULT(table->GetTablets());
+            for (const auto& tablet : tablets) {
+              auto lock = tablet->LockForRead();
+              if (!lock->is_running() && !lock->is_deleted()) {
+                return false;
+              }
+            }
+          }
+          return true;
+        },
+        timeout, "Waiting for master to have no pending tablet assignments");
+  }
+
+  void DoBeforeTearDown() override {
+    // Unpause heartbeats to avoid anything to be stuck because of paused heartbeats.
+    if (cluster_) {
+      PauseAllTserverHeartbeats(false);
+    }
+    TServerMetricsHeartbeatDataProviderITest::DoBeforeTearDown();
   }
 
  protected:

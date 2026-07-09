@@ -278,23 +278,6 @@ RocksDBTaskStateMetrics* GetRocksDBTaskStateMetrics(
   FATAL_INVALID_ENUM_VALUE(yb::PriorityThreadPoolTaskState, state);
 }
 
-// TODO remove in GI-15048.
-// Returns a pointer to the set of paused or queued task state metrics if the current state
-// is either Paused or Queued. Otherwise, returns a nullptr.
-RocksDBTaskStateMetrics* GetRocksDBPausedOrQueuedMetrics(
-    RocksDBPriorityThreadPoolMetrics* metrics,
-    const yb::PriorityThreadPoolTaskState state) {
-  switch (state) {
-    case yb::PriorityThreadPoolTaskState::kNotStarted:
-      return &metrics->queued;
-    case yb::PriorityThreadPoolTaskState::kPaused:
-      return &metrics->paused;
-    case yb::PriorityThreadPoolTaskState::kRunning:
-      return nullptr;
-  }
-  FATAL_INVALID_ENUM_VALUE(yb::PriorityThreadPoolTaskState, state);
-}
-
 class DBImpl::CompactionTask : public ThreadPoolTask {
  public:
   CompactionTask(
@@ -359,8 +342,6 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     if (metrics_) {
       const auto state = yb::PriorityThreadPoolTaskState::kRunning;
       auto* state_metrics = GetRocksDBTaskStateMetrics(metrics_.get(), state);
-      // TODO GI-15048 Temporarily maintains total compactions.
-      state_metrics->total.CompactionTaskInputAdded(*compaction_info_);
       auto* task_metrics_old =
           state_metrics->TaskMetricsByCompactionReason(compaction_reason_);
       auto* task_metrics_new =
@@ -370,23 +351,6 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
       } else {
         task_metrics_old->CompactionTaskRemoved();
         task_metrics_new->CompactionTaskAdded(*compaction_info_);
-      }
-
-      // TODO GI-15048 Paused and queued metrics is deprecated.
-      // Temporarily maintained to not break the graph in YB-Anywhere.
-      auto* paused_or_queued_metrics = GetRocksDBPausedOrQueuedMetrics(metrics_.get(), state);
-      if (paused_or_queued_metrics) {
-        paused_or_queued_metrics->total.CompactionTaskInputAdded(*compaction_info_);
-        task_metrics_old = paused_or_queued_metrics->TaskMetricsByCompactionReason(
-            compaction_reason_);
-        task_metrics_new = paused_or_queued_metrics->TaskMetricsByCompactionReason(
-            compaction_->compaction_reason());
-        if (task_metrics_old == task_metrics_new) {
-          task_metrics_new->CompactionTaskInputAdded(*compaction_info_);
-        } else {
-          task_metrics_old->CompactionTaskRemoved();
-          task_metrics_new->CompactionTaskAdded(*compaction_info_);
-        }
       }
     }
     compaction_reason_ = compaction_->compaction_reason();
@@ -546,9 +510,6 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
   }
 
  private:
-  // TODO GI-15048 This function probably won't be necessary once we remove the deprecated
-  // metrics. For now, it is needed because up to four metrics are updated with each state
-  // change rather than just one.
   void UpdateStats(yb::PriorityThreadPoolTaskState state,
       std::function<void(RocksDBTaskMetrics* metrics)> update_metrics) {
     if (!metrics_) {
@@ -556,20 +517,8 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     }
 
     auto* state_metrics = GetRocksDBTaskStateMetrics(metrics_.get(), state);
-    // TODO GI-15048 Temporarily maintains total compactions.
-    update_metrics(&state_metrics->total);
     auto* task_metrics = state_metrics->TaskMetricsByCompactionReason(compaction_reason_);
     update_metrics(task_metrics);
-
-    // TODO GI-15048 Paused and queued metrics is deprecated.
-    // Temporarily maintained to not break the graph in YB-Anywhere.
-    auto* paused_or_queued_metrics = GetRocksDBPausedOrQueuedMetrics(metrics_.get(), state);
-    if (paused_or_queued_metrics) {
-      // TODO GI-15048 Temporarily maintains total compactions.
-      update_metrics(&paused_or_queued_metrics->total);
-      task_metrics = paused_or_queued_metrics->TaskMetricsByCompactionReason(compaction_reason_);
-      update_metrics(task_metrics);
-    }
   }
 
   int CalcSizePriority() const {
@@ -2929,8 +2878,12 @@ Status DBImpl::WaitForFlush(ColumnFamilyHandle* column_family) {
 
 Status DBImpl::UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) {
   InstrumentedMutexLock l(&mutex_);
-  SCHECK(column_family_memtables_->Seek(0), NotFound, "Column family not found");
-  column_family_memtables_->GetMemTable()->UpdateFrontiers(frontiers);
+  // Access the default column family's memtable directly rather than through the shared
+  // column_family_memtables_ object. The latter's current_/handle_ members are mutated by write
+  // threads (which do not hold mutex_), so seeking on it here would race with concurrent writes.
+  auto* cfd = versions_->GetColumnFamilySet()->GetDefault();
+  SCHECK(cfd, NotFound, "Column family not found");
+  cfd->mem()->UpdateFrontiers(frontiers);
   return Status::OK();
 }
 
@@ -3235,6 +3188,12 @@ int DBImpl::GetCfdImmNumNotFlushed() {
   auto cfd = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
   InstrumentedMutexLock guard_lock(&mutex_);
   return cfd->imm()->NumNotFlushed();
+}
+
+void DBImpl::TEST_StopWrites() {
+  auto cfd = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
+  InstrumentedMutexLock guard_lock(&mutex_);
+  cfd->TEST_StopWrites();
 }
 
 FlushAbility DBImpl::GetFlushAbility() {
@@ -5737,7 +5696,7 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
     // in this case.
     while (bg_error_.ok() && write_controller_.IsStopped() && !IsShuttingDown()) {
       delayed = true;
-      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
+      TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
       bg_cv_.Wait();
     }
   }
@@ -6173,11 +6132,6 @@ Result<std::string> DBImpl::GetMiddleKey(Slice lower_bound_key) {
   // Use an empty (invalid) internal key to get the middle key without a lower bound.
   const Slice kEmptyInternalKey;
   return default_cf_handle_->cfd()->current()->GetMiddleKey(kEmptyInternalKey);
-}
-
-yb::Result<TableReader*> DBImpl::TEST_GetLargestSstTableReader() {
-  InstrumentedMutexLock lock(&mutex_);
-  return default_cf_handle_->cfd()->current()->TEST_GetLargestSstTableReader();
 }
 
 void DBImpl::TEST_SwitchMemtable() {

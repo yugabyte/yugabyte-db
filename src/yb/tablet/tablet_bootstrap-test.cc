@@ -265,7 +265,7 @@ class BootstrapTest : public LogTestBase {
     RaftGroupMetadataPtr meta = VERIFY_RESULT_PREPEND(LoadOrCreateTestRaftGroupMetadata(),
                                                       "Unable to load test tablet metadata");
     consensus::RaftConfigPB config;
-    config.set_opid_index(consensus::kInvalidOpIdIndex);
+    config.set_committed_op_index(consensus::kInvalidOpIdIndex);
     consensus::RaftPeerPB* peer = config.add_peers();
     peer->set_permanent_uuid(meta->fs_manager()->uuid());
     peer->set_member_type(consensus::PeerMemberType::VOTER);
@@ -835,8 +835,12 @@ void GenerateRandomInput(size_t num_entries, std::mt19937_64* rng, BootstrapInpu
               // We are in the (intents_flushed_index, regular_flushed_index] range. Special rules
               // are used to decide whether to replay these operations.
               if (op_type == consensus::OperationType::WRITE_OP) {
-                // Only need to replay intent writes in this index range.
+                // Only need to replay intent writes in this index range: the write is already
+                // flushed to the regular DB, so bootstrap clears its regular bit.
                 replay = is_transactional;
+                if (replay) {
+                  replayed_to_intents_only.push_back(op_id);
+                }
               } else if (op_type == consensus::OperationType::UPDATE_TRANSACTION_OP) {
                 replay = batch_data.txn_status == TransactionStatus::APPLYING;
                 if (replay) {

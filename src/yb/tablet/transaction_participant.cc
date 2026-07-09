@@ -213,12 +213,13 @@ YB_STRONGLY_TYPED_BOOL(PostApplyCleanup);
 constexpr size_t kSIModeIdx = 0;
 constexpr size_t kRRRCModeIdx = 1;
 
-ash::WaitStateInfoPtr InitMinRunningHybridTimeWaitState() {
+ash::WaitStateInfoPtr InitMinRunningHybridTimeWaitState(TabletIdView tablet_id) {
   auto bg_wait_state = ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>();
   if (bg_wait_state) {
     bg_wait_state->set_root_request_id(yb::Uuid::Generate());
     bg_wait_state->set_query_id(
         std::to_underlying(yb::ash::FixedQueryId::kQueryIdForMinRunningHybridTime));
+    bg_wait_state->UpdateTabletId(tablet_id);
   }
   return bg_wait_state;
 }
@@ -376,6 +377,13 @@ class TransactionParticipant::Impl
 
   bool Closing() const override {
     return closing_.load(std::memory_order_acquire);
+  }
+
+  Status CheckClosing() const override {
+    if (Closing()) {
+      return STATUS(ShutdownInProgress, "Tablet is shutting down");
+    }
+    return Status::OK();
   }
 
   void Start() {
@@ -599,9 +607,12 @@ class TransactionParticipant::Impl
 
   // Registers a request, giving it a newly allocated id and returning this id.
   Result<int64_t> RegisterRequest(bool allow_when_closing) {
-    if (!allow_when_closing && Closing()) {
-      LOG_WITH_PREFIX(INFO) << "Closing, not allow request to be registered";
-      return STATUS(ShutdownInProgress, "Tablet is shutting down");
+    if (!allow_when_closing) {
+      auto closing_status = CheckClosing();
+      if (!closing_status.ok()) {
+        LOG_WITH_PREFIX(INFO) << "Closing, not allow request to be registered";
+        return closing_status;
+      }
     }
 
     std::lock_guard lock(mutex_);
@@ -1243,8 +1254,16 @@ class TransactionParticipant::Impl
   // Returns kMax if there are no running transactions.
   HybridTime MinRunningHybridTime() {
     auto result = min_running_ht_.load(std::memory_order_acquire);
+    // Refreshing the status of the oldest running transaction below is best-effort. Issuing the
+    // status request needs a ready local client (SendStatusRequest blocks on
+    // client_future().get()). This code runs on the Raft apply path (Tablet::ApplyIntents ->
+    // MinRunningHybridTime), and blocking there can deadlock: local client initialization itself
+    // depends on this tablet's apply making progress (e.g. the master sys catalog right after a
+    // restart, where the client cannot locate a leader master until the pending write is applied).
+    // Skip the refresh until the client is ready; it will be retried later.
     if (result == HybridTime::kMax || result == HybridTime::kInvalid
-        || !transactions_loaded_.load()) {
+        || !transactions_loaded_.load()
+        || !IsReady(participant_context_.client_future())) {
       return result;
     }
     auto now = CoarseMonoClock::now();
@@ -1264,7 +1283,8 @@ class TransactionParticipant::Impl
         static const std::string kRequestReason = "min running check"s;
         // Get transaction status
         auto now_ht = participant_context_.Now();
-        auto min_running_wait_state = InitMinRunningHybridTimeWaitState();
+        auto min_running_wait_state =
+            InitMinRunningHybridTimeWaitState(participant_context_.tablet_id());
         ash::MinRunningHybridTimeTracker().Track(min_running_wait_state);
         ADOPT_WAIT_STATE(min_running_wait_state);
         SET_WAIT_STATUS(TransactionStatusCache_DoGetCommitData);
@@ -1393,9 +1413,20 @@ class TransactionParticipant::Impl
         if (committed_ids.empty()) {
           break;
         } else {
-          // We are waiting only for committed transactions to be applied.
-          // So just add some delay.
-          std::this_thread::sleep_for(10ms * std::min<size_t>(10, committed_ids.size()));
+          // We are waiting only for committed transactions to be applied. Honor the deadline
+          // instead of spinning forever: the resolver returns quickly for already-committed
+          // transactions, so nothing in this loop observes the deadline otherwise. A committed
+          // transaction that never gets applied (e.g. when the applier is stopped during
+          // shutdown) would keep this loop sleeping indefinitely and block callers such as CDC
+          // GetChanges from returning.
+          auto now = CoarseMonoClock::Now();
+          if (now >= deadline) {
+            return STATUS(
+                TimedOut, "Timed out waiting for committed transactions to be applied");
+          }
+          // So just add some delay, but don't sleep past the deadline.
+          std::this_thread::sleep_for(std::min<CoarseMonoClock::Duration>(
+              10ms * std::min<size_t>(10, committed_ids.size()), deadline - now));
         }
       }
     }

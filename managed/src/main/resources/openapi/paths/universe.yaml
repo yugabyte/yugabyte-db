@@ -1346,6 +1346,35 @@
         checkOnlyPermission: false
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: internal
+  get:
+    operationId: getExportTelemetryConfig
+    summary: Get configured export telemetry configs for a universe
+    description: |
+      Returns the currently configured telemetry export configs (audit logs, query logs,
+      metrics) for a universe. A null sub-config indicates that export is disabled.
+    tags:
+      - Universe
+    responses:
+      '200':
+        $ref: "../components/responses/ExportTelemetryConfigResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: READ
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.2.0
+    x-yba-api-visibility: internal
 '/customers/{cUUID}/universes/{uniUUID}/operator-import':
   parameters:
     - name: cUUID
@@ -1724,6 +1753,63 @@
         checkOnlyPermission: false
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/proxy-config':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: updateProxyConfig
+    summary: Update proxy configuration
+    description: |
+      Queues a task to update HTTP/HTTPS proxy settings for nodes in the universe.
+      Supports universe-level proxy_config and per-availability-zone overrides via
+      az_networking.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseUpdateProxyConfigReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '404':
+        description: Customer or Universe or Cluster not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpdateProxyConfig
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.2.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/resize-nodes':
   parameters:
     - name: cUUID
@@ -1777,4 +1863,98 @@
           sourceType: endpoint
         checkOnlyPermission: false
     x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/validate-kubernetes-overrides':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: validateKubernetesOverrides
+    summary: Validate Kubernetes Helm Overrides
+    description: |
+      Validate the kubernetes helm override values for universe.
+      See https://github.com/yugabyte/charts/blob/master/stable/yugabyte/values.yaml for possible
+      override options.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseValidateKubernetesOverridesReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/YBAValidationResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.2.0
+    x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/check-resize-capabilities':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: checkResizeOptions
+    summary: Check available resize options for cluster node settings
+    description: |
+      Given proposed node settings for a cluster, returns which operations can be used to apply
+      them. Possible values are FULL_MOVE (edit universe with full node replacement),
+      SMART_RESIZE (in-place instance resize in rolling fashion)
+      and SMART_RESIZE_NON_RESTART (in-place disk update without restart).
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/CheckResizeOptionsReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/CheckResizeOptionsResponse.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: READ
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview

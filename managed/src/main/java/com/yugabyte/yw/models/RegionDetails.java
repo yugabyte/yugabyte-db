@@ -6,6 +6,7 @@ import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
+import com.yugabyte.yw.models.helpers.provider.region.OCIRegionCloudInfo;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -33,6 +34,7 @@ public class RegionDetails {
     @ApiModelProperty public AWSRegionCloudInfo aws;
     @ApiModelProperty public AzureRegionCloudInfo azu;
     @ApiModelProperty public GCPRegionCloudInfo gcp;
+    @ApiModelProperty public OCIRegionCloudInfo oci;
     @ApiModelProperty public KubernetesRegionInfo kubernetes;
   }
 

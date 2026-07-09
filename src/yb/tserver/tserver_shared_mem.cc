@@ -16,6 +16,7 @@
 #include <atomic>
 #include <mutex>
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/interprocess/shared_memory_object.hpp>
 
 #include "yb/docdb/object_lock_shared_state.h"
@@ -434,7 +435,10 @@ std::byte* SharedExchange::Obtain(size_t required_size) {
 }
 
 Status SharedExchange::SendRequest() {
-  return header_.SendRequest(failed_previous_request_, last_size_);
+  RETURN_NOT_OK(header_.SendRequest(failed_previous_request_, last_size_));
+  failed_previous_request_ = false;
+  return Status::OK();
+
 }
 
 bool SharedExchange::ResponseReady() {

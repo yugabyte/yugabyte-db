@@ -15,6 +15,9 @@
 
 #include <arpa/inet.h>
 
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+
 #include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/size_literals.h"
@@ -170,7 +173,7 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "Writing initial sys catalog snapshot during initdb.";
     case WaitStateCode::kDumpRunningRpc_WaitOnReactor:
       return "DumpRunningRpcs is waiting on reactor threads.";
-    case WaitStateCode::kConflictResolution_ResolveConficts:
+    case WaitStateCode::kConflictResolution_ResolveConflicts:
       return "A read/write rpc is waiting to identify conflicting transactions.";
     case WaitStateCode::kConflictResolution_WaitOnConflictingTxns:
       return "A read/write rpc is waiting for conflicting transactions to complete.";
@@ -256,6 +259,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "YB client is waiting on an RPC sent to the master.";
     case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
       return "Waiting for index backfill chunk to be processed.";
+    case WaitStateCode::kVectorIndex_Search:
+      return "The vector index is performing an approximate nearest neighbor search.";
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
@@ -273,6 +278,7 @@ bool AshIsPGClass(ash::Class class_id) {
     case ash::Class::kTabletWait:
     case ash::Class::kRocksDB:
     case ash::Class::kCommon:
+    case ash::Class::kVectorIndex:
       return false;
   }
   FATAL_INVALID_ENUM_VALUE(ash::Class, class_id);
@@ -311,6 +317,22 @@ void AshMetadata::set_client_host_port(const HostPort &host_port) {
 
 void AshMetadata::clear_rpc_request_id() {
   rpc_request_id = 0;
+}
+
+void AshMetadata::RootRequestIdToPB(AshMetadataPB* pb) const {
+  pb->set_root_request_id(root_request_id.data(), root_request_id.size());
+}
+
+void AshMetadata::RootRequestIdToPB(LWAshMetadataPB* pb) const {
+  pb->dup_root_request_id(root_request_id.AsSlice());
+}
+
+void AshMetadata::TopLevelNodeIdToPB(AshMetadataPB* pb) const {
+  pb->set_top_level_node_id(top_level_node_id.data(), top_level_node_id.size());
+}
+
+void AshMetadata::TopLevelNodeIdToPB(LWAshMetadataPB* pb) const {
+  pb->dup_top_level_node_id(top_level_node_id.AsSlice());
 }
 
 std::string AshMetadata::ToString() const {
@@ -644,7 +666,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kRemoteBootstrap_RateLimiter:
       return WaitStateType::kWaitOnCondition;
 
-    case WaitStateCode::kConflictResolution_ResolveConficts:
+    case WaitStateCode::kConflictResolution_ResolveConflicts:
       return WaitStateType::kRPCWait;
 
     case WaitStateCode::kLockedBatchEntry_Lock:
@@ -705,6 +727,9 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kYBClient_LookingUpTablet:
     case WaitStateCode::kYBClient_WaitingOnMaster:
       return WaitStateType::kRPCWait;
+
+    case WaitStateCode::kVectorIndex_Search:
+      return WaitStateType::kCpu;
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
@@ -729,7 +754,7 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kWaitForYSQLBackendsCatalogVersion:
     case WaitStateCode::kWriteSysCatalogSnapshotToDisk:
     case WaitStateCode::kDumpRunningRpc_WaitOnReactor:
-    case WaitStateCode::kConflictResolution_ResolveConficts:
+    case WaitStateCode::kConflictResolution_ResolveConflicts:
     case WaitStateCode::kConflictResolution_WaitOnConflictingTxns:
     case WaitStateCode::kRemoteBootstrap_FetchData:
     case WaitStateCode::kRemoteBootstrap_StartRemoteSession:
@@ -761,6 +786,7 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
     case WaitStateCode::kXCluster_RateLimiter:
     case WaitStateCode::kXCluster_WaitForSafeTime:
+    case WaitStateCode::kVectorIndex_Search:
       return "This contains tablet ID.";
 
     case WaitStateCode::kYCQL_Parse:

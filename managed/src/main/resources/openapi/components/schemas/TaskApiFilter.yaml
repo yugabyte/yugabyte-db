@@ -1,0 +1,38 @@
+title: TaskApiFilter
+description: Optional filter for listing customer tasks.
+type: object
+properties:
+  date_range_start:
+    description: Include tasks created on or after this time.
+    type: string
+    format: date-time
+  date_range_end:
+    description: Include tasks created on or before this time.
+    type: string
+    format: date-time
+  target_list:
+    description: Filter by target resource types.
+    type: array
+    items:
+      type: string
+  target_uuid_list:
+    description: Filter by target resource UUIDs.
+    type: array
+    items:
+      type: string
+      format: uuid
+  type_list:
+    description: Filter by task action types.
+    type: array
+    items:
+      type: string
+  type_name_list:
+    description: Filter by friendly task type names.
+    type: array
+    items:
+      type: string
+  status:
+    description: Filter by task statuses.
+    type: array
+    items:
+      type: string

@@ -91,6 +91,11 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
       RemoveRemoteBootstrapSessionResponsePB* resp,
       rpc::RpcContext context) override;
 
+  // Starts shutting the service down: rejects new sessions/fetches and tears down active sessions,
+  // so that peers bootstrapping from this server fail fast (instead of retrying a source whose
+  // tablets are shutting down). Called before the tablets shut down. See issue #32211.
+  void StartShutdown();
+
   void Shutdown() override;
 
   void RegisterLogAnchor(
@@ -171,6 +176,21 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
       const std::string& session_id, RemoteBootstrapErrorPB::Code* app_error)
       REQUIRES(log_anchors_mutex_);
 
+  // Prune stale log_anchors_map_ entries for the same (requestor, tablet) on
+  // BeginRemoteBootstrapSession. Covers the case where a prior attempt used S != L and
+  // registered a remote anchor on the leader, and the retry uses S == L (so no new
+  // RegisterLogAnchor RPC arrives on the leader).
+  void PruneStaleRemoteLogAnchorsForNewSessionUnlocked(
+      const std::string& tablet_id, const std::string& requestor_uuid,
+      const std::string& new_session_id)
+      REQUIRES(log_anchors_mutex_);
+
+  // Prune stale sessions_ for the same (requestor, tablet) on BeginRemoteBootstrapSession.
+  void PruneStaleRemoteBootstrapSessionsUnlocked(
+      const std::string& tablet_id, const std::string& requestor_uuid,
+      const std::string& new_session_id)
+      REQUIRES(sessions_mutex_);
+
   void RemoveRemoteBootstrapSession(const std::string& session_id) REQUIRES(sessions_mutex_);
 
   void RemoveLogAnchorSession(const std::string& session_id) REQUIRES(log_anchors_mutex_);
@@ -202,6 +222,10 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
 
   mutable std::mutex log_anchors_mutex_;
   LogAnchorsMap log_anchors_map_ GUARDED_BY(log_anchors_mutex_);
+
+  // Set by StartShutdown to reject new sessions and fail in-flight fetches once the server begins
+  // shutting down.
+  bool closing_ GUARDED_BY(sessions_mutex_){false};
 
   // Session expiration thread.
   // TODO: this is a hack, replace with some kind of timer impl. See KUDU-286.

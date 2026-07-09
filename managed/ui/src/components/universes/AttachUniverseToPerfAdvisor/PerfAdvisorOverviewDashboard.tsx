@@ -2,29 +2,47 @@ import { Trans, useTranslation } from 'react-i18next';
 import { useMemo, useState } from 'react';
 import { browserHistory } from 'react-router';
 import { Box } from '@material-ui/core';
-import { PerfAdvisorEntry } from '@yugabytedb/perf-advisor-ui';
+
+import {
+  PerfAdvisorEntry,
+  MetricsAnalysisEntry,
+  buildQueryDrilldownUrl,
+  isNonEmptyString,
+  URL_TAB_PATH,
+  type QueryPageParams
+} from '@yugabytedb/perf-advisor-ui';
+
 import { AppName } from '@app/redesign/helpers/dtos';
 import { YBPanelItem } from '../../panels';
+
+import { usePerfAdvisorRuntimeConfigs } from './usePerfAdvisorRuntimeConfigs';
+import { getQueryIdFromUrl, getTroubleshootUuidFromUrl } from './perfAdvisorUrlHelpers';
 
 interface PerfAdvisorOverviewDashboardProps {
   universeUuid: string;
   timezone: string;
   apiUrl: string;
   registrationStatus: boolean;
+  // When true, the dashboard renders the standalone anomalies view.
+  showStandaloneAnomalies?: boolean;
 }
 
 export const PerfAdvisorOverviewDashboard = ({
   universeUuid,
   timezone,
   apiUrl,
-  registrationStatus
+  registrationStatus,
+  showStandaloneAnomalies = false
 }: PerfAdvisorOverviewDashboardProps) => {
   const { t } = useTranslation();
+  const runtimeConfigs = usePerfAdvisorRuntimeConfigs();
 
-  const [troubleshootUuid, setTroubleshootUuid] = useState<string | null>(null);
-  const [queryId, setQueryId] = useState<string | null>(null);
+  const [troubleshootUuid, setTroubleshootUuid] = useState<string | null>(
+    getTroubleshootUuidFromUrl
+  );
+  const [queryId, setQueryId] = useState<string | null>(getQueryIdFromUrl);
 
-  // This call back function is to handle YBM case to ensure we dont have a full page reload
+  // In-app (SPA) navigation without a full page reload.
   const onNavigateToUrl = (url: string) => {
     browserHistory.push(url);
   };
@@ -34,26 +52,73 @@ export const PerfAdvisorOverviewDashboard = ({
     setQueryId(null);
   };
 
-  const onSelectedQuery = (selectedQueryId: string | null) => {
-    setQueryId(selectedQueryId);
-    setTroubleshootUuid(null);
+  const onSelectedQuery = (selectedQueryId: string | null, params?: QueryPageParams) => {
+    if (!selectedQueryId) {
+      setQueryId(null);
+      const urlParams = new URLSearchParams(window.location.search);
+      urlParams.delete('queryId');
+      const cleanedPath = window.location.pathname.replace(/\/queries\/[^/]+$/, '');
+      const qs = urlParams.toString();
+      browserHistory.replace(qs ? `${cleanedPath}?${qs}` : cleanedPath);
+      return;
+    }
+
+    const currentPath = window.location.pathname;
+    const isInAnomaly = new RegExp(`/${URL_TAB_PATH.ANOMALIES}/[^/]+`).test(currentPath);
+    const basePath = currentPath.replace(/\/queries\/[^/]+$/, '');
+    const pathSegments = isInAnomaly ? ['queries', selectedQueryId] : [];
+
+    const url = buildQueryDrilldownUrl({
+      basePath,
+      baseSearch: window.location.search,
+      pathSegments,
+      searchParams: {
+        queryId: selectedQueryId,
+        universeId: params?.universeId ?? undefined,
+        type: params?.type ?? undefined,
+        dbId: params?.dbId ?? undefined
+      }
+    });
+
+    // Query click opens the drilldown in a new tab (parity with YBM / WEB).
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  // We use useMemo to prevent re-rendering the PerfAdvisorEntry component when the universeUuid, queryId, or troubleshootUuid changes.
-  const memoizedPerfAdvisorEntry = useMemo(() => {
+  const shouldRenderDrilldown = isNonEmptyString(queryId!) || isNonEmptyString(troubleshootUuid!);
+
+  // Memoize each view to avoid unnecessary re-creation when inputs are unchanged.
+  const memoizedDrilldownView = useMemo(() => {
+    if (!shouldRenderDrilldown) return null;
     return (
-      <PerfAdvisorEntry
+      <MetricsAnalysisEntry
         universeUuid={universeUuid}
+        troubleshootUuid={troubleshootUuid}
         appName={AppName.YBA}
-        timezone={timezone}
         apiUrl={apiUrl}
+        runtimeConfigs={runtimeConfigs}
         onSelectedIssue={onSelectedIssue}
         onSelectedQuery={onSelectedQuery}
         onNavigateToUrl={onNavigateToUrl}
       />
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [universeUuid, queryId, troubleshootUuid]);
+  }, [shouldRenderDrilldown, universeUuid, troubleshootUuid, apiUrl, runtimeConfigs]);
+
+  const memoizedPerfAdvisorEntry = useMemo(() => {
+    return (
+      <PerfAdvisorEntry
+        universeUuid={universeUuid}
+        appName={AppName.YBA}
+        apiUrl={apiUrl}
+        runtimeConfigs={runtimeConfigs}
+        onSelectedIssue={onSelectedIssue}
+        onSelectedQuery={onSelectedQuery}
+        onNavigateToUrl={onNavigateToUrl}
+        showStandaloneAnomalies={showStandaloneAnomalies}
+      />
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [universeUuid, apiUrl, showStandaloneAnomalies, runtimeConfigs]);
 
   if (!registrationStatus) {
     return (
@@ -72,5 +137,5 @@ export const PerfAdvisorOverviewDashboard = ({
     );
   }
 
-  return registrationStatus && memoizedPerfAdvisorEntry;
+  return shouldRenderDrilldown ? <>{memoizedDrilldownView}</> : <>{memoizedPerfAdvisorEntry}</>;
 };

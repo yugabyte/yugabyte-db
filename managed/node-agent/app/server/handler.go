@@ -10,7 +10,6 @@ import (
 	"node-agent/app/task"
 	"node-agent/model"
 	"node-agent/util"
-	"strings"
 )
 
 // Retrives current user associated with the API token from the platform.
@@ -34,12 +33,8 @@ func RetrieveUser(ctx context.Context, apiToken string) error {
 		util.FileLogger().Errorf(ctx, "Error fetching the user %s - %s", sessionInfo.UserId, err)
 		return err
 	}
-	user := userHandler.Result()
-	if strings.EqualFold(user.Role, "ReadOnly") {
-		err = fmt.Errorf("User must have SuperAdmin role instead of %s", user.Role)
-		util.FileLogger().Errorf(ctx, "Unsupported user role - %s", err.Error())
-		return err
-	}
+	util.FileLogger().
+		Infof(ctx, "API token is associated with user %s", userHandler.Result().Name())
 	return nil
 }
 

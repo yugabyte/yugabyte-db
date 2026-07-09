@@ -56,7 +56,7 @@ void RemoteBootstrapSessionTest::TearDown() {
   messenger_->Shutdown();
   session_.reset();
   WARN_NOT_OK(
-    tablet_peer_->Shutdown(
+    tablet_peer_->TEST_Shutdown(
         tablet::ShouldAbortActiveTransactions::kTrue, tablet::DisableFlushOnShutdown::kFalse),
     "Tablet peer shutdown failed");
   multi_raft_manager_->CompleteShutdown();
@@ -115,7 +115,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
   // TODO similar to code in tablet_peer-test, consider refactor.
   RaftConfigPB config;
   config.add_peers()->CopyFrom(config_peer);
-  config.set_opid_index(consensus::kInvalidOpIdIndex);
+  config.set_committed_op_index(consensus::kInvalidOpIdIndex);
 
   std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
       tablet()->metadata()->fs_manager(), tablet_id, fs_manager()->uuid(), config,

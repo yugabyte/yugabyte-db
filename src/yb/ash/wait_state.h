@@ -19,8 +19,6 @@
 
 #include "yb/ash/ash_fwd.h"
 
-#include "yb/common/common.messages.h"
-#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/wire_protocol.h"
 
@@ -69,6 +67,10 @@ DECLARE_bool(ysql_yb_enable_ash);
 
 namespace yb {
 class Trace;
+
+// Avoid pulling in the (very heavy) common.messages.h / common.pb.h chains.
+class AshMetadataPB;
+class LWAshMetadataPB;
 }  // namespace yb
 namespace yb::ash {
 
@@ -124,7 +126,8 @@ YB_DEFINE_TYPED_ENUM(Class, uint8_t,
     (kConsensus)
     (kTabletWait)
     (kRocksDB)
-    (kCommon));
+    (kCommon)
+    (kVectorIndex));
 
 // This is YB equivalent of wait events from pgstat.h, the term wait event and wait state
 // is used interchangeably in the code. The uint32_t values of all the wait events across PG
@@ -173,7 +176,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kWaitForYSQLBackendsCatalogVersion)
     (kWriteSysCatalogSnapshotToDisk)
     (kDumpRunningRpc_WaitOnReactor)
-    (kConflictResolution_ResolveConficts)
+    (kConflictResolution_ResolveConflicts)
     (kConflictResolution_WaitOnConflictingTxns)
     (kRemoteBootstrap_FetchData)
     (kRemoteBootstrap_StartRemoteSession)
@@ -221,6 +224,9 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     ((kYBClient_WaitingOnDocDB, YB_ASH_MAKE_EVENT(Client)))
     (kYBClient_LookingUpTablet)
     (kYBClient_WaitingOnMaster)
+
+    // Wait states related to the vector index
+    ((kVectorIndex_Search, YB_ASH_MAKE_EVENT(VectorIndex)))
 );
 
 // We also want to track background operations such as, log-append
@@ -291,6 +297,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kDeleteDBSequences)
   (kCheckIfPitrActive)
   (kIsObjectPartOfXRepl)
+  (kIsNamespacePartOfCDCSDK)
   (kGetTserverCatalogVersionInfo)
   (kGetTserverCatalogMessageLists)
   (kSetTserverCatalogMessageList)
@@ -315,9 +322,12 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kGetXClusterRole)
   (kGetYbSystemTableInfo)
   (kReleaseSessionObjectLock)
+  (kWaitForLockersMultiple)
   (kQueryAutoAnalyze)
+  (kResetAutoAnalyzeMutationCounters)
   (kGetTabletForKey)
   (kRemotePgExec)
+  (kIsDatabaseColocated)
 
   // CDCService RPCs
   (kInitVirtualWALForCDC)
@@ -390,21 +400,10 @@ struct AshMetadata {
     }
   }
 
-  void RootRequestIdToPB(AshMetadataPB* pb) const {
-    pb->set_root_request_id(root_request_id.data(), root_request_id.size());
-  }
-
-  void RootRequestIdToPB(LWAshMetadataPB* pb) const {
-    pb->dup_root_request_id(root_request_id.AsSlice());
-  }
-
-  void TopLevelNodeIdToPB(AshMetadataPB* pb) const {
-    pb->set_top_level_node_id(top_level_node_id.data(), top_level_node_id.size());
-  }
-
-  void TopLevelNodeIdToPB(LWAshMetadataPB* pb) const {
-    pb->dup_top_level_node_id(top_level_node_id.AsSlice());
-  }
+  void RootRequestIdToPB(AshMetadataPB* pb) const;
+  void RootRequestIdToPB(LWAshMetadataPB* pb) const;
+  void TopLevelNodeIdToPB(AshMetadataPB* pb) const;
+  void TopLevelNodeIdToPB(LWAshMetadataPB* pb) const;
 
   template <class PB>
   void ToPB(PB* pb) const {

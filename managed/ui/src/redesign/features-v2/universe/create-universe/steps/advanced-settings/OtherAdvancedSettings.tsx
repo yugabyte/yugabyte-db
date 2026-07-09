@@ -12,18 +12,11 @@ import { useTranslation } from 'react-i18next';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { FormProvider, useForm } from 'react-hook-form';
 import { mui, YBAccordion } from '@yugabyte-ui-library/core';
-import {
-  StyledContent,
-  StyledHeader,
-  StyledPanel,
-  StyledInputWrapper
-} from '../../components/DefaultComponents';
+import { StyledInputWrapper } from '../../components/DefaultComponents';
 import {
   DeploymentPortsField,
   UserTagsField,
-  TimeSyncField,
   InstanceARNField,
-  SystemDField,
   AccessKeyField
 } from '../../fields';
 import {
@@ -58,8 +51,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
             name: '',
             value: ''
           }
-        ],
-        useTimeSync: true
+        ]
       }),
       ...otherAdvancedSettings
     },
@@ -85,7 +77,11 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   return (
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '24px' }}>
-        <YBAccordion titleContent={t('nodeAcessHeader')} sx={{ width: '100%', gap: '24px' }}>
+        <YBAccordion
+          titleContent={t('nodeAcessHeader')}
+          sx={{ width: '100%', gap: '24px' }}
+          defaultExpanded={true}
+        >
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             {provider?.code !== CloudType.kubernetes && (
               <StyledInputWrapper>
@@ -117,26 +113,21 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
             <DeploymentPortsField
               disabled={false}
               providerCode={generalSettings?.providerConfiguration?.code as string}
-              ysql={databaseSettings?.ysql}
-              ycql={databaseSettings?.ycql}
+              ysql={Boolean(databaseSettings?.ysql?.enable)}
+              ycql={Boolean(databaseSettings?.ycql?.enable)}
               enableConnectionPooling={databaseSettings?.enableConnectionPooling}
             />
           </YBAccordion>
         ) : (
           <></>
         )}
-        {provider && [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) && (
-          <YBAccordion titleContent={t('timeSynchronization')} sx={{ width: '100%' }}>
-            <TimeSyncField disabled={false} provider={provider} />
-          </YBAccordion>
-        )}
       </Box>
-      <StyledPanel>
+      {/* <StyledPanel>
         <StyledHeader>{t('additionalSettingsHeader')}</StyledHeader>
         <StyledContent sx={{ gap: '16px' }}>
-          {provider?.code !== CloudType.kubernetes && <SystemDField disabled={false} />}
+          //Need this section for k8s Helm overrides
         </StyledContent>
-      </StyledPanel>
+      </StyledPanel> */}
     </FormProvider>
   );
 });

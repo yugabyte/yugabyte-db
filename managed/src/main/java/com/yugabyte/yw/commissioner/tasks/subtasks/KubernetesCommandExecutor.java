@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
@@ -484,12 +485,18 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       case STS_DELETE:
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
-        // Ideally we should have called KubernetesUtil.getHelmFullNameWithSuffix()
         String appType = taskParams().serverType == ServerType.TSERVER ? "yb-tserver" : "yb-master";
-        String appName = (newNamingStyle ? taskParams().helmReleaseName + "-" : "") + appType;
+        // Resolve the actual StatefulSet via release name + app type and delete it. The name can
+        // carry a non-zero STS index suffix (e.g. after a full move), so the manager fetches the
+        // matching StatefulSet(s) and deletes them, ignoring if none are found.
         kubernetesManagerFactory
             .getManager()
-            .deleteStatefulSet(config, taskParams().namespace, appName);
+            .deleteStatefulSet(
+                config,
+                taskParams().namespace,
+                taskParams().helmReleaseName,
+                appType,
+                newNamingStyle);
         break;
       case PVC_EXPAND_SIZE:
         try {
@@ -950,8 +957,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       if (taskParams().isReadOnlyCluster) {
         overrides.put("replicas", ImmutableMap.of("tserver", numNodes, "master", 0));
       } else {
-        overrides.put(
-            "replicas", ImmutableMap.of("tserver", numNodes, "master", replicationFactor));
+        // When full move is progress, the userIntent.replicationFactor will not reflect the
+        // correct replication factor for master, so we need to use replicationFactorZone for
+        // master replicas in that case.
+        int masterReplicas =
+            taskParams().fullMoveParams != null ? replicationFactorZone : replicationFactor;
+        overrides.put("replicas", ImmutableMap.of("tserver", numNodes, "master", masterReplicas));
       }
     }
 
@@ -1397,22 +1408,25 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           GFlagsUtil.mergeCSVs(
               combinedPGConfCSV, GFlagsUtil.getYsqlPgConfCsv(queryLogConfig), true);
       tserverGFlags.put(GFlagsUtil.YSQL_PG_CONF_CSV, combinedPGConfCSV);
-      // removing query log export for 2026.1.0
-      // overrides.put(
-      //     "otelCollector",
-      //     otelCollectorConfigGenerator.getOtelHelmValues(
-      //         auditLogConfig,
-      //         GFlagsUtil.getLogLinePrefix(
-      //             primaryClusterIntent.queryLogConfig,
-      //             tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
-      //         primaryClusterIntent.ybSoftwareVersion));
-      overrides.put(
-          "otelCollector",
-          otelCollectorConfigGenerator.getOtelHelmValues(
-              auditLogConfig,
-              GFlagsUtil.getLogLinePrefix(
-                  primaryClusterIntent.queryLogConfig,
-                  tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV))));
+      String logLinePrefix =
+          GFlagsUtil.getLogLinePrefix(
+              primaryClusterIntent.queryLogConfig, tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV));
+      Map<String, Object> otelOverrides;
+      if (OtelCollectorUtil.supportsOtelConfigPassthrough(imageTag)) {
+        // Newer charts accept the full collector config rendered by YBA via spec.config.
+        OtelCollectorConfigGenerator.K8sOtelConfig otelConfig =
+            otelCollectorConfigGenerator.getOtelColConfigK8s(
+                provider, auditLogConfig, queryLogConfig, logLinePrefix);
+        otelOverrides = new HashMap<>();
+        otelOverrides.put("enabled", otelConfig.isEnabled());
+        otelOverrides.put("config", otelConfig.getConfig());
+        otelOverrides.put("secretEnv", otelConfig.getSecretEnv());
+      } else {
+        // Older charts assemble the config themselves from structured Helm values.
+        otelOverrides =
+            otelCollectorConfigGenerator.getOtelHelmValues(auditLogConfig, logLinePrefix);
+      }
+      overrides.put("otelCollector", otelOverrides);
     }
 
     if (!tserverGFlags.isEmpty()) {
@@ -1711,10 +1725,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     // Add old deviceInfo/masterDeviceInfo spec if existing AZ
     if (!newlyAddedAZ) {
-      DeviceInfo savedTsDeviceInfo =
-          savedUserIntent.getDeviceInfoForAz(azUUID, false /* isDedicatedMaster */);
+      DeviceInfo savedTsDeviceInfo = savedUserIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
       DeviceInfo savedMasterDeviceInfo =
-          savedUserIntent.getDeviceInfoForAz(azUUID, true /* isDedicatedMaster */);
+          savedUserIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
 
       if (savedTsDeviceInfo != null) {
         if (savedTsDeviceInfo.numVolumes != null) {
@@ -1742,10 +1755,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
     }
 
-    DeviceInfo taskTsDeviceInfo =
-        taskUserIntent.getDeviceInfoForAz(azUUID, false /* isDedicatedMaster */);
-    DeviceInfo taskMasterDeviceInfo =
-        taskUserIntent.getDeviceInfoForAz(azUUID, true /* isDedicatedMaster */);
+    DeviceInfo taskTsDeviceInfo = taskUserIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
+    DeviceInfo taskMasterDeviceInfo = taskUserIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
     // For cases when resize is combined with full move and new size was persisted in userIntent
     // We need to pass the old size explicitly until all full move AZ nodes are moved.
     if (taskParams().oldMasterDiskSize != null) {
@@ -1803,10 +1814,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       Map<String, Object> moveOpMasterDiskSpecs =
           (HashMap) moveOpStorageOverrides.getOrDefault("master", new HashMap<>());
 
-      DeviceInfo taskTsDeviceInfo =
-          taskUserIntent.getDeviceInfoForAz(azUUID, false /* isDedicatedMaster */);
+      DeviceInfo taskTsDeviceInfo = taskUserIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
       DeviceInfo taskMasterDeviceInfo =
-          taskUserIntent.getDeviceInfoForAz(azUUID, true /* isDedicatedMaster */);
+          taskUserIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
 
       // moveOp storage attributes should use new volume attributes
       if (taskMasterDeviceInfo.numVolumes != null) {

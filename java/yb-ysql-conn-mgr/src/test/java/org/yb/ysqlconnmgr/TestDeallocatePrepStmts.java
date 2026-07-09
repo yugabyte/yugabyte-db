@@ -19,15 +19,28 @@ import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.fail;
+import static org.yb.ysqlconnmgr.PgWireProtocol.*;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.sql.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
 
   private static final int IDLE_TIME = 1;
@@ -188,6 +201,53 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
         stmt.close();
 
       }
+  }
+
+  // Regression test: protocol-level Close ('C') message must not crash when
+  // the search-path cache has been invalidated since the last transaction.
+  //   1. Client prepares + executes a named statement. The Sync after Execute
+  //      runs CommitTransaction(), which sets CurrentResourceOwner = NULL and
+  //      tears down TopTransactionResourceOwner.
+  //   2. Client sends SET search_path which tries to invalidate the cache.
+  //   3. Client sends Close 'S' on the prepared statement which would make
+  //      request to check the validity of the prepared statement.
+  @Test
+  public void testClosePacketAfterSearchPathChange() throws Exception {
+    Properties props = new Properties();
+    // Force named extended-protocol prepared statements so JDBC sends Parse +
+    // Bind + Execute as separate messages.
+    props.setProperty("prepareThreshold", "1");
+    // Disable the driver-side prepared statement cache so pstmt.close()
+    // actually emits a Close 'S' message instead of returning the statement
+    // to the cache silently.
+    props.setProperty("preparedStatementCacheQueries", "0");
+    setUpTestTableAndCleanBackends();
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .withUser("yugabyte")
+            .withPassword("yugabyte")
+            .connect(props)) {
+      Statement stmt = conn.createStatement();
+
+      PreparedStatement pstmt = conn.prepareStatement(SELECT_QUERY1);
+      pstmt.execute();
+
+      // Dirty the search-path cache. assign_search_path() flips
+      // baseSearchPathValid to false; recomputeNamespacePath() will need to
+      // walk pg_authid (for $user) the next time it's called.
+      stmt.execute("SET search_path TO public");
+
+      // Without the fix, this Close 'S' segfaults inside the catcache lookup
+      // because the 'C' message handler never started a transaction and
+      // CurrentResourceOwner is NULL.
+      pstmt.close();
+
+      // Connection must still be usable -- a backend crash would have
+      // dropped it.
+      ResultSet rs = stmt.executeQuery("SELECT 1");
+      assertEquals(true, rs.next());
+      assertEquals(1, rs.getInt(1));
+    }
   }
 
   @Test
@@ -437,6 +497,404 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
       stmt.execute("DEALLOCATE RandomName");
       assertEquals("Plans should be dropped after DROP SCHEMA", 0,
                     countMatchingPrepStmts(stmt));
+    }
+  }
+
+  // Verifies deallocation (via CLOSE) and re-prepare of same name prepared
+  // statement before SYNC is a successful operation with conneciton manager.
+  // Along with it, verifies if error come in between, conn mgr state should
+  // be restored correctly.
+  //
+  // Wire sequence:
+  //   Pipeline 1: Parse(s1, "SELECT 1") + Bind(s1) + Execute + Sync
+  //   Pipeline 2: Close(s1) + Parse(s1, "SELECT 1") + Bind(s1) + Execute + Sync
+  //   Pipeline 3: Bind(s1) + Execute + Sync
+  //   Pipeline 4: Close(s1) + Parse(bad SQL) + Parse(s1) + Sync
+  //   Pipeline 5: Parse(s1) + Bind(s1) + Execute + Sync
+  //
+  // Without the close-hashmap fix, the Close in pipeline 2 would evict the
+  // server-hashmap entry, causing the subsequent Bind in pipeline 3 to fail
+  // with "operator was not prepared by this client".
+  @Test
+  public void testCloseThenReparseSameStmtUsesDeferredEviction() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+    tserverFlags.put("ysql_conn_mgr_log_settings", "log_query,log_debug");
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+
+    InetSocketAddress addr = miniCluster.getYsqlConnMgrContactPoints().get(0);
+    LOG.info("Connecting raw socket to Odyssey at " + addr);
+
+    final int SOCKET_TIMEOUT_MS = 10000;
+
+    try (Socket socket = new Socket()) {
+      socket.setTcpNoDelay(true);
+      socket.setSoTimeout(SOCKET_TIMEOUT_MS);
+      socket.connect(addr);
+
+      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+      DataInputStream in = new DataInputStream(socket.getInputStream());
+
+      out.write(buildStartupMessage("yugabyte", "yugabyte"));
+      out.flush();
+      readUntilReady(in);
+      LOG.info("Startup complete, connection is ready");
+
+      // Pipeline 1: prime s1 on the backend.
+      ByteArrayOutputStream pipeline = new ByteArrayOutputStream();
+      pipeline.write(buildParse("s1", "SELECT 1", new int[0]));
+      pipeline.write(buildBind("s1", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent pipeline 1: P(s1)+B(s1)+E+Sync");
+
+      char[] expected = {
+          BE_PARSE_COMPLETE,
+          BE_BIND_COMPLETE,
+          BE_DATA_ROW,
+          BE_COMMAND_COMPLETE,
+          BE_READY_FOR_QUERY,
+      };
+      for (int i = 0; i < expected.length; i++) {
+        PgMessage msg = readMessageSkipNotice(in);
+        LOG.info("pipeline 1 [" + i + "]: " + msg);
+        if (msg.type == BE_ERROR_RESPONSE) {
+          fail("Unexpected error in pipeline 1: " +
+              new String(msg.body, StandardCharsets.UTF_8));
+        }
+        assertEquals("pipeline 1 type mismatch at " + i,
+            expected[i], msg.type);
+      }
+      assertEquals("Unexpected trailing bytes after pipeline 1",
+          0, in.available());
+
+      // Invalidate s1's cached plan via a search_path change. So
+      // pipeline 2 CLOSE could actually deallocate the prep stmt
+      // as plan would become invalid.
+      out.write(buildQuery("SET search_path TO pg_catalog, public"));
+      out.flush();
+      LOG.info("Sent: SET search_path TO pg_catalog, public");
+      for (;;) {
+        PgMessage msg = readMessageSkipNotice(in);
+        LOG.info("SET response: " + msg);
+        if (msg.type == BE_ERROR_RESPONSE) {
+          fail("Unexpected error setting search_path: " +
+              new String(msg.body, StandardCharsets.UTF_8));
+        }
+        if (msg.type == BE_READY_FOR_QUERY)
+          break;
+      }
+      assertEquals("Unexpected trailing bytes after SET",
+          0, in.available());
+
+      // Pipeline 2: Close(s1) + re-Parse(s1) + Bind(s1) + Execute + Sync.
+      // Conn mgr would forward force parse on receiving parse packet after
+      // close packet.
+      // The customCloseComplete would defer the removal of entry from server
+      // hashmap until RFQ by adding it in close hashmap. The
+      // forceParseComplete would remove the entry from close hashmap to avoid
+      // deleting the entry from server hashmap.
+      pipeline.reset();
+      pipeline.write(buildClosePreparedStatement("s1"));
+      pipeline.write(buildParse("s1", "SELECT 1", new int[0]));
+      pipeline.write(buildBind("s1", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent pipeline 2: Close(s1)+P(s1)+B(s1)+E+Sync");
+
+      expected = new char[] {
+          BE_CLOSE_COMPLETE,
+          BE_PARSE_COMPLETE,
+          BE_BIND_COMPLETE,
+          BE_DATA_ROW,
+          BE_COMMAND_COMPLETE,
+          BE_READY_FOR_QUERY,
+      };
+      for (int i = 0; i < expected.length; i++) {
+        PgMessage msg = readMessageSkipNotice(in);
+        LOG.info("pipeline 2 [" + i + "]: " + msg);
+        if (msg.type == BE_ERROR_RESPONSE) {
+          fail("Unexpected error in pipeline 2: " +
+              new String(msg.body, StandardCharsets.UTF_8));
+        }
+        assertEquals("pipeline 2 type mismatch at " + i,
+            expected[i], msg.type);
+      }
+      assertEquals("Unexpected trailing bytes after pipeline 2",
+          0, in.available());
+
+      // Pipeline 3: Bind(s1) + Execute + Sync.
+      // s1 must still be live on the backend because the deferred close was
+      // cancelled by the NoParseParseComplete in pipeline 2.
+      pipeline.reset();
+      pipeline.write(buildBind("s1", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent pipeline 3: B(s1)+E+Sync");
+
+      expected = new char[] {
+          BE_BIND_COMPLETE,
+          BE_DATA_ROW,
+          BE_COMMAND_COMPLETE,
+          BE_READY_FOR_QUERY,
+      };
+      for (int i = 0; i < expected.length; i++) {
+        PgMessage msg = readMessageSkipNotice(in);
+        LOG.info("pipeline 3 [" + i + "]: " + msg);
+        if (msg.type == BE_ERROR_RESPONSE) {
+          fail("Unexpected error in pipeline 3 (deferred close was not "
+              + "cancelled): " + new String(msg.body, StandardCharsets.UTF_8));
+        }
+        assertEquals("pipeline 3 type mismatch at " + i,
+            expected[i], msg.type);
+      }
+      assertEquals("Unexpected trailing bytes after pipeline 3",
+          0, in.available());
+
+      // Invalidate s1's cached plan again before pipeline 4.
+      out.write(buildQuery("SET search_path TO public, pg_catalog"));
+      out.flush();
+      LOG.info("Sent: SET search_path TO public, pg_catalog (pre-pipeline 4)");
+      for (;;) {
+        PgMessage msg = readMessageSkipNotice(in);
+        LOG.info("SET response (pre-p4): " + msg);
+        if (msg.type == BE_ERROR_RESPONSE) {
+          fail("Unexpected error setting search_path before pipeline 4: " +
+              new String(msg.body, StandardCharsets.UTF_8));
+        }
+        if (msg.type == BE_READY_FOR_QUERY)
+          break;
+      }
+      assertEquals("Unexpected trailing bytes after SET (pre-pipeline 4)",
+          0, in.available());
+
+      // Pipeline 4: Close(s1) + Parse(bad SQL) + Parse(s1) + Sync.
+      // Close(s1), backend sends CloseComplete, Odyssey defers eviction
+      //                   into yb_close_prep_stmts.
+      // Parse(bad SQL): backend returns ErrorResponse; so all subsequent messages
+      //                   are discarded by the backend until Sync.
+      // Expected wire responses: CloseComplete, ErrorResponse, ReadyForQuery.
+      pipeline.reset();
+      pipeline.write(buildClosePreparedStatement("s1"));
+      pipeline.write(buildParse("bad_stmt", "THIS IS NOT VALID SQL $$$$", new int[0]));
+      pipeline.write(buildParse("s1", "SELECT 1", new int[0]));
+      pipeline.write(buildSync());
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent pipeline 4: Close(s1)+P(bad)+P(s1)+Sync");
+
+      expected = new char[] {
+          BE_CLOSE_COMPLETE,
+          BE_ERROR_RESPONSE,
+          BE_READY_FOR_QUERY,
+      };
+      for (int i = 0; i < expected.length; i++) {
+        PgMessage msg = readMessageSkipNotice(in);
+        LOG.info("pipeline 4 [" + i + "]: " + msg);
+        if (i != 1 && msg.type == BE_ERROR_RESPONSE) {
+          fail("Unexpected error in pipeline 4 at position " + i + ": " +
+              new String(msg.body, StandardCharsets.UTF_8));
+        }
+        assertEquals("pipeline 4 type mismatch at " + i,
+            expected[i], msg.type);
+      }
+      assertEquals("Unexpected trailing bytes after pipeline 4",
+          0, in.available());
+
+      // Pipeline 5: Parse(s1) + Bind(s1) + Execute + Sync.
+      pipeline.reset();
+      pipeline.write(buildParse("s1", "SELECT 1", new int[0]));
+      pipeline.write(buildBind("s1", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent pipeline 5: P(s1)+B(s1)+E+Sync");
+
+      expected = new char[] {
+          BE_PARSE_COMPLETE,
+          BE_BIND_COMPLETE,
+          BE_DATA_ROW,
+          BE_COMMAND_COMPLETE,
+          BE_READY_FOR_QUERY,
+      };
+      for (int i = 0; i < expected.length; i++) {
+        PgMessage msg = readMessageSkipNotice(in);
+        LOG.info("pipeline 5 [" + i + "]: " + msg);
+        if (msg.type == BE_ERROR_RESPONSE) {
+          fail("Unexpected error in pipeline 5 (s1 was not re-parsed after "
+              + "drain): " + new String(msg.body, StandardCharsets.UTF_8));
+        }
+        assertEquals("pipeline 5 type mismatch at " + i,
+            expected[i], msg.type);
+      }
+      assertEquals("Unexpected trailing bytes after pipeline 5",
+          0, in.available());
+
+      out.write(buildTerminate());
+      out.flush();
+    }
+  }
+
+  // Verifies deallocation (via DEALLOCATE ALL) and re-prepare of same name
+  // prepared statement before SYNC is a successful operation with connection
+  // manager.
+  // Wire sequence:
+  //   Pipeline 1 : Parse(s1,"SELECT 1") + Bind(s1) + Execute + Sync
+  //   SET search_path (invalidates s1's cached plan)
+  //   Pipeline 2 : Parse(d,"DEALLOCATE ALL") + Bind(d) + Execute
+  //              + Parse(s1,"SELECT 1") + Bind(s1) + Execute + Sync
+  //   Pipeline 3 : Bind(s1) + Execute + Sync
+  @Test
+  public void testDeallocateAllThenReparseSameStmt() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+    tserverFlags.put("ysql_conn_mgr_log_settings", "log_query,log_debug");
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+
+    InetSocketAddress addr = miniCluster.getYsqlConnMgrContactPoints().get(0);
+    LOG.info("Connecting raw socket to Odyssey at " + addr);
+
+    final int SOCKET_TIMEOUT_MS = 10000;
+
+    try (Socket socket = new Socket()) {
+      socket.setTcpNoDelay(true);
+      socket.setSoTimeout(SOCKET_TIMEOUT_MS);
+      socket.connect(addr);
+
+      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+      DataInputStream in = new DataInputStream(socket.getInputStream());
+
+      out.write(buildStartupMessage("yugabyte", "yugabyte"));
+      out.flush();
+      readUntilReady(in);
+      LOG.info("Startup complete, connection is ready");
+
+      // Pipeline 1: prime s1 on the backend.
+      ByteArrayOutputStream pipeline = new ByteArrayOutputStream();
+      pipeline.write(buildParse("s1", "SELECT 1", new int[0]));
+      pipeline.write(buildBind("s1", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent pipeline 1: P(s1)+B(s1)+E+Sync");
+
+      char[] expected = {
+          BE_PARSE_COMPLETE,
+          BE_BIND_COMPLETE,
+          BE_DATA_ROW,
+          BE_COMMAND_COMPLETE,
+          BE_READY_FOR_QUERY,
+      };
+      for (int i = 0; i < expected.length; i++) {
+        PgMessage msg = readMessageSkipNotice(in);
+        LOG.info("pipeline 1 [" + i + "]: " + msg);
+        if (msg.type == BE_ERROR_RESPONSE) {
+          fail("Unexpected error in pipeline 1: " +
+              new String(msg.body, StandardCharsets.UTF_8));
+        }
+        assertEquals("pipeline 1 type mismatch at " + i,
+            expected[i], msg.type);
+      }
+      assertEquals("Unexpected trailing bytes after pipeline 1",
+          0, in.available());
+
+      // Invalidate s1's cached plan so that the backend will re-plan when it
+      // re-creates the statement after the DEALLOCATE ALL.
+      out.write(buildQuery("SET search_path TO pg_catalog, public"));
+      out.flush();
+      LOG.info("Sent: SET search_path TO pg_catalog, public");
+      for (;;) {
+        PgMessage msg = readMessageSkipNotice(in);
+        LOG.info("SET response: " + msg);
+        if (msg.type == BE_ERROR_RESPONSE) {
+          fail("Unexpected error setting search_path: " +
+              new String(msg.body, StandardCharsets.UTF_8));
+        }
+        if (msg.type == BE_READY_FOR_QUERY)
+          break;
+      }
+      assertEquals("Unexpected trailing bytes after SET",
+          0, in.available());
+
+      // Pipeline 2: DEALLOCATE ALL (via extended protocol) followed immediately
+      // by a re-Parse and re-Bind+Execute of s1 in the same pipeline.
+      pipeline.reset();
+      pipeline.write(buildParse("d", "DEALLOCATE ALL", new int[0]));
+      pipeline.write(buildBind("d", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildParse("s1", "SELECT 1", new int[0]));
+      pipeline.write(buildBind("s1", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent pipeline 2: P(d)+B(d)+E+P(s1)+B(s1)+E+Sync");
+
+      expected = new char[] {
+          BE_PARSE_COMPLETE,
+          BE_BIND_COMPLETE,
+          BE_COMMAND_COMPLETE,
+          BE_PARSE_COMPLETE,
+          BE_BIND_COMPLETE,
+          BE_DATA_ROW,
+          BE_COMMAND_COMPLETE,
+          BE_READY_FOR_QUERY,
+      };
+      for (int i = 0; i < expected.length; i++) {
+        PgMessage msg = readMessageSkipNotice(in);
+        LOG.info("pipeline 2 [" + i + "]: " + msg);
+        if (msg.type == BE_ERROR_RESPONSE) {
+          fail("Unexpected error in pipeline 2 (deferred eviction after "
+              + "DEALLOCATE ALL was not cancelled): " +
+              new String(msg.body, StandardCharsets.UTF_8));
+        }
+        assertEquals("pipeline 2 type mismatch at " + i,
+            expected[i], msg.type);
+      }
+      assertEquals("Unexpected trailing bytes after pipeline 2",
+          0, in.available());
+
+      // Pipeline 3: Bind(s1) + Execute + Sync.
+      // s1 was re-created in pipeline 2 (deferred eviction cancelled), so a
+      // bare Bind must succeed without any prior Parse in this pipeline.
+      pipeline.reset();
+      pipeline.write(buildBind("s1", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent pipeline 3: B(s1)+E+Sync");
+
+      expected = new char[] {
+          BE_BIND_COMPLETE,
+          BE_DATA_ROW,
+          BE_COMMAND_COMPLETE,
+          BE_READY_FOR_QUERY,
+      };
+      for (int i = 0; i < expected.length; i++) {
+        PgMessage msg = readMessageSkipNotice(in);
+        LOG.info("pipeline 3 [" + i + "]: " + msg);
+        if (msg.type == BE_ERROR_RESPONSE) {
+          fail("Unexpected error in pipeline 3 (s1 not live after DEALLOCATE ALL "
+              + "deferred eviction was cancelled): " +
+              new String(msg.body, StandardCharsets.UTF_8));
+        }
+        assertEquals("pipeline 3 type mismatch at " + i,
+            expected[i], msg.type);
+      }
+      assertEquals("Unexpected trailing bytes after pipeline 3",
+          0, in.available());
+
+      out.write(buildTerminate());
+      out.flush();
     }
   }
 }

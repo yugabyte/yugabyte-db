@@ -57,7 +57,7 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 		int index;
 		// OD_RULE_POOL_INTERVAL should be renamed to OD_RULE_POOL_INTENAL.
 		// OD_RULE_POOL_INTERVAL identifies the pool as a control connection.
-		if (route->rule->pool->routing == OD_RULE_POOL_INTERVAL) {
+		if (yb_is_control_pool(route)) {
 			if (route->id.logical_rep) {
 				index = YB_CONTROL_CONN_REP_STATS_INDEX;
 			} else {
@@ -300,9 +300,9 @@ static inline void od_cron_expire(od_cron_t *cron)
 				 "closing idle server connection (%d secs)",
 				 server->idle_time);
 			od_route_t *route = server->route;
+			od_backend_close_connection(server);
 			yb_signal_all_routes(router, route, instance->config.yb_enable_multi_route_pool);
 			server->route = NULL;
-			od_backend_close_connection(server);
 			od_backend_close(server);
 		}
 	}

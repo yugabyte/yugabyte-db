@@ -16,9 +16,12 @@
 #include <boost/range/iterator_range_core.hpp>
 #include <boost/version.hpp>
 
+#include "yb/ash/ash_fwd.h"
+
 #include "yb/client/in_flight_op.h"
 #include "yb/client/tablet_rpc.h"
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/opid.h"
 #include "yb/common/read_hybrid_time.h"
@@ -54,6 +57,7 @@ struct AsyncRpcMetrics {
   scoped_refptr<EventStats> time_to_send;
   scoped_refptr<Counter> consistent_prefix_successful_reads;
   scoped_refptr<Counter> consistent_prefix_failed_reads;
+  scoped_refptr<Counter> skip_intents_writes;
 };
 
 using InFlightOps = boost::iterator_range<std::vector<InFlightOp>::iterator>;
@@ -63,11 +67,12 @@ struct AsyncRpcData {
   RemoteTablet* tablet = nullptr;
   bool allow_local_calls_in_curr_thread = false;
   bool need_consistent_read = false;
+  bool skip_intents = false;
   ThreadSafeArenaPtr arena;
   InFlightOps ops;
   bool need_metadata = false;
   bool use_async_write = false;
-  int64_t leader_term = OpId::kUnknownTerm;
+  OpId pending_async_write_op_id = OpId::Invalid();
 };
 
 struct FlushExtraResult {
@@ -146,6 +151,9 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   rpc::RpcCommandPtr retained_self_;
 
   std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
+
+  // Wait state captured at AsyncRpc construction
+  ash::WaitStateInfoPtr wait_state_;
 };
 
 template <class Req, class Resp>
@@ -215,9 +223,11 @@ class ReadRpc : public AsyncRpcBase<tserver::LWReadRequestPB, tserver::LWReadRes
 
 class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
  public:
+  // Uses partition_key to handle potential tablet splits. tracking_tablet_id always points to the
+  // original parent for tracking purposes.
   WaitForAsyncWriteRpc(
-      const BatcherPtr& batcher, const TabletId& tablet_id,
-      std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy, const OpId& op_id);
+      const BatcherPtr& batcher, TabletId tracking_tablet_id, PartitionKey partition_key,
+      const std::shared_ptr<const YBTable>& table, const OpId& op_id);
 
   ~WaitForAsyncWriteRpc() = default;
 
@@ -236,10 +246,15 @@ class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
   void Failed(const Status& status) override;
 
  private:
-  const TabletId tablet_id_;
+  void OnKeyLookup(const Result<internal::RemoteTabletPtr>& result);
+  void FinishOrRetry(Status&& status);
+
+  const TabletId tracking_tablet_id_;
+  const PartitionKey partition_key_;
   const OpId op_id_;
   BatcherPtr batcher_;
-  std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
+  const std::shared_ptr<const YBTable> table_;
+  TabletInvoker tablet_invoker_;
   tserver::WaitForAsyncWriteRequestPB req_;
   tserver::WaitForAsyncWriteResponsePB resp_;
 

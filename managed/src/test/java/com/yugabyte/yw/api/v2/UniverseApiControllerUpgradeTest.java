@@ -21,6 +21,7 @@ import com.yugabyte.yba.v2.client.ApiClient;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.Configuration;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
+import com.yugabyte.yba.v2.client.models.NodeProxyConfig;
 import com.yugabyte.yba.v2.client.models.UniverseCertRotateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseEditEncryptionInTransit;
 import com.yugabyte.yba.v2.client.models.UniverseEditKubernetesOverrides;
@@ -33,6 +34,9 @@ import com.yugabyte.yba.v2.client.models.UniverseSoftwareUpgradePrecheckResp;
 import com.yugabyte.yba.v2.client.models.UniverseSoftwareUpgradeStart;
 import com.yugabyte.yba.v2.client.models.UniverseSystemdEnableStart;
 import com.yugabyte.yba.v2.client.models.UniverseThirdPartySoftwareUpgradeStart;
+import com.yugabyte.yba.v2.client.models.UniverseUpdateProxyConfig;
+import com.yugabyte.yba.v2.client.models.UniverseUpdateProxyConfigClustersInner;
+import com.yugabyte.yba.v2.client.models.UpdateProxyConfigSpec;
 import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.ModelFactory;
@@ -41,11 +45,13 @@ import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Release;
@@ -54,8 +60,11 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
 import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
+import com.yugabyte.yw.models.helpers.ProxyConfig;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.Before;
@@ -502,5 +511,57 @@ public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase
     assertEquals("my_overrides", params.universeOverrides);
     assertTrue(params.azOverrides.containsKey("az1"));
     assertEquals("az1_overrides", params.azOverrides.get("az1"));
+  }
+
+  @Test
+  public void testV2UniverseUpdateProxyConfig() throws ApiException {
+    UUID taskUUID = UUID.randomUUID();
+    String httpProxy = "httpProxy";
+    String httpsProxy = "httpsProxy";
+    List<String> noProxy = Arrays.asList("1", "2");
+
+    String httpsProxy1 = "httpsProxy1";
+
+    UniverseDefinitionTaskParams.Cluster cluster = universe.getUniverseDetails().clusters.get(0);
+    UUID placementUUID = UUID.randomUUID();
+
+    when(mockUpgradeUniverseHandler.updateProxyConfig(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    UniverseUpdateProxyConfig req =
+        new UniverseUpdateProxyConfig()
+            .addClustersItem(
+                new UniverseUpdateProxyConfigClustersInner()
+                    .uuid(cluster.uuid)
+                    .networkingSpec(
+                        new UpdateProxyConfigSpec()
+                            .proxyConfig(
+                                new NodeProxyConfig()
+                                    .httpProxy(httpProxy)
+                                    .httpsProxy(httpsProxy)
+                                    .noProxyList(noProxy))
+                            .azNetworking(
+                                Map.of(
+                                    placementUUID.toString(),
+                                    new NodeProxyConfig().httpsProxy(httpsProxy1)))));
+    YBATask resp = apiClient.updateProxyConfig(customer.getUuid(), universe.getUniverseUUID(), req);
+    assertEquals(taskUUID, resp.getTaskUuid());
+    ArgumentCaptor<ProxyConfigUpdateParams> captor =
+        ArgumentCaptor.forClass(ProxyConfigUpdateParams.class);
+    verify(mockUpgradeUniverseHandler)
+        .updateProxyConfig(captor.capture(), eq(customer), eq(universe));
+    ProxyConfigUpdateParams params = captor.getValue();
+    assertEquals(1, params.clusters.size());
+    ProxyConfig proxyConfig = params.clusters.get(0).userIntent.getProxyConfig();
+    ProxyConfig expected = new ProxyConfig();
+    expected.setNoProxyList(noProxy);
+    expected.setHttpsProxy(httpsProxy);
+    expected.setHttpProxy(httpProxy);
+    assertEquals(expected, proxyConfig);
+
+    ProxyConfig azProxyConfig =
+        params.clusters.get(0).userIntent.getAZProxyConfigMap().get(placementUUID);
+    ProxyConfig expectedAzProxyConfig = new ProxyConfig();
+    expectedAzProxyConfig.setHttpsProxy(httpsProxy1);
+    assertEquals(expectedAzProxyConfig, azProxyConfig);
   }
 }

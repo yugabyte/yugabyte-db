@@ -93,7 +93,17 @@ A namespace refers to a logical grouping or container for related database objec
 
 A namespace in YSQL is referred to as a database and is logically identical to a namespace in other RDBMS (such as PostgreSQL).
 
- A namespace in YCQL is referred to as a keyspace and is logically identical to a keyspace in Apache Cassandra's CQL.
+A namespace in YCQL is referred to as a keyspace and is logically identical to a keyspace in Apache Cassandra's CQL.
+
+## Network partition
+
+A network partition is a failure in which parts of a distributed system cannot reliably communicate with each other, even though the nodes themselves may still be running.
+
+In a distributed database, a network partition can interrupt heartbeats, replication traffic, and leader-election messages, causing some replicas to lose contact with a quorum.
+
+A partial network partition is a less clear-cut form in which communication fails only on some paths, intermittently, or in one direction. Partial network partitions are a common type of gray failure.
+
+In YugabyteDB, Raft consensus handles network partitions by requiring a majority of replicas to elect a leader and commit writes. This prevents split brain and preserves consistency.
 
 ## Node
 

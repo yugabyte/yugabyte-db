@@ -9,7 +9,7 @@ _get_provider_by_name_url() {
     local yba_url=$1
     local customer_uuid=$2
     local provider_name=$3
-    echo "${yba_url}/api/v1/customers/${customer_uuid}/providers?name={$provider_name}"
+    echo "${yba_url}/api/v1/customers/${customer_uuid}/providers?name=${provider_name}"
 }
 
 _get_nodes_in_provider() {
@@ -45,12 +45,15 @@ done
 
 # Get the status of yb-node-agent Service
 if [ "$(id -u)" -eq 0 ]; then
-    status=$(su - {{ yb_user }} -c \
+    # Need to be careful with su - as it invokes shell login which can have welcome stdout message.
+    # Welcome message is already printed before systemctl command is run, grep does not work.
+    # Do not use shell login to avoid welcome message polluting stdout.
+    status=$(su {{ yb_user }} -c \
     "XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }}) systemctl --user show -p ActiveState \
-    \"$service_name\" | grep ActiveState | awk -F= '/ActiveState/ {print \$2}'")
+    --value \"$service_name\" | tr -d '[:space:]'")
 else
     status=$(XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }}) systemctl --user show -p \
-    ActiveState "$service_name" | grep ActiveState | awk -F= '/ActiveState/ {print $2}')
+    ActiveState --value "$service_name" | tr -d '[:space:]')
 fi
 if [ "$status" = "active" ]; then
     echo "\"$service_name\" is active"
@@ -100,5 +103,5 @@ if [[ $matched == false ]]; then
     add_result "Node addition failed" "FAIL" "Node addition to the provider failed: {{ node_ip }}"
 else
     echo "Node addition to the provider passed: {{ node_ip }}"
-    add_result "Node addition failed" "PASS" "Node addition to the provider passed: {{ node_ip }}"
+    add_result "Node addition passed" "PASS" "Node addition to the provider passed: {{ node_ip }}"
 fi

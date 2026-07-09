@@ -224,7 +224,8 @@ void SysCatalogTable::StartShutdown() {
   }
   auto peer = tablet_peer();
   if (peer) {
-    CHECK(peer->StartShutdown());
+    CHECK(peer->StartShutdown(
+        tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse));
   }
 
   if (multi_raft_manager_) {
@@ -235,7 +236,7 @@ void SysCatalogTable::StartShutdown() {
 void SysCatalogTable::CompleteShutdown() {
   auto peer = tablet_peer();
   if (peer) {
-    peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse);
+    peer->CompleteShutdown();
   }
   inform_removed_master_pool_->Shutdown();
   raft_pool_->Shutdown();
@@ -402,7 +403,7 @@ Status SysCatalogTable::SetupConfig(const MasterOptions& options,
   // starting up, so this should be fine to do.
   DCHECK(master_->messenger());
   RaftConfigPB resolved_config;
-  resolved_config.set_opid_index(consensus::kInvalidOpIdIndex);
+  resolved_config.set_committed_op_index(consensus::kInvalidOpIdIndex);
 
   ScopedDnsTracker dns_tracker(setup_config_dns_stats_);
   for (const auto& list : *options.GetMasterAddresses()) {

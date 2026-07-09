@@ -109,6 +109,7 @@ struct DocVectorIndexMetrics {
   EventStatsPtr merge_us;
   EventStatsPtr found_intents;
   EventStatsPtr result_size;
+  CounterPtr backfill_inserted_entries;
 };
 
 struct InsertOptions {
@@ -153,6 +154,9 @@ class DocVectorIndex {
   virtual Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const = 0;
   virtual Status Destroy() = 0;
   virtual Result<size_t> TotalEntries() const = 0;
+
+  // Returns the total size in bytes occupied by this vector index on disk.
+  virtual uint64_t OnDiskSize() const = 0;
 
   virtual void StartShutdown() = 0;
   virtual void CompleteShutdown() = 0;

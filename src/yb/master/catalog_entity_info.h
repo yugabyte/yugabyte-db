@@ -152,11 +152,14 @@ struct TabletReplicaDriveInfo {
   uint64 uncompressed_sst_file_size = 0;
   bool may_have_orphaned_post_split_data = true;
   uint64 total_size = 0;
+  uint64 vector_index_size = 0;
+  bool has_active_vector_index_backfill = false;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         sst_files_size, wal_files_size, uncompressed_sst_file_size,
-        may_have_orphaned_post_split_data, total_size);
+        may_have_orphaned_post_split_data, total_size, vector_index_size,
+        has_active_vector_index_backfill);
   }
 };
 
@@ -198,8 +201,6 @@ struct TabletReplica {
   void UpdateDriveInfo(const TabletReplicaDriveInfo& info);
 
   void UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info);
-
-  bool IsStale() const;
 
   bool IsStarting() const;
 
@@ -874,6 +875,30 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     is_backfilling_ = false;
   }
 
+  // Store/retrieve the DDL transaction from the PG backend that initiated the backfill.
+  // Stored when CatalogManager::BackfillIndex moves the index from WRITE_AND_DELETE to
+  // DO_BACKFILL; retrieved when StartBackfillingData actually creates the BackfillTable.
+  // schema_version must be the table version produced by the permission update (current + 1).
+  void SetPendingBackfillRequesterTransaction(
+      std::optional<TransactionMetadata> txn, uint32_t schema_version) {
+    std::lock_guard l(lock_);
+    pending_backfill_requester_transaction_ = std::move(txn);
+    pending_backfill_requester_transaction_version_ = schema_version;
+  }
+
+  // Returns the stored transaction and clears it, but only if schema_version matches the value
+  // passed to SetPendingBackfillRequesterTransaction.  Returns nullopt otherwise so that a stale
+  // transaction from an earlier backfill attempt is never used for a later one.
+  std::optional<TransactionMetadata> TakePendingBackfillRequesterTransaction(
+      uint32_t schema_version) {
+    std::lock_guard l(lock_);
+    if (!pending_backfill_requester_transaction_ ||
+        pending_backfill_requester_transaction_version_ != schema_version) {
+      return std::nullopt;
+    }
+    return std::exchange(pending_backfill_requester_transaction_, std::nullopt);
+  }
+
   // Returns true if an "Alter" operation is in-progress.
   Result<bool> IsAlterInProgress(uint32_t version) const;
 
@@ -996,6 +1021,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool is_backfilling_ = false;
 
   TransactionId exclude_aborting_transaction_id_ GUARDED_BY(lock_) {TransactionId::Nil()};
+
+  // DDL transaction from the PG backend that initiated the backfill, and the table schema version
+  // at which it was stored. Set when BackfillIndex updates permissions (WRITE_AND_DELETE ->
+  // DO_BACKFILL) and cleared when StartBackfillingData creates the BackfillTable.
+  std::optional<TransactionMetadata> pending_backfill_requester_transaction_ GUARDED_BY(lock_);
+  uint32_t pending_backfill_requester_transaction_version_ GUARDED_BY(lock_) = 0;
 
   std::atomic<bool> is_system_{false};
 

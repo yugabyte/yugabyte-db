@@ -246,8 +246,8 @@ public class ShellProcessHandler {
       response.message = e.getMessage();
       // Send a kill signal to ensure process is cleaned up in case of any failure.
       if (process != null && process.isAlive()) {
-        // Only destroy sends SIGTERM to the process.
-        process.destroy();
+        // Gracefully terminate (SIGTERM) the process and its descendants.
+        destroy(process);
         try {
           process.waitFor(DESTROY_GRACE_TIMEOUT.getSeconds(), TimeUnit.SECONDS);
         } catch (InterruptedException e1) {
@@ -431,7 +431,18 @@ public class ShellProcessHandler {
     }
   }
 
+  // Gracefully terminate (SIGTERM) the process and its descendants (e.g. the grep/awk/zcat
+  // stages of a shell pipeline). Descendants are signalled before the parent so they are not
+  // reparented to init before they receive the signal.
+  private static void destroy(Process process) {
+    process.descendants().forEach(ProcessHandle::destroy);
+    process.destroy();
+  }
+
   private static void destroyForcibly(Process process, String description) {
+    // Kill the descendants (e.g. the grep/awk/zcat stages of a shell pipeline) before the
+    // parent.
+    process.descendants().forEach(ProcessHandle::destroyForcibly);
     process.destroyForcibly();
     try {
       process.waitFor(DESTROY_GRACE_TIMEOUT.getSeconds(), TimeUnit.SECONDS);
