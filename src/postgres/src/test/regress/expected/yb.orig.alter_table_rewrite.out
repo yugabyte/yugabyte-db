@@ -317,6 +317,9 @@ SELECT col, col2, col4 FROM base ORDER BY col;
  col4   | integer          |           | not null | nextval('base_col4_seq'::regclass) | plain   |              | 
 Indexes:
     "base_idx" lsm (col2 ASC), colocation: true
+Not-null constraints:
+    "base_col_not_null" NOT NULL "col"
+    "base_col4_not_null" NOT NULL "col4"
 Colocation: true
 
 SELECT num_tablets, num_hash_key_columns, is_colocated FROM
@@ -381,6 +384,9 @@ SELECT col, col2, col4 FROM base2 ORDER BY col;
  col4   | integer          |           | not null | nextval('base2_col4_seq'::regclass) | plain   |              | 
 Indexes:
     "base2_idx" lsm (col2 HASH)
+Not-null constraints:
+    "base2_col_not_null" NOT NULL "col"
+    "base2_col4_not_null" NOT NULL "col4"
 Options: colocation=false
 
 SELECT num_tablets, num_hash_key_columns, is_colocated FROM
@@ -899,6 +905,8 @@ SELECT * from int4_table;
 CREATE TABLE int4_table2(c1 int) PARTITION BY RANGE(c1);
 ALTER TABLE int4_table2 ALTER c1 TYPE varchar; -- should fail.
 ERROR:  cannot alter column "c1" because it is part of the partition key of relation "int4_table2"
+LINE 1: ALTER TABLE int4_table2 ALTER c1 TYPE varchar;
+                                      ^
 CREATE TABLE pk_table(c1 int primary key);
 INSERT INTO pk_table VALUES (1), (2);
 ALTER TABLE pk_table ALTER c1 TYPE varchar;
@@ -934,9 +942,9 @@ CREATE RULE "_RETURN" AS
     ON SELECT TO dummy_table
     DO INSTEAD
         SELECT c3 FROM test_table;
+ERROR:  relation "dummy_table" cannot have ON SELECT rules
+DETAIL:  This operation is not supported for tables.
 ALTER TABLE test_table ALTER c3 TYPE varchar(1); -- should fail.
-ERROR:  cannot alter type of a column used by a view or rule
-DETAIL:  rule _RETURN on view dummy_table depends on column "c3"
 ALTER TABLE test_table ALTER c4 TYPE varchar(1);
 CREATE RULE dummy_rule AS
     ON INSERT TO dummy_table
@@ -954,8 +962,8 @@ RESET yb_enable_alter_table_rewrite;
 DROP RULE test_rule ON test_table;
 ALTER TABLE test_table ALTER c4 TYPE char;
 SET yb_enable_alter_table_rewrite = OFF;
--- TODO(#22063): DROP VIEW is needed to avoid non-deterministic error.
-DROP VIEW dummy_table;
+-- TODO(#22063): dropping dummy_table is needed to avoid a non-deterministic error.
+DROP TABLE dummy_table;
 ALTER TABLE test_table ALTER c4 TYPE varchar(1);
 RESET yb_enable_alter_table_rewrite;
 DROP TABLE test_table CASCADE;
@@ -968,7 +976,7 @@ INSERT INTO test_table VALUES ('a'), ('aa'), ('aaa');
 INSERT INTO fk_table2 VALUES ('a'), ('aa'), ('aaa');
 ALTER TABLE fk_table ALTER c1 TYPE int USING LENGTH(c1); -- should fail.
 ERROR:  foreign key constraint "test_table_c1_fkey" cannot be implemented
-DETAIL:  Key columns "c1" and "c1" are of incompatible types: character varying and integer.
+DETAIL:  Key columns "c1" of the referencing table and "c1" of the referenced table are of incompatible types: character varying and integer.
 ALTER TABLE fk_table ALTER c1 TYPE varchar(3);
 \d fk_table;
                     Table "public.fk_table"

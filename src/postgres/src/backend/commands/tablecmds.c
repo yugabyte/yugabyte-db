@@ -15439,6 +15439,7 @@ ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab,
 	ScanKeyData skey[3];
 	HeapTuple	tuple;
 	bool		found = false;
+	char		yb_contype = '\0';
 
 	conrel = table_open(ConstraintRelationId, RowExclusiveLock);
 
@@ -15463,6 +15464,7 @@ ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab,
 	/* There can be at most one matching row */
 	if (HeapTupleIsValid(tuple = systable_getnext(scan)))
 	{
+		yb_contype = ((Form_pg_constraint) GETSTRUCT(tuple))->contype;
 		dropconstraint_internal(*yb_mutable_rel, tuple, behavior, recurse, false,
 								missing_ok, lockmode);
 		found = true;
@@ -15481,6 +15483,41 @@ ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab,
 			ereport(NOTICE,
 					errmsg("constraint \"%s\" of relation \"%s\" does not exist, skipping",
 						   constrName, RelationGetRelationName(*yb_mutable_rel)));
+	}
+
+	/*
+	 * In YB, the primary key is part of the DocDB table's storage, not a
+	 * separate index, so dropping a primary key constraint requires recreating
+	 * the table (or a table rewrite) to physically remove the key.
+	 */
+	if (found && IsYBRelation(*yb_mutable_rel) && yb_contype == CONSTRAINT_PRIMARY)
+	{
+		if (!yb_enable_alter_table_rewrite)
+		{
+			/* Table will be re-created without a dummy PK index. */
+			*yb_mutable_rel = YbATCloneRelationSetPrimaryKey(*yb_mutable_rel,
+															 NULL /* stmt */ ,
+															 NULL /* result */ );
+
+			/*
+			 * Update the table relid so that further passes will operate on
+			 * the new table.
+			 */
+			if (tab)
+				tab->relid = RelationGetRelid(*yb_mutable_rel);
+		}
+		else
+		{
+			/*
+			 * In YB, the ADD/DROP primary key operation involves a table
+			 * rewrite. So if this is partitioned table, we need to add
+			 * its children to the work queue as well.
+			 */
+			if ((*yb_mutable_rel)->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+				YbATSetPKRewriteChildPartitions(yb_wqueue,
+												tab, false /* skip_copy_split_options */ );
+			tab->rewrite |= YB_AT_REWRITE_ALTER_PRIMARY_KEY;
+		}
 	}
 
 	table_close(conrel, RowExclusiveLock);
@@ -15630,44 +15667,6 @@ dropconstraint_internal(Relation rel, HeapTuple constraintTup, DropBehavior beha
 		CheckAlterTableIsSafe(frel);
 		table_close(frel, NoLock);
 	}
-
-	/*
-	 * YB_TODO_PG19MERGE: this YB block references `yb_mutable_rel`, `contype`,
-	 * `tab`, and `yb_wqueue`, which are locals/params of the outer caller
-	 * (ATExecDropConstraint).
-	 * PG factored the inner constraint-drop work out into dropconstraint_internal
-	 */
-#if 0
-	if (IsYBRelation(*yb_mutable_rel) && contype == CONSTRAINT_PRIMARY)
-	{
-		if (!yb_enable_alter_table_rewrite)
-		{
-			/* Table will be re-created without a dummy PK index. */
-			*yb_mutable_rel = YbATCloneRelationSetPrimaryKey(*yb_mutable_rel,
-															 NULL /* stmt */ ,
-															 NULL /* result */ );
-
-			/*
-			 * Update the table relid so that further passes will operate on
-			 * the new table.
-			 */
-			if (tab)
-				tab->relid = RelationGetRelid(*yb_mutable_rel);
-		}
-		else
-		{
-			/*
-			 * In YB, the ADD/DROP primary key operation involves a table
-			 * rewrite. So if this is partitioned table, we need to add
-			 * its children to the work queue as well.
-			 */
-			if ((*yb_mutable_rel)->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
-				YbATSetPKRewriteChildPartitions(yb_wqueue,
-												tab, false /* skip_copy_split_options */ );
-			tab->rewrite |= YB_AT_REWRITE_ALTER_PRIMARY_KEY;
-		}
-	}
-#endif
 
 	/*
 	 * Perform the actual constraint deletion
@@ -23748,7 +23747,7 @@ ATExecAttachPartitionIdx(List **wqueue, Relation parentIdx, RangeVar *name)
 		parentInfo = BuildIndexInfo(parentIdx);
 		attmap = build_attrmap_by_name(RelationGetDescr(partTbl),
 									   RelationGetDescr(parentTbl),
-									   false, 
+									   false,
 									   false /* yb_ignore_type_mismatch */ );
 		if (!CompareIndexInfo(childInfo, parentInfo,
 							  partIdx->rd_indcollation,
@@ -24551,7 +24550,7 @@ createPartitionTable(List **wqueue, RangeVar *newPartName,
 	newRelId = heap_create_with_catalog(newPartName->relname,
 										namespaceId,
 										parent_relform->reltablespace,
-										InvalidOid /* reltablegroup */,
+										InvalidOid /* YB: reltablegroup */ ,
 										InvalidOid,
 										InvalidOid,
 										InvalidOid,
@@ -26593,6 +26592,9 @@ YbATCopyFkAndCheckConstraints(const Relation old_rel, Relation new_rel,
 				break;
 			case CONSTRAINT_UNIQUE:
 				/* UNIQUE constraints are indexes and will be copied as such. */
+				break;
+			case CONSTRAINT_NOTNULL:
+				/* NOT NULL constraints are recreated from the new table's column definitions. */
 				break;
 			case CONSTRAINT_TRIGGER:
 				/* Triggers are processed separately later on. */

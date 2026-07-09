@@ -427,8 +427,8 @@ RESET yb_enable_alter_table_rewrite;
 DROP RULE test_rule ON test_table;
 ALTER TABLE test_table ALTER c4 TYPE char;
 SET yb_enable_alter_table_rewrite = OFF;
--- TODO(#22063): DROP VIEW is needed to avoid non-deterministic error.
-DROP VIEW dummy_table;
+-- TODO(#22063): dropping dummy_table is needed to avoid a non-deterministic error.
+DROP TABLE dummy_table;
 ALTER TABLE test_table ALTER c4 TYPE varchar(1);
 RESET yb_enable_alter_table_rewrite;
 DROP TABLE test_table CASCADE;
