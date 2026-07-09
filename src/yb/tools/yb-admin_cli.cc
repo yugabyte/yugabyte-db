@@ -475,6 +475,13 @@ std::vector<std::string> ClusterAdminCli::GetSuggestedCommands(const std::string
     if (commands_[index].hidden_) {
       continue;
     }
+    // The edit distance is at least the difference in lengths, so skip the full computation for
+    // commands that cannot possibly be within the tolerance.
+    const size_t len_diff =
+        op.size() > name.size() ? op.size() - name.size() : name.size() - op.size();
+    if (len_diff > max_distance) {
+      continue;
+    }
     const size_t distance = EditDistance(op, name);
     if (distance > max_distance) {
       continue;
