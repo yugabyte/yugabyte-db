@@ -149,6 +149,7 @@ import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -1215,15 +1216,31 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * Returns the target universe definition to diff against the pre-lock snapshot when capturing
-   * state transition delta during freeze. Return null to skip capture.
-   *
-   * <p>Today this is typically the interim task params (e.g. {@code ToBeAdded} nodes). TODO
-   * (PLAT-21497): derive the post-success steady-state UDTP instead.
+   * Returns the post-success steady-state universe definition to diff against the pre-lock snapshot
+   * when capturing state transition delta during freeze. Derives from interim task params (e.g.
+   * {@code ToBeAdded}/{@code ToBeRemoved}/{@code masterState}). Subclasses may override to
+   * customize or return null to skip capture.
    */
   @Nullable
-  protected UniverseDefinitionTaskParams getStateTransitionCaptureTarget() {
-    return null;
+  protected UniverseDefinitionTaskParams getTargetUniverseDetails() {
+    UniverseDefinitionTaskParams target =
+        Json.fromJson(Json.toJson(taskParams()), UniverseDefinitionTaskParams.class);
+    if (target.nodeDetailsSet == null) {
+      return target;
+    }
+    target.nodeDetailsSet.removeIf(node -> node.state == NodeState.ToBeRemoved);
+    for (NodeDetails node : target.nodeDetailsSet) {
+      if (node.state == NodeState.ToBeAdded) {
+        node.state = NodeState.Live;
+      }
+      if (node.masterState == MasterState.ToStart) {
+        node.isMaster = true;
+      } else if (node.masterState == MasterState.ToStop) {
+        node.isMaster = false;
+      }
+      node.masterState = null;
+    }
+    return target;
   }
 
   /**
@@ -1349,7 +1366,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.setCallback(callback);
     params.setExecutionContext(getOrCreateExecutionContext());
     if (isFirstTry()) {
-      params.setStateTransitionCaptureTarget(getStateTransitionCaptureTarget());
+      params.setTargetUniverseDetails(getTargetUniverseDetails());
     }
     task.initialize(params);
     subTaskGroup.addSubTask(task);

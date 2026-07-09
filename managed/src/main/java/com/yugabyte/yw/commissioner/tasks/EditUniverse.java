@@ -79,12 +79,6 @@ public class EditUniverse extends EditUniverseTaskBase {
   }
 
   @Override
-  protected UniverseDefinitionTaskParams getStateTransitionCaptureTarget() {
-    // TODO(PLAT-21497): derive post-success steady-state UDTP instead of interim taskParams.
-    return taskParams();
-  }
-
-  @Override
   public void run() {
     if (maybeRunOnlyPrechecks()) {
       return;
