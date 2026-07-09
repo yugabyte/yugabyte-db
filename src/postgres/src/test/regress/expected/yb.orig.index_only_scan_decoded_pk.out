@@ -698,18 +698,17 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+                              QUERY PLAN                              
+----------------------------------------------------------------------
  Sort
    Sort Key: i.item_id
-   ->  YB Batched Nested Loop Join
-         Join Filter: (i.item_id = t.tag_id)
+   ->  Nested Loop
          ->  Index Only Scan using t_join_child_tag on t_join_child i
                Index Cond: (tag = 1)
                Filter: ((item_id % 500) = 1)
          ->  Index Scan using t_join_parent_pkey on t_join_parent t
-               Index Cond: (tag_id = ANY (ARRAY[i.item_id, $1, $2, ..., $1023]))
-(9 rows)
+               Index Cond: (tag_id = i.item_id)
+(8 rows)
 
  item_id |  label  
 ---------+---------
