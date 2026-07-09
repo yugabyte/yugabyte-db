@@ -48,9 +48,6 @@ class MetadataSerializer : public rpc::MetadataSerializer {
   size_t SerializedSize() override;
   uint8_t* SerializeToArray(uint8_t* out) override;
 
-  // Encodes span_context into the metadata's trace_context submessage.
-  void SetTraceContext(const opentelemetry::trace::SpanContext& span_context);
-
  private:
   AshMetadataPB metadata_;
   size_t serialized_size_ = 0;
@@ -62,6 +59,21 @@ class MetadataSerializerFactory : public rpc::MetadataSerializerFactory {
   std::unique_ptr<rpc::MetadataSerializer> Create(rpc::MetadataSerializationMode mode) override {
     return std::make_unique<ash::MetadataSerializer>(mode);
   }
+};
+
+// Serializes a distributed-trace SpanContext as a standalone length-prefixed TraceContextPB blob for
+// the shared-memory PG<->tserver exchange, independent of the ASH metadata blob. Always emits the
+// length prefix (zero when no context is set) so the exchange framing stays parseable.
+class TraceContextSerializer {
+ public:
+  // Encodes span_context into the trace-context blob; a no-op when the context is invalid.
+  void SetTraceContext(const opentelemetry::trace::SpanContext& span_context);
+  size_t SerializedSize() const;
+  uint8_t* SerializeToArray(uint8_t* out) const;
+
+ private:
+  TraceContextPB trace_context_;
+  size_t serialized_size_ = 0;
 };
 
 } // namespace yb::ash

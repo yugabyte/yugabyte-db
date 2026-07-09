@@ -1136,6 +1136,8 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   // 8 bytes - timeout in milliseconds.
   // next - size of serialized AshMetadataPB protobuf (say 'x').
   // next 'x' bytes - serialized AshMetadataPB protobuf.
+  // next - size of serialized TraceContextPB protobuf (say 'y').
+  // next 'y' bytes - serialized TraceContextPB protobuf.
   // remaining bytes - serialized PgPerformRequestPB protobuf.
   template <class... Args>
   Result<RequestInfo> ParseRequest(
@@ -1147,6 +1149,8 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
     input += sizeof(uint64_t);
     RETURN_NOT_OK(rpc::ParseMetadataFromSharedMemory(
         &input, end - input, rpc::AnyMessagePtr(&ash_metadata_)));
+    RETURN_NOT_OK(rpc::ParseMetadataFromSharedMemory(
+        &input, end - input, rpc::AnyMessagePtr(&trace_context_)));
     RETURN_NOT_OK(req_.ParseFromSlice(Slice(input, end)));
     data_.emplace(
         std::forward<Args>(args)..., session_id, arena_, req_, resp_, sidecars_,
@@ -1167,6 +1171,7 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   }
 
   const AshMetadataPB& ash_metadata() const { return ash_metadata_; }
+  const TraceContextPB& trace_context() const { return trace_context_; }
 
  private:
   void SendResponse() {
@@ -1233,6 +1238,7 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   std::remove_const_t<typename T::ReqPB> req_;
   typename T::RespPB resp_;
   AshMetadataPB ash_metadata_;
+  TraceContextPB trace_context_;
   rpc::Sidecars sidecars_;
   std::weak_ptr<PgClientSession> session_;
   SharedExchange& exchange_;
@@ -2782,9 +2788,9 @@ class PgClientSession::Impl {
 
     // Fix span attibutes for shared memory exchange.
     dist_trace::SpanWithScopePtr trace_scope;
-    const auto& ash_metadata = query.ash_metadata();
-    if (dist_trace::IsDistTraceEnabled() && ash_metadata.has_trace_context()) {
-      auto parent_context = rpc::ToSpanContext(ash_metadata.trace_context());
+    const auto& trace_context = query.trace_context();
+    if (dist_trace::IsDistTraceEnabled() && trace_context.has_span_id()) {
+      auto parent_context = rpc::ToSpanContext(trace_context);
       if (parent_context.ok()) {
         trace_scope = dist_trace::StartServerSpanWithScope(
             SharedMemHandlerSpanName<T>(), *parent_context);
