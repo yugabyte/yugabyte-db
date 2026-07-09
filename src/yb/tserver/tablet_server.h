@@ -675,6 +675,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void MakeRelcacheInitConnection(const std::string& dbname);
   void RelcacheInitConnectionDone(const std::string& dbname, const Status& status)
       EXCLUDES(lock_);
+  // Completes every pending relcache-init callback with a ShutdownInProgress error. Backends block
+  // synchronously in TriggerRelcacheInitConnection waiting for this callback; if shutdown leaves
+  // them orphaned they hold their inbound connection open and wedge reactor join at teardown.
+  void AbortInFlightRelcacheInitConnections() EXCLUDES(lock_);
   void DoUpdateMasterAddresses();
 
   std::map<std::string, std::string> ValidateConfCsvViaPg(
