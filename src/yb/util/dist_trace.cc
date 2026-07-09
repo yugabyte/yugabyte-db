@@ -29,12 +29,17 @@ DEFINE_NON_RUNTIME_PREVIEW_string(otel_collector_traces_endpoint, "",
     "OTLP HTTP endpoint for the OpenTelemetry collector. When set, distributed tracing is "
     "enabled and spans are exported to this endpoint on each query execution.");
 
-DEFINE_NON_RUNTIME_uint32(otel_batch_max_queue_size, 2048,
+DEFINE_NON_RUNTIME_uint32(otel_batch_max_queue_size, 16384,
     "Maximum number of spans that can be buffered in the batch span processor queue. "
     "Spans arriving after this limit are dropped. Must be greater than 0 and at least as "
     "large as otel_batch_max_export_batch_size.");
 
-DEFINE_NON_RUNTIME_uint32(otel_batch_schedule_delay_ms, 5000,
+DEFINE_NON_RUNTIME_uint32(otel_ysql_batch_max_queue_size, 2048,
+    "Like otel_batch_max_queue_size, but used only by the ysql (postgres backend) process, which "
+    "runs one batch span processor per connection. Must be greater than 0 and at least as large as "
+    "otel_batch_max_export_batch_size.");
+
+DEFINE_NON_RUNTIME_uint32(otel_batch_schedule_delay_ms, 500,
     "Time interval in milliseconds between two consecutive batch exports of spans to the "
     "OpenTelemetry collector. Lower values reduce latency but increase export frequency.");
 
@@ -47,6 +52,9 @@ DEFINE_NON_RUNTIME_string(otel_internal_log_level, "info",
     "values are debug, info, warning, error, and none.");
 
 DEFINE_validator(otel_batch_max_queue_size,
+    FLAG_GE_FLAG_VALIDATOR(otel_batch_max_export_batch_size));
+
+DEFINE_validator(otel_ysql_batch_max_queue_size,
     FLAG_GE_FLAG_VALIDATOR(otel_batch_max_export_batch_size));
 
 DEFINE_validator(otel_internal_log_level,
@@ -64,6 +72,12 @@ namespace {
 
 // Service name for the tracing resource and tracer (e.g. "ysql", "Master", "TabletServer").
 static std::string g_service_name;
+
+// The ysql process gets its own queue-size flag; tserver/master share otel_batch_max_queue_size.
+static uint32_t EffectiveBatchMaxQueueSize() {
+  return g_service_name == kYsqlServiceName ? FLAGS_otel_ysql_batch_max_queue_size
+                                            : FLAGS_otel_batch_max_queue_size;
+}
 
 // A batch of pending RPC span attributes, owned as plain (key, value) strings.
 using PendingRpcSpanAttrs = std::vector<std::pair<std::string, std::string>>;
@@ -160,7 +174,7 @@ auto CreateExporter() {
 
 trace_sdk::BatchSpanProcessorOptions MakeBatchProcessorOptions() {
   trace_sdk::BatchSpanProcessorOptions batching_opts;
-  batching_opts.max_queue_size = static_cast<size_t>(FLAGS_otel_batch_max_queue_size);
+  batching_opts.max_queue_size = static_cast<size_t>(EffectiveBatchMaxQueueSize());
   batching_opts.schedule_delay_millis =
       std::chrono::milliseconds(FLAGS_otel_batch_schedule_delay_ms);
   batching_opts.max_export_batch_size = static_cast<size_t>(FLAGS_otel_batch_max_export_batch_size);
@@ -241,7 +255,7 @@ void InitDistTrace(nostd::string_view service_name, nostd::string_view node_uuid
           new trace::propagation::HttpTraceContext()));
 
   LOG(INFO) << "OTEL: Initialized tracing for service: " << g_service_name
-            << "\nBatchSpanProcessor config: max_queue_size=" << FLAGS_otel_batch_max_queue_size
+            << "\nBatchSpanProcessor config: max_queue_size=" << EffectiveBatchMaxQueueSize()
             << ", schedule_delay_ms=" << FLAGS_otel_batch_schedule_delay_ms
             << ", max_export_batch_size=" << FLAGS_otel_batch_max_export_batch_size;
 }

@@ -98,7 +98,7 @@ void YBCDestroySpanContext(YbcOtelSpanContext span_ctx) {
 }
 
 void YBCInitDistTrace(const char* node_uuid) {
-  dist_trace::InitDistTrace("ysql", DCHECK_NOTNULL(node_uuid));
+  dist_trace::InitDistTrace(dist_trace::kYsqlServiceName, DCHECK_NOTNULL(node_uuid));
 }
 
 void YBCShutdownDistTrace() {
