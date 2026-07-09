@@ -554,7 +554,7 @@ TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelectWithExtStats) {
 TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnSelectWithExtStatsPreload,
           PgStatsPreloadTest) {
-  TestAfterCacheRefreshRPCCountOnSelectWithExtStats(/*expected_master_rpc_count=*/ 3);
+  TestAfterCacheRefreshRPCCountOnSelectWithExtStats(/*expected_master_rpc_count=*/ 2);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelectWithAggregates) {
@@ -1123,9 +1123,9 @@ TEST_F_EX(PgCatalogPerfTest, ForeignKeyRelcachePreloadTest, PgPreloadAdditionalC
             "SELECT * FROM primary_table JOIN foreign_table ON primary_table.k = foreign_table.k"));
         return Status::OK();
       }));
-  // With yb_enable_fkey_catcache turned off, we would see more than 24 RPCs
+  // With yb_enable_fkey_catcache turned off, we would see more than 22 RPCs
   // because we have to look up the foreign keys from master.
-  ASSERT_EQ(select_rpc_count, 24);
+  ASSERT_EQ(select_rpc_count, 22);
 }
 
 // The test checks that sys catalog table prefetching works well in case of login of user with
