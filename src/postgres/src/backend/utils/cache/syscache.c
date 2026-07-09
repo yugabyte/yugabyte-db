@@ -39,6 +39,7 @@
 #include "catalog/pg_description.h"
 #include "catalog/pg_enum.h"
 #include "catalog/pg_event_trigger.h"
+#include "catalog/pg_extension.h"
 #include "catalog/pg_foreign_data_wrapper.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_foreign_table.h"
@@ -1079,6 +1080,18 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 		},
 		16
+	},
+	/* intentionally out of alphabetical order, to avoid an ABI break: */
+	{ExtensionRelationId,		/* EXTENSIONOID */
+		ExtensionOidIndexId,
+		1,
+		{
+			Anum_pg_extension_oid,
+			0,
+			0,
+			0
+		},
+		2
 	}
 };
 
@@ -1168,6 +1181,7 @@ static const char *yb_cache_index_name_table[] = {
 	"pg_user_mapping_user_server_index",
 	"pg_yb_tablegroup_oid_index",
 	"pg_constraint_conrelid_contypid_conname_index",
+	"pg_extension_oid_index",
 };
 
 static_assert(SysCacheSize == sizeof(yb_cache_index_name_table) /
@@ -1258,7 +1272,8 @@ char	   *SysCacheName[] = {
 	"USERMAPPINGOID",
 	"USERMAPPINGUSERSERVER",
 	"YBTABLEGROUPOID",
-	"YBCONSTRAINTRELIDTYPIDNAME"
+	"YBCONSTRAINTRELIDTYPIDNAME",
+	"EXTENSIONOID",
 };
 
 static_assert(SysCacheSize == sizeof(SysCacheName) /
@@ -1283,6 +1298,7 @@ static const char *yb_cache_table_name_table[] = {
 	"pg_default_acl",
 	"pg_enum",
 	"pg_event_trigger",
+	"pg_extension",
 	"pg_foreign_data_wrapper",
 	"pg_foreign_server",
 	"pg_foreign_table",
@@ -1412,6 +1428,7 @@ static YbCatalogCacheTable yb_catalog_cache_tables[] = {
 	YbCatalogCacheTable_pg_user_mapping,
 	YbCatalogCacheTable_pg_yb_tablegroup,
 	YbCatalogCacheTable_pg_constraint,
+	YbCatalogCacheTable_pg_extension,
 };
 
 static_assert(SysCacheSize ==
@@ -2720,6 +2737,7 @@ YbCheckCatalogCacheIds()
 	YB_CHECK_CATALOG_CACHE_ID(USERMAPPINGUSERSERVER, 82);
 	YB_CHECK_CATALOG_CACHE_ID(YBTABLEGROUPOID, 83);
 	YB_CHECK_CATALOG_CACHE_ID(YBCONSTRAINTRELIDTYPIDNAME, 84);
+	YB_CHECK_CATALOG_CACHE_ID(EXTENSIONOID, 85);
 
 	/*
 	 * If an existing ID is removed, interop isn't possible so we need to
@@ -2740,5 +2758,5 @@ YbCheckCatalogCacheIds()
 	 * but old PG backend cannot provide that message needed. In this case
 	 * interop isn't possible so we need to bump YbSharedInvalCatcacheMsgVersion.
 	 */
-	static_assert(SysCacheSize == 85, "new catalog cache id added");
+	static_assert(SysCacheSize == 86, "new catalog cache id added");
 }

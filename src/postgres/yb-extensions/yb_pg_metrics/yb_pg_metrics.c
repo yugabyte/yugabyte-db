@@ -161,7 +161,8 @@ typedef enum YbStatementType
 	CatCacheIdMisses_82,
 	CatCacheIdMisses_83,
 	CatCacheIdMisses_84,
-	CatCacheIdMisses_End = CatCacheIdMisses_84,
+	CatCacheIdMisses_85,
+	CatCacheIdMisses_End = CatCacheIdMisses_85,
 	CatCacheTableMisses_Start,
 	CatCacheTableMisses_0 = CatCacheTableMisses_Start,
 	CatCacheTableMisses_1,
@@ -214,7 +215,8 @@ typedef enum YbStatementType
 	CatCacheTableMisses_48,
 	CatCacheTableMisses_49,
 	CatCacheTableMisses_50,
-	CatCacheTableMisses_End = CatCacheTableMisses_50,
+	CatCacheTableMisses_51,
+	CatCacheTableMisses_End = CatCacheTableMisses_51,
 	HintCacheRefresh,
 	HintCacheHits,
 	HintCacheMisses,
@@ -238,8 +240,8 @@ typedef enum YbStatementType
 	CatCacheListMisses_40, CatCacheListMisses_41, CatCacheListMisses_42,
 	CatCacheListMisses_43, CatCacheListMisses_44, CatCacheListMisses_45,
 	CatCacheListMisses_46, CatCacheListMisses_47, CatCacheListMisses_48,
-	CatCacheListMisses_49, CatCacheListMisses_50,
-	CatCacheListMisses_End = CatCacheListMisses_50,
+	CatCacheListMisses_49, CatCacheListMisses_50, CatCacheListMisses_51,
+	CatCacheListMisses_End = CatCacheListMisses_51,
 	CatCacheNegMisses_Start,
 	CatCacheNegMisses_0 = CatCacheNegMisses_Start,
 	CatCacheNegMisses_1, CatCacheNegMisses_2, CatCacheNegMisses_3,
@@ -258,8 +260,8 @@ typedef enum YbStatementType
 	CatCacheNegMisses_40, CatCacheNegMisses_41, CatCacheNegMisses_42,
 	CatCacheNegMisses_43, CatCacheNegMisses_44, CatCacheNegMisses_45,
 	CatCacheNegMisses_46, CatCacheNegMisses_47, CatCacheNegMisses_48,
-	CatCacheNegMisses_49, CatCacheNegMisses_50,
-	CatCacheNegMisses_End = CatCacheNegMisses_50,
+	CatCacheNegMisses_49, CatCacheNegMisses_50, CatCacheNegMisses_51,
+	CatCacheNegMisses_End = CatCacheNegMisses_51,
 	RegularBackendInitLatency,
 	AuthBackendInitLatency, /* Connmgr Auth backend only */
 	kMaxStatementType
@@ -1031,6 +1033,15 @@ _PG_init(void)
 	ProcessUtility_hook = ybpgm_ProcessUtility;
 	static_assert(SysCacheSize == CatCacheIdMisses_End - CatCacheIdMisses_Start + 1,
 				  "Wrong catalog cache number");
+	static_assert(YbNumCatalogCacheTables ==
+				  CatCacheTableMisses_End - CatCacheTableMisses_Start + 1,
+				  "Wrong catalog cache table number");
+	static_assert(YbNumCatalogCacheTables ==
+				  CatCacheListMisses_End - CatCacheListMisses_Start + 1,
+				  "Wrong catalog cache table number for list misses");
+	static_assert(YbNumCatalogCacheTables ==
+				  CatCacheNegMisses_End - CatCacheNegMisses_Start + 1,
+				  "Wrong catalog cache table number for negative cache misses");
 }
 
 /*
