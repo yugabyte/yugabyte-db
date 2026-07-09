@@ -1,4 +1,3 @@
-CREATE EXTENSION postgres_fdw;
 --
 -- Test to validate behavior of 'server_type' option in foreign server.
 --
@@ -20,14 +19,15 @@ HINT:  Supported server types: [postgreSQL, yugabyteDB]
 SELECT srv.srvname, srv.srvoptions
 FROM pg_foreign_server srv JOIN pg_foreign_data_wrapper fdw ON srv.srvfdw = fdw.oid
 WHERE fdw.fdwname = 'postgres_fdw';
-    srvname    |                srvoptions                
----------------+------------------------------------------
- s_yugabytedb  | {server_type=yugabytedb}
- s_postgres    | {server_type=postgresql}
- s_yugabytedb2 | {dbname=yugabyte,server_type=yugabytedb}
- s_nosrvtype   | 
- s_nosrvtype2  | {dbname=yugabyte,host=127.0.0.1}
-(5 rows)
+        srvname         |                srvoptions                
+------------------------+------------------------------------------
+ yb_global_views_server | {server_type=federatedYugabyteDB}
+ s_yugabytedb           | {server_type=yugabytedb}
+ s_postgres             | {server_type=postgresql}
+ s_yugabytedb2          | {dbname=yugabyte,server_type=yugabytedb}
+ s_nosrvtype            | 
+ s_nosrvtype2           | {dbname=yugabyte,host=127.0.0.1}
+(6 rows)
 
 -- Adding a 'server_type' option where none exists.
 ALTER SERVER s_nosrvtype2 OPTIONS (ADD server_type 'yugabytedb');
@@ -53,14 +53,15 @@ ERROR:  option "server_type" not found
 SELECT srv.srvname, srv.srvoptions
 FROM pg_foreign_server srv JOIN pg_foreign_data_wrapper fdw ON srv.srvfdw = fdw.oid
 WHERE fdw.fdwname = 'postgres_fdw';
-    srvname    |                       srvoptions                        
----------------+---------------------------------------------------------
- s_yugabytedb  | {server_type=yugabytedb}
- s_postgres    | {server_type=postgresql}
- s_yugabytedb2 | {dbname=yugabyte,server_type=yugabytedb}
- s_nosrvtype   | 
- s_nosrvtype2  | {dbname=yugabyte,host=127.0.0.1,server_type=yugabytedb}
-(5 rows)
+        srvname         |                       srvoptions                        
+------------------------+---------------------------------------------------------
+ yb_global_views_server | {server_type=federatedYugabyteDB}
+ s_yugabytedb           | {server_type=yugabytedb}
+ s_postgres             | {server_type=postgresql}
+ s_yugabytedb2          | {dbname=yugabyte,server_type=yugabytedb}
+ s_nosrvtype            | 
+ s_nosrvtype2           | {dbname=yugabyte,host=127.0.0.1,server_type=yugabytedb}
+(6 rows)
 
 DROP SERVER s_yugabytedb2;
 DROP SERVER s_nosrvtype2;
@@ -193,12 +194,14 @@ SELECT * FROM ft_test1, ft_test2, ft_test3 WHERE ft_test1.v = ft_test2.v AND ft_
 -- Modifying table level options should be allowed.
 ALTER FOREIGN TABLE ft_test1 OPTIONS (SET table_name 't_othertest');
 ALTER FOREIGN TABLE ft_test2 OPTIONS (DROP table_name, ADD batch_size '1000');
-SELECT * FROM pg_foreign_table;
+-- YB: Exclude the default gv$ foreign tables, whose OIDs vary with initdb contents.
+SELECT * FROM pg_foreign_table
+    WHERE ftserver <> (SELECT oid FROM pg_foreign_server WHERE srvname = 'yb_global_views_server');
  ftrelid | ftserver |        ftoptions         
 ---------+----------+--------------------------
-   16407 |    16391 | {table_name=t_othertest}
-   16410 |    16392 | {batch_size=1000}
-   16413 |    16394 | {table_name=t_test}
+   16400 |    16384 | {table_name=t_othertest}
+   16403 |    16385 | {batch_size=1000}
+   16406 |    16387 | {table_name=t_test}
 (3 rows)
 
 -- Setting an option should be disallowed if it doesn't already exist.
@@ -210,23 +213,27 @@ ERROR:  option "table_name" not found
 -- Adding an option should be disallowed if it already exists.
 ALTER FOREIGN TABLE ft_test1 OPTIONS (ADD table_name 't_test');
 ERROR:  option "table_name" provided more than once
-SELECT * FROM pg_foreign_table;
+-- YB: Exclude the default gv$ foreign tables, whose OIDs vary with initdb contents.
+SELECT * FROM pg_foreign_table
+    WHERE ftserver <> (SELECT oid FROM pg_foreign_server WHERE srvname = 'yb_global_views_server');
  ftrelid | ftserver |        ftoptions         
 ---------+----------+--------------------------
-   16407 |    16391 | {table_name=t_othertest}
-   16410 |    16392 | {batch_size=1000}
-   16413 |    16394 | {table_name=t_test}
+   16400 |    16384 | {table_name=t_othertest}
+   16403 |    16385 | {batch_size=1000}
+   16406 |    16387 | {table_name=t_test}
 (3 rows)
 
 -- Restore the original table name.
 ALTER FOREIGN TABLE ft_test1 OPTIONS (SET table_name 't_test');
 ALTER FOREIGN TABLE ft_test2 OPTIONS (ADD table_name 't_test', DROP batch_size);
-SELECT * FROM pg_foreign_table;
+-- YB: Exclude the default gv$ foreign tables, whose OIDs vary with initdb contents.
+SELECT * FROM pg_foreign_table
+    WHERE ftserver <> (SELECT oid FROM pg_foreign_server WHERE srvname = 'yb_global_views_server');
  ftrelid | ftserver |      ftoptions      
 ---------+----------+---------------------
-   16407 |    16391 | {table_name=t_test}
-   16410 |    16392 | {table_name=t_test}
-   16413 |    16394 | {table_name=t_test}
+   16400 |    16384 | {table_name=t_test}
+   16403 |    16385 | {table_name=t_test}
+   16406 |    16387 | {table_name=t_test}
 (3 rows)
 
 DROP FOREIGN TABLE ft_test1;

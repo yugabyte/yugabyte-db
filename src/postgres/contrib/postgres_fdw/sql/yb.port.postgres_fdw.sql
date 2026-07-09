@@ -2,7 +2,9 @@
 -- create FDW objects
 -- ===================================================================
 
-CREATE EXTENSION postgres_fdw;
+-- YB: postgres_fdw is created by default during initdb (global views), so use
+-- IF NOT EXISTS to tolerate the pre-installed extension.
+CREATE EXTENSION IF NOT EXISTS postgres_fdw;
 
 CREATE SERVER testserver1 FOREIGN DATA WRAPPER postgres_fdw;
 DO $d$

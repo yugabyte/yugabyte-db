@@ -915,6 +915,10 @@ TEST_F(PgAutoAnalyzeTest, CheckDDLMutationsCount) {
       "SELECT oid FROM pg_database WHERE datname = 'yugabyte'"));
   auto pg_class_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
 
+  // Build template1's relcache init file up front to make sure relcache init file
+  // is already built. This avoids a FATAL in the test during shutdown.
+  auto template1_conn = ASSERT_RESULT(ConnectToDB("template1"));
+
   ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn] {
         ASSERT_OK(conn.Execute("CREATE TABLE my_tbl (k INT)"));

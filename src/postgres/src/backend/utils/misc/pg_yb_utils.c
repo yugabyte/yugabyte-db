@@ -10295,3 +10295,40 @@ HandleYBStatusAtErrorLevelImpl(YbcStatus status, int elevel, const char *text_do
 	else
 		YBCFreeStatus(status);
 }
+
+Oid
+YbGetFederatedForeignTableBackingRelid(Oid ft_relid)
+{
+	ListCell   *lc;
+	char	   *schema_name = NULL;
+	char	   *table_name = NULL;
+
+	if (!yb_is_federated_yb_foreign_table(ft_relid))
+		return InvalidOid;
+
+	/*
+	 * The backing schema is read from the foreign table options rather than
+	 * hardcoded to pg_catalog: yb_create_global_view can create the foreign
+	 * table and its aux view in any schema (only the base view must live in
+	 * pg_catalog), ad-hoc global views can't be created in pg_catalog.
+	 */
+	foreach(lc, GetForeignTable(ft_relid)->options)
+	{
+		DefElem    *def = (DefElem *) lfirst(lc);
+
+		if (strcmp(def->defname, "schema_name") == 0)
+			schema_name = defGetString(def);
+		else if (strcmp(def->defname, "table_name") == 0)
+			table_name = defGetString(def);
+	}
+
+	if (!schema_name || !table_name)
+		return InvalidOid;
+
+	Oid			namespace_oid = get_namespace_oid(schema_name, true /* missing_ok */ );
+
+	if (!OidIsValid(namespace_oid))
+		return InvalidOid;
+
+	return get_relname_relid(table_name, namespace_oid);
+}

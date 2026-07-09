@@ -4,8 +4,6 @@ DROP EXTENSION fuzzystrmatch;
 
 DROP EXTENSION pgcrypto;
 
-DROP EXTENSION postgres_fdw;
-
 DROP EXTENSION sslinfo;
 
 DROP EXTENSION "uuid-ossp";

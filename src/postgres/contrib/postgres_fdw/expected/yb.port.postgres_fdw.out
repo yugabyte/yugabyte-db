@@ -1,7 +1,10 @@
 -- ===================================================================
 -- create FDW objects
 -- ===================================================================
-CREATE EXTENSION postgres_fdw;
+-- YB: postgres_fdw is created by default during initdb (global views), so use
+-- IF NOT EXISTS to tolerate the pre-installed extension.
+CREATE EXTENSION IF NOT EXISTS postgres_fdw;
+NOTICE:  extension "postgres_fdw" already exists, skipping
 CREATE SERVER testserver1 FOREIGN DATA WRAPPER postgres_fdw;
 NOTICE:  no server_type specified. Defaulting to PostgreSQL.
 HINT:  Use "ALTER SERVER ... OPTIONS (ADD server_type '<type>')" to explicitly set server_type.
@@ -225,16 +228,33 @@ ALTER FOREIGN TABLE ft2 OPTIONS (schema_name 'S 1', table_name 'T 1');
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 OPTIONS (column_name 'C 1');
 ALTER FOREIGN TABLE ft2 ALTER COLUMN c1 OPTIONS (column_name 'C 1');
 \det+
-                              List of foreign tables
- Schema | Table |  Server   |              FDW options              | Description 
---------+-------+-----------+---------------------------------------+-------------
- public | ft1   | loopback  | (schema_name 'S 1', table_name 'T 1') | 
- public | ft2   | loopback  | (schema_name 'S 1', table_name 'T 1') | 
- public | ft4   | loopback  | (schema_name 'S 1', table_name 'T 3') | 
- public | ft5   | loopback  | (schema_name 'S 1', table_name 'T 4') | 
- public | ft6   | loopback2 | (schema_name 'S 1', table_name 'T 4') | 
- public | ft7   | loopback3 | (schema_name 'S 1', table_name 'T 4') | 
-(6 rows)
+                                                                             List of foreign tables
+   Schema   |              Table               |         Server         |                                       FDW options                                       | Description 
+------------+----------------------------------+------------------------+-----------------------------------------------------------------------------------------+-------------
+ pg_catalog | gv$pg_stat_activity              | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_activity_with_server_uuid')              | 
+ pg_catalog | gv$pg_stat_all_indexes           | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_all_indexes_with_server_uuid')           | 
+ pg_catalog | gv$pg_stat_all_tables            | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_all_tables_with_server_uuid')            | 
+ pg_catalog | gv$pg_stat_database              | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_database_with_server_uuid')              | 
+ pg_catalog | gv$pg_stat_progress_analyze      | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_progress_analyze_with_server_uuid')      | 
+ pg_catalog | gv$pg_stat_progress_copy         | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_progress_copy_with_server_uuid')         | 
+ pg_catalog | gv$pg_stat_progress_create_index | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_progress_create_index_with_server_uuid') | 
+ pg_catalog | gv$pg_stat_replication           | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_replication_with_server_uuid')           | 
+ pg_catalog | gv$pg_stat_replication_slots     | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_replication_slots_with_server_uuid')     | 
+ pg_catalog | gv$pg_stat_statements            | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_statements_with_server_uuid')            | 
+ pg_catalog | gv$pg_stat_user_functions        | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_user_functions_with_server_uuid')        | 
+ pg_catalog | gv$pg_stat_user_indexes          | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_user_indexes_with_server_uuid')          | 
+ pg_catalog | gv$pg_stat_user_tables           | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_user_tables_with_server_uuid')           | 
+ pg_catalog | gv$yb_active_session_history     | yb_global_views_server | (schema_name 'pg_catalog', table_name 'yb_active_session_history_with_server_uuid')     | 
+ pg_catalog | gv$yb_pg_stat_plans              | yb_global_views_server | (schema_name 'pg_catalog', table_name 'yb_pg_stat_plans_with_server_uuid')              | 
+ pg_catalog | gv$yb_pg_stat_plans_insights     | yb_global_views_server | (schema_name 'pg_catalog', table_name 'yb_pg_stat_plans_insights_with_server_uuid')     | 
+ pg_catalog | gv$yb_terminated_queries         | yb_global_views_server | (schema_name 'pg_catalog', table_name 'yb_terminated_queries_with_server_uuid')         | 
+ public     | ft1                              | loopback               | (schema_name 'S 1', table_name 'T 1')                                                   | 
+ public     | ft2                              | loopback               | (schema_name 'S 1', table_name 'T 1')                                                   | 
+ public     | ft4                              | loopback               | (schema_name 'S 1', table_name 'T 3')                                                   | 
+ public     | ft5                              | loopback               | (schema_name 'S 1', table_name 'T 4')                                                   | 
+ public     | ft6                              | loopback2              | (schema_name 'S 1', table_name 'T 4')                                                   | 
+ public     | ft7                              | loopback3              | (schema_name 'S 1', table_name 'T 4')                                                   | 
+(23 rows)
 
 -- Test that alteration of server options causes reconnection
 -- Remote's errors might be non-English, so hide them to ensure stable results

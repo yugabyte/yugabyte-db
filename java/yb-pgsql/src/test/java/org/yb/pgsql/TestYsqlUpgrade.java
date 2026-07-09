@@ -2154,6 +2154,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     final long pgTypeOid = 1247;
     final long pgProcOid = 1255;
     final long pgClassOid = 1259;
+    final long pgLanguageOid = 2612;
+    final long pgForeignServerOid = 1417;
+    final long pgForeignDataWrapperOid = 2328;
     final long pgNamespaceOid = 2615;
     final long pgTsDictOid = 3600;
     final long pgTsConfigOid = 3602;
@@ -2204,7 +2207,11 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
      */
     Consumer<Integer> simplifyPgNodeTree = (nodeTreeColIdx) -> {
       for (Row row : copy) {
-        String nodeTree = ((PGobject) row.get(nodeTreeColIdx)).getValue();
+        Object nodeTreeObj = row.get(nodeTreeColIdx);
+        if (nodeTreeObj == null) {
+          continue;
+        }
+        String nodeTree = ((PGobject) nodeTreeObj).getValue();
         String[] nodeTreeParts = nodeTree.split("\\s+");
         for (int i = 0; i < nodeTreeParts.length; i++) {
           if (nodeTreeParts[i].matches("1\\d{4}\\)?" /* 10000 to 19999 for simplicity */)) {
@@ -2267,6 +2274,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         break;
       case "pg_proc":
         replace.accept(2 /* pronamespace */, entityNamesMap.get(pgNamespaceOid));
+        replace.accept(4 /* prolang */, entityNamesMap.get(pgLanguageOid));
+        simplifyPgNodeTree.accept(23 /* proargdefaults */);
         break;
       case "pg_ts_dict":
         replace.accept(4 /* dicttemplate */, entityNamesMap.get(pgTsTemplateOid));
@@ -2274,6 +2283,17 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       case "pg_ts_config_map":
         replace.accept(0 /* mapcfg */, entityNamesMap.get(pgTsConfigOid));
         replace.accept(3 /* mapdict */, entityNamesMap.get(pgTsDictOid));
+        break;
+      case "pg_foreign_data_wrapper":
+        replace.accept(3 /* fdwhandler */, entityNamesMap.get(pgProcOid));
+        replace.accept(4 /* fdwvalidator */, entityNamesMap.get(pgProcOid));
+        break;
+      case "pg_foreign_server":
+        replace.accept(3 /* srvfdw */, entityNamesMap.get(pgForeignDataWrapperOid));
+        break;
+      case "pg_foreign_table":
+        replace.accept(0 /* ftrelid */, entityNamesMap.get(pgClassOid));
+        replace.accept(1 /* ftserver */, entityNamesMap.get(pgForeignServerOid));
         break;
       default:
         return copy;

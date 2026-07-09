@@ -1288,7 +1288,7 @@ ANALYZE;
 :display_catalog_version;
  current_version | last_breaking_version 
 -----------------+-----------------------
-           10167 |                 10094
+           10168 |                 10094
 (1 row)
 
 -- It is best to add any new test before this block ('ANALYZE;'). This minimizes the

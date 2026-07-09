@@ -6,7 +6,6 @@
 
 -- Install required extensions
 CREATE EXTENSION file_fdw;
-CREATE EXTENSION postgres_fdw;
 
 -- Create enum type for the status column
 CREATE TYPE metric_status AS ENUM ('active', 'warning', 'critical');
@@ -832,7 +831,6 @@ DROP VIEW local_node_metrics;
 DROP FOREIGN TABLE local_node_metrics_csv;
 DROP SERVER gv_server CASCADE;
 DROP SERVER file_server CASCADE;
-DROP EXTENSION postgres_fdw;
 DROP EXTENSION file_fdw;
 DROP TYPE metric_status;
 DROP FUNCTION is_high_value(real);
