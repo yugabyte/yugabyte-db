@@ -31,13 +31,14 @@
 //
 
 #include "yb/tools/yb-admin_client.h"
+#include "yb/tools/yb-admin_util.h"
 
+#include <iomanip>
 #include <sstream>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
-#include <iomanip>
 
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
@@ -90,7 +91,6 @@
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/tools/tools_utils.h"
-#include "yb/tools/yb-admin_util.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -1353,6 +1353,7 @@ Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS(const PeerId& uuid)
 Status ClusterAdminClient::ListAllTabletServers(bool exclude_dead) {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
+  SortListTabletServerEntries(servers);
   char kSpaceSep = ' ';
 
   cout << RightPadToUuidWidth("Tablet Server UUID") << kSpaceSep
