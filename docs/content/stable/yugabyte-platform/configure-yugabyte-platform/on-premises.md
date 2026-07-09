@@ -72,7 +72,7 @@ To create, provision, and add nodes to your on-premises provider using legacy pr
 - Have your system administrator create VMs that will be used as nodes in universes. This is typically done using your hypervisor or cloud provider. Do the following:
   - Locate the VMs in the regions and availability zones where you will be deploying universes.
   - Install a YugabyteDB-supported Linux OS on the VMs.
-  - Set up a user with root privileges (SSH access and sudo-capable).
+  - Set up a sudo-capable user with SSH access.
 
   For instructions on creating VMs that are suitable for deploying YugabyteDB, refer to [Legacy provisioning](../../prepare/server-nodes-software/software-on-prem-legacy/).
 
