@@ -78,7 +78,7 @@ Required for [legacy automatic provisioning](../../prepare/server-nodes-software
 
 In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This SSH user cannot be named `yugabyte`.
 
-YugabyteDB Anywhere will use this user for SSH access to the nodes in order to provision them. In addition, set the **Manually Provision Nodes** option (under **Advanced**) to off (the default).
+YugabyteDB Anywhere will use this user for SSH access to the nodes in order to provision them. In addition, deselect the **Manually Provision Nodes** option (under **Advanced**), which is the default.
 
 In the **SSH Port** field, provide the port number of SSH client connections.
 
