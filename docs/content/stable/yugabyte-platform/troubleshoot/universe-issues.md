@@ -112,7 +112,7 @@ The focus is to ensure that support bundle generation is successful in most case
 {{<tags/feature/ea idea="1428">}} The Perf Advisor (PA) collector is a YugabyteDB Anywhere component that collects performance monitoring data locally on the YugabyteDB Anywhere host. It lets you generate support bundles that include [Perf Advisor metadata](#perf-advisor-metadata), which you can share with {{% support-platform %}} for anomaly detection and cluster load analysis.
 
 {{< note title="YBA installer registration" >}}
-Starting in YugabyteDB Anywhere v2026.1, the [YBA installer](../../install-yugabyte-platform/install-software/installer/) automatically registers a Perf Advisor collector service during installation. The service is registered by default, but you must enable the collector for each universe before it begins collecting metadata.
+Starting in YugabyteDB Anywhere v2026.1.1.0, the [YBA installer](../../install-yugabyte-platform/install-software/installer/) automatically registers a Perf Advisor collector service during installation. The service is registered by default, but you must enable the collector for each universe before it begins collecting metadata.
 {{< /note >}}
 
 To enable the PA collector for a universe:
