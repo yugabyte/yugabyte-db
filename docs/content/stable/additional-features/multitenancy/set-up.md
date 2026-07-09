@@ -113,6 +113,7 @@ With yugabyted, you are responsible for setting up the root cgroup manually (see
 For example, to reserve 5% of CPU for system work, cap each database at 25% of the remaining CPU, and allow at most 20 databases (a 5% per-database minimum):
 
 ```sh
+./bin/yugabyted start \
     --tserver_flags="enable_qos=true,enable_reserved_cpu_for_system=true,qos_max_db_cpu_percent=25,high_priority_system_reserved_cpu=5" \
     --master_flags="enable_qos=true,enable_reserved_cpu_for_system=true,qos_max_db_cpu_percent=25,high_priority_system_reserved_cpu=5,qos_max_db_count=20"
 ```
