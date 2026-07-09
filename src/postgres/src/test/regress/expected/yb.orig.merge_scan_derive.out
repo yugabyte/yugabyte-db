@@ -411,15 +411,14 @@ SET yb_enable_derived_saops = true;
          ->  Index Scan using bkt_tbl_pkey on public.bkt_tbl (actual rows=6 loops=1)
                Output: r1, r2, r3, n, bkt
                Index Cond: ((bkt_tbl.bkt = ANY ('{1,2,3,4}'::integer[])) AND (bkt_tbl.bkt = ANY ('{0,1,2}'::integer[])))
-               Rows Removed by Index Recheck: 3
                Merge Sort Key: bkt_tbl.r1, bkt_tbl.r2, bkt_tbl.r3
                Merge Stream Key: bkt_tbl.bkt
                Merge Streams: 3
                Merge Cond: (bkt_tbl.bkt = ANY ('{0,1,2}'::integer[]))
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 3
-               Storage Table Rows Scanned: 15
-(18 rows)
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 10
+(17 rows)
 
  r1 | r2 | r3 |   n   | bkt 
 ----+----+----+-------+-----
@@ -810,18 +809,17 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=30 loops=1)
                Output: r2, r3, n, (yb_hash_code(r2, r3, r4) % 3)
                Index Cond: (((yb_hash_code(r5n.r2, r5n.r3, r5n.r4) % 3) = ANY ('{0,2,4,8}'::integer[])) AND ((yb_hash_code(r5n.r2, r5n.r3, r5n.r4) % 3) = ANY ('{0,1,2}'::integer[])))
-               Rows Removed by Index Recheck: 16
                Merge Sort Key: r5n.r2, r5n.r3
                Merge Stream Key: (yb_hash_code(r5n.r2, r5n.r3, r5n.r4) % 3)
                Merge Streams: 3
                Merge Cond: ((yb_hash_code(r5n.r2, r5n.r3, r5n.r4) % 3) = ANY ('{0,1,2}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
-               Storage Table Rows Scanned: 1000
+               Storage Table Read Ops: 7
+               Storage Table Rows Scanned: 635
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 6
-               Storage Index Rows Scanned: 2383
-(21 rows)
+               Storage Index Read Ops: 4
+               Storage Index Rows Scanned: 1354
+(20 rows)
 
  r2 | r3 |   n   | ?column? 
 ----+----+-------+----------
