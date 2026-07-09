@@ -2389,7 +2389,7 @@ Set these flags on both YB-Master and YB-TServer.
 {{% tags/wrap %}}
 {{<tags/feature/ea>}}
 {{<tags/feature/restart-needed>}}
-{{% tags/feature/t-server %}}
+{{<tags/feature/t-server>}}
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -2399,7 +2399,7 @@ Enables per-database CPU limits and the maximum database count cap. When `false`
 
 {{% tags/wrap %}}
 {{<tags/feature/ea>}}
-{{% tags/feature/t-server %}}
+{{<tags/feature/t-server>}}
 Default: `100.0`
 {{% /tags/wrap %}}
 
@@ -2409,7 +2409,7 @@ The maximum percentage (0.0–100.0) of the node's non-system-reserved CPU that 
 
 {{% tags/wrap %}}
 {{<tags/feature/ea>}}
-{{% tags/feature/t-server %}}
+{{<tags/feature/t-server>}}
 Default: `100000`
 {{% /tags/wrap %}}
 
@@ -2420,7 +2420,7 @@ Advanced flag that maps directly to the Linux `cfs_period_us` parameter: the per
 {{% tags/wrap %}}
 {{<tags/feature/ea>}}
 {{<tags/feature/restart-needed>}}
-{{% tags/feature/t-server %}}
+{{<tags/feature/t-server>}}
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -2430,7 +2430,7 @@ Reserves CPU for high-priority system work by placing high-priority internal thr
 
 {{% tags/wrap %}}
 {{<tags/feature/ea>}}
-{{% tags/feature/t-server %}}
+{{<tags/feature/t-server>}}
 Default: `5.0`
 {{% /tags/wrap %}}
 
@@ -2441,7 +2441,8 @@ The percentage (0.0–100.0) of CPU reserved for high-priority system work when 
 {{% tags/wrap %}}
 {{<tags/feature/ea>}}
 {{<tags/feature/restart-needed>}}
-{{% tags/feature/t-server %}}
+{{<tags/feature/t-server>}}
+Default: `false`
 {{% /tags/wrap %}}
 
 Determines the number of available CPUs from the cgroup CPU limit rather than the total number of CPUs on the host. Set this to `true` in containerized environments where the container is allotted a fraction of the host's CPUs.
