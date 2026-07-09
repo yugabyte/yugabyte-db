@@ -96,7 +96,7 @@ check_clock_sync_timesyncd() {
 }
 
 systemd_loaded() {
-  active=$(systemctl show --no-pager $1 | grep "ActiveState" | cut -d= -f2)
+  active=$(systemctl show -p ActiveState --value $1 | tr -d '[:space:]')
   if [[ "${active}" == "active" ]]; then
     return 0
   fi

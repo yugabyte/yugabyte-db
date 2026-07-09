@@ -171,6 +171,60 @@ function rightnavAutoScroll() {
   }
 }
 
+/**
+ * Keep the docs page header bar pinned below fixed chrome (site header + mobile docs menu).
+ */
+function getDocsPageHeaderOffset() {
+  const header = document.querySelector('body > header');
+  if (!header) {
+    return 0;
+  }
+
+  let offset = header.getBoundingClientRect().bottom;
+
+  const docsMenu = document.querySelector('.docs-menu.desktop-hide');
+  if (docsMenu) {
+    const docsMenuStyle = window.getComputedStyle(docsMenu);
+    if (docsMenuStyle.display !== 'none') {
+      offset = Math.max(offset, docsMenu.getBoundingClientRect().bottom);
+    }
+  }
+
+  return Math.max(0, Math.ceil(offset));
+}
+
+function updateDocsPageHeaderBarOffset() {
+  const offset = getDocsPageHeaderOffset();
+
+  // If the fixed chrome can't be measured (offset <= 0), leave the CSS
+  // fallback value in place rather than pinning content under the navbar.
+  if (offset <= 0) {
+    return;
+  }
+
+  document.documentElement.style.setProperty(
+    '--docs-sticky-header-top',
+    `${offset}px`,
+  );
+}
+
+function observeDocsHeaderHeight() {
+  const header = document.querySelector('body > header');
+  if (!header || typeof ResizeObserver === 'undefined') {
+    return;
+  }
+
+  const observer = new ResizeObserver(() => {
+    updateDocsPageHeaderBarOffset();
+  });
+  observer.observe(header);
+
+  const docsMenu = document.querySelector('.docs-menu.desktop-hide');
+  if (docsMenu) {
+    observer.observe(docsMenu);
+  }
+}
+
 $(document).ready(() => {
   const isSafari = /Safari/.test(navigator.userAgent) && /Apple Computer/.test(navigator.vendor);
   if (isSafari) {
@@ -761,11 +815,14 @@ $(document).ready(() => {
   });
 
   rightnavAutoScroll();
+  updateDocsPageHeaderBarOffset();
+  observeDocsHeaderHeight();
 });
 
 $(window).resize(() => {
   rightnavAppend();
   rightnavAutoScroll();
+  updateDocsPageHeaderBarOffset();
   $('.td-main .td-sidebar').attr('style', '');
   $('.td-main #dragbar').attr('style', '');
   $('.td-main').attr('style', '');

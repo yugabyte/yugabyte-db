@@ -1254,8 +1254,16 @@ class TransactionParticipant::Impl
   // Returns kMax if there are no running transactions.
   HybridTime MinRunningHybridTime() {
     auto result = min_running_ht_.load(std::memory_order_acquire);
+    // Refreshing the status of the oldest running transaction below is best-effort. Issuing the
+    // status request needs a ready local client (SendStatusRequest blocks on
+    // client_future().get()). This code runs on the Raft apply path (Tablet::ApplyIntents ->
+    // MinRunningHybridTime), and blocking there can deadlock: local client initialization itself
+    // depends on this tablet's apply making progress (e.g. the master sys catalog right after a
+    // restart, where the client cannot locate a leader master until the pending write is applied).
+    // Skip the refresh until the client is ready; it will be retried later.
     if (result == HybridTime::kMax || result == HybridTime::kInvalid
-        || !transactions_loaded_.load()) {
+        || !transactions_loaded_.load()
+        || !IsReady(participant_context_.client_future())) {
       return result;
     }
     auto now = CoarseMonoClock::now();
@@ -1405,9 +1413,20 @@ class TransactionParticipant::Impl
         if (committed_ids.empty()) {
           break;
         } else {
-          // We are waiting only for committed transactions to be applied.
-          // So just add some delay.
-          std::this_thread::sleep_for(10ms * std::min<size_t>(10, committed_ids.size()));
+          // We are waiting only for committed transactions to be applied. Honor the deadline
+          // instead of spinning forever: the resolver returns quickly for already-committed
+          // transactions, so nothing in this loop observes the deadline otherwise. A committed
+          // transaction that never gets applied (e.g. when the applier is stopped during
+          // shutdown) would keep this loop sleeping indefinitely and block callers such as CDC
+          // GetChanges from returning.
+          auto now = CoarseMonoClock::Now();
+          if (now >= deadline) {
+            return STATUS(
+                TimedOut, "Timed out waiting for committed transactions to be applied");
+          }
+          // So just add some delay, but don't sleep past the deadline.
+          std::this_thread::sleep_for(std::min<CoarseMonoClock::Duration>(
+              10ms * std::min<size_t>(10, committed_ids.size()), deadline - now));
         }
       }
     }

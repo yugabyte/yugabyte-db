@@ -1,9 +1,10 @@
 DIRS = \
-	mage \
 	documentdb \
 	hypopg \
+	mage \
 	orafce \
 	pg_cron \
+	$(if $(findstring YB_ENABLE_YSQL_PG_DUCKDB_EXT,$(CXXFLAGS)),pg_duckdb,) \
 	pg_hint_plan \
 	$(if $(filter 1,$(YB_SKIP_PG_PARQUET_BUILD)),,pg_parquet) \
 	pg_partman \

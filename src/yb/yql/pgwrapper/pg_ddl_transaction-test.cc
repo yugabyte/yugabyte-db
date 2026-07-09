@@ -36,6 +36,7 @@ DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
+DECLARE_bool(TEST_ysql_ddl_fail_transaction_status_poll);
 DECLARE_int32(TEST_ysql_ddl_atomicity_alter_table_request_delay_ms);
 DECLARE_double(TEST_ysql_ddl_verification_failure_probability);
 DECLARE_int32(ysql_ddl_post_processing_failed_verification_retry_secs);
@@ -346,9 +347,7 @@ TEST_F(PgDdlTransactionMiniClusterTest, TestPostProcessingFailedPeriodicRetrigge
   // and mimic the nemesis case when tserver - master communication breaks down.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
-  LOG(INFO) << "Reporting YSQL DDL transaction status to YB-Master is disabled";
   ASSERT_OK(conn.Execute("ROLLBACK"));
-  LOG(INFO) << "Rolled back";
 
   ASSERT_OK(WaitFor(
       [&] {
@@ -374,6 +373,88 @@ TEST_F(PgDdlTransactionMiniClusterTest, TestPostProcessingFailedPeriodicRetrigge
     },
     MonoDelta::FromSeconds(60),
     "DDL verification task should have been re-triggered"));
+}
+
+TEST_F(PgDdlTransactionMiniClusterTest, TestPostProcessingFailedDueToFailedStatusPoll) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = -1;
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+
+  ASSERT_OK(conn.Execute("CREATE TABLE ddl_pp_failed_retrigger_poll (id INT PRIMARY KEY)"));
+
+  // Fail status polling so that the DDL verifier fails and ends up in the kDdlPostProcessingFailed
+  // state.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ddl_fail_transaction_status_poll) = true;
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("ALTER TABLE ddl_pp_failed_retrigger_poll ADD COLUMN c INT"));
+
+  const auto table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabase, "ddl_pp_failed_retrigger_poll"));
+  auto table_info = catalog_manager.GetTableInfo(table_id);
+  ASSERT_NE(table_info, nullptr);
+  const auto txn_id_pb = table_info->LockForRead()->pb_transaction_id();
+  ASSERT_FALSE(txn_id_pb.empty());
+  const auto txn_id = ASSERT_RESULT(FullyDecodeTransactionId(txn_id_pb));
+
+  // Disable YSQL reporting the status to yb-master so that we fully rely on the background task
+  // and mimic the nemesis case when tserver - master communication breaks down.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(WaitFor(
+      [&] {
+        const auto st = catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id);
+        return Result<bool>(
+            st.has_value() &&
+            *st == master::YsqlDdlVerificationState::kDdlPostProcessingFailed);
+      },
+      MonoDelta::FromSeconds(60),
+      "DDL verification should reach kDdlPostProcessingFailed"));
+
+  LOG(INFO) << "Done waiting for kDdlPostProcessingFailed state (poll-path setup)";
+
+  // Allow status polling to succeed on retrigger.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ddl_fail_transaction_status_poll) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 1;
+
+  ASSERT_OK(WaitFor(
+    [&] {
+      const auto st = catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id);
+      return Result<bool>(
+          !st.has_value() ||
+          *st != master::YsqlDdlVerificationState::kDdlPostProcessingFailed);
+    },
+    MonoDelta::FromSeconds(60),
+    "DDL verification task should have been re-triggered"));
+}
+
+TEST_F(PgDdlTransactionTest, TestRenameIndexAndTruncateInTxn) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  const std::string kTable = "rename_truncate_tbl";
+  const std::string kIndex = "rename_truncate_idx";
+  const std::string kRenamedIndex = "rename_truncate_idx_new";
+
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0 CASCADE", kTable));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTable));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (v)", kIndex, kTable));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTable));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+    "report_ysql_ddl_txn_status_to_master", "false"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER INDEX $0 RENAME TO $1", kIndex, kRenamedIndex));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE TABLE $0", kTable));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+    ASSERT_TRUE(cluster_->master(i)->IsProcessAlive())
+        << "Master " << i << " fatally exited";
+  }
 }
 
 TEST_F(PgDdlTransactionTest, TestNoSkipIntentsWriteOnSavepoint) {

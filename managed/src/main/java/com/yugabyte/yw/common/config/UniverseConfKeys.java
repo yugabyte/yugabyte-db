@@ -101,6 +101,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "timeout is reached",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> ybUpgradeBlacklistLeaderWaitAfterCompletion =
+      new ConfKeyInfo<>(
+          "yb.upgrade.blacklist_leader_wait_after_completion",
+          ScopeType.UNIVERSE,
+          "YB Upgrade Wait After Leader Blacklist Completion",
+          "Additional time to wait after the leader-blacklist operation completes and before "
+              + "stopping a tserver during rolling restarts/upgrades, giving resident tablet "
+              + "leaders extra time to drain. Defaults to 0 (disabled).",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ybUpgradeMaxFollowerLagThresholdMs =
       new ConfKeyInfo<>(
           "yb.upgrade.max_follower_lag_threshold_ms",

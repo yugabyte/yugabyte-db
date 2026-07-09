@@ -50,6 +50,10 @@ using namespace yb::size_literals;
 DEFINE_test_flag(int32, sleep_before_vector_index_backfill_seconds, 0,
     "Sleep specified amount of seconds before doing vector index backfill.");
 
+DEFINE_test_flag(int32, sleep_after_vector_index_backfill_chunk_ms, 0,
+    "Sleep specified amount of milliseconds after flushing each vector index backfill chunk. "
+    "Used to keep the backfill running long enough for a concurrent tablet split to be triggered.");
+
 DEFINE_RUNTIME_uint64(vector_index_backfill_single_chunk_size_bytes, 1_GB,
     "If this flag is non zero, the vector index chunk created during backfill is sized so that "
     "the underlying HNSW index implementation is expected to consume at most this many bytes of "
@@ -464,6 +468,12 @@ Status TabletVectorIndexes::Backfill(
     std::this_thread::sleep_for(FLAGS_TEST_sleep_before_vector_index_backfill_seconds * 1s);
   }
 
+  // The backfill task holds only a non-blocking ScopedRWOperation here (not the tablet metadata
+  // apply lock), so a test may park it until the tablet starts shutting down without wedging the
+  // tserver. On release, reader.Init below resolves intents and, if the tablet is shutting down,
+  // fails fast via the aborted MvccManager safe time wait instead of hanging.
+  TEST_SYNC_POINT("TabletVectorIndexes::Backfill:Start");
+
   IndexedTableReader reader(*vector_index);
   RETURN_NOT_OK(reader.Init(backfill_ht, from_key));
 
@@ -515,6 +525,9 @@ Status TabletVectorIndexes::Backfill(
     auto ybctid = reader.current_ybctid();
     if (helper.NeedFlush()) {
       RETURN_NOT_OK(helper.Flush(tablet(), *vector_index, ybctid));
+      if (FLAGS_TEST_sleep_after_vector_index_backfill_chunk_ms) {
+        std::this_thread::sleep_for(FLAGS_TEST_sleep_after_vector_index_backfill_chunk_ms * 1ms);
+      }
     }
     helper.Add(ybctid, reader.current_vector_slice());
   }
@@ -706,6 +719,19 @@ VectorIndexList TabletVectorIndexes::List() const {
   }
   SharedLock lock(vector_indexes_mutex_);
   return VectorIndexList(vector_indexes_list_);
+}
+
+bool TabletVectorIndexes::HasActiveBackfill() const {
+  auto list = List();
+  if (!list) {
+    return false;
+  }
+  for (const auto& index : *list) {
+    if (!index->BackfillDone()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 auto TabletVectorIndexes::FinishedBackfills()

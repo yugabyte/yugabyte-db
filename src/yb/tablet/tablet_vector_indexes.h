@@ -101,6 +101,10 @@ class TabletVectorIndexes :
 
   VectorIndexList List() const EXCLUDES(vector_indexes_mutex_);
 
+  // Returns true if at least one vector index on this tablet has not finished backfilling. Used to
+  // postpone tablet splitting until the backfill completes (see GH#32321).
+  bool HasActiveBackfill() const EXCLUDES(vector_indexes_mutex_);
+
   void LaunchBackfillsIfNecessary();
   void StartShutdown();
   void CompleteShutdown(std::vector<std::string>& out_paths);

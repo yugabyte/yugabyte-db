@@ -983,8 +983,19 @@ void TabletServer::Shutdown() {
     txn_manager->SetClosing();
   }
 
+  // Start shutting the remote bootstrap service down before the tablets, so peers bootstrapping
+  // from this server fail fast (terminal error) instead of retrying a source whose tablets are
+  // shutting down, which would otherwise wedge their own shutdown. See issue #32211.
+  if (auto remote_bootstrap_service = remote_bootstrap_service_.lock()) {
+    remote_bootstrap_service->StartShutdown();
+  }
+
   tablet_manager_->StartShutdown();
   WARN_NOT_OK(relinquish_lease_future.get(), "Couldn't relinquish ysql lease");
+
+  // Unblock PG backends still waiting on a relcache-init connection before we join reactors below;
+  // otherwise their orphaned RPCs keep their connections open and wedge reactor shutdown.
+  AbortInFlightRelcacheInitConnections();
 
   DbServerBase::Shutdown();
   RpcAndWebServerBase::Shutdown();
@@ -1419,17 +1430,30 @@ void TabletServer::TriggerRelcacheInitConnection(
   const std::string dbname = req.database_name();
 
   bool started_superuser_connection = false;
+  bool aborted_due_to_shutdown = false;
   {
     std::lock_guard l(lock_);
-    auto& callbacks = in_flight_superuser_connections_[dbname];
-    if (callbacks.empty()) {
-      started_superuser_connection = true;
-      LOG(INFO) << "Relcache init connection request to database " << dbname
-                << " starting from tserver " << this << " to " << pgsql_proxy_bind_address();
+    // Registering under lock_ while reading shutting_down_ keeps us ordered against
+    // AbortInFlightRelcacheInitConnections: either we observe the shutdown and bail here, or our
+    // entry is already in the map when the drain runs and it completes our callback.
+    if (shutting_down_) {
+      aborted_due_to_shutdown = true;
     } else {
-      LOG(INFO) << "Relcache init connection request to database " << dbname << " in progress";
+      auto& callbacks = in_flight_superuser_connections_[dbname];
+      if (callbacks.empty()) {
+        started_superuser_connection = true;
+        LOG(INFO) << "Relcache init connection request to database " << dbname
+                  << " starting from tserver " << this << " to " << pgsql_proxy_bind_address();
+      } else {
+        LOG(INFO) << "Relcache init connection request to database " << dbname << " in progress";
+      }
+      callbacks.push_back(std::move(callback));
     }
-    callbacks.push_back(std::move(callback));
+  }
+
+  if (aborted_due_to_shutdown) {
+    callback(STATUS(ShutdownInProgress, "TabletServer is shutting down"));
+    return;
   }
 
   if (!started_superuser_connection) {
@@ -1438,6 +1462,11 @@ void TabletServer::TriggerRelcacheInitConnection(
 
   messenger()->scheduler().Schedule(
       [this, dbname](const Status& status) {
+        // Don't open a new (blocking) connection once shutdown has begun; the drain owns completion
+        // of the already-registered callbacks for this database.
+        if (shutting_down_) {
+          return;
+        }
         if (!status.ok()) {
           LOG(INFO) << status;
           RelcacheInitConnectionDone(dbname, status);
@@ -1455,7 +1484,10 @@ void TabletServer::RelcacheInitConnectionDone(
     std::lock_guard l(lock_);
     auto it = in_flight_superuser_connections_.find(dbname);
     if (it == in_flight_superuser_connections_.end()) {
-      LOG(DFATAL) << "Cannot find in-flight superuser connection for database " << dbname;
+      // During shutdown AbortInFlightRelcacheInitConnections may have already drained this entry
+      // before an in-flight connection finished, so a missing entry is expected then.
+      LOG_IF(DFATAL, !shutting_down_)
+          << "Cannot find in-flight superuser connection for database " << dbname;
       return;
     }
     callbacks = std::move(it->second);
@@ -1463,6 +1495,31 @@ void TabletServer::RelcacheInitConnectionDone(
   }
   for (auto& cb : callbacks) {
     cb(status);
+  }
+}
+
+void TabletServer::AbortInFlightRelcacheInitConnections() {
+  std::map<std::string, std::vector<StdStatusCallback>> pending;
+  {
+    std::lock_guard l(lock_);
+    pending.swap(in_flight_superuser_connections_);
+  }
+
+  size_t num_callbacks = 0;
+  for (const auto& [dbname, callbacks] : pending) {
+    num_callbacks += callbacks.size();
+  }
+  if (num_callbacks == 0) {
+    return;
+  }
+  LOG(INFO) << "Aborting " << num_callbacks << " in-flight relcache-init connection callback(s) "
+            << "across " << pending.size() << " database(s) due to shutdown";
+
+  const auto status = STATUS(ShutdownInProgress, "TabletServer is shutting down");
+  for (auto& [dbname, callbacks] : pending) {
+    for (auto& cb : callbacks) {
+      cb(status);
+    }
   }
 }
 

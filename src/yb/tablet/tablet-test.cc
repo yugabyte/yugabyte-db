@@ -260,7 +260,7 @@ TYPED_TEST(TestTablet, TestDocKeyMetrics) {
 
 TYPED_TEST(TestTablet, ShouldApplyWriteRespectsWriteStop) {
   auto* db = down_cast<rocksdb::DBImpl*>(this->tablet()->regular_db());
-  auto& write_controller = db->TEST_write_controler();
+  auto& write_controller = db->TEST_write_controller();
 
   ASSERT_TRUE(this->tablet()->ShouldApplyWrite());
 
@@ -283,7 +283,7 @@ TYPED_TEST(TestTablet, ShouldApplyWriteRespectsWriteStop) {
 
 TYPED_TEST(TestTablet, ShouldApplyWriteRespectsWriteDelay) {
   auto* db = down_cast<rocksdb::DBImpl*>(this->tablet()->regular_db());
-  auto& write_controller = db->TEST_write_controler();
+  auto& write_controller = db->TEST_write_controller();
 
   ASSERT_TRUE(this->tablet()->ShouldApplyWrite());
 
@@ -306,7 +306,7 @@ TYPED_TEST(TestTablet, ShouldApplyWriteWithoutStopCheckIgnoresWriteStop) {
   });
 
   auto* db = down_cast<rocksdb::DBImpl*>(this->tablet()->regular_db());
-  auto& write_controller = db->TEST_write_controler();
+  auto& write_controller = db->TEST_write_controller();
 
   // NeedsDelay() only checks total_delayed_, not total_stopped_.
   // So a stop token is invisible when the AreWritesStopped() check is skipped.
@@ -324,7 +324,7 @@ TYPED_TEST(TestTablet, ShouldApplyWriteWithoutStopCheckIgnoresWriteStop) {
 
 TYPED_TEST(TestTablet, ShouldApplyWriteRespectsStopAndDelaySimultaneously) {
   auto* db = down_cast<rocksdb::DBImpl*>(this->tablet()->regular_db());
-  auto& write_controller = db->TEST_write_controler();
+  auto& write_controller = db->TEST_write_controller();
 
   auto stop_token = write_controller.GetStopToken();
   auto delay_token = write_controller.GetDelayToken(1024);
@@ -346,7 +346,7 @@ TYPED_TEST(TestTablet, ShouldApplyWriteRespectsStopAndDelaySimultaneously) {
 // stops (WriteController::IsStopped()), not delays. See #30728.
 TYPED_TEST(TestTablet, AreWritesStoppedDetectsHardStop) {
   auto* db = down_cast<rocksdb::DBImpl*>(this->tablet()->regular_db());
-  auto& write_controller = db->TEST_write_controler();
+  auto& write_controller = db->TEST_write_controller();
 
   ASSERT_FALSE(this->tablet()->AreWritesStopped());
 
@@ -369,7 +369,7 @@ TYPED_TEST(TestTablet, AreWritesStoppedDetectsHardStop) {
 // Delay tokens cause a bounded sleep, not an indefinite block.
 TYPED_TEST(TestTablet, AreWritesStoppedIgnoresDelay) {
   auto* db = down_cast<rocksdb::DBImpl*>(this->tablet()->regular_db());
-  auto& write_controller = db->TEST_write_controler();
+  auto& write_controller = db->TEST_write_controller();
 
   auto delay_token = write_controller.GetDelayToken(1024);
   ASSERT_TRUE(write_controller.NeedsDelay());

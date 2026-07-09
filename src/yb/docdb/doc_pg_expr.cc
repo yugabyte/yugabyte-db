@@ -24,6 +24,7 @@
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/docdb_pgapi.h"
+#include "yb/docdb/docdb_pgapi_private.h"
 
 #include "yb/dockv/reader_projection.h"
 

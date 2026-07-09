@@ -781,12 +781,12 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
  Nested Loop
    ->  Values Scan on "*VALUES*"
    ->  YB Bitmap Table Scan on joinb b
-         Storage Recheck Cond: (c = "*VALUES*".column1)
+         Storage Recheck Cond: ((c = "*VALUES*".column1) AND ((c + 5) > "*VALUES*".column2))
          Storage Filter: ((c + 5) > "*VALUES*".column2)
          ->  Bitmap Index Scan on joinb_c_idx
                Index Cond: (c = "*VALUES*".column1)

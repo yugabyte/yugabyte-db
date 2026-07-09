@@ -1219,15 +1219,14 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
                Output: r1, r3, r4, r5, n, r2
                Index Cond: ((r5n.r1 = 7) AND (r5n.r2 = ANY ('{1,2,3,4}'::bigint[])) AND (r5n.r2 = ANY ('{0,2,4,6,8}'::bigint[])))
-               Rows Removed by Index Recheck: 5
                Merge Sort Key: r5n.r3, r5n.r4, r5n.r5
                Merge Stream Key: r5n.r2
                Merge Streams: 4
                Merge Cond: (r5n.r2 = ANY ('{1,2,3,4}'::bigint[]))
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 4
-               Storage Table Rows Scanned: 20
-(18 rows)
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 10
+(17 rows)
 
  r1 | r3 | r4 | r5 |   n   | r2 
 ----+----+----+----+-------+----
@@ -1342,15 +1341,14 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
                Output: r2, r3, r4, r5, n, r1
                Index Cond: ((r5n.r1 > 1) AND (r5n.r1 = ANY ('{0,2,4,6,8}'::integer[])) AND (r5n.r1 < 7))
-               Rows Removed by Index Recheck: 1
                Merge Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.r5
                Merge Stream Key: r5n.r1
                Merge Streams: 5
                Merge Cond: (r5n.r1 = ANY ('{0,2,4,6,8}'::integer[]))
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 5
-               Storage Table Rows Scanned: 25
-(18 rows)
+               Storage Table Read Ops: 3
+               Storage Table Rows Scanned: 15
+(17 rows)
 
  r2 | r3 | r4 | r5 |   n   | r1 
 ----+----+----+----+-------+----
@@ -3437,15 +3435,14 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
                Output: r2, r3, r4, r5, n, r1
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4,5,6}'::integer[])) AND (r5n.r1 = ANY ('{3,4,5,6,7}'::integer[])) AND (r5n.r1 = ANY ('{5,6,7,8,9,10}'::integer[])))
-               Rows Removed by Index Recheck: 12
                Merge Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.r5
                Merge Stream Key: r5n.r1
                Merge Streams: 5
                Merge Cond: (r5n.r1 = ANY ('{3,4,5,6,7}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 10
-               Storage Table Rows Scanned: 2525
-(18 rows)
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 10
+(17 rows)
 
  r2 | r3 | r4 | r5 |   n   | r1 
 ----+----+----+----+-------+----

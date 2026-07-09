@@ -8530,7 +8530,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 				}
 				/* else do the same stuff as for T_SubLink et al. */
 			}
-			/* FALLTHROUGH */
+			yb_switch_fallthrough();
 
 		case T_SubLink:
 		case T_NullTest:
@@ -9381,11 +9381,39 @@ get_rule_expr(Node *node, deparse_context *context,
 				 * since the construct was parsed, but there seems no way to
 				 * be perfect.
 				 */
-				appendStringInfo(buf, ") %s ROW(",
+				/*
+				 * YB: rcexpr->rargs is Node* (not List*) in YB's fork. It is a List for
+				 * parser-shaped trees, but the planner can substitute an ArrayExpr for batched
+				 * row comparisons.
+				 * (matches YB's ruleutils.c)
+				 */
+				Oid			yb_rhs_type;
+
+				if (IsA(rcexpr->rargs, List))
+					yb_rhs_type = exprType(linitial(castNode(List, rcexpr->rargs)));
+				else
+				{
+					List	   *elems = castNode(ArrayExpr, rcexpr->rargs)->elements;
+					RowExpr    *row = (RowExpr *) linitial(elems);
+
+					yb_rhs_type = exprType(linitial(row->args));
+				}
+
+				appendStringInfo(buf, ") %s ",
 								 generate_operator_name(linitial_oid(rcexpr->opnos),
 														exprType(linitial(rcexpr->largs)),
-														exprType(linitial(rcexpr->rargs))));
-				get_rule_list_toplevel(rcexpr->rargs, context, true);
+														yb_rhs_type));
+				/* YB: emit ROW(...) for the List form, ANY (...) for the ArrayExpr form. */
+				if (IsA(rcexpr->rargs, List))
+				{
+					appendStringInfo(buf, "ROW(");
+					get_rule_list_toplevel(castNode(List, rcexpr->rargs), context, true);
+				}
+				else
+				{
+					appendStringInfo(buf, "ANY (");
+					get_rule_expr(rcexpr->rargs, context, true);
+				}
 				appendStringInfoString(buf, "))");
 			}
 			break;
@@ -10901,9 +10929,14 @@ get_sublink_expr(SubLink *sublink, deparse_context *context)
 
 			appendStringInfoChar(buf, '(');
 			get_rule_expr((Node *) rcexpr->largs, context, true);
+			/*
+			 * YB: rcexpr->rargs is Node* (not List*) in YB's fork, but in a
+			 * SubLink testexpr it is always a List, so castNode is safe.
+			 * (matches YB's ruleutils.c)
+			 */
 			opname = generate_operator_name(linitial_oid(rcexpr->opnos),
 											exprType(linitial(rcexpr->largs)),
-											exprType(linitial(rcexpr->rargs)));
+											exprType(linitial(castNode(List, rcexpr->rargs))));	/* YB */
 			appendStringInfoChar(buf, ')');
 		}
 		else

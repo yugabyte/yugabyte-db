@@ -5835,6 +5835,19 @@ yb_clear_portal_before_restart(Portal portal)
 	}
 
 	/*
+	 * Release child memory contexts (e.g. executor state) from the
+	 * previous execution attempt.  The portal's own portalContext is
+	 * preserved so that bound parameters survive the restart, but the
+	 * children hold executor state that will be recreated by PortalStart
+	 * during re-execution.  Without this, each transparent transaction
+	 * restart leaks the old EState and its YB-side objects (PgDml,
+	 * PgDocOp, DocResultStream, RefCntBuffers), causing multi-GB memory
+	 * bloat on large-table UPDATEs that hit repeated read-restart
+	 * conflicts.
+	 */
+	MemoryContextDeleteChildren(portal->portalContext);
+
+	/*
 	 * Fully detach portal from transaction to keep it alive in case of
 	 * transaction restart
 	 */

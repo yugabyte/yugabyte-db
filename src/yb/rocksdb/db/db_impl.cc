@@ -3190,6 +3190,12 @@ int DBImpl::GetCfdImmNumNotFlushed() {
   return cfd->imm()->NumNotFlushed();
 }
 
+void DBImpl::TEST_StopWrites() {
+  auto cfd = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
+  InstrumentedMutexLock guard_lock(&mutex_);
+  cfd->TEST_StopWrites();
+}
+
 FlushAbility DBImpl::GetFlushAbility() {
   auto cfd = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
   InstrumentedMutexLock guard_lock(&mutex_);
@@ -5690,7 +5696,7 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
     // in this case.
     while (bg_error_.ok() && write_controller_.IsStopped() && !IsShuttingDown()) {
       delayed = true;
-      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
+      TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
       bg_cv_.Wait();
     }
   }
@@ -6126,11 +6132,6 @@ Result<std::string> DBImpl::GetMiddleKey(Slice lower_bound_key) {
   // Use an empty (invalid) internal key to get the middle key without a lower bound.
   const Slice kEmptyInternalKey;
   return default_cf_handle_->cfd()->current()->GetMiddleKey(kEmptyInternalKey);
-}
-
-yb::Result<TableReader*> DBImpl::TEST_GetLargestSstTableReader() {
-  InstrumentedMutexLock lock(&mutex_);
-  return default_cf_handle_->cfd()->current()->TEST_GetLargestSstTableReader();
 }
 
 void DBImpl::TEST_SwitchMemtable() {

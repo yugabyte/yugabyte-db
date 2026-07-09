@@ -321,8 +321,7 @@ public class Release extends Model {
   }
 
   public Set<Universe> getUniverses() {
-    String formattedVersion = this.version;
-    return Universe.universeDetailsIfReleaseExists(formattedVersion);
+    return Universe.universeDetailsIfReleaseExists(this.version);
   }
 
   private static String encodeReleaseTag(String releaseTag) {

@@ -365,12 +365,21 @@ public class UniverseCRUDHandler {
     if (cluster.userIntent.isMulticloudSupport()) {
       UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
           cluster.userIntent.getProviderSpecification(provider.getUuid());
+      if (providerSpecification == null) {
+        /* Basically that should never happen, but since this method should be
+          used to determine whether we should do a full move or not,
+          it is better just to return false.
+        */
+        return false;
+      }
       curArnString = null;
       newArnString = providerSpecification.getAwsInstanceProfile();
       UniverseDefinitionTaskParams.ProviderSpecification oldProviderSpec =
           currentCluster.userIntent.getProviderSpecification(provider.getUuid());
       if (oldProviderSpec != null) {
         curArnString = oldProviderSpec.getAwsInstanceProfile();
+      } else {
+        return false;
       }
     }
     return (!StringUtils.isEmpty(curArnString) || !StringUtils.isEmpty(newArnString))

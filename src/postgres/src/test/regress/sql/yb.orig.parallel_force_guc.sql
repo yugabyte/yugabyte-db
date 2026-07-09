@@ -45,7 +45,8 @@ INSERT INTO pctest2
     SELECT i, a, (random() * 200)::int, (random() * 49)::int, 'Other value ' || i::text
     FROM (SELECT i, row_number() OVER (ORDER BY random()) AS a
           FROM generate_series(1, 1000) i) t;
-ANALYZE pctest1, pctest2;
+ANALYZE pctest1;
+ANALYZE pctest2;
 
 set yb_test_force_parallel = force;
 
@@ -241,7 +242,8 @@ INSERT INTO pctest_h1
     SELECT i, 400 - i, i/3, i%50, 'Value' || i::text FROM generate_series(1, 400) i;
 INSERT INTO pctest_h2
     SELECT i, 100 + i, i/5, i%10, 'Other value ' || i::text FROM generate_series(1, 100) i;
-ANALYZE pctest_h1, pctest_h2;
+ANALYZE pctest_h1;
+ANALYZE pctest_h2;
 
 -- Parallel sequential scan
 EXPLAIN (costs off)
@@ -377,16 +379,18 @@ SELECT * FROM pctest_h1 ORDER BY a LIMIT 10;
   Set(yb_bnl_batch_size 1) Set(enable_material off)
 */
 EXPLAIN (costs off)
-SELECT pctest_h1.* FROM pctest_h1, pctest_h2
-  WHERE pctest_h1.a = pctest_h2.b and pctest_h1.a % 10 = 0;
--- TODO row order varies between runs (parallel workers on hash-sharded
--- outer interleave).
--- /*+
---   Set(enable_mergejoin off) Set(enable_hashjoin off)
---   Set(yb_bnl_batch_size 1) Set(enable_material off)
--- */
--- SELECT pctest_h1.* FROM pctest_h1, pctest_h2
---  WHERE pctest_h1.a = pctest_h2.b and pctest_h1.a % 10 = 0;
+WITH cte AS MATERIALIZED (
+  SELECT pctest_h1.* FROM pctest_h1, pctest_h2
+    WHERE pctest_h1.a = pctest_h2.b and pctest_h1.a % 10 = 0)
+SELECT * FROM cte ORDER BY k;
+/*+
+  Set(enable_mergejoin off) Set(enable_hashjoin off)
+  Set(yb_bnl_batch_size 1) Set(enable_material off)
+*/
+WITH cte AS MATERIALIZED (
+  SELECT pctest_h1.* FROM pctest_h1, pctest_h2
+    WHERE pctest_h1.a = pctest_h2.b and pctest_h1.a % 10 = 0)
+SELECT * FROM cte ORDER BY k;
 EXPLAIN (costs off)
 /*+YbBatchedNL(pctest_h1 pctest_h2)*/
 SELECT pctest_h1.*, pctest_h2.k FROM pctest_h1, pctest_h2
@@ -425,16 +429,20 @@ SELECT x, d FROM
   (values (15),(16),(17)) v(x) on ss.b = v.x ORDER BY x;
 
 EXPLAIN (costs off)
+WITH cte AS MATERIALIZED (
 SELECT * FROM
   (SELECT pctest_h1.* FROM pctest_h1, pctest_h2
      WHERE pctest_h1.k = pctest_h2.k AND pctest_h1.c = pctest_h2.c) s1 JOIN
   (SELECT pctest_h2.* FROM pctest_h1, pctest_h2
-     WHERE pctest_h1.k = pctest_h2.k AND pctest_h1.b = pctest_h2.b) s2 ON s1.b = s2.c;
+     WHERE pctest_h1.k = pctest_h2.k AND pctest_h1.b = pctest_h2.b) s2 ON s1.b = s2.c)
+SELECT * FROM cte ORDER BY 1, 5;
+WITH cte AS MATERIALIZED (
 SELECT * FROM
   (SELECT pctest_h1.* FROM pctest_h1, pctest_h2
      WHERE pctest_h1.k = pctest_h2.k AND pctest_h1.c = pctest_h2.c) s1 JOIN
   (SELECT pctest_h2.* FROM pctest_h1, pctest_h2
-     WHERE pctest_h1.k = pctest_h2.k AND pctest_h1.b = pctest_h2.b) s2 ON s1.b = s2.c;
+     WHERE pctest_h1.k = pctest_h2.k AND pctest_h1.b = pctest_h2.b) s2 ON s1.b = s2.c)
+SELECT * FROM cte ORDER BY 1, 5;
 
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
 /*+ IndexOnlyScan(pctest_h3) */

@@ -78,8 +78,10 @@ public class EditUniverse extends EditUniverseTaskBase {
     }
   }
 
-  protected void freezeUniverseInTxn(Universe universe) {
-    super.freezeUniverseInTxn(universe);
+  @Override
+  protected UniverseDefinitionTaskParams getStateTransitionCaptureTarget() {
+    // TODO(PLAT-21497): derive post-success steady-state UDTP instead of interim taskParams.
+    return taskParams();
   }
 
   @Override

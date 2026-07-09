@@ -55,6 +55,7 @@ import com.yugabyte.yba.v2.client.models.UniverseLogsExporterConfig;
 import com.yugabyte.yba.v2.client.models.UniverseNetworkingSpec;
 import com.yugabyte.yba.v2.client.models.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yba.v2.client.models.UniverseResourceDetails;
+import com.yugabyte.yba.v2.client.models.UniverseSettings;
 import com.yugabyte.yba.v2.client.models.UniverseSpec;
 import com.yugabyte.yba.v2.client.models.User;
 import com.yugabyte.yba.v2.client.models.UserInfo;
@@ -479,6 +480,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     UniverseDefinitionTaskParams dbUnivDetails = dbUniv.getUniverseDetails();
     assertThat(v2UnivSpec.getName(), is(dbUniv.getName()));
     validateUniverseSpec(v2UnivSpec, dbUnivDetails);
+    validateUniverseSettings(v2UnivSpec.getUniverseSettings(), dbUniv);
   }
 
   private void validateUniverseSpec(
@@ -510,6 +512,14 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     validateYsqlSpec(v2UnivSpec.getYsql(), dbUnivDetails);
     validateYcqlSpec(v2UnivSpec.getYcql(), dbUnivDetails);
     validateClusters(v2UnivSpec.getClusters(), dbUnivDetails.clusters);
+  }
+
+  private void validateUniverseSettings(UniverseSettings v2UniverseSettings, Universe dbUniv) {
+    if (v2UniverseSettings == null || v2UniverseSettings.getExpertMode() == null) {
+      assertThat(getExpertMode(dbUniv), is(nullValue()));
+    } else {
+      assertThat(v2UniverseSettings.getExpertMode(), is(getExpertMode(dbUniv)));
+    }
   }
 
   private void validateUniverseNetworkginSpec(
@@ -625,6 +635,11 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       assertThat(dbCP.ysqlServerRpcPort, is(defaultPorts.ysqlServerRpcPort));
     } else {
       assertThat(dbCP.ysqlServerRpcPort, is(v2CP.getYsqlServerRpcPort()));
+    }
+    if (v2CP.getInternalYsqlServerRpcPort() == null) {
+      assertThat(dbCP.internalYsqlServerRpcPort, is(defaultPorts.internalYsqlServerRpcPort));
+    } else {
+      assertThat(dbCP.internalYsqlServerRpcPort, is(v2CP.getInternalYsqlServerRpcPort()));
     }
   }
 
@@ -987,11 +1002,14 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       assertThat(dbAuditLogConfig, is(nullValue()));
       return;
     }
-    if (v2AuditLogConfig.getExportActive() == null) {
-      assertThat(dbAuditLogConfig.isExportActive(), is(true));
-    } else {
-      assertThat(v2AuditLogConfig.getExportActive(), is(dbAuditLogConfig.isExportActive()));
-    }
+    // exportActive is normalized to false when no exporter is configured (see
+    // AuditLogConfig.normalizeExportActive), so the expected DB value is the requested flag
+    // (defaulting to true when unset) AND-ed with "has at least one exporter".
+    boolean expectedAuditExportActive =
+        (v2AuditLogConfig.getExportActive() == null || v2AuditLogConfig.getExportActive())
+            && v2AuditLogConfig.getUniverseLogsExporterConfig() != null
+            && !v2AuditLogConfig.getUniverseLogsExporterConfig().isEmpty();
+    assertThat(dbAuditLogConfig.isExportActive(), is(expectedAuditExportActive));
     assertThat(
         v2AuditLogConfig.getUniverseLogsExporterConfig().size(),
         is(dbAuditLogConfig.getUniverseLogsExporterConfig().size()));
@@ -1017,11 +1035,14 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       assertThat(dbQueryLogConfig, is(nullValue()));
       return;
     }
-    if (v2QueryLogConfig.getExportActive() == null) {
-      assertThat(dbQueryLogConfig.isExportActive(), is(true));
-    } else {
-      assertThat(v2QueryLogConfig.getExportActive(), is(dbQueryLogConfig.isExportActive()));
-    }
+    // exportActive is normalized to false when no exporter is configured (see
+    // QueryLogConfig.normalizeExportActive), so the expected DB value is the requested flag
+    // (defaulting to true when unset) AND-ed with "has at least one exporter".
+    boolean expectedQueryExportActive =
+        (v2QueryLogConfig.getExportActive() == null || v2QueryLogConfig.getExportActive())
+            && v2QueryLogConfig.getUniverseLogsExporterConfig() != null
+            && !v2QueryLogConfig.getUniverseLogsExporterConfig().isEmpty();
+    assertThat(dbQueryLogConfig.isExportActive(), is(expectedQueryExportActive));
     assertThat(
         v2QueryLogConfig.getUniverseLogsExporterConfig().size(),
         is(dbQueryLogConfig.getUniverseLogsExporterConfig().size()));
@@ -1531,6 +1552,11 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     }
     validateClustersEditSpec(
         universeEditSpec.getClusters(), v1EditParams.clusters, v2dbUniverseSpec.getClusters());
+    if (universeEditSpec.getUniverseSettings() != null
+        && universeEditSpec.getUniverseSettings().getExpertMode() != null) {
+      assertThat(
+          getExpertMode(v1EditParams), is(universeEditSpec.getUniverseSettings().getExpertMode()));
+    }
   }
 
   protected void validateClustersEditSpec(
@@ -1676,5 +1702,16 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     assertThat(info.getTimezone(), is(dbUser.getTimezone()));
     assertThat(info.getUserType().getValue(), is(dbUser.getUserType().name()));
     assertThat(info.getUuid(), is(dbUser.getUuid()));
+  }
+
+  protected Boolean getExpertMode(Universe universe) {
+    return getExpertMode(universe.getUniverseDetails());
+  }
+
+  protected Boolean getExpertMode(UniverseDefinitionTaskParams params) {
+    if (params.universeSettings == null) {
+      return null;
+    }
+    return params.universeSettings.expertMode;
   }
 }

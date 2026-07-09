@@ -2182,6 +2182,30 @@ std::string Version::DebugString(bool hex) const {
   return r;
 }
 
+Result<uint64_t> Version::Cross(const Slice& key) {
+  constexpr size_t kLevel = 0;
+  uint64_t result = 0;
+
+  SCHECK_EQ(
+      storage_info_.num_levels_, 1, NotSupported, "Cross is not supported for multi-level storage");
+
+  if (storage_info_.files_[kLevel].empty()) {
+    return STATUS(Incomplete, "No SST file");
+  }
+
+  for (const auto* file : storage_info_.files_[kLevel]) {
+    // SeekOffsetOf never consults the bloom filter so is_file_last_in_level is a don't-care
+    // no need to check it
+    auto reader_holder = VERIFY_RESULT(table_cache_->GetTableReader(
+        vset_->env_options_, cfd_->internal_comparator(), file->fd, kDefaultQueryId,
+        /* no_io = */ false, cfd_->internal_stats()->GetFileReadHist(kLevel),
+        IsFilterSkipped(kLevel, /* is_file_last_in_level = */ true)));
+
+    result += VERIFY_RESULT(reader_holder.table_reader->SeekOffsetOf(key));
+  }
+  return result;
+}
+
 std::tuple<Result<std::string>, bool> Version::GetMiddleKeyFromFile(
     const FileMetaData& file, Slice lower_bound) {
   constexpr int kLevel = 0;

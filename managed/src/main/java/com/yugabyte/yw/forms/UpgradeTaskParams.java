@@ -88,7 +88,26 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
   }
 
   public void verifyParams(Universe universe, NodeDetails.NodeState nodeState, boolean isFirstTry) {
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (clusters != null) {
+      for (Cluster cluster : clusters) {
+        Cluster originalCluster = universe.getCluster(cluster.uuid);
+        if (originalCluster != null
+            && originalCluster.userIntent != null
+            && cluster.userIntent != null) {
+          if (originalCluster.userIntent.isMulticloudSupport()
+              != cluster.userIntent.isMulticloudSupport()) {
+            throw new PlatformServiceException(
+                Status.BAD_REQUEST,
+                cluster.clusterType
+                    + ": original cluster has multicloud support "
+                    + originalCluster.userIntent.isMulticloudSupport()
+                    + " but current cluster has "
+                    + cluster.userIntent.isMulticloudSupport()
+                    + " (should be the same)");
+          }
+        }
+      }
+    }
     Map<String, String> universeConfig = universe.getConfig();
 
     if (upgradeOption == UpgradeOption.ROLLING_UPGRADE && universe.nodesInTransit(nodeState)) {

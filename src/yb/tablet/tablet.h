@@ -310,10 +310,19 @@ class Tablet : public AbstractTablet,
   // This transitions from kBootstrapping to kOpen state.
   void MarkFinishedBootstrapping();
 
+  // Starts tablet subsystems that must not run until the tablet is fully created and published by
+  // its TabletPeer (in particular vector index backfill, which resolves transaction statuses and
+  // therefore needs the TabletPeer to be able to serve safe time). Called from TabletPeer::Start.
+  void Start();
+
   // This can be called to proactively prevent new operations from being handled, even before
   // Shutdown() is called.
   // Returns true if it was the first call to StartShutdown.
-  bool StartShutdown();
+  // On the first call this also starts shutting the RocksDB instances down (StartShutdownStorages),
+  // so that writers parked in a RocksDB write stall are released before the peer strand is drained.
+  // See issue #32211. The resulting operation pauses are kept in shutdown_op_pauses_ until the
+  // RocksDB instances are destroyed in CompleteShutdownStorages.
+  bool StartShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
   bool IsShutdownRequested() const {
     return shutdown_requested_.load(std::memory_order::acquire);
   }
@@ -323,10 +332,9 @@ class Tablet : public AbstractTablet,
   // - transaction participant
   // - RocksDB instances
   // - etc.
-  // By default, RocksDB shutdown flushes the memtable. This behavior is overriden depending on the
-  // provided value of disable_flush_on_shutdown.
-  // If abort_ops is specified, aborts pending RocksDB operations that are abortable.
-  void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
+  // StartShutdown (which controls flush-on-shutdown and pending-operation aborting) must have been
+  // called first; CompleteShutdown consumes the operation pauses it produced.
+  void CompleteShutdown();
 
   // Triggered by a corresponding tablet peer when it has been moved into RUNNING state.
   Status CompleteStartup();
@@ -1286,6 +1294,11 @@ class Tablet : public AbstractTablet,
   // prevent race conditions between destructing the RocksDB in-memory instance and read/write
   // operations.
   std::atomic_bool shutdown_requested_{false};
+
+  // Read/write operation pauses produced by StartShutdownStorages, populated by StartShutdown and
+  // consumed by CompleteShutdown. They keep operations paused while the RocksDB instances are being
+  // torn down, so they must stay alive across the gap between StartShutdown and CompleteShutdown.
+  TabletScopedRWOperationPauses shutdown_op_pauses_;
 
   // This is a special atomic counter per tablet that increases monotonically.
   // It is like timestamp, but doesn't need locks to read or update.
