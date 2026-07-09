@@ -20,6 +20,7 @@
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/tablet_server.h"
@@ -92,6 +93,8 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
                 tablet->MayHaveOrphanedPostSplitData());
           storage_metadata->set_total_size(on_disk_size_info.total_on_disk_size);
           storage_metadata->set_vector_index_size(on_disk_size_info.vector_index_disk_size);
+          storage_metadata->set_has_active_vector_index_backfill(
+              tablet->vector_indexes().HasActiveBackfill());
           if (FLAGS_tserver_heartbeat_metrics_add_leader_info) {
             auto consensus_result = tablet_peer->GetRaftConsensus();
             if (consensus_result) {

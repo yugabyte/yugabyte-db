@@ -3092,6 +3092,10 @@ Status CatalogManager::ShouldSplitValidCandidate(
     return STATUS_FORMAT(IllegalState, "Tablet $0 may have uncompacted post-split data.",
         tablet_info.id());
   }
+  if (drive_info.has_active_vector_index_backfill) {
+    return STATUS_FORMAT(
+        IllegalState, "Tablet $0 has a vector index backfill in progress.", tablet_info.id());
+  }
   ssize_t size = drive_info.sst_files_size;
   DCHECK(size >= 0) << "Detected overflow in casting sst_files_size to signed int.";
   if (size < FLAGS_tablet_split_low_phase_size_threshold_bytes) {

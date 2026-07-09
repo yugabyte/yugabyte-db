@@ -59,6 +59,7 @@
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_usearch_exact);
 DECLARE_bool(vector_index_enable_compactions);
@@ -74,9 +75,11 @@ DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(priority_thread_pool_size);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(TEST_delay_init_tablet_peer_ms);
+DECLARE_int32(TEST_sleep_after_vector_index_backfill_chunk_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_string(vector_index_backend);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
@@ -1871,6 +1874,104 @@ TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
   ASSERT_LE(num_found, kNumRows);
 
   // TODO(vector_index): Verify compacted tablets content once GH29378 is fixed.
+}
+
+// GH#32321: a tablet split should be postponed until its vector index backfill has finished.
+// During backfill the reverse mapping records are written into the tablet's regular RocksDB. That
+// growth pushes the tablet past the split threshold, so without this enhancement the split starts
+// while the backfill is still running.
+TEST_P(PgDistributedVectorIndexTest, AutoSplitDuringBackfill) {
+  constexpr size_t kNumRows = RegularBuildVsSanitizers(500, 200);
+
+  // Allow splitting of a table that has a vector index; otherwise the split is rejected outright.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_tables_with_vector_index) = true;
+
+  // Do not split while the base table is being populated; the split should only be considered once
+  // the vector index backfill starts writing reverse mapping records.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  // Backfill the index in many small chunks and slow each chunk down, so the reverse mapping
+  // records accumulate and the backfill stays in progress long enough for the master to trigger
+  // the split.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = kNumRows / 20 + 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_after_vector_index_backfill_chunk_ms) =
+      100 * kTimeMultiplier;
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, /* start_row = */ 0, kNumRows - 1, /* keep_vectors = */ true));
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Counts the distinct tablets of the "test" table. Grows above one once the tablet splits.
+  auto num_tablets = [this]() -> Result<size_t> {
+    auto peers = VERIFY_RESULT(
+        ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kAll));
+    std::unordered_set<TabletId> tablet_ids;
+    for (const auto& peer : peers) {
+      tablet_ids.insert(peer->tablet_id());
+    }
+    return tablet_ids.size();
+  };
+
+  // Pick a split threshold that the base table alone does not reach, but that the extra reverse
+  // mapping records written during the backfill will.
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  const auto base_size =
+      ASSERT_RESULT(peers.front()->shared_tablet())->GetCurrentVersionSstFilesSize();
+  LOG(INFO) << "Base table SST size: " << base_size;
+  ASSERT_EQ(ASSERT_RESULT(num_tablets()), 1);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = base_size + 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+
+  std::atomic<bool> backfill_done{false};
+
+  TestThreadHolder threads;
+  // Keep flushing the regular RocksDB so the reverse mapping records written during backfill land
+  // in SST files and get reported to the master while the backfill is still running.
+  threads.AddThreadFunctor([this, &backfill_done] {
+    while (!backfill_done.load(std::memory_order_acquire)) {
+      ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+      std::this_thread::sleep_for(100ms * kTimeMultiplier);
+    }
+  });
+  // Watch for the tablet split. When it happens, the vector index backfill must already be done:
+  // the split has to wait until the backfill completes.
+  threads.AddThreadFunctor([&backfill_done, &num_tablets, &stop = threads.stop_flag()] {
+    while (!stop.load(std::memory_order_acquire)) {
+      if (ASSERT_RESULT(num_tablets()) > 1) {
+        ASSERT_TRUE(backfill_done.load(std::memory_order_acquire))
+            << "Tablet split started before the vector index backfill finished";
+        break;
+      }
+      std::this_thread::sleep_for(50ms * kTimeMultiplier);
+    }
+  });
+
+  // Backfill the vector index. The reverse mapping growth pushes the tablet over the split
+  // threshold.
+  ASSERT_OK(CreateIndex(conn));
+  backfill_done.store(true, std::memory_order_release);
+  threads.Stop();
+
+  // Consolidate the many small SST files produced by the periodic flushes above into a single SST,
+  // so the tablet has a findable split key.
+  ASSERT_OK(cluster_->CompactTablets());
+
+  // The split should still happen once the backfill completes, confirming the tablet actually
+  // exceeded the split threshold (i.e. the scenario was exercised, not just avoided).
+  ASSERT_OK(WaitFor([&num_tablets]() -> Result<bool> {
+    return VERIFY_RESULT(num_tablets()) > 1;
+  }, 60s * kTimeMultiplier, "Tablet split after backfill"));
+
+  // The index must still return all rows. TEST_vector_index_exact makes the search exact, so every
+  // row must be found.
+  auto query_vector = Vector(RandomUniformInt<size_t>(0, kNumRows - 1));
+  auto num_found = ASSERT_RESULT(FetchAndVerifyOrder(conn, query_vector, kNumRows));
+  ASSERT_EQ(num_found, kNumRows);
 }
 
 TEST_P(PgDistributedVectorIndexTest, AnotherVectorIndexCreationAfterManualSplit) {
