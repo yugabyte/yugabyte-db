@@ -260,62 +260,6 @@ function(ENFORCE_OUT_OF_SOURCE_BUILD)
   endif()
 endfunction()
 
-function(DETECT_BREW)
-  EXPECT_COMPILER_TYPE_TO_BE_SET()
-  if(NOT DEFINED IS_CLANG)
-    message(FATAL_ERROR "IS_CLANG undefined")
-  endif()
-  if(NOT DEFINED IS_GCC)
-    message(FATAL_ERROR "IS_GCC undefined")
-  endif()
-  if(NOT DEFINED COMPILER_VERSION)
-    message(FATAL_ERROR "COMPILER_VERSION undefined")
-  endif()
-  if(NOT DEFINED COMPILER_FAMILY)
-    message(FATAL_ERROR "COMPILER_FAMILY undefined")
-  endif()
-
-  # Detect Linuxbrew.
-  #
-  # TODO: consolidate Linuxbrew detection logic between here and detect_brew in common-build-env.sh.
-  # As of 10/2020 we only check the compiler version here but not in detect_brew.
-  set(USING_LINUXBREW FALSE)
-  if(NOT APPLE)
-    set(LINUXBREW_DIR "$ENV{YB_LINUXBREW_DIR}")
-    message("Trying to detect whether we should use Linuxbrew. "
-            "IS_CLANG=${IS_CLANG}, "
-            "IS_GCC=${IS_GCC}, "
-            "COMPILER_VERSION=${COMPILER_VERSION}, "
-            "LINUXBREW_DIR=${LINUXBREW_DIR}")
-
-    if("${LINUXBREW_DIR}" STREQUAL "" AND
-       EXISTS "${CMAKE_CURRENT_BINARY_DIR}/linuxbrew_path.txt")
-      file(STRINGS "${CMAKE_CURRENT_BINARY_DIR}/linuxbrew_path.txt" LINUXBREW_DIR)
-    endif()
-    if("${LINUXBREW_DIR}" STREQUAL "")
-      set(USING_LINUXBREW FALSE)
-      message("Not using Linuxbrew")
-    else()
-      if(EXISTS "${LINUXBREW_DIR}/bin" AND EXISTS "${LINUXBREW_DIR}/lib")
-        message("Linuxbrew found at ${LINUXBREW_DIR}")
-        set(ENV{YB_LINUXBREW_DIR} "${LINUXBREW_DIR}")
-        set(USING_LINUXBREW TRUE)
-      else()
-        message(FATAL_ERROR
-                "Linuxbrew is enabled but ${LINUXBREW_DIR} is not a valid Linuxbrew directory")
-      endif()
-    endif()
-  endif()
-
-  if(NOT USING_LINUXBREW)
-    set(LINUXBREW_DIR "/tmp/not-using-linuxbrew")
-  endif()
-
-  set(USING_LINUXBREW "${USING_LINUXBREW}" PARENT_SCOPE)
-  set(LINUXBREW_DIR "${LINUXBREW_DIR}" PARENT_SCOPE)
-  set(LINUXBREW_LIB_DIR "${LINUXBREW_DIR}/lib" PARENT_SCOPE)
-endfunction()
-
 # Makes sure that we are using a supported compiler family.
 function(EXPECT_COMPILER_TYPE_TO_BE_SET)
   if (NOT DEFINED YB_COMPILER_TYPE OR "${YB_COMPILER_TYPE}" STREQUAL "")
@@ -540,13 +484,6 @@ macro(YB_SETUP_CLANG)
               "Could not parse the output of 'clang -print-search-dirs': "
               "${CLANG_PRINT_SEARCH_DIRS_OUTPUT}")
     endif()
-    if(USING_LINUXBREW)
-      set(CLANG_INCLUDE_DIR "${CLANG_LIB_DIR}/include")
-      if(NOT EXISTS "${CLANG_INCLUDE_DIR}")
-        message(FATAL_ERROR "Clang include directory '${CLANG_INCLUDE_DIR}' does not exist")
-      endif()
-      ADD_CXX_FLAGS("-isystem ${CLANG_INCLUDE_DIR}")
-    endif()
 
     if ("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "12.0.0")
       ADD_LINKER_FLAGS("-fuse-ld=lld")
@@ -554,9 +491,6 @@ macro(YB_SETUP_CLANG)
     endif()
 
     ADD_CXX_FLAGS("-nostdinc++")
-    if(USING_LINUXBREW)
-      ADD_CXX_FLAGS("-nostdinc")
-    endif()
   endif()
 endmacro()
 
@@ -829,27 +763,10 @@ function(parse_build_root_basename)
   set(ENV{YB_COMPILER_TYPE} "${YB_COMPILER_TYPE_FROM_BUILD_ROOT_BASENAME}")
 
   # -----------------------------------------------------------------------------------------------
-  # YB_USING_LINUXBREW_FROM_BUILD_ROOT
-  # -----------------------------------------------------------------------------------------------
-
-  if (NOT "${CMAKE_MATCH_3}" STREQUAL "-linuxbrew" AND
-      NOT "${CMAKE_MATCH_3}" STREQUAL "")
-    message(FATAL_ERROR
-            "Invalid value of the 3rd capture group for build root basename"
-            "'${YB_BUILD_ROOT_BASENAME}': either '-linuxbrew' or an empty string.")
-  endif()
-
-  if ("${CMAKE_MATCH_3}" STREQUAL "-linuxbrew")
-    set(YB_USING_LINUXBREW_FROM_BUILD_ROOT ON PARENT_SCOPE)
-  else()
-    set(YB_USING_LINUXBREW_FROM_BUILD_ROOT OFF PARENT_SCOPE)
-  endif()
-
-  # -----------------------------------------------------------------------------------------------
   # YB_LINKING_TYPE
   # -----------------------------------------------------------------------------------------------
 
-  set(YB_LINKING_TYPE "${CMAKE_MATCH_5}")
+  set(YB_LINKING_TYPE "${CMAKE_MATCH_4}")
   if(NOT "${YB_LINKING_TYPE}" MATCHES "^(dynamic|thin-lto|full-lto)$")
     message(
         FATAL_ERROR
@@ -859,15 +776,15 @@ function(parse_build_root_basename)
   set(YB_LINKING_TYPE "${YB_LINKING_TYPE}" PARENT_SCOPE)
   detect_lto_type_from_linking_type()
 
-  set(OPTIONAL_DASH_NINJA "${CMAKE_MATCH_8}")
+  set(OPTIONAL_DASH_NINJA "${CMAKE_MATCH_7}")
   if(NOT "${OPTIONAL_DASH_NINJA}" STREQUAL "" AND
      NOT "${OPTIONAL_DASH_NINJA}" STREQUAL "-ninja")
     message(FATAL_ERROR
-            "Invalid value of the 8th capture group for build root basename"
+            "Invalid value of the 7th capture group for build root basename"
             "'${YB_BUILD_ROOT_BASENAME}': either '-ninja' or an empty string.")
   endif()
 
-  set(YB_TARGET_ARCH_FROM_BUILD_ROOT "${CMAKE_MATCH_7}")
+  set(YB_TARGET_ARCH_FROM_BUILD_ROOT "${CMAKE_MATCH_6}")
   if (NOT "${YB_TARGET_ARCH_FROM_BUILD_ROOT}" STREQUAL "" AND
       NOT "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "${YB_TARGET_ARCH_FROM_BUILD_ROOT}")
     message(
@@ -922,9 +839,6 @@ function(enable_lto_if_needed)
   if(NOT DEFINED COMPILER_FAMILY)
     message(FATAL_ERROR "COMPILER_FAMILY not defined")
   endif()
-  if(NOT DEFINED USING_LINUXBREW)
-    message(FATAL_ERROR "USING_LINUXBREW not defined")
-  endif()
   if(NOT DEFINED YB_BUILD_TYPE)
     message(FATAL_ERROR "YB_BUILD_TYPE not defined")
   endif()
@@ -940,7 +854,6 @@ function(enable_lto_if_needed)
             "YB_BUILD_TYPE=${YB_BUILD_TYPE}, "
             "YB_LINKING_TYPE=${YB_LINKING_TYPE}, "
             "COMPILER_FAMILY=${COMPILER_FAMILY}, "
-            "USING_LINUXBREW=${USING_LINUXBREW}, "
             "APPLE=${APPLE}")
     # In non-LTO builds, yb-master / yb-tserver executables themselves are dynamically linked to
     # other YB libraries.

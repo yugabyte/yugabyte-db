@@ -191,7 +191,6 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
     'master_flags.xml',
     'tserver_flags.xml',
     'version_metadata.json',
-    'linuxbrew_path.txt',
     'thirdparty_path.txt',
     'thirdparty_url.txt',
     'upgrade_test_builds',
@@ -314,11 +313,6 @@ def create_archive_for_workers() -> None:
                 mvn_local_repo, build_root_parent))
 
         files_that_must_exist_in_build_dir = ['thirdparty_path.txt']
-
-        # This will not include version-specific compiler types like clang11 or gcc9.
-        # We will eventually get rid of Linuxbrew and simplify this.
-        if sys.platform == 'linux' and compiler_type in ['gcc', 'clang']:
-            files_that_must_exist_in_build_dir.append('linuxbrew_path.txt')
 
         for rel_file_path in files_that_must_exist_in_build_dir:
             full_path = os.path.join(build_root, rel_file_path)

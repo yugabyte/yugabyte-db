@@ -144,9 +144,6 @@ print_report() {
       print_report_line "%s" "Build architecture" "${YB_TARGET_ARCH}"
       print_report_line "%s" "Build directory" "${BUILD_ROOT:-undefined}"
       print_report_line "%s" "Third-party dir" "${YB_THIRDPARTY_DIR:-undefined}"
-      if using_linuxbrew; then
-        print_report_line "%s" "Linuxbrew dir" "${YB_LINUXBREW_DIR:-undefined}"
-      fi
 
       set +u
       local make_targets_str="${make_targets[*]}"
@@ -194,9 +191,6 @@ build_root: "$BUILD_ROOT"
 compiler_type: "$YB_COMPILER_TYPE"
 thirdparty_dir: "${YB_THIRDPARTY_DIR:-$YB_SRC_ROOT/thirdparty}"
 EOT
-    if using_linuxbrew; then
-      echo "linuxbrew_dir: \"${YB_LINUXBREW_DIR:-}\"" >>"$build_descriptor_path"
-    fi
     log "Created a build descriptor file at '$build_descriptor_path'"
   fi
 }
@@ -1039,8 +1033,6 @@ if [[ ${build_cxx} == "true" ]]; then
   log "Using make parallelism of $YB_MAKE_PARALLELISM" \
       "(YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined})"
 fi
-
-add_brew_bin_to_path
 
 create_build_descriptor_file
 

@@ -330,7 +330,6 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL "RELWITHDEBINFO" OR "${CMAKE_BUILD_TYPE}" STR
 endif()
 
 VALIDATE_COMPILER_TYPE()
-DETECT_BREW()
 enable_lto_if_needed()
 
 message("Using COMPILER_FAMILY=${COMPILER_FAMILY}")
@@ -400,12 +399,6 @@ if(IS_CLANG)
   endif()
 endif()
 
-if(USING_LINUXBREW AND IS_CLANG)
-  # We are only using Clang with Linuxbrew. We never use Linuxbrew GCC 5 anymore, it is too old.
-  ADD_LINKER_FLAGS("-Wl,--dynamic-linker=${LINUXBREW_LIB_DIR}/ld.so")
-  ADD_LINKER_FLAGS("--gcc-toolchain=${LINUXBREW_DIR}")
-endif()
-
 if(IS_GCC)
   # For now code relies on fact that all libraries will be linked to binary (for using FLAGS_*)
   # This flag is enabled implicitly on centos but not on ubuntu
@@ -455,11 +448,6 @@ if(IS_GCC)
   ADD_CXX_FLAGS("-Wno-misleading-indentation")
 endif()
 
-if(USING_LINUXBREW)
-  # This is needed for finding correct versions of Flex, Bison, and other tools.
-  set(CMAKE_PREFIX_PATH "${LINUXBREW_DIR}" ${CMAKE_PREFIX_PATH})
-endif()
-
 # For both RocksDB and YugaByte code, we need to set the OS flag on Mac. Some code in RocksDB also
 # distinguishes further into BSD vs everything else, but we probably do not care further.
 if(APPLE)
@@ -499,9 +487,6 @@ set(CMAKE_CXX_FLAGS_DEBUG "")
 set(CMAKE_CXX_FLAGS_RELEASE "")
 
 set(CLANG_GCC_TOOLCHAIN "")
-if(IS_CLANG AND NOT APPLE AND USING_LINUXBREW)
-  set(CLANG_GCC_TOOLCHAIN "${LINUXBREW_DIR}")
-endif()
 
 # Set compile flags based on the build type.
 message("Configured for ${CMAKE_BUILD_TYPE} build "
@@ -571,10 +556,6 @@ if(IS_CLANG)
   if (IS_SANITIZER)
     YB_SETUP_SANITIZER()
   endif()
-endif()
-
-if (USING_LINUXBREW)
-  include_directories(SYSTEM "${LINUXBREW_DIR}/include")
 endif()
 
 if (NOT IS_CLANG)
@@ -666,11 +647,6 @@ include_directories("src/inline-thirdparty/simsimd")
 
 
 enable_testing()
-
-if (USING_LINUXBREW)
-  ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR("${YB_BUILD_ROOT}/postgres/lib")
-  ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR("${LINUXBREW_LIB_DIR}")
-endif()
 
 ############################################################
 # Dependencies

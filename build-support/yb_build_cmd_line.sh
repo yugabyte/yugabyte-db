@@ -161,10 +161,6 @@ Build options:
   --export-compile-commands-cxx-only, --ccmdscxx
     Only export the compilation commands for C++ code. Compilation database generation for Postgres
     C code can be time-consuming and this
-  --linuxbrew or --no-linuxbrew
-    Specify in order to do a Linuxbrew based build, or specifically prohibit doing so. This
-    influences the choice of prebuilt third-party archive. This can also be specified using the
-    YB_USE_LINUXBREW environment variable.
   --static-analyzer
     Enable Clang static analyzer
   --clangd-index
@@ -968,12 +964,6 @@ parse_yb_build_cmd_line() {
         fi
         export YB_TARGET_ARCH=$2
         shift
-      ;;
-      --linuxbrew)
-        export YB_USE_LINUXBREW=1
-      ;;
-      --no-linuxbrew)
-        export YB_USE_LINUXBREW=0
       ;;
       --no-initdb|--skip-initdb)
         disable_initdb
