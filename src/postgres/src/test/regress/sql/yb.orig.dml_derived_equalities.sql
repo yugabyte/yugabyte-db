@@ -341,3 +341,77 @@ INSERT INTO t_invalidate VALUES (1, 4), (2, 3);
 SELECT * FROM t_invalidate WHERE a + b = 5 ORDER BY a;
 RESET yb_test_invalidate_relcache_in_planner;
 DROP TABLE t_invalidate;
+
+-- Derived equalities must not push a clause whose substituted RHS
+-- evaluates (or could evaluate) to NULL.  (see GH#31971)
+CREATE TABLE demo_a (id int PRIMARY KEY, x int);
+INSERT INTO demo_a SELECT g, g % 7 FROM generate_series(1, 70) g;
+CREATE INDEX demo_a_nullif_idx ON demo_a (nullif(x, 0));
+ANALYZE demo_a;
+CREATE TABLE demo_b (id int PRIMARY KEY, x int);
+INSERT INTO demo_b SELECT g, g % 7 FROM generate_series(1, 70) g;
+CREATE INDEX demo_b_nullif_idx ON demo_b (nullif(x, 0));
+ANALYZE demo_b;
+
+-- Single-rel, NULL-yielding const (no derived clause emitted)
+\set hint1 '/*+ IndexScan(demo_a demo_a_nullif_idx) */'
+\set query 'SELECT count(*) FROM demo_a WHERE x = 0'
+:explain1run1
+
+-- Single-rel, non-NULL const (derived clause emitted)
+\set query 'SELECT count(*) FROM demo_a WHERE x = 3'
+:explain1run1
+
+-- Join with no constant predicate (no derived clause emitted)
+\set hint1 '/*+ NestLoop(a b) IndexScan(b demo_b_nullif_idx) */'
+\set query 'SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x'
+:explain1run1
+
+-- Join + WHERE on a join column = const (derived clause emitted)
+\set query 'SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x WHERE a.x = 5'
+:explain1run1
+
+DROP TABLE demo_a, demo_b;
+
+-- Fold-error guard: an index expression that would error during constant
+-- folding (e.g. division by zero in (100 / 0)) must not propagate the
+-- error out of planning.  The PG_TRY in yb_safely_fold_substituted
+-- swallows the error and treats it as "can't derive, skip."
+CREATE TABLE demo_err (id int PRIMARY KEY, x int);
+INSERT INTO demo_err VALUES (1, 5), (2, 10);
+CREATE INDEX demo_err_div_idx ON demo_err ((100 / x));
+ANALYZE demo_err;
+-- WHERE x = 0 has no matching rows; without the PG_TRY the planner errors
+-- on (100 / 0) while folding the substituted side.
+SELECT count(*) FROM demo_err WHERE x = 0;
+DROP TABLE demo_err;
+
+-- OR-arm variant: the bitmap-OR path's clause-based derivation must apply
+-- the same NULL guard.  An arm like arr = '{}' would otherwise derive
+-- array_length(arr, 1) = array_length('{}', 1), which folds to NULL and
+-- silently drops the empty-array rows from that arm of the bitmap.
+SET yb_enable_bitmapscan = true;
+SET enable_bitmapscan = true;
+CREATE TABLE demo_or (
+    id int PRIMARY KEY,
+    arr varchar[],
+    bucket int GENERATED ALWAYS AS (array_length(arr, 1)) STORED
+);
+INSERT INTO demo_or (id, arr)
+    SELECT g,
+           CASE g % 3 WHEN 0 THEN '{}'::varchar[]
+                      WHEN 1 THEN ARRAY['a']
+                      ELSE ARRAY['a','b']
+           END
+    FROM generate_series(1, 30) g;
+CREATE INDEX demo_or_bucket_idx ON demo_or (bucket);
+ANALYZE demo_or;
+-- id = 1 matches one row (arr = ARRAY['a']); arr = '{}' matches 10 rows; no
+-- overlap.  Without the OR-arm guard the second arm derives bucket = NULL,
+-- returns zero rows, and the count drops to 1.
+\set hint1 '/*+ BitmapScan(demo_or) */'
+\set query 'SELECT count(*) FROM demo_or WHERE id = 1 OR arr = ''{}'''
+:explain1run1
+DROP TABLE demo_or;
+RESET yb_enable_bitmapscan;
+RESET enable_bitmapscan;
