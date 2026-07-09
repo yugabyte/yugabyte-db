@@ -434,64 +434,62 @@ macro(YB_SETUP_CLANG)
   # so that the annotations in the header actually take effect.
   ADD_CXX_FLAGS("-D_GLIBCXX_EXTERN_TEMPLATE=0")
 
-  if(NOT IS_APPLE_CLANG)
-    set(LIBCXX_DIR "${YB_THIRDPARTY_INSTALLED_DIR}/${THIRDPARTY_INSTRUMENTATION_TYPE}/libcxx")
-    if(NOT EXISTS "${LIBCXX_DIR}")
-      message(FATAL_ERROR "libc++ directory does not exist: '${LIBCXX_DIR}'")
-    endif()
-    set(LIBCXX_INCLUDE_DIR "${LIBCXX_DIR}/include/c++/v1")
-    if(NOT EXISTS "${LIBCXX_INCLUDE_DIR}")
-      message(FATAL_ERROR "libc++ include directory does not exist: '${LIBCXX_INCLUDE_DIR}'")
-    endif()
-    if(NOT EXISTS "${LIBCXX_DIR}/lib")
-      message(FATAL_ERROR "libc++ library directory does not exist: '${LIBCXX_DIR}/lib'")
-    endif()
-    ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR("${LIBCXX_DIR}/lib")
+  set(LIBCXX_DIR "${YB_THIRDPARTY_INSTALLED_DIR}/${THIRDPARTY_INSTRUMENTATION_TYPE}/libcxx")
+  if(NOT EXISTS "${LIBCXX_DIR}")
+    message(FATAL_ERROR "libc++ directory does not exist: '${LIBCXX_DIR}'")
+  endif()
+  set(LIBCXX_INCLUDE_DIR "${LIBCXX_DIR}/include/c++/v1")
+  if(NOT EXISTS "${LIBCXX_INCLUDE_DIR}")
+    message(FATAL_ERROR "libc++ include directory does not exist: '${LIBCXX_INCLUDE_DIR}'")
+  endif()
+  if(NOT EXISTS "${LIBCXX_DIR}/lib")
+    message(FATAL_ERROR "libc++ library directory does not exist: '${LIBCXX_DIR}/lib'")
+  endif()
+  ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR("${LIBCXX_DIR}/lib")
 
-    # This needs to appear before adding third-party dependencies that have their headers in the
-    # Linuxbrew include directory, because otherwise we'll pick up the standard library headers from
-    # the Linuxbrew include directory too.
-    include_directories(SYSTEM "${LIBCXX_INCLUDE_DIR}")
+  # This needs to appear before adding third-party dependencies that have their headers in the
+  # Linuxbrew include directory, because otherwise we'll pick up the standard library headers from
+  # the Linuxbrew include directory too.
+  include_directories(SYSTEM "${LIBCXX_INCLUDE_DIR}")
 
-    execute_process(COMMAND "${CMAKE_CXX_COMPILER}" -print-search-dirs
-                    OUTPUT_VARIABLE CLANG_PRINT_SEARCH_DIRS_OUTPUT)
+  execute_process(COMMAND "${CMAKE_CXX_COMPILER}" -print-search-dirs
+                  OUTPUT_VARIABLE CLANG_PRINT_SEARCH_DIRS_OUTPUT)
 
-    if ("${CLANG_PRINT_SEARCH_DIRS_OUTPUT}" MATCHES ".*libraries: =([^:\r\n]+)(:.*|[\r\n]*$)" )
-      # We get a directory like this:
-      # .../yb-llvm-v12.0.1-yb-1-1639783720-bdb147e6-almalinux8-x86_64/lib/clang/12.0.1
-      set(CLANG_LIB_DIR "${CMAKE_MATCH_1}")
-      if(APPLE)
-        set(CLANG_RUNTIME_LIB_DIR "${CLANG_LIB_DIR}/lib/darwin")
+  if ("${CLANG_PRINT_SEARCH_DIRS_OUTPUT}" MATCHES ".*libraries: =([^:\r\n]+)(:.*|[\r\n]*$)" )
+    # We get a directory like this:
+    # .../yb-llvm-v12.0.1-yb-1-1639783720-bdb147e6-almalinux8-x86_64/lib/clang/12.0.1
+    set(CLANG_LIB_DIR "${CMAKE_MATCH_1}")
+    if(APPLE)
+      set(CLANG_RUNTIME_LIB_DIR "${CLANG_LIB_DIR}/lib/darwin")
+      if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
+        message(FATAL_ERROR
+                "Failed to determine Clang runtime library directory inside of "
+                "${CLANG_RUNTIME_LIB_DIR}")
+      endif()
+    else()
+      set(CLANG_RUNTIME_LIB_DIR "${CLANG_LIB_DIR}/lib/linux")
+      if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
+        set(CLANG_RUNTIME_LIB_DIR
+            "${CLANG_LIB_DIR}/lib/${CMAKE_SYSTEM_PROCESSOR}-unknown-linux-gnu")
         if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
           message(FATAL_ERROR
                   "Failed to determine Clang runtime library directory inside of "
                   "${CLANG_RUNTIME_LIB_DIR}")
         endif()
-      else()
-        set(CLANG_RUNTIME_LIB_DIR "${CLANG_LIB_DIR}/lib/linux")
-        if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
-          set(CLANG_RUNTIME_LIB_DIR
-              "${CLANG_LIB_DIR}/lib/${CMAKE_SYSTEM_PROCESSOR}-unknown-linux-gnu")
-          if(NOT EXISTS "${CLANG_RUNTIME_LIB_DIR}")
-            message(FATAL_ERROR
-                    "Failed to determine Clang runtime library directory inside of "
-                    "${CLANG_RUNTIME_LIB_DIR}")
-          endif()
-        endif()
       endif()
-    else()
-      message(FATAL_ERROR
-              "Could not parse the output of 'clang -print-search-dirs': "
-              "${CLANG_PRINT_SEARCH_DIRS_OUTPUT}")
     endif()
-
-    if ("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "12.0.0")
-      ADD_LINKER_FLAGS("-fuse-ld=lld")
-      ADD_LINKER_FLAGS("-lunwind")
-    endif()
-
-    ADD_CXX_FLAGS("-nostdinc++")
+  else()
+    message(FATAL_ERROR
+            "Could not parse the output of 'clang -print-search-dirs': "
+            "${CLANG_PRINT_SEARCH_DIRS_OUTPUT}")
   endif()
+
+  if ("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "12.0.0")
+    ADD_LINKER_FLAGS("-fuse-ld=lld")
+    ADD_LINKER_FLAGS("-lunwind")
+  endif()
+
+  ADD_CXX_FLAGS("-nostdinc++")
 endmacro()
 
 # This is a macro because we need to call functions that set flags on the parent scope.

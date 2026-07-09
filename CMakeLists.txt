@@ -393,8 +393,7 @@ if(IS_CLANG)
 
   # Allow variable length arrays in C++.
 
-  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "18.0.0" OR
-     (IS_APPLE_CLANG AND "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "17.0.0"))
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "18.0.0")
      ADD_CXX_FLAGS("-Wno-vla-cxx-extension")
   endif()
 endif()
@@ -535,9 +534,7 @@ if (IS_CLANG)
     message("Running without a controlling terminal or in a dumb terminal")
   endif()
 
-  if (IS_APPLE_CLANG)
-    ADD_CXX_FLAGS("-Wno-c++17-compat-mangling")
-  elseif (APPLE)
+  if (APPLE)
     ADD_LINKER_FLAGS("-lc++ -lc++abi")
   endif()
 elseif(IS_GCC)
