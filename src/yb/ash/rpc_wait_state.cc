@@ -111,24 +111,6 @@ MetadataSerializer::MetadataSerializer(rpc::MetadataSerializationMode mode)
   }
 }
 
-void MetadataSerializer::SetTraceContext(const opentelemetry::trace::SpanContext& span_context) {
-  if (!span_context.IsValid()) {
-    return;
-  }
-  const auto trace_id = span_context.trace_id();
-  const auto span_id = span_context.span_id();
-  auto* trace_context = metadata_.mutable_trace_context();
-  // Split the 16-byte trace id into two big-endian 64-bit halves; the span id is one big-endian
-  // 64-bit value -- the layout rpc::ToSpanContext reads back on the tserver.
-  trace_context->set_trace_id_hi(BigEndian::Load64(trace_id.Id().data()));
-  trace_context->set_trace_id_lo(BigEndian::Load64(trace_id.Id().data() + 8));
-  trace_context->set_span_id(BigEndian::Load64(span_id.Id().data()));
-  // Low byte: flags; high byte: the (currently unused) version.
-  constexpr uint32_t kVersion = 0;
-  trace_context->set_version_and_flags((kVersion << 8) | span_context.trace_flags().flags());
-  serialized_size_ = metadata_.ByteSizeLong();
-}
-
 size_t MetadataSerializer::SerializedSize() {
   if (mode_ == rpc::MetadataSerializationMode::kSkipOnZero && serialized_size_ == 0) {
     return 0;
@@ -149,6 +131,33 @@ uint8_t* MetadataSerializer::SerializeToArray(uint8_t* out) {
   }
 
   return metadata_.SerializeWithCachedSizesToArray(out);
+}
+
+void TraceContextSerializer::SetTraceContext(
+    const opentelemetry::trace::SpanContext& span_context) {
+  if (!span_context.IsValid()) {
+    return;
+  }
+  const auto trace_id = span_context.trace_id();
+  const auto span_id = span_context.span_id();
+  // Split the 16-byte trace id into two big-endian 64-bit halves; the span id is one big-endian
+  // 64-bit value -- the layout rpc::ToSpanContext reads back on the tserver.
+  trace_context_.set_trace_id_hi(BigEndian::Load64(trace_id.Id().data()));
+  trace_context_.set_trace_id_lo(BigEndian::Load64(trace_id.Id().data() + 8));
+  trace_context_.set_span_id(BigEndian::Load64(span_id.Id().data()));
+  // Low byte: flags; high byte: the (currently unused) version.
+  constexpr uint32_t kVersion = 0;
+  trace_context_.set_version_and_flags((kVersion << 8) | span_context.trace_flags().flags());
+  serialized_size_ = trace_context_.ByteSizeLong();
+}
+
+size_t TraceContextSerializer::SerializedSize() const {
+  return Output::VarintSize32(static_cast<uint32_t>(serialized_size_)) + serialized_size_;
+}
+
+uint8_t* TraceContextSerializer::SerializeToArray(uint8_t* out) const {
+  out = Output::WriteVarint32ToArray(static_cast<uint32_t>(serialized_size_), out);
+  return trace_context_.SerializeWithCachedSizesToArray(out);
 }
 
 } // namespace yb::ash
