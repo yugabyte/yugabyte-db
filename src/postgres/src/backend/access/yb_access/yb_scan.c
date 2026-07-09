@@ -2400,66 +2400,6 @@ ybBindOrdinaryScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 
 	memset(key_folded, 0, sizeof(bool) * (ybScan->nkeys + 1));
 
-	/* Prioritize binding SAOPs that are pinned by merge scan. */
-	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&ybScan->keys[i]))
-	{
-		ScanKey		key = ybScan->keys[i];
-
-		if (YbIsSearchArray(key))
-		{
-			Datum		this_array_const;
-			ListCell   *lc;
-			YbMergeScanInfo *yb_merge_scan_info = NULL;
-
-			this_array_const = YbGetArrayConst(&ybScan->keys[i]);
-
-			if (scan)
-			{
-				if (IsA(scan, IndexScan))
-					yb_merge_scan_info =
-						((IndexScan *) scan)->yb_merge_scan_info;
-				else if (IsA(scan, IndexOnlyScan))
-					yb_merge_scan_info =
-						((IndexOnlyScan *) scan)->yb_merge_scan_info;
-			}
-
-			if (yb_merge_scan_info)
-			{
-				foreach(lc, yb_merge_scan_info->saop_cols)
-				{
-					ScalarArrayOpExpr *pinned_saop =
-						((YbMergeScanSaopColInfo *) lfirst(lc))->saop;
-					Datum		pinned_array_const =
-						((Const *) lsecond(pinned_saop->args))->constvalue;
-
-					/*
-					 * Direct datum comparison (compared to datumIsEqual) is
-					 * safe because yb_match_in_index_clause and
-					 * ExecIndexBuildScanKeys set pinned_array_const and
-					 * this_array_const, respectively, to the same field in
-					 * memory.
-					 */
-					if (this_array_const == pinned_array_const)
-					{
-						bool		bail_out = false;
-
-						/* YbBindSearchArray updates is_column_bound. */
-						YbBindSearchArray(ybScan, scan_plan, i,
-										  is_for_precheck,
-										  NULL,
-										  is_column_bound,
-										  &bail_out);
-
-						if (bail_out)
-							return false;
-
-						break;
-					}
-				}
-			}
-		}
-	}
-
 	if (yb_enable_advanced_index_cond_fold && !is_for_precheck)
 	{
 		/*
@@ -2798,6 +2738,70 @@ ybBindOrdinaryScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 	/*
 	 * Non-fold path: priority-based binding. To be cleaned up.
 	 *
+	 * Bind the merge-scan pinned SAOPs first so that the priority-based
+	 * binding below finds their columns already bound and leaves them to drive
+	 * the merge streams.
+	 */
+	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&ybScan->keys[i]))
+	{
+		ScanKey		key = ybScan->keys[i];
+
+		if (YbIsSearchArray(key))
+		{
+			Datum		this_array_const;
+			ListCell   *lc;
+			YbMergeScanInfo *yb_merge_scan_info = NULL;
+
+			this_array_const = YbGetArrayConst(&ybScan->keys[i]);
+
+			if (scan)
+			{
+				if (IsA(scan, IndexScan))
+					yb_merge_scan_info =
+						((IndexScan *) scan)->yb_merge_scan_info;
+				else if (IsA(scan, IndexOnlyScan))
+					yb_merge_scan_info =
+						((IndexOnlyScan *) scan)->yb_merge_scan_info;
+			}
+
+			if (yb_merge_scan_info)
+			{
+				foreach(lc, yb_merge_scan_info->saop_cols)
+				{
+					ScalarArrayOpExpr *pinned_saop =
+						((YbMergeScanSaopColInfo *) lfirst(lc))->saop;
+					Datum		pinned_array_const =
+						((Const *) lsecond(pinned_saop->args))->constvalue;
+
+					/*
+					 * Direct datum comparison (compared to datumIsEqual) is
+					 * safe because yb_match_in_index_clause and
+					 * ExecIndexBuildScanKeys set pinned_array_const and
+					 * this_array_const, respectively, to the same field in
+					 * memory.
+					 */
+					if (this_array_const == pinned_array_const)
+					{
+						bool		bail_out = false;
+
+						/* YbBindSearchArray updates is_column_bound. */
+						YbBindSearchArray(ybScan, scan_plan, i,
+										  is_for_precheck,
+										  NULL,
+										  is_column_bound,
+										  &bail_out);
+
+						if (bail_out)
+							return false;
+
+						break;
+					}
+				}
+			}
+		}
+	}
+
+	/*
 	 * Find an order of relevant keys such that for the same column, an EQUAL
 	 * condition is encountered before IN or BETWEEN. is_column_bound is then
 	 * used to establish priority order ROW IN > EQUAL > IN > BETWEEN.
