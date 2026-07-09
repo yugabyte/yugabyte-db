@@ -117,6 +117,29 @@ DROP INDEX irv;
 
 DROP TABLE t;
 
+-- Regression test for untranslated uniqkeys leaking from subquery paths.
+CREATE TABLE distinct_outer(k INT);
+CREATE TABLE distinct_inner(a INT);
+CREATE INDEX distinct_outer_k_idx ON distinct_outer(k ASC);
+CREATE INDEX distinct_inner_a_idx ON distinct_inner(a ASC);
+
+INSERT INTO distinct_outer
+  SELECT CASE WHEN i <= 500 THEN 1 ELSE 2 END
+  FROM GENERATE_SERIES(1, 1000) AS i;
+INSERT INTO distinct_inner
+  SELECT 10 * (i % 3)
+  FROM GENERATE_SERIES(1, 1000) AS i;
+ANALYZE distinct_outer;
+ANALYZE distinct_inner;
+
+SELECT DISTINCT o.k
+FROM distinct_outer o,
+     (SELECT DISTINCT a FROM distinct_inner) s
+ORDER BY 1;
+
+DROP TABLE distinct_outer;
+DROP TABLE distinct_inner;
+
 -- Regression test case for GitHub issue #20827
 
 CREATE TABLE t1 (col_int_key int, pad int, primary key(col_int_key asc, pad asc));

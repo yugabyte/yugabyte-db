@@ -59,6 +59,9 @@ typedef enum
 #define STD_FUZZ_FACTOR 1.01
 
 static List *translate_sub_tlist(List *tlist, int relid);
+static void yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields,
+											 RelOptInfo *rel, Path *subpath);
+static Var *yb_find_var_for_subquery_tle(RelOptInfo *rel, TargetEntry *tle);
 static int	append_total_cost_compare(const ListCell *a, const ListCell *b);
 static int	append_startup_cost_compare(const ListCell *a, const ListCell *b);
 static List *reparameterize_pathlist_by_child(PlannerInfo *root,
@@ -1317,6 +1320,93 @@ yb_propagate_fields_list(YbPathInfo *parent_fields, List *child_paths)
 	 * values across the child pathnodes before we can do that.
 	 */
 	parent_fields->yb_uniqkeys = NIL;
+}
+
+/*
+ * Propagate YugabyteDB fields through a SubqueryScanPath.
+ *
+ * SubqueryScanPath crosses a namespace boundary:
+ * fields represented in the subquery's terms must be translated to
+ * the outer query.
+ */
+static void
+yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields, RelOptInfo *rel,
+								 Path *subpath)
+{
+	List	   *retval = NIL;
+	List	   *subquery_tlist;
+	ListCell   *lc;
+
+	if (!IsYugaByteEnabled())
+		return;
+
+	yb_propagate_fields(parent_fields, &subpath->yb_path_info);
+
+	parent_fields->yb_uniqkeys = NIL;
+
+	if (subpath->yb_path_info.yb_uniqkeys == NIL)
+	{
+		return;
+	}
+
+	subquery_tlist = make_tlist_from_pathtarget(subpath->pathtarget);
+
+	foreach(lc, subpath->yb_path_info.yb_uniqkeys)
+	{
+		Expr	   *uniqkey = (Expr *) lfirst(lc);
+		ListCell   *tl;
+		Var		   *outer_var = NULL;
+
+		foreach(tl, subquery_tlist)
+		{
+			TargetEntry *tle = (TargetEntry *) lfirst(tl);
+			Expr	   *tle_expr;
+
+			tle_expr = canonicalize_ec_expression(tle->expr,
+												  exprType((Node *) uniqkey),
+												  exprCollation((Node *) uniqkey));
+			if (!equal(tle_expr, uniqkey))
+				continue;
+
+			outer_var = yb_find_var_for_subquery_tle(rel, tle);
+			if (outer_var)
+				break;
+		}
+
+		if (!outer_var)
+			return;
+
+		retval = lappend(retval, outer_var);
+	}
+
+	parent_fields->yb_uniqkeys = retval;
+}
+
+/*
+ * If the given subquery tlist entry is emitted by the subquery scan node,
+ * return a Var for it; otherwise return NULL.
+ */
+static Var *
+yb_find_var_for_subquery_tle(RelOptInfo *rel, TargetEntry *tle)
+{
+	ListCell   *lc;
+
+	if (tle->resjunk)
+		return NULL;
+
+	foreach(lc, rel->reltarget->exprs)
+	{
+		Var		   *var = (Var *) lfirst(lc);
+
+		if (!IsA(var, Var))
+			continue;
+		Assert(var->varno == rel->relid);
+
+		if (var->varattno == tle->resno)
+			return copyObject(var);
+	}
+
+	return NULL;
 }
 
 /*
@@ -2699,8 +2789,8 @@ create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 		subpath->parallel_safe;
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 	pathnode->path.pathkeys = pathkeys;
-	yb_propagate_fields(&pathnode->path.yb_path_info,
-						&subpath->yb_path_info);
+	yb_propagate_subqueryscan_fields(&pathnode->path.yb_path_info, rel,
+									 subpath);
 	pathnode->subpath = subpath;
 
 	cost_subqueryscan(pathnode, root, rel, pathnode->path.param_info);
