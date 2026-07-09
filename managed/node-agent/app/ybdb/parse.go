@@ -120,13 +120,13 @@ func parseCmdline(args []string) (flagfilePath string, cmdArgs []argKV) {
 }
 
 // parseFlagfile parses a gflags file into key-value pairs. Blank lines and
-// comment lines (starting with '#') are ignored. Each flag may be written as
+// comment lines (starting with '#' or '//') are ignored. Each flag may be written as
 // "--key=value", "key=value" or "--key" (boolean).
 func parseFlagfile(content []byte) []argKV {
 	args := make([]argKV, 0)
 	for _, line := range strings.Split(string(content), "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
 			continue
 		}
 		key := strings.TrimLeft(line, "-")

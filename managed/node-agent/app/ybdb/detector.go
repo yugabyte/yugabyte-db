@@ -153,7 +153,7 @@ func (d *Detector) verifiedPids(
 		if err != nil {
 			continue
 		}
-		if classifyRole(strings.Join(args, " ")) == def.role {
+		if classifyRole(args) == def.role {
 			pids = append(pids, pid)
 		}
 	}
@@ -185,7 +185,7 @@ func (d *Detector) classifyListener(
 		return role
 	}
 	if args, err := d.sys.ReadCmdline(listener.pid); err == nil {
-		if role := classifyRole(strings.Join(args, " ")); role != pb.YugabyteProcessRole_YB_ROLE_UNKNOWN {
+		if role := classifyRole(args); role != pb.YugabyteProcessRole_YB_ROLE_UNKNOWN {
 			return role
 		}
 	}

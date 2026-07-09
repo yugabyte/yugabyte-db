@@ -75,10 +75,17 @@ var roleDefs = []roleDef{
 
 // classifyRole returns the role for the given process command line, or
 // YB_ROLE_UNKNOWN when it does not match any known YugabyteDB process.
-func classifyRole(cmdline string) pb.YugabyteProcessRole {
+func classifyRole(args []string) pb.YugabyteProcessRole {
+	if len(args) == 0 {
+		return pb.YugabyteProcessRole_YB_ROLE_UNKNOWN
+	}
+	exe := args[0]
 	for _, def := range roleDefs {
 		for _, classifier := range def.classifiers {
-			if strings.Contains(cmdline, classifier) {
+			if strings.Contains(exe, classifier) {
+				return def.role
+			}
+			if strings.HasPrefix(classifier, "/") && strings.Contains(exe, classifier[1:]) {
 				return def.role
 			}
 		}

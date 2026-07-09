@@ -115,14 +115,11 @@ func (s *osSystem) ReadCmdline(pid int) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	parts := strings.Split(string(data), "\x00")
-	args := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if part != "" {
-			args = append(args, part)
-		}
+	if len(data) == 0 {
+		return nil, nil
 	}
-	return args, nil
+	trimmed := strings.TrimSuffix(string(data), "\x00")
+	return strings.Split(trimmed, "\x00"), nil
 }
 
 func (s *osSystem) SsListeners(ctx context.Context) (string, error) {
