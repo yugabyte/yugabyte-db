@@ -69,6 +69,9 @@ struct SpanWithScope {
 
 using SpanWithScopePtr = std::shared_ptr<SpanWithScope>;
 
+// OTel service.name for the ysql (postgres backend) process, passed to InitDistTrace at startup.
+inline const std::string kYsqlServiceName = "ysql";
+
 void InitDistTrace(
     opentelemetry::nostd::string_view service_name, opentelemetry::nostd::string_view node_uuid);
 void ShutdownDistTrace();
