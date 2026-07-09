@@ -2549,7 +2549,8 @@ public class TestYbBackup extends BasePgSQLTest {
     String backupDir = null;
     try (Statement stmt = connection.createStatement()) {
       // Create postgres_fdw extension, schema, table and insert data.
-      stmt.execute("CREATE EXTENSION postgres_fdw");
+      // postgres_fdw is preinstalled at initdb for global views.
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS postgres_fdw");
       stmt.execute("CREATE SCHEMA test_schema");
       stmt.execute("CREATE TABLE test_schema.test_tbl (k INT, v INT)");
       stmt.execute("INSERT INTO test_schema.test_tbl VALUES (1, 1)");

@@ -128,11 +128,11 @@ SELECT first_name, last_name, salary FROM employees;
 -------------- Foreign Objects---------------------------
 
 -- Create Foreign Data Wrapper
-CREATE FOREIGN DATA WRAPPER postgres_fdw;
+CREATE FOREIGN DATA WRAPPER dummy_fdw;
 
 -- Create Foreign Server (The server does not need to exist unless we want to query it)
 CREATE SERVER foreign_server
-FOREIGN DATA WRAPPER postgres_fdw
+FOREIGN DATA WRAPPER dummy_fdw
 OPTIONS (host 'dummy_server', port '1111', dbname 'dummy_db');
 
 -- Create Foreign table

@@ -5,7 +5,6 @@
 --
 -- Install required extensions
 CREATE EXTENSION file_fdw;
-CREATE EXTENSION postgres_fdw;
 -- Create enum type for the status column
 CREATE TYPE metric_status AS ENUM ('active', 'warning', 'critical');
 -- Create file_fdw server for reading local CSV files
@@ -1852,8 +1851,8 @@ ORDER BY
     wait_event_component,
     wait_event_type
 LIMIT 10;
-                                                                                                                                               QUERY PLAN                                                                                                                                                
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                 QUERY PLAN                                                                                                                                                  
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit
    Output: "gv$yb_active_session_history".query_id, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, (count(*))
    ->  GroupAggregate
@@ -1861,18 +1860,18 @@ LIMIT 10;
          Group Key: "gv$yb_active_session_history".query_id, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event_type, "gv$yb_active_session_history".wait_event
          ->  Merge Append
                Sort Key: "gv$yb_active_session_history".query_id, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event_type, "gv$yb_active_session_history".wait_event
-               ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_1"
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_1"
                      Output: "gv$yb_active_session_history_1".query_id, "gv$yb_active_session_history_1".wait_event_component, "gv$yb_active_session_history_1".wait_event, "gv$yb_active_session_history_1".wait_event_type
                      Filter: ("gv$yb_active_session_history_1".sample_time >= (CURRENT_TIMESTAMP - '@ 20 mins'::interval))
-                     Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
-               ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_2"
+                     Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_2"
                      Output: "gv$yb_active_session_history_2".query_id, "gv$yb_active_session_history_2".wait_event_component, "gv$yb_active_session_history_2".wait_event, "gv$yb_active_session_history_2".wait_event_type
                      Filter: ("gv$yb_active_session_history_2".sample_time >= (CURRENT_TIMESTAMP - '@ 20 mins'::interval))
-                     Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
-               ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_3"
+                     Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_3"
                      Output: "gv$yb_active_session_history_3".query_id, "gv$yb_active_session_history_3".wait_event_component, "gv$yb_active_session_history_3".wait_event, "gv$yb_active_session_history_3".wait_event_type
                      Filter: ("gv$yb_active_session_history_3".sample_time >= (CURRENT_TIMESTAMP - '@ 20 mins'::interval))
-                     Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
+                     Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
 (19 rows)
 
 -- ASH with literal timestamp (immutable, pushed down)
@@ -1897,8 +1896,8 @@ ORDER BY
     wait_event_component,
     wait_event_type
 LIMIT 10;
-                                                                                                                                                                     QUERY PLAN                                                                                                                                                                      
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                       QUERY PLAN                                                                                                                                                                        
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit
    Output: "gv$yb_active_session_history".query_id, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, (count(*))
    ->  GroupAggregate
@@ -1906,18 +1905,18 @@ LIMIT 10;
          Group Key: "gv$yb_active_session_history".query_id, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event_type, "gv$yb_active_session_history".wait_event
          ->  Merge Append
                Sort Key: "gv$yb_active_session_history".query_id, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event_type, "gv$yb_active_session_history".wait_event
-               ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_1"
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_1"
                      Output: "gv$yb_active_session_history_1".query_id, "gv$yb_active_session_history_1".wait_event_component, "gv$yb_active_session_history_1".wait_event, "gv$yb_active_session_history_1".wait_event_type
                      Remote Filter: ("gv$yb_active_session_history_1".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
-                     Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07')) ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
-               ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_2"
+                     Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07')) ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_2"
                      Output: "gv$yb_active_session_history_2".query_id, "gv$yb_active_session_history_2".wait_event_component, "gv$yb_active_session_history_2".wait_event, "gv$yb_active_session_history_2".wait_event_type
                      Remote Filter: ("gv$yb_active_session_history_2".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
-                     Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07')) ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
-               ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_3"
+                     Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07')) ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_3"
                      Output: "gv$yb_active_session_history_3".query_id, "gv$yb_active_session_history_3".wait_event_component, "gv$yb_active_session_history_3".wait_event, "gv$yb_active_session_history_3".wait_event_type
                      Remote Filter: ("gv$yb_active_session_history_3".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
-                     Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07')) ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
+                     Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07')) ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
 (19 rows)
 
 -- ASH JOIN pg_stat_statements with current_timestamp
@@ -1960,30 +1959,30 @@ LIMIT 10;
                      Output: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, "gv$pg_stat_statements".query
                      Hash Cond: ("gv$pg_stat_statements".queryid = "gv$yb_active_session_history".query_id)
                      ->  Append
-                           ->  Foreign Scan on public."gv$pg_stat_statements" "gv$pg_stat_statements_1"
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_1"
                                  Output: "gv$pg_stat_statements_1".query, "gv$pg_stat_statements_1".queryid
-                                 Remote SQL: SELECT queryid, query FROM public.pg_stat_statements_with_server_uuid
-                           ->  Foreign Scan on public."gv$pg_stat_statements" "gv$pg_stat_statements_2"
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_2"
                                  Output: "gv$pg_stat_statements_2".query, "gv$pg_stat_statements_2".queryid
-                                 Remote SQL: SELECT queryid, query FROM public.pg_stat_statements_with_server_uuid
-                           ->  Foreign Scan on public."gv$pg_stat_statements" "gv$pg_stat_statements_3"
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_3"
                                  Output: "gv$pg_stat_statements_3".query, "gv$pg_stat_statements_3".queryid
-                                 Remote SQL: SELECT queryid, query FROM public.pg_stat_statements_with_server_uuid
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
                      ->  Hash
                            Output: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, "gv$yb_active_session_history".query_id
                            ->  Append
-                                 ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_1"
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_1"
                                        Output: "gv$yb_active_session_history_1".wait_event_component, "gv$yb_active_session_history_1".wait_event, "gv$yb_active_session_history_1".wait_event_type, "gv$yb_active_session_history_1".query_id
                                        Filter: ("gv$yb_active_session_history_1".sample_time >= (CURRENT_TIMESTAMP - '@ 20 mins'::interval))
-                                       Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid
-                                 ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_2"
+                                       Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_2"
                                        Output: "gv$yb_active_session_history_2".wait_event_component, "gv$yb_active_session_history_2".wait_event, "gv$yb_active_session_history_2".wait_event_type, "gv$yb_active_session_history_2".query_id
                                        Filter: ("gv$yb_active_session_history_2".sample_time >= (CURRENT_TIMESTAMP - '@ 20 mins'::interval))
-                                       Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid
-                                 ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_3"
+                                       Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_3"
                                        Output: "gv$yb_active_session_history_3".wait_event_component, "gv$yb_active_session_history_3".wait_event, "gv$yb_active_session_history_3".wait_event_type, "gv$yb_active_session_history_3".query_id
                                        Filter: ("gv$yb_active_session_history_3".sample_time >= (CURRENT_TIMESTAMP - '@ 20 mins'::interval))
-                                       Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid
+                                       Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid
 (36 rows)
 
 -- ASH JOIN pg_stat_statements with literal timestamp
@@ -2026,30 +2025,30 @@ LIMIT 10;
                      Output: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, "gv$pg_stat_statements".query
                      Hash Cond: ("gv$pg_stat_statements".queryid = "gv$yb_active_session_history".query_id)
                      ->  Append
-                           ->  Foreign Scan on public."gv$pg_stat_statements" "gv$pg_stat_statements_1"
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_1"
                                  Output: "gv$pg_stat_statements_1".query, "gv$pg_stat_statements_1".queryid
-                                 Remote SQL: SELECT queryid, query FROM public.pg_stat_statements_with_server_uuid
-                           ->  Foreign Scan on public."gv$pg_stat_statements" "gv$pg_stat_statements_2"
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_2"
                                  Output: "gv$pg_stat_statements_2".query, "gv$pg_stat_statements_2".queryid
-                                 Remote SQL: SELECT queryid, query FROM public.pg_stat_statements_with_server_uuid
-                           ->  Foreign Scan on public."gv$pg_stat_statements" "gv$pg_stat_statements_3"
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_3"
                                  Output: "gv$pg_stat_statements_3".query, "gv$pg_stat_statements_3".queryid
-                                 Remote SQL: SELECT queryid, query FROM public.pg_stat_statements_with_server_uuid
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
                      ->  Hash
                            Output: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, "gv$yb_active_session_history".query_id
                            ->  Append
-                                 ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_1"
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_1"
                                        Output: "gv$yb_active_session_history_1".wait_event_component, "gv$yb_active_session_history_1".wait_event, "gv$yb_active_session_history_1".wait_event_type, "gv$yb_active_session_history_1".query_id
                                        Remote Filter: ("gv$yb_active_session_history_1".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
-                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
-                                 ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_2"
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_2"
                                        Output: "gv$yb_active_session_history_2".wait_event_component, "gv$yb_active_session_history_2".wait_event, "gv$yb_active_session_history_2".wait_event_type, "gv$yb_active_session_history_2".query_id
                                        Remote Filter: ("gv$yb_active_session_history_2".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
-                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
-                                 ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_3"
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_3"
                                        Output: "gv$yb_active_session_history_3".wait_event_component, "gv$yb_active_session_history_3".wait_event, "gv$yb_active_session_history_3".wait_event_type, "gv$yb_active_session_history_3".query_id
                                        Remote Filter: ("gv$yb_active_session_history_3".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
-                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
 (36 rows)
 
 -- ASH JOIN pg_stat_statements with ORDER BY only on ASH
@@ -2091,30 +2090,30 @@ LIMIT 10;
                      Output: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, "gv$pg_stat_statements".query
                      Hash Cond: ("gv$pg_stat_statements".queryid = "gv$yb_active_session_history".query_id)
                      ->  Append
-                           ->  Foreign Scan on public."gv$pg_stat_statements" "gv$pg_stat_statements_1"
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_1"
                                  Output: "gv$pg_stat_statements_1".query, "gv$pg_stat_statements_1".queryid
-                                 Remote SQL: SELECT queryid, query FROM public.pg_stat_statements_with_server_uuid
-                           ->  Foreign Scan on public."gv$pg_stat_statements" "gv$pg_stat_statements_2"
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_2"
                                  Output: "gv$pg_stat_statements_2".query, "gv$pg_stat_statements_2".queryid
-                                 Remote SQL: SELECT queryid, query FROM public.pg_stat_statements_with_server_uuid
-                           ->  Foreign Scan on public."gv$pg_stat_statements" "gv$pg_stat_statements_3"
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_3"
                                  Output: "gv$pg_stat_statements_3".query, "gv$pg_stat_statements_3".queryid
-                                 Remote SQL: SELECT queryid, query FROM public.pg_stat_statements_with_server_uuid
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
                      ->  Hash
                            Output: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, "gv$yb_active_session_history".query_id
                            ->  Append
-                                 ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_1"
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_1"
                                        Output: "gv$yb_active_session_history_1".wait_event_component, "gv$yb_active_session_history_1".wait_event, "gv$yb_active_session_history_1".wait_event_type, "gv$yb_active_session_history_1".query_id
                                        Remote Filter: ("gv$yb_active_session_history_1".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
-                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
-                                 ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_2"
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_2"
                                        Output: "gv$yb_active_session_history_2".wait_event_component, "gv$yb_active_session_history_2".wait_event, "gv$yb_active_session_history_2".wait_event_type, "gv$yb_active_session_history_2".query_id
                                        Remote Filter: ("gv$yb_active_session_history_2".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
-                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
-                                 ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_3"
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_3"
                                        Output: "gv$yb_active_session_history_3".wait_event_component, "gv$yb_active_session_history_3".wait_event, "gv$yb_active_session_history_3".wait_event_type, "gv$yb_active_session_history_3".query_id
                                        Remote Filter: ("gv$yb_active_session_history_3".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
-                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
 (36 rows)
 
 -- ASH JOIN pg_stat_statements with ORDER BY only on pg_stat_statements
@@ -2155,38 +2154,38 @@ LIMIT 10;
                      Output: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, "gv$pg_stat_statements".query
                      Hash Cond: ("gv$pg_stat_statements".queryid = "gv$yb_active_session_history".query_id)
                      ->  Append
-                           ->  Foreign Scan on public."gv$pg_stat_statements" "gv$pg_stat_statements_1"
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_1"
                                  Output: "gv$pg_stat_statements_1".query, "gv$pg_stat_statements_1".queryid
-                                 Remote SQL: SELECT queryid, query FROM public.pg_stat_statements_with_server_uuid
-                           ->  Foreign Scan on public."gv$pg_stat_statements" "gv$pg_stat_statements_2"
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_2"
                                  Output: "gv$pg_stat_statements_2".query, "gv$pg_stat_statements_2".queryid
-                                 Remote SQL: SELECT queryid, query FROM public.pg_stat_statements_with_server_uuid
-                           ->  Foreign Scan on public."gv$pg_stat_statements" "gv$pg_stat_statements_3"
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_3"
                                  Output: "gv$pg_stat_statements_3".query, "gv$pg_stat_statements_3".queryid
-                                 Remote SQL: SELECT queryid, query FROM public.pg_stat_statements_with_server_uuid
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
                      ->  Hash
                            Output: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, "gv$yb_active_session_history".query_id
                            ->  Append
-                                 ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_1"
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_1"
                                        Output: "gv$yb_active_session_history_1".wait_event_component, "gv$yb_active_session_history_1".wait_event, "gv$yb_active_session_history_1".wait_event_type, "gv$yb_active_session_history_1".query_id
                                        Remote Filter: ("gv$yb_active_session_history_1".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
-                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
-                                 ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_2"
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_2"
                                        Output: "gv$yb_active_session_history_2".wait_event_component, "gv$yb_active_session_history_2".wait_event, "gv$yb_active_session_history_2".wait_event_type, "gv$yb_active_session_history_2".query_id
                                        Remote Filter: ("gv$yb_active_session_history_2".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
-                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
-                                 ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_3"
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_3"
                                        Output: "gv$yb_active_session_history_3".wait_event_component, "gv$yb_active_session_history_3".wait_event, "gv$yb_active_session_history_3".wait_event_type, "gv$yb_active_session_history_3".query_id
                                        Remote Filter: ("gv$yb_active_session_history_3".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
-                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM public.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
 (36 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT query_id, queryid
 FROM "gv$yb_active_session_history"
 JOIN "gv$pg_stat_statements" ON query_id = queryid;
-                                                QUERY PLAN                                                
-----------------------------------------------------------------------------------------------------------
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
  Merge Join
    Output: "gv$yb_active_session_history".query_id, "gv$pg_stat_statements".queryid
    Merge Cond: ("gv$yb_active_session_history".query_id = "gv$pg_stat_statements".queryid)
@@ -2194,28 +2193,28 @@ JOIN "gv$pg_stat_statements" ON query_id = queryid;
          Output: "gv$yb_active_session_history".query_id
          Sort Key: "gv$yb_active_session_history".query_id
          ->  Append
-               ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_1"
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_1"
                      Output: "gv$yb_active_session_history_1".query_id
-                     Remote SQL: SELECT query_id FROM public.yb_active_session_history_with_server_uuid
-               ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_2"
+                     Remote SQL: SELECT query_id FROM pg_catalog.yb_active_session_history_with_server_uuid
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_2"
                      Output: "gv$yb_active_session_history_2".query_id
-                     Remote SQL: SELECT query_id FROM public.yb_active_session_history_with_server_uuid
-               ->  Foreign Scan on public."gv$yb_active_session_history" "gv$yb_active_session_history_3"
+                     Remote SQL: SELECT query_id FROM pg_catalog.yb_active_session_history_with_server_uuid
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_3"
                      Output: "gv$yb_active_session_history_3".query_id
-                     Remote SQL: SELECT query_id FROM public.yb_active_session_history_with_server_uuid
+                     Remote SQL: SELECT query_id FROM pg_catalog.yb_active_session_history_with_server_uuid
    ->  Sort
          Output: "gv$pg_stat_statements".queryid
          Sort Key: "gv$pg_stat_statements".queryid
          ->  Append
-               ->  Foreign Scan on public."gv$pg_stat_statements" "gv$pg_stat_statements_1"
+               ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_1"
                      Output: "gv$pg_stat_statements_1".queryid
-                     Remote SQL: SELECT queryid FROM public.pg_stat_statements_with_server_uuid
-               ->  Foreign Scan on public."gv$pg_stat_statements" "gv$pg_stat_statements_2"
+                     Remote SQL: SELECT queryid FROM pg_catalog.pg_stat_statements_with_server_uuid
+               ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_2"
                      Output: "gv$pg_stat_statements_2".queryid
-                     Remote SQL: SELECT queryid FROM public.pg_stat_statements_with_server_uuid
-               ->  Foreign Scan on public."gv$pg_stat_statements" "gv$pg_stat_statements_3"
+                     Remote SQL: SELECT queryid FROM pg_catalog.pg_stat_statements_with_server_uuid
+               ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_3"
                      Output: "gv$pg_stat_statements_3".queryid
-                     Remote SQL: SELECT queryid FROM public.pg_stat_statements_with_server_uuid
+                     Remote SQL: SELECT queryid FROM pg_catalog.pg_stat_statements_with_server_uuid
 (29 rows)
 
 --
@@ -2353,8 +2352,10 @@ DROP FOREIGN TABLE "gv$node_metrics";
 DROP VIEW local_node_metrics;
 DROP FOREIGN TABLE local_node_metrics_csv;
 DROP SERVER gv_server CASCADE;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to foreign table "gv$pg_stat_statements"
+drop cascades to foreign table "gv$yb_active_session_history"
 DROP SERVER file_server CASCADE;
-DROP EXTENSION postgres_fdw;
 DROP EXTENSION file_fdw;
 DROP TYPE metric_status;
 DROP FUNCTION is_high_value(real);

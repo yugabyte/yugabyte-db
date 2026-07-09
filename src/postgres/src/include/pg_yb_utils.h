@@ -1776,6 +1776,14 @@ extern bool YBHasSkippedIntentsWrite();
  */
 extern bool yb_is_federated_yb_foreign_table(Oid relid);
 
+/*
+ * If 'ft_relid' is a federatedYugabyteDB foreign table, resolve the local
+ * relation named by its schema_name/table_name options and return its OID.
+ * Returns InvalidOid if the table is not federated or the relation is not
+ * found locally.
+ */
+extern Oid	YbGetFederatedForeignTableBackingRelid(Oid ft_relid);
+
 struct PlannerInfo;
 struct RelOptInfo;
 struct RangeTblEntry;
