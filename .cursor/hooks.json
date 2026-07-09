@@ -3,8 +3,9 @@
   "hooks": {
     "beforeShellExecution": [
       {
-        "matcher": "git\\s+push",
-        "command": ".agents/scripts/block-git-push.sh"
+        "matcher": "git.*\\spush\\b",
+        "command": ".agents/scripts/block-git-push.sh",
+        "failClosed": true
       }
     ]
   }
