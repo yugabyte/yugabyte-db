@@ -220,6 +220,18 @@ public class MainModule extends AbstractModule {
       System.clearProperty(TMPDIR_PROPERTY);
     }
 
+    // snappy-java extracts libsnappyjava.so into java.io.tmpdir on first use and
+    // dlopen()s it. When /tmp is mounted with noexec that load fails with
+    // UnsatisfiedLinkError, breaking Prometheus Remote Read (see RemoteReadClient).
+    // Point snappy-java at the same storage-path region we already use for BC FIPS
+    // natives (guaranteed exec-safe).
+    Path snappyTempPath = storagePath.resolve("snappy");
+    if (!snappyTempPath.toFile().exists() && !snappyTempPath.toFile().mkdirs()) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Failed to create snappy temp dir " + snappyTempPath);
+    }
+    System.setProperty("org.xerial.snappy.tempdir", snappyTempPath.toAbsolutePath().toString());
+
     TLSConfig.modifyTLSDisabledAlgorithms(config);
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
     bind(RuntimeConfigCacheInvalidator.class).asEagerSingleton();
