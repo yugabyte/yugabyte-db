@@ -2111,25 +2111,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         nodeDetailsSet, false /* ignoreErrors */, 20 /* numRetries */);
   }
 
-  /**
-   * Create a task to ping yb-controller servers on each node. Master-only nodes (K8s master pods or
-   * dedicated-master VMs) are filtered out because YBC is only co-located with tservers.
-   */
+  /** Create a task to ping yb-controller servers on each node */
   public SubTaskGroup createWaitForYbcServerTask(
       Collection<NodeDetails> nodeDetailsSet, boolean ignoreErrors, int numRetries) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForYbcServer", ignoreErrors);
     WaitForYbcServer task = createTask(WaitForYbcServer.class);
     WaitForYbcServer.Params params = new WaitForYbcServer.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
-    Set<NodeDetails> ybcNodes =
+    params.nodeDetailsSet = nodeDetailsSet == null ? null : new HashSet<>(nodeDetailsSet);
+    params.nodeNameList =
         nodeDetailsSet == null
             ? null
-            : nodeDetailsSet.stream().filter(n -> n.isTserver).collect(Collectors.toSet());
-    params.nodeDetailsSet = ybcNodes; // ybcNodes == null ? null : new HashSet<>(ybcNodes);
-    params.nodeNameList =
-        ybcNodes == null
-            ? null
-            : ybcNodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
+            : nodeDetailsSet.stream().map(node -> node.nodeName).collect(Collectors.toSet());
     params.numRetries = numRetries;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
@@ -3629,9 +3622,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /**
    * Creates a task list to stop the yb-controller process on cluster's node and adds it to the
    * queue.
-   *
-   * <p>This will also attempt to stop YBC on master-only nodes, just in case it is running.
-   * createStopServerTasks should handle the service not running/not existing.
    *
    * @param nodes set of nodes on which yb-controller has to be stopped
    */
