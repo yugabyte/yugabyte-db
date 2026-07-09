@@ -223,7 +223,7 @@ To create a YugabyteDB Anywhere instance, perform the following:
 
     If you don't create the `ClusterRoleBinding`, some container-level metrics like CPU and memory will be unavailable.
 
-You can customize the installation by specifying more values; see [Customize YugabyteDB Anywhere](../kubernetes/#customize-yugabytedb-anywhere) for details about the supported Helm values. Before customizing other values, review [Helm chart requirements](#helm-chart-requirements).
+You can customize the installation by specifying more values; see [Customize YugabyteDB Anywhere](../kubernetes/#customize-yugabytedb-anywhere) for details about the supported Helm values.
 
 ### Delete the Helm installation of YugabyteDB Anywhere
 
