@@ -39,6 +39,7 @@
 
 #include "yb/util/env.h"
 #include "yb/util/logging.h"
+#include "yb/util/mem_tracked_byte_buffer.h"
 #include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
 

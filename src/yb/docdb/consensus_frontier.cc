@@ -20,6 +20,8 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stl_util.h"
 
+#include "yb/util/format.h"
+#include "yb/util/result.h"
 #include "yb/util/tostring.h"
 
 namespace yb {

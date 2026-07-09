@@ -108,18 +108,32 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
 
             List<NodeDetails> singleNode = Collections.singletonList(node);
 
-            createSetNodeStateTasks(singleNode, getNodeState())
-                .setSubTaskGroupType(getTaskSubGroupType());
-
+            // This talks to the master leader, so it must run irrespective of the node state.
             createCheckNodesAreSafeToTakeDownTask(
                 Collections.singletonList(MastersAndTservers.from(node, processTypes)),
                 getTargetSoftwareVersion(),
                 false);
 
-            for (ServerType processType : processTypes) {
-              createServerControlTask(node, processType, "stop")
-                  .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+            // Stop the processes only when the node is still Live. On retry, the node may already
+            // be past Live (Stopped/Reprovisioning) because a previous attempt removed the node
+            // agent as part of re-provisioning. Since the node agent is mandatory for server
+            // control, re-issuing the stop would fail. Gating on the node state and marking the
+            // node Stopped before re-provisioning keeps this idempotent across retries.
+            if (node.state == NodeState.Live) {
+              for (ServerType processType : processTypes) {
+                createServerControlTask(node, processType, "stop")
+                    .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+              }
+
+              // Intentionally short-lived: it flips to Reprovisioning right below. Persisting
+              // Stopped here is the point at which the node leaves Live, so a retry that fails
+              // anywhere in the re-provisioning that follows will skip the stop above.
+              createSetNodeStateTasks(singleNode, NodeState.Stopped)
+                  .setSubTaskGroupType(getTaskSubGroupType());
             }
+
+            createSetNodeStateTasks(singleNode, getNodeState())
+                .setSubTaskGroupType(getTaskSubGroupType());
 
             createSetupYNPTask(universe, singleNode)
                 .setSubTaskGroupType(SubTaskGroupType.Provisioning);

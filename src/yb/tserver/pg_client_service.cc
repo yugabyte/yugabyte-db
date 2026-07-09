@@ -2337,7 +2337,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     VLOG(1) << "ImportTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
     auto snapshot = VERIFY_RESULT(txn_snapshot_manager_.Get(req.snapshot_id()));
     auto options = req.options();
-    snapshot.read_time.ToPB(options.mutable_read_time());
+    snapshot.read_time.ToPB(options.mutable_read_time_options()->mutable_read_time());
     RETURN_NOT_OK(VERIFY_RESULT(GetSession(req))->SetTxnSnapshotReadTime(
         options, context->GetClientDeadline()));
     snapshot.ToPBNoReadTime(*resp->mutable_snapshot());

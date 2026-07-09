@@ -32,6 +32,8 @@
 #include "replication/slot.h"
 #include "replication/walsender_private.h"
 #include "replication/yb_virtual_wal_client.h"
+#include "utils/catcache.h"
+#include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/varlena.h"
 #include "utils/wait_event.h"
@@ -53,6 +55,12 @@ static XLogRecPtr last_txn_begin_lsn = InvalidXLogRecPtr;
  * UpdatePublicationTableList before calling next GetConsistentChanges.
  */
 static bool needs_publication_table_list_refresh = false;
+
+/*
+ * Set when the last refresh was caused by an explicit ALTER PUBLICATION. If true, the walsender
+ * fires syscache callbacks so pgoutput re-reads the publication and re-sends RELATION messages.
+ */
+static bool explicit_alter_publication_detected = false;
 
 /* The time at which the list of tables in the publication needs to be provided to the VWAL. */
 static uint64_t publication_refresh_time = 0;
@@ -190,6 +198,7 @@ YBCInitVirtualWal(List *yb_publication_names)
 	last_txn_begin_lsn = InvalidXLogRecPtr;
 
 	needs_publication_table_list_refresh = false;
+	explicit_alter_publication_detected = false;
 	if (yb_enable_consistent_replication_from_hash_range &&
 		slot_hash_range != NULL)
 		pfree(slot_hash_range);
@@ -217,6 +226,10 @@ YBCDestroyVirtualWal()
 	cached_records_last_sent_row_idx = 0;
 
 	needs_publication_table_list_refresh = false;
+	explicit_alter_publication_detected = false;
+
+	/* YB: Reset yb_read_time set by InitVirtualWal. */
+	YBCResetYbReadTimeAndInvalidateRelcache();
 }
 
 static List *
@@ -471,6 +484,12 @@ YBCReadRecord(List *publication_names)
 				 publication_refresh_time);
 			YBCUpdateYbReadTimeAndInvalidateRelcache(publication_refresh_time);
 
+			if (explicit_alter_publication_detected)
+			{
+				ResetCatalogCaches();
+				CallSystemCacheCallbacks();
+			}
+
 			/*
 			 * We will need a retry post PG 15 upgrade, when the publication_refresh_time
 			 * lies in the period where YB was running PG 11.
@@ -492,6 +511,7 @@ YBCReadRecord(List *publication_names)
 			AbortCurrentTransaction();
 
 			needs_publication_table_list_refresh = false;
+			explicit_alter_publication_detected = false;
 		}
 
 		YBCGetCDCConsistentChanges(MyReplicationSlot->data.yb_stream_id,
@@ -516,6 +536,8 @@ YBCReadRecord(List *publication_names)
 		needs_publication_table_list_refresh =
 			cached_records->needs_publication_table_list_refresh;
 		publication_refresh_time = cached_records->publication_refresh_time;
+		explicit_alter_publication_detected =
+			cached_records->explicit_alter_publication_detected;
 	}
 
 	/*

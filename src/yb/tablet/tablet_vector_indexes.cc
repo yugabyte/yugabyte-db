@@ -42,12 +42,17 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/sync_point.h"
 
 using namespace std::literals;
 using namespace yb::size_literals;
 
 DEFINE_test_flag(int32, sleep_before_vector_index_backfill_seconds, 0,
     "Sleep specified amount of seconds before doing vector index backfill.");
+
+DEFINE_test_flag(int32, sleep_after_vector_index_backfill_chunk_ms, 0,
+    "Sleep specified amount of milliseconds after flushing each vector index backfill chunk. "
+    "Used to keep the backfill running long enough for a concurrent tablet split to be triggered.");
 
 DEFINE_RUNTIME_uint64(vector_index_backfill_single_chunk_size_bytes, 1_GB,
     "If this flag is non zero, the vector index chunk created during backfill is sized so that "
@@ -169,6 +174,10 @@ class IndexedTableReader {
 
 // A way to block backfilling vector index after the first vector index chunk is flushed.
 bool TEST_block_after_backfilling_first_vector_index_chunks = false;
+
+// When set, overrides whether vector index backfill writes reverse mappings. When unset, follows
+// the indexed table's owns_vector_reverse_mapping table property.
+std::optional<bool> TEST_vector_index_skip_reverse_mapping_backfill = std::nullopt;
 
 TabletVectorIndexes::TabletVectorIndexes(
     Tablet* tablet,
@@ -294,11 +303,7 @@ Status TabletVectorIndexes::DoCreateIndex(
       indexes = std::make_shared<std::vector<docdb::DocVectorIndexPtr>>(1, it->second);
       return Status::OK();
     }
-    if (indexes.use_count() == 1) {
-      InsertVectorIndex(*indexes, it->second);
-      return Status::OK();
-    }
-
+    TEST_SYNC_POINT("TabletVectorIndexes::DoCreateIndex:BeforeListUpdate");
     auto new_indexes = std::make_shared<docdb::DocVectorIndexes>();
     new_indexes->reserve(indexes->size() + 1);
     *new_indexes = *indexes;
@@ -463,11 +468,20 @@ Status TabletVectorIndexes::Backfill(
     std::this_thread::sleep_for(FLAGS_TEST_sleep_before_vector_index_backfill_seconds * 1s);
   }
 
+  // The backfill task holds only a non-blocking ScopedRWOperation here (not the tablet metadata
+  // apply lock), so a test may park it until the tablet starts shutting down without wedging the
+  // tserver. On release, reader.Init below resolves intents and, if the tablet is shutting down,
+  // fails fast via the aborted MvccManager safe time wait instead of hanging.
+  TEST_SYNC_POINT("TabletVectorIndexes::Backfill:Start");
+
   IndexedTableReader reader(*vector_index);
   RETURN_NOT_OK(reader.Init(backfill_ht, from_key));
 
   ReverseMappingBackfillerPtr reverse_mapping_backfiller;
-  if (!vector_index->options().skip_reverse_mapping_backfill()) {
+  const bool skip_reverse_mapping_backfill =
+      TEST_vector_index_skip_reverse_mapping_backfill.value_or(
+          indexed_table.schema().table_properties().owns_vector_reverse_mapping());
+  if (!skip_reverse_mapping_backfill) {
     reverse_mapping_backfiller = std::make_unique<ReverseMappingBackfiller>(op_id);
   }
 
@@ -511,6 +525,9 @@ Status TabletVectorIndexes::Backfill(
     auto ybctid = reader.current_ybctid();
     if (helper.NeedFlush()) {
       RETURN_NOT_OK(helper.Flush(tablet(), *vector_index, ybctid));
+      if (FLAGS_TEST_sleep_after_vector_index_backfill_chunk_ms) {
+        std::this_thread::sleep_for(FLAGS_TEST_sleep_after_vector_index_backfill_chunk_ms * 1ms);
+      }
     }
     helper.Add(ybctid, reader.current_vector_slice());
   }
@@ -672,9 +689,9 @@ docdb::DocVectorIndexPtr TabletVectorIndexes::IndexForTable(const TableId& table
   return IndexForTableUnlocked(table_id);
 }
 
-docdb::DocVectorIndexesPtr TabletVectorIndexes::Collect(const std::vector<TableId>& table_ids) {
+VectorIndexList TabletVectorIndexes::Collect(const std::vector<TableId>& table_ids) {
   if (!has_vector_indexes_.load(std::memory_order_acquire)) {
-    return nullptr;
+    return VectorIndexList();
   }
 
   if (table_ids.empty()) {
@@ -688,20 +705,33 @@ docdb::DocVectorIndexesPtr TabletVectorIndexes::Collect(const std::vector<TableI
     for (const auto& table_id : table_ids) {
       auto index = IndexForTableUnlocked(table_id);
       if (!index) {
-        return nullptr;
+        return VectorIndexList();
       }
       result->push_back(std::move(index));
     }
   }
-  return result;
+  return VectorIndexList(std::move(result));
 }
 
-docdb::DocVectorIndexesPtr TabletVectorIndexes::List() const {
+VectorIndexList TabletVectorIndexes::List() const {
   if (!has_vector_indexes_.load(std::memory_order_acquire)) {
-    return nullptr;
+    return VectorIndexList();
   }
   SharedLock lock(vector_indexes_mutex_);
-  return vector_indexes_list_;
+  return VectorIndexList(vector_indexes_list_);
+}
+
+bool TabletVectorIndexes::HasActiveBackfill() const {
+  auto list = List();
+  if (!list) {
+    return false;
+  }
+  for (const auto& index : *list) {
+    if (!index->BackfillDone()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 auto TabletVectorIndexes::FinishedBackfills()
@@ -740,11 +770,6 @@ docdb::DocVectorIndexPtr TabletVectorIndexes::RemoveTableFromList(const TableId&
     if ((**it).table_id() == table_id) {
       auto result = *it;
       auto& indexes = vector_indexes_list_;
-      if (indexes.use_count() == 1) {
-        indexes->erase(it);
-        return result;
-      }
-
       auto new_indexes = std::make_shared<docdb::DocVectorIndexes>();
       new_indexes->reserve(indexes->size() - 1);
       new_indexes->insert(new_indexes->end(), vector_indexes_list_->begin(), it);
@@ -884,6 +909,19 @@ Status VectorIndexList::WaitForCompaction() {
   }
 
   return Status::OK();
+}
+
+uint64_t VectorIndexList::OnDiskSize() const {
+  if (!list_) {
+    return 0;
+  }
+
+  uint64_t result = 0;
+  for (const auto& index : *list_) {
+    result += index->OnDiskSize();
+  }
+
+  return result;
 }
 
 std::string VectorIndexList::ToString() const {

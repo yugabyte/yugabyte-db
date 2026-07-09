@@ -1,0 +1,27 @@
+title: UniverseUpdateProxyConfig
+description: |
+  UniverseUpdateProxyConfig
+
+  Request payload to update proxy configuration for clusters in a universe.
+  Part of UniverseUpdateProxyConfigReq.
+type: object
+required:
+  - clusters
+properties:
+  clusters:
+    description: Clusters whose proxy configuration should be updated.
+    type: array
+    items:
+      type: object
+      required:
+        - uuid
+        - networking_spec
+      properties:
+        uuid:
+          description: The system generated cluster uuid to update. This can be fetched from ClusterInfo.
+          type: string
+          format: uuid
+          example: 19ebde21-d537-47dc-8fab-3edc243c6f68
+        networking_spec:
+          $ref: "./UpdateProxyConfigSpec.yaml"
+    minItems: 1

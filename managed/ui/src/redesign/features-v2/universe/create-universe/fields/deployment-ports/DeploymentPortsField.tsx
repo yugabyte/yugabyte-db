@@ -13,13 +13,12 @@ import { useTranslation } from 'react-i18next';
 import { useFormContext, Controller } from 'react-hook-form';
 import { mui, YBInput } from '@yugabyte-ui-library/core';
 import { OtherAdvancedProps } from '../../steps/advanced-settings/dtos';
-import { YSQLFormSpec, YCQLFormSpec } from '../../steps/database-settings/dtos';
 import { getAccessiblePorts } from '../../utils/createUniversePayload';
 import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-import InfoIcon from '../../../../../assets/info-new.svg';
+import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { Box, styled, Typography } = mui;
 
@@ -27,8 +26,8 @@ const MAX_PORT = 65535;
 interface DeploymentPortsProps {
   disabled: boolean;
   providerCode: string;
-  ysql: YSQLFormSpec;
-  ycql: YCQLFormSpec;
+  ysql: boolean;
+  ycql: boolean;
   enableConnectionPooling?: boolean;
 }
 
@@ -74,13 +73,7 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
     keyPrefix: 'createUniverseV2.otherAdvancedSettings.deployPortsFeild'
   });
 
-  const PORT_GROUPS = getAccessiblePorts(
-    ysql.enable,
-    ycql.enable,
-    providerCode,
-    enableConnectionPooling,
-    t
-  );
+  const PORT_GROUPS = getAccessiblePorts(ysql, ycql, providerCode, enableConnectionPooling, t);
 
   return (
     <PortContainer>

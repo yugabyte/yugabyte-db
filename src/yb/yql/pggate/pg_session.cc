@@ -133,7 +133,7 @@ void PublishPendingRpcTableInfo(
   }
 }
 
-YB_DEFINE_ENUM(SessionType, (kRegular)(kTransactional)(kCatalog));
+YB_DEFINE_ENUM(SessionType, (kRegular)(kTransactional)(kLegacyCatalog));
 
 bool IsNeedTransaction(const PgsqlOp& op, bool non_ddl_txn_for_sys_tables_allowed) {
   // op.need_transaction will be false for write operation in case upper level decides that
@@ -203,7 +203,7 @@ Result<SessionType> GetRequiredSessionType(const PgTxnManager& txn_manager,
   return op.is_read() &&
          table.schema().table_properties().is_ysql_catalog_table() &&
         !YBCIsInitDbModeEnvVarSet()
-      ? SessionType::kCatalog
+      ? SessionType::kLegacyCatalog
       : SessionType::kRegular;
 }
 
@@ -277,11 +277,13 @@ Result<const ReadHybridTime&> ActualReadTime(
   return *read_time;
 }
 
-Status UpdateReadTime(tserver::PgPerformOptionsPB* options, const ReadHybridTime& read_time) {
+Status UpdateReadTime(
+    tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
+    const ReadHybridTime& read_time) {
   ReadHybridTime options_read_time;
   const auto* actual_read_time = &read_time;
-  if (options->has_read_time()) {
-    options_read_time = ReadHybridTime::FromPB(options->read_time());
+  if (read_time_options.has_read_time()) {
+    options_read_time = ReadHybridTime::FromPB(read_time_options.read_time());
     // In case of follower reads a read time is set in the options, with the in_txn_limit set to
     // kMax. But when fetching the next page, the ops_read_time might have a different
     // in_txn_limit (received by the tserver with the first page).
@@ -290,7 +292,7 @@ Status UpdateReadTime(tserver::PgPerformOptionsPB* options, const ReadHybridTime
 
     actual_read_time = &VERIFY_RESULT_REF(ActualReadTime(options_read_time, read_time));
   }
-  actual_read_time->AddToPB(options);
+  actual_read_time->AddToPB(&read_time_options);
   return Status::OK();
 }
 
@@ -465,7 +467,7 @@ class PgSession::RunHelper {
       // the buffer before performing catalog reads.
       auto dbg_ctx = PgFlushDebugContext::ConflictingRead(
           table.pg_table_id().object_oid, table.table_name().table_name());
-      if ((IsTransactional() && in_txn_limit_) || IsCatalog()) {
+      if ((IsTransactional() && in_txn_limit_) || IsLegacyCatalog()) {
         RETURN_NOT_OK(buffer.Flush(dbg_ctx));
       } else {
         ops_info_.ops = VERIFY_RESULT(buffer.Take(IsTransactional(), dbg_ctx));
@@ -510,7 +512,7 @@ class PgSession::RunHelper {
     }
 
     return pg_session_.Perform(
-        std::move(ops_info_.ops), {.use_catalog_session = IsCatalog(),
+        std::move(ops_info_.ops), {.use_legacy_catalog_session = IsLegacyCatalog(),
                                    .has_catalog_ops = has_catalog_ops_,
                                    .cache_options = std::move(cache_options),
                                    .in_txn_limit = in_txn_limit_});
@@ -525,8 +527,8 @@ class PgSession::RunHelper {
     return IsTransactional(session_type_);
   }
 
-  inline UseCatalogSession IsCatalog() const {
-    return UseCatalogSession(session_type_ == SessionType::kCatalog);
+  inline UseLegacyCatalogSession IsLegacyCatalog() const {
+    return UseLegacyCatalogSession(session_type_ == SessionType::kLegacyCatalog);
   }
 
   inline std::string LogPrefix() const {
@@ -834,24 +836,79 @@ Result<FlushFuture> PgSession::FlushOperations(
       *this, metrics_};
 }
 
+NonTransactionalWrites PgSession::OpsHaveNonTransactionalWrites(const PgsqlOps& operations) const {
+  return NonTransactionalWrites(
+      pg_txn_manager_->GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL &&
+      std::ranges::any_of(operations, [](const auto& op) { return !IsReadOnly(*op); }));
+}
+
+Status PgSession::CheckConflictWithYbReadTime(const PgsqlOps& operations) {
+  // TODO(#32439): Re-enable the check below once the sys-catalog prefetch reads consistently
+  // with yb_read_time. Today it can be served from the response cache at catalog_read_time,
+  // which then lands on the ops and trips this check.
+  // https://github.com/yugabyte/yugabyte-db/issues/32439
+  // SCHECK(
+  //     !ops_read_time || ops_read_time == yb_read_time, IllegalState,
+  //     "Op read time conflicts with yb_read_time.");
+  SCHECK(
+      !pg_txn_manager_->IsDdlMode(), IllegalState,
+      "DDL operation can not be performed while yb_read_time is set to nonzero.");
+  // Disallow serializable reads that are not read-only as they need to acquire locks and thus,
+  // not pure reads.
+  SCHECK(
+      pg_txn_manager_->GetIsolationLevel() != IsolationLevel::SERIALIZABLE_ISOLATION,
+      IllegalState,
+      "Transactions with serializable isolation can not be performed while yb_read_time is set "
+      "to nonzero. Try setting the transaction as read only or try another isolation level.");
+  // Only read-only DMLs are allowed when yb_read_time is set to non-zero.
+  for (const auto& pg_op : operations) {
+    SCHECK(
+        IsReadOnly(*pg_op), IllegalState,
+        "Write DML operation can not be performed while yb_read_time is set to nonzero.");
+  }
+  return Status::OK();
+}
+
+Status PgSession::SetReadTimeIfPresent(
+    const PgsqlOps& operations, tserver::PgPerformOptionsPB& options) {
+  const auto ops_read_time = VERIFY_RESULT(GetReadTime(operations));
+  if (ops_read_time) {
+    RETURN_NOT_OK(UpdateReadTime(*options.mutable_read_time_options(), ops_read_time));
+  }
+
+  if (yb_read_time != 0) {
+    RETURN_NOT_OK(CheckConflictWithYbReadTime(operations));
+    auto& read_time_pb = *options.mutable_read_time_options()->mutable_read_time();
+    if (yb_is_read_time_ht) {
+      ReadHybridTime::FromUint64(yb_read_time).ToPB(&read_time_pb);
+    } else {
+      ReadHybridTime::FromMicros(yb_read_time).ToPB(&read_time_pb);
+    }
+  }
+  return Status::OK();
+}
+
 Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOptions&& ops_options) {
   DCHECK(!ops.Empty());
   tserver::PgPerformOptionsPB options;
-  const auto ops_read_time = VERIFY_RESULT(GetReadTime(ops.operations()));
-  if (ops_options.use_catalog_session) {
+  // Passed read time takes precedence over other read time options.
+  RETURN_NOT_OK(SetReadTimeIfPresent(ops.operations(), options));
+
+  if (ops_options.use_legacy_catalog_session) {
+    auto& read_time_options = *options.mutable_read_time_options();
     VLOG(2) << "Perform - catalog_read_time: " << catalog_read_time_
-            << " ops_read_time: " << ops_read_time.ToString();
-    if (const auto read_time = ops_read_time ? ops_read_time : catalog_read_time_; read_time) {
-      read_time.ToPB(options.mutable_read_time());
+            << " read_time: " << read_time_options.read_time().ShortDebugString();
+    // catalog_read_time_ is empty => pick a fresh read time.
+    if (!read_time_options.has_read_time() && catalog_read_time_) {
+      catalog_read_time_.ToPB(read_time_options.mutable_read_time());
     }
-    options.set_use_catalog_session(true);
+    options.set_use_legacy_catalog_session(true);
   } else {
-    RETURN_NOT_OK(SetupPerformOptions({}, &options, ops_options.read_time_action));
+    RETURN_NOT_OK(SetupPerformOptions(
+        {}, options, OpsHaveNonTransactionalWrites(ops.operations()),
+        ops_options.read_time_action));
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
-    }
-    if (ops_read_time) {
-      RETURN_NOT_OK(UpdateReadTime(&options, ops_read_time));
     }
   }
 
@@ -873,37 +930,13 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     // Reads (typically catalog cache lookups) on catalog tables
     if (YBCIsLegacyModeForCatalogOps()) {
       // TODO: #30401: consider unifying these two checks.
-      has_catalog_ops = has_catalog_ops || ops_options.use_catalog_session;
+      has_catalog_ops = has_catalog_ops || ops_options.use_legacy_catalog_session;
     } else {
       has_catalog_ops = has_catalog_ops || ops_options.has_catalog_ops;
     }
     options.set_use_xcluster_database_consistency(!has_catalog_ops);
   } else {
     options.set_use_xcluster_database_consistency(false);
-  }
-
-  if (yb_read_time != 0) {
-    SCHECK(
-        !pg_txn_manager_->IsDdlMode(), IllegalState,
-        "DDL operation can not be performed while yb_read_time is set to nonzero.");
-    // Disallow serializable reads that are not read-only as they need to acquire locks and thus,
-    // not pure reads.
-    SCHECK(
-        pg_txn_manager_->GetIsolationLevel() != IsolationLevel::SERIALIZABLE_ISOLATION,
-        IllegalState,
-        "Transactions with serializable isolation can not be performed while yb_read_time is set "
-        "to nonzero. Try setting the transaction as read only or try another isolation level.");
-    // Only read-only DMLs are allowed when yb_read_time is set to non-zero.
-    for (const auto& pg_op : ops.operations()) {
-      SCHECK(
-          IsReadOnly(*pg_op), IllegalState,
-          "Write DML operation can not be performed while yb_read_time is set to nonzero.");
-    }
-    if (yb_is_read_time_ht) {
-      ReadHybridTime::FromUint64(yb_read_time).ToPB(options.mutable_read_time());
-    } else {
-      ReadHybridTime::FromMicros(yb_read_time).ToPB(options.mutable_read_time());
-    }
   }
 
   // If all operations belong to the same database then set the namespace.
@@ -944,20 +977,9 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
   }
 
-  // Workaround for index backfill case:
-  //
-  // In case of index backfill, the read_time is set and is to be used for reading. However, if
-  // read committed isolation is enabled, the read_time_manipulation is also set to RESET for
-  // index backfill since it is a non-DDL statement.
-  //
-  // As a workaround, clear the read time manipulation to prefer read time over manipulation in
-  // case both are set. Remove after proper fix in context of GH #18080.
-  if (options.read_time_manipulation() != tserver::ReadTimeManipulation::NONE &&
-      options.has_read_time()) {
-    options.clear_read_time_manipulation();
-  }
-
-  DCHECK(!options.has_read_time() || options.isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
+  DCHECK(
+      !options.read_time_options().has_read_time() ||
+      options.isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
 
   if (auto origin_id = pg_callbacks_.GetSessionReplicationOriginId()) {
     options.set_xrepl_origin_id(origin_id);
@@ -1045,7 +1067,7 @@ Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options
     false /* read_only */,
     pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
 
-  return SetupPerformOptions(options);
+  return SetupPerformOptions(*options, NonTransactionalWrites::kFalse);
 }
 
 void PgSession::SetTransactionHasWrites() {
@@ -1144,6 +1166,7 @@ Result<TxnReadPoint> PgSession::UpdateReadPointForCatalogOps(PgOid catalog_table
   // Without clamping, the uncertainty window causes spurious read restart errors on catalog
   // tables that are unnecessary given the object-lock / invalidation-messages protocol.
   pg_txn_manager_->SetClampUncertaintyWindow(true);
+  pg_txn_manager_->ResetFollowerReadTime();
   return original_read_point;
 }
 
@@ -1167,7 +1190,7 @@ Result<PerformFuture> PgSession::DoRunAsync(
   const auto group_session_type = VERIFY_RESULT(GetRequiredSessionType(
       *pg_txn_manager_, first_table, **first_table_op.operation,
       non_ddl_txn_for_sys_tables_allowed));
-  if (group_session_type != SessionType::kCatalog &&
+  if (group_session_type != SessionType::kLegacyCatalog &&
       options.marker != std::optional(PgSessionRunOperationMarker::ExplicitRowLock)) {
     RETURN_NOT_OK(Flush(explicit_row_lock_buffer_));
   }
@@ -1286,7 +1309,7 @@ Status PgSession::AcquireAdvisoryLock(
   RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
     false /* read_only */,
     pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
-  RETURN_NOT_OK(SetupPerformOptions(&options));
+  RETURN_NOT_OK(SetupPerformOptions(options, NonTransactionalWrites::kFalse));
   // TODO(advisory-lock): Fully validate that the optimization of local txn will not be applied,
   // then it should be safe to skip set_force_global_transaction.
   options.set_force_global_transaction(true);

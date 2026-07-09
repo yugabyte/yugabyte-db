@@ -5535,16 +5535,24 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 
 	if (!retry_data)
 	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "the retry data is missing");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
-			elog(LOG, "query layer retry isn't possible, retry data is missing");
+			elog(LOG, "%s", retry_err);
 		return false;
 	}
 
 	/* can only restart SELECT queries */
 	if (!retry_data->query_string)
 	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "the query string is missing");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
-			elog(LOG, "query layer retry isn't possible, query string is missing");
+			elog(LOG, "%s", retry_err);
 		return false;
 	}
 
@@ -5559,14 +5567,31 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		List	   *parsetree_list = yb_parse_query_silently(retry_data->query_string);
 
 		if (list_length(parsetree_list) == 0)
+		{
+			const char *retry_err = ("query layer retry isn't possible because "
+									 "the EXECUTE command could not be parsed");
+
+			edata->message = psprintf("%s (%s)", edata->message, retry_err);
+			if (yb_debug_log_internal_restarts)
+				elog(LOG, "%s", retry_err);
 			return false;
+		}
 		ExecuteStmt *execute_stmt = (ExecuteStmt *) linitial_node(RawStmt,
 																  parsetree_list)->stmt;
 		PreparedStatement *prepared_stmt = FetchPreparedStatement(execute_stmt->name,
 																  false /* throwError */ );
 
 		if (prepared_stmt == NULL)
+		{
+			const char *retry_err = ("query layer retry isn't possible because "
+									 "the prepared statement for the EXECUTE "
+									 "command could not be found");
+
+			edata->message = psprintf("%s (%s)", edata->message, retry_err);
+			if (yb_debug_log_internal_restarts)
+				elog(LOG, "%s", retry_err);
 			return false;
+		}
 		command_tag = prepared_stmt->plansource->commandTag;
 	}
 
@@ -5618,10 +5643,13 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 
 		if (!IsYBReadCommitted() && !opted_in)
 		{
+			const char *retry_err = psprintf("query layer retry isn't possible because "
+											 "retry of %s has not been validated.",
+											 GetCommandTagName(command_tag));
+
+			edata->message = psprintf("%s (%s)", edata->message, retry_err);
 			if (yb_debug_log_internal_restarts)
-				elog(LOG, "query layer retry isn't possible: retry of %s "
-					 "outside READ COMMITTED has not been validated",
-					 GetCommandTagName(command_tag));
+				elog(LOG, "%s", retry_err);
 			return false;
 		}
 
@@ -5648,10 +5676,13 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 
 		if (!rc_carveout && !opted_in)
 		{
+			const char *retry_err = psprintf("query layer retry isn't possible because "
+											 "retry of %s has not been validated.",
+											 GetCommandTagName(command_tag));
+
+			edata->message = psprintf("%s (%s)", edata->message, retry_err);
 			if (yb_debug_log_internal_restarts)
-				elog(LOG, "query layer retry isn't possible: %s is not in "
-					 "the default retriable set",
-					 GetCommandTagName(command_tag));
+				elog(LOG, "%s", retry_err);
 			return false;
 		}
 	}
@@ -5802,6 +5833,19 @@ yb_clear_portal_before_restart(Portal portal)
 		MemoryContextDelete(portal->holdContext);
 		portal->holdContext = NULL;
 	}
+
+	/*
+	 * Release child memory contexts (e.g. executor state) from the
+	 * previous execution attempt.  The portal's own portalContext is
+	 * preserved so that bound parameters survive the restart, but the
+	 * children hold executor state that will be recreated by PortalStart
+	 * during re-execution.  Without this, each transparent transaction
+	 * restart leaks the old EState and its YB-side objects (PgDml,
+	 * PgDocOp, DocResultStream, RefCntBuffers), causing multi-GB memory
+	 * bloat on large-table UPDATEs that hit repeated read-restart
+	 * conflicts.
+	 */
+	MemoryContextDeleteChildren(portal->portalContext);
 
 	/*
 	 * Fully detach portal from transaction to keep it alive in case of

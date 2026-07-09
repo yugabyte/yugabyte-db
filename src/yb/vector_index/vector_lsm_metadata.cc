@@ -32,11 +32,17 @@ using EntrySizeType = uint32_t;
 using CrcType = decltype(crc::Crc32c(nullptr, 0));
 const std::string kMetaFileSuffix = ".meta";
 
-}
+struct MetadataUpdatesLoadResult {
+  size_t next_free_file_no = 0;
+  std::vector<VectorLSMUpdatePB> updates;
 
-Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(
-    Env* env, const std::string& dir) {
-  VectorLSMMetadataLoadResult result;
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(next_free_file_no, updates);
+  }
+};
+
+Result<MetadataUpdatesLoadResult> LoadMetadataUpdates(Env* env, const std::string& dir) {
+  MetadataUpdatesLoadResult result;
   auto files = VERIFY_RESULT(env->GetChildren(dir));
   erase_if(files, [](const auto& file) {
     return !boost::ends_with(file, kMetaFileSuffix);
@@ -123,6 +129,35 @@ Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(
     // So reappearance of deleted files would not harm upcoming bootstraps.
   }
 
+  return result;
+}
+
+}  // namespace
+
+Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(Env* env, const std::string& dir) {
+  auto raw = VERIFY_RESULT(LoadMetadataUpdates(env, dir));
+
+  VectorLSMMetadataLoadResult result;
+  result.next_free_file_no = raw.next_free_file_no;
+
+  // All chunks loaded, apply add/remove updates to get the current version.
+  std::unordered_map<uint64_t, VectorLSMChunkPB*> chunks_map;
+  for (auto& update : raw.updates) {
+    for (auto& chunk : *update.mutable_add_chunks()) {
+      chunks_map.emplace(chunk.serial_no(), &chunk);
+    }
+    for (const auto chunk_no : update.remove_chunks()) {
+      if (!chunks_map.erase(chunk_no)) {
+        return STATUS_FORMAT(Corruption, "Attempt to remove non existing chunk: $0", chunk_no);
+      }
+    }
+  }
+
+  result.chunks.reserve(chunks_map.size());
+  for (auto& [_, chunk] : chunks_map) {
+    result.chunks.push_back(std::move(*chunk));
+  }
+
   LOG(INFO) << "Loaded: " << result.ToString();
 
   return result;
@@ -162,7 +197,7 @@ Status VectorLSMMetadataAppendUpdate(WritableFile& file, const VectorLSMUpdatePB
 }
 
 std::string VectorLSMMetadataLoadResult::ToString() const {
-  return YB_STRUCT_TO_STRING(next_free_file_no, updates);
+  return YB_STRUCT_TO_STRING(next_free_file_no, chunks);
 }
 
 }  // namespace yb::vector_index

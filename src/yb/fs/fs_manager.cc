@@ -32,6 +32,7 @@
 
 #include "yb/fs/fs_manager.h"
 
+#include <algorithm>
 #include <map>
 #include <set>
 #include <unordered_set>
@@ -118,6 +119,17 @@ const char *FsManager::kWalFileNamePrefix = "wal";
 const char *FsManager::kWalsRecoveryDirSuffix = ".recovery";
 const char *FsManager::kRocksDBDirName = "rocksdb";
 const char *FsManager::kDataDirName = "data";
+const char *FsManager::kDefaultStorageTier = "ssd";
+
+const std::vector<std::string>& FsManager::ValidStorageTiers() {
+  static const std::vector<std::string> kTiers = {"ssd", "hdd"};
+  return kTiers;
+}
+
+bool FsManager::IsValidStorageTier(const std::string& tier) {
+  const auto& tiers = ValidStorageTiers();
+  return std::find(tiers.begin(), tiers.end(), tier) != tiers.end();
+}
 
 namespace {
 
@@ -131,6 +143,21 @@ const char kTmpInfix[] = ".tmp";
 const char kCheckFileTemplate[] = "check.XXXXXX";
 const char kPrefixMetricId[] = "drive:";
 
+// Splits path:tier tokens into path and tier.
+std::pair<std::string, std::string> ParseDataDirSpec(const std::string& spec) {
+  // no colon, return the path and default tier
+  auto pos = spec.rfind(':');
+  if (pos == std::string::npos) {
+    return {spec, FsManager::kDefaultStorageTier};
+  }
+  // colon exists but no tier, return the path and default tier
+  std::string tier = spec.substr(pos + 1);
+  if (tier.empty()) {
+    return {spec.substr(0, pos), FsManager::kDefaultStorageTier};
+  }
+  return {spec.substr(0, pos), tier};
+}
+
 std::string DataDir(const std::string& root, const std::string& server_type) {
   return JoinPathSegments(GetServerTypeDataPath(root, server_type), FsManager::kDataDirName);
 }
@@ -143,13 +170,41 @@ std::string WalDir(const std::string& root, const std::string& server_type) {
 
 FsManagerOpts::FsManagerOpts()
     : read_only(false) {
+  // split fs_data_dirs into tokens; "/a:ssd,/b:hdd" -> ["/a:ssd", "/b:hdd"]
+  const std::vector<std::string> raw_data_tokens(
+      strings::Split(FLAGS_fs_data_dirs, ",", strings::SkipEmpty()));
+
+  // Parse each "path:tier" token from fs_data_dirs.
+  std::vector<std::pair<std::string, std::string>> parsed_data_tokens;
+  parsed_data_tokens.reserve(raw_data_tokens.size());
+  data_paths.reserve(raw_data_tokens.size());
+  for (const auto& token : raw_data_tokens) {
+    auto parsed = ParseDataDirSpec(token);
+    data_paths.push_back(parsed.first);
+    tier_by_path[parsed.first] = parsed.second;
+    parsed_data_tokens.push_back(std::move(parsed));
+  }
+
   if (FLAGS_fs_wal_dirs.empty() && !FLAGS_fs_data_dirs.empty()) {
-    // It is sufficient if user sets the data dirs. By default we use the same
-    // directories for WALs as well.
-    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(fs_wal_dirs, FLAGS_fs_data_dirs));
+    // WAL defaults to data dirs from the fastest tier with disks: prefer the
+    // default tier ("ssd"), else failover to the next tier in ValidStorageTiers().
+    std::vector<std::string> selected_wal_paths;
+    selected_wal_paths.reserve(parsed_data_tokens.size());
+    for (const auto& tier_name : FsManager::ValidStorageTiers()) {
+      for (const auto& [path, tier] : parsed_data_tokens) {
+        if (tier == tier_name) {
+          selected_wal_paths.push_back(path);
+        }
+      }
+      if (!selected_wal_paths.empty()) {
+        break;
+      }
+    }
+
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(
+        fs_wal_dirs, JoinStrings(selected_wal_paths, ",")));
   }
   wal_paths = strings::Split(FLAGS_fs_wal_dirs, ",", strings::SkipEmpty());
-  data_paths = strings::Split(FLAGS_fs_data_dirs, ",", strings::SkipEmpty());
 }
 
 FsManagerOpts::~FsManagerOpts() = default;
@@ -171,6 +226,7 @@ FsManager::FsManager(Env* env,
       read_only_(opts.read_only),
       wal_fs_roots_(opts.wal_paths),
       data_fs_roots_(opts.data_paths),
+      tier_by_data_path_(opts.tier_by_path),
       server_type_(opts.server_type),
       metric_registry_(opts.metric_registry),
       parent_mem_tracker_(opts.parent_mem_tracker) {
@@ -187,6 +243,19 @@ Status FsManager::Init() {
   // The wal root must be set.
   if (data_fs_roots_.empty()) {
     return STATUS(IOError, "List of data directories (fs_data_dirs) not provided");
+  }
+
+  // WAL dirs must not carry storage-tier annotations.
+  // WAL always runs on the fastest available storage.
+  for (const string& wal_root : wal_fs_roots_) {
+    auto [path, tier] = ParseDataDirSpec(wal_root);
+    if (path != wal_root) {
+      return STATUS(InvalidArgument, Substitute(
+          "Storage-tier annotation \":$0\" is not allowed in --fs_wal_dirs "
+          "(WAL should always use the fastest available storage). "
+          "Remove the tier suffix from: $1",
+          tier, wal_root));
+    }
   }
 
   // Deduplicate all of the roots.
@@ -249,6 +318,29 @@ Status FsManager::Init() {
 
   for (const RootMap::value_type& e : canonicalized_roots) {
     canonicalized_all_fs_roots_.insert(e.second);
+  }
+
+  // Build tier maps from data_fs_roots_ + tier_by_data_path_.
+  for (const std::string& raw_root : data_fs_roots_) {
+    const std::string& canonical_root = FindOrDie(canonicalized_roots, raw_root);
+
+    std::string tier = kDefaultStorageTier;
+    auto tier_it = tier_by_data_path_.find(raw_root);
+    if (tier_it != tier_by_data_path_.end() && !tier_it->second.empty()) {
+      tier = tier_it->second;
+    }
+
+    if (!IsValidStorageTier(tier)) {
+      return STATUS(InvalidArgument, Substitute(
+          "Invalid storage tier \"$0\" for data dir \"$1\" in --fs_data_dirs. "
+          "Valid storage tiers are: $2",
+          tier, raw_root, JoinStrings(ValidStorageTiers(), ", ")));
+    }
+
+    auto [it, inserted] = tier_by_canonicalized_fs_root_.emplace(canonical_root, tier);
+    if (inserted) {
+      data_roots_by_tier_[tier].push_back(DataDir(canonical_root, server_type_));
+    }
   }
 
   if (VLOG_IS_ON(1)) {
@@ -733,6 +825,28 @@ vector<string> FsManager::GetWalRootDirs() const {
     wal_dirs.push_back(WalDir(canonicalized_wal_fs_root, server_type_));
   }
   return wal_dirs;
+}
+
+const std::string& FsManager::GetTierForDataRoot(
+    const std::string& canonicalized_fs_root) const {
+  auto it = tier_by_canonicalized_fs_root_.find(canonicalized_fs_root);
+  if (it != tier_by_canonicalized_fs_root_.end()) {
+    return it->second;
+  }
+  static const std::string kDefault(kDefaultStorageTier);
+  return kDefault;
+}
+
+std::vector<std::string> FsManager::GetDataRootDirsForTier(const std::string& tier) const {
+  auto it = data_roots_by_tier_.find(tier);
+  if (it != data_roots_by_tier_.end()) {
+    return it->second;
+  }
+  return {};
+}
+
+const std::map<std::string, std::vector<std::string>>& FsManager::GetDataRootsByTier() const {
+  return data_roots_by_tier_;
 }
 
 std::string FsManager::GetRaftGroupMetadataDir(const std::string& data_dir) {

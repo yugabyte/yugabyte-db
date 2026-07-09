@@ -65,7 +65,9 @@
         "seconds": "s",
         "megabyte": "MB",
         "megabytesPerSecond": "MBps"
-      }
+      },
+      "assigned": "Assigned",
+      "notAssigned": "Not Assigned"
     },
     "iconAltText": {
       "infoIcon": "Information icon",
@@ -1680,16 +1682,46 @@
         },
         "config": {
           "tableStatus": {
-            "Running": "Operational",
-            "Warning": "Warning",
-            "Failed": "Failed",
-            "Error": "Error",
-            "Updating": "In Progress",
-            "Validated": "Validated",
-            "Bootstrapping": "Bootstrapping",
-            "UnableToFetch": "Unable to Fetch",
-            "Dropped": "Dropped from DB",
-            "TableInfoMissing": "Table Info Missing",
+            "Running": {
+              "label": "Operational",
+              "tooltip": "This table is being replicated."
+            },
+            "Warning": {
+              "label": "Warning",
+              "tooltip": "This table is in replication, but the replication lag is more than the maximum acceptable lag, or the lag is not being reported."
+            },
+            "Failed": {
+              "label": "Failed",
+              "tooltip": "This table failed to be added to replication."
+            },
+            "Error": {
+              "label": "Error",
+              "tooltip": "Replication has encountered one or more errors for this table."
+            },
+            "Updating": {
+              "label": "In Progress",
+              "tooltip": "This table is undergoing changes, such as being added to or removed from replication."
+            },
+            "Validated": {
+              "label": "Validated",
+              "tooltip": "This table passes pre-checks and is eligible to be added to replication."
+            },
+            "Bootstrapping": {
+              "label": "Bootstrapping",
+              "tooltip": "This table is undergoing a full copy; that is, being backed up from the {{sourceUniverseTerm}} and restored to the {{targetUniverseTerm}}."
+            },
+            "UnableToFetch": {
+              "label": "Unable to Fetch",
+              "tooltip": "YugabyteDB Anywhere is unable to obtain the status for this table. Refresh the page to retry gathering the information."
+            },
+            "Dropped": {
+              "label": "Dropped from DB",
+              "tooltip": "This table was in replication, but no longer exists on either the {{sourceUniverseTerm}} or the {{targetUniverseTerm}}. It needs to be removed from the {{xClusterOffering}} configuration."
+            },
+            "TableInfoMissing": {
+              "label": "Table Info Missing",
+              "tooltip": "YugabyteDB Anywhere is unable to fetch table info from either the {{sourceUniverseTerm}} or the {{targetUniverseTerm}}."
+            },
             "ExtraTableOnSource": {
               "label": "Extra Table On Source",
               "tooltip": "This table is present on the {{sourceUniverseTerm}} but is not being replicated. Did you mean to add this to the set of tables in replication?"
@@ -1706,7 +1738,40 @@
               "label": "Dropped From Target",
               "tooltip": "This table is included in the {{xClusterOffering}} configuration but is missing on the DR {{targetUniverseTerm}}. It needs to be dropped and removed from the {{sourceUniverseTerm}} configuration."
             },
-            "ReplicationError": "Replication Error"
+            "replicationStatusError": {
+              "unknownError": {
+                "label": "Unknown Error",
+                "tooltip": "Replication has encountered an unknown error for this table. Check the {{sourceUniverseTerm}} and {{targetUniverseTerm}} logs for more details, or contact Yugabyte Support."
+              },
+              "missingOpId": {
+                "label": "Missing Op ID",
+                "tooltip": "Replication is broken and cannot continue because the write-ahead logs were garbage collected before they were replicated to the other universe. You need to restart replication."
+              },
+              "schemaMismatch": {
+                "label": "Schema Mismatch",
+                "tooltip": "The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe."
+              },
+              "missingTable": {
+                "label": "Missing colocated child table",
+                "tooltip": "Replication for this colocated table group has stopped because a colocated child table exists on the {{sourceUniverseTerm}} but is missing on the {{targetUniverseTerm}}. Create the same table on the {{targetUniverseTerm}} to resume replication."
+              },
+              "uninitialized": {
+                "label": "Uninitialized",
+                "tooltip": "The replication status for this table has not been initialized yet. This can happen when replication was just set up or when there is a new master leader on the {{targetUniverseTerm}}. Refresh the page to retry gathering the information."
+              },
+              "autoFlagConfigMismatch": {
+                "label": "Auto Flag Config Mismatch",
+                "tooltip": "Replication has stopped because one of the universes is running a version of YugabyteDB that is incompatible with the other. This can happen when upgrading universes that are in replication. Upgrade the other universe to the same version."
+              },
+              "sourceUnreachable": {
+                "label": "Source Unreachable",
+                "tooltip": "The {{targetUniverseTerm}} is unable to reach the {{sourceUniverseTerm}} to replicate data. Ensure the {{sourceUniverseTerm}} is running and reachable from the {{targetUniverseTerm}}."
+              },
+              "systemError": {
+                "label": "System Error",
+                "tooltip": "Replication has encountered a system error for this table. Check the {{sourceUniverseTerm}} and {{targetUniverseTerm}} logs for more details, or contact Yugabyte Support."
+              }
+            }
           }
         },
         "createConfigModal": {
@@ -4218,7 +4283,8 @@
         "hardware": "Hardware",
         "security": "Security",
         "database": "Database",
-        "advanced": "Advanced"
+        "advanced": "Advanced",
+        "logs": "Logs"
       },
       "general": {
         "title": "General",
@@ -4356,7 +4422,10 @@
         "encryptionAtRest": "Encryption At Rest",
         "nodeToNode": "Node to Node Encryption",
         "clientToNode": "Client to Node Encryption",
-        "encryption": "Encryption"
+        "encryption": "Encryption",
+        "networkAccess": "Network Access",
+        "publicIP": "PUBLIC IP",
+        "ipv6": "IPV6"
       },
       "database": {
         "ysql": "YSQL",
@@ -4391,6 +4460,75 @@
         "sshKey": "SSH ACCESS KEY",
         "awsArn": "INSTANCE PROFILE ARN",
         "networkPorts": "Network Ports"
+      },
+      "logs": {
+        "troubleshootingLogs": "Troubleshooting Logs",
+        "complianceLogs": "Compliance Logs",
+        "databaseQueryLog": "Database Query Log",
+        "databaseQueryLogDescription": "Capture database query logs for query-level duration, statements etc.",
+        "databaseAuditLog": "Database Audit Log",
+        "databaseAuditLogDescription": "Capture session database audit logs to comply with government, financial, or ISO certification.",
+        "learnMore": "Learn more",
+        "enableQueryLogging": "Enable Query Logging",
+        "editQueryLogging": "Edit",
+        "enableAuditLogging": "Enable Audit Logging",
+        "telemetryExportNote": "<bold>Note:</bold> To send logs to external tools, go to Telemetry Export.",
+        "queryLogSettings": {
+          "title": "Configure Database Query Logging",
+          "selectParameters": "Select Parameters",
+          "cancel": "Cancel",
+          "enableQueryLogging": "Enable Database Query Logging",
+          "applyChanges": "Apply Changes",
+          "enableInProgress": "Enabling database query logging",
+          "updateInProgress": "Updating database query logging configuration",
+          "learnMoreAboutParameters": "Learn more about query log parameters",
+          "groups": {
+            "general": "General",
+            "errorStatement": "Error Statement",
+            "queryDuration": "Query Duration and Slow Queries",
+            "debugging": "Debugging",
+            "connectionDisconnection": "Connection and Disconnection"
+          },
+          "logStatement": {
+            "prefix": "Log",
+            "suffix": "statements"
+          },
+          "logMinError": {
+            "prefix": "Log statements that cause an error of severity",
+            "suffix": "or higher"
+          },
+          "logErrorVerbosity": {
+            "prefix": "Log errors with verbosity"
+          },
+          "logDuration": "Log the duration of all completed statements",
+          "logMinDuration": {
+            "prefix": "Log all statements with a duration of",
+            "suffix": "ms or longer"
+          },
+          "debugPrintPlan": "Log the execution plan for each executed query",
+          "logConnections": "Log each attempted connection to the server",
+          "logDisconnections": "Log session terminations",
+          "tooltips": {
+            "logStatement": "Choose SQL statement types (DDL, DML, all) to log. Statements that fail before the execute phase, or that have syntax errors, are not included. To log error statements, use the log_min_error_statement setting.\n\nParameter name: log_statement",
+            "logMinError": "Control which SQL statements that cause an error condition are logged.\n\nParameter name: log_min_error_statement",
+            "logErrorVerbosity": "Control the amount of detail for each log.\n\nParameter name: log_error_verbosity",
+            "logDuration": "Log the duration of all completed statements. Statement text is not included. Use this option with log_min_duration_statement to log all durations along with the statement text for statements exceeding a specified duration. Use this option for performance analysis.\n\nParameter name: log_duration",
+            "logMinDuration": "Log the duration and statement text of all statements that ran for the specified duration (in ms) or longer. Use this setting to identify slow queries.\n\nText of statements logged for log_statement is not repeated in the duration log message.\n\nSet the value to 0 to log all statements, with their duration.\n\nParameter name: log_min_duration_statement",
+            "debugPrintPlan": "Log the debug-level execution plan used by the parser.\n\nParameter name: debug_print_plan",
+            "logConnections": "Log all connection attempts, along with successfully completed client authentication and authorization.\n\nParameter name: log_connections",
+            "logDisconnections": "Log session termination and duration of the session.\n\nParameter name: log_disconnections"
+          },
+          "errors": {
+            "minDurationRequired": "Enter a duration in milliseconds",
+            "minDurationInteger": "Duration must be a whole number of milliseconds",
+            "minDurationRange": "Duration must be between 0 and 2,147,483,647 ms"
+          },
+          "confirmation": {
+            "title": "Confirm Configuration Change",
+            "message": "Enabling database query logging requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+            "back": "Back"
+          }
+        }
       },
       "masterServerNodeAllocationModal": {
         "title": "Master Server Node Allocation",

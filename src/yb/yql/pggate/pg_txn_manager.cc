@@ -169,14 +169,23 @@ tserver::ReadTimeManipulation GetActualReadTimeManipulator(
 
 DEPRECATE_FLAG(int32, pg_yb_session_timeout_ms, "02_2024");
 
-PgTxnManager::SerialNo::SerialNo()
-    : SerialNo(0, 0) {}
+PgTxnManager::SerialNo::SerialNo(std::atomic<uint64_t>& next_read_time_serial_no)
+    : next_read_time_serial_no_(next_read_time_serial_no),
+      txn_(0),
+      read_time_(0),
+      min_read_time_(0),
+      max_read_time_(0) {
+}
 
-PgTxnManager::SerialNo::SerialNo(uint64_t txn_serial_no, uint64_t read_time_serial_no)
-    : txn_(txn_serial_no),
-      read_time_(read_time_serial_no),
-      min_read_time_(read_time_),
-      max_read_time_(read_time_) {
+void PgTxnManager::SerialNo::Set(uint64_t txn_serial_no, uint64_t read_time_serial_no) {
+  txn_ = txn_serial_no;
+  read_time_ = min_read_time_ = max_read_time_ = read_time_serial_no;
+}
+
+uint64_t PgTxnManager::SerialNo::NextReadTimeSerialNo() {
+  // fetch_add returns the previous value, so the first allocated serial number is 1. This matches
+  // the historical behaviour where read time serial numbers started from 1.
+  return next_read_time_serial_no_.fetch_add(1, std::memory_order_acq_rel) + 1;
 }
 
 void PgTxnManager::SerialNo::IncTxn(
@@ -198,12 +207,12 @@ void PgTxnManager::SerialNo::IncTxn(
 }
 
 void PgTxnManager::SerialNo::IncReadTime() {
-  read_time_ = ++max_read_time_;
+  read_time_ = max_read_time_ = NextReadTimeSerialNo();
   VLOG(4) << "IncReadTime to " << max_read_time_;
 }
 
 void PgTxnManager::SerialNo::IncMaxReadTime() {
-  ++max_read_time_;
+  max_read_time_ = NextReadTimeSerialNo();
   VLOG(4) << "IncMaxReadTime to " << max_read_time_;
 }
 
@@ -227,7 +236,7 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
   // transaction block seem to issue custom selects on pg_yb_catalog_version table using
   // YBCPgNewSelect, skipping object locks. Skip the assertion for such cases for now.
   if (!IsTableLockingEnabledForCurrentTxn() || options.ddl_mode() ||
-      options.use_catalog_session() || options.yb_non_ddl_txn_for_sys_tables_allowed() ||
+      options.use_legacy_catalog_session() || options.yb_non_ddl_txn_for_sys_tables_allowed() ||
       YBCIsInitDbModeEnvVarSet() || !YBCIsLegacyModeForCatalogOps()) {
     return;
   }
@@ -239,8 +248,10 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
 #endif
 
 PgTxnManager::PgTxnManager(
-    PgClient* client, YbcPgCallbacks pg_callbacks, bool enable_table_locking)
+    PgClient* client, YbcPgCallbacks pg_callbacks, bool enable_table_locking,
+    std::atomic<uint64_t>& next_read_time_serial_no)
     : client_(client),
+      serial_no_(next_read_time_serial_no),
       pg_callbacks_(pg_callbacks),
       enable_table_locking_(enable_table_locking) {}
 
@@ -389,7 +400,7 @@ Status PgTxnManager::CalculateIsolation(
   //
   // TODO(table-locks): Need to explicitly handle READ_COMMITTED case since YSQL internally bumps up
   // subtxn id for every statement. Else, every RC read-only txn would burn a docdb txn.
-  if (PREDICT_FALSE(IsTableLockingEnabledForCurrentTxn()) &&
+  if (IsTableLockingEnabledForCurrentTxn() &&
       active_sub_transaction_id_ > kMinSubTransactionId &&
       pg_isolation_level_ != PgIsolationLevel::READ_COMMITTED) {
     read_only_op = false;
@@ -558,7 +569,7 @@ Status PgTxnManager::FinishPlainTransaction(
   }
 
   const auto is_read_only = isolation_level_ == IsolationLevel::NON_TRANSACTIONAL;
-  if (is_read_only && !PREDICT_FALSE(IsTableLockingEnabledForCurrentTxn())) {
+  if (is_read_only && !IsTableLockingEnabledForCurrentTxn()) {
     VLOG_TXN_STATE(2) << "This was a read-only transaction, nothing to commit.";
     ResetTxnAndSession();
     return Status::OK();
@@ -599,7 +610,7 @@ void PgTxnManager::ResetTxnAndSession() {
   read_only_ = false;
   has_writes_ = false;
   enable_tracing_ = false;
-  snapshot_read_time_is_used_ = false;
+  crosstxn_snapshot_read_time_is_used_ = false;
   read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   read_only_stmt_ = false;
   need_defer_read_point_ = false;
@@ -709,111 +720,198 @@ std::string PgTxnManager::TxnStateDebugStr() const {
       isolation_level);
 }
 
-Status PgTxnManager::SetupPerformOptions(
-    SetupPerformOptionsAccessorTag, tserver::PgPerformOptionsPB* options,
-    std::optional<ReadTimeAction> read_time_action) {
-  if (!IsDdlModeWithSeparateTransaction() && !txn_in_progress_) {
-    IncTxnSerialNo();
+bool PgTxnManager::ShouldResetReadTime(std::optional<ReadTimeAction> read_time_action) const {
+  return read_time_action && *read_time_action == ReadTimeAction::RESET;
+}
+
+bool PgTxnManager::ShouldClamp() const {
+  return yb_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY ||
+         clamp_uncertainty_window_;
+}
+
+Status PgTxnManager::CheckConflictsAcrossReadTimeOptions(
+    const tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
+    std::optional<ReadTimeAction> read_time_action,
+    tserver::ReadTimeManipulation manipulation,
+    NonTransactionalWrites ops_has_non_transactional_writes) const {
+  const auto has_read_time = read_time_options.has_read_time();
+
+  if (need_restart_ || manipulation == tserver::ReadTimeManipulation::RESTART) {
+    RSTATUS_DCHECK(
+        !IsSerializableIsolation(), IllegalState,
+        "Serializable transactions do not face read restart errors.");
+    RSTATUS_DCHECK(
+        !ShouldResetReadTime(read_time_action) && !ops_has_non_transactional_writes, IllegalState,
+        "Non transactional writes do not face read restart errors");
+    RSTATUS_DCHECK(
+        !ShouldClamp(), IllegalState, "Clamped reads do not face read restart errors.");
+    RSTATUS_DCHECK(
+        !need_defer_read_point_, IllegalState, "Deferred reads do not face read restart errors.");
+    RSTATUS_DCHECK(
+        !has_read_time, IllegalState,
+        "Reads as of a time (e.g., backfill, yb_read_time) do not face read restart errors.");
+    RSTATUS_DCHECK(
+        !UsesFollowerReads(), IllegalState, "Follower reads do not face read restart errors.");
   }
-  const auto read_time_serial_no = serial_no_.read_time();
-  options->set_read_time_serial_no(read_time_serial_no);
-  options->set_read_time_serial_no_history_min(serial_no_.min_read_time());
-  if (snapshot_read_time_is_used_) {
-    if (auto i = explicit_snapshot_read_time_.find(read_time_serial_no);
-        i != explicit_snapshot_read_time_.end()) {
-      ReadHybridTime::FromUint64(i->second).ToPB(options->mutable_read_time());
+
+  if (ShouldResetReadTime(read_time_action)) {
+    RSTATUS_DCHECK(
+        manipulation != tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET, IllegalState,
+        "Reset picks the read time in the storage layer, incompatible with "
+        "ENSURE_READ_TIME_IS_SET which picks read time in the query layer");
+    RSTATUS_DCHECK(
+        !has_read_time, IllegalState,
+        "Non transactional writes must pick a read time in the storage layer.");
+    RSTATUS_DCHECK(
+        !UsesFollowerReads(), IllegalState,
+        "Follower reads are read only and do not occur with non transactional writes.");
+  }
+
+  if (IsSerializableIsolation()) {
+    RSTATUS_DCHECK(
+        !ShouldResetReadTime(read_time_action), IllegalState,
+        "Reset read time occurs under non-transactional isolation, not serializable.");
+    RSTATUS_DCHECK(
+        !has_read_time, IllegalState,
+        "Serializable transaction picks the read time in the storage layer and"
+        " hence cannot use a passed read time.");
+    RSTATUS_DCHECK(
+        manipulation != tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET, IllegalState,
+        "Serializable transaction picks the read time in the storage layer and"
+        " ENSURE_READ_TIME picks read time in the query layer.");
+    RSTATUS_DCHECK(
+        !UsesFollowerReads(), IllegalState,
+        "Follower reads are read only transactions and serializable is not applicable.");
+  }
+  return Status::OK();
+}
+
+Status PgTxnManager::SetupReadTimeOptions(
+    tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
+    std::optional<ReadTimeAction> read_time_action,
+    NonTransactionalWrites ops_has_non_transactional_writes) {
+  read_time_options.set_read_time_serial_no(serial_no_.read_time());
+  read_time_options.set_read_time_serial_no_history_min(serial_no_.min_read_time());
+
+  // read_time may be set by
+  // - PgSession::SetReadTimeIfPresent.
+  // - cross txn snapshot mechanism below.
+  if (crosstxn_snapshot_read_time_is_used_) {
+    RETURN_NOT_OK(CheckConflictWithCrossTxnSnapshotTime());
+    if (auto it = crosstxn_explicit_snapshot_read_time_.find(serial_no_.read_time());
+        it != crosstxn_explicit_snapshot_read_time_.end()) {
+      // i.e., the "USE SNAPSHOT" option is set with the CREATE REPLICATION SLOT command
+      SCHECK(
+          !read_time_options.has_read_time(), NotSupported,
+          "Cannot use a snapshot if a read time is already passed");
+      ReadHybridTime::FromUint64(it->second).ToPB(read_time_options.mutable_read_time());
+      return Status::OK();
     }
-
-    RETURN_NOT_OK(CheckSnapshotTimeConflict());
-  }
-  options->set_isolation(isolation_level_);
-  options->set_ddl_mode(IsDdlMode());
-  options->set_ddl_use_regular_transaction_block(IsDdlModeWithRegularTransactionBlock());
-  options->set_yb_non_ddl_txn_for_sys_tables_allowed(yb_non_ddl_txn_for_sys_tables_allowed);
-  options->set_trace_requested(enable_tracing_);
-  options->set_txn_serial_no(serial_no_.txn());
-  options->set_active_sub_transaction_id(active_sub_transaction_id_);
-  options->set_xcluster_target_ddl_bypass(yb_xcluster_target_ddl_bypass);
-  options->set_pg_txn_start_us(pg_txn_start_us_);
-  options->set_is_using_table_locks(using_table_locks_);
-
-  if (use_saved_priority_) {
-    options->set_use_existing_priority(true);
-  } else if (priority_) {
-    options->set_priority(*priority_);
-  }
-  if (need_restart_) {
-    options->set_restart_transaction(true);
-    need_restart_ = false;
   }
 
-  // Do not clamp or defer read point when the read time is being reset
-  // because RESET => read time needs to be empty.
-  if (!(read_time_action && *read_time_action == ReadTimeAction::RESET)) {
-    // Do not clamp in the serializable case (or fast path write) since
-    // - SERIALIZABLE (and fast path) reads do not pick read time until they reach storage layer.
-    // - SERIALIZABLE (and fast path) reads do not observe read restarts anyways.
-    // Fast path writes are also referred to as NonTransactional writes.
-    if ((yb_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY
-         || clamp_uncertainty_window_)
-        && isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION
-        && !VERIFY_RESULT(TransactionHasNonTransactionalWrites())) {
-      // Can remove this check in the future since catalog session also clamps catalog_read_time.
-      RSTATUS_DCHECK(!options->use_catalog_session(), IllegalState,
-        "SetupPerformOptions cannot be called with use_catalog_session set.");
-      options->set_clamp_uncertainty_window(true);
-      read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
-      read_time_action.reset();
-    } else if (need_defer_read_point_) {
-      // Two ways to defer read point:
-      // 1. SET TRANSACTION READ ONLY DEFERRABLE
-      // 2. SET yb_read_after_commit_visibility = 'deferred'
-      options->set_defer_read_point(true);
-      // Setting read point at pg client. Reset other time manipulations.
-      read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
-      read_time_action.reset();
-    }
-  }
-
-  if (UsesFollowerReads()) {
-    // Follower reads pick their own (stale) read time on the PgClientSession, which already
-    // satisfies "pick the read time on the proxy". Any read time manipulation (e.g.
-    // ENSURE_READ_TIME_IS_SET from parallel execution) is redundant and must not be combined
-    // with the staleness.
-    read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
-  } else if (pg_callbacks_.IsInParallelMode() &&
-             isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION &&
-             !yb_skip_ensure_read_time_in_parallel_execution) {
-    // In parallel execution (leader and workers), always pick read time on the proxy instead
-    // of a remote tserver. This is required because the "used_read_time" mechanism
-    // doesn't work with parallel rpcs. In other words, if some operation from Pg to the proxy
-    // doesn't have a read time picked already and expects one to be picked on the remote tserver,
-    // no simultaneous operation should be performed before the response for the rpc is received.
-    //
-    // For serializable isolation, there is no read time.
-    read_time_manipulation_ = tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET;
-  }
-
+  const auto manipulation =
+      GetActualReadTimeManipulator(isolation_level_, read_time_manipulation_, read_time_action);
   if (!IsDdlModeWithSeparateTransaction()) {
     // The state in read_time_manipulation_ is only for kPlain transactions. And if YSQL switches to
     // kDdl mode for sometime, we should keep read_time_manipulation_ as is so that once YSQL
     // switches back to kDdl mode, the read_time_manipulation_ is not lost.
-    options->set_read_time_manipulation(
-        GetActualReadTimeManipulator(isolation_level_, read_time_manipulation_, read_time_action));
     read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   }
+
+  RETURN_NOT_OK(CheckConflictsAcrossReadTimeOptions(
+      read_time_options, read_time_action, manipulation, ops_has_non_transactional_writes));
+
+  if (ShouldResetReadTime(read_time_action)) {
+    read_time_options.mutable_read_time()->Clear();
+    return Status::OK();
+  }
+
+  if (IsSerializableIsolation() ||
+      ops_has_non_transactional_writes ||
+      read_time_options.has_read_time()) {
+    return Status::OK(); // Other read time options below do not apply.
+  }
+
   if (UsesFollowerReads()) {
-    options->mutable_follower_read_staleness_ms()->set_value(
+    read_time_options.mutable_follower_read_staleness_ms()->set_value(
         static_cast<uint32_t>(*follower_read_staleness_ms_));
+    return Status::OK();
   }
 
-  if (read_time_action && *read_time_action == ReadTimeAction::RESET) {
-    options->mutable_read_time()->Clear();
+  if (need_restart_) {
+    read_time_options.set_restart_transaction(true);
+    need_restart_ = false;
+    return Status::OK();
   }
 
-  options->set_force_global_transaction(yb_force_global_transaction);
-  options->set_force_tablespace_locality(yb_force_tablespace_locality);
-  options->set_force_tablespace_locality_oid(yb_force_tablespace_locality_oid);
+  if (!IsDdlModeWithSeparateTransaction() &&
+      manipulation == tserver::ReadTimeManipulation::RESTART) {
+    read_time_options.set_read_time_manipulation(tserver::ReadTimeManipulation::RESTART);
+    return Status::OK();
+  }
+
+  if (ShouldClamp()) {
+    read_time_options.set_clamp_uncertainty_window(true);
+    return Status::OK();
+  }
+
+  if (need_defer_read_point_) {
+    // Two ways to defer read point:
+    // 1. SET TRANSACTION READ ONLY DEFERRABLE
+    // 2. SET yb_read_after_commit_visibility = 'deferred'
+    read_time_options.set_defer_read_point(true);
+    return Status::OK();
+  }
+
+  // In parallel execution (leader and workers), always pick read time on the proxy instead
+  // of a remote tserver. This is required because the "used_read_time" mechanism
+  // doesn't work with parallel rpcs. In other words, if some operation from Pg to the proxy
+  // doesn't have a read time picked already and expects one to be picked on the remote tserver,
+  // no simultaneous operation should be performed before the response for the rpc is received.
+  //
+  // For serializable isolation, there is no read time.
+  if (!IsDdlModeWithSeparateTransaction() &&
+      (manipulation == tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET ||
+       (pg_callbacks_.IsInParallelMode() &&
+        !yb_skip_ensure_read_time_in_parallel_execution && !UsesFollowerReads()))) {
+    read_time_options.set_read_time_manipulation(
+        tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET);
+  }
+
+  return Status::OK();
+}
+
+Status PgTxnManager::SetupPerformOptions(
+    SetupPerformOptionsAccessorTag, tserver::PgPerformOptionsPB& options,
+    NonTransactionalWrites ops_has_non_transactional_writes,
+    std::optional<ReadTimeAction> read_time_action) {
+  if (!IsDdlModeWithSeparateTransaction() && !txn_in_progress_) {
+    IncTxnSerialNo();
+  }
+  options.set_isolation(isolation_level_);
+  options.set_ddl_mode(IsDdlMode());
+  options.set_ddl_use_regular_transaction_block(IsDdlModeWithRegularTransactionBlock());
+  options.set_yb_non_ddl_txn_for_sys_tables_allowed(yb_non_ddl_txn_for_sys_tables_allowed);
+  options.set_trace_requested(enable_tracing_);
+  options.set_txn_serial_no(serial_no_.txn());
+  options.set_active_sub_transaction_id(active_sub_transaction_id_);
+  options.set_xcluster_target_ddl_bypass(yb_xcluster_target_ddl_bypass);
+  options.set_pg_txn_start_us(pg_txn_start_us_);
+  options.set_is_using_table_locks(using_table_locks_);
+  options.set_read_from_followers(UsesFollowerReads());
+
+  if (use_saved_priority_) {
+    options.set_use_existing_priority(true);
+  } else if (priority_) {
+    options.set_priority(*priority_);
+  }
+
+  RETURN_NOT_OK(SetupReadTimeOptions(
+      *options.mutable_read_time_options(), read_time_action, ops_has_non_transactional_writes));
+
+  options.set_force_global_transaction(yb_force_global_transaction);
+  options.set_force_tablespace_locality(yb_force_tablespace_locality);
+  options.set_force_tablespace_locality_oid(yb_force_tablespace_locality_oid);
   return Status::OK();
 }
 
@@ -849,7 +947,7 @@ void PgTxnManager::IncTxnSerialNo() {
       pg_callbacks_.GetCatalogSnapshotReadPoint(
           0 /* table_oid*/, false /* create_if_not_exists */));
   active_sub_transaction_id_ = kMinSubTransactionId;
-  explicit_snapshot_read_time_.clear();
+  crosstxn_explicit_snapshot_read_time_.clear();
 }
 
 void PgTxnManager::DumpSessionState(YbcPgSessionState* session_data) {
@@ -864,8 +962,7 @@ void PgTxnManager::DumpSessionState(YbcPgSessionState* session_data) {
 void PgTxnManager::RestoreSessionState(const YbcPgSessionState& session_data) {
   VLOG(2) << "RestoreSessionState: txn_serial_no=" << session_data.txn_serial_no
           << ", read_time_serial_no=" << session_data.read_time_serial_no;
-  serial_no_ =
-      SerialNo(session_data.txn_serial_no, session_data.read_time_serial_no);
+  serial_no_.Set(session_data.txn_serial_no, session_data.read_time_serial_no);
   active_sub_transaction_id_ = session_data.active_sub_transaction_id;
   VLOG_TXN_STATE(2);
 }
@@ -877,7 +974,9 @@ YbcReadPointHandle PgTxnManager::GetCurrentReadPoint() const {
 YbcReadPointHandle PgTxnManager::GetMaxReadPoint() const { return serial_no_.max_read_time(); }
 
 TxnReadPoint PgTxnManager::GetCurrentReadPointState() const {
-  return TxnReadPoint{serial_no_.txn(), serial_no_.read_time(), clamp_uncertainty_window_};
+  return TxnReadPoint{
+      serial_no_.txn(), serial_no_.read_time(), clamp_uncertainty_window_,
+      follower_read_staleness_ms_};
 }
 
 Status PgTxnManager::RestoreReadPoint(YbcReadPointHandle read_point) {
@@ -899,18 +998,20 @@ Status PgTxnManager::RestoreReadPoint(const TxnReadPoint& saved_read_point) {
     return Status::OK();
   }
   clamp_uncertainty_window_ = saved_read_point.is_clamped;
+  follower_read_staleness_ms_ = saved_read_point.follower_read_staleness_ms;
   return RestoreReadPoint(saved_read_point.read_time_serial_no);
 }
 
 Result<YbcReadPointHandle> PgTxnManager::RegisterSnapshotReadTime(
     uint64_t read_time, bool use_read_time) {
-  RETURN_NOT_OK(CheckSnapshotTimeConflict());
+  RETURN_NOT_OK(CheckConflictWithCrossTxnSnapshotTime());
   const auto read_time_serial_no = serial_no_.read_time();
-  auto [it, inserted] = explicit_snapshot_read_time_.emplace(read_time_serial_no, read_time);
+  auto [it, inserted] =
+      crosstxn_explicit_snapshot_read_time_.emplace(read_time_serial_no, read_time);
   RSTATUS_DCHECK(
       inserted, IllegalState, "Current read point already has assigned snapshot read time");
   if (use_read_time) {
-    snapshot_read_time_is_used_ = true;
+    crosstxn_snapshot_read_time_is_used_ = true;
   }
   return it->first;
 }
@@ -918,25 +1019,28 @@ Result<YbcReadPointHandle> PgTxnManager::RegisterSnapshotReadTime(
 Result<std::string> PgTxnManager::ExportSnapshot(
     SetupPerformOptionsAccessorTag tag, const YbcPgTxnSnapshot& snapshot,
     std::optional<YbcReadPointHandle> explicit_read_time) {
-  RETURN_NOT_OK(CheckSnapshotTimeConflict());
+  RETURN_NOT_OK(CheckConflictWithCrossTxnSnapshotTime());
   tserver::PgExportTxnSnapshotRequestPB req;
   auto& snapshot_pb = *req.mutable_snapshot();
   snapshot_pb.set_db_oid(snapshot.db_id);
   snapshot_pb.set_isolation_level(snapshot.iso_level);
   snapshot_pb.set_read_only(snapshot.read_only);
-  std::optional<uint64_t> explicit_read_time_value;
+  std::optional<uint64_t> crosstxn_explicit_read_time_value;
   std::optional read_time_action{ReadTimeAction::ENSURE_IS_SET};
   if (explicit_read_time.has_value()) {
-    const auto i = explicit_snapshot_read_time_.find(*explicit_read_time);
-    RSTATUS_DCHECK(i != explicit_snapshot_read_time_.end(), IllegalState, "Bad read time handle");
-    explicit_read_time_value = i->second;
+    const auto i = crosstxn_explicit_snapshot_read_time_.find(*explicit_read_time);
+    RSTATUS_DCHECK(
+        i != crosstxn_explicit_snapshot_read_time_.end(), IllegalState, "Bad read time handle");
+    crosstxn_explicit_read_time_value = i->second;
     read_time_action.reset();
   }
   auto& options = *req.mutable_options();
-  RETURN_NOT_OK(SetupPerformOptions(tag, &options, read_time_action));
+  RETURN_NOT_OK(
+      SetupPerformOptions(tag, options, NonTransactionalWrites::kFalse, read_time_action));
 
-  if (explicit_read_time_value) {
-    ReadHybridTime::FromUint64(*explicit_read_time_value).ToPB(options.mutable_read_time());
+  if (crosstxn_explicit_read_time_value) {
+    ReadHybridTime::FromUint64(*crosstxn_explicit_read_time_value).ToPB(
+        options.mutable_read_time_options()->mutable_read_time());
   }
   auto res = client_->ExportTxnSnapshot(&req);
   if (res.ok()) {
@@ -947,11 +1051,11 @@ Result<std::string> PgTxnManager::ExportSnapshot(
 
 Result<YbcPgTxnSnapshot> PgTxnManager::ImportSnapshot(
     SetupPerformOptionsAccessorTag tag, std::string_view snapshot_id) {
-  RETURN_NOT_OK(CheckSnapshotTimeConflict());
+  RETURN_NOT_OK(CheckConflictWithCrossTxnSnapshotTime());
   tserver::PgPerformOptionsPB options;
-  RETURN_NOT_OK(SetupPerformOptions(tag, &options));
+  RETURN_NOT_OK(SetupPerformOptions(tag, options, NonTransactionalWrites::kFalse));
   const auto snapshot = VERIFY_RESULT(client_->ImportTxnSnapshot(snapshot_id, std::move(options)));
-  snapshot_read_time_is_used_ = true;
+  crosstxn_snapshot_read_time_is_used_ = true;
 
   return YbcPgTxnSnapshot{
       .db_id = snapshot.db_oid(),
@@ -959,7 +1063,7 @@ Result<YbcPgTxnSnapshot> PgTxnManager::ImportSnapshot(
       .read_only = snapshot.read_only()};
 }
 
-Status PgTxnManager::CheckSnapshotTimeConflict() const {
+Status PgTxnManager::CheckConflictWithCrossTxnSnapshotTime() const {
   SCHECK(
       !UsesFollowerReads(), NotSupported,
       "Cannot set both 'transaction snapshot' and 'yb_read_from_followers' in the same "
@@ -972,6 +1076,9 @@ Status PgTxnManager::CheckSnapshotTimeConflict() const {
       "Cannot set both 'transaction snapshot' and 'yb_read_after_commit_visibility' in the same "
       "transaction.");
   SCHECK(!IsDdlMode(), NotSupported, "Cannot run DDL with exported/imported snapshot.");
+  SCHECK(
+      !IsSerializableIsolation(), NotSupported,
+      "Serializable transaction picks its own snapshot in the storage layer.");
   SCHECK(
       !deferrable_,
       NotSupported, "Deferred read point can't be used with exported/imported snapshot.");
@@ -994,12 +1101,12 @@ Status PgTxnManager::RollbackToSubTransaction(
     return Status::OK();
   }
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL &&
-      !PREDICT_FALSE(IsTableLockingEnabledForCurrentTxn())) {
+      !IsTableLockingEnabledForCurrentTxn()) {
     VLOG(4) << "This isn't a distributed transaction, so nothing to rollback.";
     return Status::OK();
   }
   tserver::PgPerformOptionsPB options;
-  RETURN_NOT_OK(SetupPerformOptions(tag, &options));
+  RETURN_NOT_OK(SetupPerformOptions(tag, options, NonTransactionalWrites::kFalse));
   return client_->RollbackToSubTransaction(id, &options);
 }
 
@@ -1030,7 +1137,7 @@ Status PgTxnManager::AcquireObjectLock(
       GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
       IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)));
   tserver::PgPerformOptionsPB options;
-  RETURN_NOT_OK(SetupPerformOptions(tag, &options));
+  RETURN_NOT_OK(SetupPerformOptions(tag, options, NonTransactionalWrites::kFalse));
   RETURN_NOT_OK(client_->AcquireObjectLock(
       &options, lock_id, mode, is_session_lock, tablespace_oid));
   DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());

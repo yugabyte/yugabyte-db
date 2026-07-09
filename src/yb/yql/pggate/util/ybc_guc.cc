@@ -63,6 +63,8 @@ bool yb_enable_replica_identity = true;
 
 bool yb_enable_consistent_replication_from_hash_range = false;
 
+bool yb_enable_replication_slot_exclusive_lock = false;
+
 bool yb_cdcsdk_stream_tables_without_primary_key = true;
 
 bool yb_cdcsdk_allow_dml_without_pk = false;
@@ -149,6 +151,8 @@ bool yb_disable_ddl_transaction_block_for_read_committed = false;
 int yb_fk_references_cache_limit = 65535;
 
 bool yb_allow_dockey_bounds = true;
+
+bool yb_dump_presplit_in_create = true;
 
 bool yb_xcluster_target_ddl_bypass = false;
 

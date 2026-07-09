@@ -1146,6 +1146,13 @@ FilterBlockReader* BlockBasedTable::ReadFilterBlock(const BlockHandle& filter_ha
   return nullptr;
 }
 
+uint64_t BlockBasedTable::ApproximateOffsetOfDataEnd() const {
+  if (rep_->table_properties && rep_->table_properties->data_size > 0) {
+    return rep_->table_properties->data_size;
+  }
+  return rep_->footer.metaindex_handle().offset();
+}
+
 Status BlockBasedTable::GetFixedSizeFilterBlockHandle(
     const Slice& filter_key, BlockHandle* filter_block_handle, Statistics* statistics) const {
   StopWatchNano sw(rep_->ioptions.env, statistics, GET_FIXED_SIZE_FILTER_BLOCK_HANDLE_NANOS);
@@ -1939,7 +1946,7 @@ Result<std::unique_ptr<IndexReader>> BlockBasedTable::CreateDataBlockIndexReader
 }
 
 uint64_t BlockBasedTable::ApproximateOffsetOf(const Slice& key) {
-  unique_ptr<InternalIterator> index_iter(NewIndexIterator(ReadOptions::kDefault));
+  std::unique_ptr<InternalIterator> index_iter(NewIndexIterator(ReadOptions::kDefault));
 
   index_iter->Seek(key);
   uint64_t result;
@@ -1959,16 +1966,59 @@ uint64_t BlockBasedTable::ApproximateOffsetOf(const Slice& key) {
     // key is past the last key in the file. If table_properties is not
     // available, approximate the offset by returning the offset of the
     // metaindex block (which is right near the end of the file).
-    result = 0;
-    if (rep_->table_properties) {
-      result = rep_->table_properties->data_size;
-    }
-    // table_properties is not present in the table.
-    if (result == 0) {
-      result = rep_->footer.metaindex_handle().offset();
-    }
+    result = ApproximateOffsetOfDataEnd();
   }
   return result;
+}
+
+Result<uint64_t> BlockBasedTable::SeekOffsetOf(const Slice& key) {
+  std::unique_ptr<InternalIterator> index_iter(NewIndexIterator(ReadOptions::kDefault));
+  index_iter->Seek(key);
+  RETURN_NOT_OK(index_iter->status());
+  if (!index_iter->Valid()) {
+    // "key" is past the last key in the file.
+    return ApproximateOffsetOfDataEnd();
+  }
+
+  // The index entry points to the data block whose separator >= "key"; the smallest key >= "key"
+  // is in this block (or "key" falls between this block's last key and its separator).
+  BlockHandle handle;
+  Slice handle_input = index_iter->value();
+  RETURN_NOT_OK(handle.DecodeFrom(&handle_input));
+  const uint64_t block_offset = handle.offset();
+
+  auto block =
+      VERIFY_RESULT(RetrieveBlock(ReadOptions::kDefault, index_iter->value(), BlockType::kData));
+
+  BlockIter block_it;
+  NewBlockIterator(ReadOptions::kDefault, &block, BlockType::kData, &block_it);
+  RETURN_NOT_OK(block_it.status());
+
+  block_it.Seek(key);
+  if (block_it.Valid()) {
+    const auto in_block_offset = block_it.GetCurrentEntryOffset();
+    const uint64_t decompressed_size = block.value->size();
+    RSTATUS_DCHECK(
+        decompressed_size > 0 || in_block_offset == 0, Corruption,
+        "Non-zero in-block offset $0 in empty block", in_block_offset);
+    const uint64_t scaled_offset = decompressed_size > 0 ? static_cast<uint64_t>(handle.size()) *
+                                                               in_block_offset / decompressed_size
+                                                         : 0;
+    return block_offset + scaled_offset;
+  }
+  RETURN_NOT_OK(block_it.status());
+
+  // "key" is greater than every key in this block but <= its separator, so the smallest key >=
+  // "key" is the first key of the next data block, i.e. that block's file offset.
+  index_iter->Next();
+  RETURN_NOT_OK(index_iter->status());
+  if (!index_iter->Valid()) {
+    return ApproximateOffsetOfDataEnd();
+  }
+  BlockHandle next_handle;
+  Slice next_input = index_iter->value();
+  RETURN_NOT_OK(next_handle.DecodeFrom(&next_input));
+  return next_handle.offset();
 }
 
 bool BlockBasedTable::TEST_filter_block_preloaded() const {

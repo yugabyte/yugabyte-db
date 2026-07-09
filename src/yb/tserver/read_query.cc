@@ -199,6 +199,9 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   RequestScope request_scope_;
   std::shared_ptr<ReadQuery> retained_self_;
   std::shared_ptr<TabletConsensusInfoPB> tablet_consensus_info_;
+  // Op id of the async locking write issued by this read, applied to resp_ after the read
+  // completes since Complete() clears resp_ on each attempt.
+  OpId async_write_op_id_;
 };
 
 bool ReadQuery::transactional() const {
@@ -458,7 +461,7 @@ Status ReadQuery::DoPerform() {
         self->RespondFailure(status);
       } else {
         if (response && response->has_async_write_op_id()) {
-          *self->resp_->mutable_async_write_op_id() = response->async_write_op_id();
+          self->async_write_op_id_ = OpId::FromPB(response->async_write_op_id());
         }
         self->retained_self_ = self;
         peer->Enqueue(self.get());
@@ -577,6 +580,11 @@ Status ReadQuery::Complete() {
       return STATUS(TimedOut, "Read timed out");
     }
   }
+  // Set here since the loop above clears resp_ on each attempt.
+  if (!async_write_op_id_.empty()) {
+    async_write_op_id_.ToPB(resp_->mutable_async_write_op_id());
+  }
+
   if (req_->include_trace() && Trace::CurrentTrace() != nullptr) {
     resp_->dup_trace_buffer(Trace::CurrentTrace()->DumpToString(true));
   }

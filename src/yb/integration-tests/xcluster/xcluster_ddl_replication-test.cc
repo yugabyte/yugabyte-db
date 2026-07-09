@@ -50,6 +50,7 @@
 
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_bool(enable_pg_cron);
+DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(xcluster_cleanup_tables_frequency_secs);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
@@ -1485,8 +1486,16 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedIndexes) {
   ASSERT_OK(producer_conn_->ExecuteFormat(
       "INSERT INTO $0 SELECT i, i%2, i::text FROM generate_series(1, 100) as i;", kNewTableName));
 
+  // Ensure the base table CREATE is fully replicated and applied on the target before pausing DDL
+  // replication. Otherwise, if the target's DDL queue handler is still catching up on this CREATE
+  // TABLE when we pause, it repeatedly fails that unrelated DDL and can hit the max-retries cap,
+  // permanently pausing DDL replication (which would never recover once we unpause).
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
   // Pause DDL replication to test that we handle the index data correctly.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) = 10000;
 
   // Create index on column a and insert some more rows.
   ASSERT_OK(producer_conn_->ExecuteFormat("CREATE INDEX ON $0(a DESC)", kNewTableName));
@@ -5363,6 +5372,68 @@ TEST_F(XClusterDDLReplicationTest, ReconnectAfterTargetPostgresRestart) {
   ASSERT_OK(producer_conn_->Execute("INSERT INTO test_table VALUES (1, 10)"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{"test_table"}));
+}
+
+// ADD CONSTRAINT ... FOREIGN KEY must not re-validate existing rows. child and parent
+// replicate on independent pollers, so a child row can arrive before the parent
+// row it references, and validation would fail.
+TEST_F(XClusterDDLReplicationTest, AddForeignKeySkipsValidationOnTarget) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE parent (id int PRIMARY KEY)"));
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE child (key int PRIMARY KEY, fk_col int)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Pause the DDL handler, and later unpause so that ADD CONSTRAINT is validated only
+  // after the child (not the parent) row has replicated.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  ASSERT_OK(producer_conn_->Execute(
+      "ALTER TABLE child ADD CONSTRAINT child_fk FOREIGN KEY (fk_col) REFERENCES parent (id)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+
+  // Freeze the parent tablets so its incoming row does not replicate, while the child does.
+  auto parent_table =
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "parent"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(producer_client()->GetTabletsFromTableId(parent_table.table_id(), 0, &tablets));
+  std::unordered_set<TabletId> parent_tablet_ids;
+  std::string filter;
+  for (const auto& t : tablets) {
+    parent_tablet_ids.insert(t.tablet_id());
+    filter += (filter.empty() ? "" : ",") + t.tablet_id();
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = filter;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+
+  // Wait until the parent-tablet pollers are sleeping on the filter, so no in-flight GetChanges can
+  // still fetch the parent row inserted below.
+  ASSERT_OK(WaitForConsumerPollersToSleep(parent_tablet_ids));
+
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO parent VALUES (6)"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO child VALUES (1, 6)"));
+  ASSERT_OK(consumer_conn_->Execute("SET yb_xcluster_consistency_level = tablet"));
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(consumer_conn_->FetchRow<int64_t>(
+                   "SELECT COUNT(*) FROM child WHERE fk_col = 6")) == 1;
+      },
+      kTimeout, "child row replicated"));
+
+  // Resume the ddl queue handler, verify that target skips fk validation. Otherwise target
+  // DDL would fail due to validation failure.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(consumer_conn_->FetchRow<int64_t>(
+                   "SELECT COUNT(*) FROM pg_constraint WHERE conname = 'child_fk'")) == 1;
+      },
+      kTimeout, "constraint created on target"));
+
+  // Unfreeze and confirm the lagging parent row catch up.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchRow<int32_t>("SELECT id FROM parent WHERE id = 6")), 6);
 }
 
 }  // namespace yb

@@ -780,13 +780,16 @@ public class UpgradeUniverseHandler {
 
     requestParams.verifyParams(universe, true);
     userIntent.auditLogConfig = requestParams.auditLogConfig;
+    // Preserve the query log and metrics export configs this audit-only request is not changing,
+    // sourcing them from the source of truth (see getCurrentTelemetryConfig).
+    TelemetryConfig currentTelemetryConfig = getCurrentTelemetryConfig(universe);
     ExportTelemetryConfigParams exportParams =
         UniverseControllerRequestBinder.deepCopy(requestParams, ExportTelemetryConfigParams.class);
     exportParams.setTelemetryConfig(
         TelemetryConfig.of(
             requestParams.auditLogConfig,
-            userIntent.queryLogConfig,
-            userIntent.metricsExportConfig));
+            currentTelemetryConfig.getQueryLogConfig(),
+            currentTelemetryConfig.getMetricsExportConfig()));
     return submitExportTelemetryConfigs(exportParams, customer, universe);
   }
 
@@ -877,13 +880,16 @@ public class UpgradeUniverseHandler {
 
     requestParams.verifyParams(universe, true);
     userIntent.queryLogConfig = requestParams.queryLogConfig;
+    // Preserve the audit log and metrics export configs this query-log-only request is not
+    // changing, sourcing them from the source of truth (see getCurrentTelemetryConfig).
+    TelemetryConfig currentTelemetryConfig = getCurrentTelemetryConfig(universe);
     ExportTelemetryConfigParams exportParams =
         UniverseControllerRequestBinder.deepCopy(requestParams, ExportTelemetryConfigParams.class);
     exportParams.setTelemetryConfig(
         TelemetryConfig.of(
-            userIntent.auditLogConfig,
+            currentTelemetryConfig.getAuditLogConfig(),
             requestParams.queryLogConfig,
-            userIntent.metricsExportConfig));
+            currentTelemetryConfig.getMetricsExportConfig()));
     return submitExportTelemetryConfigs(exportParams, customer, universe);
   }
 
@@ -1296,16 +1302,31 @@ public class UpgradeUniverseHandler {
     return modified;
   }
 
-  private TelemetryConfig getCurrentTelemetryConfig(Universe universe) {
-    return ExportTelemetryConfig.getForUniverse(universe.getUniverseUUID())
-        .map(ExportTelemetryConfig::getTelemetryConfig)
-        .orElseGet(
-            () -> {
-              UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-              return TelemetryConfig.of(
-                  userIntent.auditLogConfig,
-                  userIntent.queryLogConfig,
-                  userIntent.metricsExportConfig);
-            });
+  /**
+   * Returns the currently configured telemetry config for the universe. The {@link
+   * ExportTelemetryConfig} table is the source of truth, but audit/query/metrics are also mirrored
+   * into the primary cluster userIntent by paths that do not update the table (e.g. edit universe),
+   * so the table row can lag userIntent for those sections. To avoid silently dropping a
+   * still-configured section, each of audit, query and metrics is resolved separately: use the
+   * table value when present, otherwise fall back to the userIntent copy. Callers that modify a
+   * single telemetry section should source the sections they are not changing from this, so those
+   * sections are preserved rather than clobbered.
+   */
+  public TelemetryConfig getCurrentTelemetryConfig(Universe universe) {
+    TelemetryConfig fromTable =
+        ExportTelemetryConfig.getForUniverse(universe.getUniverseUUID())
+            .map(ExportTelemetryConfig::getTelemetryConfig)
+            .orElseGet(TelemetryConfig::new);
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    return TelemetryConfig.of(
+        fromTable.getAuditLogConfig() != null
+            ? fromTable.getAuditLogConfig()
+            : userIntent.auditLogConfig,
+        fromTable.getQueryLogConfig() != null
+            ? fromTable.getQueryLogConfig()
+            : userIntent.queryLogConfig,
+        fromTable.getMetricsExportConfig() != null
+            ? fromTable.getMetricsExportConfig()
+            : userIntent.metricsExportConfig);
   }
 }

@@ -9,6 +9,7 @@ import {
 } from '../../../redesign/features/PerfAdvisor/api';
 import { AppName } from '../../../redesign/helpers/dtos';
 import { isEmptyArray } from '../../../utils/ObjectUtils';
+import { ROOT_URL } from '../../../config';
 
 interface RegisterYBAToPerfAdvisorProps {
   universeUuid: string;
@@ -21,6 +22,14 @@ const useStyles = makeStyles((theme) => ({
     cursor: 'pointer'
   }
 }));
+
+// PA UI XHRs are proxied through YBA (same-origin) so that YBA can authenticate
+// the caller (any auth mode, including SSO) and enforce universe RBAC before
+// forwarding to the PA Collector. The base URL corresponds to PAProxyController
+// routes in v1.routes and requires `yb.pa.embedded_ui.reverse_proxy.enabled=true`
+// on the backend.
+const buildProxyApiUrl = (customerId: string, paUuid: string) =>
+  `${ROOT_URL}/customers/${customerId}/pa_proxy/${paUuid}/api`;
 
 export const RegisterYBAToPerfAdvisor = ({
   universeUuid,
@@ -62,13 +71,16 @@ export const RegisterYBAToPerfAdvisor = ({
     );
   }
 
+  const paCollector = perfAdvisorListData?.[0];
+  const customerId = paCollector?.customerUUID ?? localStorage.getItem('customerId') ?? '';
+
   return (
     <CheckPerfAdvisorRegistration
       universeUuid={universeUuid}
       appName={appName}
       timezone={timezone}
-      apiUrl={`${perfAdvisorListData?.[0]?.paUrl}/api`}
-      paUuid={perfAdvisorListData?.[0]?.uuid}
+      apiUrl={buildProxyApiUrl(customerId, paCollector?.uuid)}
+      paUuid={paCollector?.uuid}
     />
   );
 };

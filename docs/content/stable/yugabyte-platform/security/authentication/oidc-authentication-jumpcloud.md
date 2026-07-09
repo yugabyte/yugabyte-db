@@ -210,14 +210,14 @@ The following are examples of possible rules:
 
 <div id="oidc-ycql" class="tab-pane fade" role="tabpanel" aria-labelledby="oidc-ycql-tab">
 
-To access a universe via OIDC for YCQL, set OIDC-related YB-TServer flags on the universe. Depending on your requirements, you can configure OIDC in two ways:
+To access a universe via OIDC for YCQL, set OIDC-related YB-TServer flags on the universe (universes must be running YugabyteDB v2025.2.4.0 and later). Depending on your requirements, you can configure OIDC in two ways:
 
 - _Without identity mapping_ between the IdP and the YCQL user.
 - _With identity mapping_ between the IdP and the YCQL user (requires `ycql_ident_conf_csv`, described in [ycql_ident_conf_csv](#ycql-ident-conf-csv)).
 
 #### Prerequisites
 
-OIDC for YCQL requires YCQL authentication to be enabled on the universe. When you turn on YCQL authorization in YugabyteDB Anywhere, YBA sets the [`use_cassandra_authentication`](../../../../reference/configuration/yb-tserver/#use-cassandra-authentication) flag automatically; do not set this flag manually via **Edit Flags**.
+OIDC for YCQL requires YCQL authentication to be enabled on the universe. When you turn on YCQL authorization in YugabyteDB Anywhere, YBA sets the [use_cassandra_authentication](../../../../reference/configuration/yb-tserver/#use-cassandra-authentication) flag automatically; do not set this flag manually via **Edit Flags**.
 
 To enable YCQL authorization when creating or modifying a universe, refer to [Enable database endpoints and authorization](../../authorization-platform/#enable-database-endpoints-and-authorization) and [Modify endpoint configuration](../../authorization-platform/#modify-endpoint-configuration).
 

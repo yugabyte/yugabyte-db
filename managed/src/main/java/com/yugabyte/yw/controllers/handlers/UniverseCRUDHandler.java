@@ -201,7 +201,7 @@ public class UniverseCRUDHandler {
         taskParams, clusterOperation, cluster, PlacementInfoUtil.getUniverseForParams(taskParams));
   }
 
-  private static Set<UniverseDefinitionTaskParams.UpdateOptions> getUpdateOptions(
+  public static Set<UniverseDefinitionTaskParams.UpdateOptions> getUpdateOptions(
       UniverseDefinitionTaskParams taskParams,
       UniverseConfigureTaskParams.ClusterOperationType clusterOperation,
       Cluster cluster,
@@ -365,12 +365,21 @@ public class UniverseCRUDHandler {
     if (cluster.userIntent.isMulticloudSupport()) {
       UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
           cluster.userIntent.getProviderSpecification(provider.getUuid());
+      if (providerSpecification == null) {
+        /* Basically that should never happen, but since this method should be
+          used to determine whether we should do a full move or not,
+          it is better just to return false.
+        */
+        return false;
+      }
       curArnString = null;
       newArnString = providerSpecification.getAwsInstanceProfile();
       UniverseDefinitionTaskParams.ProviderSpecification oldProviderSpec =
           currentCluster.userIntent.getProviderSpecification(provider.getUuid());
       if (oldProviderSpec != null) {
         curArnString = oldProviderSpec.getAwsInstanceProfile();
+      } else {
+        return false;
       }
     }
     return (!StringUtils.isEmpty(curArnString) || !StringUtils.isEmpty(newArnString))
@@ -559,7 +568,7 @@ public class UniverseCRUDHandler {
         }
 
         if (cert.getCertType() == CertConfigType.CustomCertHostPath) {
-          if (!taskParams.getPrimaryCluster().userIntent.getAllCloudTypes().stream()
+          if (taskParams.getPrimaryCluster().userIntent.getAllCloudTypes().stream()
               .filter(ct -> ct != Common.CloudType.onprem)
               .findFirst()
               .isPresent()) {
@@ -609,7 +618,7 @@ public class UniverseCRUDHandler {
 
       cert = CertificateInfo.get(taskParams.getClientRootCA());
       if (cert.getCertType() == CertConfigType.CustomCertHostPath) {
-        if (!taskParams.getPrimaryCluster().userIntent.getAllCloudTypes().stream()
+        if (taskParams.getPrimaryCluster().userIntent.getAllCloudTypes().stream()
             .filter(ct -> ct != Common.CloudType.onprem)
             .findFirst()
             .isPresent()) {

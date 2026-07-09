@@ -17,6 +17,7 @@
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/result.h"
 
 DEFINE_NON_RUNTIME_string(certs_dir_name, "",
     "Directory with certificates to use for secure server connection.");

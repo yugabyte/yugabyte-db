@@ -1094,6 +1094,10 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
           jw.Uint64(path_metric.second.used_space);
           jw.String("total_space_size");
           jw.Uint64(path_metric.second.total_space);
+          if (!path_metric.second.storage_tier.empty()) {
+            jw.String("storage_tier");
+            jw.String(path_metric.second.storage_tier);
+          }
           jw.EndObject();
         }
         jw.EndArray();
@@ -1314,14 +1318,19 @@ string GetOnDiskSizeInHtml(const TabletReplicaDriveInfo &info) {
   std::ostringstream disk_size_html;
   disk_size_html << "<ul>"
                  << "<li>" << "Total: "
-                 << HumanReadableNumBytes::ToString(info.sst_files_size + info.wal_files_size)
+                 << HumanReadableNumBytes::ToString(
+                        info.sst_files_size + info.wal_files_size + info.vector_index_size)
                  << "<li>" << "WAL Files: "
                  << HumanReadableNumBytes::ToString(info.wal_files_size)
                  << "<li>" << "SST Files: "
                  << HumanReadableNumBytes::ToString(info.sst_files_size)
                  << "<li>" << "SST Files Uncompressed: "
-                 << HumanReadableNumBytes::ToString(info.uncompressed_sst_file_size)
-                 << "</ul>";
+                 << HumanReadableNumBytes::ToString(info.uncompressed_sst_file_size);
+  if (info.vector_index_size > 0) {
+    disk_size_html << "<li>" << "Vector Indexes: "
+                   << HumanReadableNumBytes::ToString(info.vector_index_size);
+  }
+  disk_size_html << "</ul>";
 
   return disk_size_html.str();
 }
@@ -1422,6 +1431,7 @@ void MasterPathHandlers::HandleAllTables(
           aggregated_drive_info.sst_files_size += drive_info.get().sst_files_size;
           aggregated_drive_info.uncompressed_sst_file_size +=
               drive_info.get().uncompressed_sst_file_size;
+          aggregated_drive_info.vector_index_size += drive_info.get().vector_index_size;
         } else {
           show_missing_size_footer[table_cat] = true;
           table_has_missing_size = true;
@@ -1607,6 +1617,7 @@ void MasterPathHandlers::HandleAllTablesJSON(
           aggregated_drive_info.sst_files_size += drive_info.get().sst_files_size;
           aggregated_drive_info.uncompressed_sst_file_size +=
               drive_info.get().uncompressed_sst_file_size;
+          aggregated_drive_info.vector_index_size += drive_info.get().vector_index_size;
         } else {
           table_has_missing_size = true;
         }
@@ -1676,6 +1687,10 @@ void MasterPathHandlers::HandleAllTablesJSON(
             HumanReadableNumBytes::ToString(table.second.on_disk_size.uncompressed_sst_file_size));
         jw.String("uncompressed_sst_file_size_bytes");
         jw.Uint64(table.second.on_disk_size.uncompressed_sst_file_size);
+        jw.String("vector_index_size");
+        jw.String(HumanReadableNumBytes::ToString(table.second.on_disk_size.vector_index_size));
+        jw.String("vector_index_size_bytes");
+        jw.Uint64(table.second.on_disk_size.vector_index_size);
         jw.String("has_missing_size");
         jw.Bool(table.second.has_missing_size);
         jw.EndObject();

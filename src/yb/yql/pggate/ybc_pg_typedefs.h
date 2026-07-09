@@ -733,6 +733,7 @@ typedef struct {
   YbcPgRowMessage* rows;
   bool needs_publication_table_list_refresh;
   uint64_t publication_refresh_time;
+  bool explicit_alter_publication_detected;
 } YbcPgChangeRecordBatch;
 
 typedef struct {
@@ -892,6 +893,8 @@ typedef struct {
   const char** replicas;
   size_t replicas_count;
   bool is_hash_partitioned;
+  const char* tablet_state;
+  YbcPgOid pg_table_oid;
 } YbcPgGlobalTabletsDescriptor;
 
 typedef struct {

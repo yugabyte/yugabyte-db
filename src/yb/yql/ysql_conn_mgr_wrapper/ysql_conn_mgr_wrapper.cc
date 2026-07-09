@@ -121,11 +121,11 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_readahead_buffer_size, 8192,
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive, 15,
     "TCP keepalive time in Ysql Connection Manager. Set to zero, to disable keepalive");
 
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_keep_interval, 75,
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_keep_interval, 20,
     "TCP keepalive interval in Ysql Connection Manager. This is applicable if "
     "'ysql_conn_mgr_tcp_keepalive' is enabled.");
 
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_probes, 9,
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_probes, 4,
     "TCP keepalive probes in Ysql Connection Manager. This is applicable if "
     "'ysql_conn_mgr_tcp_keepalive' is enabled.");
 

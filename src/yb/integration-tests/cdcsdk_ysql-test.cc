@@ -38,6 +38,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
@@ -49,6 +50,7 @@ DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_bool(ysql_yb_skip_redundant_update_ops);
 DECLARE_uint64(transaction_resend_applying_interval_usec);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
+DECLARE_int32(maintenance_manager_polling_interval_ms);
 
 namespace yb {
 
@@ -12447,19 +12449,22 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
   int record_count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-  // We will receive 3 DDLs, one each for pg_class, pg_publication_rel and pg_replication_origin.
+  // We will receive 4 DDLs, one each for pg_class, pg_publication_rel, pg_publication and
+  // pg_replication_origin.
   // Each CREATE TABLE will give 2 inserts and an update to pg_class in debug builds. In release
   // build we get 3 inserts.
-  // Creation of pub_1 will result into one insert to pg_publication_rel.
-  // ALTER PUB ADD TABLE will give one insert and ALTER PUB DROP TABLE will give one delete.
-  // Creation of an all tables publication does not give any change record to us.
+  // Creation of pub_1 will result into one insert to pg_publication_rel and one insert to
+  // pg_publication. Creation of pub_2 (FOR ALL TABLES) will result into one insert to
+  // pg_publication (no pg_publication_rel entry for all-tables publications).
+  // ALTER PUB ADD TABLE will give one insert and ALTER PUB DROP TABLE will give one delete to
+  // pg_publication_rel.
   // ALTER TABLE will give one update to pg_class in debug builds and one insert in release builds.
   // Creation of 2 replication origins gives 2 inserts to pg_replication_origin and dropping one
   // gives 1 delete.
   // We will not receive any record corresponding to the addition of column in other catalog tables
   // such as pg_attribute.
-  const int expected_count_without_packed_row[] = {3, 10, 4, 2, 0, 0, 11, 11};
-  const int expected_count_with_packed_row[] = {3, 14, 0, 2, 0, 0, 11, 11};
+  const int expected_count_without_packed_row[] = {4, 12, 4, 2, 0, 0, 11, 11};
+  const int expected_count_with_packed_row[] = {4, 16, 0, 2, 0, 0, 11, 11};
 
   for (auto record : change_resp.cdc_sdk_proto_records()) {
     UpdateRecordCount(record, record_count);
@@ -14506,6 +14511,44 @@ TEST_F(CDCSDKYsqlTest, TestTableBoundStreamYbAdminRejectsTableFromDifferentNames
       {Format("ysql.$0", test_namespace_name), "EXPLICIT", "CHANGE", "NOEXPORT_SNAPSHOT",
        "DYNAMIC_TABLES_DISABLED", other_table.table_id()});
   ASSERT_NOK(status);
+}
+
+TEST_F(CDCSDKYsqlTest, TestCreateStreamWithBatchedAlterTables) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_rpc_timeout_sec) = 600;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_create_stream_alter_table_dispatch_batch_size) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_create_stream_alter_table_dispatch_delay_ms) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_concurrent_alter_table_rpcs) = 5;
+
+  ASSERT_OK(SetUpWithParams(/*replication_factor=*/3, /*num_masters=*/1, /*colocated=*/false));
+
+  constexpr int kNumTables = 5;
+  constexpr uint32_t kNumTabletsPerTable = 3;
+  for (int i = 1; i <= kNumTables; ++i) {
+    const auto table_name = Format("test_table_$0", i);
+    ASSERT_RESULT(
+        CreateTable(&test_cluster_, test_namespace_name, table_name, kNumTabletsPerTable));
+  }
+
+  // Watch for the long-operation-tracker warning emitted from long_operation_tracker.cc (e.g. when
+  // the master holds the CatalogManager mutex_ for too long while fanning out the batched
+  // AlterTable RPCs). The batched dispatch with inter-batch sleeps is designed to keep each
+  // TSHeartbeat operation short, so creating many streams concurrently with master should never
+  // trip it.
+  StringWaiterLogSink long_operation_sink_1{"TSHeartbeat running for"};
+  StringWaiterLogSink long_operation_sink_2{"TSHeartbeat took a long time"};
+
+  constexpr int kNumStreams = 5;
+  for (int i = 1; i <= kNumStreams; ++i) {
+    ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  }
+
+  // Wait for a while to ensure that if any long operation warnings were to be emitted, they would
+  // have been emitted by now.
+  SleepFor(MonoDelta::FromSeconds(10));
+  ASSERT_EQ(long_operation_sink_1.GetEventCount(), 0)
+      << "Unexpected 'TSHeartbeat running for' warning(s) during multi-stream creation";
+  ASSERT_EQ(long_operation_sink_2.GetEventCount(), 0)
+      << "Unexpected 'TSHeartbeat took a long time' warning(s) during multi-stream creation";
 }
 
 }  // namespace cdc

@@ -51,7 +51,11 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     // TODO(29141): Fix the test with txn ddl and enable.
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     flagMap.put("enable_object_locking_for_table_locks", "false");
+    flagMap.put("ysql_enable_concurrent_ddl", "false");
+    flagMap.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
+        (e, a) -> e + "," + a);
     return flagMap;
   }
 

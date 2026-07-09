@@ -1276,6 +1276,7 @@ public class NodeAgentClient {
   public synchronized void cleanupCachedClients() {
     try {
       cachedChannels.cleanUp();
+      log.debug("Current cache size after cleanup: {}", getClientCacheSize());
     } catch (RuntimeException e) {
       log.error("Client cache cleanup failed {}", e.getMessage());
     }

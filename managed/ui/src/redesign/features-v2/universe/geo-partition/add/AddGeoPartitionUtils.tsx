@@ -22,13 +22,14 @@ import {
   getPlacementRegions
 } from '../../create-universe/CreateUniverseUtils';
 import { sanitizeClusters } from '../../read-replica/add/buildUniverseSpecForReadReplicaPricing';
+import { getEditUniverseSettingsRoute } from '../../edit-universe/editUniverseTabUtils';
 
 export function navigateToUniverseSettingsFromWizard(
   universeData?: UniverseRespResponse
 ): void {
   const uuid = universeData?.info?.universe_uuid;
   if (uuid) {
-    window.location.href = `/universes/${uuid}/settings`;
+    window.location.href = getEditUniverseSettingsRoute(uuid);
   }
 }
 

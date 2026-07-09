@@ -182,7 +182,6 @@ export const mapCreateUniversePayload = (
         kms_config_uuid: securitySettings.kmsConfig
       },
       encryption_in_transit_spec: getCreateEITPayload(securitySettings, providerType!),
-      use_time_sync: otherAdvancedSettings.useTimeSync,
       ycql: {
         ...omit(databaseSettings.ycql, 'confirm_pwd')
       },
@@ -278,6 +277,32 @@ export const mapCreateUniversePayload = (
   };
 
   return payload;
+};
+
+export const mapPortsKeys: any = () => {
+  return {
+    masterHttpPort: 'master_http_port',
+    masterRpcPort: 'master_rpc_port',
+    tserverHttpPort: 'tserver_http_port',
+    tserverRpcPort: 'tserver_rpc_port',
+    yqlServerHttpPort: 'yql_server_http_port',
+    yqlServerRpcPort: 'yql_server_rpc_port',
+    ysqlServerHttpPort: 'ysql_server_http_port',
+    ysqlServerRpcPort: 'ysql_server_rpc_port',
+    redisServerHttpPort: 'redis_server_http_port',
+    redisServerRpcPort: 'redis_server_rpc_port',
+    nodeExporterPort: 'node_exporter_port',
+    ybControllerrRpcPort: 'yb_controller_rpc_port',
+    ybControllerRpcPort: 'yb_controller_rpc_port'
+  };
+};
+
+export const mapAPIPortValues = (communicationPorts: Partial<CommunicationPortsSpec>) => {
+  let portsObj: any = {};
+  Object.entries(communicationPorts).forEach(([key, val]) => {
+    portsObj[`${mapPortsKeys()[key]}`] = val;
+  });
+  return portsObj;
 };
 
 export const getAccessiblePorts = (

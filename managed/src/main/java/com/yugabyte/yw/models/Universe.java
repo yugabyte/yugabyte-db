@@ -35,6 +35,7 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.ProxyConfig;
+import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TransactionUtil;
 import io.ebean.DB;
 import io.ebean.ExpressionList;
@@ -55,6 +56,7 @@ import jakarta.persistence.Transient;
 import jakarta.persistence.UniqueConstraint;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
@@ -200,6 +202,20 @@ public class Universe extends Model {
   private String universeDetailsJson;
 
   @Transient private UniverseDefinitionTaskParams universeDetails;
+
+  @DbJson
+  @Column(columnDefinition = "TEXT")
+  private StateTransitionDetails stateTransitionDetails;
+
+  @JsonIgnore
+  public StateTransitionDetails getStateTransitionDetails() {
+    return stateTransitionDetails;
+  }
+
+  @JsonIgnore
+  public void setStateTransitionDetails(StateTransitionDetails stateTransitionDetails) {
+    this.stateTransitionDetails = stateTransitionDetails;
+  }
 
   public void setUniverseDetails(UniverseDefinitionTaskParams details) {
     universeDetailsJson = Json.stringify(Json.toJson(details));
@@ -405,14 +421,6 @@ public class Universe extends Model {
 
     // Return the universe object.
     return Optional.of(universe);
-  }
-
-  public static Set<Universe> getAllPresent(Set<UUID> universeUUIDs) {
-    return universeUUIDs.stream()
-        .map(Universe::maybeGet)
-        .filter(Optional::isPresent)
-        .map(Optional::get)
-        .collect(Collectors.toSet());
   }
 
   public static Universe getUniverseByName(String universeName) {
@@ -1099,6 +1107,24 @@ public class Universe extends Model {
   }
 
   /**
+   * Returns the list of nodes in a given cluster and provider in the universe.
+   *
+   * @param clusterUUID UUID of the cluster to get the list of nodes.
+   * @param providerUUID UUID of the provider to filter nodes.
+   * @return a collection of nodes in a given cluster in this universe.
+   */
+  public Collection<NodeDetails> getProviderNodesInCluster(UUID clusterUUID, UUID providerUUID) {
+    Cluster cluster = getUniverseDetails().getClusterByUuid(clusterUUID);
+    if (cluster == null) {
+      return Collections.emptyList();
+    }
+    Set<NodeDetails> nodesInCluster = getUniverseDetails().getNodesInCluster(clusterUUID);
+    return nodesInCluster.stream()
+        .filter(n -> Objects.equals(cluster.getProviderUUIDForNode(n), providerUUID))
+        .collect(Collectors.toList());
+  }
+
+  /**
    * Get deployment mode of node (on-prem/kubernetes/cloud provider)
    *
    * @param node - node to get info on
@@ -1267,21 +1293,21 @@ public class Universe extends Model {
         .collect(Collectors.toSet());
   }
 
-  public static Set<Universe> universeDetailsIfReleaseExists(String version) {
-    Set<Universe> universes = new HashSet<Universe>();
-    Customer.getAll()
-        .forEach(customer -> universes.addAll(Customer.get(customer.getUuid()).getUniverses()));
+  public static Set<Universe> universeDetailsIfReleaseExists(String ybSoftwareVersion) {
     Set<Universe> universesWithGivenRelease = new HashSet<Universe>();
-    for (Universe u : universes) {
-      List<Cluster> clusters = u.getUniverseDetails().clusters;
-      for (Cluster c : clusters) {
-        if (c.userIntent.ybSoftwareVersion != null
-            && c.userIntent.ybSoftwareVersion.equals(version)) {
-          universesWithGivenRelease.add(u);
-          break;
-        }
-      }
-    }
+    Customer.getAll().stream()
+        .flatMap(customer -> customer.getUniverses().stream())
+        .forEach(
+            u -> {
+              List<Cluster> clusters = u.getUniverseDetails().clusters;
+              for (Cluster c : clusters) {
+                if (c.userIntent.ybSoftwareVersion != null
+                    && c.userIntent.ybSoftwareVersion.equals(ybSoftwareVersion)) {
+                  universesWithGivenRelease.add(u);
+                  break;
+                }
+              }
+            });
     return universesWithGivenRelease;
   }
 

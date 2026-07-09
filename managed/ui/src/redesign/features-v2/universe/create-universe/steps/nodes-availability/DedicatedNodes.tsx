@@ -12,7 +12,7 @@ import { CloudType } from '../../../../../features/universe/universe-form/utils/
 
 //icons
 import Return from '../../../../../assets/tree.svg';
-import InfoIcon from '../../../../../assets/info-new.svg';
+import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { styled, Link } = mui;
 

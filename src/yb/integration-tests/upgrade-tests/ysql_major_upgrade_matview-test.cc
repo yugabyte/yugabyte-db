@@ -23,6 +23,19 @@ static constexpr auto kIndexedMatViewName = "mv2";
 
 class YsqlMajorUpgradeMatviewTest : public YsqlMajorUpgradeTestBase {
  public:
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override {
+    YsqlMajorUpgradeTestBase::SetUpOptions(opts);
+
+    // On rollback the pre-built old-version masters replay the matview REFRESH/DROP DDL that was
+    // in flight during mixed mode. Applying it on a follower runs MinRunningHybridTime, which in
+    // the old binary blocks on the local client until a leader master is available. But the leader
+    // cannot acquire a lease until the followers finish applying, so master bootstrap deadlocks.
+    // We cannot patch the old binary, so defer the min-running status check well past the test to
+    // keep the apply path non-blocking. (The current binary guards this path directly.)
+    AddUnDefOkAndSetFlag(
+        opts.extra_master_flags, "transaction_min_running_check_delay_ms", "3600000");
+  }
+
   void SetUp() override {
     TEST_SETUP_SUPER(YsqlMajorUpgradeTestBase);
 

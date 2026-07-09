@@ -853,10 +853,9 @@ Status TabletServer::RegisterServices() {
   if (FLAGS_ysql_enable_auto_analyze_infra) {
     auto connect_to_pg = [this](const std::string& database_name,
                                 const CoarseTimePoint& deadline) {
-      return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
-                                                    pgwrapper::PGConnSettings::kDefaultUser,
-                                                    GetSharedMemoryPostgresAuthKey(),
-                                                    deadline, true).Connect();
+      return CreateInternalPGConn(
+          database_name, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline,
+          pgwrapper::YbInternalConnKindWireName::kAutoAnalyze);
     };
     auto pg_auto_analyze_service =
         std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future(),
@@ -973,8 +972,30 @@ void TabletServer::Shutdown() {
 
   client()->RequestAbortAllRpcs();
 
+  // Mark the transaction manager as closing before aborting tablet operations below. Aborting
+  // in-flight transaction status operations (e.g. heartbeats) completes their client RPCs, and
+  // unless the manager is already flagged as closing those completions are treated as retryable
+  // failures and re-registered as new operations on tablets that are already shutting down. Those
+  // late operations never get aborted (their tablet peers finish shutdown only after the txn
+  // manager), leaving the RPCs stuck until the txn manager's shutdown deadline elapses, which
+  // trips a CHECK(calls_.empty()) fatal failure. See DbServerBase::Shutdown for the later call.
+  if (auto* txn_manager = transaction_manager_.load()) {
+    txn_manager->SetClosing();
+  }
+
+  // Start shutting the remote bootstrap service down before the tablets, so peers bootstrapping
+  // from this server fail fast (terminal error) instead of retrying a source whose tablets are
+  // shutting down, which would otherwise wedge their own shutdown. See issue #32211.
+  if (auto remote_bootstrap_service = remote_bootstrap_service_.lock()) {
+    remote_bootstrap_service->StartShutdown();
+  }
+
   tablet_manager_->StartShutdown();
   WARN_NOT_OK(relinquish_lease_future.get(), "Couldn't relinquish ysql lease");
+
+  // Unblock PG backends still waiting on a relcache-init connection before we join reactors below;
+  // otherwise their orphaned RPCs keep their connections open and wedge reactor shutdown.
+  AbortInFlightRelcacheInitConnections();
 
   DbServerBase::Shutdown();
   RpcAndWebServerBase::Shutdown();
@@ -1409,17 +1430,30 @@ void TabletServer::TriggerRelcacheInitConnection(
   const std::string dbname = req.database_name();
 
   bool started_superuser_connection = false;
+  bool aborted_due_to_shutdown = false;
   {
     std::lock_guard l(lock_);
-    auto& callbacks = in_flight_superuser_connections_[dbname];
-    if (callbacks.empty()) {
-      started_superuser_connection = true;
-      LOG(INFO) << "Relcache init connection request to database " << dbname
-                << " starting from tserver " << this << " to " << pgsql_proxy_bind_address();
+    // Registering under lock_ while reading shutting_down_ keeps us ordered against
+    // AbortInFlightRelcacheInitConnections: either we observe the shutdown and bail here, or our
+    // entry is already in the map when the drain runs and it completes our callback.
+    if (shutting_down_) {
+      aborted_due_to_shutdown = true;
     } else {
-      LOG(INFO) << "Relcache init connection request to database " << dbname << " in progress";
+      auto& callbacks = in_flight_superuser_connections_[dbname];
+      if (callbacks.empty()) {
+        started_superuser_connection = true;
+        LOG(INFO) << "Relcache init connection request to database " << dbname
+                  << " starting from tserver " << this << " to " << pgsql_proxy_bind_address();
+      } else {
+        LOG(INFO) << "Relcache init connection request to database " << dbname << " in progress";
+      }
+      callbacks.push_back(std::move(callback));
     }
-    callbacks.push_back(std::move(callback));
+  }
+
+  if (aborted_due_to_shutdown) {
+    callback(STATUS(ShutdownInProgress, "TabletServer is shutting down"));
+    return;
   }
 
   if (!started_superuser_connection) {
@@ -1428,6 +1462,11 @@ void TabletServer::TriggerRelcacheInitConnection(
 
   messenger()->scheduler().Schedule(
       [this, dbname](const Status& status) {
+        // Don't open a new (blocking) connection once shutdown has begun; the drain owns completion
+        // of the already-registered callbacks for this database.
+        if (shutting_down_) {
+          return;
+        }
         if (!status.ok()) {
           LOG(INFO) << status;
           RelcacheInitConnectionDone(dbname, status);
@@ -1445,7 +1484,10 @@ void TabletServer::RelcacheInitConnectionDone(
     std::lock_guard l(lock_);
     auto it = in_flight_superuser_connections_.find(dbname);
     if (it == in_flight_superuser_connections_.end()) {
-      LOG(DFATAL) << "Cannot find in-flight superuser connection for database " << dbname;
+      // During shutdown AbortInFlightRelcacheInitConnections may have already drained this entry
+      // before an in-flight connection finished, so a missing entry is expected then.
+      LOG_IF(DFATAL, !shutting_down_)
+          << "Cannot find in-flight superuser connection for database " << dbname;
       return;
     }
     callbacks = std::move(it->second);
@@ -1456,18 +1498,40 @@ void TabletServer::RelcacheInitConnectionDone(
   }
 }
 
+void TabletServer::AbortInFlightRelcacheInitConnections() {
+  std::map<std::string, std::vector<StdStatusCallback>> pending;
+  {
+    std::lock_guard l(lock_);
+    pending.swap(in_flight_superuser_connections_);
+  }
+
+  size_t num_callbacks = 0;
+  for (const auto& [dbname, callbacks] : pending) {
+    num_callbacks += callbacks.size();
+  }
+  if (num_callbacks == 0) {
+    return;
+  }
+  LOG(INFO) << "Aborting " << num_callbacks << " in-flight relcache-init connection callback(s) "
+            << "across " << pending.size() << " database(s) due to shutdown";
+
+  const auto status = STATUS(ShutdownInProgress, "TabletServer is shutting down");
+  for (auto& [dbname, callbacks] : pending) {
+    for (auto& cb : callbacks) {
+      cb(status);
+    }
+  }
+}
+
 void TabletServer::MakeRelcacheInitConnection(const std::string& dbname) {
   auto deadline = CoarseMonoClock::Now() + default_client_timeout();
   // Identify this connection as the dedicated relcache-init builder so the
   // backend takes on YB_RELCACHE_INIT_BACKEND, runs with minimal preload, and
   // does not recursively trigger another internal connection
   // (relcache.c:RelationCacheInitializePhase3).
-  auto status = ResultToStatus(
-      pgwrapper::CreateInternalPGConnBuilder(
-          pgsql_proxy_bind_address(), dbname, kDefaultInternalPgUser,
-          GetSharedMemoryPostgresAuthKey(), deadline, /*yb_auto_analyze=*/false,
-          pgwrapper::YbInternalConnKindWireName::kRelcacheInit)
-          .Connect(/*simple_query_protocol=*/false));
+  auto status = ResultToStatus(CreateInternalPGConn(
+      dbname, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline,
+      pgwrapper::YbInternalConnKindWireName::kRelcacheInit));
   if (status.ok()) {
     LOG(INFO) << "Relcache init connection to database " << dbname << " succeeded";
   } else {
@@ -2283,10 +2347,8 @@ Status TabletServer::CreateXClusterConsumer() {
     return tablet_peer->LeaderTerm();
   };
   auto connect_to_pg = [this](const std::string& database_name, const CoarseTimePoint& deadline) {
-    return pgwrapper::CreateInternalPGConnBuilder(
-               pgsql_proxy_bind_address(), database_name, pgwrapper::PGConnSettings::kDefaultUser,
-               GetSharedMemoryPostgresAuthKey(), deadline)
-        .Connect();
+    return CreateInternalPGConn(
+        database_name, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline);
   };
   auto get_namespace_info =
       [this](const TabletId& tablet_id) -> Result<std::pair<NamespaceId, NamespaceName>> {
@@ -2557,6 +2619,10 @@ Status TabletServer::ClearMetacache(const std::string& namespace_id) {
   return client()->ClearMetacache(namespace_id);
 }
 
+void TabletServer::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {
+  client()->MarkTServersAsFollowers(ts_uuids);
+}
+
 Status TabletServer::ClearYCQLMetaDataCache() {
   auto* cql_server_api = cql_server_external_.load();
   SCHECK_NOTNULL(cql_server_api);
@@ -2663,7 +2729,13 @@ Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(
     std::string_view yb_internal_conn_kind) {
   return pgwrapper::CreateInternalPGConnBuilder(
              pgsql_proxy_bind_address(), database_name, user, GetSharedMemoryPostgresAuthKey(),
-             deadline, /* yb_auto_analyze */ false, yb_internal_conn_kind)
+             deadline, yb_internal_conn_kind,
+             // Abort the connect retry loop as soon as shutdown begins. Internal connects run on
+             // messenger threads and can hold the triggering backend's inbound RpcContext alive
+             // until they return; retrying the (also shutting-down) postgres for the full deadline
+             // keeps that RPC connection non-idle and makes Messenger::Shutdown() time out joining
+             // the reactor.
+             [this] { return static_cast<bool>(shutting_down_); })
       .Connect(simple_query_protocol);
 }
 

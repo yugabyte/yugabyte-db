@@ -248,6 +248,16 @@ main {
       margin-bottom: -13px;
     }
 
+    .release-downloads pre.can-be-copied[data-code="1"] {
+      margin-bottom: -13px;
+
+      code::after {
+        content: "";
+        display: block;
+        height: 1.625em;
+      }
+    }
+
     pre.can-be-copied {
       width: calc(100% + 20px);
       padding-right: 20px !important;

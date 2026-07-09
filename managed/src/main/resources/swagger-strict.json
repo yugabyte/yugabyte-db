@@ -2556,6 +2556,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -3156,6 +3159,26 @@
       },
       "required" : [
         "availabilityZones"
+      ],
+      "type" : "object"
+    },
+    "AzNodesSpec" : {
+      "properties" : {
+        "azCode" : {
+          "type" : "string"
+        },
+        "code" : {
+          "type" : "string"
+        },
+        "masterSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        },
+        "tserverSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        }
+      },
+      "required" : [
+        "code"
       ],
       "type" : "object"
     },
@@ -5428,6 +5451,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -8566,6 +8592,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -9389,6 +9418,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -10921,6 +10953,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -11657,6 +11692,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -14295,8 +14333,11 @@
       ],
       "type" : "object"
     },
-    "NodeSpecification" : {
+    "NodeSpec" : {
       "properties" : {
+        "backupProxyConfig" : {
+          "$ref" : "#/definitions/ProxyConfig"
+        },
         "cgroupSize" : {
           "format" : "int32",
           "type" : "integer"
@@ -14309,20 +14350,6 @@
         },
         "k8SNodeResourceSpec" : {
           "$ref" : "#/definitions/K8SNodeResourceSpec"
-        },
-        "proxyConfig" : {
-          "$ref" : "#/definitions/ProxyConfig"
-        }
-      },
-      "type" : "object"
-    },
-    "NodesSpecification" : {
-      "properties" : {
-        "masterSpecification" : {
-          "$ref" : "#/definitions/NodeSpecification"
-        },
-        "tserverSpecification" : {
-          "$ref" : "#/definitions/NodeSpecification"
         }
       },
       "type" : "object"
@@ -14365,6 +14392,14 @@
             "HOSTVPC"
           ],
           "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "OCIRegionCloudInfo" : {
+      "properties" : {
+        "vnet" : {
           "type" : "string"
         }
       },
@@ -16163,9 +16198,6 @@
           },
           "type" : "object"
         },
-        "baseNodesSpecification" : {
-          "$ref" : "#/definitions/NodesSpecification"
-        },
         "enableLoadBalancer" : {
           "type" : "boolean"
         },
@@ -16190,11 +16222,8 @@
           },
           "type" : "object"
         },
-        "perAZOverrides" : {
-          "additionalProperties" : {
-            "$ref" : "#/definitions/NodesSpecification"
-          },
-          "type" : "object"
+        "nodesSpecs" : {
+          "$ref" : "#/definitions/RootNodesSpec"
         },
         "providerType" : {
           "enum" : [
@@ -16216,6 +16245,11 @@
           "type" : "string"
         }
       },
+      "required" : [
+        "nodesSpecs",
+        "providerType",
+        "providerUUID"
+      ],
       "type" : "object"
     },
     "ProvisionUniverseNodesParams" : {
@@ -16429,6 +16463,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -17121,6 +17158,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -17714,6 +17754,9 @@
         },
         "kubernetes" : {
           "$ref" : "#/definitions/KubernetesRegionInfo"
+        },
+        "oci" : {
+          "$ref" : "#/definitions/OCIRegionCloudInfo"
         }
       },
       "type" : "object"
@@ -17833,6 +17876,32 @@
         "latitude",
         "longitude",
         "name"
+      ],
+      "type" : "object"
+    },
+    "RegionNodesSpec" : {
+      "properties" : {
+        "azNodesSpecs" : {
+          "items" : {
+            "$ref" : "#/definitions/AzNodesSpec"
+          },
+          "type" : "array"
+        },
+        "code" : {
+          "type" : "string"
+        },
+        "masterSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        },
+        "regionCode" : {
+          "type" : "string"
+        },
+        "tserverSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        }
+      },
+      "required" : [
+        "code"
       ],
       "type" : "object"
     },
@@ -18167,6 +18236,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -19014,6 +19086,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -20560,6 +20635,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -21021,6 +21099,23 @@
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
       ],
+      "type" : "object"
+    },
+    "RootNodesSpec" : {
+      "properties" : {
+        "masterSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        },
+        "regionNodesSpecs" : {
+          "items" : {
+            "$ref" : "#/definitions/RegionNodesSpec"
+          },
+          "type" : "array"
+        },
+        "tserverSpecification" : {
+          "$ref" : "#/definitions/NodeSpec"
+        }
+      },
       "type" : "object"
     },
     "RunQueryFormData" : {
@@ -23018,6 +23113,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -24180,6 +24278,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -25519,6 +25620,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -26208,6 +26312,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -27040,6 +27147,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -27695,6 +27805,9 @@
         "universePaused" : {
           "type" : "boolean"
         },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
+        },
         "universeUUID" : {
           "description" : "Associated universe UUID",
           "format" : "uuid",
@@ -28349,6 +28462,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -29112,6 +29228,14 @@
       },
       "type" : "object"
     },
+    "UniverseSettings" : {
+      "properties" : {
+        "expertMode" : {
+          "type" : "boolean"
+        }
+      },
+      "type" : "object"
+    },
     "UnusedIndexFinderResponse" : {
       "properties" : {
         "current_database" : {
@@ -29512,6 +29636,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -30664,6 +30791,9 @@
         },
         "universePaused" : {
           "type" : "boolean"
+        },
+        "universeSettings" : {
+          "$ref" : "#/definitions/UniverseSettings"
         },
         "universeUUID" : {
           "description" : "Associated universe UUID",
@@ -50197,6 +50327,9 @@
     },
     {
       "name" : "Node instances"
+    },
+    {
+      "name" : "PA Proxy"
     },
     {
       "name" : "PITR management"

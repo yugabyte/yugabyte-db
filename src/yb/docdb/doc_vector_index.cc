@@ -439,6 +439,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.TotalEntries();
   }
 
+  uint64_t OnDiskSize() const override {
+    return lsm_.OnDiskSize();
+  }
+
   void StartShutdown() override {
     lsm_.StartShutdown();
   }

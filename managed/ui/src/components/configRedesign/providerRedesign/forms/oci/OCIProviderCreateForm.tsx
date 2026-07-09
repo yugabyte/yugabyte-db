@@ -595,6 +595,15 @@ const constructProviderPayload = async (
     },
     regions: formValues.regions.map<OCIRegionMutation>((regionFormValues) => ({
       code: regionFormValues.code,
+      details: {
+        cloudInfo: {
+          [ProviderCode.OCI]: {
+            ...(regionFormValues.vnet && {
+              vnet: regionFormValues.vnet
+            })
+          }
+        }
+      },
       zones: regionFormValues.zones?.map<OCIAvailabilityZoneMutation>((azFormValues) => ({
         code: azFormValues.code,
         name: azFormValues.code,

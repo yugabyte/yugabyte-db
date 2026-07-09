@@ -27,6 +27,8 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_util.h"
+#include "yb/master/master_util.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_heartbeat.service.h"
@@ -77,6 +79,10 @@ DEFINE_RUNTIME_int32(catalog_manager_report_batch_size, 1,
     "The max number of tablets evaluated in the heartbeat as a single SysCatalog update.");
 TAG_FLAG(catalog_manager_report_batch_size, advanced);
 
+DEFINE_RUNTIME_int32(master_ts_heartbeat_long_operation_warning_ms, 1000,
+    "Log a warning (and dump the handler thread's stack) if processing a TSHeartbeat RPC on the "
+    "master takes longer than this many ms.");
+
 DEFINE_RUNTIME_bool(catalog_manager_wait_for_new_tablets_to_elect_leader, true,
     "Whether the catalog manager should wait for a newly created tablet to "
     "elect a leader before considering it successfully created. "
@@ -114,6 +120,11 @@ DEFINE_RUNTIME_uint32(maximum_tablet_leader_lease_expired_secs, 2 * 60,
 DEFINE_RUNTIME_bool(use_create_table_leader_hint, true,
     "Whether the Master should hint which replica for each tablet should "
     "be leader initially on tablet creation.");
+
+DEFINE_RUNTIME_bool(send_leader_blacklisted_tservers_on_heartbeat, true,
+    "When set, the master will send the list of leader-blacklisted tservers with no leaders "
+    "on the heartbeat response.");
+TAG_FLAG(send_leader_blacklisted_tservers_on_heartbeat, advanced);
 
 DEFINE_test_flag(uint64, inject_latency_during_tablet_report_ms, 0,
                  "Number of milliseconds to sleep during the processing of a tablet batch.");
@@ -392,7 +403,8 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     const TSHeartbeatRequestPB* req,
     TSHeartbeatResponsePB* resp,
     rpc::RpcContext rpc) {
-  LongOperationTracker long_operation_tracker("TSHeartbeat", 1s);
+  LongOperationTracker long_operation_tracker(
+      "TSHeartbeat", FLAGS_master_ts_heartbeat_long_operation_warning_ms * 1ms);
 
   consensus::ConsensusStatePB cpb;
   Status s = catalog_manager_->GetCurrentConfig(&cpb);
@@ -515,6 +527,24 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     auto cluster_config = server_->catalog_manager()->GetClusterConfig();
     if (cluster_config) {
       resp->set_oid_cache_invalidations_count(cluster_config->oid_cache_invalidations_count());
+
+      uint32_t leader_drain_version = ts_desc->pending_leader_drain_notification();
+      if (leader_drain_version && FLAGS_send_leader_blacklisted_tservers_on_heartbeat) {
+        auto leader_blacklist = ToBlacklistSet(
+            GetBlacklist(*cluster_config, /*blacklist_leader=*/ true));
+        auto leaders_drained = !std::any_of(descs.begin(), descs.end(), [&](const auto& desc) {
+          return IsBlacklisted(desc->GetRegistration(), leader_blacklist) &&
+                 desc->leader_count() != 0;
+        });
+        if (leaders_drained) {
+          for (const auto& desc : descs) {
+            if (IsBlacklisted(desc->GetRegistration(), leader_blacklist)) {
+              resp->add_leader_blacklisted_tservers_with_no_leaders(desc->permanent_uuid());
+            }
+          }
+          ts_desc->exchg_pending_leader_drain_notification(leader_drain_version, 0);
+        }
+      }
     } else {
       LOG(WARNING) << "Could not get oid_cache_invalidations_count for heartbeat response: "
                    << cluster_config.status().ToUserMessage();
@@ -1485,6 +1515,8 @@ void MasterHeartbeatServiceImpl::ProcessTabletMetadata(
     .uncompressed_sst_file_size = storage_metadata.uncompressed_sst_file_size(),
     .may_have_orphaned_post_split_data = storage_metadata.may_have_orphaned_post_split_data(),
     .total_size = storage_metadata.total_size(),
+    .vector_index_size = storage_metadata.vector_index_size(),
+    .has_active_vector_index_backfill = storage_metadata.has_active_vector_index_backfill(),
   };
   tablet->UpdateReplicaInfo(ts_uuid, drive_info, leader_lease_info);
 }

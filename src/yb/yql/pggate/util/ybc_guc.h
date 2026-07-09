@@ -181,6 +181,12 @@ extern char* yb_default_replica_identity;
 extern bool yb_enable_consistent_replication_from_hash_range;
 
 /*
+ * GUC variable that enables acquiring a cluster-wide exclusive advisory lock while a replication
+ * slot is in use, so that only one consumer can use it at a time across the universe.
+ */
+extern bool yb_enable_replication_slot_exclusive_lock;
+
+/*
  * GUC variable that enables streaming tables without primary key to CDCSDK logical replication
  * streams.
  */
@@ -329,6 +335,8 @@ extern bool yb_ddl_transaction_block_enabled;
 extern bool yb_disable_ddl_transaction_block_for_read_committed;
 
 extern bool yb_allow_dockey_bounds;
+
+extern bool yb_dump_presplit_in_create;
 
 extern bool yb_ignore_read_time_in_walsender;
 

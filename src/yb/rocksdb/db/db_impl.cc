@@ -2878,8 +2878,12 @@ Status DBImpl::WaitForFlush(ColumnFamilyHandle* column_family) {
 
 Status DBImpl::UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) {
   InstrumentedMutexLock l(&mutex_);
-  SCHECK(column_family_memtables_->Seek(0), NotFound, "Column family not found");
-  column_family_memtables_->GetMemTable()->UpdateFrontiers(frontiers);
+  // Access the default column family's memtable directly rather than through the shared
+  // column_family_memtables_ object. The latter's current_/handle_ members are mutated by write
+  // threads (which do not hold mutex_), so seeking on it here would race with concurrent writes.
+  auto* cfd = versions_->GetColumnFamilySet()->GetDefault();
+  SCHECK(cfd, NotFound, "Column family not found");
+  cfd->mem()->UpdateFrontiers(frontiers);
   return Status::OK();
 }
 
@@ -3184,6 +3188,12 @@ int DBImpl::GetCfdImmNumNotFlushed() {
   auto cfd = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
   InstrumentedMutexLock guard_lock(&mutex_);
   return cfd->imm()->NumNotFlushed();
+}
+
+void DBImpl::TEST_StopWrites() {
+  auto cfd = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
+  InstrumentedMutexLock guard_lock(&mutex_);
+  cfd->TEST_StopWrites();
 }
 
 FlushAbility DBImpl::GetFlushAbility() {
@@ -5686,7 +5696,7 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
     // in this case.
     while (bg_error_.ok() && write_controller_.IsStopped() && !IsShuttingDown()) {
       delayed = true;
-      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
+      TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
       bg_cv_.Wait();
     }
   }
@@ -6122,11 +6132,6 @@ Result<std::string> DBImpl::GetMiddleKey(Slice lower_bound_key) {
   // Use an empty (invalid) internal key to get the middle key without a lower bound.
   const Slice kEmptyInternalKey;
   return default_cf_handle_->cfd()->current()->GetMiddleKey(kEmptyInternalKey);
-}
-
-yb::Result<TableReader*> DBImpl::TEST_GetLargestSstTableReader() {
-  InstrumentedMutexLock lock(&mutex_);
-  return default_cf_handle_->cfd()->current()->TEST_GetLargestSstTableReader();
 }
 
 void DBImpl::TEST_SwitchMemtable() {

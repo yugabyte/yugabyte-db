@@ -43,8 +43,11 @@ struct EncodedDocVectorValue final {
 
 class DocVectorValue final : public PackableValue {
  public:
-  DocVectorValue(std::reference_wrapper<const QLValueMsg> value, const vector_index::VectorId& id)
-      : value_(value), id_(id)
+  DocVectorValue(
+      VectorValueFormat format,
+      std::reference_wrapper<const QLValueMsg> value,
+      const vector_index::VectorId& id)
+      : value_(value), id_(id), value_type_prefix_(ValueTypePrefix(format))
   {}
 
   bool IsNull() const override;
@@ -66,11 +69,17 @@ class DocVectorValue final : public PackableValue {
   std::string ToString() const override;
 
  private:
+  static char ValueTypePrefix(VectorValueFormat format);
+
+  template <class Buffer>
+  void AppendEncodedVectorValue(Buffer* buffer) const;
+
   template <class Buffer>
   void AppendVectorId(Buffer* buffer) const;
 
   const QLValueMsg& value_;
   vector_index::VectorId id_;
+  char value_type_prefix_;
 };
 
 bool IsNull(const DocVectorValue& v);

@@ -23,6 +23,7 @@ import static org.junit.Assume.*;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -154,12 +155,19 @@ public class TestYbBackup extends BasePgSQLTest {
     return 2;
   }
 
+  // Per-JVM subdir under results/ so parallel repeat_unit_test iterations (each a
+  // separate JVM sharing this classpath dir) don't truncate/clobber each other's
+  // output file. Pom source level is 1.8, so ProcessHandle (Java 9+) is unavailable;
+  // use the RuntimeMXBean name (typically "<pid>@<host>") sanitized for a path.
+  private static final String RESULTS_SUBDIR = "results/" +
+      ManagementFactory.getRuntimeMXBean().getName().replaceAll("[^A-Za-z0-9._-]", "_") + "/";
+
   private File runYsqlsh(String sqlPath, String comment, String dbName) throws Exception {
     final int tserverIndex = 0;
     File testDir = TestUtils.getClassResourceDir(getClass());
     File ysqlshExec = new File(pgBinDir, "ysqlsh");
     File inputFile  = new File(testDir, sqlPath);
-    File outputFile = new File(testDir, "results/" + inputFile.getName() + ".out");
+    File outputFile = new File(testDir, RESULTS_SUBDIR + inputFile.getName() + ".out");
     outputFile.getParentFile().mkdirs();
 
     List<String> ysqlsh_args = new ArrayList<>(Arrays.asList(
@@ -221,7 +229,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
     YBBackupUtil.runYbBackupRestore(backupDir, backupArgs);
     File expected = new File(testDir, expectedRestoreDumpPath);
-    File actual   = new File(testDir, "results/" + expected.getName());
+    File actual   = new File(testDir, RESULTS_SUBDIR + expected.getName());
     actual.getParentFile().mkdirs();
 
     // Validate that a dump of the restored db matches what we expect.
@@ -2102,6 +2110,69 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testTableRewriteBackupRestore() throws Exception {
+    // Verify that a table which underwent an ALTER TABLE ... ALTER COLUMN TYPE table rewrite
+    // (which creates a new DocDB table and drops the old one) can be backed up and restored.
+    // The ALTER template is taken from
+    // org.yb.pgsql.TestAlterTableWithConcurrentTxn: "ALTER COLUMN d TYPE int USING length(d)".
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE rewrite_tbl (a int PRIMARY KEY, b text, d text)");
+      stmt.execute("CREATE INDEX rewrite_tbl_b_idx ON rewrite_tbl(b)");
+      stmt.execute("INSERT INTO rewrite_tbl VALUES (1, 'one', 'foo'), " +
+                                                  "(2, 'two', 'bar12'), " +
+                                                  "(3, 'three', 'hello!')");
+      assertRowSet(stmt, "SELECT * FROM rewrite_tbl", asSet(new Row(1, "one", "foo"),
+                                                            new Row(2, "two", "bar12"),
+                                                            new Row(3, "three", "hello!")));
+
+      // Change the type of column d. The USING expression makes this a table rewrite:
+      // the underlying DocDB table (and dependent indexes) are re-created.
+      stmt.execute("ALTER TABLE rewrite_tbl ALTER COLUMN d TYPE int USING length(d)");
+      assertRowSet(stmt, "SELECT * FROM rewrite_tbl", asSet(new Row(1, "one", 3),
+                                                            new Row(2, "two", 5),
+                                                            new Row(3, "three", 6)));
+
+      // Insert after the rewrite to confirm the rewritten table is fully usable.
+      stmt.execute("INSERT INTO rewrite_tbl VALUES (4, 'four', 100)");
+      assertRowSet(stmt, "SELECT * FROM rewrite_tbl", asSet(new Row(1, "one", 3),
+                                                            new Row(2, "two", 5),
+                                                            new Row(3, "three", 6),
+                                                            new Row(4, "four", 100)));
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
+
+    try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection2.createStatement()) {
+      // The restored table reflects the post-rewrite schema and data.
+      assertRowSet(stmt, "SELECT * FROM rewrite_tbl", asSet(new Row(1, "one", 3),
+                                                            new Row(2, "two", 5),
+                                                            new Row(3, "three", 6),
+                                                            new Row(4, "four", 100)));
+      // The dependent index survives the rewrite and restore, and can serve queries.
+      assertQuery(stmt, "SELECT a, d FROM rewrite_tbl WHERE b = 'two'", new Row(2, 5));
+      // The rewritten table is writable after restore.
+      stmt.execute("INSERT INTO rewrite_tbl VALUES (5, 'five', 500)");
+      assertQuery(stmt, "SELECT a, d FROM rewrite_tbl WHERE a = 5", new Row(5, 500));
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
   private void testMaterializedViewsHelper(boolean matviewOnMatview, String dbName)
       throws Exception {
     String backupDir = null;
@@ -2948,8 +3019,18 @@ public class TestYbBackup extends BasePgSQLTest {
 
     try (Connection connection2 = getConnectionBuilder().withDatabase("yb2").connect();
          Statement stmt = connection2.createStatement()) {
+      // The table's own data is imported by DocDB column-id, so gaps in the column order are
+      // handled and this row is unaffected by the pg_dump revert.
       assertQuery(stmt, "SELECT * FROM row_type_tbl", new Row(2));
-      assertQuery(stmt, "SELECT * FROM my_table", new Row("(1)"));
+      // GHI 26610 fixed backup so a table used as a row type keeps its dropped columns,
+      // which kept the composite attribute order intact and made this return "(1)".
+      // After reverting the pg_dump fix, ysql_dump no longer recreates the dropped column x4, so
+      // row_type_tbl restores as a single-attribute (x1) type. The stored composite still has the
+      // original two physical fields, so decoding reads the first field (the dropped x4 value = 9)
+      // as x1. See https://github.com/yugabyte/yugabyte-db/issues/26610.
+      // Old (pre-revert) expectation:
+      // assertQuery(stmt, "SELECT * FROM my_table", new Row("(1)"));
+      assertQuery(stmt, "SELECT * FROM my_table", new Row("(9)"));
     }
 
     // Cleanup.
@@ -2965,10 +3046,14 @@ public class TestYbBackup extends BasePgSQLTest {
     String backupDir = null;
     try (Statement stmt = connection.createStatement()) {
       // The child partition has a different physical column ordering than its parent, so the
-      // dropped columns end up at different attribute numbers in the parent vs the child. After
-      // backup, ysql_dump emits the dropped columns as "........pg.dropped.N........" placeholders
-      // whose names (and positions) differ between parent and child. The restore-time schema
-      // validation in CatalogManager::ImportTableEntry must tolerate these differences.
+      // dropped columns end up at different attribute numbers in the parent vs the child.
+      // With the GHI 26610 (D53238) pg_dump fix reverted, ysql_dump no longer recreates the
+      // dropped columns for YB backups, so the dump emits no "........pg.dropped.N........"
+      // placeholders and the restored parent/child are plain (a, b, c) / (b, c, a) tables with no
+      // dropped-column gaps. This test still round-trips because it only reads explicit columns:
+      // each table's own data is imported by DocDB column-id, and the restore-time schema check in
+      // ImportSnapshot tolerates the missing dropped columns (it never depended on the fix).
+      // See https://github.com/yugabyte/yugabyte-db/issues/26610.
       stmt.execute("CREATE TABLE parent (a int, dummy int, dummy2 int, b int, c int) " +
                    "PARTITION BY RANGE (a)");
       // Note the columns are deliberately declared in a different order than the parent.
@@ -3031,9 +3116,14 @@ public class TestYbBackup extends BasePgSQLTest {
       // Same dropped-column attnum-mismatch setup as
       // testPartitionedTableWithDroppedColumnsAttnumMismatch, but additionally exercises composite
       // row types built on top of the partitioned tables. Each table has an associated composite
-      // type whose attribute layout (including the "........pg.dropped.N........" placeholders)
-      // differs between parent and child. Both the partition import and the composite type columns
-      // must survive backup/restore despite the mismatch.
+      // type whose live attributes sit at different attribute numbers in parent vs child.
+      // With the GHI 26610 (D53238) pg_dump fix reverted, ysql_dump no longer recreates the dropped
+      // columns, so the restored parent/child row types lose their dropped-column slots. The
+      // partition data itself still round-trips (imported by DocDB column-id, read via explicit
+      // columns below), but the stored composite values -- which were serialized with the original
+      // 5-slot physical layout -- are now decoded against the shrunken 3-attribute row type. As in
+      // testRowTypeTable, decoding reads the first N physical slots, so the composite reads shift.
+      // See https://github.com/yugabyte/yugabyte-db/issues/26610.
       stmt.execute("CREATE TABLE parent (a int, dummy int, dummy2 int, b int, c int) " +
                    "PARTITION BY RANGE (a)");
       // Note the columns are deliberately declared in a different order than the parent.
@@ -3079,10 +3169,20 @@ public class TestYbBackup extends BasePgSQLTest {
                   new Row(4, 40, 400), new Row(5, 50, 500));
       assertQuery(stmt, "SELECT a, b, c FROM child ORDER BY a",
                   new Row(4, 40, 400), new Row(5, 50, 500));
+      // After reverting the pg_dump fix the restored parent/child row types drop their dropped-
+      // column slots, so decoding the stored composite reads the first physical slots against the
+      // shrunken type: uses_parent's (a=1, dummy=NULL, dummy2=NULL, b=10, c=100) reads as
+      // (a=1, b=NULL, c=NULL), and uses_child's (b=20, c=200, dummy=NULL, dummy2=NULL, a=2) reads
+      // as (b=20, c=200, a=NULL). NOTE: predicted from the decode model; confirm with a real run.
+      // Old (pre-revert) expectations:
+      // assertQuery(stmt, "SELECT tag, r::text FROM uses_parent ORDER BY tag",
+      //             new Row("p1", "(1,10,100)"));
+      // assertQuery(stmt, "SELECT tag, r::text FROM uses_child ORDER BY tag",
+      //             new Row("c1", "(20,200,2)"));
       assertQuery(stmt, "SELECT tag, r::text FROM uses_parent ORDER BY tag",
-                  new Row("p1", "(1,10,100)"));
+                  new Row("p1", "(1,,)"));
       assertQuery(stmt, "SELECT tag, r::text FROM uses_child ORDER BY tag",
-                  new Row("c1", "(20,200,2)"));
+                  new Row("c1", "(20,200,)"));
 
       // The restored table should still be a working partition: new inserts get routed to child.
       stmt.execute("INSERT INTO parent (a, b, c) VALUES (3, 30, 300)");

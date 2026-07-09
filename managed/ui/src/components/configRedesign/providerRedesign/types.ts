@@ -480,11 +480,11 @@ export interface GCPRegion extends Region {
 }
 
 export interface OCIRegionMutation extends RegionMutation {
-  details?: { cloudInfo: Record<string, never> };
+  details?: { cloudInfo: { [ProviderCode.OCI]: OCIRegionCloudInfoMutation } };
   zones: OCIAvailabilityZoneMutation[];
 }
 export interface OCIRegion extends Region {
-  details: { cloudInfo: Record<string, never> };
+  details: { cloudInfo: { [ProviderCode.OCI]: OCIRegionCloudInfo } };
   zones: OCIAvailabilityZone[];
 }
 
@@ -547,6 +547,14 @@ interface GCPRegionCloudInfoBase {
 }
 type GCPRegionCloudInfoMutation = GCPRegionCloudInfoBase;
 type GCPRegionCloudInfo = GCPRegionCloudInfoBase;
+
+interface OCIRegionCloudInfoBase {
+  vnet?: string;
+}
+type OCIRegionCloudInfoMutation = OCIRegionCloudInfoBase;
+interface OCIRegionCloudInfo extends OCIRegionCloudInfoBase {
+  vnet: string;
+}
 
 interface K8sRegionCloudInfoBase {
   certManagerIssuerKind?: string;

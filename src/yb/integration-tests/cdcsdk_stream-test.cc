@@ -148,6 +148,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
     table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
     table_ids.insert(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
+    table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationOid));
 
     if (with_table) {
       auto table =
@@ -232,6 +233,8 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
         GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
     tables_expected_in_stream_metadata.insert(
         GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
+    tables_expected_in_stream_metadata.insert(
+        GetPgsqlTableId(pg_database_oid, kPgPublicationOid));
 
     auto db_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 

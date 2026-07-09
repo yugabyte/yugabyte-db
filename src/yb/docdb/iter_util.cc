@@ -23,6 +23,7 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/trace.h"
 

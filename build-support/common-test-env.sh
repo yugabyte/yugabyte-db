@@ -1660,6 +1660,7 @@ run_java_test() {
   fi
   set_mvn_parameters
 
+  ensure_test_tmp_dir_is_set
   set_sanitizer_runtime_options
   mkdir -p "$YB_TEST_LOG_ROOT_DIR/java"
 
@@ -2024,6 +2025,7 @@ run_python_doctest() {
     local basename=${python_file##*/}
     if [[ $python_file == managed/* ||
           $python_file == cloud/* ||
+          $python_file == src/postgres/contrib/pgcrypto/scripts/pgp_session_data.py ||
           $python_file == src/postgres/src/test/locale/sort-test.py ||
           $python_file == src/postgres/third-party-extensions/* ||
           $python_file == bin/test_bsopt.py ||

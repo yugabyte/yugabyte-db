@@ -520,6 +520,9 @@ class Version {
 
   size_t GetMemoryUsageByTableReaders();
 
+  // Returns the sum of SeekOffsetOf(key) for all SST files
+  Result<uint64_t> Cross(const Slice& key);
+
   // Returns weighted middle key of the approximate middle keys of the SST files
   // (see TableReader::GetMiddleKey).
   // Returns Status(Incomplete) if there are no SST files for this version.

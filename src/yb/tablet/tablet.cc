@@ -520,13 +520,6 @@ storage::UserFrontierPtr GetMutableMemTableFrontierFromDb(
 }
 
 
-Result<HybridTime> CheckSafeTime(HybridTime time, HybridTime min_allowed) {
-  if (time) {
-    return time;
-  }
-  return STATUS_FORMAT(TimedOut, "Timed out waiting for safe time $0", min_allowed);
-}
-
 class ActiveCompactionToken {
  public:
   explicit ActiveCompactionToken(std::atomic<size_t>& counter) : counter_(counter) {
@@ -602,7 +595,10 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
 
   void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo& flush_job_info) override {
     RocksDbListener::OnFlushCompleted(db, flush_job_info);
-    ERROR_NOT_OK(tablet_.MayModifyIntentsDbFlushedOpId(), log_prefix_);
+    auto status = tablet_.MayModifyIntentsDbFlushedOpId();
+    if (!status.ok() && !tablet_.shutdown_requested_.load(std::memory_order_acquire)) {
+      LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "Failed to update intents db flushed op id: " << status;
+    }
   }
 
  private:
@@ -821,15 +817,14 @@ Tablet::Tablet(const TabletInitData& data)
 }
 
 Tablet::~Tablet() {
-  if (StartShutdown()) {
-    CompleteShutdown(DisableFlushOnShutdown::kFalse, AbortOps::kFalse);
+  if (StartShutdown(DisableFlushOnShutdown::kFalse, AbortOps::kFalse)) {
+    CompleteShutdown();
   } else {
     auto state = state_;
     if (state != kShutdown) {
       LOG_WITH_PREFIX(DFATAL) << "Destroying Tablet that did not complete shutdown: " << state;
-      // Still try to complete shutdown in release builds, but disable flush in this state to
-      // minimize risk of flushing potentially corrupted data.
-      CompleteShutdown(DisableFlushOnShutdown::kTrue, AbortOps::kFalse);
+      // Still try to complete shutdown in release builds.
+      CompleteShutdown();
     }
   }
   if (regulardb_block_based_table_mem_tracker_) {
@@ -962,7 +957,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(
   VLOG_WITH_PREFIX(4) << __func__;
 
   if (state->flush_ability.empty() && state->largest_flushed_index.empty()) {
-    state->vector_indexes = VectorIndexList(vector_indexes_->List());
+    state->vector_indexes = vector_indexes_->List();
   }
 
   auto frontiers = memtable.Frontiers();
@@ -1554,7 +1549,7 @@ Status Tablet::EnableCompactions(
 }
 
 Status Tablet::DoEnableCompactions() {
-  tablet::VectorIndexList{ vector_indexes().List() }.EnableAutoCompactions();
+  vector_indexes().List().EnableAutoCompactions();
 
   Status regular_db_status;
   std::unordered_map<std::string, std::string> new_options = {
@@ -1592,20 +1587,66 @@ Status Tablet::DoEnableCompactions() {
 void Tablet::MarkFinishedBootstrapping() {
   CHECK_EQ(state_, kBootstrapping);
   state_ = kOpen;
+}
+
+void Tablet::Start() {
+  if (transaction_coordinator_) {
+    transaction_coordinator_->Start();
+  }
+
+  if (transaction_participant_) {
+    transaction_participant_->Start();
+  }
+
+  // Launch vector index backfill only now, after the tablet has been published by its TabletPeer.
+  // The backfill resolves transaction statuses of provisional records, which reads the tablet's
+  // safe time; running it during bootstrap (before TabletPeer::tablet_ is assigned) would race with
+  // that assignment.
   vector_indexes_->LaunchBackfillsIfNecessary();
 }
 
-bool Tablet::StartShutdown() {
+bool Tablet::StartShutdown(
+    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
   LOG_WITH_PREFIX(INFO) << __func__;
 
   bool expected = false;
   if (!shutdown_requested_.compare_exchange_strong(expected, true)) {
     return false;
   }
+  // shutdown_requested_ is now set, so the vector index backfill will observe it and exit. This
+  // sync point fires before StartShutdownStorages pauses read/write operations, so a test can
+  // release a backfill parked at TabletVectorIndexes::Backfill:Start here without deadlocking that
+  // pause.
+  TEST_SYNC_POINT("Tablet::StartShutdown");
+
+  // Stop the transaction coordinator's pollers before StartShutdownStorages pauses read/write
+  // operations below: otherwise a poll could submit a transaction status update operation against
+  // the paused tablet and fail with a non-shutdown status, tripping a DFATAL. See issue #32211.
+  if (transaction_coordinator_) {
+    transaction_coordinator_->StartShutdown();
+  }
 
   if (transaction_participant_) {
     transaction_participant_->StartShutdown();
   }
+
+  // Abort in-flight safe time waits before StartShutdownStorages pauses read/write operations.
+  // Safe time stops advancing once shutdown starts, so an operation blocked in
+  // MvccManager::SafeTime/SafeTimeForFollower (e.g. a vector index backfill resolving an aborted
+  // transaction) would otherwise never release its ScopedRWOperation, deadlocking the pause.
+  mvcc_.StartShutdown();
+
+  // Start shutting the RocksDB instances down (signalling shutdown, pausing read/write operations)
+  // here, before TabletPeer::CompleteShutdown drains the peer strand. StartShutdownStorages signals
+  // RocksDB shutdown, which releases any writer parked in DBImpl::DelayWrite on a write stall (the
+  // stall loop breaks out once the DB reports it is shutting down). Otherwise the shutdown would
+  // deadlock: the strand drain waits for in-flight RemoveIntents (and similar) tasks to finish, but
+  // a RemoveIntents write stalled on an intents-DB write stall that never clears would never be
+  // released until StartShutdownStorages runs -- which used to happen only later, from
+  // CompleteShutdown, i.e. after the strand drain. See issue #32211.
+  // The op pauses must outlive this call (they keep operations paused until the RocksDB instances
+  // are destroyed in CompleteShutdownStorages), so they are stored in a member.
+  shutdown_op_pauses_ = StartShutdownStorages(disable_flush_on_shutdown, abort_ops, Stop::kTrue);
 
   return true;
 }
@@ -1617,18 +1658,19 @@ Status Tablet::CompleteStartup() {
   return EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr);
 }
 
-void Tablet::CompleteShutdown(
-    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
+void Tablet::CompleteShutdown() {
   LOG_WITH_PREFIX(INFO) << __func__;
 
-  StartShutdown();
-
-  auto op_pauses = StartShutdownStorages(disable_flush_on_shutdown, abort_ops, Stop::kTrue);
+  // StartShutdown must have been called before CompleteShutdown (via TabletPeer::StartShutdown or
+  // Tablet::~Tablet). It runs StartShutdownStorages and populates shutdown_op_pauses_, which we
+  // consume below.
+  LOG_IF_WITH_PREFIX(DFATAL, !shutdown_requested_.load(std::memory_order_acquire))
+      << "CompleteShutdown called without a preceding StartShutdown";
 
   cleanup_intent_files_token_.reset();
 
   if (transaction_coordinator_) {
-    transaction_coordinator_->Shutdown();
+    transaction_coordinator_->CompleteShutdown();
   }
 
   if (transaction_participant_) {
@@ -1657,7 +1699,7 @@ void Tablet::CompleteShutdown(
   // Shutdown the RocksDB instance for this tablet, if present.
   // Destruct intents DB and regular DB in-memory objects in reverse order to their creation.
   // Also it makes sure that regular DB is alive during flush filter of intents db.
-  CompleteShutdownStorages(op_pauses);
+  CompleteShutdownStorages(shutdown_op_pauses_);
 
   {
     std::lock_guard compaction_lock(full_compaction_token_mutex_);
@@ -1668,7 +1710,7 @@ void Tablet::CompleteShutdown(
 
   state_ = kShutdown;
 
-  for (auto* op_pause : op_pauses.AsArray()) {
+  for (auto* op_pause : shutdown_op_pauses_.AsArray()) {
     // Release the mutex that prevents snapshot restore / truncate operations from running. Such
     // operations are no longer possible because the tablet has shut down. When we start the
     // "read/write operation pause", we incremented the "exclusive operation" counter. This will
@@ -1961,7 +2003,8 @@ Status Tablet::ApplyKeyValueRowOperations(
     rocksdb::WriteBatch intents_write_batch;
     docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
-        GetSchemaPackingProvider(), frontiers, vector_indexes_->List(), apply_to_storages);
+        GetSchemaPackingProvider(), frontiers, vector_indexes_->List().impl(), apply_to_storages,
+        table_type());
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetDirectWriter(&batcher);
@@ -2457,7 +2500,7 @@ Status Tablet::Flush(
 
   VectorIndexList vector_indexes_list;
   if (HasFlags(flags, FlushFlags::kVectorIndexes)) {
-    vector_indexes_list = VectorIndexList(vector_indexes_->List());
+    vector_indexes_list = vector_indexes_->List();
     vector_indexes_list.Flush();
   }
 
@@ -2496,7 +2539,7 @@ Status Tablet::Flush(FlushMode mode, rocksdb::FlushReason rocksdb_flush_reason) 
 Status Tablet::WaitForFlush() {
   TRACE_EVENT0("tablet", "Tablet::WaitForFlush");
 
-  RETURN_NOT_OK(VectorIndexList(vector_indexes_->List()).WaitForFlush());
+  RETURN_NOT_OK(vector_indexes_->List().WaitForFlush());
 
   if (regular_db_) {
     RETURN_NOT_OK(regular_db_->WaitForFlush());
@@ -2536,7 +2579,7 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_intents_ms);
   docdb::ConsensusFrontiers frontiers;
   InitFrontiers(data, frontiers);
-  auto vector_indexes = vector_indexes_->List();
+  auto vector_indexes = vector_indexes_->List().impl();
   docdb::ApplyIntentsContextCompleteListener complete_listener;
   if (!vector_indexes_->has_vector_deletion()) {
     complete_listener = [this](const docdb::ConsensusFrontiers& frontiers) {
@@ -2548,7 +2591,7 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   docdb::ApplyIntentsContext context(
       tablet_id(), data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
       min_running_ht, data.op_id, &key_bounds_, *metadata_, frontiers, intents_db_.get(),
-      vector_indexes, data.apply_to_storages, std::move(complete_listener));
+      vector_indexes, data.apply_to_storages, table_type(), std::move(complete_listener));
   docdb::IntentsWriter intents_writer(
       data.apply_state ? data.apply_state->key : Slice(), min_running_ht,
       intents_db_.get(), &context);
@@ -2721,7 +2764,8 @@ Status Tablet::GetIntentsForCDC(
 
 HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) {
   // We could not use mvcc_ directly, because correct lease should be passed to it.
-  return mvcc_.SafeTimeForFollower(min_allowed, deadline);
+  auto safe_time = mvcc_.SafeTimeForFollower(min_allowed, deadline);
+  return safe_time.ok() ? *safe_time : HybridTime::kInvalid;
 }
 
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIterator(
@@ -4231,7 +4275,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
     RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
   TEST_PAUSE_IF_FLAG(TEST_pause_before_getting_safe_time);
   if (require_lease == RequireLease::kFalse) {
-    return CheckSafeTime(mvcc_.SafeTimeForFollower(min_allowed, deadline), min_allowed);
+    return mvcc_.SafeTimeForFollower(min_allowed, deadline);
   }
   FixedHybridTimeLease ht_lease;
   if (ht_lease_provider_) {
@@ -4240,7 +4284,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
     if (!ht_lease_result.ok()) {
       if (require_lease == RequireLease::kFallbackToFollower &&
           ht_lease_result.status().IsIllegalState()) {
-        return CheckSafeTime(mvcc_.SafeTimeForFollower(min_allowed, deadline), min_allowed);
+        return mvcc_.SafeTimeForFollower(min_allowed, deadline);
       }
       return ht_lease_result.status();
     }
@@ -4259,7 +4303,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
         InternalError, "Read request hybrid time after leader lease: $0, lease: $1",
         min_allowed, ht_lease);
   }
-  return CheckSafeTime(mvcc_.SafeTime(min_allowed, deadline, ht_lease), min_allowed);
+  return mvcc_.SafeTime(min_allowed, deadline, ht_lease);
 }
 
 ScopedRWOperationPause Tablet::PauseWritePermits(CoarseTimePoint deadline) {
@@ -5061,7 +5105,7 @@ Status Tablet::TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions&
 
 Status Tablet::TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "vectors index ids: " << AsString(vector_index_ids);
-  tablet::VectorIndexList vector_index_list { vector_indexes().Collect(vector_index_ids) };
+  auto vector_index_list = vector_indexes().Collect(vector_index_ids);
   vector_index_list.Compact();
   auto status = vector_index_list.WaitForCompaction();
   WARN_WITH_PREFIX_NOT_OK(

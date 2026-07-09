@@ -317,6 +317,9 @@ Status ReplicaState::LockForShutdown(UniqueLock* lock) {
   if (state_ != kShuttingDown && state_ != kShutDown) {
     state_ = kShuttingDown;
   }
+  // Wake up waiters that block until a condition shutdown makes unreachable, e.g.
+  // MajorityReplicatedHtLeaseExpiration waiting for a leader lease that will never advance.
+  YB_PROFILE(cond_.notify_all());
   lock->swap(l);
   return Status::OK();
 }
@@ -1460,6 +1463,11 @@ Result<MicrosTime> ReplicaState::MajorityReplicatedHtLeaseExpiration(
     // Slow path
     UniqueLock l(update_lock_);
     auto predicate = [this, &result, min_allowed] {
+      // Stop waiting once shutdown starts: the lease may never advance again, and LockForShutdown
+      // notifies cond_ so we are woken here.
+      if (state_ == kShuttingDown || state_ == kShutDown) {
+        return true;
+      }
       result = majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
       return result >= min_allowed || result == PhysicalComponentLease::NoneValue();
     };
@@ -1467,6 +1475,9 @@ Result<MicrosTime> ReplicaState::MajorityReplicatedHtLeaseExpiration(
       cond_.wait(l, predicate);
     } else if (!cond_.wait_until(l, deadline, predicate)) {
       return STATUS_FORMAT(TimedOut, "Timed out waiting leader lease: $0", min_allowed);
+    }
+    if (state_ == kShuttingDown || state_ == kShutDown) {
+      return STATUS(ShutdownInProgress, "Replica is shutting down");
     }
   }
 

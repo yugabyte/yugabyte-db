@@ -14,6 +14,7 @@
 #pragma once
 
 #include <string>
+#include <unordered_set>
 
 #include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/cdc_types.h"
@@ -244,6 +245,14 @@ class XClusterTestBase : public YBTest {
   Status GetCDCStreamForTable(const TableId& table_id, master::ListCDCStreamsResponsePB* resp);
 
   uint32_t GetSuccessfulWriteOps(MiniCluster* cluster);
+
+  // Waits until the consumer pollers for all the given producer tablets are sleeping due to
+  // FLAGS_TEST_xcluster_simulated_lag_* (i.e. replication is paused/lagged for those tablets). This
+  // guarantees the simulated-lag freeze has fully taken effect and no in-flight GetChanges remains,
+  // which is more deterministic than sleeping for a fixed duration.
+  Status WaitForConsumerPollersToSleep(
+      const std::unordered_set<TabletId>& producer_tablet_ids,
+      MonoDelta timeout = MonoDelta::FromSeconds(kRpcTimeout));
 
   Status DeleteUniverseReplication(
       const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
