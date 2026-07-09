@@ -450,14 +450,14 @@ public class TestPgAuthorization extends BasePgSQLTest {
         runInvalidQuery(
             statement,
             "CREATE ROLE cr_created_role SUPERUSER",
-            "must be superuser to create superusers"
+            PERMISSION_DENIED
         );
 
         // Non-superusers cannot alter superuser roles.
         runInvalidQuery(
             statement,
             "ALTER ROLE su LOGIN",
-            "must be superuser to alter superuser roles or change superuser attribute"
+            PERMISSION_DENIED
         );
       });
 
@@ -720,7 +720,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
         runInvalidQuery(
             statement,
             "GRANT add_role_role TO other_role_to_add",
-            "must have admin option on role \"add_role_role\""
+            PERMISSION_DENIED
         );
       });
 
@@ -739,7 +739,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
         runInvalidQuery(
             statement,
             "GRANT add_user_role TO other_role_to_add",
-            "must have admin option on role \"add_user_role\""
+            PERMISSION_DENIED
         );
       });
 
@@ -2050,14 +2050,20 @@ public class TestPgAuthorization extends BasePgSQLTest {
         statement.execute("GRANT some_group TO other_role");
       });
 
-      statement.execute("REVOKE ADMIN OPTION FOR some_group FROM some_role");
+      runInvalidQuery(
+          statement,
+          "REVOKE ADMIN OPTION FOR some_group FROM some_role",
+          "dependent privileges exist"
+      );
+
+      statement.execute("REVOKE ADMIN OPTION FOR some_group FROM some_role CASCADE");
 
       withRole(statement, "some_role", () -> {
         // "some_role" no longer has admin option in "some_group".
         runInvalidQuery(
             statement,
             "GRANT some_group TO other_role",
-            "must have admin option on role \"some_group\""
+            PERMISSION_DENIED
         );
 
         // "some_role" is still a member of "some_group".
@@ -2065,8 +2071,8 @@ public class TestPgAuthorization extends BasePgSQLTest {
       });
 
       withRole(statement, "other_role", () -> {
-        // "other_role" is still a member of "some_group".
-        statement.execute("SET ROLE some_group");
+        // CASCADE revokes the dependent membership grant made by "some_role".
+        runInvalidQuery(statement, "SET ROLE some_group", PERMISSION_DENIED);
       });
     }
   }
@@ -2363,7 +2369,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
         runInvalidQuery(
             statement,
             "ALTER TABLE ts.test_table OWNER TO new_user",
-            "must be member of role \"new_user\""
+            "must be able to SET ROLE \"new_user\""
         );
       });
 
@@ -2750,47 +2756,40 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
       statement1.execute("CREATE ROLE test_role LOGIN");
       statement1.execute("CREATE ROLE test_role2 LOGIN");
+      statement1.execute("CREATE ROLE su SUPERUSER");
 
       try (Connection connection2 = getConnectionBuilder().withTServer(1)
           .withUser("test_role").connect();
            Statement statement2 = connection2.createStatement()) {
+
+        // LOGIN only: no tested permissions.
         runInvalidQuery(statement2, "CREATE ROLE tr", PERMISSION_DENIED);
         runInvalidQuery(statement2, "CREATE DATABASE tdb", PERMISSION_DENIED);
-        runInvalidQuery(statement2, "CREATE ROLE su SUPERUSER", "must be superuser");
-        runInvalidQuery(statement2, "SET SESSION AUTHORIZATION test_role2",PERMISSION_DENIED);
+        runInvalidQuery(statement2, "SET SESSION AUTHORIZATION test_role2", PERMISSION_DENIED);
+        runInvalidQuery(statement2, "CREATE ROLE su SUPERUSER", PERMISSION_DENIED);
+        runInvalidQuery(statement2, "SET SESSION AUTHORIZATION su", PERMISSION_DENIED);
 
         // Grant CREATEROLE from connection 1.
         statement1.execute("ALTER ROLE test_role CREATEROLE");
 
         waitForTServerHeartbeat();
 
-        // New attribute observed on connection 2 after heartbeat.
+        // CREATEROLE: newly allowed to create regular roles.
         statement2.execute("CREATE ROLE tr");
         runInvalidQuery(statement2, "CREATE DATABASE tdb", PERMISSION_DENIED);
-        runInvalidQuery(statement2, "CREATE ROLE su SUPERUSER", "must be superuser");
         runInvalidQuery(statement2, "SET SESSION AUTHORIZATION test_role2", PERMISSION_DENIED);
+        runInvalidQuery(statement2, "CREATE ROLE su2 SUPERUSER", PERMISSION_DENIED);
+        runInvalidQuery(statement2, "SET SESSION AUTHORIZATION su", PERMISSION_DENIED);
 
         // Grant CREATEDB from connection 1.
         statement1.execute("ALTER ROLE test_role CREATEDB");
 
         waitForTServerHeartbeat();
 
-        // New attribute observed on connection 2 after heartbeat.
+        // CREATEROLE + CREATEDB: newly allowed to create databases.
         statement2.execute("CREATE DATABASE tdb");
-        runInvalidQuery(statement2, "CREATE ROLE su SUPERUSER", "must be superuser");
         runInvalidQuery(statement2, "SET SESSION AUTHORIZATION test_role2", PERMISSION_DENIED);
-
-        // Grant SUPERUSER from connection 1.
-        statement1.execute("ALTER ROLE test_role SUPERUSER");
-
-        waitForTServerHeartbeat();
-
-        // New attribute observed on connection 2 after heartbeat.
-        statement2.execute("CREATE ROLE su SUPERUSER");
-        runInvalidQuery(statement2, "SET SESSION AUTHORIZATION test_role2", PERMISSION_DENIED);
-
-        // "test_role" still cannot set their session authorization, despite having
-        // superuser privileges.
+        runInvalidQuery(statement2, "CREATE ROLE su2 SUPERUSER", PERMISSION_DENIED);
         runInvalidQuery(statement2, "SET SESSION AUTHORIZATION su", PERMISSION_DENIED);
 
         // Grant yb_db_admin from connection 1.
@@ -2798,12 +2797,20 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
         waitForTServerHeartbeat();
 
-        // New attribute observed on connection 2 after heartbeat.
+        // + yb_db_admin: newly allowed to SET SESSION AUTHORIZATION to non-superusers.
         statement2.execute("SET SESSION AUTHORIZATION test_role2");
-
-        // "test_role" still cannot set their session authorization to a superuser,
-        // despite having yb_db_admin privileges.
+        statement2.execute("RESET SESSION AUTHORIZATION");
+        runInvalidQuery(statement2, "CREATE ROLE su2 SUPERUSER", PERMISSION_DENIED);
         runInvalidQuery(statement2, "SET SESSION AUTHORIZATION su", PERMISSION_DENIED);
+
+        // Grant SUPERUSER from connection 1.
+        statement1.execute("ALTER ROLE test_role SUPERUSER");
+
+        waitForTServerHeartbeat();
+
+        // + SUPERUSER: remaining restricted actions now succeed.
+        statement2.execute("CREATE ROLE su2 SUPERUSER");
+        statement2.execute("SET SESSION AUTHORIZATION su");
       }
     }
   }
@@ -2826,7 +2833,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
         waitForTServerHeartbeat();
 
         // Lost attribute is observed from connection 2.
-        runInvalidQuery(statement2, "CREATE ROLE su SUPERUSER", "must be superuser");
+        runInvalidQuery(statement2, "CREATE ROLE su SUPERUSER", PERMISSION_DENIED);
         statement2.execute("CREATE DATABASE tdb");
 
         // Revoke CREATEDB from connection 1.
@@ -2835,7 +2842,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
         waitForTServerHeartbeat();
 
         // Lost attribute is observed from connection 2.
-        runInvalidQuery(statement2, "CREATE ROLE su SUPERUSER", "must be superuser");
+        runInvalidQuery(statement2, "CREATE ROLE su SUPERUSER", PERMISSION_DENIED);
         runInvalidQuery(statement2, "CREATE DATABASE tdb", PERMISSION_DENIED);
         statement2.execute("CREATE ROLE tr");
 
@@ -2845,7 +2852,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
         waitForTServerHeartbeat();
 
         // Lost attribute is observed from connection 2.
-        runInvalidQuery(statement2, "CREATE ROLE su SUPERUSER", "must be superuser");
+        runInvalidQuery(statement2, "CREATE ROLE su SUPERUSER", PERMISSION_DENIED);
         runInvalidQuery(statement2, "CREATE DATABASE tdb", PERMISSION_DENIED);
         runInvalidQuery(statement2, "CREATE ROLE tr", PERMISSION_DENIED);
       }
@@ -2905,16 +2912,16 @@ public class TestPgAuthorization extends BasePgSQLTest {
         // Connection 2 initially has select privileges.
         statement2.execute("SELECT * FROM test_table");
 
-        // Disable parent inheritance from connection 1.
-        statement1.execute("ALTER ROLE test_group NOINHERIT");
+        // Disable inheritance on test_role's membership edge to test_group.
+        statement1.execute("REVOKE INHERIT OPTION FOR test_group FROM test_role");
 
         waitForTServerHeartbeat();
 
         // Connection 2 has lost inherited privileges.
         runInvalidQuery(statement2, "SELECT * FROM test_table", PERMISSION_DENIED);
 
-        // Enable parent inheritance from connection 1.
-        statement1.execute("ALTER ROLE test_group INHERIT");
+        // Re-enable inheritance on test_role's membership edge to test_group.
+        statement1.execute("GRANT test_group TO test_role WITH INHERIT TRUE");
 
         waitForTServerHeartbeat();
 
@@ -3016,16 +3023,16 @@ public class TestPgAuthorization extends BasePgSQLTest {
         // Connection 2 initially has select privileges.
         statement2.execute("SELECT * FROM test_table");
 
-        // Remove inheritance from connection 1.
-        statement1.execute("ALTER ROLE test_role NOINHERIT");
+        // Remove INHERIT option from this specific membership.
+        statement1.execute("REVOKE INHERIT OPTION FOR test_group FROM test_role");
 
         waitForTServerHeartbeat();
 
         // Connection 2 has lost inherited privileges.
         runInvalidQuery(statement2, "SELECT * FROM test_table", PERMISSION_DENIED);
 
-        // Add inheritance from connection 1.
-        statement1.execute("ALTER ROLE test_role INHERIT");
+        // Restore INHERIT option on this membership.
+        statement1.execute("GRANT test_group TO test_role WITH INHERIT TRUE");
 
         waitForTServerHeartbeat();
 

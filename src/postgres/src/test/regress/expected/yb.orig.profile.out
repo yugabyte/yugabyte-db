@@ -20,8 +20,9 @@ Tablespace: "pg_global"
 SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_yb_profile', 'pg_yb_profile_oid_index');
  oid  |         relname         | reltype | relnatts 
 ------+-------------------------+---------+----------
+-- YB_TODO_PG19MERGE: Change pg_yb_profile_oid_index oid back to 8052 before PG19 release.
  8051 | pg_yb_profile           |    8053 |        4
- 8052 | pg_yb_profile_oid_index |       0 |        1
+ 9811 | pg_yb_profile_oid_index |       0 |        1
 (2 rows)
 
 SELECT oid, typname, typrelid FROM pg_type WHERE typname LIKE 'pg_yb_profile';
