@@ -100,10 +100,10 @@ CREATE INDEX mvtest_aa ON mvtest_bb (grandtot);
  type   | text    |           |          |         | extended |              | 
  totamt | numeric |           |          |         | main     |              | 
 View definition:
- SELECT mvtest_tv.type,
-    mvtest_tv.totamt
+ SELECT type,
+    totamt
    FROM mvtest_tv
-  ORDER BY mvtest_tv.type;
+  ORDER BY type;
 
 \d+ mvtest_tvm
                            Materialized view "public.mvtest_tvm"
@@ -112,10 +112,10 @@ View definition:
  type   | text    |           |          |         | extended |              | 
  totamt | numeric |           |          |         | main     |              | 
 View definition:
- SELECT mvtest_tv.type,
-    mvtest_tv.totamt
+ SELECT type,
+    totamt
    FROM mvtest_tv
-  ORDER BY mvtest_tv.type;
+  ORDER BY type;
 
 \d+ mvtest_tvvm
                            Materialized view "public.mvtest_tvvm"
@@ -123,7 +123,7 @@ View definition:
 ----------+---------+-----------+----------+---------+---------+--------------+-------------
  grandtot | numeric |           |          |         | main    |              | 
 View definition:
- SELECT mvtest_tvv.grandtot
+ SELECT grandtot
    FROM mvtest_tvv;
 
 \d+ mvtest_bb
@@ -134,7 +134,7 @@ View definition:
 Indexes:
     "mvtest_aa" lsm (grandtot ASC)
 View definition:
- SELECT mvtest_tvvmv.grandtot
+ SELECT grandtot
    FROM mvtest_tvvmv;
 
 -- test schema behavior
@@ -272,7 +272,7 @@ DROP MATERIALIZED VIEW IF EXISTS no_such_mv;
 NOTICE:  materialized view "no_such_mv" does not exist, skipping
 -- make sure invalid combination of options is prohibited
 REFRESH MATERIALIZED VIEW CONCURRENTLY mvtest_tvmm WITH NO DATA;
-ERROR:  CONCURRENTLY and WITH NO DATA options cannot be used together
+ERROR:  REFRESH options CONCURRENTLY and WITH NO DATA cannot be used together
 -- no tuple locks on materialized views
 SELECT * FROM mvtest_tvvm FOR SHARE;
 ERROR:  cannot lock rows in materialized view "mvtest_tvvm"
@@ -587,10 +587,10 @@ CREATE MATERIALIZED VIEW matview_schema.mv_withdata1 (a) AS
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
   CREATE MATERIALIZED VIEW matview_schema.mv_withdata2 (a) AS
   SELECT generate_series(1, 10) WITH DATA;
-                  QUERY PLAN                   
------------------------------------------------
- ProjectSet (actual rows=10 loops=1)
-   ->  Result *RESULT* (actual rows=1 loops=1)
+                    QUERY PLAN                    
+--------------------------------------------------
+ ProjectSet (actual rows=10.00 loops=1)
+   ->  Result *RESULT* (actual rows=1.00 loops=1)
 (2 rows)
 
 REFRESH MATERIALIZED VIEW matview_schema.mv_withdata2;

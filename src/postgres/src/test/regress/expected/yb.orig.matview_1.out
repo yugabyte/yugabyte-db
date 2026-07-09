@@ -143,9 +143,9 @@ CREATE UNIQUE INDEX unique_IDX ON mtest_yb(id);
 CREATE ROLE test_mv_user;
 SET ROLE test_mv_user;
 REFRESH MATERIALIZED VIEW mtest_yb; -- error
-ERROR:  must be owner of materialized view mtest_yb
+ERROR:  permission denied for materialized view mtest_yb
 REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb; -- error
-ERROR:  must be owner of materialized view mtest_yb
+ERROR:  permission denied for materialized view mtest_yb
 SET ROLE yugabyte;
 ALTER MATERIALIZED VIEW mtest_yb OWNER TO test_mv_user;
 REFRESH MATERIALIZED VIEW mtest_yb; -- error
