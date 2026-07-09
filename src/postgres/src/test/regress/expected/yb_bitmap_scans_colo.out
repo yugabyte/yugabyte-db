@@ -1587,7 +1587,7 @@ select int4_col from recheck_test t where text_col like 'a%' AND text_col IN ('a
                                                     QUERY PLAN
 -------------------------------------------------------------------------------------------------------------------
  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=1)
-   Storage Recheck Cond: (text_col = ANY ('{a,b,c}'::text[]))
+   Storage Recheck Cond: ((text_col = ANY ('{a,b,c}'::text[])) AND (text_col ~~ 'a%'::text))
    Recheck Cond: ((text_col >= 'a'::text) AND (text_col < 'b'::text))
    ->  Bitmap Index Scan on recheck_test_text_col_idx (actual rows=1 loops=1)
          Index Cond: ((text_col >= 'a'::text) AND (text_col < 'b'::text) AND (text_col = ANY ('{a,b,c}'::text[])))
@@ -1618,7 +1618,7 @@ select count(*) from recheck_test t where text_col like 'a%' AND text_col IN ('a
 -------------------------------------------------------------------------------------------------------------------------
  Aggregate (actual rows=1 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=1)
-         Storage Recheck Cond: (text_col = ANY ('{a,b,c}'::text[]))
+         Storage Recheck Cond: ((text_col = ANY ('{a,b,c}'::text[])) AND (text_col ~~ 'a%'::text))
          Recheck Cond: ((text_col >= 'a'::text) AND (text_col < 'b'::text))
          ->  Bitmap Index Scan on recheck_test_text_col_idx (actual rows=1 loops=1)
                Index Cond: ((text_col >= 'a'::text) AND (text_col < 'b'::text) AND (text_col = ANY ('{a,b,c}'::text[])))

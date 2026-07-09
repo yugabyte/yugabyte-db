@@ -1553,7 +1553,7 @@ select int4_col from recheck_test t where text_col like 'a%' AND text_col IN ('a
                                                     QUERY PLAN
 -------------------------------------------------------------------------------------------------------------------
  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=1)
-   Storage Recheck Cond: (text_col = ANY ('{a,b,c}'::text[]))
+   Storage Recheck Cond: ((text_col = ANY ('{a,b,c}'::text[])) AND (text_col ~~ 'a%'::text))
    Recheck Cond: ((text_col >= 'a'::text) AND (text_col < 'b'::text))
    ->  Bitmap Index Scan on recheck_test_text_col_idx (actual rows=1 loops=1)
          Index Cond: ((text_col >= 'a'::text) AND (text_col < 'b'::text) AND (text_col = ANY ('{a,b,c}'::text[])))
@@ -1584,7 +1584,7 @@ select count(*) from recheck_test t where text_col like 'a%' AND text_col IN ('a
 -------------------------------------------------------------------------------------------------------------------------
  Aggregate (actual rows=1 loops=1)
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=1)
-         Storage Recheck Cond: (text_col = ANY ('{a,b,c}'::text[]))
+         Storage Recheck Cond: ((text_col = ANY ('{a,b,c}'::text[])) AND (text_col ~~ 'a%'::text))
          Recheck Cond: ((text_col >= 'a'::text) AND (text_col < 'b'::text))
          ->  Bitmap Index Scan on recheck_test_text_col_idx (actual rows=1 loops=1)
                Index Cond: ((text_col >= 'a'::text) AND (text_col < 'b'::text) AND (text_col = ANY ('{a,b,c}'::text[])))
@@ -1930,7 +1930,7 @@ CREATE TABLE bitmap_pk_diff_type_1 (k1 int NOT NULL, v1 numeric, k2 varchar NOT 
 INSERT INTO bitmap_pk_diff_type_1 VALUES (1, 10, 'aa'), (1, 20, 'bb');
 EXPLAIN (COSTS OFF) /*+ BitmapScan(bitmap_pk_diff_type_1) */
 SELECT k2 FROM bitmap_pk_diff_type_1 WHERE k2 LIKE '%a' AND k1 = 1;
-                        QUERY PLAN                        
+                        QUERY PLAN
 ----------------------------------------------------------
  YB Bitmap Table Scan on bitmap_pk_diff_type_1
    ->  Bitmap Index Scan on bitmap_pk_diff_type_1_pkey
@@ -1940,7 +1940,7 @@ SELECT k2 FROM bitmap_pk_diff_type_1 WHERE k2 LIKE '%a' AND k1 = 1;
 
 /*+ BitmapScan(bitmap_pk_diff_type_1) */
 SELECT k2 FROM bitmap_pk_diff_type_1 WHERE k2 LIKE '%a' AND k1 = 1 ORDER BY k2;
- k2 
+ k2
 ----
  aa
 (1 row)
@@ -1953,7 +1953,7 @@ CREATE TABLE bitmap_pk_diff_type_2 (k1 int NOT NULL, v1 date, k2 varchar NOT NUL
 INSERT INTO bitmap_pk_diff_type_2 VALUES (1, '2026-06-01', 'aa'), (1, '2026-06-02', 'bb');
 EXPLAIN (COSTS OFF) /*+ BitmapScan(bitmap_pk_diff_type_2) */
 SELECT k2 FROM bitmap_pk_diff_type_2 WHERE k2 LIKE '%a' AND k1 = 1;
-                        QUERY PLAN                        
+                        QUERY PLAN
 ----------------------------------------------------------
  YB Bitmap Table Scan on bitmap_pk_diff_type_2
    ->  Bitmap Index Scan on bitmap_pk_diff_type_2_pkey
@@ -1963,7 +1963,7 @@ SELECT k2 FROM bitmap_pk_diff_type_2 WHERE k2 LIKE '%a' AND k1 = 1;
 
 /*+ BitmapScan(bitmap_pk_diff_type_2) */
 SELECT k2 FROM bitmap_pk_diff_type_2 WHERE k2 LIKE '%a' AND k1 = 1 ORDER BY k2;
- k2 
+ k2
 ----
  aa
 (1 row)
@@ -1978,7 +1978,7 @@ CREATE TABLE bitmap_pk_same_type (k1 int NOT NULL, v1 text NOT NULL, k2 text NOT
 INSERT INTO bitmap_pk_same_type VALUES (1, 'x1', 'x2'), (1, 'y2', 'y1');
 EXPLAIN (COSTS OFF) /*+ BitmapScan(bitmap_pk_same_type) */
 SELECT v1 FROM bitmap_pk_same_type WHERE k2 LIKE '%1' AND k1 = 1;
-                     QUERY PLAN                      
+                     QUERY PLAN
 -----------------------------------------------------
  YB Bitmap Table Scan on bitmap_pk_same_type
    ->  Bitmap Index Scan on bitmap_pk_same_type_pkey
@@ -1988,7 +1988,7 @@ SELECT v1 FROM bitmap_pk_same_type WHERE k2 LIKE '%1' AND k1 = 1;
 
 /*+ BitmapScan(bitmap_pk_same_type) */
 SELECT v1 FROM bitmap_pk_same_type WHERE k2 LIKE '%1' AND k1 = 1;
- v1 
+ v1
 ----
  y2
 (1 row)
@@ -1996,7 +1996,7 @@ SELECT v1 FROM bitmap_pk_same_type WHERE k2 LIKE '%1' AND k1 = 1;
 -- Cross-check: the bitmap result must equal the non-bitmap (seq scan) result.
 /*+ SeqScan(bitmap_pk_same_type) */
 SELECT v1 FROM bitmap_pk_same_type WHERE k2 LIKE '%1' AND k1 = 1;
- v1 
+ v1
 ----
  y2
 (1 row)
@@ -2004,6 +2004,56 @@ SELECT v1 FROM bitmap_pk_same_type WHERE k2 LIKE '%1' AND k1 = 1;
 DROP TABLE bitmap_pk_diff_type_1;
 DROP TABLE bitmap_pk_diff_type_2;
 DROP TABLE bitmap_pk_same_type;
+-- In a Bitmap Index Scan, filters pushed down as Storage Index Filters must be
+-- included in the recheck conditions.
+CREATE TABLE bitmap_recheck (a float4, b INT, c INT);
+INSERT INTO bitmap_recheck (a, b, c) (SELECT s::float4/10, s, s % 10 FROM generate_series(1,40) s);
+CREATE INDEX bitmap_recheck_a ON bitmap_recheck (a ASC);
+CREATE INDEX bitmap_recheck_b_c ON bitmap_recheck (b ASC) INCLUDE (c) WHERE c > 2;
+-- In the Bitmap Index Scan plan, recheck is triggered because the filter
+-- `a = 0.4` is pushed down as Index Condition, but not enforced during the
+-- index scan because of type mismatch. The column `a` is of type `float4` but
+-- PG assigns type `float8` to the literal decimal `0.4`.
+-- The filter `c > 5` is pushed down as a Storage Index Filter on
+-- index `bitmap_recheck_b_c` and it must be included in the recheck conditions.
+EXPLAIN (COSTS OFF) /*+ SeqScan(bitmap_recheck) */
+SELECT count(*) FROM bitmap_recheck WHERE a = 0.4 OR c > 5;
+                             QUERY PLAN
+--------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on bitmap_recheck
+         Storage Filter: ((a = '0.4'::double precision) OR (c > 5))
+         Partial Aggregate: true
+(4 rows)
+
+SELECT count(*) FROM bitmap_recheck WHERE a = 0.4 OR c > 5;
+ count
+-------
+    16
+(1 row)
+
+EXPLAIN (COSTS OFF) /*+ BitmapScan(bitmap_recheck) */
+SELECT count(*) FROM bitmap_recheck WHERE a = 0.4 OR c > 5;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on bitmap_recheck
+         Storage Recheck Cond: ((a = '0.4'::double precision) OR (c > 5))
+         Partial Aggregate: true
+         ->  BitmapOr
+               ->  Bitmap Index Scan on bitmap_recheck_a
+                     Index Cond: (a = '0.4'::double precision)
+               ->  Bitmap Index Scan on bitmap_recheck_b_c
+                     Storage Index Filter: (c > 5)
+(9 rows)
+
+SELECT count(*) FROM bitmap_recheck WHERE a = 0.4 OR c > 5;
+ count
+-------
+    16
+(1 row)
+
+DROP TABLE bitmap_recheck;
 RESET yb_enable_base_scans_cost_model;
 RESET yb_explain_hide_non_deterministic_fields;
 RESET enable_bitmapscan;
