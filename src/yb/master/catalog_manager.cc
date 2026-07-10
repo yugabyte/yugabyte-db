@@ -3430,7 +3430,13 @@ Status CatalogManager::DoSplitTablet(
       return s;
     }
 
-    if (!is_manual_split) {
+    const bool children_already_registered =
+        scope.source_tablet_meta().split_tablet_ids().size() > 0;
+    // Skip validation for tablets whose children have already been registered in the past, as we
+    // might be retrying a previously failed split operation (failed at the tserver), and the table
+    // could have entered a different split phase now.
+    const bool should_validate_split = !is_manual_split && !children_already_registered;
+    if (should_validate_split) {
       auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
 
       // It is possible that we queued up a split candidate in TabletSplitManager which was, at the
@@ -3450,7 +3456,7 @@ Status CatalogManager::DoSplitTablet(
     // After this point, we expect to split the tablet.
 
     // If child tablets are already registered, use the existing split keys and tablets.
-    if (scope.source_tablet_meta().split_tablet_ids().size() > 0) {
+    if (children_already_registered) {
       num_split_parts = scope.source_tablet_meta().split_tablet_ids().size();
       for (auto i = 0; i < num_split_parts; ++i) {
         const auto& split_tablet_id = scope.source_tablet_meta().split_tablet_ids(i);
