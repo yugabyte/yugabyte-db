@@ -822,12 +822,12 @@ SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) O
 --
 EXPLAIN (COSTS OFF)
 /*+ BitmapScan(b) */ SELECT b.* FROM (VALUES (2,2), (12,12), (4,4), (16,16), (6,6), (20,20), (8,8)) v(c1, c2) JOIN joinb b ON v.c1 = b.c WHERE b.c + 5 > v.c2;
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
  Nested Loop
    ->  Values Scan on "*VALUES*"
    ->  YB Bitmap Table Scan on joinb b
-         Storage Recheck Cond: (c = "*VALUES*".column1)
+         Storage Recheck Cond: ((c = "*VALUES*".column1) AND ((c + 5) > "*VALUES*".column2))
          Storage Filter: ((c + 5) > "*VALUES*".column2)
          ->  Bitmap Index Scan on joinb_c_idx
                Index Cond: (c = "*VALUES*".column1)

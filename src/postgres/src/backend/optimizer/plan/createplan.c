@@ -4733,13 +4733,25 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	Assert(baserelid > 0);
 	Assert(best_path->path.parent->rtekind == RTE_RELATION);
 
-	/* Process the bitmapqual tree into a Plan tree and qual lists */
+	/* Process the bitmapqual tree into a Plan tree and qual lists. */
+
 	bitmapqualplan = create_bitmap_subplan(root, best_path->bitmapqual,
 										   &indexqual, &indexquals,
 										   &indexECs, tlist, &scan_clauses);
 
+	/*
+	 * YB: The indexquals output of create_bitmap_subplan() only captures index
+	 * conditions and partial-index predicates. The clauses pushed down to the
+	 * index as storage filters (yb_idx_pushdown) are not captured, so using it
+	 * for recheck would produce a weaker condition which can lead to wrong
+	 * results when recheck is necessary.
+	 *
+	 * Instead we use yb_get_bitmap_index_quals() which accounts for the
+	 * pushed-down filters and is the same function used during costing.
+	 */
 	allindexquals = yb_get_bitmap_index_quals(root, best_path->bitmapqual,
 											  scan_clauses);
+	indexquals = allindexquals;
 
 	/*
 	 * The qpqual list must contain all restrictions not automatically handled
@@ -4763,8 +4775,8 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	 * Unlike create_indexscan_plan(), the predicate_implied_by() test here is
 	 * useful for getting rid of qpquals that are implied by index predicates,
 	 * because the predicate conditions are included in the "indexquals"
-	 * returned by create_bitmap_subplan().  Bitmap scans have to do it that
-	 * way because predicate conditions need to be rechecked if the scan
+	 * returned by yb_get_bitmap_index_quals().  Bitmap scans have to do it
+	 * that way because predicate conditions need to be rechecked if the scan
 	 * becomes lossy, so they have to be included in indexqual.
 	 */
 	qpqual = NIL;
