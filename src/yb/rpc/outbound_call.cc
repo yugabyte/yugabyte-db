@@ -465,7 +465,8 @@ Status OutboundCall::SetRequestParam(
   }
 
   if (trace_context_size > 0) {
-    // Write the TraceContextPB submessage. Field numbers match yb.TraceContextPB in common.proto.
+    // Write the TraceContextPB submessage. Field numbers match yb.rpc.TraceContextPB in
+    // rpc_header.proto.
     // The 16-byte trace id splits into two big-endian 64-bit halves; the span id is one big-endian
     // 64-bit.
     dst = Output::WriteTagToArray(
@@ -485,7 +486,8 @@ Status OutboundCall::SetRequestParam(
         (TraceContextPB::kSpanIdFieldNumber << 3) | WireFormatLite::WIRETYPE_FIXED64, dst);
     dst = Output::WriteLittleEndian64ToArray(BigEndian::Load64(span_id.Id().data()), dst);
 
-    dst = Output::WriteTagToArray(TraceContextPB::kVersionAndFlagsFieldNumber << 3, dst);
+    dst = Output::WriteTagToArray(
+        (TraceContextPB::kVersionAndFlagsFieldNumber << 3) | WireFormatLite::WIRETYPE_VARINT, dst);
     dst = Output::WriteVarint32ToArray(version_and_flags, dst);
   }
 
