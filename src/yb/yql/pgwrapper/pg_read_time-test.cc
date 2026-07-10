@@ -563,6 +563,56 @@ TEST_F(PgMiniTestBase, DisallowWriteDMLsWithYbReadTime) {
   ASSERT_OK(conn.Execute("DELETE FROM t WHERE k=1"));
 }
 
+// Test that yb_read_time can only be set at the session level and not from inside a transaction
+// block. Setting it mid-transaction resets the backend's local catalog version, which is not
+// re-fetched while a transaction is already open, so a subsequent read would otherwise fail with a
+// misleading "Catalog Version Mismatch" error.
+TEST_F(PgMiniTestBase, DisallowSettingYbReadTimeInTransactionBlock) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (k,v) SELECT i,i FROM generate_series(1,4) AS i"));
+  const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+
+  const std::string in_txn_error = "yb_read_time cannot be set inside a transaction block";
+
+  LOG(INFO) << "Setting a non-zero yb_read_time inside a transaction block should be rejected";
+  ASSERT_OK(conn.Execute("BEGIN READ ONLY"));
+  auto status = conn.ExecuteFormat("SET yb_read_time TO $0", t1);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), in_txn_error);
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  LOG(INFO) << "SET LOCAL yb_read_time inside a transaction block should also be rejected";
+  ASSERT_OK(conn.Execute("BEGIN READ ONLY"));
+  status = conn.ExecuteFormat("SET LOCAL yb_read_time TO $0", t1);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), in_txn_error);
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  LOG(INFO) << "Even setting yb_read_time to 0 inside a transaction block should be rejected";
+  ASSERT_OK(conn.Execute("BEGIN READ ONLY"));
+  status = conn.Execute("SET yb_read_time TO 0");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), in_txn_error);
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  LOG(INFO) << "Setting yb_read_time at the session level (outside a transaction) is allowed";
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+  auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t"));
+  ASSERT_EQ(count, 4);
+  ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
+
+  LOG(INFO) << "Setting yb_read_time inside a transaction is allowed once the catalog version "
+               "check is disabled";
+  ASSERT_OK(conn.Execute("BEGIN READ ONLY"));
+  ASSERT_OK(conn.Execute("SET yb_disable_catalog_version_check TO true"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t"));
+  ASSERT_EQ(count, 4);
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+}
+
 // Test that nextval and setval on sequences are disallowed in a time travel session
 // (when yb_read_time is set to non-zero).
 TEST_F(PgMiniTestBase, DisallowSequenceWritesWithYbReadTime) {
