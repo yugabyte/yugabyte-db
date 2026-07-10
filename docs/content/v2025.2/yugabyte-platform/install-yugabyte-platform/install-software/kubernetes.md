@@ -143,6 +143,12 @@ You can copy the preceding code block into a file called `yba-values.yaml` and t
 
 If you are looking for a customization which is not listed, you can view all the supported options and their default values by running the `helm show values yugabytedb/yugaware --version {{<yb-version version="v2025.2" format="short">}}` command and copying the specific section to your own values file.
 
+{{< warning title="Do not change useYugabyteDB" >}}
+
+When customizing the Helm chart, note that `useYugabyteDB` should always be set to `false`. _This is the chart default and must not be changed_.
+
+{{< /warning >}}
+
 ### Customize the creation of an internal service account
 
 By default, the Helm chart will attempt to create a service account that has certain ClusterRoles listed [here](https://github.com/yugabyte/charts/blob/master/stable/yugaware/templates/rbac.yaml#L166). These roles are used to do the following:
