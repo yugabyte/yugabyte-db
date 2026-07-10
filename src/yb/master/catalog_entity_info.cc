@@ -1201,11 +1201,31 @@ TransactionId TableInfo::EraseDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(
   std::lock_guard l(lock_);
   TransactionId txn;
 
-  auto itr = ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.find(schema_version);
-  if (itr != ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.end()) {
-    txn = itr->second;
-    ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.erase(itr);
+  auto upper_bound_iter =
+      ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.upper_bound(schema_version);
+  // Note that a single rollback to sub-transaction operation can involve more than one schema
+  // version bump on a table.
+  // For example:
+  //   BEGIN;
+  //   SAVEPOINT a;
+  //   ALTER TABLE test ADD COLUMN c int;
+  //   CREATE INDEX test_idx on test(b);
+  //   ROLLBACK TO a;
+  // The rollback operation will bump up the schema version of `test` twice. Therefore, the same
+  // transaction can be waiting for multiple schema versions. Similar to the comments mentioned in
+  // EraseDdlTxnsWaitingForSchemaVersion, it is possible that the TServers respond back with the
+  // latest schema version. Therefore, we delete all entries for schema versions less than the
+  // reported schema version. They all must belong to the same transaction though since we only
+  // allow one rollback to sub-transaction operation on a table at a given time.
+  for (auto it = ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.begin();
+       it != upper_bound_iter; ++it) {
+    DCHECK(txn.IsNil() || txn == it->second)
+        << Format("Multiple transactions waiting for schema version $0: $1 and $2",
+                  schema_version, txn, it->second);
+    txn = it->second;
   }
+  ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.erase(
+    ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.begin(), upper_bound_iter);
   return txn;
 }
 
