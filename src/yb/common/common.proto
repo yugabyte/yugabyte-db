@@ -781,9 +781,6 @@ message AshMetadataPB {
   optional uint32 database_id = 8;
   // YSQL user OID. This field will not be set for YCQL.
   optional uint32 user_id = 10;
-  // 12 was trace_context; the trace is now carried independently of ASH on both transports
-  // (RequestHeader.trace_context for RPC, its own shared-memory slot for PG<->tserver).
-  reserved 12;
 }
 
 // Some optional/additional fields that is collected in addition to the wait
