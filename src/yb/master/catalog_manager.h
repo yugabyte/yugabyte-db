@@ -130,6 +130,7 @@ namespace master {
 struct DeferredAssignmentActions;
 struct KeyRange;
 struct SysCatalogLoadingState;
+class AlterTableBatchTracker;
 class RestoreSysCatalogState;
 class YsqlInitDBAndMajorUpgradeHandler;
 class YsqlManager;
@@ -473,6 +474,20 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                     AlterTableResponsePB* resp,
                     rpc::RpcContext* rpc,
                     const LeaderEpoch& epoch);
+
+  // Variant of AlterTable that additionally forwards a batch tracker to the per-tablet
+  // AsyncAlterTable tasks produced by the request. The tracker is only attached when the
+  // request carries cdc_sdk_stream_id (i.e. originates from CreateCDCStream ->
+  // SetAllCDCSDKRetentionBarriers). Public AlterTable above delegates to this with a null
+  // tracker. We use a separate name (rather than overloading AlterTable) because the
+  // macro-generated MasterDdl dispatch resolves &CatalogManager::AlterTable and would be
+  // confused by any other signature on that symbol.
+  Status AlterTableWithBatchTracker(
+      const AlterTableRequestPB* req,
+      AlterTableResponsePB* resp,
+      rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch,
+      std::shared_ptr<AlterTableBatchTracker> cdc_alter_batch_tracker);
 
   Status UpdateSysCatalogWithNewSchema(
     const scoped_refptr<TableInfo>& table,
@@ -2111,11 +2126,14 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // to be in INDEX_PERM_READ_WRITE_AND_DELETE state.
   Status SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
                                const LeaderEpoch& epoch,
-                               const AlterTableRequestPB* req = nullptr);
+                               const AlterTableRequestPB* req = nullptr,
+                               std::shared_ptr<AlterTableBatchTracker>
+                                   cdc_alter_batch_tracker = nullptr);
 
   Status SendAlterTableRequestInternal(
       const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch,
-      const AlterTableRequestPB* req = nullptr);
+      const AlterTableRequestPB* req = nullptr,
+      std::shared_ptr<AlterTableBatchTracker> cdc_alter_batch_tracker = nullptr);
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
   Status SendSplitTabletRequest(
@@ -2690,6 +2708,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   AsyncTaskThrottlerBase* GetDeleteReplicaTaskThrottler(const std::string& ts_uuid)
       EXCLUDES(delete_replica_task_throttler_per_ts_mutex_);
 
+  // Returns the throttler used to bound concurrent AsyncAlterTable RPCs fired by the
+  // CreateCDCStream -> SetAllCDCSDKRetentionBarriers path. Returns nullptr when the gflag
+  // max_concurrent_cdc_sdk_alter_table_rpcs is 0 (throttling disabled).
+  AsyncTaskThrottlerBase* GetCDCStreamAlterTableThrottler();
+
+  // Computes the effective in-flight cap for CDC stream AlterTable RPCs given the two
+  // gflags: max_concurrent_cdc_sdk_alter_table_rpcs (global) and
+  // max_concurrent_cdc_sdk_alter_table_rpcs_per_tserver.
+  uint64_t GetCDCStreamAlterTableRpcLimit();
+
   // Helper function for BuildLocationsForTablet to handle the special case of a system tablet.
   Status BuildLocationsForSystemTablet(
       const TabletInfoPtr& tablet,
@@ -2939,6 +2967,21 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const CreateCDCStreamRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch,
       const std::vector<TableId>& table_ids, const xrepl::StreamId& stream_id,
       const bool has_consistent_snapshot_option, bool require_history_cutoff);
+
+  // Helper for SetAllCDCSDKRetentionBarriers: flushes one accumulated batch of TableInfo
+  // entries by pre-counting tablets, building an AlterTableBatchTracker, dispatching one
+  // AlterTable per table with the tracker, waiting for all per-tablet AsyncAlterTable RPCs
+  // to reach a terminal state, and (optionally) sleeping for
+  // cdcsdk_retention_barrier_alter_table_dispatch_delay_ms before returning. Clears
+  // current_batch on success. Propagates the first error from either an AlterTable call or
+  // from the tracker's wait. Extracted as a named function (rather than a lambda) so log
+  // lines and stack traces carry an explicit symbol when triaging issues.
+  Status FlushCDCSDKRetentionBarrierBatch(
+      std::vector<scoped_refptr<TableInfo>>* current_batch,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch,
+      const xrepl::StreamId& stream_id,
+      bool has_consistent_snapshot_option, bool require_history_cutoff,
+      CoarseTimePoint deadline);
 
   Status SetAllInitialCDCSDKRetentionBarriersOnCatalogTable(
       const TableInfoPtr& table, const xrepl::StreamId& stream_id);
@@ -3239,6 +3282,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // AsyncDeletaReplica tasks per destination.
   std::unordered_map<std::string, std::unique_ptr<DynamicAsyncTaskThrottler>>
     delete_replica_task_throttler_per_ts_ GUARDED_BY(delete_replica_task_throttler_per_ts_mutex_);
+
+  // Single global throttler bounding concurrent AsyncAlterTable RPCs from the CDC stream
+  // creation path. Limit is read dynamically from FLAGS_max_concurrent_cdc_sdk_alter_table_rpcs.
+  // See GetCDCStreamAlterTableThrottler().
+  DynamicAsyncTaskThrottler cdc_stream_alter_table_throttler_;
 
   // mutex on should_send_universe_key_registry_mutex_.
   mutable simple_spinlock should_send_universe_key_registry_mutex_;

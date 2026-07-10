@@ -80,6 +80,10 @@ DEFINE_RUNTIME_int32(catalog_manager_report_batch_size, 1,
     "The max number of tablets evaluated in the heartbeat as a single SysCatalog update.");
 TAG_FLAG(catalog_manager_report_batch_size, advanced);
 
+DEFINE_RUNTIME_int32(master_ts_heartbeat_long_operation_warning_ms, 1000,
+    "Log a warning (and dump the handler thread's stack) if processing a TSHeartbeat RPC on the "
+    "master takes longer than this many ms.");
+
 DEFINE_RUNTIME_bool(catalog_manager_wait_for_new_tablets_to_elect_leader, true,
     "Whether the catalog manager should wait for a newly created tablet to "
     "elect a leader before considering it successfully created. "
@@ -401,7 +405,8 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     const TSHeartbeatRequestPB* req,
     TSHeartbeatResponsePB* resp,
     rpc::RpcContext rpc) {
-  LongOperationTracker long_operation_tracker("TSHeartbeat", 1s);
+  LongOperationTracker long_operation_tracker(
+      "TSHeartbeat", FLAGS_master_ts_heartbeat_long_operation_warning_ms * 1ms);
 
   consensus::ConsensusStatePB cpb;
   Status s = catalog_manager_->GetCurrentConfig(&cpb);
