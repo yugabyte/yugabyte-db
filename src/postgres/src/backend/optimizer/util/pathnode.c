@@ -61,7 +61,7 @@ typedef enum
 static List *translate_sub_tlist(List *tlist, int relid);
 static void yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields,
 											 RelOptInfo *rel, Path *subpath);
-static Var *yb_find_var_for_subquery_tle(RelOptInfo *rel, TargetEntry *tle);
+static Var *yb_find_var_for_subquery_tle(RelOptInfo *rel, int resno);
 static int	append_total_cost_compare(const ListCell *a, const ListCell *b);
 static int	append_startup_cost_compare(const ListCell *a, const ListCell *b);
 static List *reparameterize_pathlist_by_child(PlannerInfo *root,
@@ -1334,7 +1334,6 @@ yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields, RelOptInfo *rel,
 								 Path *subpath)
 {
 	List	   *retval = NIL;
-	List	   *subquery_tlist;
 	ListCell   *lc;
 
 	if (!IsYugaByteEnabled())
@@ -1345,32 +1344,31 @@ yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields, RelOptInfo *rel,
 	parent_fields->yb_uniqkeys = NIL;
 
 	if (subpath->yb_path_info.yb_uniqkeys == NIL)
-	{
 		return;
-	}
-
-	subquery_tlist = make_tlist_from_pathtarget(subpath->pathtarget);
 
 	foreach(lc, subpath->yb_path_info.yb_uniqkeys)
 	{
 		Expr	   *uniqkey = (Expr *) lfirst(lc);
 		ListCell   *tl;
 		Var		   *outer_var = NULL;
+		int			resno = 1;
 
-		foreach(tl, subquery_tlist)
+		foreach(tl, subpath->pathtarget->exprs)
 		{
-			TargetEntry *tle = (TargetEntry *) lfirst(tl);
-			Expr	   *tle_expr;
+			Expr	   *target_expr = (Expr *) lfirst(tl);
+			Expr	   *target_expr_canonical;
 
-			tle_expr = canonicalize_ec_expression(tle->expr,
-												  exprType((Node *) uniqkey),
-												  exprCollation((Node *) uniqkey));
-			if (!equal(tle_expr, uniqkey))
-				continue;
+			target_expr_canonical = canonicalize_ec_expression(target_expr,
+															  exprType((Node *) uniqkey),
+															  exprCollation((Node *) uniqkey));
+			if (equal(target_expr_canonical, uniqkey))
+			{
+				outer_var = yb_find_var_for_subquery_tle(rel, resno);
+				if (outer_var)
+					break;
+			}
 
-			outer_var = yb_find_var_for_subquery_tle(rel, tle);
-			if (outer_var)
-				break;
+			resno++;
 		}
 
 		if (!outer_var)
@@ -1383,16 +1381,13 @@ yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields, RelOptInfo *rel,
 }
 
 /*
- * If the given subquery tlist entry is emitted by the subquery scan node,
+ * If the given subquery tlist resno is emitted by the subquery scan node,
  * return a Var for it; otherwise return NULL.
  */
 static Var *
-yb_find_var_for_subquery_tle(RelOptInfo *rel, TargetEntry *tle)
+yb_find_var_for_subquery_tle(RelOptInfo *rel, int resno)
 {
 	ListCell   *lc;
-
-	if (tle->resjunk)
-		return NULL;
 
 	foreach(lc, rel->reltarget->exprs)
 	{
@@ -1400,9 +1395,11 @@ yb_find_var_for_subquery_tle(RelOptInfo *rel, TargetEntry *tle)
 
 		if (!IsA(var, Var))
 			continue;
-		Assert(var->varno == rel->relid);
 
-		if (var->varattno == tle->resno)
+		if (var->varno != rel->relid)
+			continue;
+
+		if (var->varattno == resno)
 			return copyObject(var);
 	}
 
