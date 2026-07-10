@@ -28,6 +28,7 @@
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/mem_tracker.h"
@@ -50,6 +51,11 @@ DbServerBase::~DbServerBase() {
 
 Status DbServerBase::Init() {
   RETURN_NOT_OK(RpcAndWebServerBase::Init());
+
+  // Initialize distributed tracing once per process here
+  if (dist_trace::IsDistTraceEnabled()) {
+    dist_trace::InitDistTrace(name_, permanent_uuid());
+  }
 
   async_client_init_ = std::make_unique<client::AsyncClientInitializer>(
       "server_client", default_client_timeout(), permanent_uuid(), &options(), metric_entity(),
@@ -117,6 +123,10 @@ void DbServerBase::Shutdown() {
     txn_manager->Shutdown();
   }
   async_client_init_->Shutdown();
+
+  if (dist_trace::IsDistTraceEnabled()) {
+    dist_trace::ShutdownDistTrace();
+  }
 }
 
 const std::shared_future<client::YBClient*>& DbServerBase::client_future() const {
