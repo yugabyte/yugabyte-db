@@ -193,6 +193,24 @@ function getDocsPageHeaderOffset() {
   return Math.max(0, Math.ceil(offset));
 }
 
+/**
+ * Visible height of the sticky breadcrumbs/version bar (padding box), or 0 when
+ * the bar is absent or hidden.
+ */
+function getDocsPageHeaderBarHeight() {
+  const headerBar = document.querySelector('.docs-page-header-bar');
+  if (!headerBar) {
+    return 0;
+  }
+
+  const style = window.getComputedStyle(headerBar);
+  if (style.display === 'none' || style.visibility === 'hidden') {
+    return 0;
+  }
+
+  return Math.max(0, Math.ceil(headerBar.getBoundingClientRect().height));
+}
+
 function updateDocsPageHeaderBarOffset() {
   const offset = getDocsPageHeaderOffset();
 
@@ -202,26 +220,41 @@ function updateDocsPageHeaderBarOffset() {
     return;
   }
 
-  document.documentElement.style.setProperty(
-    '--docs-sticky-header-top',
-    `${offset}px`,
+  const root = document.documentElement;
+  root.style.setProperty('--docs-sticky-header-top', `${offset}px`);
+
+  // Heading anchors must clear both the fixed site chrome and the sticky
+  // breadcrumbs/version bar. Keep a small gap so the heading isn't flush.
+  const headerBarHeight = getDocsPageHeaderBarHeight();
+  const headingGap = 20;
+  root.style.setProperty(
+    '--docs-heading-anchor-offset',
+    `${offset + headerBarHeight + headingGap}px`,
   );
 }
 
 function observeDocsHeaderHeight() {
-  const header = document.querySelector('body > header');
-  if (!header || typeof ResizeObserver === 'undefined') {
+  if (typeof ResizeObserver === 'undefined') {
     return;
   }
 
   const observer = new ResizeObserver(() => {
     updateDocsPageHeaderBarOffset();
   });
-  observer.observe(header);
+
+  const header = document.querySelector('body > header');
+  if (header) {
+    observer.observe(header);
+  }
 
   const docsMenu = document.querySelector('.docs-menu.desktop-hide');
   if (docsMenu) {
     observer.observe(docsMenu);
+  }
+
+  const headerBar = document.querySelector('.docs-page-header-bar');
+  if (headerBar) {
+    observer.observe(headerBar);
   }
 }
 
