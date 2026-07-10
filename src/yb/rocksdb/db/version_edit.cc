@@ -51,6 +51,13 @@ uint64_t PackFileNumberAndPathId(uint64_t number, uint64_t path_id) {
   return number | (path_id * (kFileNumberMask + 1));
 }
 
+uint32_t SafePathId(uint32_t target, size_t num_paths) {
+  DCHECK_LT(target, num_paths)
+      << "target_path_id " << target << " >= db_paths.size() " << num_paths
+      << "; defaulting to 0";
+  return target < num_paths ? target : 0;
+}
+
 namespace {
   std::string SanitizeDebugStringHelper(const VersionEditPB& pb, bool short_debug) {
     if (!FLAGS_allow_sensitive_data_in_logs) {
