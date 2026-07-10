@@ -204,7 +204,7 @@ function getDocsPageHeaderBarHeight() {
   }
 
   const style = window.getComputedStyle(headerBar);
-  if (style.display === 'none' || style.visibility === 'hidden') {
+  if (!style || style.display === 'none' || style.visibility === 'hidden') {
     return 0;
   }
 
