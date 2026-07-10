@@ -17,6 +17,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/status.h"
 #include "yb/util/logging.h"
@@ -31,10 +32,11 @@ constexpr ScheduledTaskId kUninitializedScheduledTaskId = 0;
 class ScheduledTaskBase {
  public:
   explicit ScheduledTaskBase(ScheduledTaskId id, const SteadyTimePoint& time)
-      : id_(id), time_(time) {}
+      : id_(id), time_(time), trace_parent_(dist_trace::GetActiveSpanContext()) {}
 
   ScheduledTaskId id() const { return id_; }
   SteadyTimePoint time() const { return time_; }
+  const dist_trace::trace::SpanContext& trace_parent() const { return trace_parent_; }
 
   virtual ~ScheduledTaskBase() {}
   virtual void Run(const Status& status) = 0;
@@ -42,6 +44,7 @@ class ScheduledTaskBase {
  private:
   ScheduledTaskId id_;
   SteadyTimePoint time_;
+  dist_trace::trace::SpanContext trace_parent_;
 };
 
 template<class F>
@@ -51,6 +54,7 @@ class ScheduledTask : public ScheduledTaskBase {
       : ScheduledTaskBase(id, time), f_(f) {}
 
   void Run(const Status& status) override {
+    auto scope = dist_trace::ActivateParentScope(trace_parent());
     f_(status);
   }
  private:
@@ -64,6 +68,7 @@ class ScheduledTaskWithId : public ScheduledTaskBase {
       : ScheduledTaskBase(id, time), f_(f) {}
 
   void Run(const Status& status) override {
+    auto scope = dist_trace::ActivateParentScope(trace_parent());
     f_(id(), status);
   }
 
