@@ -99,6 +99,18 @@ class AzureStorageConfiguration extends Component {
           </Row>
           <Row className="config-provider-row">
             <Col lg={2}>
+              <div className="form-item-custom-label">Immutable Storage</div>
+            </Col>
+            <Col lg={9}>
+              <Field
+                name="IMMUTABLE_STORAGE"
+                component={YBToggle}
+                subLabel="If enabled, backup deletion only removes YBA metadata and does not delete files from azure storage."
+              />
+            </Col>
+          </Row>
+          <Row className="config-provider-row">
+            <Col lg={2}>
               <div className="form-item-custom-label">SAS Token</div>
             </Col>
             <Col lg={9}>

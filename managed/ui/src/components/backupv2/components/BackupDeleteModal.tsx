@@ -6,13 +6,20 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import { FC } from 'react';
+import { FC, useMemo } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import { AlertVariant, YBAlert } from '@app/redesign/components';
 import { useMutation, useQueryClient } from 'react-query';
+import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { cancelBackup, deleteBackup } from '../../backupv2/common/BackupAPI';
 import { IBackup, Backup_States } from '..';
+import {
+  BACKUP_WITH_IMMUTABLE_STORAGE_MSG,
+  hasImmutableStorageAmongBackups
+} from '../common/BackupUtils';
+import { groupStorageConfigs } from '../../../redesign/features/backup/scheduled/ScheduledBackupUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBModalForm } from '../../common/forms';
@@ -35,6 +42,18 @@ const isIncrementalBackupInProgress = (backupList: IBackup[]) => {
 export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible, onHide }) => {
   const queryClient = useQueryClient();
   const interceptBackupLink = useInterceptBackupTaskLinks();
+  const storageConfigs = useSelector((state: any) => state.customer.configs);
+
+  const groupedStorageConfigs = useMemo(
+    () => groupStorageConfigs(storageConfigs?.data ?? []),
+    [storageConfigs]
+  );
+
+  const showImmutableStorageWarning = hasImmutableStorageAmongBackups(
+    groupedStorageConfigs,
+    backupsList
+  );
+
   const delBackup = useMutation((backupList: IBackup[]) => deleteBackup(backupList), {
     onSuccess: (resp: any) => {
       toast.success(
@@ -84,6 +103,7 @@ export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible,
           backups.This action can not be undone
         </span>
       </div>
+      {showImmutableStorageWarning && <YBAlert open className='mt-8' variant={AlertVariant.Warning} text={BACKUP_WITH_IMMUTABLE_STORAGE_MSG()} />}
       <div className="delete-table-list">
         <BootstrapTable data={backupsList}>
           <TableHeaderColumn dataField="backupUUID" isKey={true} hidden={true} />
