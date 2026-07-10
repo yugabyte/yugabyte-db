@@ -1130,6 +1130,18 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	/* Connect to YugaByte cluster. */
 	YBInitPostgresBackend("postgres", yb_init_info);
 
+	if (IsYugaByteEnabled() && !bootstrap && MyProcPort != NULL &&
+		MyProcPort->yb_dist_traceparent != NULL &&
+		MyProcPort->yb_dist_traceparent[0] != '\0')
+	{
+		char		tracecontext[128];
+
+		snprintf(tracecontext, sizeof(tracecontext), "traceparent='%s'",
+				 MyProcPort->yb_dist_traceparent);
+		SetConfigOption("yb_dist_tracecontext", tracecontext,
+						PGC_BACKEND, PGC_S_CLIENT);
+	}
+
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
 		HandleYBStatus(YBCPgTableExists(Template1DbOid,
