@@ -145,6 +145,7 @@ import play.libs.Json;
 public class NodeAgentClient {
   public static final String NODE_AGENT_SERVICE_CONFIG_FILE = "node_agent/service_config.json";
   public static final int FILE_UPLOAD_CHUNK_SIZE_BYTES = 4096;
+  public static final int MAX_TRANSIENT_FAILURES = 2;
 
   // Cache of the channels for re-use.
   private final LoadingCache<ChannelConfig, ManagedChannel> cachedChannels;
@@ -1291,13 +1292,16 @@ public class NodeAgentClient {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     SubmitTaskResponse response = NodeAgentGrpc.newBlockingStub(channel).submitTask(request);
     String taskId = response.getTaskId();
-    NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
     String id = String.format("%s-%s", nodeAgent.getUuid(), taskId);
     DescribeTaskRequest describeTaskRequest =
         DescribeTaskRequest.newBuilder().setTaskId(taskId).build();
+    int transientFailures = 0;
     while (true) {
       try {
         log.info("Describing task {}", taskId);
+        // Reconnect to the node agent to get a new channel if necessary.
+        channel = getManagedChannel(nodeAgent, true);
+        NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
         DescribeTaskResponseObserver<T> responseObserver =
             new DescribeTaskResponseObserver<>(id, responseClass);
         stub.withDeadlineAfter(pollDeadlineMs, TimeUnit.MILLISECONDS)
@@ -1305,13 +1309,27 @@ public class NodeAgentClient {
         return responseObserver.waitForResponse();
       } catch (StatusRuntimeException e) {
         if (e.getStatus().getCode() == Code.DEADLINE_EXCEEDED) {
+          // Reset transient failure count.
+          transientFailures = 0;
           log.info("Reconnecting to node agent {} to describe task {}", nodeAgent, taskId);
         } else if (e.getStatus().getCode() == Code.CANCELLED && !Context.current().isCancelled()) {
           // Client side did not cancel it.
+          // Reset transient failure count.
+          transientFailures = 0;
           log.info(
               "Cancelled by server. Reconnecting to node agent {} to describe task {}",
               nodeAgent,
               taskId);
+        } else if (e.getStatus().getCode() == Code.UNAVAILABLE) {
+          transientFailures++;
+          if (transientFailures > MAX_TRANSIENT_FAILURES) {
+            abortTask(nodeAgent, taskId);
+            log.error(
+                "Too many transient failures in describing task for node agent {} - {}",
+                nodeAgent,
+                e.getStatus());
+            throw e;
+          }
         } else {
           // Best effort to abort.
           abortTask(nodeAgent, taskId);
