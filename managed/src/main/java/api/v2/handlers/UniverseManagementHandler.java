@@ -421,10 +421,15 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     v1Params.currentClusterType = ClusterType.ASYNC;
     // to construct the new v1 cluster, start with a copy of primary cluster
     Cluster primaryCluster = dbUniverse.getUniverseDetails().getPrimaryCluster();
-    Cluster newReadReplica = new Cluster(ClusterType.ASYNC, primaryCluster.userIntent);
+    Cluster newReadReplica = new Cluster(ClusterType.ASYNC, primaryCluster.userIntent.clone());
     // overwrite the copy of primary cluster with user provided spec for read replica
     newReadReplica.setUuid(UUID.randomUUID());
     newReadReplica = ClusterMapper.INSTANCE.overwriteClusterAddSpec(clusterAddSpec, newReadReplica);
+    if (!newReadReplica.userIntent.dedicatedNodes) {
+      // Copied from a dedicated primary; clear master fields for non-dedicated RR.
+      newReadReplica.userIntent.masterInstanceType = null;
+      newReadReplica.userIntent.masterDeviceInfo = null;
+    }
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);

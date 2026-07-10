@@ -457,6 +457,24 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     return universeCreateSpec;
   }
 
+  protected UniverseCreateSpec getUniverseCreateSpecV2Dedicated() {
+    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
+    ClusterSpec clusterSpec = universeCreateSpec.getSpec().getClusters().get(0);
+    clusterSpec.getNodeSpec().dedicatedNodes(true);
+    clusterSpec
+        .getNodeSpec()
+        .master(
+            new PerProcessNodeSpec()
+                .instanceType(ApiUtils.UTIL_INST_TYPE)
+                .storageSpec(
+                    new ClusterStorageSpec()
+                        .volumeSize(50)
+                        .storageType(StorageTypeEnum.GP2)
+                        .numVolumes(1)
+                        .storageClass("standart")));
+    return universeCreateSpec;
+  }
+
   protected UniverseCreateSpec getUniverseCreateSpecWithRRV2() {
     UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
     ClusterSpec primary = universeCreateSpec.getSpec().getClusters().get(0);

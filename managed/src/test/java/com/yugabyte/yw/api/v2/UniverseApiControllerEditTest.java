@@ -7,6 +7,7 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -546,6 +547,49 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     UniverseConfigureTaskParams v1AddClusterParams = v1AddClusterParamsCapture.getValue();
 
     Cluster newV1Cluster = v1AddClusterParams.getClusterByUuid(newClusterUuid);
+    List<ClusterSpec> allV2Clusters =
+        api.getUniverse(customer.getUuid(), universeUuid).getSpec().getClusters();
+    ClusterSpec v2PrimaryCluster =
+        allV2Clusters.stream()
+            .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
+            .findAny()
+            .orElse(null);
+    validateClusterAddSpec(clusterAddSpec, newV1Cluster, v2PrimaryCluster);
+  }
+
+  @Test
+  public void testEditUniverseV2DedicatedAddReadReplica() throws ApiException {
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseConfigureTaskParams.class)))
+        .then(
+            invokation -> {
+              UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+              return fakeTaskUUID;
+            });
+    UniverseApi api = new UniverseApi();
+    UniverseCreateSpec universeCreateSpecGeo = getUniverseCreateSpecV2Dedicated();
+    universeCreateSpecGeo.getSpec().name("dedicatedUniverse");
+    YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpecGeo);
+    UUID universeUUID = createTask.getResourceUuid();
+
+    // setup mocks for addCluster to universe
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseConfigureTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    ClusterAddSpec clusterAddSpec = getReadReplicaClusterAddSpec();
+    YBATask addTask = api.addCluster(customer.getUuid(), universeUUID, clusterAddSpec);
+    UUID newClusterUuid = addTask.getResourceUuid();
+    ArgumentCaptor<UniverseConfigureTaskParams> v1AddClusterParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.ReadOnlyClusterCreate), v1AddClusterParamsCapture.capture());
+    UniverseConfigureTaskParams v1AddClusterParams = v1AddClusterParamsCapture.getValue();
+
+    Cluster newV1Cluster = v1AddClusterParams.getClusterByUuid(newClusterUuid);
+    assertFalse(newV1Cluster.userIntent.dedicatedNodes);
+    assertThat(newV1Cluster.userIntent.masterInstanceType, is(nullValue()));
+    assertThat(newV1Cluster.userIntent.masterDeviceInfo, is(nullValue()));
+    assertThat(v1AddClusterParams.getPrimaryCluster().userIntent.dedicatedNodes, is(true));
     List<ClusterSpec> allV2Clusters =
         api.getUniverse(customer.getUuid(), universeUuid).getSpec().getClusters();
     ClusterSpec v2PrimaryCluster =
