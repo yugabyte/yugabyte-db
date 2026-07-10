@@ -2041,6 +2041,57 @@ TEST_F(AutomaticTabletSplitITest, FailedSplitIsRestarted) {
   ASSERT_OK(WaitForTabletSplitCompletion(2));
 }
 
+// The below test asserts that the split validation logic on master doesn't gate
+// retry of split op in the following case -
+// 1. master initiated split which then bumped the table from low phase to high phase splitting.
+// 2. master encountered failure on the split rpc to the tserver for
+//    FLAGS_unresponsive_ts_rpc_retry_limit times, and gave up on the rpc.
+// 3. Child tablets are stuck in creating state, and are being accounted towards num_partitions.
+TEST_F(AutomaticTabletSplitITest, PhasePromotionAccountsForSplitRetry) {
+  constexpr int kNumRowsPerBatch = 1000;
+
+  ASSERT_EQ(cluster_->num_tablet_servers(), 3);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 8;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 1_GB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 2_GB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 1;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  CreateSingleTablet();
+  ASSERT_OK(WriteRowsAndFlush(kNumRowsPerBatch));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+
+  // Fail the split at the tserver, and bump the table to high phase splitting
+  // at the master.
+  StringWaiterLogSink log_waiter(
+      "Failing tablet split due to FLAGS_TEST_fail_tablet_split_probability");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+  ASSERT_OK(log_waiter.WaitFor(60s * kTimeMultiplier));
+  LOG(INFO) << "Split RPC failed. Grandchildren registered but split not applied.";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 0;
+
+  // Allow the split to proceed. The split manager should detect the CREATING grandchildren,
+  // add the parent to splits_to_restart, and successfully restart the split. With the fix
+  // (skipping ShouldSplitValidCandidate for tablets with registered children), this succeeds
+  // despite the table now being in the high phase.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 0;
+
+  ASSERT_OK(WaitForTabletSplitCompletion(
+    /* expected_non_split_tablets */ 2,
+    /* expected_split_tablets */ 0,
+    /* num_replicas_online */ 0,
+    /* table */ client::kTableName,
+    /* core_dump_on_failure */ false));
+}
+
 TEST_F(AutomaticTabletSplitITest, TabletSplitCandidatesMetric) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 1;
