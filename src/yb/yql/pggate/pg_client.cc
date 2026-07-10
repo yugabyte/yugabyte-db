@@ -1125,9 +1125,16 @@ class PgClient::Impl : public BigDataFetcher {
   ResultFuture<Data> PrepareAndSend(Method method, Args&&... args) {
     auto data = std::make_shared<Data>(std::forward<Args>(args)...);
     if (session_shared_mem_ && session_shared_mem_->exchange().ReadyToSend()) {
+      // Start the outbound shared-memory span before sizing the request.
+      data->StartSharedMemorySpan();
       ash::MetadataSerializer metadata(rpc::MetadataSerializationMode::kWriteOnZero);
+      ash::TraceContextSerializer trace_context;
+      if (data->otel_span) {
+        trace_context.SetTraceContext(data->otel_span->GetContext());
+      }
       constexpr size_t kHeaderSize = sizeof(uint8_t) + sizeof(uint64_t);
       const size_t kMetadataSize = metadata.SerializedSize();
+      const size_t kTraceContextSize = trace_context.SerializedSize();
       auto& exchange = session_shared_mem_->exchange();
       // Sanity check: the exchange must not be reused while a big shared memory response from a
       // previous request has been announced but not yet loaded and released. Otherwise the tserver
@@ -1135,9 +1142,9 @@ class PgClient::Impl : public BigDataFetcher {
       // still intend to load it (see PgClientSession::ReleaseAbandonedBigSharedMemSegment).
       LOG_IF(DFATAL, big_shared_memory_response_pending_)
           << "Reusing shared exchange while a big shared memory response is still pending";
-      auto out = exchange.Obtain(kHeaderSize + kMetadataSize + data->req.SerializedSize());
+      auto out = exchange.Obtain(
+          kHeaderSize + kMetadataSize + kTraceContextSize + data->req.SerializedSize());
       if (out) {
-        data->StartSharedMemorySpan();
         const auto [rpc_deadline, rpc_timeout] =
             timeouts_.GetDeadlineAndTimeoutForRPC<typename Data::RequestType>();
         *reinterpret_cast<uint8_t *>(out) = Data::kSharedExchangeRequestType;
@@ -1145,6 +1152,7 @@ class PgClient::Impl : public BigDataFetcher {
         LittleEndian::Store64(out, rpc_timeout.ToMilliseconds());
         out += sizeof(uint64_t);
         out = pointer_cast<std::byte*>(metadata.SerializeToArray(to_uchar_ptr(out)));
+        out = pointer_cast<std::byte*>(trace_context.SerializeToArray(to_uchar_ptr(out)));
         const auto size = data->req.SerializedSize();
         auto* end = pointer_cast<std::byte*>(
             data->req.SerializeToArray(pointer_cast<uint8_t*>(out)));
@@ -1164,6 +1172,8 @@ class PgClient::Impl : public BigDataFetcher {
         data->SetupExchange(&exchange, this, rpc_deadline);
         return ExchangeFuture<Data>(std::move(data));
       }
+      // End the shared-memory span started above so it is not leaked.
+      data->EndSharedMemorySpan(Status::OK());
     }
     data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
     method(
