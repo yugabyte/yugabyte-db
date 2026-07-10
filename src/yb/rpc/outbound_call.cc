@@ -545,6 +545,7 @@ bool OutboundCall::SetState(State new_state, const Status& status) {
     }
     if (state_.compare_exchange_weak(old_state, new_state, std::memory_order_acq_rel)) {
       if (otel_span_ && FinishedState(new_state)) {
+        DCHECK(otel_span_->span);
         SetSpanStatus(*otel_span_->span, new_state, status);
         otel_span_->End();
       }

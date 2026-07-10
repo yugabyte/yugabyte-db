@@ -31,6 +31,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/dist_trace.h"
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
@@ -307,9 +308,15 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
   UpdateWaitStateInfo();
 
   // Extract the propagated distributed-trace parent from the header, if present. The span itself is
-  // created later (CreateServerSpan) once the request params have been parsed.
+  // created later (CreateServerSpan) once the request params have been parsed. Tracing is
+  // best-effort: a malformed context is logged and dropped, never fails the RPC.
   if (dist_trace::IsDistTraceEnabled() && !header_.trace_context.empty()) {
-    parent_span_context_ = VERIFY_RESULT(ParseTraceContext(header_.trace_context));
+    auto parsed = ParseTraceContext(header_.trace_context);
+    if (parsed.ok()) {
+      parent_span_context_ = std::move(*parsed);
+    } else {
+      YB_LOG_EVERY_N_SECS(WARNING, 5) << "Failed to parse RPC trace context: " << parsed.status();
+    }
   }
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, call_data->size());

@@ -13,10 +13,13 @@
 
 #pragma once
 
+#include <thread>
+
 #include "opentelemetry/trace/scope.h"
 #include "opentelemetry/trace/span_startoptions.h"
 
 #include "yb/util/dist_trace_fwd.h"
+#include "yb/util/logging.h"
 
 namespace yb::dist_trace {
 
@@ -54,10 +57,16 @@ struct SpanWithScope {
   }
 
   // Releases the thread-local scope. Must be called on the thread that constructed this object.
-  void DropScope() { scope.reset(); }
+  void DropScope() {
+    scope.reset();
+    owner_thread = {};
+  }
 
   void End() {
     if (span && span->IsRecording()) {
+      // The scope must be dropped on its creating thread; catch an unintended thread hop.
+      DCHECK(owner_thread == std::thread::id{} || std::this_thread::get_id() == owner_thread)
+          << "SpanWithScope scope released off its creating thread";
       scope.reset();
       span->End();
     }
@@ -65,6 +74,7 @@ struct SpanWithScope {
 
   nostd::shared_ptr<trace::Span> span;
   std::optional<trace::Scope> scope;
+  std::thread::id owner_thread = std::this_thread::get_id();
 };
 
 using SpanWithScopePtr = std::shared_ptr<SpanWithScope>;

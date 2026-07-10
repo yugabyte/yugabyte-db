@@ -144,6 +144,7 @@ auto HandleCall(InboundCallPtr call, F f) {
       f(req, resp, std::move(rpc_context));
     }
   }
+  yb_call->DropServerSpanScope();
 }
 
 class LocalYBInboundCallTracker : public InboundCall::CallProcessedListener {
