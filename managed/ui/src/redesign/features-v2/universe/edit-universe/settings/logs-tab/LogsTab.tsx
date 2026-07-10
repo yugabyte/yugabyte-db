@@ -1,7 +1,7 @@
 import { FC, ReactNode, useState } from 'react';
 import { makeStyles, Typography } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
-import { Link } from 'react-router';
+import { browserHistory } from 'react-router';
 import {
   StyledContent,
   StyledHeader,
@@ -17,6 +17,7 @@ import { getEditUniverseSettingsRoute } from '../../editUniverseTabUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { AuditLogSettingsPanel } from './db-audit-log/AuditLogSettingsPanel';
 import { LogConfigCard } from './LogConfigCard';
+import { NavigateToTelemetryExportConfirmationModal } from './NavigateToTelemetryExportConfirmationModal';
 import { QueryLogSettingsPanel } from './query-log/QueryLogSettingsPanel';
 import { useExportTelemetryConfigTaskStatus } from '../useExportTelemetryConfigTaskStatus';
 
@@ -61,7 +62,13 @@ const useStyles = makeStyles((theme) => ({
     display: 'inline-flex',
     alignItems: 'center',
 
+    padding: 0,
+    border: 'none',
+    background: 'none',
+
     color: theme.palette.primary[600],
+    cursor: 'pointer',
+    fontFamily: 'inherit',
     fontSize: '13px',
     fontWeight: 500,
     lineHeight: '16px',
@@ -76,23 +83,24 @@ const useStyles = makeStyles((theme) => ({
 
 interface TelemetryExportTabLinkProps {
   children?: ReactNode;
-  universeUuid: string;
   className?: string;
+  onClick: () => void;
 }
 
 const TelemetryExportTabLink: FC<TelemetryExportTabLinkProps> = ({
   children,
-  universeUuid,
-  className
+  className,
+  onClick
 }) => (
-  <Link
-    to={getEditUniverseSettingsRoute(universeUuid, EditUniverseTabs.TELEMETRY_EXPORT)}
+  <button
+    type="button"
     className={className}
     data-testid="LogsTab-TelemetryExportLink"
+    onClick={onClick}
   >
     {children}
     <InternalLinkIcon width={24} height={24} />
-  </Link>
+  </button>
 );
 
 export const LogsTab = () => {
@@ -102,12 +110,20 @@ export const LogsTab = () => {
   const isUniverseReady = useIsUniverseReady();
   const [isAuditLogSettingsModalOpen, setAuditLogSettingsModalOpen] = useState(false);
   const [isQueryLogSettingsModalOpen, setQueryLogSettingsModalOpen] = useState(false);
+  const [
+    isNavigateToTelemetryExportModalOpen,
+    setNavigateToTelemetryExportModalOpen
+  ] = useState(false);
 
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   const universeUuid = universeData?.info?.universe_uuid ?? '';
   const universeName = universeData?.spec?.name ?? '';
   const isAuditLogEnabled = primaryCluster?.audit_log_config?.ysql_audit_config?.enabled;
   const isQueryLogEnabled = primaryCluster?.query_log_config?.ysql_query_log_config?.enabled;
+  const telemetryExportTabRoute = getEditUniverseSettingsRoute(
+    universeUuid,
+    EditUniverseTabs.TELEMETRY_EXPORT
+  );
 
   const { isTelemetryConfigTaskInProgress, isQueryLogConfiguring, isAuditLogConfiguring } =
     useExportTelemetryConfigTaskStatus(universeUuid);
@@ -183,8 +199,8 @@ export const LogsTab = () => {
               bold: <b />,
               telemetryLink: (
                 <TelemetryExportTabLink
-                  universeUuid={universeUuid}
                   className={classes.telemetryExportLink}
+                  onClick={() => setNavigateToTelemetryExportModalOpen(true)}
                 />
               )
             }}
@@ -207,6 +223,18 @@ export const LogsTab = () => {
           universeUuid={universeUuid}
           universeName={universeName}
           onClose={() => setQueryLogSettingsModalOpen(false)}
+        />
+      )}
+      {isNavigateToTelemetryExportModalOpen && (
+        <NavigateToTelemetryExportConfirmationModal
+          onSubmit={() => {
+            setNavigateToTelemetryExportModalOpen(false);
+            browserHistory.push(telemetryExportTabRoute);
+          }}
+          modalProps={{
+            open: isNavigateToTelemetryExportModalOpen,
+            onClose: () => setNavigateToTelemetryExportModalOpen(false)
+          }}
         />
       )}
     </div>

@@ -1,18 +1,23 @@
 import { FC, ReactNode } from 'react';
 import { makeStyles, Typography, useTheme } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
-import { mui, StatusType, YBButton, YBDropdown, YBSmartStatus, YBTag } from '@yugabyte-ui-library/core';
+import {
+  IconPosition,
+  mui,
+  StatusType,
+  YBButton,
+  YBDropdown,
+  YBSmartStatus
+} from '@yugabyte-ui-library/core';
 
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 
 import EditIcon from '@app/redesign/assets/approved/edit.svg';
 import DropdownArrowIcon from '@app/redesign/assets/approved/triangle-arrow-down.svg';
-import RevokeKeyIcon from '@app/redesign/assets/approved/revoke-key-5.svg';
+import InternalLinkIcon from '@app/redesign/assets/approved/internal-link.svg';
 
 const { MenuItem, Divider } = mui;
-
-const TRANSLATION_KEY_PREFIX = 'editUniverse.telemetryExport.metricsExport';
 
 const useStyles = makeStyles((theme) => ({
   titleGroup: {
@@ -69,14 +74,52 @@ const useStyles = makeStyles((theme) => ({
   },
   statusSection: {
     display: 'flex',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
     justifyContent: 'center',
+    gap: theme.spacing(0.5),
 
     height: '100%',
     padding: theme.spacing(0, 4),
 
     borderLeft: `1px solid ${theme.palette.grey[200]}`,
     borderRight: `1px solid ${theme.palette.grey[200]}`
+  },
+  statusHelperText: {
+    color: theme.palette.grey[600],
+    fontSize: '11.5px',
+    fontWeight: 400,
+    lineHeight: '16px',
+    textAlign: 'center',
+    whiteSpace: 'nowrap'
+  },
+  enableLoggingLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    flexShrink: 0,
+
+    padding: 0,
+    border: 'none',
+    background: 'none',
+
+    color: theme.palette.primary[600],
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    fontSize: '13px',
+    fontWeight: 600,
+    lineHeight: '16px',
+    textDecoration: 'none',
+    whiteSpace: 'nowrap',
+
+    '&:hover': {
+      color: theme.palette.primary[600],
+      textDecoration: 'none'
+    },
+
+    '&:disabled, &[aria-disabled="true"]': {
+      opacity: 0.5,
+      pointerEvents: 'none'
+    }
   },
   configuredCard: {
     display: 'flex',
@@ -131,40 +174,44 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-interface MetricsExportCardCommonProps {
+interface TelemetryExportCardCommonProps {
+  translationKeyPrefix: string;
   icon: ReactNode;
   title: string;
   actionDisabled?: boolean;
   actionTestId: string;
 }
 
-interface MetricsExportCardUnconfiguredProps extends MetricsExportCardCommonProps {
+interface TelemetryExportCardUnconfiguredProps extends TelemetryExportCardCommonProps {
   unconfigured: true;
   description: string;
   statusLabel: string;
   actionLabel: string;
+  loggingOff?: boolean;
+  statusHelperText?: string;
+  actionVariant?: 'button' | 'link';
   onActionClick?: () => void;
 }
 
-export type MetricsExportStatus = 'active' | 'configuring';
+export type TelemetryExportStatus = 'active' | 'configuring';
 
-interface MetricsExportCardConfiguredProps extends MetricsExportCardCommonProps {
+interface TelemetryExportCardConfiguredProps extends TelemetryExportCardCommonProps {
   unconfigured?: false;
-  exportStatus: MetricsExportStatus;
+  exportStatus: TelemetryExportStatus;
   exportConfigurationName: string;
   exportingTo: string;
   onEditClick?: () => void;
   onDisableClick?: () => void;
 }
 
-export type MetricsExportCardProps =
-  | MetricsExportCardUnconfiguredProps
-  | MetricsExportCardConfiguredProps;
+export type TelemetryExportCardProps =
+  | TelemetryExportCardUnconfiguredProps
+  | TelemetryExportCardConfiguredProps;
 
-export const MetricsExportCard: FC<MetricsExportCardProps> = (props) => {
+export const TelemetryExportCard: FC<TelemetryExportCardProps> = (props) => {
   const classes = useStyles();
   const theme = useTheme();
-  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
+  const { t } = useTranslation('translation', { keyPrefix: props.translationKeyPrefix });
 
   const { icon, title, actionDisabled = false, actionTestId } = props;
 
@@ -207,7 +254,7 @@ export const MetricsExportCard: FC<MetricsExportCardProps> = (props) => {
                   endIcon={<DropdownArrowIcon width={16} height={16} />}
                   disabled={actionDisabled}
                 >
-                  {t('editMetricsExportConfiguration')}
+                  {t('editExportConfiguration')}
                 </YBButton>
               }
             >
@@ -216,7 +263,7 @@ export const MetricsExportCard: FC<MetricsExportCardProps> = (props) => {
                 onClick={props.onEditClick}
                 disabled={actionDisabled}
               >
-                {t('editMetricsExport')}
+                {t('editExport')}
               </MenuItem>
               <Divider sx={{ borderColor: theme.palette.grey[200], my: 0.5 }} />
               <MenuItem
@@ -224,7 +271,7 @@ export const MetricsExportCard: FC<MetricsExportCardProps> = (props) => {
                 onClick={props.onDisableClick}
                 disabled={actionDisabled || !props.onDisableClick}
               >
-                {t('disableMetricsExport')}
+                {t('disableExport')}
               </MenuItem>
             </YBDropdown>
           </RbacValidator>
@@ -255,6 +302,10 @@ export const MetricsExportCard: FC<MetricsExportCardProps> = (props) => {
     );
   }
 
+  const isLinkAction = props.actionVariant === 'link';
+  const isLoggingOff = props.loggingOff ?? false;
+  const statusLabel = isLoggingOff ? t('loggingOff') : props.statusLabel;
+
   return (
     <div className={classes.unconfiguredCard}>
       <div className={classes.unconfiguredLeftSection}>
@@ -263,24 +314,39 @@ export const MetricsExportCard: FC<MetricsExportCardProps> = (props) => {
           <Typography className={classes.description}>{props.description}</Typography>
         </div>
         <div className={classes.statusSection}>
-          <YBTag
-            size="small"
-            variant="light"
-            startIcon={<RevokeKeyIcon width={16} height={16} />}
-          >
-            {props.statusLabel}
-          </YBTag>
+          <YBSmartStatus
+            type={StatusType.INACTIVE}
+            label={statusLabel}
+            iconPosition={isLoggingOff ? IconPosition.NONE : undefined}
+          />
+          {props.statusHelperText && (
+            <Typography className={classes.statusHelperText}>{props.statusHelperText}</Typography>
+          )}
         </div>
       </div>
       <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
-        <YBButton
-          dataTestId={actionTestId}
-          variant="secondary"
-          disabled={actionDisabled}
-          onClick={props.onActionClick}
-        >
-          {props.actionLabel}
-        </YBButton>
+        {isLinkAction ? (
+          <button
+            type="button"
+            className={classes.enableLoggingLink}
+            data-testid={actionTestId}
+            disabled={actionDisabled}
+            aria-disabled={actionDisabled}
+            onClick={props.onActionClick}
+          >
+            <InternalLinkIcon width={24} height={24} />
+            {props.actionLabel}
+          </button>
+        ) : (
+          <YBButton
+            dataTestId={actionTestId}
+            variant="secondary"
+            disabled={actionDisabled}
+            onClick={props.onActionClick}
+          >
+            {props.actionLabel}
+          </YBButton>
+        )}
       </RbacValidator>
     </div>
   );

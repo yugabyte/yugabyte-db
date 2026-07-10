@@ -4590,6 +4590,12 @@
         "disableDatabaseQueryLogging": "Disable Database Query Logging",
         "enableAuditLogging": "Enable Audit Logging",
         "telemetryExportNote": "<bold>Note:</bold> To send logs to external tools, go to <telemetryLink>Telemetry Export</telemetryLink>.",
+        "navigateToTelemetryExportConfirmation": {
+          "title": "You are about to leave this page",
+          "message": "To send logs to external tools, navigate to <bold>Settings / Telemetry Export</bold>.",
+          "back": "Back",
+          "submit": "Navigate to Settings / Telemetry Export"
+        },
         "queryLogSettings": {
           "title": "Configure Database Query Logging",
           "selectParameters": "Select Parameters",
@@ -4695,6 +4701,15 @@
       "telemetryExport": {
         "title": "Telemetry Export",
         "subtitle": "Export metrics and logs to external observability tools.",
+        "navigateToLogsConfirmation": {
+          "title": "You are about to leave this page",
+          "message": {
+            "query": "To enable database query log, navigate to <bold>Settings / Logs</bold>.",
+            "audit": "To enable database audit log, navigate to <bold>Settings / Logs</bold>."
+          },
+          "back": "Back",
+          "submit": "Navigate to Settings / Logs"
+        },
         "metricsExport": {
           "title": "Export Metrics",
           "description": "Export cluster's metrics to 3rd party monitoring dashboards.",
@@ -4707,9 +4722,9 @@
           "exportStatus": "Export Status",
           "exportConfigurationName": "Export Configuration Name",
           "exportingTo": "Exporting to",
-          "editMetricsExportConfiguration": "Metrics Export Configuration",
-          "editMetricsExport": "Edit Metrics Export Configuration",
-          "disableMetricsExport": "Disable Metrics Export"
+          "editExportConfiguration": "Metrics Export Configuration",
+          "editExport": "Edit Metrics Export Configuration",
+          "disableExport": "Disable Metrics Export"
         },
         "metricsExportSettings": {
           "title": "Export Metrics",
@@ -4753,6 +4768,84 @@
             "enableSubmit": "Enable Metrics Export",
             "editSubmit": "Apply Changes",
             "message": "Enable metrics export requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+            "back": "Back"
+          }
+        },
+        "queryLogExport": {
+          "title": "Export Database Query Log",
+          "description": "Export query log to a third party log management tool.",
+          "exportOff": "Export Off",
+          "loggingOff": "Logging Off",
+          "enableLoggingHelper": "Enable logging to allow export.",
+          "enableLoggingAction": "Enable Database Query Log",
+          "actionLabel": "Export Database Query Log",
+          "active": "Active",
+          "configuring": "Configuring",
+          "exportStatus": "Export Status",
+          "exportConfigurationName": "Export Configuration Name",
+          "exportingTo": "Exporting to",
+          "editExportConfiguration": "Query Log Export Configuration",
+          "editExport": "Edit Query Log Export Configuration",
+          "disableExport": "Disable Query Log Export"
+        },
+        "auditLogExport": {
+          "title": "Export Database Audit Log",
+          "description": "Export audit log to a third party log management tool.",
+          "exportOff": "Export Off",
+          "loggingOff": "Logging Off",
+          "enableLoggingHelper": "Enable logging to allow export.",
+          "enableLoggingAction": "Enable Database Audit Log",
+          "actionLabel": "Export Database Audit Log",
+          "active": "Active",
+          "configuring": "Configuring",
+          "exportStatus": "Export Status",
+          "exportConfigurationName": "Export Configuration Name",
+          "exportingTo": "Exporting to",
+          "editExportConfiguration": "Audit Log Export Configuration",
+          "editExport": "Edit Audit Log Export Configuration",
+          "disableExport": "Disable Audit Log Export"
+        },
+        "queryLogExportSettings": {
+          "title": "Export Database Query Log",
+          "subtitle": "Select a destination for the logs.",
+          "exportConfiguration": "Log Export Configuration",
+          "exportConfigurationPlaceholder": "Select export configuration",
+          "cancel": "Cancel",
+          "exportLogs": "Export Query Log",
+          "applyChanges": "Apply Changes",
+          "enableInProgress": "Enabling query log export",
+          "updateInProgress": "Updating query log export configuration",
+          "errors": {
+            "exportConfigurationRequired": "Select an export configuration"
+          },
+          "confirmation": {
+            "enableTitle": "Enable Query Log Export",
+            "editTitle": "Confirm Configuration Change",
+            "enableSubmit": "Enable Query Log Export",
+            "editSubmit": "Apply Changes",
+            "message": "Enable query log export requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+            "back": "Back"
+          }
+        },
+        "auditLogExportSettings": {
+          "title": "Export Database Audit Log",
+          "subtitle": "Select a destination for the logs.",
+          "exportConfiguration": "Log Export Configuration",
+          "exportConfigurationPlaceholder": "Select export configuration",
+          "cancel": "Cancel",
+          "exportLogs": "Export Audit Log",
+          "applyChanges": "Apply Changes",
+          "enableInProgress": "Enabling audit log export",
+          "updateInProgress": "Updating audit log export configuration",
+          "errors": {
+            "exportConfigurationRequired": "Select an export configuration"
+          },
+          "confirmation": {
+            "enableTitle": "Enable Audit Log Export",
+            "editTitle": "Confirm Configuration Change",
+            "enableSubmit": "Enable Audit Log Export",
+            "editSubmit": "Apply Changes",
+            "message": "Enable audit log export requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
             "back": "Back"
           }
         }
