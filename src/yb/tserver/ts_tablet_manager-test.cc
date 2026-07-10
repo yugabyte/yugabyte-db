@@ -121,7 +121,7 @@ class TsTabletManagerTest : public YBTest {
     return JoinPathSegments(test_data_root_, Substitute("drive-$0", index + 1));
   }
 
-  void CreateMiniTabletServer() {
+  virtual void CreateMiniTabletServer() {
     auto options_result = TabletServerOptions::CreateTabletServerOptions();
     ASSERT_OK(options_result);
     std::vector<std::string> paths;
@@ -883,6 +883,146 @@ TEST_F(TsTabletManagerTest, EvenDriveSelection) {
           ->second;
   ASSERT_GE(min_count, floor(1.0 * kNumTables * kNumTablets / kDrivesNum));
   ASSERT_LE(max_count - min_count, 1);
+}
+
+// ---------------------------------------------------------------------------
+// Tiered-drive fixture: 2 ssd drives + 2 hdd drives, labelled via ":tier" suffix.
+// Exercises SelectPathIdForTier.
+// ---------------------------------------------------------------------------
+class TsTabletManagerTieredDriveTest : public TsTabletManagerTest {
+ protected:
+  static constexpr int kSsdDrives = 2;
+  static constexpr int kHddDrives = 2;
+  static constexpr int kTieredDrivesNum = kSsdDrives + kHddDrives;
+
+  // Index helpers: ssd drives are 0..(kSsdDrives-1), hdd drives are kSsdDrives..
+  std::string GetTieredDrivePath(int index) {
+    return JoinPathSegments(test_data_root_, Substitute("tiered-drive-$0", index));
+  }
+
+  // Overrides the parent's disk layout with 2 ssd + 2 hdd drives instead of the plain
+  // kDrivesNum drives. The rest of TsTabletManagerTest::SetUp() is reused.
+  void CreateMiniTabletServer() override {
+    test_data_root_ = GetTestPath("TsTabletManagerTieredDriveTest-fsroot");
+
+    auto options_result = TabletServerOptions::CreateTabletServerOptions();
+    ASSERT_OK(options_result);
+
+    // Disable AutoFlags management and encryption at rest, same as the base fixture (there's
+    // no master here).
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_auto_flags_management) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
+
+    // Build paths: drive-0 and drive-1 are ssd; drive-2 and drive-3 are hdd.
+    // MiniTabletServer copies data_paths straight into fs_opts.data_paths and does NOT parse a
+    // ":tier" suffix (that parsing only happens for the --fs_data_dirs gflag in FsManagerOpts).
+    // So pass clean paths and populate fs_opts.tier_by_path explicitly below.
+    std::vector<std::string> data_paths;
+    std::vector<std::string> wal_paths;
+    std::unordered_map<std::string, std::string> tier_by_path;
+    for (int i = 0; i < kTieredDrivesNum; ++i) {
+      const auto dir = GetTieredDrivePath(i);
+      ASSERT_OK(env_->CreateDirs(dir));
+      data_paths.push_back(dir);
+      tier_by_path[dir] = (i < kSsdDrives) ? "ssd" : "hdd";
+      // WAL dirs must not carry storage-tier annotations, so only use the
+      // ssd drives for WAL.
+      if (i < kSsdDrives) {
+        wal_paths.push_back(dir);
+      }
+    }
+
+    // MiniTabletServer ctor takes (wal_paths, data_paths, ...): WAL first, data second.
+    mini_server_ = std::make_unique<MiniTabletServer>(
+        wal_paths, data_paths, 0, *options_result, 0);
+    // The ctor does not derive tiers from data_paths, so set the tier map before Start().
+    mini_server_->options()->fs_opts.tier_by_path = tier_by_path;
+  }
+};
+
+// Confirm that SelectPathIdForTier returns a path_id whose tier_paths entry has the
+// correct tier label and not one from another tier.
+TEST_F(TsTabletManagerTieredDriveTest, SelectPathIdForTierPicksCorrectTier) {
+  std::shared_ptr<tablet::TabletPeer> peer;
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId, schema_, &peer));
+  auto meta = peer->tablet_metadata();
+
+  // The tablet must have tier_paths covering all configured drives.
+  const auto& tier_paths = meta->tier_paths();
+  ASSERT_EQ(tier_paths.size(), static_cast<size_t>(kTieredDrivesNum));
+
+  // Build a path_id -> tier map for easy lookup.
+  std::unordered_map<uint32_t, std::string> tier_by_path_id;
+  for (const auto& tp : tier_paths) {
+    tier_by_path_id[tp.path_id] = tp.tier;
+  }
+
+  // SelectPathIdForTier("hdd") must return a path_id labelled "hdd".
+  auto hdd_pid = ASSERT_RESULT(
+      tablet_manager_->SelectPathIdForTier(*meta, kTableId, "hdd"));
+  ASSERT_EQ(tier_by_path_id.at(hdd_pid), "hdd")
+      << "path_id " << hdd_pid << " is not an hdd disk";
+
+  // SelectPathIdForTier("ssd") must return a path_id labelled "ssd".
+  auto ssd_pid = ASSERT_RESULT(
+      tablet_manager_->SelectPathIdForTier(*meta, kTableId, "ssd"));
+  ASSERT_EQ(tier_by_path_id.at(ssd_pid), "ssd")
+      << "path_id " << ssd_pid << " is not an ssd disk";
+
+  // A bogus tier must return NotFound.
+  auto bad = tablet_manager_->SelectPathIdForTier(*meta, kTableId, "nvme");
+  ASSERT_NOK(bad);
+  ASSERT_TRUE(bad.status().IsNotFound()) << bad.status();
+}
+
+// Confirm that SelectPathIdForTier balances across disks within a tier: loading
+// one hdd disk more than the other causes the picker to prefer the lighter disk.
+TEST_F(TsTabletManagerTieredDriveTest, SelectPathIdForTierBalancesWithinTier) {
+  std::shared_ptr<tablet::TabletPeer> peer;
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId, schema_, &peer));
+  auto meta = peer->tablet_metadata();
+
+  // Collect the two hdd path_ids and their corresponding data roots.
+  std::vector<std::pair<uint32_t, std::string>> hdd_entries;  // (path_id, data_root)
+  for (const auto& tp : meta->tier_paths()) {
+    if (tp.tier == "hdd") {
+      hdd_entries.push_back({tp.path_id, tablet::GetDataRootFromTabletDir(tp.path)});
+    }
+  }
+  ASSERT_EQ(hdd_entries.size(), static_cast<size_t>(kHddDrives));
+
+  // Initially both hdd drives are equally loaded; pick the winner.
+  uint32_t first_pid = ASSERT_RESULT(
+      tablet_manager_->SelectPathIdForTier(*meta, kTableId, "hdd"));
+  ASSERT_TRUE(first_pid == hdd_entries[0].first || first_pid == hdd_entries[1].first);
+
+  // Load the winning hdd drive by registering extra tablets there.
+  // The drive that first_pid points to becomes heavier.
+  const std::string& heavier_data_root = (first_pid == hdd_entries[0].first)
+      ? hdd_entries[0].second
+      : hdd_entries[1].second;
+  const uint32_t lighter_pid = (first_pid == hdd_entries[0].first)
+      ? hdd_entries[1].first
+      : hdd_entries[0].first;
+
+  // RegisterDataAndWalDir requires a wal_root_dir that FsManager actually knows about.
+  // We don't care which WAL root is used here since this test only exercises data-dir (hdd)
+  // balancing, so just grab the first configured one.
+  const std::string any_wal_root = fs_manager_->GetWalRootDirs().front();
+
+  // Directly register extra tablets on the heavier drive to skew load.
+  for (int i = 0; i < 3; ++i) {
+    tablet_manager_->RegisterDataAndWalDir(
+        fs_manager_, kTableId, Substitute("fake-tablet-hdd-$0", i),
+        heavier_data_root, any_wal_root);
+  }
+
+  // After loading, the picker must switch to the lighter hdd drive.
+  uint32_t second_pid = ASSERT_RESULT(
+      tablet_manager_->SelectPathIdForTier(*meta, kTableId, "hdd"));
+  ASSERT_EQ(second_pid, lighter_pid)
+      << "Expected picker to prefer the lighter hdd drive (path_id " << lighter_pid
+      << ") but got path_id " << second_pid;
 }
 
 namespace {
