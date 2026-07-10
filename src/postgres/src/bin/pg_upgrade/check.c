@@ -2171,6 +2171,27 @@ yb_check_stale_acl_grantors()
 }
 
 /*
+ * Shared WHERE subexpressions used in both the detection query and the
+ * mitigation UPDATE printed to the user.  Both reference pg_proc without an
+ * alias so the same literal works in a plain UPDATE as well as a SELECT
+ * without a table alias.
+ */
+#define YB_ACL_SKIP_EXTENSION_OWNED \
+	"  AND NOT EXISTS (\n" \
+	"      SELECT 1 FROM pg_depend d\n" \
+	"      WHERE d.classid = 'pg_proc'::regclass\n" \
+	"        AND d.objid = pg_proc.oid\n" \
+	"        AND d.objsubid = 0\n" \
+	"        AND d.deptype = 'e')\n"
+
+#define YB_ACL_SKIP_IF_INIT_PRIVS_MATCH \
+	"  AND proacl IS DISTINCT FROM (\n" \
+	"      SELECT initprivs FROM pg_init_privs pip\n" \
+	"      WHERE pip.objoid = pg_proc.oid\n" \
+	"        AND pip.classoid = 'pg_proc'::regclass\n" \
+	"        AND pip.objsubid = 0)\n"
+
+/*
  * yb_check_removed_renamed_functions_acl()
  *
  * Check for modified ACLs on pg_catalog functions removed or renamed in PG15.
@@ -2258,19 +2279,15 @@ yb_check_removed_renamed_functions_acl()
 		PGconn	   *conn = connectToServer(&old_cluster, active_db->db_name);
 
 		res = executeQueryOrDie(conn,
-								"SELECT p.proname, "
-								"       pg_get_function_identity_arguments(p.oid) AS args, "
-								"       array_to_string(p.proacl, ', ') AS acl "
-								"FROM pg_proc p "
-								"JOIN pg_namespace n ON n.oid = p.pronamespace "
-								"WHERE n.nspname = 'pg_catalog' "
-								"  AND p.proname = ANY(%s::text[]) "
-								"  AND p.proacl IS DISTINCT FROM ("
-								"      SELECT initprivs FROM pg_init_privs pip "
-								"      WHERE pip.objoid = p.oid "
-								"        AND pip.classoid = 'pg_proc'::regclass "
-								"        AND pip.objsubid = 0) "
-								"ORDER BY p.proname",
+								"SELECT proname, "
+								"       pg_get_function_identity_arguments(pg_proc.oid) AS args, "
+								"       array_to_string(proacl, ', ') AS acl "
+								"FROM pg_proc "
+								"WHERE pronamespace = 'pg_catalog'::regnamespace "
+								"  AND proname = ANY(%s::text[]) "
+								YB_ACL_SKIP_EXTENSION_OWNED
+								YB_ACL_SKIP_IF_INIT_PRIVS_MATCH
+								"ORDER BY proname",
 								functions_removed_or_renamed_in_pg15);
 
 		ntups = PQntuples(res);
@@ -2305,11 +2322,9 @@ yb_check_removed_renamed_functions_acl()
 							   "          AND pip.objsubid = 0)\n"
 							   "    WHERE pronamespace = 'pg_catalog'::regnamespace\n"
 							   "      AND proname = ANY(%s)\n"
-							   "      AND proacl IS DISTINCT FROM (\n"
-							   "          SELECT initprivs FROM pg_init_privs pip\n"
-							   "          WHERE pip.objoid = pg_proc.oid\n"
-							   "            AND pip.classoid = 'pg_proc'::regclass\n"
-							   "            AND pip.objsubid = 0);\n",
+							   YB_ACL_SKIP_EXTENSION_OWNED
+							   YB_ACL_SKIP_IF_INIT_PRIVS_MATCH
+							   "    ;\n",
 							   functions_removed_or_renamed_in_pg15);
 			yb_fprintf_and_log(script,
 							   "    RESET yb_non_ddl_txn_for_sys_tables_allowed;\n");
