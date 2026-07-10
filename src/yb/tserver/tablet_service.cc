@@ -124,7 +124,6 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/dist_trace.h"
 #include "yb/util/faststring.h"
 #include "yb/util/file_util.h"
 #include "yb/util/flags.h"
