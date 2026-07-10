@@ -2339,6 +2339,14 @@
         "cancelButton": "Stay on this page"
       }
     },
+    "universeMetricsExport": {
+      "redirectToSettingsModal": {
+        "title": "You are about to leave this page",
+        "message": "To export metrics, navigate to <bold>Settings / Telemetry Export</bold>.",
+        "cancelButton": "Back",
+        "submitButton": "Navigate to Settings / Telemetry Export"
+      }
+    },
     "customCACerts": {
       "listing": {
         "header": "Trusted CA Certificates",
