@@ -579,7 +579,7 @@ The available SSL modes are as follows:
   - verify-ca: Only try an SSL connection; verify the server TLS certificate against the configured CA certificates, and fail if no valid matching CA certificate is found.
 
   {{< note title="SSL configuration for node-to-node TLS" >}}
-On a target YugabyteDB cluster with [node-to-node encryption](../../../../reference/configuration/yb-tserver/#use-node-to-node-encryption) only (where client-to-node/YSQL TLS is disabled), use `--target-ssl-mode=disable` together with `--target-ssl-root-cert=<cluster CA cert>`. The `--target-ssl-mode` flag applies only to the YSQL connection (port 5433). Setting it to `require`, `verify-ca`, or `verify-full` fails in this setup because those modes force TLS on a non-TLS YSQL port. However, `--target-ssl-root-cert` flag should still be provided to authenticate the secure internal RPC ports (7100/9100).
+On a target YugabyteDB cluster with [node-to-node encryption](../../../../reference/configuration/yb-tserver/#use-node-to-node-encryption) only (where client-to-node/YSQL TLS is disabled), use `--target-ssl-mode=disable` together with `--target-ssl-root-cert=<cluster CA cert>`. The `--target-ssl-mode` flag applies only to the YSQL connection (port 5433). Setting it to `require`, `verify-ca`, or `verify-full` fails in this setup because those modes force TLS on a non-TLS YSQL port. However, the `--target-ssl-root-cert` flag should still be provided to authenticate the secure internal RPC ports (7100/9100).
   {{< /note >}}
 
 - [YugabyteDB Connector](../../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/):
