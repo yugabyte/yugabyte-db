@@ -24,6 +24,16 @@
     (2 * var(--docs-page-header-bar-padding-y)) +
     16px
   );
+
+  // Sticky chrome height that heading anchors must clear: fixed site header +
+  // sticky breadcrumbs/version bar content box + a small gap so the heading
+  // isn't flush against the bar.
+  --docs-heading-anchor-offset: calc(
+    var(--docs-sticky-header-top) +
+    var(--docs-page-header-bar-line-height) +
+    (2 * var(--docs-page-header-bar-padding-y)) +
+    20px
+  );
 }
 
 // When the header bar isn't rendered at all (breadcrumbs disabled AND the page
