@@ -61,9 +61,9 @@ class MetadataSerializerFactory : public rpc::MetadataSerializerFactory {
   }
 };
 
-// Serializes a distributed-trace SpanContext as a standalone length-prefixed TraceContextPB blob for
-// the shared-memory PG<->tserver exchange, independent of the ASH metadata blob. Always emits the
-// length prefix (zero when no context is set) so the exchange framing stays parseable.
+// Serializes a distributed-trace SpanContext as a standalone length-prefixed TraceContextPB blob
+// for the shared-memory PG<->tserver exchange, independent of the ASH metadata blob. Always emits
+// the length prefix (zero when no context is set) so the exchange framing stays parseable.
 class TraceContextSerializer {
  public:
   // Encodes span_context into the trace-context blob; a no-op when the context is invalid.

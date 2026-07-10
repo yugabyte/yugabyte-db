@@ -2492,8 +2492,10 @@ retry1:
 			else if (YBIsEnabledInPostgresEnvVar()
 					 && strcmp(nameptr, "yb_dist_traceparent") == 0)
 			{
-				/* Stash traceparent for InitPostgres's backend-init span;
-				 * consumed here, turned into a corresponding GUC. */
+				/*
+				 * Stash traceparent for InitPostgres's backend-init span;
+				 * consumed here, turned into a corresponding GUC.
+				 */
 				port->yb_dist_traceparent = pstrdup(valptr);
 			}
 			else if (strncmp(nameptr, "_pq_.", 5) == 0)
