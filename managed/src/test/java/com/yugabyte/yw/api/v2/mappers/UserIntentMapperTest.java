@@ -8,7 +8,7 @@ import static org.junit.Assert.assertNull;
 
 import api.v2.mappers.UserIntentMapper;
 import api.v2.models.ClusterNodeSpec;
-import api.v2.models.PerProcessNodeSpec;
+import api.v2.models.ClusterPerProcessNodeSpec;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
@@ -78,7 +78,7 @@ public class UserIntentMapperTest {
     ClusterNodeSpec clusterNodeSpec =
         UserIntentMapper.INSTANCE.userIntentToClusterNodeSpec(userIntent);
 
-    PerProcessNodeSpec masterNodeSpec = clusterNodeSpec.getMaster();
+    ClusterPerProcessNodeSpec masterNodeSpec = clusterNodeSpec.getMaster();
     assertNotNull(masterNodeSpec);
     assertEquals("m5.2xlarge", masterNodeSpec.getInstanceType());
     assertEquals(Integer.valueOf(75), masterNodeSpec.getStorageSpec().getVolumeSize());
@@ -110,7 +110,7 @@ public class UserIntentMapperTest {
     ClusterNodeSpec clusterNodeSpec =
         UserIntentMapper.INSTANCE.userIntentToClusterNodeSpec(userIntent);
 
-    PerProcessNodeSpec masterNodeSpec = clusterNodeSpec.getMaster();
+    ClusterPerProcessNodeSpec masterNodeSpec = clusterNodeSpec.getMaster();
     assertNotNull(masterNodeSpec);
     assertEquals("m5.2xlarge", masterNodeSpec.getInstanceType());
     assertEquals(Integer.valueOf(75), masterNodeSpec.getStorageSpec().getVolumeSize());

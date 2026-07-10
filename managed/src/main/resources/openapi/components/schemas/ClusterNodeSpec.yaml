@@ -1,9 +1,20 @@
 title: ClusterNodeSpec
-description: Node settings (like CPU / memory) for each node in the cluster. The node settings configured at top-level are uniform settings for both tserver and master nodes. Granular settings for tserver and master (honoured if dedicated_nodes is true or this is k8s cluster) are available for certain node properties. Granular settings can also be overridden per Availability Zone. This is part of ClusterSpec.
+description: Node settings (like CPU / memory) for each node in the cluster. The node settings configured at top-level are uniform settings for both tserver and master nodes and require complete storage_spec (volume_size and num_volumes). Granular settings for tserver and master (honoured if dedicated_nodes is true or this is k8s cluster) are available for certain node properties. Granular settings can also be overridden per Availability Zone with partial storage. This is part of ClusterSpec.
 type: object
 allOf:
-  - $ref: "./AvailabilityZoneNodeSpec.yaml"
+  - $ref: "./ClusterPerProcessNodeSpec.yaml"
   - properties:
+      cgroup_size:
+        description: 'Amount of memory in MB to limit the postgres process using the ysql cgroup. The value should be greater than 0. When set to 0 it results in no cgroup limits. For a read replica cluster, setting this value to null or -1 would inherit this value from the primary cluster. Applicable only for nodes running as Linux VMs on AWS/GCP/Azure Cloud Provider. Only used internally by YBM.'
+        type: integer
+        example: 1024
+        x-yba-api-visibility: internal
+      tserver:
+        description: Instance spec for tserver nodes of cluster.
+        $ref: "./ClusterPerProcessNodeSpec.yaml"
+      master:
+        description: Instance spec for master nodes of cluster
+        $ref: "./ClusterPerProcessNodeSpec.yaml"
       dedicated_nodes:
         description: Whether to run tserver and master processes in dedicated nodes in this cluster. Defaults to false where master and tserver processes share the same node.
         type: boolean

@@ -29,13 +29,14 @@ import com.yugabyte.yba.v2.client.models.ClusterInfo;
 import com.yugabyte.yba.v2.client.models.ClusterNetworkingSpec;
 import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPartitionSpec;
+import com.yugabyte.yba.v2.client.models.ClusterPerProcessNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPlacementSpec;
 import com.yugabyte.yba.v2.client.models.ClusterProviderEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterProviderSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec.ClusterTypeEnum;
 import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
-import com.yugabyte.yba.v2.client.models.ClusterStorageSpec.StorageTypeEnum;
+import com.yugabyte.yba.v2.client.models.ClusterStorageType;
 import com.yugabyte.yba.v2.client.models.CommunicationPortsSpec;
 import com.yugabyte.yba.v2.client.models.EncryptionAtRestInfo;
 import com.yugabyte.yba.v2.client.models.EncryptionAtRestSpec;
@@ -44,7 +45,6 @@ import com.yugabyte.yba.v2.client.models.ExposingServiceState;
 import com.yugabyte.yba.v2.client.models.K8SNodeResourceSpec;
 import com.yugabyte.yba.v2.client.models.NodeDetails;
 import com.yugabyte.yba.v2.client.models.NodeProxyConfig;
-import com.yugabyte.yba.v2.client.models.PerProcessNodeSpec;
 import com.yugabyte.yba.v2.client.models.PlacementAZ;
 import com.yugabyte.yba.v2.client.models.PlacementCloud;
 import com.yugabyte.yba.v2.client.models.PlacementRegion;
@@ -398,7 +398,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
             new ClusterStorageSpec()
                 .volumeSize(54321)
                 .numVolumes(2)
-                .storageType(StorageTypeEnum.GP2));
+                .storageType(ClusterStorageType.GP2));
     primaryClusterSpec.setNodeSpec(primaryNodeSpec);
     primaryClusterSpec.setReplicationFactor(5);
     primaryClusterSpec.setUseSpotInstance(true);
@@ -464,12 +464,12 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     clusterSpec
         .getNodeSpec()
         .master(
-            new PerProcessNodeSpec()
+            new ClusterPerProcessNodeSpec()
                 .instanceType(ApiUtils.UTIL_INST_TYPE)
                 .storageSpec(
                     new ClusterStorageSpec()
                         .volumeSize(50)
-                        .storageType(StorageTypeEnum.GP2)
+                        .storageType(ClusterStorageType.GP2)
                         .numVolumes(1)
                         .storageClass("standart")));
     return universeCreateSpec;
@@ -871,7 +871,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
   }
 
   private void validatePerProcessNodeSpec(
-      PerProcessNodeSpec v2NodeSpec, PerProcessDetails expectedDetails) {
+      ClusterPerProcessNodeSpec v2NodeSpec, PerProcessDetails expectedDetails) {
     if (expectedDetails.getInstanceType() == null) {
       assertThat(v2NodeSpec.getInstanceType(), is(nullValue()));
     } else {

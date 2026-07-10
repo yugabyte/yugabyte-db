@@ -32,7 +32,7 @@ import com.yugabyte.yba.v2.client.models.ClusterProviderEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec.ClusterTypeEnum;
 import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
-import com.yugabyte.yba.v2.client.models.ClusterStorageSpec.StorageTypeEnum;
+import com.yugabyte.yba.v2.client.models.ClusterStorageType;
 import com.yugabyte.yba.v2.client.models.CommunicationPortsSpec;
 import com.yugabyte.yba.v2.client.models.ExposingServiceState;
 import com.yugabyte.yba.v2.client.models.PlacementAZ;
@@ -276,7 +276,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .getStorageSpec()
             .numVolumes(3)
             .volumeSize(65432)
-            .storageType(StorageTypeEnum.GP3)
+            .storageType(ClusterStorageType.GP3)
             .diskIops(16000)
             .throughput(1000);
     ClusterNodeSpec newNodeSpec = primaryClusterSpec.getNodeSpec().storageSpec(newStorageSpec);
@@ -520,7 +520,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
                 new ClusterStorageSpec()
                     .numVolumes(1)
                     .volumeSize(1024)
-                    .storageType(StorageTypeEnum.GP2)
+                    .storageType(ClusterStorageType.GP2)
                     .diskIops(3000)
                     .throughput(250));
     clusterAddSpec.setNodeSpec(nodeSpec);

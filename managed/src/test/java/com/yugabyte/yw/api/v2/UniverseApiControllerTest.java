@@ -24,8 +24,9 @@ import com.yugabyte.yba.v2.client.models.AvailabilityZoneNodeSpec;
 import com.yugabyte.yba.v2.client.models.CheckResizeOptionsResp;
 import com.yugabyte.yba.v2.client.models.CheckResizeOptionsSpec;
 import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
+import com.yugabyte.yba.v2.client.models.ClusterPerProcessNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec;
-import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
+import com.yugabyte.yba.v2.client.models.ClusterStorageBase;
 import com.yugabyte.yba.v2.client.models.PerProcessNodeSpec;
 import com.yugabyte.yba.v2.client.models.ResizeUpdateOption;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
@@ -313,11 +314,11 @@ public class UniverseApiControllerTest extends UniverseTestBase {
     ClusterNodeSpec nodeSpec = universeCreateSpec.getSpec().getClusters().get(0).getNodeSpec();
     nodeSpec.setDedicatedNodes(true);
 
-    PerProcessNodeSpec clusterMasterSpec = new PerProcessNodeSpec();
+    ClusterPerProcessNodeSpec clusterMasterSpec = new ClusterPerProcessNodeSpec();
     clusterMasterSpec.setInstanceType("c5.4xlarge");
     nodeSpec.setMaster(clusterMasterSpec);
 
-    PerProcessNodeSpec clusterTserverSpec = new PerProcessNodeSpec();
+    ClusterPerProcessNodeSpec clusterTserverSpec = new ClusterPerProcessNodeSpec();
     clusterTserverSpec.setInstanceType("c5.2xlarge");
     nodeSpec.setTserver(clusterTserverSpec);
 
@@ -328,12 +329,12 @@ public class UniverseApiControllerTest extends UniverseTestBase {
 
     AvailabilityZoneNodeSpec azSpec = new AvailabilityZoneNodeSpec();
     PerProcessNodeSpec azMasterSpec = new PerProcessNodeSpec();
-    azMasterSpec.setStorageSpec(new ClusterStorageSpec().volumeSize(50).numVolumes(1));
+    azMasterSpec.setStorageSpec(new ClusterStorageBase().volumeSize(50).numVolumes(1));
     azSpec.setMaster(azMasterSpec);
 
     PerProcessNodeSpec azTserverSpec = new PerProcessNodeSpec();
     azTserverSpec.setStorageSpec(
-        new ClusterStorageSpec().volumeSize(300).diskIops(4000).numVolumes(2));
+        new ClusterStorageBase().volumeSize(300).diskIops(4000).numVolumes(2));
     azSpec.setTserver(azTserverSpec);
 
     Map<String, AvailabilityZoneNodeSpec> azNodeSpec = new HashMap<>();
