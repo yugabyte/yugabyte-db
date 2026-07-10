@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.eq;
@@ -46,6 +47,7 @@ import com.yugabyte.yw.nodeagent.UploadFileResponse;
 import io.grpc.ConnectivityState;
 import io.grpc.ManagedChannel;
 import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import io.grpc.stub.StreamObserver;
@@ -95,6 +97,14 @@ public class NodeAgentClientTest extends FakeDBApplication {
     private volatile String taskId;
     private volatile Instant completionTime;
     private volatile Function<DescribeTaskRequest, DescribeTaskResponse> taskFunc;
+    private volatile DescribeTaskBehavior describeBehavior;
+  }
+
+  // Override for custom behavior in tests, e.g. to simulate transient failures.
+  @FunctionalInterface
+  interface DescribeTaskBehavior {
+    void describe(
+        DescribeTaskRequest request, StreamObserver<DescribeTaskResponse> responseObserver);
   }
 
   @Before
@@ -171,6 +181,10 @@ public class NodeAgentClientTest extends FakeDBApplication {
           public void describeTask(
               DescribeTaskRequest request, StreamObserver<DescribeTaskResponse> responseObserver) {
             try {
+              if (asyncTaskData.getDescribeBehavior() != null) {
+                asyncTaskData.getDescribeBehavior().describe(request, responseObserver);
+                return;
+              }
               String taskId = asyncTaskData.getTaskId();
               if (taskId == null || !taskId.equals(request.getTaskId())) {
                 throw new IllegalArgumentException("Invalid task ID " + request.getTaskId());
@@ -199,6 +213,14 @@ public class NodeAgentClientTest extends FakeDBApplication {
         .thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentDescribePollDeadline)))
         .thenReturn(Duration.ofSeconds(5));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentConnectTimeout)))
+        .thenReturn(Duration.ofSeconds(10));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentIdleConnectionTimeout)))
+        .thenReturn(Duration.ofMinutes(10));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentConnectionKeepAliveTime)))
+        .thenReturn(Duration.ofSeconds(30));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentConnectionKeepAliveTimeout)))
+        .thenReturn(Duration.ofSeconds(10));
 
     // Generate a unique in-process server name.
     String serverName = InProcessServerBuilder.generateName();
@@ -403,5 +425,85 @@ public class NodeAgentClientTest extends FakeDBApplication {
     NodeConfig nodeConfig = Iterables.getOnlyElement(output.getNodeConfigsList());
     assertEquals("DISK_SPACE", nodeConfig.getType());
     assertEquals("100GB", nodeConfig.getValue());
+  }
+
+  @Test
+  public void testRunAsyncTaskRetriesOnUnavailableThenSucceeds() {
+    AtomicInteger describeAttempts = new AtomicInteger(0);
+    asyncTaskData.setDescribeBehavior(
+        (request, responseObserver) -> {
+          if (describeAttempts.incrementAndGet() <= NodeAgentClient.MAX_TRANSIENT_FAILURES) {
+            responseObserver.onError(
+                Status.UNAVAILABLE.withDescription("transient failure").asRuntimeException());
+            return;
+          }
+          responseObserver.onNext(
+              DescribeTaskResponse.newBuilder()
+                  .setPreflightCheckOutput(PreflightCheckOutput.newBuilder().build())
+                  .build());
+          responseObserver.onCompleted();
+        });
+
+    PreflightCheckOutput output =
+        nodeAgentClient.runPreflightCheck(
+            nodeAgent, PreflightCheckInput.newBuilder().build(), null /* user */);
+    assertNotNull(output);
+    assertEquals(NodeAgentClient.MAX_TRANSIENT_FAILURES + 1, describeAttempts.get());
+  }
+
+  @Test
+  public void testRunAsyncTaskFailsAfterMaxTransientFailures() {
+    AtomicInteger describeAttempts = new AtomicInteger(0);
+    asyncTaskData.setDescribeBehavior(
+        (request, responseObserver) -> {
+          describeAttempts.incrementAndGet();
+          responseObserver.onError(
+              Status.UNAVAILABLE.withDescription("transient failure").asRuntimeException());
+        });
+
+    StatusRuntimeException ex =
+        assertThrows(
+            StatusRuntimeException.class,
+            () ->
+                nodeAgentClient.runPreflightCheck(
+                    nodeAgent, PreflightCheckInput.newBuilder().build(), null /* user */));
+
+    assertEquals(Status.Code.UNAVAILABLE, ex.getStatus().getCode());
+    assertEquals(NodeAgentClient.MAX_TRANSIENT_FAILURES + 1, describeAttempts.get());
+  }
+
+  @Test
+  public void testRunAsyncTaskResetsTransientFailuresOnCancelled() {
+    AtomicInteger describeAttempts = new AtomicInteger(0);
+    asyncTaskData.setDescribeBehavior(
+        (request, responseObserver) -> {
+          int attempt = describeAttempts.incrementAndGet();
+          if (attempt <= NodeAgentClient.MAX_TRANSIENT_FAILURES) {
+            responseObserver.onError(
+                Status.UNAVAILABLE.withDescription("transient failure").asRuntimeException());
+            return;
+          }
+          if (attempt == NodeAgentClient.MAX_TRANSIENT_FAILURES + 1) {
+            responseObserver.onError(
+                Status.CANCELLED.withDescription("reset transient failures").asRuntimeException());
+            return;
+          }
+          if (attempt <= 2 * NodeAgentClient.MAX_TRANSIENT_FAILURES + 1) {
+            responseObserver.onError(
+                Status.UNAVAILABLE.withDescription("transient failure again").asRuntimeException());
+            return;
+          }
+          responseObserver.onNext(
+              DescribeTaskResponse.newBuilder()
+                  .setPreflightCheckOutput(PreflightCheckOutput.newBuilder().build())
+                  .build());
+          responseObserver.onCompleted();
+        });
+
+    PreflightCheckOutput output =
+        nodeAgentClient.runPreflightCheck(
+            nodeAgent, PreflightCheckInput.newBuilder().build(), null /* user */);
+    assertNotNull(output);
+    assertEquals(2 * NodeAgentClient.MAX_TRANSIENT_FAILURES + 2, describeAttempts.get());
   }
 }
