@@ -349,7 +349,9 @@ class OutboundCall : public RpcCall {
     conn_id_ = value;
     hostname_ = hostname;
     if (otel_span_) {
-      otel_span_->SetAttribute("network.peer.name", *hostname);
+      if (hostname) {
+        otel_span_->SetAttribute("network.peer.name", *hostname);
+      }
       otel_span_->SetAttribute("network.peer.address", yb::ToString(value.remote()));
       // Drop the OTEL span's scope here, on the calling thread, before the call is queued to the
       // reactor. The span ends later, but the scope must be released on the thread that installed

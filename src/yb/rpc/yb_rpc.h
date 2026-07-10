@@ -205,6 +205,14 @@ class YBInboundCall : public InboundCall {
   void CreateServerSpan(
       std::optional<opentelemetry::trace::SpanContext> parent = std::nullopt);
 
+  // Releases the server span's thread-local scope on the handler thread once synchronous handling
+  // is done. The span itself ends later (RespondSuccess/Failure), possibly on another thread.
+  void DropServerSpanScope() {
+    if (span_) {
+      span_->DropScope();
+    }
+  }
+
   size_t ObjectSize() const override { return sizeof(*this); }
 
   Result<RefCntSlice> ExtractSidecar(size_t idx) const;
