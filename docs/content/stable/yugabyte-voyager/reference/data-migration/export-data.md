@@ -53,15 +53,6 @@ When run at the same time, flags take precedence over configuration flag setting
 | <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 
-| --run-guardrails-checks |
-
-```yaml{.nocopy}
-export-data:
-  run-guardrails-checks:
-```
-
-| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
-
 | --disable-pb |
 
 ```yaml{.nocopy}
@@ -126,7 +117,7 @@ export-data:
   allow-oracle-clob-data-export:
 ```
 
-| [Experimental] Allow exporting data of CLOB columns in offline migration. Oracle migrations only. The flag is _not supported_ for live migrations or [BETA_FAST_DATA_EXPORT](../../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle). <br> Default: false <br> Accepted parameters: true, false |
+| [Experimental] Allow exporting data of CLOB columns in offline migration. Oracle migrations only. The flag is _not supported_ with [BETA_FAST_DATA_EXPORT](../../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle). <br> Default: false <br> Accepted parameters: true, false |
 
 | -e, --export-dir |
 
@@ -247,30 +238,6 @@ source:
 ```
 
 | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| --oracle-cdb-name |
-
-```yaml{.nocopy}
-source:
-  oracle-cdb-name:
-```
-
-| Oracle Container Database Name in case you are using a multi-tenant container database. Required for Oracle live migrations only. |
-| --oracle-cdb-sid |
-
-```yaml{.nocopy}
-source:
-  oracle-cdb-sid:
-```
-
-| Oracle System Identifier (SID) of the Container Database that you wish to use while exporting data from Oracle instances. Required for Oracle live migrations only. |
-| --oracle-cdb-tns-alias |
-
-```yaml{.nocopy}
-source:
-  oracle-cdb-tns-alias:
-```
-
-| Name of TNS Alias you wish to use to connect to Oracle Container Database in case you are using a multi-tenant container database. Required for Oracle live migrations only. |
 | --oracle-db-sid |
 
 ```yaml{.nocopy}
@@ -300,6 +267,14 @@ source:
 | -h, --help | — | Command line help. |
 | -y, --yes | — | Answer yes to all prompts during the export schema operation. <br>Default: false |
 | -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
+| --run-guardrails-checks |
+
+```yaml{.nocopy}
+export-data:
+  run-guardrails-checks:
+```
+
+| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 <br>**Note**: Setting this flag to false is unsafe, as it skips critical pre-migration validations (such as source/target database permissions, binary dependencies, and version compatibility) and may lead to migration failures or data issues. Leave the default (true) unless you have a specific reason to disable checks.|
 
 {{</table>}}
 

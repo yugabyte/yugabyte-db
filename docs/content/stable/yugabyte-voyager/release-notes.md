@@ -17,6 +17,14 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+{{< warning title="Oracle live migration no longer supported" >}}
+
+YugabyteDB Voyager no longer supports [live migration](../migrate/live-migrate/) from Oracle databases, including [live migration with fall-forward](../migrate/live-fall-forward/) and [live migration with fall-back](../migrate/live-fall-back/). Oracle remains supported for [offline migration](../migrate/migrate-steps/).
+
+Contact {{% support-general %}} to discuss alternative tools and approaches.
+
+{{< /warning >}}
+
 ## v2026.7.1 - July 7, 2026
 
 {{< note title="Important: Breaking change" >}}

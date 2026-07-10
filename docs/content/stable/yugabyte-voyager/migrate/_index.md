@@ -12,7 +12,7 @@ menu:
     weight: 102
 ---
 
-You can perform migration by taking your applications offline to perform the migration, migrate your data while your application is running (currently Oracle only), or add a fall-forward database for your live migration (currently Oracle only).
+You can perform migration by taking your applications offline to perform the migration, migrate your data while your application is running (PostgreSQL only), or add a fall-forward database for your live migration (PostgreSQL only).
 
 {{<index/block>}}
 
