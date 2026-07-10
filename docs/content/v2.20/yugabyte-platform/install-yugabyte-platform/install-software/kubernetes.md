@@ -279,6 +279,60 @@ tls:
   key: "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0t..."
 ```
 
+#### Use cert-manager
+
+You can use [cert-manager](https://cert-manager.io/) to issue and renew the TLS certificate for the YugabyteDB Anywhere UI. Before enabling this option, ensure that cert-manager is installed and running on your Kubernetes cluster.
+
+Set `tls.hostname` to the DNS name you use to access YugabyteDB Anywhere. The Helm chart uses this value as the certificate common name.
+
+To have the Helm chart create a self-signed Issuer (or ClusterIssuer) and issue a certificate with cert-manager, add the following to your values file:
+
+```yaml
+# yba-values.yaml
+tls:
+  enabled: true
+  hostname: "yba.example.com"
+  certManager:
+    enabled: true
+    genSelfsigned: true
+```
+
+To use an existing ClusterIssuer, set `genSelfsigned` to `false`, enable `useClusterIssuer`, and provide the ClusterIssuer name:
+
+```yaml
+# yba-values.yaml
+tls:
+  enabled: true
+  hostname: "yba.example.com"
+  certManager:
+    enabled: true
+    genSelfsigned: false
+    useClusterIssuer: true
+    clusterIssuer: "cluster-ca"
+```
+
+To use an existing namespace-scoped Issuer, set `genSelfsigned` to `false`, leave `useClusterIssuer` as `false`, and provide the Issuer name:
+
+```yaml
+# yba-values.yaml
+tls:
+  enabled: true
+  hostname: "yba.example.com"
+  certManager:
+    enabled: true
+    genSelfsigned: false
+    useClusterIssuer: false
+    issuer: "yugaware-ca"
+```
+
+You can optionally customize certificate duration, renewal window, and key settings under `tls.certManager.configuration`.
+
+{{< note title="Note" >}}
+
+This configuration manages the TLS certificate for the YugabyteDB Anywhere UI. To use cert-manager for universe (node) certificates, refer to [Kubernetes cert-manager](../../../security/enable-encryption-in-transit/#kubernetes-cert-manager).
+
+{{< /note >}}
+
 #### Change TLS versions
 
 When using TLS with YugabyteDB Anywhere, you can change the supported TLS versions, as follows:
