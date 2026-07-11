@@ -67,8 +67,8 @@ export const SecurityTab = () => {
   const clientToNodeEnabled =
     !!universeData?.spec?.encryption_in_transit_spec?.enable_client_to_node_encrypt;
 
-  const isPublicIPAssigned = Boolean(!!universeData?.spec?.networking_spec?.assign_public_ip);
-  const isIPV6Enabled = Boolean(!!universeData?.spec?.networking_spec?.enable_ipv6);
+  const isPublicIPAssigned = !!universeData?.spec?.networking_spec?.assign_public_ip;
+  const isIPV6Enabled = !!universeData?.spec?.networking_spec?.enable_ipv6;
   const isK8sPublicIPAssigned =
     primaryCluster?.networking_spec?.enable_exposing_service === 'EXPOSED';
 

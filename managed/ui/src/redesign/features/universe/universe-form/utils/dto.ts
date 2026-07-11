@@ -905,6 +905,10 @@ export interface HelmOverridesError {
   overridesErrors: OverridesError[];
 }
 
+export interface K8sHelmOverridesError {
+  errors: OverridesError[];
+}
+
 export interface UniverseResource {
   azList: string[];
   ebsPricePerHour: number;

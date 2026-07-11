@@ -4185,8 +4185,8 @@
           "ysqlServerHttpPort": "YSQL HTTP Port",
           "ysqlServerRpcPort": "YSQL Port",
           "internalYsqlServerRpcPort": "Internal YSQL Port",
-          "redisServerHttpPort": "Redis HTTP Port",
-          "redisServerRpcPort": "Redis HTTP Port",
+          "redisServerHttpPort": "Yedis HTTP Port",
+          "redisServerRpcPort": "Yedis RPC Port",
           "nodeExporterPort": "Node Exporter Port",
           "ybControllerRpcPort": "YB Controller RPC Port",
           "masterGroup": "Master Server",
@@ -4218,7 +4218,13 @@
         "networkAccessField": {
           "label": "Enable Public Network Access",
           "subText": "Assign a load balancer or nodeport for connecting to the DB endpoints over the internet."
-        }
+        },
+        "k8sOverrides": "Kubernetes Overrides",
+        "overrideInfo": "Override default Helm chart values for this cluster.",
+        "addHelmOverrides": "Add Helm Overrides",
+        "overrideConfigured": "Helm Override Configured",
+        "editHelmOverrides": "Edit Helm Overrides",
+        "helmOverrides": "HELM OVERRIDES"
       },
       "reviewAndSummary": {
         "daily": "Daily",
