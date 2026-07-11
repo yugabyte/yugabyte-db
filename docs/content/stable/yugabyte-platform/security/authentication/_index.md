@@ -32,7 +32,7 @@ YugabyteDB supports LDAP and OIDC for database authentication.
   {{<index/item
     title="OIDC authentication"
     body="Use an identity provider to authenticate database users."
-    href="oidc-authentication-aad/"
+    href="oidc-database-authentication/"
     icon="fa-thin fa-lock-keyhole">}}
 
 {{</index/block>}}
