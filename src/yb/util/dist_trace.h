@@ -65,7 +65,7 @@ struct SpanWithScope {
   void End() {
     if (span && span->IsRecording()) {
       // The scope must be dropped on its creating thread; catch an unintended thread hop.
-      DCHECK(owner_thread == std::thread::id{} || std::this_thread::get_id() == owner_thread)
+      DCHECK(owner_thread == std::thread::id() || std::this_thread::get_id() == owner_thread)
           << "SpanWithScope scope released off its creating thread";
       scope.reset();
       span->End();
