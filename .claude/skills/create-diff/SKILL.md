@@ -132,29 +132,10 @@ When asking the user for a tracking reference, acceptable forms are:
    - A GitHub issue number (e.g., `#31151`)
    - A JIRA ticket (e.g., `PLAT-20518`)
 Offer to **auto-create** a GitHub issue or JIRA ticket if the user
-doesn't have one yet.
-
-To auto create a GitHub issue:
-  - before calling `gh issue create`, pick a matching issue template
-    from `.github/ISSUE_TEMPLATE/` based on the component (e.g.,
-    `docDB.yml` for DocDB, `ysql.yml` for YSQL, `ycql.yml` for YCQL,
-    `cdc.yml` for CDC, `ui.yml` for YBA/UI, `yugabyted.yml` for
-    yugabyted, `docs.yml` for docs, `feature_request.yml` as the generic
-    fallback for tooling/other, etc.).
-  - Read the chosen template YAML, then (a) collect its `labels` and
-    pass them via `--label`, (b) construct a markdown body mirroring the
-    template's `body` sections (e.g., `### Description` textarea → `##
-    Description` + user-facing content; `Issue Type` dropdown → pick one
-    of the listed `options`; sensitivity checkbox → include a confirming
-    line).
-  - Run `gh issue create --assignee @me --repo yugabyte/yugabyte-db --title <...> --body-file <path> --label <labels>`.
-  - Confirm the title/body with the user before creating.
-  - Always assign the issue to the current user.
-
-To auto create a JIRA issue:
-  - ask the user which project (e.g., `PLAT`)
-  - use the Atlassian MCP tool `createJiraIssue` to create it.  Confirm the summary/description with the user before creating.
-  - Capture the resulting issue number or JIRA key.
+doesn't have one yet. If they accept, invoke the **`/create-issue`**
+skill to file it (GitHub issue for core DB code, JIRA ticket for
+`managed/` platform work), then capture the issue number / JIRA key it
+reports back.
 
 ### Step 3.5: Gather remaining title metadata
 
