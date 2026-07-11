@@ -32,14 +32,14 @@ To set up OIDC authentication, complete the following steps:
 
 ## Configure your Identity provider
 
-Configuring your OIDC provider to work with for YugabyteDB typically requires:
+Configuring your OIDC provider to work with YugabyteDB typically requires:
 
 - Registering YugabyteDB Anywhere in the OIDC provider.
 - Configuring the provider to send (redirect) tokens with the required claims to YugabyteDB Anywhere.
 
 Consult your OIDC provider documentation.
 
-Before you start, note the [YugabyteDB Anywhere callback URI](../../../administer-yugabyte-platform/oidc-authentication/#oidc-callback-uri); you'll need to provide it as the redirect URI when registering your application in JumpCloud.
+Before you start, note the [YugabyteDB Anywhere callback URI](../../../administer-yugabyte-platform/oidc-authentication/#oidc-callback-uri); you'll need to provide it as the redirect URI when registering your application in your OIDC provider.
 
 The following sections provide instructions for Azure AD (also known as [Microsoft Entra ID](https://www.microsoft.com/en-ca/security/business/identity-access/microsoft-entra-id)) and Jumpcloud.
 
@@ -209,7 +209,7 @@ You need to be signed in as a Super Admin and have your provider credentials. Fo
 
 To enable OIDC authentication in YugabyteDB Anywhere, do the following:
 
-1. Navigate to **Admin > Access Management > User Authentication** and select **ODIC configuration**.
+1. Navigate to **Admin > Access Management > User Authentication** and select **OIDC configuration**.
 1. Under **OIDC configuration**,  configure the following:
 
     - **Client ID** and **Client Secret** - enter the client ID and secret of the application you created.
