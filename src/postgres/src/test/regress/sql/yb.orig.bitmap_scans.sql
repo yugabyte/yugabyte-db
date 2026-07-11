@@ -565,6 +565,30 @@ DROP TABLE bitmap_pk_diff_type_1;
 DROP TABLE bitmap_pk_diff_type_2;
 DROP TABLE bitmap_pk_same_type;
 
+-- In a Bitmap Index Scan, filters pushed down as Storage Index Filters must be
+-- included in the recheck conditions.
+CREATE TABLE bitmap_recheck (a float4, b INT, c INT);
+INSERT INTO bitmap_recheck (a, b, c) (SELECT s::float4/10, s, s % 10 FROM generate_series(1,40) s);
+
+CREATE INDEX bitmap_recheck_a ON bitmap_recheck (a ASC);
+CREATE INDEX bitmap_recheck_b_c ON bitmap_recheck (b ASC) INCLUDE (c) WHERE c > 2;
+
+-- In the Bitmap Index Scan plan, recheck is triggered because the filter
+-- `a = 0.4` is pushed down as Index Condition, but not enforced during the
+-- index scan because of type mismatch. The column `a` is of type `float4` but
+-- PG assigns type `float8` to the literal decimal `0.4`.
+-- The filter `c > 5` is pushed down as a Storage Index Filter on
+-- index `bitmap_recheck_b_c` and it must be included in the recheck conditions.
+EXPLAIN (COSTS OFF) /*+ SeqScan(bitmap_recheck) */
+SELECT count(*) FROM bitmap_recheck WHERE a = 0.4 OR c > 5;
+SELECT count(*) FROM bitmap_recheck WHERE a = 0.4 OR c > 5;
+
+EXPLAIN (COSTS OFF) /*+ BitmapScan(bitmap_recheck) */
+SELECT count(*) FROM bitmap_recheck WHERE a = 0.4 OR c > 5;
+SELECT count(*) FROM bitmap_recheck WHERE a = 0.4 OR c > 5;
+
+DROP TABLE bitmap_recheck;
+
 RESET yb_fetch_size_limit;
 RESET yb_fetch_row_limit;
 RESET yb_enable_base_scans_cost_model;
