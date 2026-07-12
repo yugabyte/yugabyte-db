@@ -622,6 +622,15 @@ size_t Schema::memory_footprint_including_this() const {
   return malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 
+bool Schema::HasBsonKeyColumn() const {
+  for (size_t i = 0; i < num_key_columns_; ++i) {
+    if (cols_[i].type()->main() == DataType::BSON) {
+      return true;
+    }
+  }
+  return false;
+}
+
 Result<ssize_t> Schema::ColumnIndexByName(GStringPiece col_name) const {
   auto index = find_column(col_name);
   if (index == kColumnNotFound) {
