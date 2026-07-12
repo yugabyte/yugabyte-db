@@ -132,6 +132,12 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     flags.put("ysql_yb_ddl_transaction_block_enabled", "true");
     // Exaggerate the clock skew to make read restarts more likely.
     flags.put("max_clock_skew_usec", "2000000");
+    // Scan tablets sequentially (see the NUM_TABLETS comment). With parallel reads a tablet that
+    // requires a query restart tends to respond first, before any rows are emitted, so the restart
+    // is resolved transparently and never surfaces as an error. Tests that expect restart errors
+    // then flakily observe zero of them. Reading one tablet at a time makes surfacing depend only
+    // on the first scanned tablet not being a recently-written one, which is far more reliable.
+    flags.put("ysql_select_parallelism", "1");
     return flags;
   }
 
