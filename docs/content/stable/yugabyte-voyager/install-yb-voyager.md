@@ -22,7 +22,7 @@ You can install YugabyteDB Voyager on the following:
 - RHEL 8, 9
 - CentOS 8
 - Ubuntu 18.04, 20.04, 22.04
-- macOS (for deprecated MySQL/Oracle source databases on macOS , [install yb-voyager](#install-yb-voyager) using the Docker option. MySQL and Oracle offline migration will no longer be supported after October 13, 2026.)
+- macOS (for deprecated MySQL/Oracle source databases on macOS, [install yb-voyager](#install-yb-voyager) using the Docker option. MySQL and Oracle offline migration will no longer be supported after October 13, 2026.)
 
 ### Hardware requirements
 
