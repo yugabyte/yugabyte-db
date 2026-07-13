@@ -166,7 +166,11 @@ public class TestBackendSyncReset extends BaseYsqlConnMgr {
           backendPid[0], secondPid);
     }
 
-    Thread.sleep(2 * STATS_UPDATE_INTERVAL);
+    // STATS_UPDATE_INTERVAL is expressed in seconds, and the /connections webserver stats are only
+    // refreshed on the connection manager's cron tick (once per ysql_conn_mgr_stats_interval). Wait
+    // for at least a couple of such ticks so the settled idle-backend count is observed rather than
+    // a stale snapshot taken while conn2 was still active.
+    Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1000);
 
     assertEquals("No extra txn backends should have been made for a new connection", 1,
         getIdleBackends(USER, "yugabyte"));
