@@ -44,12 +44,15 @@
 #include "yb/common/common_util.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/transaction_priority.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/object_lock_shared_state_manager.h"
+
+#include "yb/dockv/doc_vector_id.h"
 
 #include "yb/master/master_ddl.pb.h"
 
@@ -1940,12 +1943,25 @@ class PgClientSession::Impl {
     if (req.increment_schema_version()) {
       alterer->set_increment_schema_version();
     }
+    std::optional<dockv::VectorValueFormat> vector_value_format;
     for (const auto& add_column : req.add_columns()) {
       const auto yb_type = QLType::Create(ToLW(
           static_cast<PersistentDataType>(add_column.attr_ybtype())));
-      alterer->AddColumn(add_column.attr_name())
-            ->Type(yb_type)->Order(add_column.attr_num())->PgTypeOid(add_column.attr_pgoid())
-            ->SetMissing(add_column.attr_missing_val());
+      auto column_spec = alterer->AddColumn(add_column.attr_name())
+            ->Type(yb_type)->Order(add_column.attr_num())->PgTypeOid(add_column.attr_pgoid());
+      auto missing_val = add_column.attr_missing_val();
+      if (yb_type->main() == DataType::VECTOR && !IsNull(missing_val)) {
+        if (!vector_value_format) {
+          client::YBTablePtr yb_table;
+          RETURN_NOT_OK(GetTable(table_id, table_cache(), &yb_table));
+          vector_value_format = yb_table->schema().table_properties().owns_vector_reverse_mapping()
+              ? dockv::VectorValueFormat::kTyped
+              : dockv::VectorValueFormat::kLegacy;
+        }
+        missing_val =
+            VERIFY_RESULT(dockv::EncodeVectorSchemaMissingValue(missing_val, *vector_value_format));
+      }
+      column_spec->SetMissing(missing_val);
       // Do not set 'nullable' attribute as PgCreateTable::AddColumn() does not do it.
     }
     for (const auto& rename_column : req.rename_columns()) {
