@@ -61,10 +61,6 @@ public class RestartUniverseTest extends UpgradeTaskTest {
 
   @Test
   public void testRollingRestartNoWaitAfterLeaderBlacklistByDefault() {
-    // Comprehensive prechecks require node command execution which is not available in unit tests.
-    factory
-        .forUniverse(defaultUniverse)
-        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
     // The optional wait-after-leader-blacklist conf defaults to 0, so no WaitForDuration subtask
     // should be inserted between blacklisting leaders and stopping the tserver.
     RestartTaskParams taskParams = new RestartTaskParams();
@@ -80,10 +76,6 @@ public class RestartUniverseTest extends UpgradeTaskTest {
 
   @Test
   public void testRollingRestartWaitsAfterLeaderBlacklistWhenConfigured() {
-    // Comprehensive prechecks require node command execution which is not available in unit tests.
-    factory
-        .forUniverse(defaultUniverse)
-        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
     // Make the wait-after-leader-blacklist runtime config non-zero.
     factory
         .forUniverse(defaultUniverse)
