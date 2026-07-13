@@ -398,7 +398,9 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
       .frontiers = &frontiers,
       .chunk_size = chunk_size_,
     };
+    auto num_entries = entries().size();
     RETURN_NOT_OK_PREPEND(index.Insert(entries(), options), "Insert entries");
+    index.metrics().backfill_inserted_entries->IncrementBy(num_entries);
 
     if (!next_ybctid.empty()) {
       Reset();
