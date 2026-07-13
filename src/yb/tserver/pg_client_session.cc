@@ -55,6 +55,7 @@
 
 #include "yb/rpc/lightweight_message.h"
 #include "yb/rpc/rpc_context.h"
+#include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/serialization.h"
 #include "yb/rpc/sidecars.h"
 #include "yb/rpc/scheduler.h"
@@ -1171,7 +1172,7 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   }
 
   const AshMetadataPB& ash_metadata() const { return ash_metadata_; }
-  const TraceContextPB& trace_context() const { return trace_context_; }
+  const rpc::TraceContextPB& trace_context() const { return trace_context_; }
 
  private:
   void SendResponse() {
@@ -1238,7 +1239,7 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   std::remove_const_t<typename T::ReqPB> req_;
   typename T::RespPB resp_;
   AshMetadataPB ash_metadata_;
-  TraceContextPB trace_context_;
+  rpc::TraceContextPB trace_context_;
   rpc::Sidecars sidecars_;
   std::weak_ptr<PgClientSession> session_;
   SharedExchange& exchange_;

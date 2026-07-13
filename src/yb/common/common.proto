@@ -735,21 +735,6 @@ enum ReplicationSlotOrderingMode {
   ReplicationSlotOrderingMode_TRANSACTION = 2;
 }
 
-// Distributed-trace context propagated across a process boundary (W3C trace-context;
-// https://www.w3.org/TR/trace-context/). Defined centrally here so a single message and wire
-// format serves both transports: it is carried in the RPC RequestHeader alongside AshMetadataPB,
-// and as an independent length-prefixed slot in the shared-memory PG<->tserver exchange.
-message TraceContextPB {
-  // 8 bytes (high 64 bits of trace_id)
-  optional fixed64 trace_id_hi = 1;
-  // 8 bytes (low 64 bits of trace_id)
-  optional fixed64 trace_id_lo = 2;
-  // 8 bytes
-  optional fixed64 span_id = 3;
-  // Low byte: flags, High byte: version (1-2 bytes on wire)
-  optional uint32 version_and_flags = 4;
-}
-
 message AshMetadataPB {
   // The root level request id. i.e. the request id
   // corresponding to the call from the application to YSQL-Pg/YCQL
