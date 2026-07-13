@@ -465,7 +465,8 @@ Status OutboundCall::SetRequestParam(
   }
 
   if (trace_context_size > 0) {
-    // Write the TraceContextPB submessage. Field numbers match yb.TraceContextPB in common.proto.
+    // Write the TraceContextPB submessage. Field numbers match yb.rpc.TraceContextPB in
+    // rpc_header.proto.
     // The 16-byte trace id splits into two big-endian 64-bit halves; the span id is one big-endian
     // 64-bit.
     dst = Output::WriteTagToArray(

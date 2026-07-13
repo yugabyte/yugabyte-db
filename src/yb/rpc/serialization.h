@@ -61,9 +61,10 @@ class faststring;
 class RefCntBuffer;
 class Slice;
 class Status;
-class TraceContextPB;
 
 namespace rpc {
+
+class TraceContextPB;
 
 Result<std::pair<RefCntBuffer, size_t>> SerializeResponse(
     size_t body_size, size_t additional_size, const google::protobuf::Message& header,

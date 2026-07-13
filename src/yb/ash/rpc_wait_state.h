@@ -18,6 +18,7 @@
 
 #include "yb/common/common.pb.h"
 
+#include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/wait_state_if.h"
 
 namespace yb::ash {
@@ -72,7 +73,7 @@ class TraceContextSerializer {
   uint8_t* SerializeToArray(uint8_t* out) const;
 
  private:
-  TraceContextPB trace_context_;
+  rpc::TraceContextPB trace_context_;
   size_t serialized_size_ = 0;
 };
 
