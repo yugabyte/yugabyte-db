@@ -28,6 +28,7 @@ import { getNodeCount } from '../../create-universe/CreateUniverseUtils';
 import { PlacementActionsMenu } from '../edit-placement/PlacementActionsMenu';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import { ClusterPlacementSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { ResilienceFormMode } from '../../create-universe/steps/resilence-regions/dtos';
 
 const EditPlacement = lazy(() =>
   import('../edit-placement/EditPlacement').then((module) => ({
@@ -170,7 +171,10 @@ export const PlacementTab = () => {
         uniUUID: universeData!.info!.universe_uuid!,
         data: {
           expected_universe_version: -1,
-          clusters: [clusterPayload]
+          clusters: [clusterPayload],
+          universe_settings: {
+            expert_mode : skipResilienceAndRegionsStep ? universeData?.spec?.universe_settings?.expert_mode : context.resilience.resilienceFormMode === ResilienceFormMode.EXPERT_MODE
+          }
         }
       },
       {

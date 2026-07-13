@@ -1,7 +1,7 @@
 import { omit, isEmpty } from 'lodash';
 import { TFunction } from 'i18next';
 import { createUniverseFormProps } from '../CreateUniverseContext';
-import { ResilienceType } from '../steps/resilence-regions/dtos';
+import { ResilienceFormMode, ResilienceType } from '../steps/resilence-regions/dtos';
 import { OtherAdvancedProps } from '../steps/advanced-settings/dtos';
 import {
   CommunicationPortsSpec,
@@ -218,6 +218,9 @@ export const mapCreateUniversePayload = (
         communication_ports: mapCommunicationPorts(otherAdvancedSettings),
         enable_ipv6: securitySettings.enableIPV6 ?? false
       },
+      universe_settings: {
+        expert_mode: resilienceAndRegionsSettings.resilienceFormMode === ResilienceFormMode.EXPERT_MODE
+      },
       clusters: [
         {
           replication_factor: effectiveRf,
@@ -303,7 +306,7 @@ export const mapCreateUniversePayload = (
           }
         }
       ]
-    }
+    },
   };
 
   return payload;
@@ -347,7 +350,7 @@ export const mapAPIPortsKeys: any = () => {
 };
 
 export const mapAPIPortValues = (communicationPorts: Partial<CommunicationPortsSpec>) => {
-  let portsObj: any = {};
+  const portsObj: any = {};
   Object.entries(communicationPorts).forEach(([key, val]) => {
     if (mapPortsKeys()[key]) {
       portsObj[`${mapPortsKeys()[key]}`] = val;

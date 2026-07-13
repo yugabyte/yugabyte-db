@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { mui } from '@yugabyte-ui-library/core';
 import { useTranslation } from 'react-i18next';
 import {
@@ -16,6 +16,7 @@ import { ResilienceAndRegionsProps } from '../../create-universe/steps/resilence
 import {
   getNodesAvailabilityDefaultsForEditPlacement,
   getResilienceAndRegionsProps,
+  isCurrentConfigSupportedByGuidedMode,
   useGetEditPlacementContext
 } from './EditPlacementUtils';
 import { EditPlacementSteps } from './EditPlacementContext';
@@ -36,6 +37,14 @@ export const EditPlacementResilience = () => {
   const resilienceRef = useRef<StepsRef>(null);
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.steps' });
   const [{ resilience }, addEditPlacementMethods, { hideModal }] = useGetEditPlacementContext();
+
+  const enableGuidedMode = useMemo(() => {
+    const nodesAndAvailability = getNodesAvailabilityDefaultsForEditPlacement(
+      universeData!,
+      selectedPartitionUUID
+    );
+    return isCurrentConfigSupportedByGuidedMode(resilienceProps, nodesAndAvailability);
+  }, [resilienceProps, selectedPartitionUUID]);
 
   return (
     <CreateUniverseContext.Provider
@@ -80,6 +89,7 @@ export const EditPlacementResilience = () => {
           isGeoPartition={isGeoPartitionUniverse}
           hideHelpText
           ref={resilienceRef}
+          disableGuidedMode={!enableGuidedMode}
         />
         <UniverseActionButtons
           cancelButton={{
