@@ -39,6 +39,7 @@ import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
@@ -60,8 +61,6 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.UpgradeDetails;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
-import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
-import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.provider.region.WellKnownIssuerKind;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Service;
@@ -270,9 +269,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public boolean usePreviousCertChecksum = false;
     public boolean createNamespacedService = false;
     public Set<String> deleteServiceNames;
-    // Opentelemetry collector related params
-    public AuditLogConfig auditLogConfig = null;
-    public QueryLogConfig queryLogConfig = null;
+    // Telemetry export state to render into the otel collector overrides, populated via
+    // KubernetesTaskBase.getDesiredTelemetryConfig: the persisted export_telemetry_config row for
+    // regular helm flows, or the desired state while the export-telemetry configure task runs.
+    // When null (no persisted row yet), helm overrides fall back to the userIntent copies.
+    public TelemetryConfig telemetryConfig = null;
     // Only set false for create universe case initially
     public boolean masterJoinExistingCluster = true;
 
@@ -1452,37 +1453,60 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           tserverGFlags, TIMESTAMP_HISTORY_RETENTION_GFLAG_MAP);
     }
 
-    // Add overrides for OpenTelemetry
-    if (primaryClusterIntent.auditLogConfig != null
-        || primaryClusterIntent.queryLogConfig != null) {
-      AuditLogConfig auditLogConfig = primaryClusterIntent.auditLogConfig;
-      QueryLogConfig queryLogConfig = primaryClusterIntent.queryLogConfig;
-      String combinedPGConfCSV =
-          GFlagsUtil.mergeCSVs(
-              tserverGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, ""),
-              GFlagsUtil.getYsqlPgConfCsv(auditLogConfig),
-              true);
-      combinedPGConfCSV =
-          GFlagsUtil.mergeCSVs(
-              combinedPGConfCSV, GFlagsUtil.getYsqlPgConfCsv(queryLogConfig), true);
-      tserverGFlags.put(GFlagsUtil.YSQL_PG_CONF_CSV, combinedPGConfCSV);
+    // Add overrides for OpenTelemetry. The telemetry state arrives in the subtask params
+    // (KubernetesTaskBase.getDesiredTelemetryConfig): the persisted export_telemetry_config row
+    // for regular helm flows, or the full desired state while the export-telemetry configure task
+    // runs. Null means no telemetry has been configured for the universe yet.
+    TelemetryConfig telemetryConfig =
+        taskParams().telemetryConfig != null ? taskParams().telemetryConfig : new TelemetryConfig();
+    if (telemetryConfig.hasAnyConfig()) {
+      // Only audit/query logging contribute PostgreSQL settings; don't touch the gflag for
+      // metrics-only configs.
+      if (telemetryConfig.requiresYsqlPgConfCsv()) {
+        String combinedPGConfCSV =
+            GFlagsUtil.mergeCSVs(
+                tserverGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, ""),
+                GFlagsUtil.getYsqlPgConfCsv(telemetryConfig.getAuditLogConfig()),
+                true);
+        combinedPGConfCSV =
+            GFlagsUtil.mergeCSVs(
+                combinedPGConfCSV,
+                GFlagsUtil.getYsqlPgConfCsv(telemetryConfig.getQueryLogConfig()),
+                true);
+        tserverGFlags.put(GFlagsUtil.YSQL_PG_CONF_CSV, combinedPGConfCSV);
+      }
       String logLinePrefix =
           GFlagsUtil.getLogLinePrefix(
-              primaryClusterIntent.queryLogConfig, tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV));
+              telemetryConfig.getQueryLogConfig(), tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV));
       Map<String, Object> otelOverrides;
       if (OtelCollectorUtil.supportsOtelConfigPassthrough(imageTag)) {
         // Newer charts accept the full collector config rendered by YBA via spec.config.
+        OtelCollectorConfigGenerator.K8sPodPlacement podPlacement =
+            new OtelCollectorConfigGenerator.K8sPodPlacement(
+                placementCloud,
+                placementRegion,
+                placementZone,
+                taskParams().isReadOnlyCluster
+                    ? UniverseDefinitionTaskParams.ClusterType.ASYNC
+                    : UniverseDefinitionTaskParams.ClusterType.PRIMARY);
         OtelCollectorConfigGenerator.K8sOtelConfig otelConfig =
             otelCollectorConfigGenerator.getOtelColConfigK8s(
-                provider, auditLogConfig, queryLogConfig, logLinePrefix);
+                provider, universeFromDB, telemetryConfig, podPlacement, logLinePrefix);
         otelOverrides = new HashMap<>();
         otelOverrides.put("enabled", otelConfig.isEnabled());
         otelOverrides.put("config", otelConfig.getConfig());
         otelOverrides.put("secretEnv", otelConfig.getSecretEnv());
+        // Metrics are scraped pod-locally, so the chart must also inject the collector sidecar
+        // into yb-master pods when metrics export is active.
+        otelOverrides.put(
+            "runOnMaster",
+            OtelCollectorUtil.isMetricsExportEnabledInUniverse(
+                telemetryConfig.getMetricsExportConfig()));
       } else {
         // Older charts assemble the config themselves from structured Helm values.
         otelOverrides =
-            otelCollectorConfigGenerator.getOtelHelmValues(auditLogConfig, logLinePrefix);
+            otelCollectorConfigGenerator.getOtelHelmValues(
+                telemetryConfig.getAuditLogConfig(), logLinePrefix);
       }
       overrides.put("otelCollector", otelOverrides);
     }

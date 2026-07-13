@@ -174,6 +174,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   private KubernetesCommandExecutor createExecutor(
       KubernetesCommandExecutor.CommandType commandType, boolean setNamespace) {
+    return createExecutor(commandType, setNamespace, null /* telemetryConfig */);
+  }
+
+  private KubernetesCommandExecutor createExecutor(
+      KubernetesCommandExecutor.CommandType commandType,
+      boolean setNamespace,
+      com.yugabyte.yw.common.export.TelemetryConfig telemetryConfig) {
     KubernetesCommandExecutor kubernetesCommandExecutor =
         AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
@@ -186,6 +193,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.universeConfig = defaultUniverse.getConfig();
     params.universeDetails = defaultUniverse.getUniverseDetails();
+    params.telemetryConfig = telemetryConfig;
     if (setNamespace) {
       params.namespace = namespace;
     }
@@ -1824,7 +1832,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         new com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig();
     auditExporter.setExporterUuid(tp.getUuid());
     auditLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(auditExporter));
-    defaultUserIntent.auditLogConfig = auditLogConfig;
 
     com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig queryLogConfig =
         new com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig();
@@ -1836,15 +1843,22 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         new com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig();
     queryExporter.setExporterUuid(tp.getUuid());
     queryLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(queryExporter));
-    defaultUserIntent.queryLogConfig = queryLogConfig;
 
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
 
+    // The telemetry state reaches the executor explicitly via its params
+    // (KubernetesTaskBase.getDesiredTelemetryConfig), not via the userIntent copies.
     KubernetesCommandExecutor executor =
-        createExecutor(KubernetesCommandExecutor.CommandType.HELM_INSTALL, true);
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL,
+            true,
+            com.yugabyte.yw.common.export.TelemetryConfig.builder()
+                .auditLogConfig(auditLogConfig)
+                .queryLogConfig(queryLogConfig)
+                .build());
     executor.run();
 
     ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
@@ -1871,5 +1885,77 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     assertTrue(
         "query receiver 'filelog/query_logs_ysql' must be present, yaml=" + overridesYaml,
         overridesYaml.contains("filelog/query_logs_ysql"));
+  }
+
+  @Test
+  public void testHelmInstallRendersOtelCollectorForMetricsExport() throws IOException {
+    // Persist a TelemetryProvider so the Datadog exporter UUID referenced by the config resolves
+    // through TelemetryProviderService.getOrBadRequest at render time.
+    com.yugabyte.yw.models.helpers.telemetry.DataDogConfig ddConfig =
+        new com.yugabyte.yw.models.helpers.telemetry.DataDogConfig();
+    ddConfig.setType(com.yugabyte.yw.models.helpers.telemetry.ProviderType.DATA_DOG);
+    ddConfig.setSite("datadoghq.com");
+    ddConfig.setApiKey("apiKey");
+    com.yugabyte.yw.models.TelemetryProvider tp = new com.yugabyte.yw.models.TelemetryProvider();
+    tp.setUuid(UUID.randomUUID());
+    tp.setCustomerUUID(defaultCustomer.getUuid());
+    tp.setName("dd-tp");
+    tp.setConfig(ddConfig);
+    tp.setTags(ImmutableMap.of());
+    tp.save();
+
+    // ybSoftwareVersion must clear the config-passthrough threshold: metrics export is only
+    // expressible in the full-collector-config chart contract.
+    defaultUserIntent.ybSoftwareVersion = "2026.1.2.0-b1";
+
+    com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig metricsExportConfig =
+        new com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig();
+    com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig metricsExporter =
+        new com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig();
+    metricsExporter.setExporterUuid(tp.getUuid());
+    metricsExportConfig.setUniverseMetricsExporterConfig(ImmutableList.of(metricsExporter));
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+
+    // The desired config reaches the executor explicitly via its params (the export-telemetry
+    // configure task's channel), not via the userIntent copies.
+    KubernetesCommandExecutor executor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL,
+            true,
+            com.yugabyte.yw.common.export.TelemetryConfig.builder()
+                .metricsExportConfig(metricsExportConfig)
+                .build());
+    executor.run();
+
+    ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(
+            any(UUID.class),
+            any(String.class),
+            any(Map.class),
+            any(UUID.class),
+            any(String.class),
+            any(String.class),
+            overrideFile.capture());
+
+    String overridesYaml =
+        FileUtils.readFileToString(new File(overrideFile.getValue()), Charset.defaultCharset());
+    assertTrue(
+        "otelCollector block must be rendered, yaml=" + overridesYaml,
+        overridesYaml.contains("otelCollector"));
+    assertTrue(
+        "pod-local prometheus receiver must be present, yaml=" + overridesYaml,
+        overridesYaml.contains("prometheus/yugabyte"));
+    assertTrue(
+        "metrics pipeline must be present, yaml=" + overridesYaml,
+        overridesYaml.contains("metrics/metrics_" + tp.getUuid()));
+    // Metrics scraping is pod-local, so the chart must inject the sidecar into master pods too.
+    assertTrue(
+        "runOnMaster must be set for metrics export, yaml=" + overridesYaml,
+        overridesYaml.contains("runOnMaster: true"));
   }
 }

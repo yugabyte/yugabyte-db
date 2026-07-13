@@ -67,6 +67,14 @@ public class TelemetryConfig {
   }
 
   /**
+   * True when this config contributes PostgreSQL settings to the ysql_pg_conf_csv gflag: audit
+   * logging (pgaudit.*) and query logging (log_*) do, metrics and master-log export do not.
+   */
+  public boolean requiresYsqlPgConfCsv() {
+    return auditLogConfig != null || queryLogConfig != null;
+  }
+
+  /**
    * Export types whose section differs between {@code desired} and {@code current} (either may be
    * null). Derives from {@link #section}, so adding an export type needs no change here.
    */

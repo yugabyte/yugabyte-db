@@ -918,7 +918,15 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
             500);
 
     OtelCollectorConfigGenerator.K8sOtelConfig result =
-        generator.getOtelColConfigK8s(provider, auditLogConfig, queryLogConfig, "%m [%p] ");
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder()
+                .auditLogConfig(auditLogConfig)
+                .queryLogConfig(queryLogConfig)
+                .build(),
+            null,
+            "%m [%p] ");
 
     assertTrue("config should be enabled", result.isEnabled());
     String config = result.getConfig();
@@ -956,16 +964,93 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     assertThat(config, containsString("create_directory: true"));
     // Clean YAML: no SnakeYAML Java class tags leaking into the collector config.
     assertThat(config, not(containsString("!!com.yugabyte")));
-    // AWS credentials surfaced as secretEnv for the chart to wire into the sidecar env.
-    assertFalse("secretEnv should carry AWS creds", result.getSecretEnv().isEmpty());
+    // AWS credentials surfaced as secretEnv for the chart to wire into the sidecar env. The same
+    // provider backs both the audit and query pipelines, so the entries must be deduplicated:
+    // exactly one AWS_ACCESS_KEY_ID and one AWS_SECRET_ACCESS_KEY.
+    assertEquals(
+        "secretEnv must carry each env var exactly once, got: " + result.getSecretEnv(),
+        2,
+        result.getSecretEnv().size());
   }
 
   @Test
   public void getOtelColConfigK8sDisabledWhenNoActiveExport() {
     OtelCollectorConfigGenerator.K8sOtelConfig result =
-        generator.getOtelColConfigK8s(provider, null, null, "%m [%p] ");
+        generator.getOtelColConfigK8s(provider, universe, null, null, "%m [%p] ");
     assertFalse("no active export -> disabled", result.isEnabled());
     assertTrue("no secretEnv when disabled", result.getSecretEnv().isEmpty());
+  }
+
+  @Test
+  public void getOtelColConfigK8sMetricsPlusDatadog() {
+    DataDogConfig dataDogConfig = new DataDogConfig();
+    dataDogConfig.setType(ProviderType.DATA_DOG);
+    dataDogConfig.setSite("datadoghq.com");
+    dataDogConfig.setApiKey("apiKey");
+
+    TelemetryProvider ddTp =
+        createTelemetryProvider(
+            new UUID(0, 0), "Datadog", ImmutableMap.of("provTag", "provVal"), dataDogConfig);
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            ddTp.getUuid(),
+            ImmutableMap.of("metricsTag", "metricsVal"),
+            30,
+            20,
+            MetricCollectionLevel.NORMAL);
+    // The K8s-servable target set, as guaranteed by ExportTelemetryConfigParams.verifyParams
+    // (node-exporter/node-agent targets are rejected at submission for K8s universes).
+    metricsExportConfig.setScrapeConfigTargets(OtelCollectorUtil.K8S_SUPPORTED_SCRAPE_TARGETS);
+
+    OtelCollectorConfigGenerator.K8sPodPlacement podPlacement =
+        new OtelCollectorConfigGenerator.K8sPodPlacement(
+            "kubernetes",
+            "us-west1",
+            "us-west1-a",
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY);
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder().metricsExportConfig(metricsExportConfig).build(),
+            podPlacement,
+            "%m [%p] ");
+
+    assertTrue("config should be enabled", result.isEnabled());
+    String config = result.getConfig();
+
+    // Shared pod-local prometheus receiver with all yugabyte targets plus the collector itself.
+    assertThat(config, containsString("prometheus/yugabyte"));
+    assertThat(config, containsString("127.0.0.1:7000"));
+    assertThat(config, containsString("127.0.0.1:9000"));
+    assertThat(config, containsString("127.0.0.1:13000"));
+    assertThat(config, containsString("127.0.0.1:12000"));
+    assertThat(config, containsString("127.0.0.1:8889"));
+    // No node-exporter / node-agent scrape jobs in K8s pods.
+    assertThat(config, not(containsString("node-exporter")));
+    assertThat(config, not(containsString("node-agent")));
+    // Metrics pipeline + processors per exporter.
+    assertThat(config, containsString("metrics/metrics_" + ddTp.getUuid()));
+    assertThat(config, containsString("attributes/metrics_" + ddTp.getUuid()));
+    assertThat(config, containsString("memory_limiter/metrics_" + ddTp.getUuid()));
+    assertThat(config, containsString("batch/metrics_" + ddTp.getUuid()));
+    assertThat(config, containsString("datadog/metrics_" + ddTp.getUuid()));
+    // Pod identity + placement + purpose attributes.
+    assertThat(config, containsString("${POD_NAME}"));
+    assertThat(config, containsString(universe.getUniverseUUID().toString()));
+    assertThat(config, containsString("us-west1-a"));
+    assertThat(config, containsString("DATA_DOG_METRICS_EXPORT"));
+    // Provider tags and per-exporter additionalTags merged into attributes.
+    assertThat(config, containsString("provTag"));
+    assertThat(config, containsString("metricsTag"));
+    // Log-only components must not leak into a metrics-only config: the body transform and the
+    // on-disk queue extension are only referenced by log pipelines. The health check stays (the
+    // operator uses it as the sidecar readiness probe).
+    assertThat(config, not(containsString("transform/replace")));
+    assertThat(config, not(containsString("file_storage/queue")));
+    assertThat(config, containsString("health_check"));
+    // Clean YAML: no SnakeYAML Java class tags leaking into the collector config.
+    assertThat(config, not(containsString("!!com.yugabyte")));
   }
 
   @Test

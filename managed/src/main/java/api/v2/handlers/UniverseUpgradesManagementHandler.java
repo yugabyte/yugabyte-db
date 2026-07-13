@@ -415,13 +415,6 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
       throw new PlatformServiceException(BAD_REQUEST, errorMessage);
     }
 
-    // Block k8s universes from configuring metrics export for now.
-    if (Util.isKubernetesBasedUniverse(universe)) {
-      String errorMessage = "Metrics export is not supported for kubernetes based universes.";
-      log.error(errorMessage);
-      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
-    }
-
     if (OtelCollectorUtil.isMetricsExportEnabledInUniverse(v1Params.getMetricsExportConfig())) {
       for (UniverseMetricsExporterConfig exporterConfig :
           v1Params.getMetricsExportConfig().getUniverseMetricsExporterConfig()) {

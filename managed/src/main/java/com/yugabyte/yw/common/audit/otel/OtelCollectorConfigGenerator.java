@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TelemetryProvider;
@@ -55,6 +56,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -62,6 +64,7 @@ import org.yaml.snakeyaml.Yaml;
 import play.Environment;
 import play.libs.Json;
 
+@Slf4j
 @Singleton
 public class OtelCollectorConfigGenerator {
   // Service names
@@ -105,6 +108,9 @@ public class OtelCollectorConfigGenerator {
   // K8s pod paths (mounted by the chart), in place of the VM provider.getYbHome() paths.
   private static final String K8S_TSERVER_LOG_DIR = "/mnt/disk0/yb-data/tserver/logs";
   private static final String K8S_OTEL_DIR = "/mnt/disk0/otel-collector";
+  // The otel sidecar shares the pod network namespace, so all scrape targets are pod-local.
+  private static final String K8S_POD_LOCAL_ADDRESS = "127.0.0.1";
+  private static final int K8S_OTEL_METRICS_PORT = 8889;
 
   // Processor prefixes
   private static final String PROCESSOR_PREFIX_ATTRIBUTES = "attributes/";
@@ -493,71 +499,17 @@ public class OtelCollectorConfigGenerator {
           processorNames.add(attributesProcessorName);
         }
 
-        // Add MemoryLimiterProcessor for metrics.
-        String memoryLimiterProcessorName =
-            PROCESSOR_PREFIX_MEMORY_LIMITER + exportTypeAndUUIDString;
-        OtelCollectorConfigFormat.MemoryLimiterProcessor memoryLimiterProcessor =
-            new OtelCollectorConfigFormat.MemoryLimiterProcessor();
-        memoryLimiterProcessor.setCheck_interval(
-            exporterConfig.getMemoryLimitCheckIntervalSeconds().toString() + "s");
-        memoryLimiterProcessor.setLimit_mib(exporterConfig.getMemoryLimitMib());
-        collectorConfigFormat
-            .getProcessors()
-            .put(memoryLimiterProcessorName, memoryLimiterProcessor);
-        // Add MemoryLimiterProcessor to the pipeline
-        processorNames.add(memoryLimiterProcessorName);
-
-        if (!StringUtils.isBlank(exporterConfig.getMetricsPrefix())) {
-          String metricTransformProcessorName =
-              PROCESSOR_PREFIX_METRIC_TRANSFORM + exportTypeAndUUIDString;
-          OtelCollectorConfigFormat.MetricTransformProcessor metricTransformProcessor =
-              new OtelCollectorConfigFormat.MetricTransformProcessor();
-
-          // Create the transform rule to add custom prefix to all metrics
-          OtelCollectorConfigFormat.MetricTransformRule transformRule =
-              new OtelCollectorConfigFormat.MetricTransformRule();
-          transformRule.setInclude("^(.*)$");
-          transformRule.setMatch_type("regexp");
-          transformRule.setAction("update");
-          transformRule.setExperimental_match_labels(ImmutableMap.of("export_type", ".+"));
-          transformRule.setNew_name(exporterConfig.getMetricsPrefix() + "$${1}");
-
-          metricTransformProcessor.setTransforms(ImmutableList.of(transformRule));
-          collectorConfigFormat
-              .getProcessors()
-              .put(metricTransformProcessorName, metricTransformProcessor);
-          // Add MetricTransformProcessor to the pipeline
-          processorNames.add(metricTransformProcessorName);
-        }
-
-        // Add CumulativeToDeltaProcessor for Dynatrace metrics only
-        if (telemetryProvider.getConfig().getType() == ProviderType.DYNATRACE) {
-          String cumulativetodeltaProcessorName =
-              PROCESSOR_PREFIX_CUMULATIVE_TO_DELTA + exportTypeAndUUIDString;
-          OtelCollectorConfigFormat.CumulativeToDeltaProcessor cumulativetodeltaProcessor =
-              new OtelCollectorConfigFormat.CumulativeToDeltaProcessor();
-          collectorConfigFormat
-              .getProcessors()
-              .put(cumulativetodeltaProcessorName, cumulativetodeltaProcessor);
-          // Add CumulativeToDeltaProcessor to the pipeline
-          processorNames.add(cumulativetodeltaProcessorName);
-        }
-
-        // Add BatchProcessor at the end, after cumulativetodelta, so processors know metric type
-        String batchProcessorName = PROCESSOR_PREFIX_BATCH + exportTypeAndUUIDString;
-        OtelCollectorConfigFormat.BatchProcessor batchProcessor =
-            new OtelCollectorConfigFormat.BatchProcessor();
-        batchProcessor.setSend_batch_size(exporterConfig.getSendBatchSize());
-        batchProcessor.setSend_batch_max_size(exporterConfig.getSendBatchMaxSize());
-        batchProcessor.setTimeout(exporterConfig.getSendBatchTimeoutSeconds().toString() + "s");
-        collectorConfigFormat.getProcessors().put(batchProcessorName, batchProcessor);
-        processorNames.add(batchProcessorName);
+        // Add the common metrics processors and the exporter itself.
+        String exporterName =
+            addCommonMetricsProcessorsAndExporter(
+                collectorConfigFormat,
+                exporterConfig,
+                telemetryProvider,
+                exportTypeAndUUIDString,
+                processorNames);
 
         // Add all the processor names to the pipeline
         pipeline.setProcessors(processorNames);
-
-        // Add metrics exporter for each active exporter config
-        String exporterName = addMetricsExporter(collectorConfigFormat, exporterConfig);
         pipeline.setExporters(ImmutableList.of(exporterName));
 
         collectorConfigFormat
@@ -568,6 +520,80 @@ public class OtelCollectorConfigGenerator {
     }
   }
 
+  /**
+   * Adds the per-exporter metrics processors shared between the VM and K8s configs (memory limiter,
+   * optional metrics-prefix transform, cumulative-to-delta for Dynatrace, batch) plus the metrics
+   * exporter itself. Processor names are appended to processorNames in pipeline order; the
+   * registered exporter name is returned.
+   */
+  private String addCommonMetricsProcessorsAndExporter(
+      OtelCollectorConfigFormat collectorConfigFormat,
+      UniverseMetricsExporterConfig exporterConfig,
+      TelemetryProvider telemetryProvider,
+      String exportTypeAndUUIDString,
+      List<String> processorNames) {
+    // Add MemoryLimiterProcessor for metrics.
+    String memoryLimiterProcessorName = PROCESSOR_PREFIX_MEMORY_LIMITER + exportTypeAndUUIDString;
+    OtelCollectorConfigFormat.MemoryLimiterProcessor memoryLimiterProcessor =
+        new OtelCollectorConfigFormat.MemoryLimiterProcessor();
+    memoryLimiterProcessor.setCheck_interval(
+        exporterConfig.getMemoryLimitCheckIntervalSeconds().toString() + "s");
+    memoryLimiterProcessor.setLimit_mib(exporterConfig.getMemoryLimitMib());
+    collectorConfigFormat.getProcessors().put(memoryLimiterProcessorName, memoryLimiterProcessor);
+    // Add MemoryLimiterProcessor to the pipeline
+    processorNames.add(memoryLimiterProcessorName);
+
+    if (!StringUtils.isBlank(exporterConfig.getMetricsPrefix())) {
+      String metricTransformProcessorName =
+          PROCESSOR_PREFIX_METRIC_TRANSFORM + exportTypeAndUUIDString;
+      OtelCollectorConfigFormat.MetricTransformProcessor metricTransformProcessor =
+          new OtelCollectorConfigFormat.MetricTransformProcessor();
+
+      // Create the transform rule to add custom prefix to all metrics
+      OtelCollectorConfigFormat.MetricTransformRule transformRule =
+          new OtelCollectorConfigFormat.MetricTransformRule();
+      transformRule.setInclude("^(.*)$");
+      transformRule.setMatch_type("regexp");
+      transformRule.setAction("update");
+      transformRule.setExperimental_match_labels(ImmutableMap.of("export_type", ".+"));
+      transformRule.setNew_name(exporterConfig.getMetricsPrefix() + "$${1}");
+
+      metricTransformProcessor.setTransforms(ImmutableList.of(transformRule));
+      collectorConfigFormat
+          .getProcessors()
+          .put(metricTransformProcessorName, metricTransformProcessor);
+      // Add MetricTransformProcessor to the pipeline
+      processorNames.add(metricTransformProcessorName);
+    }
+
+    // Add CumulativeToDeltaProcessor for Dynatrace metrics only
+    if (telemetryProvider.getConfig().getType() == ProviderType.DYNATRACE) {
+      String cumulativetodeltaProcessorName =
+          PROCESSOR_PREFIX_CUMULATIVE_TO_DELTA + exportTypeAndUUIDString;
+      OtelCollectorConfigFormat.CumulativeToDeltaProcessor cumulativetodeltaProcessor =
+          new OtelCollectorConfigFormat.CumulativeToDeltaProcessor();
+      collectorConfigFormat
+          .getProcessors()
+          .put(cumulativetodeltaProcessorName, cumulativetodeltaProcessor);
+      // Add CumulativeToDeltaProcessor to the pipeline
+      processorNames.add(cumulativetodeltaProcessorName);
+    }
+
+    // Add BatchProcessor at the end, after cumulativetodelta, so processors know metric type
+    String batchProcessorName = PROCESSOR_PREFIX_BATCH + exportTypeAndUUIDString;
+    OtelCollectorConfigFormat.BatchProcessor batchProcessor =
+        new OtelCollectorConfigFormat.BatchProcessor();
+    batchProcessor.setSend_batch_size(exporterConfig.getSendBatchSize());
+    batchProcessor.setSend_batch_max_size(exporterConfig.getSendBatchMaxSize());
+    batchProcessor.setTimeout(exporterConfig.getSendBatchTimeoutSeconds().toString() + "s");
+    collectorConfigFormat.getProcessors().put(batchProcessorName, batchProcessor);
+    processorNames.add(batchProcessorName);
+
+    // Add metrics exporter for each active exporter config
+    return addMetricsExporter(collectorConfigFormat, exporterConfig);
+  }
+
+  // Deprecated in favour of @getOtelColConfigK8s
   public Map<String, Object> getOtelHelmValues(
       AuditLogConfig auditLogConfig, String logLinePrefix) {
     // only DBAL is supported via k8s
@@ -600,6 +626,7 @@ public class OtelCollectorConfigGenerator {
       // Exporters
       OtelCollectorConfigFormat collectorConfigFormat = new OtelCollectorConfigFormat();
       List<Object> secretEnv = new ArrayList<>();
+      Set<UUID> secretEnvProviderUuids = new HashSet<>();
       if (CollectionUtils.isNotEmpty(auditLogConfig.getUniverseLogsExporterConfig())) {
         auditLogConfig
             .getUniverseLogsExporterConfig()
@@ -613,7 +640,7 @@ public class OtelCollectorConfigGenerator {
                           collectorConfigFormat,
                           new ArrayList<>(),
                           ExportType.AUDIT_LOGS);
-                  appendSecretEnv(telemetryProvider, secretEnv);
+                  appendSecretEnv(telemetryProvider, secretEnv, secretEnvProviderUuids);
                 });
         otelConfig.put("exporters", collectorConfigFormat.getExporters());
         otelConfig.put("secretEnv", secretEnv);
@@ -622,42 +649,64 @@ public class OtelCollectorConfigGenerator {
     return otelConfig;
   }
 
+  @Data
+  @AllArgsConstructor
+  public static class K8sPodPlacement {
+    private String cloud;
+    private String region;
+    private String zone;
+    private UniverseDefinitionTaskParams.ClusterType clusterType;
+  }
+
   /**
    * Builds the complete OpenTelemetry collector config for a K8s universe and returns it as a YAML
    * string (for the chart's spec.config passthrough) plus the secret env entries the chart wires
-   * into the sidecar. Metrics export is not handled here (rejected upstream for K8s).
+   * into the sidecar.
    */
   public K8sOtelConfig getOtelColConfigK8s(
       Provider provider,
-      AuditLogConfig auditLogConfig,
-      QueryLogConfig queryLogConfig,
+      Universe universe,
+      TelemetryConfig telemetryConfig,
+      K8sPodPlacement podPlacement,
       String logLinePrefix) {
+    AuditLogConfig auditLogConfig =
+        telemetryConfig != null ? telemetryConfig.getAuditLogConfig() : null;
+    QueryLogConfig queryLogConfig =
+        telemetryConfig != null ? telemetryConfig.getQueryLogConfig() : null;
+    MetricsExportConfig metricsExportConfig =
+        telemetryConfig != null ? telemetryConfig.getMetricsExportConfig() : null;
     List<Object> secretEnv = new ArrayList<>();
+    Set<UUID> secretEnvProviderUuids = new HashSet<>();
     boolean auditActive = OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig);
     boolean queryActive = OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig);
-    if (!auditActive && !queryActive) {
+    boolean metricsActive = OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig);
+    if (!auditActive && !queryActive && !metricsActive) {
       return new K8sOtelConfig(false, "", secretEnv);
     }
 
     OtelCollectorConfigFormat cfg = new OtelCollectorConfigFormat();
+    boolean logsActive = auditActive || queryActive;
 
-    // Extensions: on-disk send queue + health check (the operator's sidecar readiness probe).
-    OtelCollectorConfigFormat.StorageExtension storage =
-        new OtelCollectorConfigFormat.StorageExtension();
-    storage.setDirectory(K8S_OTEL_DIR + "/queue");
-    // The /queue dir isn't pre-created in the pod, so let the collector create it (matches the
-    // create_directory: true the chart template used to hardcode). Without this the collector
-    // fails config validation and crash-loops.
-    storage.setCreate_directory(true);
-    OtelCollectorConfigFormat.StorageCompaction compaction =
-        new OtelCollectorConfigFormat.StorageCompaction();
-    compaction.setDirectory(K8S_OTEL_DIR + "/queue");
-    compaction.setOn_start(true);
-    compaction.setOn_rebound(true);
-    compaction.setRebound_needed_threshold_mib(100);
-    compaction.setRebound_trigger_threshold_mib(10);
-    storage.setCompaction(compaction);
-    cfg.getExtensions().put("file_storage/queue", storage);
+    // Extensions: on-disk send queue (only the log pipelines use it filelog receiver state and
+    // the audit exporters sending_queue) + health check (the operator's sidecar readiness probe).
+    if (logsActive) {
+      OtelCollectorConfigFormat.StorageExtension storage =
+          new OtelCollectorConfigFormat.StorageExtension();
+      storage.setDirectory(K8S_OTEL_DIR + "/queue");
+      // The /queue dir isn't pre-created in the pod, so let the collector create it (matches the
+      // create_directory: true the chart template used to hardcode). Without this the collector
+      // fails config validation and crash-loops.
+      storage.setCreate_directory(true);
+      OtelCollectorConfigFormat.StorageCompaction compaction =
+          new OtelCollectorConfigFormat.StorageCompaction();
+      compaction.setDirectory(K8S_OTEL_DIR + "/queue");
+      compaction.setOn_start(true);
+      compaction.setOn_rebound(true);
+      compaction.setRebound_needed_threshold_mib(100);
+      compaction.setRebound_trigger_threshold_mib(10);
+      storage.setCompaction(compaction);
+      cfg.getExtensions().put("file_storage/queue", storage);
+    }
     OtelCollectorConfigFormat.HealthCheckExtension health =
         new OtelCollectorConfigFormat.HealthCheckExtension();
     health.setEndpoint("0.0.0.0:13133");
@@ -665,7 +714,10 @@ public class OtelCollectorConfigGenerator {
     cfg.getExtensions().put("health_check", health);
 
     // Shared transform processor (strips the otho8Aut marker from the log body).
-    addCommonTransformProcessor(cfg);
+    // Metrics-only configs have no log pipeline referencing it, so skip it there.
+    if (logsActive) {
+      addCommonTransformProcessor(cfg);
+    }
     String transformName = PROCESSOR_PREFIX_TRANSFORM + "replace";
 
     // Receivers: reuse the VM builders for operators/multiline, override paths for K8s mounts.
@@ -703,7 +755,7 @@ public class OtelCollectorConfigGenerator {
     telemetry.setLogs(logsConfig);
     OtelCollectorConfigFormat.MetricsConfig metricsConfig =
         new OtelCollectorConfigFormat.MetricsConfig();
-    metricsConfig.setAddress("0.0.0.0:8889");
+    metricsConfig.setAddress("0.0.0.0:" + K8S_OTEL_METRICS_PORT);
     telemetry.setMetrics(metricsConfig);
     service.setTelemetry(telemetry);
 
@@ -718,7 +770,8 @@ public class OtelCollectorConfigGenerator {
             transformName,
             null,
             ec.getAdditionalTags(),
-            secretEnv);
+            secretEnv,
+            secretEnvProviderUuids);
       }
     }
     if (queryActive) {
@@ -732,8 +785,19 @@ public class OtelCollectorConfigGenerator {
             transformName,
             ec,
             ec.getAdditionalTags(),
-            secretEnv);
+            secretEnv,
+            secretEnvProviderUuids);
       }
+    }
+    if (metricsActive) {
+      addK8sMetricsPipelines(
+          cfg,
+          service,
+          universe,
+          metricsExportConfig,
+          podPlacement,
+          secretEnv,
+          secretEnvProviderUuids);
     }
     service.setExtensions(new ArrayList<>(cfg.getExtensions().keySet()));
     cfg.setService(service);
@@ -757,7 +821,8 @@ public class OtelCollectorConfigGenerator {
       String transformName,
       UniverseQueryLogsExporterConfig queryConfig,
       Map<String, String> additionalTags,
-      List<Object> secretEnv) {
+      List<Object> secretEnv,
+      Set<UUID> secretEnvProviderUuids) {
     TelemetryProvider tp = telemetryProviderService.getOrBadRequest(exporterUuid);
     List<OtelCollectorConfigFormat.AttributeAction> attrs = new ArrayList<>();
     String exporterName = appendExporterConfig(tp, cfg, attrs, exportType);
@@ -802,7 +867,146 @@ public class OtelCollectorConfigGenerator {
         .getPipelines()
         .put(PIPELINE_PREFIX_LOGS + exportTypeAndUUID(exporterUuid, exportType), pipeline);
 
-    appendSecretEnv(tp, secretEnv);
+    appendSecretEnv(tp, secretEnv, secretEnvProviderUuids);
+  }
+
+  private void addK8sMetricsPipelines(
+      OtelCollectorConfigFormat cfg,
+      OtelCollectorConfigFormat.Service service,
+      Universe universe,
+      MetricsExportConfig metricsExportConfig,
+      K8sPodPlacement podPlacement,
+      List<Object> secretEnv,
+      Set<UUID> secretEnvProviderUuids) {
+    Set<ScrapeConfigTargetType> scrapeTargets = metricsExportConfig.getScrapeConfigTargets();
+
+    // Shared prometheus receiver scraping pod-local endpoints.
+    OtelCollectorConfigFormat.PrometheusReceiver receiver =
+        new OtelCollectorConfigFormat.PrometheusReceiver();
+    OtelCollectorConfigFormat.PrometheusConfig prometheusConfig =
+        new OtelCollectorConfigFormat.PrometheusConfig();
+    OtelCollectorConfigFormat.GlobalConfig globalConfig =
+        new OtelCollectorConfigFormat.GlobalConfig();
+    globalConfig.setScrape_interval(metricsExportConfig.getScrapeIntervalSeconds() + "s");
+    globalConfig.setScrape_timeout(metricsExportConfig.getScrapeTimeoutSeconds() + "s");
+    prometheusConfig.setGlobal(globalConfig);
+
+    List<OtelCollectorConfigFormat.ScrapeConfig> scrapeConfigs = new ArrayList<>();
+    if (OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(scrapeTargets)) {
+      UniverseTaskParams.CommunicationPorts ports =
+          universe.getUniverseDetails().communicationPorts;
+      scrapeConfigs.add(
+          createYugabyteScrapeConfig(
+              K8S_POD_LOCAL_ADDRESS,
+              metricsExportConfig,
+              scrapeTargets,
+              ports.masterHttpPort,
+              ports.tserverHttpPort,
+              ports.ysqlServerHttpPort,
+              ports.yqlServerHttpPort));
+    }
+    if (scrapeTargets.contains(ScrapeConfigTargetType.OTEL_EXPORT)) {
+      scrapeConfigs.add(
+          createOtelCollectorScrapeConfig(K8S_POD_LOCAL_ADDRESS, universe, K8S_OTEL_METRICS_PORT));
+    }
+    prometheusConfig.setScrape_configs(scrapeConfigs);
+    receiver.setConfig(prometheusConfig);
+    cfg.getReceivers().put(RECEIVER_PREFIX_PROMETHEUS + JOB_NAME_YUGABYTE, receiver);
+
+    // Add a new pipeline for each active metrics exporter config, since they can have different
+    // additional tags.
+    for (UniverseMetricsExporterConfig exporterConfig :
+        metricsExportConfig.getUniverseMetricsExporterConfig()) {
+      TelemetryProvider telemetryProvider =
+          telemetryProviderService.getOrBadRequest(exporterConfig.getExporterUuid());
+      String exportTypeAndUUIDString =
+          exportTypeAndUUID(telemetryProvider.getUuid(), ExportType.METRICS);
+      List<String> processorNames = new ArrayList<>();
+
+      OtelCollectorConfigFormat.Pipeline pipeline = new OtelCollectorConfigFormat.Pipeline();
+      pipeline.setReceivers(ImmutableList.of(RECEIVER_PREFIX_PROMETHEUS + JOB_NAME_YUGABYTE));
+
+      // Add AttributesProcessor for metrics.
+      List<OtelCollectorConfigFormat.AttributeAction> attributeActions = new ArrayList<>();
+      addK8sCommonRequiredAttributes(
+          attributeActions,
+          universe,
+          podPlacement,
+          telemetryProvider,
+          PURPOSE_SUFFIX_METRICS_EXPORT);
+      addCommonAdditionalAttributes(
+          attributeActions, telemetryProvider, exporterConfig.getAdditionalTags());
+
+      String attributesProcessorName = PROCESSOR_PREFIX_ATTRIBUTES + exportTypeAndUUIDString;
+      OtelCollectorConfigFormat.AttributesProcessor attributesProcessor =
+          new OtelCollectorConfigFormat.AttributesProcessor();
+      attributesProcessor.setActions(attributeActions);
+      cfg.getProcessors().put(attributesProcessorName, attributesProcessor);
+      processorNames.add(attributesProcessorName);
+
+      // Add the common metrics processors and the exporter itself.
+      String exporterName =
+          addCommonMetricsProcessorsAndExporter(
+              cfg, exporterConfig, telemetryProvider, exportTypeAndUUIDString, processorNames);
+
+      pipeline.setProcessors(processorNames);
+      pipeline.setExporters(ImmutableList.of(exporterName));
+      service.getPipelines().put(PIPELINE_PREFIX_METRICS + exportTypeAndUUIDString, pipeline);
+
+      appendSecretEnv(telemetryProvider, secretEnv, secretEnvProviderUuids);
+    }
+  }
+
+  /**
+   * K8s counterpart of {@link #addCommonRequiredAttributes}: the node identity attributes come from
+   * the pod (POD_NAME env var, injected by the operator) and the helm release placement instead of
+   * NodeDetails.
+   */
+  private void addK8sCommonRequiredAttributes(
+      List<OtelCollectorConfigFormat.AttributeAction> attributeActions,
+      Universe universe,
+      K8sPodPlacement podPlacement,
+      TelemetryProvider telemetryProvider,
+      String purposeSuffix) {
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction("host", "${POD_NAME}", "upsert", null));
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.node_name", "${POD_NAME}", "upsert", null));
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.universe_uuid", universe.getUniverseUUID().toString(), "upsert", null));
+    if (podPlacement != null) {
+      attributeActions.add(
+          new OtelCollectorConfigFormat.AttributeAction(
+              "yugabyte.cloud",
+              StringUtils.defaultString(podPlacement.getCloud(), ""),
+              "upsert",
+              null));
+      attributeActions.add(
+          new OtelCollectorConfigFormat.AttributeAction(
+              "yugabyte.region",
+              StringUtils.defaultString(podPlacement.getRegion(), ""),
+              "upsert",
+              null));
+      attributeActions.add(
+          new OtelCollectorConfigFormat.AttributeAction(
+              "yugabyte.zone",
+              StringUtils.defaultString(podPlacement.getZone(), ""),
+              "upsert",
+              null));
+      if (podPlacement.getClusterType() != null) {
+        attributeActions.add(
+            new OtelCollectorConfigFormat.AttributeAction(
+                "yugabyte.node_type", podPlacement.getClusterType().toString(), "upsert", null));
+      }
+    }
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.purpose",
+            telemetryProvider.getConfig().getType().toString() + purposeSuffix,
+            "upsert",
+            null));
   }
 
   private OtelCollectorConfigFormat.Receiver createYsqlReceiver(
@@ -1138,12 +1342,10 @@ public class OtelCollectorConfigGenerator {
   }
 
   public OtelCollectorConfigFormat.StaticConfig createMasterStaticConfig(
-      String nodeAddress, NodeDetails nodeDetails, MetricsExportConfig metricsExportConfig) {
+      String nodeAddress, int masterHttpPort, MetricsExportConfig metricsExportConfig) {
     OtelCollectorConfigFormat.StaticConfig staticConfig =
         new OtelCollectorConfigFormat.StaticConfig();
-    // Get the master HTTP port from node details
-    int masterPort = nodeDetails.masterHttpPort;
-    staticConfig.setTargets(ImmutableList.of(nodeAddress + ":" + masterPort));
+    staticConfig.setTargets(ImmutableList.of(nodeAddress + ":" + masterHttpPort));
 
     // Build up all labels
     Map<String, String> labels = new HashMap<>();
@@ -1171,12 +1373,10 @@ public class OtelCollectorConfigGenerator {
   }
 
   private OtelCollectorConfigFormat.StaticConfig createTserverStaticConfig(
-      String nodeAddress, NodeDetails nodeDetails, MetricsExportConfig metricsExportConfig) {
+      String nodeAddress, int tserverHttpPort, MetricsExportConfig metricsExportConfig) {
     OtelCollectorConfigFormat.StaticConfig staticConfig =
         new OtelCollectorConfigFormat.StaticConfig();
-    // Get the tserver HTTP port from node details
-    int tserverPort = nodeDetails.tserverHttpPort;
-    staticConfig.setTargets(ImmutableList.of(nodeAddress + ":" + tserverPort));
+    staticConfig.setTargets(ImmutableList.of(nodeAddress + ":" + tserverHttpPort));
 
     // Build up all labels
     Map<String, String> labels = new HashMap<>();
@@ -1204,12 +1404,10 @@ public class OtelCollectorConfigGenerator {
   }
 
   private OtelCollectorConfigFormat.StaticConfig createYsqlStaticConfig(
-      String nodeAddress, NodeDetails nodeDetails) {
+      String nodeAddress, int ysqlServerHttpPort) {
     OtelCollectorConfigFormat.StaticConfig staticConfig =
         new OtelCollectorConfigFormat.StaticConfig();
-    // Get the YSQL server HTTP port from node details
-    int ysqlPort = nodeDetails.ysqlServerHttpPort;
-    staticConfig.setTargets(ImmutableList.of(nodeAddress + ":" + ysqlPort));
+    staticConfig.setTargets(ImmutableList.of(nodeAddress + ":" + ysqlServerHttpPort));
 
     // Build up all labels
     Map<String, String> labels = new HashMap<>();
@@ -1223,12 +1421,10 @@ public class OtelCollectorConfigGenerator {
   }
 
   private OtelCollectorConfigFormat.StaticConfig createCqlStaticConfig(
-      String nodeAddress, NodeDetails nodeDetails) {
+      String nodeAddress, int yqlServerHttpPort) {
     OtelCollectorConfigFormat.StaticConfig staticConfig =
         new OtelCollectorConfigFormat.StaticConfig();
-    // Get the YCQL server HTTP port from node details
-    int yqlPort = nodeDetails.yqlServerHttpPort;
-    staticConfig.setTargets(ImmutableList.of(nodeAddress + ":" + yqlPort));
+    staticConfig.setTargets(ImmutableList.of(nodeAddress + ":" + yqlServerHttpPort));
 
     // Build up all labels
     Map<String, String> labels = new HashMap<>();
@@ -1288,6 +1484,24 @@ public class OtelCollectorConfigGenerator {
 
   private OtelCollectorConfigFormat.ScrapeConfig createYugabyteScrapeConfig(
       String nodeAddress, NodeDetails nodeDetails, MetricsExportConfig metricsExportConfig) {
+    return createYugabyteScrapeConfig(
+        nodeAddress,
+        metricsExportConfig,
+        metricsExportConfig.getScrapeConfigTargets(),
+        nodeDetails.masterHttpPort,
+        nodeDetails.tserverHttpPort,
+        nodeDetails.ysqlServerHttpPort,
+        nodeDetails.yqlServerHttpPort);
+  }
+
+  private OtelCollectorConfigFormat.ScrapeConfig createYugabyteScrapeConfig(
+      String nodeAddress,
+      MetricsExportConfig metricsExportConfig,
+      Set<ScrapeConfigTargetType> scrapeConfigTargets,
+      int masterHttpPort,
+      int tserverHttpPort,
+      int ysqlServerHttpPort,
+      int yqlServerHttpPort) {
     OtelCollectorConfigFormat.ScrapeConfig scrapeConfig =
         new OtelCollectorConfigFormat.ScrapeConfig();
     scrapeConfig.setJob_name(JOB_NAME_YUGABYTE);
@@ -1303,21 +1517,18 @@ public class OtelCollectorConfigGenerator {
     // Create static configs for all yugabyte services
     List<OtelCollectorConfigFormat.StaticConfig> staticConfigs = new ArrayList<>();
     // Add static configs for each yugabyte service if the scrape config target is enabled.
-    if (metricsExportConfig
-        .getScrapeConfigTargets()
-        .contains(ScrapeConfigTargetType.MASTER_EXPORT)) {
-      staticConfigs.add(createMasterStaticConfig(nodeAddress, nodeDetails, metricsExportConfig));
+    if (scrapeConfigTargets.contains(ScrapeConfigTargetType.MASTER_EXPORT)) {
+      staticConfigs.add(createMasterStaticConfig(nodeAddress, masterHttpPort, metricsExportConfig));
     }
-    if (metricsExportConfig
-        .getScrapeConfigTargets()
-        .contains(ScrapeConfigTargetType.TSERVER_EXPORT)) {
-      staticConfigs.add(createTserverStaticConfig(nodeAddress, nodeDetails, metricsExportConfig));
+    if (scrapeConfigTargets.contains(ScrapeConfigTargetType.TSERVER_EXPORT)) {
+      staticConfigs.add(
+          createTserverStaticConfig(nodeAddress, tserverHttpPort, metricsExportConfig));
     }
-    if (metricsExportConfig.getScrapeConfigTargets().contains(ScrapeConfigTargetType.YSQL_EXPORT)) {
-      staticConfigs.add(createYsqlStaticConfig(nodeAddress, nodeDetails));
+    if (scrapeConfigTargets.contains(ScrapeConfigTargetType.YSQL_EXPORT)) {
+      staticConfigs.add(createYsqlStaticConfig(nodeAddress, ysqlServerHttpPort));
     }
-    if (metricsExportConfig.getScrapeConfigTargets().contains(ScrapeConfigTargetType.CQL_EXPORT)) {
-      staticConfigs.add(createCqlStaticConfig(nodeAddress, nodeDetails));
+    if (scrapeConfigTargets.contains(ScrapeConfigTargetType.CQL_EXPORT)) {
+      staticConfigs.add(createCqlStaticConfig(nodeAddress, yqlServerHttpPort));
     }
 
     scrapeConfig.setStatic_configs(staticConfigs);
@@ -2248,7 +2459,13 @@ public class OtelCollectorConfigGenerator {
     }
   }
 
-  private void appendSecretEnv(TelemetryProvider telemetryProvider, List<Object> secretEnv) {
+  private void appendSecretEnv(
+      TelemetryProvider telemetryProvider,
+      List<Object> secretEnv,
+      Set<UUID> appendedProviderUuids) {
+    if (!appendedProviderUuids.add(telemetryProvider.getUuid())) {
+      return;
+    }
     switch (telemetryProvider.getConfig().getType()) {
       case AWS_CLOUDWATCH:
         AWSCloudWatchConfig awsCloudWatchConfig =
