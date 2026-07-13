@@ -17,11 +17,11 @@ menu:
       classes: separator
 ---
 
-Use YugabyteDB Voyager to manage your end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager safely migrates data from your source database to YugabyteDB Aeon, YugabyteDB Anywhere, and the core open-source YugabyteDB database. For the list of supported source databases and migration types, see [Source databases](#source-databases).
+YugabyteDB Voyager is a powerful open-source data migration engine that accelerates cloud native adoption by removing barriers to moving applications to the public or private cloud. It helps you migrate databases to YugabyteDB quickly and securely.
 
 ![Voyager Architecture](/images/migrate/voyager-architecture2.png)
 
-You manage the entire lifecycle of a database migration using the [yb-voyager](https://github.com/yugabyte/yb-voyager) command line interface (CLI).
+You manage the entire lifecycle of a database migration, including cluster preparation for data import, schema migration, and data migration, using the [yb-voyager](https://github.com/yugabyte/yb-voyager) command line interface (CLI).
 
 ## Features
 
@@ -57,7 +57,7 @@ YugabyteDB Voyager supports migrating schema and data from your existing RDBMS, 
 | MySQL | Offline | Deprecated (support ends October 13, 2026) | MySQL 8.x <br> MariaDB <br> [Amazon Aurora MySQL](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.AuroraMySQL.html) <br> [Amazon RDS for MySQL](https://aws.amazon.com/rds/mysql/) <br> [Cloud SQL for MySQL](https://cloud.google.com/sql/docs/mysql) | [Migrating from MySQL to YugabyteDB](https://www.youtube.com/watch?v=tLs0043_z5E) |
 | Oracle | Offline | Deprecated (support ends October 13, 2026) | Oracle 11g - 19c <br> [Amazon RDS for Oracle](https://aws.amazon.com/rds/oracle/) | [Migrating from Oracle to YugabyteDB](https://www.youtube.com/watch?v=Bh2Wz537TGM) |
 
-For deprecated sources, contact {{% support-general %}} for guidance on migration options.
+MySQL and Oracle offline migration is deprecated. Contact {{% support-general %}} for guidance on migration options.
 
 ## Target database
 
