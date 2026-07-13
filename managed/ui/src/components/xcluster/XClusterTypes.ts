@@ -23,8 +23,10 @@ export type XClusterTableType = typeof XCLUSTER_SUPPORTED_TABLE_TYPES[number];
  * Extra metadata to be merged into xCluster table details for use in YBA UI.
  */
 type XClusterTableUiExtraMetadata = {
-  // Stores the user facing string in the object for sorting/searching usage.
+  // Stores the translated user facing string in the object for sorting usage.
   statusLabel: string;
+  // Translated status labels for search; includes all replication errors when applicable.
+  statusSearchValues: string[];
   replicationLag: number;
 };
 

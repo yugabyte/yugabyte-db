@@ -26,7 +26,7 @@ const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.config.tableStatus';
 
 // Maps a replication status error (the human readable string returned by the backend) to the
 // i18n key of its label and tooltip under `${TRANSLATION_KEY_PREFIX}.replicationStatusError`.
-const REPLICATION_STATUS_ERROR_KEY: Record<string, string> = {
+export const REPLICATION_STATUS_ERROR_KEY: Record<string, string> = {
   [XClusterReplicationStatusError.UNKNOWN_ERROR]: 'unknownError',
   [XClusterReplicationStatusError.MISSING_OP]: 'missingOpId',
   [XClusterReplicationStatusError.SCHEMA_MISMATCH]: 'schemaMismatch',
@@ -56,6 +56,8 @@ export const XClusterTableStatusLabel = ({
       keyPrefix: I18N_KEY_PREFIX_XCLUSTER_TERMS
     })
   };
+  // Bootstrap modals use z-index 3100; MUI tooltip default (1500) renders behind them.
+  const tooltipPopperProps = { style: { zIndex: 4000 } };
 
   const renderStatusPill = (pillClassName: string, iconClassName: string) => (
     <YBTooltip
@@ -64,6 +66,7 @@ export const XClusterTableStatusLabel = ({
           {t(`${status}.tooltip`, tooltipInterpolationValues)}
         </Typography>
       }
+      PopperProps={tooltipPopperProps}
     >
       <Typography variant="body2" className={clsx(classes.pill, pillClassName)}>
         {t(`${status}.label`)}
@@ -106,6 +109,7 @@ export const XClusterTableStatusLabel = ({
                     {t(`replicationStatusError.${errorKey}.tooltip`, tooltipInterpolationValues)}
                   </Typography>
                 }
+                PopperProps={tooltipPopperProps}
               >
                 {errorPill}
               </YBTooltip>
