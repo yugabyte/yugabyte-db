@@ -154,8 +154,8 @@ static void
 ybhnswbindcolumnschema(YbcPgStatement handle,
 					   IndexInfo *indexInfo,
 					   TupleDesc indexTupleDesc,
-					   int16 *coloptions,
-					   Oid *opclassOids,
+					   const int16 *coloptions,
+					   const Oid *opclassOids,
 					   Datum reloptions)
 {
 	HeapTuple	ht_opc;

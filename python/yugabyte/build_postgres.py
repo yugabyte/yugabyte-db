@@ -780,7 +780,25 @@ class PostgresBuilder(YbBuildToolBase):
         pg_compile_commands_paths = []
 
         # YB_TODO_PG19MERGE: skip third party extensions for now
-        external_extension_subdirs = ['yb-extensions']
+        external_extension_subdirs = [
+            'yb-extensions',
+            # 'third-party-extensions/age',
+            # 'third-party-extensions/documentdb',
+            # 'third-party-extensions/hypopg',
+            # 'third-party-extensions/orafce',
+            # 'third-party-extensions/pg_cron',
+            # 'third-party-extensions/pg_hint_plan',
+            # 'third-party-extensions/pg_parquet',
+            # 'third-party-extensions/pg_partman',
+            # 'third-party-extensions/pg_stat_monitor',
+            # 'third-party-extensions/pgaudit',
+            # 'third-party-extensions/pgrx',
+            # 'third-party-extensions/pgtap',
+            'third-party-extensions/pgvector',
+            # 'third-party-extensions/postgresql-hll',
+            # 'third-party-extensions/postgresql_anonymizer',
+            # 'third-party-extensions/wal2json'
+        ]
         external_extension_dirs = [os.path.join(self.pg_build_root, d)
                                    for d in external_extension_subdirs]
         work_dirs = [

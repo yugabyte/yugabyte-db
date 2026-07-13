@@ -33,8 +33,8 @@ static void
 ybdummyannbindcolumnschema(YbcPgStatement handle,
 						   IndexInfo *indexInfo,
 						   TupleDesc indexTupleDesc,
-						   int16 *coloptions,
-						   Oid *opclassOids,
+						   const int16 *coloptions,
+						   const Oid *opclassOids,
 						   Datum reloptions)
 {
 	elog(WARNING,
