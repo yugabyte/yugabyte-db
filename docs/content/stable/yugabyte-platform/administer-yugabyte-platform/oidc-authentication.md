@@ -34,7 +34,9 @@ OIDC is an authentication protocol that allows client applications to confirm th
 When OIDC is enabled, users are presented with the following options when signing in to YugabyteDB Anywhere:
 
 - **Login with SSO**: Redirects users to the appropriate identity provider sign in mechanism.
-- **Local User Login**: User signs in to YugabyteDB Anywhere as a local user. You can restrict local user login to Super Admin only by setting the **Allow local login with SSO** Global Runtime Configuration option (config key `yb.security.allow_local_login_with_sso`) to false. Refer to [Manage runtime configuration settings](../manage-runtime-config/).
+- **Local User Login**: User signs in to YugabyteDB Anywhere as a local user.
+
+    You can restrict local user login to Super Admin only by setting the **Allow local login with SSO** Global Runtime Configuration option (config key `yb.security.allow_local_login_with_sso`) to false. Refer to [Manage runtime configuration settings](../manage-runtime-config/).
 
 Note that in versions earlier than v2025.2.1.0, only a Super Admin can sign in locally while OIDC is enabled.
 
@@ -58,11 +60,11 @@ To use OIDC groups, ensure the following on your identity provider (IdP):
 
 - Create user groups and add users to this group. This is possible on most IdPs.
 - Configure the IdP so that groups are present in the ID token. As groups is not one of the [Standard Claims](https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims), you will need to add the groups claim in the ID token by configuring your IdP provider settings. Refer to your IdP documentation.
-- For Azure AD/Microsoft Entra ID, Azure doesn't allow obtaining group names in ID tokens. You need to use the [Azure API](https://learn.microsoft.com/en-gb/graph/api/user-list-memberof?view=graph-rest-1.0&tabs=http) to get a list of the user's group memberships. Note that to fetch the group membership via Azure API, the IdP administrator will need to assign the GroupMember.Read.All API permission to the registered application on Azure.
+- For Azure AD/Microsoft Entra ID, Azure doesn't allow obtaining group names in ID tokens. You need to use the [Azure API](https://learn.microsoft.com/en-gb/graph/api/user-list-memberof?view=graph-rest-1.0&tabs=http) to get a list of the user's group memberships. Note that to fetch the group membership via Azure API, the IdP administrator will need to assign the `GroupMember.Read.All` API permission to the registered application on Azure.
 
 ## OIDC callback URI
 
-When registering YugabyteDB Anywhere as a client application with your IdP, you must provide a callback (redirect) URI — the URL the IdP redirects users to after authentication. YugabyteDB Anywhere supports the following formats:
+When registering YugabyteDB Anywhere as a client application with your IdP, you must provide a callback (redirect) URI. This is the URL the IdP redirects users to after authentication. YugabyteDB Anywhere supports the following formats:
 
 - Query (default):
 
