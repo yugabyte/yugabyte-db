@@ -79,7 +79,7 @@ Create a new database user, and assign the necessary user permissions.
 
 {{< warning title="MySQL offline migration deprecated" >}}
 
-MySQL offline migration using YugabyteDB Voyager is deprecated, and will no longer be supported after October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
+MySQL offline migration using YugabyteDB Voyager is deprecated and will no longer be supported after October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
 
 {{< /warning >}}
 
@@ -89,7 +89,7 @@ MySQL offline migration using YugabyteDB Voyager is deprecated, and will no long
 
 {{< warning title="Oracle offline migration deprecated" >}}
 
-Oracle offline migration using YugabyteDB Voyager is deprecated, and will no longer be supported after October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
+Oracle offline migration using YugabyteDB Voyager is deprecated and will no longer be supported after October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
 
 {{< /warning >}}
 

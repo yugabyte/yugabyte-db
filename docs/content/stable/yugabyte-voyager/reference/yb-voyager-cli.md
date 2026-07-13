@@ -15,7 +15,7 @@ rightNav:
   hideH4: true
 ---
 
-yb-voyager is a command line executable for migrating databases from PostgreSQL to YugabyteDB. Offline migration from MySQL and Oracle is deprecated, and will no longer be supported after October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
+yb-voyager is a command line executable for migrating databases from PostgreSQL to YugabyteDB. Offline migration from MySQL and Oracle is deprecated and will no longer be supported after October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
 
 ## Syntax
 

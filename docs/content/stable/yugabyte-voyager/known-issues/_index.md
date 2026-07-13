@@ -20,7 +20,7 @@ The following sections provide workarounds for issues detected by the Voyager [m
 
 {{< warning title="MySQL and Oracle offline migration deprecated" >}}
 
-MySQL and Oracle offline migration using YugabyteDB Voyager is deprecated, and will no longer be supported after October 13, 2026. The workarounds in this section remain applicable for in-progress migrations. Contact {{% support-general %}} for guidance on migration options.
+MySQL and Oracle offline migration using YugabyteDB Voyager is deprecated and will no longer be supported after October 13, 2026. The workarounds in this section remain applicable for in-progress migrations. Contact {{% support-general %}} for guidance on migration options.
 
 {{< /warning >}}
 
