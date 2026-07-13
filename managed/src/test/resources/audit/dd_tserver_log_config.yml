@@ -1,6 +1,6 @@
 !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat
 exporters:
-  datadog/master_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$DataDogExporter
+  datadog/tserver_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$DataDogExporter
     api: {key: apikey, site: ddsite}
     retry_on_failure: {enabled: true, initial_interval: 30s, max_elapsed_time: 60m,
       max_interval: 10m}
@@ -10,7 +10,7 @@ extensions:
       rebound_needed_threshold_mib: 100, rebound_trigger_threshold_mib: 10}
     directory: /mnt/d0/otel-collector/queue
 processors:
-  attributes/master_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
+  attributes/tserver_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
     - {action: upsert, key: ddsource, value: yugabyte}
     - {action: upsert, key: service, value: yb-otel-collector}
@@ -21,43 +21,52 @@ processors:
     - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
     - {action: upsert, key: yugabyte.region, value: ''}
     - {action: upsert, key: yugabyte.zone, value: ''}
-    - {action: upsert, key: yugabyte.purpose, value: DATA_DOG_MASTER_LOG_EXPORT}
+    - {action: upsert, key: yugabyte.purpose, value: DATA_DOG_TSERVER_LOG_EXPORT}
     - {action: upsert, from_attribute: log.file.name, key: yugabyte.log.file.name}
     - {action: delete, key: log.file.name}
     - {action: upsert, from_attribute: log_level, key: yugabyte.log_level}
     - {action: delete, key: log_level}
     - {action: upsert, key: tag, value: value}
     - {action: upsert, key: additionalTag, value: otherValue}
-  batch/master_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {
+  batch/tserver_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {
     send_batch_max_size: 1000, send_batch_size: 100, timeout: 10s}
-  memory_limiter/master_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$MemoryLimiterProcessor {
+  memory_limiter/tserver_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$MemoryLimiterProcessor {
     check_interval: 10s, limit_mib: 2048}
   transform/replace: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$TransformProcessor
     log_statements:
     - context: log
       statements: ['replace_pattern(body, "^otho8Aut", "")']
 receivers:
-  filelog/master: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FileLogReceiver
-    attributes: {yugabyte.server_log_type: master}
-    exclude: [/home/yugabyte/master/logs/*.gz]
-    include: [/home/yugabyte/master/logs/yb-master.*.INFO.*]
-    multiline: {line_start_pattern: '^[IWEF]'}
+  filelog/tserver: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FileLogReceiver
+    attributes: {yugabyte.server_log_type: tserver}
+    exclude: [/home/yugabyte/tserver/logs/*.gz]
+    include: [/home/yugabyte/tserver/logs/yb-tserver.*.INFO.*]
+    multiline: {line_start_pattern: '^((otho8Aut)|[IWEF])'}
     operators:
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
-      drop_ratio: 1.0, expr: body contains "Writing version edit" or body contains
-        "Intent for transaction w/o metadata" or body contains "Colocated Tablet not
-        found for table" or (body contains "READ_REPLICA" or (body contains "Skipping
-        add replicas" and body contains "Currently remote bootstrapping")), type: filter}
+      drop_ratio: 1.0, expr: 'body contains "Writing version edit" or body contains
+        "DETAIL:" or body contains "Intent for transaction w/o metadata" or body contains
+        "Colocated Tablet not found for table" or (body contains "READ_REPLICA" or
+        (body contains "Skipping add replicas" and body contains "Currently remote
+        bootstrapping"))', type: filter}
+    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
+      expr: 'body matches "^.*AUDIT: user:(.|\\n|\\r|\\s)*$"', type: filter}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$RegexOperator {
-      if: 'body matches "^[IWEF]"', on_error: send, regex: '(?P<log_level>[IWEF])(?P<log_time>\d{4}
+      if: 'body matches "^[IWEF]"', on_error: send, regex: '(?s)(?P<log_level>[IWEF])(?P<log_time>\d{4}
         \d{2}:\d{2}:\d{2}[.]\d{6})\s*(?P<thread_id>\d+) (?P<file_name>[^:]+):(?P<file_line>\d+)[]]
         (?P<message>.*)', type: regex_parser}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
-      drop_ratio: 0.99, expr: (body contains "Found uninitialized path" or body contains
-        "Not allowing it to take more tablets" or body contains "Processing tablet"),
-      type: filter}
+      drop_ratio: 1.0, expr: (attributes.log_level == "I"), type: filter}
+    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
+      drop_ratio: 0.999, expr: ((attributes.file_name == "log.cc" and body contains
+        "Time spent Fsync log took a long time") or body contains "default Universal
+        file being compacted skipping" or body contains "skip_prefix_locks gflag is
+        enabled while there are active serializable isolation transactions"), type: filter}
+    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
+      drop_ratio: 0.75, expr: (body contains "Increasing compaction threads because
+        we have" and body contains "level 0 files"), type: filter}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$RegexOperator {
-      on_error: send, parse_from: 'attributes["log.file.name"]', regex: 'yb-master[.].*[.]log[.]INFO[.](?P<log_year>\d{4}).*',
+      on_error: send, parse_from: 'attributes["log.file.name"]', regex: 'yb-tserver[.].*[.]log[.]INFO[.](?P<log_year>\d{4}).*',
       type: regex_parser}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AddOperator {
       field: attributes.log_time_full, if: attributes.log_time != nil, type: add,
@@ -79,11 +88,11 @@ receivers:
 service:
   extensions: [file_storage/queue]
   pipelines:
-    logs/master_logs_00000000-0000-0000-0000-000000000000:
-      exporters: [datadog/master_logs_00000000-0000-0000-0000-000000000000]
-      processors: [attributes/master_logs_00000000-0000-0000-0000-000000000000, batch/master_logs_00000000-0000-0000-0000-000000000000,
-        memory_limiter/master_logs_00000000-0000-0000-0000-000000000000, transform/replace]
-      receivers: [filelog/master]
+    logs/tserver_logs_00000000-0000-0000-0000-000000000000:
+      exporters: [datadog/tserver_logs_00000000-0000-0000-0000-000000000000]
+      processors: [attributes/tserver_logs_00000000-0000-0000-0000-000000000000, batch/tserver_logs_00000000-0000-0000-0000-000000000000,
+        memory_limiter/tserver_logs_00000000-0000-0000-0000-000000000000, transform/replace]
+      receivers: [filelog/tserver]
   telemetry:
     logs:
       output_paths: [/home/yugabyte/otel-collector/logs/otel-collector.logs]

@@ -6,6 +6,7 @@ import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -40,6 +41,8 @@ public class TelemetryConfig {
 
   private MasterLogConfig masterLogConfig = null;
 
+  private TServerLogConfig tserverLogConfig = null;
+
   /**
    * The config section for a given export type, or null when that type is disabled. This is the one
    * place that maps an {@link ExportType} to its backing field: {@link #diff} and {@link
@@ -56,6 +59,8 @@ public class TelemetryConfig {
         return metricsExportConfig;
       case MASTER_LOGS:
         return masterLogConfig;
+      case TSERVER_LOGS:
+        return tserverLogConfig;
       default:
         throw new IllegalArgumentException("Unhandled export type: " + type);
     }
@@ -98,13 +103,28 @@ public class TelemetryConfig {
     return of(auditLogConfig, queryLogConfig, metricsExportConfig, null);
   }
 
-  /** Build from all telemetry configs (e.g. from task params). */
+  /** Build from audit/query/metrics/master configs. TServer logs default off. */
   public static TelemetryConfig of(
       AuditLogConfig auditLogConfig,
       QueryLogConfig queryLogConfig,
       MetricsExportConfig metricsExportConfig,
       MasterLogConfig masterLogConfig) {
-    return new TelemetryConfig(
-        auditLogConfig, queryLogConfig, metricsExportConfig, masterLogConfig);
+    return of(auditLogConfig, queryLogConfig, metricsExportConfig, masterLogConfig, null);
+  }
+
+  /** Build from all telemetry configs (e.g. from task params). */
+  public static TelemetryConfig of(
+      AuditLogConfig auditLogConfig,
+      QueryLogConfig queryLogConfig,
+      MetricsExportConfig metricsExportConfig,
+      MasterLogConfig masterLogConfig,
+      TServerLogConfig tserverLogConfig) {
+    return TelemetryConfig.builder()
+        .auditLogConfig(auditLogConfig)
+        .queryLogConfig(queryLogConfig)
+        .metricsExportConfig(metricsExportConfig)
+        .masterLogConfig(masterLogConfig)
+        .tserverLogConfig(tserverLogConfig)
+        .build();
   }
 }

@@ -10,6 +10,7 @@ import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.ScrapeConfigTargetType;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -124,6 +125,10 @@ public class OtelCollectorUtil {
     return config != null && config.isExportActive();
   }
 
+  public static boolean isTserverLogExportEnabledInUniverse(TServerLogConfig config) {
+    return config != null && config.isExportActive();
+  }
+
   // --- Aggregate helpers over the whole TelemetryConfig. Adding a new export type updates only
   // these (and the per-type isXEnabledInUniverse helpers), not every call site. ---
 
@@ -135,7 +140,8 @@ public class OtelCollectorUtil {
         && (isAuditLogEnabledInUniverse(tc.getAuditLogConfig())
             || isQueryLogEnabledInUniverse(tc.getQueryLogConfig())
             || isMetricsExportEnabledInUniverse(tc.getMetricsExportConfig())
-            || isMasterLogExportEnabledInUniverse(tc.getMasterLogConfig()));
+            || isMasterLogExportEnabledInUniverse(tc.getMasterLogConfig())
+            || isTserverLogExportEnabledInUniverse(tc.getTserverLogConfig()));
   }
 
   /** True if any telemetry section is actively exporting (export active and exporters present). */
@@ -144,7 +150,23 @@ public class OtelCollectorUtil {
         && (isAuditLogExportEnabledInUniverse(tc.getAuditLogConfig())
             || isQueryLogExportEnabledInUniverse(tc.getQueryLogConfig())
             || isMetricsExportEnabledInUniverse(tc.getMetricsExportConfig())
-            || isMasterLogExportEnabledInUniverse(tc.getMasterLogConfig()));
+            || isMasterLogExportEnabledInUniverse(tc.getMasterLogConfig())
+            || isTserverLogExportEnabledInUniverse(tc.getTserverLogConfig()));
+  }
+
+  /**
+   * True if any collector-rendered log-export section is present (non-null), regardless of whether
+   * it is actively exporting. Presence (not active) is deliberate: a section that exists but is
+   * being disabled must still trigger a re-render so the collector/sidecar is torn down rather than
+   * left stale. Covers the log types the collector renders as filelog pipelines (audit, query,
+   * master, tserver). Metrics is not a filelog pipeline and is handled separately.
+   */
+  public static boolean hasAnyLogExportConfig(TelemetryConfig tc) {
+    return tc != null
+        && (tc.getAuditLogConfig() != null
+            || tc.getQueryLogConfig() != null
+            || tc.getMasterLogConfig() != null
+            || tc.getTserverLogConfig() != null);
   }
 
   /** Collects the exporter UUIDs of all actively-exporting telemetry sections. */
@@ -170,6 +192,11 @@ public class OtelCollectorUtil {
     }
     if (isMasterLogExportEnabledInUniverse(tc.getMasterLogConfig())) {
       tc.getMasterLogConfig()
+          .getUniverseLogsExporterConfig()
+          .forEach(c -> uuids.add(c.getExporterUuid()));
+    }
+    if (isTserverLogExportEnabledInUniverse(tc.getTserverLogConfig())) {
+      tc.getTserverLogConfig()
           .getUniverseLogsExporterConfig()
           .forEach(c -> uuids.add(c.getExporterUuid()));
     }
@@ -208,6 +235,7 @@ public class OtelCollectorUtil {
                 ? fromTable.getMetricsExportConfig()
                 : userIntent.metricsExportConfig)
         .masterLogConfig(fromTable.getMasterLogConfig())
+        .tserverLogConfig(fromTable.getTserverLogConfig())
         .build();
   }
 

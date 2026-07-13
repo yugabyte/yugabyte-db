@@ -17,3 +17,6 @@ properties:
   master_logs:
     description: yb-master log export. null = disabled.
     $ref: "./MasterLogsTelemetrySpec.yaml"
+  tserver_logs:
+    description: yb-tserver log export. null = disabled.
+    $ref: "./TServerLogsTelemetrySpec.yaml"

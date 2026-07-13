@@ -1461,7 +1461,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         taskParams().telemetryConfig != null ? taskParams().telemetryConfig : new TelemetryConfig();
     if (telemetryConfig.hasAnyConfig()) {
       // Only audit/query logging contribute PostgreSQL settings; don't touch the gflag for
-      // metrics-only configs.
+      // metrics-only or log-only (master/tserver glog) configs.
       if (telemetryConfig.requiresYsqlPgConfCsv()) {
         String combinedPGConfCSV =
             GFlagsUtil.mergeCSVs(
@@ -1496,12 +1496,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         otelOverrides.put("enabled", otelConfig.isEnabled());
         otelOverrides.put("config", otelConfig.getConfig());
         otelOverrides.put("secretEnv", otelConfig.getSecretEnv());
-        // Metrics are scraped pod-locally, so the chart must also inject the collector sidecar
-        // into yb-master pods when metrics export is active.
+        // Metrics are scraped pod-locally and yb-master glog lives in the yb-master pod, so the
+        // chart must also inject the collector sidecar into yb-master pods when either metrics
+        // export or master log export is active.
         otelOverrides.put(
             "runOnMaster",
             OtelCollectorUtil.isMetricsExportEnabledInUniverse(
-                telemetryConfig.getMetricsExportConfig()));
+                    telemetryConfig.getMetricsExportConfig())
+                || OtelCollectorUtil.isMasterLogExportEnabledInUniverse(
+                    telemetryConfig.getMasterLogConfig()));
       } else {
         // Older charts assemble the config themselves from structured Helm values.
         otelOverrides =
