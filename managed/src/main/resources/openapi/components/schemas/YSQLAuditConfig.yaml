@@ -2,13 +2,10 @@ title: YSQLAuditConfig
 description: YSQL Audit Logging Configuration. Part of AuditLogConfig.
 type: object
 required:
-  - classes
   - enabled
   - log_catalog
   - log_client
-  - log_level
   - log_parameter
-  - log_parameter_max_size
   - log_relation
   - log_rows
   - log_statement

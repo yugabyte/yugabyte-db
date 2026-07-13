@@ -32527,14 +32527,7 @@
         }
       },
       "required" : [
-        "enabled",
-        "excludedCategories",
-        "excludedKeyspaces",
-        "excludedUsers",
-        "includedCategories",
-        "includedKeyspaces",
-        "includedUsers",
-        "logLevel"
+        "enabled"
       ],
       "type" : "object"
     },
@@ -32618,13 +32611,10 @@
         }
       },
       "required" : [
-        "classes",
         "enabled",
         "logCatalog",
         "logClient",
-        "logLevel",
         "logParameter",
-        "logParameterMaxSize",
         "logRelation",
         "logRows",
         "logStatement",
