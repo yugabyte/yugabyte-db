@@ -353,6 +353,7 @@ export const buildMasterAllocationEditPayload = (
 };
 
 export const getUniverseCreationMode = (universeData: Universe): ResilienceFormMode => {
+  return (universeData.info as any)?.universe_creation_mode ?? ResilienceFormMode.EXPERT_MODE;
   return isDefinedNotNull(universeData.spec?.universe_settings?.expert_mode) ? 
   universeData.spec?.universe_settings?.expert_mode ? 
   ResilienceFormMode.EXPERT_MODE : ResilienceFormMode.GUIDED : 

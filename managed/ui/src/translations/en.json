@@ -4330,6 +4330,7 @@
         "clusterPlacement": "Cluster Placement",
         "primaryCluster": "Primary Cluster",
         "addReadReplica": "Add Read Replica",
+        "editReadReplica": "Edit Read Replica",
         "readReplica": "Read Replica",
         "addReadReplicaHelpText": "Enhance read scalability and availability with Read Replicas.",
         "addGeoPartition": "Add Geo Partition",

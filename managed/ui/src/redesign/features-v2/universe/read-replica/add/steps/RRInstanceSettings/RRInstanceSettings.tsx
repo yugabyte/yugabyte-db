@@ -15,6 +15,8 @@ import { InstanceBox } from '@app/redesign/features-v2/universe/create-universe/
 import {
   InstanceTypeField,
   VolumeInfoField,
+  K8NodeSpecField,
+  K8VolumeInfoField,
   EBSVolumeField,
   EBSKmsConfigField
 } from '@app/redesign/features-v2/universe/create-universe/fields';
@@ -77,7 +79,7 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
     )
   });
 
-  const { control, watch, reset } = methods;
+  const { control, watch, reset, getValues } = methods;
 
   const regionsForHardwareFields = useMemo((): Region[] | undefined => {
     const formRegions = regionsAndAZ?.regions;
@@ -93,6 +95,7 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
     return uuids.map((uuid) => ({ uuid } as Region));
   }, [regionsAndAZ]);
 
+  const isK8s = provider?.code === CloudType.kubernetes;
   const sameAsPrimary = watch(SAME_AS_PRIMARY_INST_FIELD);
   const ebsEnabled = watch(ENABLE_EBS_CONFIG_FIELD);
 
@@ -104,9 +107,16 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
         universeData!.info!.arch,
         true
       );
-      reset(initialInstanceSettings);
+      const currentInstanceType = getValues('instanceType');
+      // On k8s, primary cluster may not include node_spec.instance_type (custom resources path).
+      // Preserve the currently selected value so toggling "same as primary" does not blank the field.
+      const resolvedInstanceType =
+        provider?.code === CloudType.kubernetes && !initialInstanceSettings.instanceType
+          ? currentInstanceType ?? null
+          : initialInstanceSettings.instanceType;
+      reset({ ...initialInstanceSettings, instanceType: resolvedInstanceType });
     }
-  }, [sameAsPrimary, primaryCluster, universeData, reset]);
+  }, [sameAsPrimary, primaryCluster, universeData, reset, getValues, provider?.code]);
 
   useImperativeHandle(
     forwardRef,
@@ -151,21 +161,39 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
                   </Box>
                 ) : (
                   <InstanceBox>
-                    {provider && (
-                      <InstanceTypeField
-                        isMaster={false}
-                        disabled={!!sameAsPrimary}
-                        provider={provider}
-                        regions={regionsForHardwareFields}
-                      />
-                    )}
-                    <VolumeInfoField
-                      isMaster={false}
-                      maxVolumeCount={maxVolumeCount}
-                      disabled={!!sameAsPrimary}
-                      provider={provider}
-                      regions={regionsForHardwareFields}
-                    />
+                    {provider &&
+                      (isK8s && useK8CustomResources ? (
+                        <>
+                          <K8NodeSpecField
+                            isMaster={false}
+                            disabled={!!sameAsPrimary}
+                            provider={provider}
+                          />
+                          <K8VolumeInfoField
+                            isMaster={false}
+                            maxVolumeCount={maxVolumeCount}
+                            disableVolumeSize={false}
+                            disabled={!!sameAsPrimary}
+                            provider={provider}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <InstanceTypeField
+                            isMaster={false}
+                            disabled={!!sameAsPrimary}
+                            provider={provider}
+                            regions={regionsForHardwareFields}
+                          />
+                          <VolumeInfoField
+                            isMaster={false}
+                            maxVolumeCount={maxVolumeCount}
+                            disabled={!!sameAsPrimary}
+                            provider={provider}
+                            regions={regionsForHardwareFields}
+                          />
+                        </>
+                      ))}
                     {ebsVolumeEnabled && provider?.code === CloudType.aws && (
                       <EBSVolumeField disabled={!!sameAsPrimary} />
                     )}

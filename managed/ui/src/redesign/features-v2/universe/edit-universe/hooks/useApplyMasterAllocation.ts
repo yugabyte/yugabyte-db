@@ -4,7 +4,10 @@ import { useEditUniverse } from '@app/v2/api/universe/universe';
 import { createErrorMessage } from '@app/utils/ObjectUtils';
 import { Region } from '@app/redesign/helpers/dtos';
 import { Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { buildMasterAllocationEditPayload } from '../edit-placement/EditPlacementUtils';
+import {
+  buildMasterAllocationEditPayload,
+  MasterAllocationEditMutationCluster
+} from '../edit-placement/EditPlacementUtils';
 import { NodeAvailabilityProps } from '../../create-universe/steps/nodes-availability/dtos';
 import { InstanceSettingProps } from '../../create-universe/steps/hardware-settings/dtos';
 import { useEditUniverseTaskHandler } from './useEditUniverseTaskHandler';
@@ -24,6 +27,19 @@ interface UseApplyMasterAllocationResult {
   ) => void;
   isSubmitting: boolean;
 }
+
+const stripDedicatedNodeSpecs = (
+  clusterPayload: MasterAllocationEditMutationCluster
+): MasterAllocationEditMutationCluster => {
+  if (!clusterPayload.node_spec) {
+    return clusterPayload;
+  }
+  const { tserver: _tserver, master: _master, ...nodeSpec } = clusterPayload.node_spec;
+  return {
+    ...clusterPayload,
+    node_spec: nodeSpec as MasterAllocationEditMutationCluster['node_spec']
+  };
+};
 
 /**
  * Encapsulates the master-allocation mutation flow shared by the primary and
@@ -46,13 +62,16 @@ export const useApplyMasterAllocation = ({
         return;
       }
       try {
-        const clusterPayload = buildMasterAllocationEditPayload(
+        let clusterPayload = buildMasterAllocationEditPayload(
           universeData!,
           providerRegions,
           data,
           selectedPartitionUUID,
           instanceSettings
         );
+        if (!data.useDedicatedNodes) {
+          clusterPayload = stripDedicatedNodeSpecs(clusterPayload);
+        }
         editUniverse.mutate(
           {
             uniUUID: universeData!.info!.universe_uuid!,
