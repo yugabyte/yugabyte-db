@@ -19,6 +19,8 @@ Setting up multitenancy has two parts:
 1. Prepare a writable, dedicated cgroup for the YB-TServer process (a one-time, environment-specific, operating system step that typically requires root).
 1. Enable the resource governor using YB-TServer and YB-Master flags.
 
+Setup assumes YugabyteDB is running as a systemd service.
+
 ## Prepare cgroups
 
 When multitenancy is enabled, the YB-TServer assumes it is started in a dedicated cgroup (the _root cgroup_) that it fully manages. The YB-TServer creates and maintains a cgroup hierarchy under this root cgroup, and assigns CPU limits and threads to descendant cgroups.
@@ -114,8 +116,8 @@ For example, to reserve 5% of CPU for system work, cap each database at 25% of t
 
 ```sh
 ./bin/yugabyted start \
-    --tserver_flags="enable_qos=true,qos_max_db_cpu_percent=25,high_priority_system_reserved_cpu=5" \
-    --master_flags="enable_qos=true,qos_max_db_cpu_percent=25,high_priority_system_reserved_cpu=5,qos_max_db_count=20"
+    --tserver_flags="enable_qos=true,qos_max_db_cpu_percent=25,qos_system_high_cpu_reserved_percent=5" \
+    --master_flags="enable_qos=true,qos_max_db_cpu_percent=25,qos_system_high_cpu_reserved_percent=5,qos_max_db_count=20"
 ```
 
 ## Disable the resource governor
