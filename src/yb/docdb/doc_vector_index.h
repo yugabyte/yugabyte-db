@@ -109,6 +109,7 @@ struct DocVectorIndexMetrics {
   EventStatsPtr merge_us;
   EventStatsPtr found_intents;
   EventStatsPtr result_size;
+  CounterPtr backfill_inserted_entries;
 };
 
 struct InsertOptions {
