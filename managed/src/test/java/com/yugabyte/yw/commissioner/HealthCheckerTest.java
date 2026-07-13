@@ -166,6 +166,7 @@ public class HealthCheckerTest extends FakeDBApplication {
             any(Universe.class), eq(UniverseConfKeys.healthCheckTHPSettings)))
         .thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.backwardCompatibleDate))).thenReturn(false);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.enableYnpVersionCheck))).thenReturn(true);
     when(mockFileHelperService.createTempFile(anyString(), anyString()))
         .thenAnswer(
             i -> {
