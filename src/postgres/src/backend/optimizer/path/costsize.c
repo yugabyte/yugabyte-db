@@ -3414,9 +3414,10 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 	/* cost of inner-relation source data (we already dealt with outer rel) */
 
 	/*
-	 * YB: We exclude BNL semi/anti joins from this because BNL's still pull
-	 * all innerrel tuples instead of stopping prematurely. It still needs
-	 * the adjustment to ntuples that is done after this branch statement.
+	 * YB: a modern-costed BNL takes the normal-case branch instead: its
+	 * batched probe fetches all matches for the whole batch in one scan, so
+	 * there is no per-outer-row early stop to model, and the per-probe inner
+	 * row estimate already reflects the per-key match rate.
 	 */
 	if ((path->jpath.jointype == JOIN_SEMI || path->jpath.jointype == JOIN_ANTI ||
 		 extra->inner_unique) && !yb_costing_bnl)
@@ -3546,19 +3547,6 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 
 		/* Compute number of tuples processed (not number emitted!) */
 		ntuples = (outer_path_rows / yb_batch_size) * inner_path_rows;
-
-		if ((path->jpath.jointype == JOIN_SEMI || path->jpath.jointype == JOIN_ANTI
-			 || extra->inner_unique) && !yb_legacy_bnl_cost)
-		{
-			Assert(yb_is_batched);
-			double		outer_matched_rows;
-			Selectivity inner_scan_frac;
-
-			outer_matched_rows =
-				rint(outer_path_rows * extra->semifactors.outer_match_frac);
-			inner_scan_frac = 2.0 / (extra->semifactors.match_count + 1.0);
-			ntuples = outer_matched_rows * inner_path_rows * inner_scan_frac;
-		}
 	}
 
 	/* CPU costs */
