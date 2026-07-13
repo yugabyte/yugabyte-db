@@ -932,14 +932,20 @@ Status PgTableRow::SetValue(ColumnId column_id, const QLValuePB& value) {
   return SetValueByColumnIdx(idx, value);
 }
 
-Status PgTableRow::SetValueByColumnIdx(size_t idx, const QLValuePB& value) {
-  if (yb::IsNull(value)) {
+Status PgTableRow::SetValueByColumnIdx(size_t idx, const QLValuePB& input_value) {
+  const QLValuePB* value = &input_value;
+  QLValuePB decoded_value;
+  if (projection_->columns[idx].data_type == DataType::VECTOR) {
+    decoded_value = VERIFY_RESULT(DecodeVectorSchemaMissingValueForPgRow(input_value));
+    value = &decoded_value;
+  }
+  if (yb::IsNull(*value)) {
     is_null_[idx] = true;
     return Status::OK();
   }
   is_null_[idx] = false;
   const size_t old_size = buffer_.size();
-  RETURN_NOT_OK(pggate::WriteColumn(value, &buffer_));
+  RETURN_NOT_OK(pggate::WriteColumn(*value, &buffer_));
   const auto fixed_size = FixedSize(projection_->columns[idx].data_type);
   if (fixed_size != 0) {
     values_[idx] = BigEndian::Load64VariableLength(
