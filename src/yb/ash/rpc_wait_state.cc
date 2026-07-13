@@ -157,6 +157,9 @@ size_t TraceContextSerializer::SerializedSize() const {
 
 uint8_t* TraceContextSerializer::SerializeToArray(uint8_t* out) const {
   out = Output::WriteVarint32ToArray(static_cast<uint32_t>(serialized_size_), out);
+  if (serialized_size_ == 0) {
+    return out;
+  }
   return trace_context_.SerializeWithCachedSizesToArray(out);
 }
 
