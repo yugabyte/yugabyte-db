@@ -41,7 +41,7 @@ DEFINE_NON_RUNTIME_uint32(num_advisory_locks_tablets, 3,
     "Number of advisory lock tablets. Should be set before universe creation");
 DEFINE_validator(num_advisory_locks_tablets, FLAG_GT_VALUE_VALIDATOR(0));
 
-DEFINE_RUNTIME_int32(ysql_ddl_post_processing_failed_verification_retry_secs, -1,
+DEFINE_RUNTIME_int32(ysql_ddl_post_processing_failed_verification_retry_secs, 300,
     "Frequency in seconds at which the master leader will re-trigger DDL verification for "
     "YSQL DDL transactions in kDdlPostProcessingFailed state. A value of -1 disables this "
     "background task.");
