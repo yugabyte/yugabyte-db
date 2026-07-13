@@ -14426,6 +14426,10 @@
     },
     "OCICloudInfo" : {
       "properties" : {
+        "ociAuthType" : {
+          "description" : "OCI authentication type (API_KEY or INSTANCE_PRINCIPAL)",
+          "type" : "string"
+        },
         "ociCompartmentId" : {
           "description" : "OCI Compartment OCID",
           "type" : "string"
