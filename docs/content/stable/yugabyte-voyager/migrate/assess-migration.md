@@ -85,6 +85,11 @@ Before you run a migration assessment, do the following:
       {{% includeMarkdown "./postgresql.md" %}}
       </div>
       <div id="oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="oracle-tab">
+      {{< warning title="Oracle offline migration deprecated" >}}
+
+Oracle offline migration using YugabyteDB Voyager is deprecated, and will no longer be supported after October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
+
+      {{< /warning >}}
       {{% includeMarkdown "./oracle.md" %}}
       </div>
     </div>

@@ -51,11 +51,13 @@ You can perform migration by choosing one of the following options:
 
 YugabyteDB Voyager supports migrating schema and data from your existing RDBMS, as described in the following table:
 
-| Source&nbsp;database&nbsp;type | Migration&nbsp;type | Supported&nbsp;versions&nbsp;and&nbsp;flavors | Migration&nbsp;demo&nbsp;videos |
-| :--------------------| :------------- |:----------------------------------- | :--------------- |
-| PostgreSQL | Offline and Live | PostgreSQL 11.x - 17.x <br> [Amazon Aurora PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.AuroraPostgreSQL.html) <br> [Amazon RDS for PostgreSQL](https://aws.amazon.com/rds/postgresql/) <br> [Cloud SQL for PostgreSQL](https://cloud.google.com/sql/docs/postgres) <br> [Azure&nbsp;Database&nbsp;for&nbsp;PostgreSQL](https://azure.microsoft.com/en-ca/services/postgresql/) | [Migrating from PostgreSQL to YugabyteDB](https://www.youtube.com/watch?v=GXjttCbc4dw) |
-| MySQL | Offline | MySQL 8.x <br> MariaDB <br> [Amazon Aurora MySQL](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.AuroraMySQL.html) <br> [Amazon RDS for MySQL](https://aws.amazon.com/rds/mysql/) <br> [Cloud SQL for MySQL](https://cloud.google.com/sql/docs/mysql) | [Migrating from MySQL to YugabyteDB](https://www.youtube.com/watch?v=tLs0043_z5E) |
-| Oracle | Offline | Oracle 11g - 19c <br> [Amazon RDS for Oracle](https://aws.amazon.com/rds/oracle/) | [Migrating from Oracle to YugabyteDB](https://www.youtube.com/watch?v=Bh2Wz537TGM) |
+| Source&nbsp;database type | Migration type | Status | Supported&nbsp;versions&nbsp;and&nbsp;flavors | Migration&nbsp;demo&nbsp;videos |
+| :--------------------| :------------- | :----- |:----------------------------------- | :--------------- |
+| PostgreSQL | Offline and Live | Supported | PostgreSQL 11.x - 17.x <br> [Amazon Aurora PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.AuroraPostgreSQL.html) <br> [Amazon RDS for PostgreSQL](https://aws.amazon.com/rds/postgresql/) <br> [Cloud SQL for PostgreSQL](https://cloud.google.com/sql/docs/postgres) <br> [Azure&nbsp;Database&nbsp;for&nbsp;PostgreSQL](https://azure.microsoft.com/en-ca/services/postgresql/) | [Migrating from PostgreSQL to YugabyteDB](https://www.youtube.com/watch?v=GXjttCbc4dw) |
+| MySQL | Offline | Deprecated (support ends October 13, 2026) | MySQL 8.x <br> MariaDB <br> [Amazon Aurora MySQL](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.AuroraMySQL.html) <br> [Amazon RDS for MySQL](https://aws.amazon.com/rds/mysql/) <br> [Cloud SQL for MySQL](https://cloud.google.com/sql/docs/mysql) | [Migrating from MySQL to YugabyteDB](https://www.youtube.com/watch?v=tLs0043_z5E) |
+| Oracle | Offline | Deprecated (support ends October 13, 2026) | Oracle 11g - 19c <br> [Amazon RDS for Oracle](https://aws.amazon.com/rds/oracle/) | [Migrating from Oracle to YugabyteDB](https://www.youtube.com/watch?v=Bh2Wz537TGM) |
+
+MySQL and Oracle offline migration is deprecated. Contact {{% support-general %}} for guidance on migration options.
 
 ## Target database
 
