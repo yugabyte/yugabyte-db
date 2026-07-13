@@ -24,7 +24,7 @@ The YB-TServer periodically scrapes the cgroup filesystem and exposes the follow
 | :--- | :--- |
 | `database_user_cpu_us` | Total user-space CPU time (microseconds) spent doing work for the database. |
 | `database_system_cpu_us` | Total kernel (system) CPU time (microseconds) spent doing work for the database. |
-| `database_throttled_us` | Total time (microseconds) that work for the database was throttled because it reached its CPU limit. |
+| `database_throttled_us` | Total time (microseconds) that the database's work was throttled because it reached its CPU limit. |
 
 A rising `database_throttled_us` for a database indicates that the database is hitting its per-database CPU cap. These metrics are available from the YB-TServer metrics endpoint alongside other server metrics; for more information on collecting metrics, see [Metrics](../../../launch-and-manage/monitor-and-alert/metrics/).
 

@@ -309,8 +309,8 @@ For example, on RHEL or CentOS 7 or 8, using grub2, you can use the following st
 
 If you intend to use [multitenancy](../../../additional-features/multitenancy/), you need to configure a cgroup that:
 
-- has the CPU controller available;
-- is writable by the user running the YB-TServer process; and
+- has the CPU controller available (cgroups v2 only);
+- is writable by the YB-TServer process; and
 - is a leaf cgroup not managed by any other process (no other process moves processes in or out of it, or creates cgroups underneath it).
 
 Creating this cgroup and granting write access generally requires root privileges (running the YB-TServer afterwards does not). The exact steps depend on your operating system and how you run the YB-TServer.

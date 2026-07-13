@@ -16,7 +16,7 @@ rightNav:
 
 Setting up multitenancy has two parts:
 
-1. Prepare a writable cgroup for the YB-TServer process (a one-time, environment-specific, operating system step that typically requires root).
+1. Prepare a writable, dedicated cgroup for the YB-TServer process (a one-time, environment-specific, operating system step that typically requires root).
 1. Enable the resource governor using YB-TServer and YB-Master flags.
 
 ## Prepare cgroups
@@ -37,9 +37,9 @@ Creating this cgroup and granting write access generally requires root privilege
 
 ### cgroup v2 with systemd
 
-On most newer operating systems, there is a single unified cgroup hierarchy managed by systemd, so you configure delegation through systemd.
+On most newer Linux distributions, there is a single unified cgroup hierarchy managed by systemd, so you configure delegation through systemd.
 
-For a service running under a user slice (for example, a typical VM deployment), make the CPU controller available to the user slice by creating an override for the `user@.service` template (requires root). Create the file `/etc/systemd/system/user@.service.d/override.conf` with the following contents:
+If YB-TServer is running as a systemd service under the user slice, make the CPU controller available to the user slice by creating an override for the `user@.service` template (requires root). Create the file `/etc/systemd/system/user@.service.d/override.conf` with the following contents:
 
 ```conf
 [Service]
@@ -60,7 +60,7 @@ If the YB-TServer service unit uses `ExecStartPost=`, `ExecReload=`, `ExecStop=`
 DelegateSubgroup=ybtserver
 ```
 
-`DelegateSubgroup=` requires systemd 254 or later. On earlier versions (for example, AlmaLinux 9), create the subgroup and delegate the CPU controller manually in the service before starting the YB-TServer:
+`DelegateSubgroup=` requires systemd 254 or later. On earlier systemd versions (for example, AlmaLinux 9), create the subgroup and delegate the CPU controller manually in the service before starting the YB-TServer:
 
 ```sh
 SERVICE_CGROUP="/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)"
@@ -75,11 +75,13 @@ echo +cpu > "$SERVICE_CGROUP/cgroup.subtree_control"
 ./yb-tserver ...
 ```
 
-For a service running under the system slice, the CPU controller is available by default, so the `user@.service` override is not needed; delegate the CPU controller on the YB-TServer service unit as shown above.
+If YB-TServer is running as a systemd service under the system slice, the CPU controller is available by default, so the `user@.service` override is not needed; delegate the CPU controller on the YB-TServer service unit as shown above.
 
 ### Other deployments
 
-For deployments that don't rely on systemd (such as cron-based or container-based deployments), place the YB-TServer process in a cgroup that meets the [requirements](#prepare-cgroups). Make the CPU controller available by writing `+cpu` to the `cgroup.subtree_control` file of every ancestor cgroup, top down.
+For deployments that don't rely on systemd (such as cron-based or container-based deployments) or for deployments on systems that use cgroups v1
+
+, place the YB-TServer process in a cgroup that meets the [requirements](#prepare-cgroups). For cgroups v2 systems, make the CPU controller available by writing `+cpu` to the `cgroup.subtree_control` file of every ancestor cgroup, top down.
 
 Under cgroup v2, even with write permissions to a cgroup, a non-root user can move a process into it only if the user has write access to the `cgroup.procs` file of the common ancestor of the target cgroup and the cgroup the user is currently in. Depending on the cgroup chosen, root may be required to start the YB-TServer.
 
@@ -93,18 +95,16 @@ Set the following flags to configure multitenancy. Unless noted otherwise, set f
 
 | Flag | Description | Default |
 | :--- | :--- | :--- |
-| [enable_qos](../../../reference/configuration/yb-tserver/#enable-qos) | Master switch for per-database CPU limits and the database count cap. When `false` (the default), per-database cgroups are not created and no `qos_*` flag has any effect. | `false` |
+| [enable_qos](../../../reference/configuration/yb-tserver/#enable-qos) | Enables per-database CPU limits and the database count cap. When `false` (the default), per-database cgroups are not created and no `qos_*` flag has any effect. | `false` |
 | [qos_max_db_cpu_percent](../../../reference/configuration/yb-tserver/#qos-max-db-cpu-percent) | Per-database maximum percentage of the node's non-system-reserved CPU. | `100.0` |
-| [qos_max_db_count](../../../reference/configuration/yb-master/#qos-max-db-count) | Master only. Maximum number of (non-template) databases. Sets the effective per-database minimum CPU as `1 / qos_max_db_count`. | `50` |
-| [qos_evaluation_window_us](../../../reference/configuration/yb-tserver/#qos-evaluation-window-us) | Advanced. Scheduler period (µs) for checking CPU limits (`cfs_period_us`) (1000–1000000). Do not change unless necessary. | `100000` |
-| [enable_reserved_cpu_for_system](../../../reference/configuration/yb-tserver/#enable-reserved-cpu-for-system) | Reserves CPU for high-priority system work by capping all other work. Can be used independently of `enable_qos`. | `false` |
-| [high_priority_system_reserved_cpu](../../../reference/configuration/yb-tserver/#high-priority-system-reserved-cpu) | Amount of CPU reserved for high-priority system work (0.0–100.0). | `5.0` |
+| [qos_max_db_count](../../../reference/configuration/yb-master/#qos-max-db-count) | Master only. Maximum number of (non-template) databases. Sets the effective per-database minimum CPU as `1 / qos_max_db_count`. | `0` |
+| [qos_system_high_cpu_reserved_percent](../../../reference/configuration/yb-tserver/#qos-system-high-cpu-reserved-percent) | Amount of CPU reserved for high-priority system work (0.0–100.0). | `0` |
 
 {{< note title="Note" >}}
-None of the `qos_*` flags take effect unless `enable_qos` is `true`. `enable_qos` and `enable_reserved_cpu_for_system` are independent, and either can be used on its own.
+None of the `qos_*` flags take effect unless `enable_qos` is `true`. 
 {{< /note >}}
 
-Because settings are applied as flags, you can also change the flags after the cluster is created. Note that `enable_qos` and `enable_reserved_cpu_for_system` are not runtime flags and require a restart to take effect.
+Because settings are applied as flags, you can also change the flags after the cluster is created. Note that `enable_qos` requires a restart to take effect.
 
 ### yugabyted
 
@@ -114,13 +114,13 @@ For example, to reserve 5% of CPU for system work, cap each database at 25% of t
 
 ```sh
 ./bin/yugabyted start \
-    --tserver_flags="enable_qos=true,enable_reserved_cpu_for_system=true,qos_max_db_cpu_percent=25,high_priority_system_reserved_cpu=5" \
-    --master_flags="enable_qos=true,enable_reserved_cpu_for_system=true,qos_max_db_cpu_percent=25,high_priority_system_reserved_cpu=5,qos_max_db_count=20"
+    --tserver_flags="enable_qos=true,qos_max_db_cpu_percent=25,high_priority_system_reserved_cpu=5" \
+    --master_flags="enable_qos=true,qos_max_db_cpu_percent=25,high_priority_system_reserved_cpu=5,qos_max_db_count=20"
 ```
 
 ## Disable the resource governor
 
-To turn off per-database CPU limits, set `enable_qos` to `false` (and, if desired, `enable_reserved_cpu_for_system` to `false`) and restart the YB-Master and YB-TServer processes. The cgroup setup performed on the operating system does not need to be undone.
+To turn off per-database CPU limits, set `enable_qos` to `false` and restart the YB-Master and YB-TServer processes. The cgroup setup performed on the operating system does not need to be undone.
 
 ## Learn more
 

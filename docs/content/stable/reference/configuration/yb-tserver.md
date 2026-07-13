@@ -2415,26 +2415,15 @@ Default: `100000`
 
 Advanced flag that maps directly to the Linux `cfs_period_us` parameter: the period, in microseconds, that the scheduler uses when checking CPU limits and throttling cgroups. Accepts values from 1000 to 1000000. This should normally not be changed. Has no effect unless `enable_qos` is `true`.
 
-##### --enable_reserved_cpu_for_system
-
-{{% tags/wrap %}}
-{{<tags/feature/ea>}}
-{{<tags/feature/restart-needed>}}
-{{<tags/feature/t-server>}}
-Default: `false`
-{{% /tags/wrap %}}
-
-Reserves CPU for high-priority system work by placing high-priority internal threads in a dedicated cgroup and capping the CPU available to all other work. This ensures that critical background work (such as network reactors and heartbeats) is never fully starved by tenant queries. Can be used independently of `enable_qos`.
-
-##### --high_priority_system_reserved_cpu
+##### --qos_system_high_cpu_reserved_percent
 
 {{% tags/wrap %}}
 {{<tags/feature/ea>}}
 {{<tags/feature/t-server>}}
-Default: `5.0`
+Default: `0`
 {{% /tags/wrap %}}
 
-The percentage (0.0–100.0) of CPU reserved for high-priority system work when `enable_reserved_cpu_for_system` is `true`.
+The percentage (0.0–100.0) of CPU reserved for high-priority system work.
 
 ##### --use_cgroups_cpu
 

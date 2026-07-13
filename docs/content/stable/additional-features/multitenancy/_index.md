@@ -27,7 +27,7 @@ Because enforcement happens at the OS level, no database can bypass the scheduli
 | CPU contention | Active databases receive equal CPU weighting so no single database can monopolize the cluster. |
 | Optional CPU cap | A configurable maximum CPU percentage limits every database to the same ceiling, even when idle CPU exists. |
 
-For example, consider four applications sharing a 64 vCPU cluster. During normal operation, a single application may temporarily use most of the cluster if the others are idle. When all four become active simultaneously, Resource Governance redistributes CPU fairly across the active databases. If you configure a 25% CPU cap, no database can consume more than approximately 16 vCPUs regardless of available spare capacity.
+For example, consider four applications sharing a 64 vCPU cluster. During normal operation, a single application may temporarily use most of the cluster if the others are idle. When all four become active simultaneously, the resource governor redistributes CPU fairly across the active databases. If you configure a 25% CPU cap, no database can consume more than approximately 16 vCPUs regardless of available spare capacity.
 
 ## How it works
 
@@ -43,7 +43,7 @@ The per-database maximum is set with the [qos_max_db_cpu_percent](../../referenc
 
 ### Per-database minimum CPU
 
-A minimum per-database CPU guarantee is enforced indirectly by capping the number of databases and weighting all per-database cgroups equally. If you allow at most _N_ databases, then under full contention each database is guaranteed at least `1/N` of the available (non-system) CPU.
+A minimum per-database CPU guarantee can be enforced indirectly by capping the number of databases and weighting all per-database cgroups equally. If you allow at most _N_ databases, then under full contention each database is guaranteed at least `1/N` of the available (non-system) CPU.
 
 For example, to guarantee each database at least 5% of CPU, cap the number of databases at `1 / 0.05 = 20`. The database count cap is set with the [qos_max_db_count](../../reference/configuration/yb-master/#qos-max-db-count) flag. When the cap is active, a `CREATE DATABASE` statement fails if it would exceed the limit.
 
@@ -51,7 +51,7 @@ For example, to guarantee each database at least 5% of CPU, cap the number of da
 
 To keep the cluster stable and responsive under heavy tenant load, a portion of CPU can be reserved for high-priority internal work (such as network reactors and Raft heartbeats) that all tenants depend on. This ensures critical background work is never fully starved by tenant queries.
 
-The reserved amount is set with the [high_priority_system_reserved_cpu](../../reference/configuration/yb-tserver/#high-priority-system-reserved-cpu) flag.
+The reserved amount is set with the [qos_system_high_cpu_reserved_percent](../../reference/configuration/yb-tserver/#qos-system-high-cpu-reserved-percent) flag.
 
 ## Scope and limitations
 
@@ -64,7 +64,7 @@ Keep the following in mind when planning a multitenant deployment:
 - **cgroup version.** cgroup v2 is supported. (cgroup v1, used by older distributions such as AlmaLinux 8, is planned for a later release.)
 - **Shared configuration.** All tenants share the same cluster, and therefore the same flag values. You cannot, for example, enable packed rows for one tenant and disable it for another.
 - **No security isolation.** Multitenancy provides performance isolation only. It does not add any security or privacy isolation beyond the existing PostgreSQL security model.
-- **Container support.** In containerized environments (Docker, Kubernetes), the cgroups filesystem is typically mounted read-only, so the container must be privileged with a writable cgroup mount. For more information, see [Set up multitenancy](./set-up/).
+- **Container support.** In containerized environments (Docker, Kubernetes), the cgroups filesystem is typically mounted read-only, so the container must be privileged with a writable, dedicated cgroup mount. For more information, see [Set up multitenancy](./set-up/#other-deployments).
 - **Memory cgroup flag.** The feature is incompatible with the `postmaster_cgroup` flag (used to limit PostgreSQL backend memory), because CPU and memory isolation require different cgroup hierarchies.
 
 ## Learn more
