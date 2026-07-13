@@ -61,6 +61,7 @@ import {
   XClusterReplicationStatusError,
   XClusterTableDetails
 } from './dtos';
+import { REPLICATION_STATUS_ERROR_KEY } from './XClusterTableStatusLabel';
 import { MetricTrace, TableType, Universe, UniverseNamespace } from '../../redesign/helpers/dtos';
 import {
   AlertTemplate,
@@ -909,16 +910,34 @@ const updateTableStatusWithReplicationLag = (
     : tableStatus;
 
 /**
- * Returns the single string representation of a table status. This is used for search and sorting.
+ * Returns translated status labels for search and sorting.
+ * For error tables with replication errors, returns all translated error labels.
  */
-const getStringRepresentationOfTableStatus = (
+const getReplicationStatusErrorLabel = (error: string): string => {
+  const errorKey = REPLICATION_STATUS_ERROR_KEY[error];
+  return errorKey
+    ? i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.replicationStatusError.${errorKey}.label`)
+    : error;
+};
+
+export const getTableStatusSearchValues = (
   tableStatus: XClusterTableStatus,
   replicationStatusErrors: XClusterReplicationStatusError[]
-) =>
-  tableStatus === XClusterTableStatus.ERROR
-    ? replicationStatusErrors[0] ??
-      i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}.label`)
-    : i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}.label`);
+): string[] => {
+  if (tableStatus === XClusterTableStatus.ERROR) {
+    return replicationStatusErrors.length > 0
+      ? replicationStatusErrors.map(getReplicationStatusErrorLabel)
+      : [i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}.label`)];
+  }
+  return [i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}.label`)];
+};
+
+/**
+ * Returns the primary status label used for column sort.
+ * This is the first searchable status value (e.g. the first error pill label).
+ */
+export const getTableStatusSortLabel = (statusSearchValues: string[]): string =>
+  statusSearchValues[0];
 
 /**
  * Returns array of XClusterReplicationTable or array of XClusterTable by augmenting YBTable with XClusterTableDetails.
@@ -968,44 +987,51 @@ export const augmentTablesWithXClusterDetails = <TIncludeDroppedTables extends b
     }
 
     if (sourceTableInfo) {
+      const statusSearchValues = getTableStatusSearchValues(
+        tableStatus,
+        tableDetails.replicationStatusErrors
+      );
       tables.push({
         ...sourceTableInfo,
         ...xClusterTableDetails,
         status: tableStatus,
-        statusLabel: getStringRepresentationOfTableStatus(
-          tableStatus,
-          tableDetails.replicationStatusErrors
-        ),
+        statusSearchValues,
+        statusLabel: getTableStatusSortLabel(statusSearchValues),
         replicationLag
       });
     } else if (targetTableInfo) {
+      const statusSearchValues = getTableStatusSearchValues(
+        tableStatus,
+        tableDetails.replicationStatusErrors
+      );
       tables.push({
         ...targetTableInfo,
         ...xClusterTableDetails,
         status: tableStatus,
-        statusLabel: getStringRepresentationOfTableStatus(
-          tableStatus,
-          tableDetails.replicationStatusErrors
-        ),
+        statusSearchValues,
+        statusLabel: getTableStatusSortLabel(statusSearchValues),
         replicationLag
       });
     } else {
       // Table info missing from both source and target.
       // YBA backend does not provide a status for this case. Thus, on the client side we will
       // use `XClusterTableStatus.DROPPED` or `XClusterTableStatus.TABLE_INFO_MISSING` to indicate no table detail information is available.
+      const statusLabel = i18n.t(
+        `${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${
+          isTableInfoIncludedInConfig
+            ? XClusterTableStatus.DROPPED
+            : XClusterTableStatus.TABLE_INFO_MISSING
+        }.label`
+      );
+      const statusSearchValues = [statusLabel];
       tables.push({
         ...xClusterTableDetails,
         tableUUID: tableId,
         status: isTableInfoIncludedInConfig
           ? XClusterTableStatus.DROPPED
           : XClusterTableStatus.TABLE_INFO_MISSING,
-        statusLabel: i18n.t(
-          `${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${
-            isTableInfoIncludedInConfig
-              ? XClusterTableStatus.DROPPED
-              : XClusterTableStatus.TABLE_INFO_MISSING
-          }.label`
-        ),
+        statusSearchValues,
+        statusLabel: getTableStatusSortLabel(statusSearchValues),
         replicationLag
       });
     }
