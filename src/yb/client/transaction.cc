@@ -1096,7 +1096,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return subtransaction_.HasSubTransaction(id);
   }
 
-  Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) EXCLUDES(mutex_) {
+  Status RollbackToSubTransaction(
+      SubTransactionId id, CoarseTimePoint deadline,
+      bool* is_heartbeat_aborted_or_expired = nullptr) EXCLUDES(mutex_) {
     // A heartbeat should be sent (& waited for) to the txn status tablet(s) as part of a rollback.
     // This is for updating the list of aborted sub-txns and ensures that other txns don't see false
     // conflicts with this txn.
@@ -1166,7 +1168,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
       auto state = state_.load(std::memory_order_acquire);
       DCHECK(state != TransactionState::kPromoting); // can't happen, see comment above for details
-      if (state == TransactionState::kRunning) {
+      if (state == TransactionState::kAborted) {
+        if (is_heartbeat_aborted_or_expired != nullptr) {
+          *is_heartbeat_aborted_or_expired = true;
+        }
+        VLOG_WITH_PREFIX(2) << "Rollback to subtransaction: already aborted";
+      } else if (state == TransactionState::kRunning) {
         VLOG_WITH_PREFIX(2) << "Sending heartbeat to status tablet for sub-txn rollback.";
         heartbeat_futures.push_back(SendHeartBeatOnRollback(
             deadline, status_tablet_, &rollback_heartbeat_handle_,
@@ -1175,8 +1182,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
 
     // Wait for the heartbeat response
+    bool heartbeat_aborted_or_expired = false;
     for (auto& future : heartbeat_futures) {
       auto status = future.get();
+      if (status.IsAborted() || status.IsExpired()) {
+        heartbeat_aborted_or_expired = true;
+      }
+
       // If the transaction has been aborted or no longer exists, we don't have to do anything
       // further. The rollback heartbeat which tries to update the list of aborted sub-txns is as
       // good as successful.
@@ -1191,6 +1203,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     RETURN_NOT_OK(subtransaction_.RollbackToSubTransaction(id));
     VLOG_WITH_PREFIX(2) << "Aborted sub-txns from " << id
                         << "; subtransaction_=" << subtransaction_.ToString();
+
+    if (heartbeat_aborted_or_expired && is_heartbeat_aborted_or_expired != nullptr) {
+      *is_heartbeat_aborted_or_expired = true;
+    }
 
     return Status::OK();
   }
@@ -2848,8 +2864,9 @@ SubTransactionId YBTransaction::GetActiveSubTransactionId() const {
   return impl_->GetActiveSubTransactionId();
 }
 
-Status YBTransaction::RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) {
-  return impl_->RollbackToSubTransaction(id, deadline);
+Status YBTransaction::RollbackToSubTransaction(
+    SubTransactionId id, CoarseTimePoint deadline, bool* is_heartbeat_aborted_or_expired) {
+  return impl_->RollbackToSubTransaction(id, deadline, is_heartbeat_aborted_or_expired);
 }
 
 bool YBTransaction::HasSubTransaction(SubTransactionId id) {

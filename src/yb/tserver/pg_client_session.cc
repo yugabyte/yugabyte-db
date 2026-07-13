@@ -2270,7 +2270,10 @@ class PgClientSession::Impl {
                           kind == PgClientSessionKind::kPlain ? "kPlain" : "kAutonomousDdl",
                           subtxn_id));
     const auto deadline = context->GetClientDeadline();
-    RETURN_NOT_OK(transaction->RollbackToSubTransaction(subtxn_id, deadline));
+    bool is_heartbeat_aborted_or_expired = false;
+    RETURN_NOT_OK(
+        transaction->RollbackToSubTransaction(
+            subtxn_id, deadline, &is_heartbeat_aborted_or_expired));
 
     if (YsqlDdlSavepointEnabled() &&
         is_ddl_mode && req.options().ddl_use_regular_transaction_block() &&
@@ -2282,6 +2285,17 @@ class PgClientSession::Impl {
       RSTATUS_DCHECK(ddl_txn_metadata_.transaction_id == transaction->id(), IllegalState,
                      Format("Unexpected DDL transaction metadata found. Expected: $0, found: $1",
                             transaction->id(), ddl_txn_metadata_.transaction_id));
+
+      // Prevent split-brain: if the transaction is completely aborted at the DocDB level,
+      // we must propagate an error back to PostgreSQL so it triggers a full rollback and
+      // clears the stale relcache.
+      if (is_heartbeat_aborted_or_expired) {
+        return STATUS_FORMAT(
+            Aborted,
+            "Distributed transaction $0 was aborted due to deadlock or other failure",
+            transaction->id());
+      }
+
       RETURN_NOT_OK(client_.RollbackDocdbSchemaToSubtxn(ddl_txn_metadata_, subtxn_id));
       RETURN_NOT_OK(
           client_.WaitForRollbackDocdbSchemaToSubtxnToFinish(ddl_txn_metadata_, subtxn_id));
