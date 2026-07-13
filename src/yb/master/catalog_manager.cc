@@ -2288,6 +2288,8 @@ bool CatalogManager::StartShutdown() {
 
   xcluster_manager_->StartShutdown();
 
+  ysql_manager_->StartShutdown();
+
   if (sys_catalog_) {
     sys_catalog_->StartShutdown();
   }
@@ -2301,6 +2303,7 @@ void CatalogManager::CompleteShutdown() {
   xrepl_parent_tablet_deletion_task_.CompleteShutdown();
   refresh_ysql_pg_catalog_versions_task_.CompleteShutdown();
   xcluster_manager_->CompleteShutdown();
+  ysql_manager_->CompleteShutdown();
 
   if (background_tasks_) {
     background_tasks_->Shutdown();
@@ -14664,6 +14667,10 @@ Status CatalogManager::GetTabletsMetadata(const GetTabletsMetadataRequestPB* req
   }
 
   return Status::OK();
+}
+
+Status CatalogManager::SubmitBackgroundTask(const std::function<void()>& func) {
+  return background_tasks_thread_pool_->SubmitFunc(func);
 }
 
 } // namespace yb::master

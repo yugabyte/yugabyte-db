@@ -221,6 +221,8 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
     }
   }
 
+  catalog_manager_->ysql_manager_->RunBgTasks(epoch);
+
   // Report metrics.
   catalog_manager_->ReportMetrics();
 

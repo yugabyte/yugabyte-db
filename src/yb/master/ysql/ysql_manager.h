@@ -20,6 +20,8 @@
 
 #include "yb/master/master_admin.pb.h"
 
+#include "yb/rpc/scheduler.h"
+
 namespace yb {
 
 namespace rpc {
@@ -35,6 +37,9 @@ class YsqlManager : public YsqlManagerIf {
   YsqlManager(Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog);
 
   virtual ~YsqlManager() = default;
+
+  void StartShutdown();
+  void CompleteShutdown();
 
   void Clear();
 
@@ -135,11 +140,25 @@ class YsqlManager : public YsqlManagerIf {
       PgOid database_oid, PgOid index_oid, const std::string& status_col_name,
       const ReadHybridTime& read_time = ReadHybridTime()) const override;
 
+  void RunBgTasks(const LeaderEpoch& epoch);
+
   // Background task of LISTEN/NOTIFY.
   Status ListenNotifyBgTask();
 
  private:
   Result<bool> StartRunningInitDbIfNeededInternal(const LeaderEpoch& epoch);
+
+  void StartDdlPostProcessingFailedVerificationRetriggerIfStopped();
+
+  // Helper function to schedule the next iteration of the ddl post processing failed verification
+  // task.
+  void ScheduleDdlPostProcessingFailedVerificationRetriggerTask(bool schedule_now = false);
+
+  // Background task that re-triggers DDL verification for YSQL DDL transactions in
+  // kDdlPostProcessingFailed state.
+  // Note: This function should only ever be called by
+  // StartDdlPostProcessingFailedVerificationRetriggerIfStopped().
+  void RetriggerDdlPostProcessingFailedVerificationPeriodically();
 
   // Helper functions for background task of LISTEN/NOTIFY.
   Status CreateYbSystemDBIfNeeded();
@@ -157,6 +176,12 @@ class YsqlManager : public YsqlManagerIf {
   std::atomic<bool> pg_proc_exists_{false};
 
   bool advisory_locks_table_created_ = false;
+
+  // Whether the periodic job to re-trigger DDL verification for kDdlPostProcessingFailed txns
+  // is running.
+  std::atomic<bool> ddl_post_processing_failed_verification_retrigger_running_{false};
+
+  rpc::ScheduledTaskTracker refresh_ysql_ddl_post_processing_failed_verification_task_;
 
   std::atomic<bool> yb_system_db_created_ = {false};
   std::atomic<bool> creating_listen_notify_objects_ = {false};
