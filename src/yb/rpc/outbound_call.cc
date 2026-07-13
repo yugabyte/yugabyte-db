@@ -486,7 +486,8 @@ Status OutboundCall::SetRequestParam(
         (TraceContextPB::kSpanIdFieldNumber << 3) | WireFormatLite::WIRETYPE_FIXED64, dst);
     dst = Output::WriteLittleEndian64ToArray(BigEndian::Load64(span_id.Id().data()), dst);
 
-    dst = Output::WriteTagToArray(TraceContextPB::kVersionAndFlagsFieldNumber << 3, dst);
+    dst = Output::WriteTagToArray(
+        (TraceContextPB::kVersionAndFlagsFieldNumber << 3) | WireFormatLite::WIRETYPE_VARINT, dst);
     dst = Output::WriteVarint32ToArray(version_and_flags, dst);
   }
 
