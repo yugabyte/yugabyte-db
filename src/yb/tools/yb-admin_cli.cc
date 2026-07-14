@@ -442,8 +442,6 @@ std::string ClusterAdminCli::GetArgumentExpressions(const std::string& usage_arg
 }
 
 std::vector<std::string> ClusterAdminCli::GetSuggestedCommands(const std::string& op) const {
-  // An empty operation is a prefix of - and close to - every command, so there is no meaningful
-  // suggestion to make.
   if (op.empty()) {
     return {};
   }
