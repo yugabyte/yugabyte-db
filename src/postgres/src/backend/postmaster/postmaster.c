@@ -4056,7 +4056,7 @@ LaunchMissingBackgroundProcesses(void)
 	 */
 	if (!IsBinaryUpgrade && AutoVacLauncherPMChild == NULL &&
 		(AutoVacuumingActive() || start_autovac_launcher) &&
-		pmState == PM_RUN)
+		pmState == PM_RUN && !YBIsEnabledInPostgresEnvVar())
 	{
 		AutoVacLauncherPMChild = StartChildProcess(B_AUTOVAC_LAUNCHER);
 		if (AutoVacLauncherPMChild != NULL)

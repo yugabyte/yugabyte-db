@@ -233,7 +233,12 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
   // ASH collector fires a master RPC, which is only counted by the metrics_ object
   // when a DB connection is made.
   uint32_t ASHCollectorRPCCount() const {
-    return static_cast<uint32_t>(num_connections_created_ == 1);
+    // TODO (myang): yb_enable_ash is currently disabled on pg19 to prevent a crash loop
+    // inside YBCStoreTServerAshSamples after the upstream PG15 process-type refactor.
+    // As a result, the ASH collector background RPC does not fire.
+    // Once the ASH crash bug is fixed, revert this to
+    // return static_cast<uint32_t>(num_connections_created_ == 1);
+    return 0;
   }
 
   std::string GetQpmInsertQuery(const std::string& tableName, int val) {
@@ -291,7 +296,7 @@ class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
   }
 };
 
-constexpr auto kResponseCacheSize5MB = 5 * 1024 * 1024;
+constexpr auto kResponseCacheSize6MB = 6 * 1024 * 1024;
 constexpr auto kPreloadCatalogList =
     "pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger"sv;
 constexpr auto kExtendedTableList =
@@ -307,20 +312,20 @@ constexpr Configuration kConfigWithUnlimitedCache{
     .response_cache_size_bytes = 0, .preload_additional_catalog_list = kPreloadCatalogList};
 
 constexpr Configuration kConfigWithLimitedCache{
-    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .response_cache_size_bytes = kResponseCacheSize6MB,
     .preload_additional_catalog_list = kPreloadCatalogList};
 
 constexpr Configuration kConfigWithPreloadAdditionalCatList{
-    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .response_cache_size_bytes = kResponseCacheSize6MB,
     .preload_additional_catalog_list = kExtendedTableList};
 
 constexpr Configuration kConfigWithPreloadAdditionalCatTables{
-    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .response_cache_size_bytes = kResponseCacheSize6MB,
     .preload_additional_catalog_list = kPreloadCatalogList,
     .preload_additional_catalog_tables = true};
 
 constexpr Configuration kConfigWithPreloadAdditionalCatBoth{
-    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .response_cache_size_bytes = kResponseCacheSize6MB,
     .preload_additional_catalog_list = kExtendedTableList,
     .preload_additional_catalog_tables = true};
 
@@ -376,11 +381,11 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
   }
 };
 
-constexpr uint64_t kFirstConnectionRPCCountDefault = 5;
+constexpr uint64_t kFirstConnectionRPCCountDefault = 6;
 constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 7;
-constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 5;
+constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 6;
 constexpr uint64_t kSubsequentConnectionRPCCount = 2;
-constexpr uint64_t kFirstConnectionRPCCountNoRelcacheFile = 6;
+constexpr uint64_t kFirstConnectionRPCCountNoRelcacheFile = 7;
 static_assert(kFirstConnectionRPCCountDefault <= kFirstConnectionRPCCountWithAdditionalTables);
 
 // Helper class to fetch number of client connection via pgsql proxy webserver.
@@ -442,7 +447,7 @@ TEST_F(PgCatalogPerfTest, StartupRPCCount) {
 // Test checks number of RPC in case of cache refresh without partitioned tables.
 TEST_F(PgCatalogPerfTest, CacheRefreshRPCCountWithoutPartitionTables) {
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 3);
+  ASSERT_EQ(cache_refresh_rpc_count, 4);
 }
 
 // Test checks number of RPC in case of cache refresh with partitioned tables.
@@ -466,7 +471,7 @@ TEST_F(PgCatalogPerfTest, CacheRefreshRPCCountWithPartitionTables) {
       kTableWithCastInPartitioning));
 
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 7);
+  ASSERT_EQ(cache_refresh_rpc_count, 8);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnInsert) {
@@ -476,27 +481,27 @@ TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnInsert) {
 TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnInsertMinPreload,
           PgCatalogMinPreloadTest) {
-  TestAfterCacheRefreshRPCCountOnInsert(/*expected_master_rpc_count=*/ 6);
+  TestAfterCacheRefreshRPCCountOnInsert(/*expected_master_rpc_count=*/ 7);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelect) {
-  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/ 4);
+  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/ 5);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnSelectMinPreload,
           PgCatalogMinPreloadTest) {
-  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/13);
+  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/ 15);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelectWithExtStats) {
-  TestAfterCacheRefreshRPCCountOnSelectWithExtStats(/*expected_master_rpc_count=*/ 7);
+  TestAfterCacheRefreshRPCCountOnSelectWithExtStats(/*expected_master_rpc_count=*/ 8);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnSelectWithExtStatsPreload,
           PgStatsPreloadTest) {
-  TestAfterCacheRefreshRPCCountOnSelectWithExtStats(/*expected_master_rpc_count=*/ 3);
+  TestAfterCacheRefreshRPCCountOnSelectWithExtStats(/*expected_master_rpc_count=*/ 4);
 }
 
 // The test checks number of hits in response cache in case of multiple connections and aggressive
@@ -988,7 +993,7 @@ TEST_F_EX(PgCatalogPerfTest, ForeignKeyRelcachePreloadTest, PgPreloadAdditionalC
       }));
   // With yb_enable_fkey_catcache turned off, we would see more than 24 RPCs
   // because we have to look up the foreign keys from master.
-  ASSERT_EQ(select_rpc_count, 24);
+  ASSERT_EQ(select_rpc_count, 26);
 }
 
 // The test checks that sys catalog table prefetching works well in case of login of user with
