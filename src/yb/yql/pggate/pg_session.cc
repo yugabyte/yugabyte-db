@@ -125,8 +125,10 @@ void PublishPendingRpcTableInfo(
       joined_names += ", ";
     }
     auto it = table_cache.find(relation);
-    DCHECK(it != table_cache.end());
-    joined_names += it->second->table_name().table_name();
+    // TODO(#32477): Queries after ALTER TABLE / TRUNCATE does not give table name span attribute.
+    if (it != table_cache.end() && it->second) {
+      joined_names += it->second->table_name().table_name();
+    }
   }
   if (!joined_names.empty()) {
     dist_trace::AddPendingRpcStringAttr("rpc.table_names", std::move(joined_names));

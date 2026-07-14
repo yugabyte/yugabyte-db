@@ -15,6 +15,7 @@ import api.v2.models.PerProcessResizeNodeSpec;
 import api.v2.models.UniverseResizeNodes;
 import api.v2.models.UniverseResizeNodesCluster;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -146,6 +147,49 @@ public class UniverseResizeNodesMapperTest {
     assertEquals((Object) 800, tserverDevice.volumeSize);
     assertEquals((Object) 6000, tserverDevice.diskIops);
     assertEquals((Object) 250, tserverDevice.throughput);
+
+    assertEquals("c5.4xlarge", cluster.userIntent.masterInstanceType);
+    assertEquals((Object) 100, cluster.userIntent.masterDeviceInfo.volumeSize);
+    assertEquals((Object) 5000, cluster.userIntent.masterDeviceInfo.diskIops);
+  }
+
+  @Test
+  public void testMasterResizeSyncsLegacyFieldsWhenAlreadySet() {
+    UUID cUUID = UUID.randomUUID();
+    UniverseResizeNodes req = new UniverseResizeNodes();
+
+    PerProcessResizeNodeSpec masterSpec = new PerProcessResizeNodeSpec();
+    masterSpec.setInstanceType("c5.4xlarge");
+    masterSpec.setStorageSpec(new ClusterResizeStorageSpec().volumeSize(200).diskIops(6000));
+
+    ClusterResizeNodeSpec nodeSpec = new ClusterResizeNodeSpec();
+    nodeSpec.setMaster(masterSpec);
+
+    UniverseResizeNodesCluster resizeCluster = createResizeCluster(cUUID);
+    resizeCluster.setNodeSpec(nodeSpec);
+    req.addClustersItem(resizeCluster);
+
+    ResizeNodeParams v1Params = new ResizeNodeParams();
+    Cluster v1c = createV1Cluster(cUUID, ClusterType.PRIMARY);
+    v1c.userIntent.dedicatedNodes = true;
+    v1c.userIntent.instanceType = "c5.xlarge";
+    v1c.userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    v1c.userIntent.masterInstanceType = "c5.xlarge";
+    v1c.userIntent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    v1Params.clusters.add(v1c);
+
+    UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(req, v1Params);
+
+    Cluster cluster = v1Params.getClusterByUuid(cUUID);
+    NodeDetails masterNode = new NodeDetails();
+    masterNode.dedicatedTo = ServerType.MASTER;
+
+    assertEquals("c5.4xlarge", cluster.userIntent.masterInstanceType);
+    assertEquals("c5.4xlarge", cluster.userIntent.getInstanceTypeForNode(masterNode));
+    assertEquals((Object) 200, cluster.userIntent.masterDeviceInfo.volumeSize);
+    assertEquals((Object) 6000, cluster.userIntent.masterDeviceInfo.diskIops);
+    assertEquals((Object) 1, cluster.userIntent.masterDeviceInfo.numVolumes);
+    assertEquals((Object) 200, cluster.userIntent.getDeviceInfoForNode(masterNode).volumeSize);
   }
 
   @Test

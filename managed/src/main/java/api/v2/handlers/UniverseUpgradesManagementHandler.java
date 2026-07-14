@@ -385,9 +385,9 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     log.info("Configure metrics export for universe with v2 spec: {}", prettyPrint(req));
 
     // Current telemetry config from the export_telemetry_config table (source of truth), falling
-    // back to the synced userIntent copies. Used both to detect a no-op and to preserve the audit
-    // and query log configs that this metrics-only request must not clobber.
-    TelemetryConfig currentTelemetryConfig = v1Handler.getCurrentTelemetryConfig(universe);
+    // back to the synced userIntent copies. Used both to detect a no-op and to preserve the audit,
+    // query and master-log configs that this metrics-only request must not clobber.
+    TelemetryConfig currentTelemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
 
     MetricsExportConfigParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toMetricsExportConfigParams(
@@ -466,12 +466,11 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     ExportTelemetryConfigParams exportParams =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toExportTelemetryConfigParams(
             universeDetails, request);
-    // Override the metrics export config in the export params with the requested config.
-    exportParams.setTelemetryConfig(
-        TelemetryConfig.of(
-            currentTelemetryConfig.getAuditLogConfig(),
-            currentTelemetryConfig.getQueryLogConfig(),
-            v1Params.getMetricsExportConfig()));
+    // Start from the universe's current telemetry config (the ExportTelemetryConfig table is the
+    // single source of truth) and override only the metrics section being changed here, preserving
+    // the audit/query/master-log sections.
+    currentTelemetryConfig.setMetricsExportConfig(v1Params.getMetricsExportConfig());
+    exportParams.setTelemetryConfig(currentTelemetryConfig);
     exportParams.upgradeOption = v1Params.upgradeOption;
     UUID taskUUID = v1Handler.submitExportTelemetryConfigs(exportParams, customer, universe);
     log.info(
@@ -547,8 +546,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     if (stored == null) {
       return new api.v2.models.TelemetryConfig();
     }
-    return ExportTelemetryConfigMapper.toGenerated(
-        stored.getAuditLogConfig(), stored.getQueryLogConfig(), stored.getMetricsExportConfig());
+    return ExportTelemetryConfigMapper.toGenerated(stored);
   }
 
   private Set<UUID> extractAuditLogExporterUuids(ExportTelemetryConfigParams params) {

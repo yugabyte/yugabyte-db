@@ -252,7 +252,7 @@ export const OCIProviderEditForm = ({
   }
 
   if (
-    formMethods.formState.defaultValues?.ociRegionData === undefined &&
+    formMethods.formState.defaultValues?.ociRegionData === null &&
     regionMetadataQuery.data
   ) {
     formMethods.reset(constructDefaultFormValues(providerConfig, regionMetadataQuery.data));

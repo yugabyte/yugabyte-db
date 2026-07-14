@@ -220,6 +220,13 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       } catch (IOException ex) {
         LOG.error(logPrefix + ": exception while trying to close " + clusterOrSessionStr, ex);
         throw ex;
+      } catch (AssertionError ex) {
+        // The DataStax driver can raise a spurious AssertionError from its internal
+        // ConvictionPolicy connection accounting when closing a session/cluster whose hosts were
+        // removed while the test was running (e.g. during a full cluster move). This happens only
+        // during best-effort teardown and does not reflect a product failure, so log and continue.
+        LOG.error(logPrefix + ": ignoring driver assertion while closing " + clusterOrSessionStr,
+            ex);
       }
     } else {
       LOG.info(logPrefix + clusterOrSessionStr + " is already null, nothing to close");

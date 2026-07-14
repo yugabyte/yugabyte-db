@@ -109,26 +109,98 @@ function buildPlacementRegions(
     });
 }
 
-function buildReadReplicaNodeSpec(
-  primary: ClusterSpec | undefined,
+/**
+ * In inherited-node-spec flows (notably K8s), primary AZ overrides can include
+ * per-process AZ overrides under master/tserver. Current backend add-RR mapping
+ * can NPE when these nested blocks are present, so strip them before submit.
+ */
+function sanitizeInheritedAzPerProcessStorage(nodeSpec: ClusterNodeSpec): ClusterNodeSpec {
+  const cloned = _.cloneDeep(nodeSpec) as ClusterNodeSpec;
+
+  const azNodeSpec = cloned.az_node_spec as
+    | Record<string, Record<string, unknown> | undefined>
+    | undefined;
+  if (!azNodeSpec) {
+    return cloned;
+  }
+
+  Object.values(azNodeSpec).forEach((azNode) => {
+    if (!azNode) {
+      return;
+    }
+    delete azNode.master;
+    delete azNode.tserver;
+  });
+
+  return cloned;
+}
+
+function withK8sResourceSpecFallback(
+  nodeSpec: ClusterNodeSpec,
   instanceSettings: RRInstanceSettingsProps
 ): ClusterNodeSpec {
-  if (instanceSettings.inheritPrimaryInstance && primary?.node_spec) {
-    return _.cloneDeep(primary.node_spec) as ClusterNodeSpec;
+  const next = _.cloneDeep(nodeSpec) as ClusterNodeSpec;
+  const tserver = instanceSettings.tserverK8SNodeResourceSpec;
+  const master =
+    instanceSettings.masterK8SNodeResourceSpec ??
+    (instanceSettings.keepMasterTserverSame ? tserver : undefined);
+
+  if (!next.k8s_tserver_resource_spec && tserver) {
+    next.k8s_tserver_resource_spec = {
+      cpu_core_count: tserver.cpuCoreCount,
+      memory_gib: tserver.memoryGib
+    };
   }
-  const { instanceType, deviceInfo, enableEbsVolumeEncryption, ebsKmsConfigUUID } =
-    instanceSettings;
+  if (!next.k8s_master_resource_spec && master) {
+    next.k8s_master_resource_spec = {
+      cpu_core_count: master.cpuCoreCount,
+      memory_gib: master.memoryGib
+    };
+  }
+  return next;
+}
+
+function buildCustomReadReplicaNodeSpec(instanceSettings: RRInstanceSettingsProps): ClusterNodeSpec {
+  const {
+    instanceType,
+    deviceInfo,
+    enableEbsVolumeEncryption,
+    ebsKmsConfigUUID,
+    tserverK8SNodeResourceSpec: tserverK8s
+  } = instanceSettings;
+  const storageSpec = deviceInfo
+    ? buildStorageSpecFromDeviceInfo(deviceInfo, enableEbsVolumeEncryption, ebsKmsConfigUUID)
+    : undefined;
+
+  if (tserverK8s) {
+    return {
+      ...(instanceType ? { instance_type: instanceType } : {}),
+      ...(storageSpec ? { storage_spec: storageSpec } : {}),
+      k8s_tserver_resource_spec: {
+        cpu_core_count: tserverK8s.cpuCoreCount,
+        memory_gib: tserverK8s.memoryGib
+      }
+    };
+  }
+
   if (!deviceInfo || !instanceType) {
     throw new Error('READ_REPLICA_INSTANCE_REQUIRED');
   }
   return {
     instance_type: instanceType,
-    storage_spec: buildStorageSpecFromDeviceInfo(
-      deviceInfo,
-      enableEbsVolumeEncryption,
-      ebsKmsConfigUUID
-    )
+    storage_spec: storageSpec!
   };
+}
+
+function buildReadReplicaNodeSpec(
+  primary: ClusterSpec | undefined,
+  instanceSettings: RRInstanceSettingsProps
+): ClusterNodeSpec {
+  if (instanceSettings.inheritPrimaryInstance && primary?.node_spec) {
+    const sanitized = sanitizeInheritedAzPerProcessStorage(primary.node_spec as ClusterNodeSpec);
+    return withK8sResourceSpecFallback(sanitized, instanceSettings);
+  }
+  return buildCustomReadReplicaNodeSpec(instanceSettings);
 }
 
 type ReadReplicaSizingAndPlacement = {

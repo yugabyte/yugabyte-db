@@ -19,6 +19,8 @@ interface PlacementActionsMenuProps {
   showAddGeoPartition?: boolean;
   /** Optional override for the trigger button label key (defaults to "actions" common key). */
   triggerLabelKey?: string;
+  /** When true, the "Add Read Replica" item is not shown (used by the geo partition view). */
+  readReplicaAlreadyPresent?: boolean;
 }
 
 /**
@@ -31,7 +33,8 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
   universeUuid,
   onEditMasterAllocationClick,
   showAddGeoPartition = false,
-  triggerLabelKey
+  triggerLabelKey,
+  readReplicaAlreadyPresent = false
 }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.placement' });
   const isUniverseReady = useIsUniverseReady();
@@ -84,10 +87,10 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
         >
           <Box sx={{ display: 'flex', alignItems: 'flex-start', flexDirection: 'row', gap: '4px' }}>
             <div>
-              <AddIcon />
+              {readReplicaAlreadyPresent ? <EditIcon /> : <AddIcon />}
             </div>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {t('addReadReplica')}
+              {readReplicaAlreadyPresent ? t('editReadReplica') : t('addReadReplica')}
               <Typography
                 variant="subtitle1"
                 color="textSecondary"

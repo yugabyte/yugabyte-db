@@ -46,6 +46,7 @@ import {
 //icons
 import MapIcon from '@app/redesign/assets/map.svg';
 import MapIconSelected from '@app/redesign/assets/map_selected.svg';
+import MapDisabled from '@app/redesign/assets/map_disabled.svg';
 import Flash from '@app/redesign/assets/flash_transparent.svg';
 
 const { Grid2: Grid, Collapse, styled, Box } = mui;
@@ -69,8 +70,8 @@ const StyledHelpText = styled('div')(({ theme }) => ({
 
 export const ResilienceAndRegions = forwardRef<
   StepsRef,
-  { isGeoPartition?: boolean; hideHelpText?: boolean }
->(({ isGeoPartition = false, hideHelpText = false }, forwardRef) => {
+  { isGeoPartition?: boolean; hideHelpText?: boolean, disableGuidedMode?: boolean }
+>(({ isGeoPartition = false, hideHelpText = false, disableGuidedMode = false }, forwardRef) => {
   const [
     { generalSettings, resilienceAndRegionsSettings },
     {
@@ -266,15 +267,17 @@ export const ResilienceAndRegions = forwardRef<
                 {
                   value: ResilienceFormMode.GUIDED,
                   label: t('formType.guidedMode'),
-                  icon: formMode === ResilienceFormMode.GUIDED ? <MapIconSelected /> : <MapIcon />,
+                  icon: disableGuidedMode ? <MapDisabled /> : formMode === ResilienceFormMode.GUIDED ? <MapIconSelected /> : <MapIcon />,
                   onClick: () => {
                     methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.GUIDED, {
                       shouldValidate: true
                     });
                   },
                   buttonProps: {
-                    dataTestId: 'guided-mode-button'
-                  }
+                    dataTestId: 'guided-mode-button',
+                    disabled: disableGuidedMode
+                  },
+                  tooltip: disableGuidedMode ? t('guidedModeNotSupported') : undefined
                 },
                 {
                   value: ResilienceFormMode.EXPERT_MODE,

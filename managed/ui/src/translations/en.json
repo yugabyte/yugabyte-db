@@ -3839,6 +3839,7 @@
         "helpText": "Advanced placement options such as  <a>Read Replicas</a>  and  <a>Geo Partitioning</a>  can be configured post cluster creation.",
         "expertModeHelpText": "Set the replication factor for your data.  <a>What is this?</a>",
         "expertModeFaultToleranceMinMsg": "Clusters with replication factor of 1 won't be resilient to outages and are subject to downtime during operations that require a restart.",
+        "guidedModeNotSupported": "This Universe configuration is not supported in Guided mode.",
         "regions": "Regions",
         "replicationFactor": "Replication Factor",
         "availabilityZonesCount": "{{count}} Availability Zone",
@@ -4185,8 +4186,8 @@
           "ysqlServerHttpPort": "YSQL HTTP Port",
           "ysqlServerRpcPort": "YSQL Port",
           "internalYsqlServerRpcPort": "Internal YSQL Port",
-          "redisServerHttpPort": "Redis HTTP Port",
-          "redisServerRpcPort": "Redis HTTP Port",
+          "redisServerHttpPort": "Yedis HTTP Port",
+          "redisServerRpcPort": "Yedis RPC Port",
           "nodeExporterPort": "Node Exporter Port",
           "ybControllerRpcPort": "YB Controller RPC Port",
           "masterGroup": "Master Server",
@@ -4218,7 +4219,13 @@
         "networkAccessField": {
           "label": "Enable Public Network Access",
           "subText": "Assign a load balancer or nodeport for connecting to the DB endpoints over the internet."
-        }
+        },
+        "k8sOverrides": "Kubernetes Overrides",
+        "overrideInfo": "Override default Helm chart values for this cluster.",
+        "addHelmOverrides": "Add Helm Overrides",
+        "overrideConfigured": "Helm Override Configured",
+        "editHelmOverrides": "Edit Helm Overrides",
+        "helmOverrides": "HELM OVERRIDES"
       },
       "reviewAndSummary": {
         "daily": "Daily",
@@ -4323,6 +4330,7 @@
         "clusterPlacement": "Cluster Placement",
         "primaryCluster": "Primary Cluster",
         "addReadReplica": "Add Read Replica",
+        "editReadReplica": "Edit Read Replica",
         "readReplica": "Read Replica",
         "addReadReplicaHelpText": "Enhance read scalability and availability with Read Replicas.",
         "addGeoPartition": "Add Geo Partition",
@@ -4469,8 +4477,13 @@
         "databaseAuditLog": "Database Audit Log",
         "databaseAuditLogDescription": "Capture session database audit logs to comply with government, financial, or ISO certification.",
         "learnMore": "Learn more",
+        "active": "Active",
+        "configuring": "Configuring",
+        "logStatus": "Log Status",
         "enableQueryLogging": "Enable Query Logging",
-        "editQueryLogging": "Edit",
+        "editQueryLogging": "Query Logging Configuration",
+        "editDatabaseQueryLogging": "Edit Database Query Logging",
+        "disableDatabaseQueryLogging": "Disable Database Query Logging",
         "enableAuditLogging": "Enable Audit Logging",
         "telemetryExportNote": "<bold>Note:</bold> To send logs to external tools, go to Telemetry Export.",
         "queryLogSettings": {
@@ -4526,6 +4539,51 @@
           "confirmation": {
             "title": "Confirm Configuration Change",
             "message": "Enabling database query logging requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+            "back": "Back"
+          }
+        },
+        "editAuditLogging": "Audit Logging Configuration",
+        "editDatabaseAuditLogging": "Edit Database Audit Logging",
+        "disableDatabaseAuditLogging": "Disable Database Audit Logging",
+        "auditLogSettings": {
+          "title": "Configure Database Audit Logging",
+          "introTitle": "YSQL audit log",
+          "introText": "Customize the YSQL statements, relations, and log settings logged using PostgreSQL Audit Extension (<pgAuditLink>pgAudit</pgAuditLink>). Database audit logging will add performance overhead, especially for verbose logs. <docsLink>Learn more about YSQL audit logging</docsLink>.",
+          "section1Title": "1. Select YSQL statements and relations to log",
+          "section2Title": "2. Configure YSQL audit log settings",
+          "cancel": "Cancel",
+          "enableAuditLogging": "Enable Database Audit Logging",
+          "applyChanges": "Apply Changes",
+          "enableInProgress": "Enabling database audit logging",
+          "updateInProgress": "Updating database audit logging configuration",
+          "fields": {
+            "logCatalog": "pgaudit.log_catalog",
+            "logClient": "pgaudit.log_client",
+            "logLevel": "Level",
+            "logParameter": "pgaudit.log_parameter",
+            "logRelation": "pgaudit.log_relation",
+            "logStatement": "pgaudit.log_statement",
+            "logStatementOnce": "pgaudit.log_statement_once"
+          },
+          "tooltips": {
+            "read": "Log SELECT and COPY when the source is a relation or a query.",
+            "write": "Log INSERT, UPDATE, DELETE, TRUNCATE, and COPY when the destination is a relation.",
+            "function": "Log function calls and DO blocks.",
+            "role": "Log statements related to roles and privileges: GRANT, REVOKE, CREATE/ALTER/DROP ROLE.",
+            "ddl": "Log all DDL that is not included in the ROLE class.",
+            "misc": "Log miscellaneous commands, such as DISCARD, FETCH, CHECKPOINT, VACUUM, SET.",
+            "miscSet": "Log miscellaneous SET commands, such as SET ROLE.",
+            "logCatalog": "Log statements for the PostgreSQL system catalog relations in pg_catalog. Disable this option to reduce noise in the log.",
+            "logClient": "Log messages directly to clients such as ysqlsh and psql for debugging. When enabled, you can set the level of logs that are output using pgaudit.log_client.",
+            "logLevel": "Set the severity level of logs displayed in clients when pgaudit.log_client is on.",
+            "logParameter": "Include parameters passed with the statement. Parameters are provided in .csv format after the statement text.",
+            "logRelation": "Create separate log entries for each relation (TABLE, VIEW, etc.) referenced in a SELECT or DML statement. This is a shortcut for exhaustive logging without using object audit logging.",
+            "logStatement": "Include statement text with every log entry.",
+            "logStatementOnce": "Statement text (and, if enabled, parameters) are included with every log entry. Enable this option to only include them with the first log entry for a statement or sub-statement combination. This results in less verbose logging, but can make it more difficult to determine the statement that generated a log entry."
+          },
+          "confirmation": {
+            "title": "Confirm Configuration Change",
+            "message": "Enabling database audit logging requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
             "back": "Back"
           }
         }

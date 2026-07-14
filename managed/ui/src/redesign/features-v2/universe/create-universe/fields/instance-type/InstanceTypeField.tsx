@@ -14,12 +14,12 @@ import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/creat
 import { getDeviceInfoFromInstance } from '@app/redesign/features-v2/universe/create-universe/fields/volume-info/VolumeInfoFieldHelper';
 import { NodeType } from '@app/redesign/utils/dtos';
 import {
-  CloudType,
   InstanceType,
   InstanceTypeWithGroup,
   Placement,
   Region
 } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import {
@@ -183,8 +183,7 @@ export const InstanceTypeField = ({
                 }}
                 dataTestId="instance-type-field-container"
                 groupBy={
-                  provider?.code &&
-                  [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code)
+                  isCloudVendorCloudType(provider?.code)
                     ? (option: Record<string, string>) => option.groupName
                     : undefined
                 }

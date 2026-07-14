@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
@@ -49,6 +50,7 @@ import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 @Slf4j
 @Retryable
 @Abortable
+@CanRollback
 public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
 
   private final SoftwareUpgradeHelper softwareUpgradeHelper;

@@ -24,11 +24,11 @@ const { Box, styled, Typography } = mui;
 
 const MAX_PORT = 65535;
 interface DeploymentPortsProps {
-  disabled: boolean;
   providerCode: string;
   ysql: boolean;
   ycql: boolean;
   enableConnectionPooling?: boolean;
+  isEditMode?: boolean;
 }
 
 const PortContainer = styled(Box)(({ theme }) => ({
@@ -62,18 +62,25 @@ const StyledLabelIcon = styled(Box)(({ theme }) => ({
 }));
 
 export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
-  disabled,
   ysql,
   ycql,
   providerCode,
-  enableConnectionPooling
+  enableConnectionPooling,
+  isEditMode
 }) => {
   const { control } = useFormContext<OtherAdvancedProps>();
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.otherAdvancedSettings.deployPortsFeild'
   });
 
-  const PORT_GROUPS = getAccessiblePorts(ysql, ycql, providerCode, enableConnectionPooling, t);
+  const PORT_GROUPS = getAccessiblePorts(
+    ysql,
+    ycql,
+    providerCode,
+    enableConnectionPooling,
+    t,
+    isEditMode
+  );
 
   return (
     <PortContainer>
@@ -110,6 +117,7 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
                             onChange(port);
                           }}
                           defaultValue={DEFAULT_COMMUNICATION_PORTS[item.id]}
+                          disabled={item.disabled}
                           // trimWhitespace={false}
                         />
                       );

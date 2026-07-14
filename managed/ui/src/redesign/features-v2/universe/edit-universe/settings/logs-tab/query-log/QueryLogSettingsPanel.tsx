@@ -16,6 +16,7 @@ import { toast } from 'react-toastify';
 
 import { YBModal, YBTooltip } from '@app/redesign/components';
 import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
+import { taskQueryKey, universeQueryKey } from '@app/redesign/helpers/api';
 import {
   getGetUniverseQueryKey,
   useConfigureExportTelemetryConfig,
@@ -240,13 +241,10 @@ export const QueryLogSettingsPanel: FC<QueryLogSettingsPanelProps> = ({
       },
       {
         onSuccess: () => {
-          toast.success(
-            <Typography variant="body2" component="span">
-              {operation === 'create' ? t('enableInProgress') : t('updateInProgress')}
-            </Typography>
-          );
           queryClient.invalidateQueries(telemetryConfigQuery.queryKey);
+          queryClient.invalidateQueries(universeQueryKey.detailsV2(universeUuid));
           queryClient.invalidateQueries(getGetUniverseQueryKey(universeUuid));
+          queryClient.invalidateQueries(taskQueryKey.universe(universeUuid));
           setIsConfirmationOpen(false);
           onClose();
         },
@@ -445,29 +443,29 @@ export const QueryLogSettingsPanel: FC<QueryLogSettingsPanelProps> = ({
                         const durationText =
                           value === null || value === undefined ? '' : String(value);
                         return (
-                        <YBInput
-                          {...rest}
-                          value={value ?? ''}
-                          inputRef={ref}
-                          type="number"
-                          placeholder="2500"
-                          sx={{
-                            minWidth: DURATION_INPUT_MIN_WIDTH,
-                            width: `calc(${durationText.length}ch + ${DURATION_INPUT_EXTRA_WIDTH}px)`,
-                            maxWidth: `calc(${DURATION_INPUT_MAX_CHARS}ch + ${DURATION_INPUT_EXTRA_WIDTH}px)`
-                          }}
-                          disabled={!includeLogMinDuration}
-                          error={!!fieldState.error}
-                          slotProps={{
-                            input: {
-                              inputProps: {
-                                min: LOG_MIN_DURATION_MIN_VALUE,
-                                max: LOG_MIN_DURATION_MAX_VALUE
+                          <YBInput
+                            {...rest}
+                            value={value ?? ''}
+                            inputRef={ref}
+                            type="number"
+                            placeholder="2500"
+                            sx={{
+                              minWidth: DURATION_INPUT_MIN_WIDTH,
+                              width: `calc(${durationText.length}ch + ${DURATION_INPUT_EXTRA_WIDTH}px)`,
+                              maxWidth: `calc(${DURATION_INPUT_MAX_CHARS}ch + ${DURATION_INPUT_EXTRA_WIDTH}px)`
+                            }}
+                            disabled={!includeLogMinDuration}
+                            error={!!fieldState.error}
+                            slotProps={{
+                              input: {
+                                inputProps: {
+                                  min: LOG_MIN_DURATION_MIN_VALUE,
+                                  max: LOG_MIN_DURATION_MAX_VALUE
+                                }
                               }
-                            }
-                          }}
-                          dataTestId={`${MODAL_NAME}-LogMinDurationStatement`}
-                        />
+                            }}
+                            dataTestId={`${MODAL_NAME}-LogMinDurationStatement`}
+                          />
                         );
                       }}
                     />

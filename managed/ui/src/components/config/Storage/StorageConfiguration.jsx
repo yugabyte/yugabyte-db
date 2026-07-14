@@ -183,11 +183,11 @@ class StorageConfiguration extends Component {
           configName = dataPayload['AZ_CONFIGURATION_NAME'];
           dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
           dataPayload['USE_AZURE_IAM'] = dataPayload['USE_AZURE_IAM'].toString();
-          FIELDS = ['BACKUP_LOCATION', 'USE_AZURE_IAM'];
+          FIELDS = ['BACKUP_LOCATION', 'USE_AZURE_IAM', 'IMMUTABLE_STORAGE'];
         } else {
           configName = dataPayload['AZ_CONFIGURATION_NAME'];
           dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
-          FIELDS = ['BACKUP_LOCATION', 'AZURE_STORAGE_SAS_TOKEN'];
+          FIELDS = ['BACKUP_LOCATION', 'AZURE_STORAGE_SAS_TOKEN', 'IMMUTABLE_STORAGE'];
         }
         dataPayload = _.pick(dataPayload, FIELDS);
         break;
@@ -337,7 +337,12 @@ class StorageConfiguration extends Component {
           [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
           [`${tab}_CONFIGURATION_NAME`]: row?.configName,
           USE_AZURE_IAM: row.data?.USE_AZURE_IAM,
-          AZURE_STORAGE_SAS_TOKEN: row.data?.AZURE_STORAGE_SAS_TOKEN
+          AZURE_STORAGE_SAS_TOKEN: row.data?.AZURE_STORAGE_SAS_TOKEN,
+          IMMUTABLE_STORAGE: initialS3StorageBooleanFromRowData(
+            row?.data,
+            'IMMUTABLE_STORAGE',
+            false /* defaultWhenMissing */
+          )
         };
         break;
 

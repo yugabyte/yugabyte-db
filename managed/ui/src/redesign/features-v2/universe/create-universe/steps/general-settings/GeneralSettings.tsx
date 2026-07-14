@@ -43,6 +43,7 @@ import {
 } from '../../fields/FieldNames';
 import ShuffleIcon from '../../../../../assets/shuffle.svg';
 import { StyledPanel, StyledHeader, StyledContent } from '../../components/DefaultComponents';
+import { Box } from '@material-ui/core';
 
 const CONTROL_WIDTH = '480px';
 
@@ -121,7 +122,9 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
               }}
             />
           </div>
+          <Box maxWidth={740}>
           <CloudField<GeneralSettingsProps> name={CLOUD} label={t('cloudProvider')} />
+          </Box>
           {cloud && (
             <ProviderConfigurationField<GeneralSettingsProps>
               name={PROVIDER_CONFIGURATION}

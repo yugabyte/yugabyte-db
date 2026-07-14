@@ -1641,6 +1641,9 @@ class TransactionParticipant::Impl
 
   Result<HybridTime> SimulateProcessRecentlyAppliedTransactions(
       const OpId& retryable_requests_flushed_op_id) EXCLUDES(mutex_) {
+    // Wait until the loader has finished iterating IntentsDB in order to have the correct bootstrap
+    // state threshold
+    RETURN_NOT_OK(loader_.WaitAllLoaded());
     std::lock_guard lock(mutex_);
     return DoProcessRecentlyAppliedTransactions(
         retryable_requests_flushed_op_id, false /* persist */);
@@ -2641,6 +2644,9 @@ class TransactionParticipant::Impl
     recently_applied_.insert(AppliedTransactionState{apply_op_id, first_write_ht});
     metric_wal_replayable_applied_transactions_->IncrementBy(1 - static_cast<int64_t>(cleaned));
     UpdateMinReplayTxnFirstWriteTimeIfNeeded();
+    TEST_SYNC_POINT_CALLBACK(
+        "TransactionParticipant::Impl::AddRecentlyAppliedTransaction",
+        const_cast<TransactionId*>(&transaction.id()));
   }
 
   Result<HybridTime> DoProcessRecentlyAppliedTransactions(
@@ -2684,6 +2690,11 @@ class TransactionParticipant::Impl
   HybridTime GetMinReplayTxnFirstWriteTime(RecentlyAppliedTransactions& recently_applied) {
     if (!FLAGS_use_bootstrap_intent_ht_filter) {
       return HybridTime::kInvalid;
+    }
+    // Return the existing atomic which reflects the last validly-computed (transactions_loaded_=
+    // true) value, or HybridTime::kInvalid if none yet, both safe.
+    if (!transactions_loaded_) {
+      return min_replay_txn_first_write_ht_.load(std::memory_order_acquire);
     }
 
     auto min_running_ht = min_running_ht_.load(std::memory_order_acquire);

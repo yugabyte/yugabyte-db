@@ -504,7 +504,12 @@ DROP TABLE bitmap_pk_same_type;
 
 -- In a Bitmap Index Scan, filters pushed down as Storage Index Filters must be
 -- included in the recheck conditions.
-CREATE TABLE bitmap_recheck (a float4, b INT, c INT);
+-- The table has no primary key, so rows get a random internal ybrowid and are
+-- hash-distributed randomly across tablets.  Because count(*) is pushed down as
+-- a partial aggregate, the scan node's actual row count equals the number of
+-- tablets holding a matching row, which is nondeterministic across runs.  Pin
+-- the table to a single tablet to make the plan output deterministic.
+CREATE TABLE bitmap_recheck (a float4, b INT, c INT) SPLIT INTO 1 TABLETS;
 INSERT INTO bitmap_recheck (a, b, c) (SELECT s::float4/10, s, s % 10 FROM generate_series(1,40) s);
 
 CREATE INDEX bitmap_recheck_a ON bitmap_recheck (a ASC);

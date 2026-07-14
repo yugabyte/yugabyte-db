@@ -363,16 +363,34 @@ TEST_F(PgObjectLocksTestRF1Deadlock, YB_DISABLE_TEST_IN_SANITIZERS(TestDeadlockS
     RETURN_NOT_OK(conn1.Execute("LOCK TABLE test IN ACCESS EXCLUSIVE MODE"));
     return Status::OK();
   });
+  // The deadlock detector aborts exactly one of the two lock requests. The aborted transaction,
+  // however, retains the locks it acquired in earlier statements (e.g. conn1's ACCESS SHARE) until
+  // it is rolled back, matching PostgreSQL semantics where a failed statement leaves the
+  // transaction aborted but holding its locks. Hence the surviving request cannot make progress
+  // until the aborted transaction is rolled back. Roll back each transaction as soon as its request
+  // aborts so the survivor is unblocked.
+  std::optional<Status> s1, s2;
   ASSERT_OK(WaitFor(
       [&]() {
-        return status_future_1.wait_for(0s) == std::future_status::ready &&
-               status_future_2.wait_for(0s) == std::future_status::ready;
+        if (!s1 && status_future_1.wait_for(0s) == std::future_status::ready) {
+          s1 = status_future_1.get();
+          if (!s1->ok()) {
+            EXPECT_OK(conn2.RollbackTransaction());
+          }
+        }
+        if (!s2 && status_future_2.wait_for(0s) == std::future_status::ready) {
+          s2 = status_future_2.get();
+          if (!s2->ok()) {
+            EXPECT_OK(conn1.RollbackTransaction());
+          }
+        }
+        return s1.has_value() && s2.has_value();
       },
-      20s * kTimeMultiplier, "Timed out waiting for status futures to complete"));
-  // One of the tweo connections should have been aborted due to deadlock.
-  ASSERT_TRUE(status_future_1.get().ok() ^ status_future_2.get().ok());
-  ASSERT_OK(conn1.RollbackTransaction());
-  ASSERT_OK(conn2.RollbackTransaction());
+      60s * kTimeMultiplier, "Timed out waiting for status futures to complete"));
+  // One of the two connections should have been aborted due to deadlock.
+  ASSERT_TRUE(s1->ok() ^ s2->ok());
+  // Roll back the surviving transaction; the aborted one was already rolled back above.
+  ASSERT_OK(s1->ok() ? conn2.RollbackTransaction() : conn1.RollbackTransaction());
 }
 
 class PgObjectLocksTestRF1SessionExpiry : public PgObjectLocksTestRF1 {

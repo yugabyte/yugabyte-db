@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, makeStyles, Typography } from '@material-ui/core';
+import { makeStyles, Typography } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
 import {
   StyledContent,
@@ -11,10 +11,11 @@ import {
   useEditUniverseContext,
   useIsUniverseReady
 } from '../../EditUniverseUtils';
-import { AuditLogSettings } from '@app/redesign/features/universe/universe-tabs/db-audit-logs/components/AuditLogSettings';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { AuditLogSettingsPanel } from './db-audit-log/AuditLogSettingsPanel';
 import { LogConfigCard } from './LogConfigCard';
 import { QueryLogSettingsPanel } from './query-log/QueryLogSettingsPanel';
+import { useExportTelemetryConfigTaskStatus } from './useExportTelemetryConfigTaskStatus';
 
 import QueryLogIcon from '@app/redesign/assets/approved/query-log.svg';
 import AuditLogIcon from '@app/redesign/assets/approved/audit-log.svg';
@@ -68,36 +69,68 @@ export const LogsTab = () => {
   const isAuditLogEnabled = primaryCluster?.audit_log_config?.ysql_audit_config?.enabled;
   const isQueryLogEnabled = primaryCluster?.query_log_config?.ysql_query_log_config?.enabled;
 
+  const { isTelemetryConfigTaskInProgress, isQueryLogConfiguring, isAuditLogConfiguring } =
+    useExportTelemetryConfigTaskStatus(universeUuid);
+  const actionDisabled = !isUniverseReady || isTelemetryConfigTaskInProgress;
+
   return (
     <div className={classes.logsTabContainer}>
       <StyledPanel>
         <StyledHeader>{t('troubleshootingLogs')}</StyledHeader>
         <StyledContent>
-          <LogConfigCard
-            icon={<QueryLogIcon width={20} height={20} />}
-            title={t('databaseQueryLog')}
-            description={t('databaseQueryLogDescription')}
-            learnMoreUrl={QUERY_LOG_DOCS_URL}
-            actionLabel={isQueryLogEnabled ? t('editQueryLogging') : t('enableQueryLogging')}
-            actionDisabled={!isUniverseReady}
-            actionTestId="LogsTab-EnableQueryLoggingButton"
-            onActionClick={() => setQueryLogSettingsModalOpen(true)}
-          />
+          {/* eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing */}
+          {isQueryLogEnabled || isQueryLogConfiguring ? (
+            <LogConfigCard
+              logType="query"
+              icon={<QueryLogIcon width={20} height={20} />}
+              title={t('databaseQueryLog')}
+              logStatus={isQueryLogConfiguring ? 'configuring' : 'active'}
+              actionDisabled={actionDisabled}
+              actionTestId="LogsTab-EditQueryLoggingButton"
+              onEditClick={() => setQueryLogSettingsModalOpen(true)}
+            />
+          ) : (
+            <LogConfigCard
+              unconfigured
+              icon={<QueryLogIcon width={20} height={20} />}
+              title={t('databaseQueryLog')}
+              description={t('databaseQueryLogDescription')}
+              learnMoreUrl={QUERY_LOG_DOCS_URL}
+              actionLabel={t('enableQueryLogging')}
+              actionDisabled={actionDisabled}
+              actionTestId="LogsTab-EnableQueryLoggingButton"
+              onActionClick={() => setQueryLogSettingsModalOpen(true)}
+            />
+          )}
         </StyledContent>
       </StyledPanel>
       <StyledPanel>
         <StyledHeader>{t('complianceLogs')}</StyledHeader>
         <StyledContent>
-          <LogConfigCard
-            icon={<AuditLogIcon width={20} height={20} />}
-            title={t('databaseAuditLog')}
-            description={t('databaseAuditLogDescription')}
-            learnMoreUrl={AUDIT_LOG_DOCS_URL}
-            actionLabel={t('enableAuditLogging')}
-            actionDisabled={!isUniverseReady || isAuditLogEnabled}
-            actionTestId="LogsTab-EnableAuditLoggingButton"
-            onActionClick={() => setAuditLogSettingsModalOpen(true)}
-          />
+          {/* eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing */}
+          {isAuditLogEnabled || isAuditLogConfiguring ? (
+            <LogConfigCard
+              logType="audit"
+              icon={<AuditLogIcon width={20} height={20} />}
+              title={t('databaseAuditLog')}
+              logStatus={isAuditLogConfiguring ? 'configuring' : 'active'}
+              actionDisabled={actionDisabled}
+              actionTestId="LogsTab-EditAuditLoggingButton"
+              onEditClick={() => setAuditLogSettingsModalOpen(true)}
+            />
+          ) : (
+            <LogConfigCard
+              unconfigured
+              icon={<AuditLogIcon width={20} height={20} />}
+              title={t('databaseAuditLog')}
+              description={t('databaseAuditLogDescription')}
+              learnMoreUrl={AUDIT_LOG_DOCS_URL}
+              actionLabel={t('enableAuditLogging')}
+              actionDisabled={actionDisabled}
+              actionTestId="LogsTab-EnableAuditLoggingButton"
+              onActionClick={() => setAuditLogSettingsModalOpen(true)}
+            />
+          )}
         </StyledContent>
       </StyledPanel>
       <div className={classes.noteBanner}>
@@ -107,12 +140,12 @@ export const LogsTab = () => {
         </Typography>
       </div>
       {isAuditLogSettingsModalOpen && universeUuid && (
-        <AuditLogSettings
+        <AuditLogSettingsPanel
           open={isAuditLogSettingsModalOpen}
-          onClose={() => setAuditLogSettingsModalOpen(false)}
-          auditLogInfo={undefined}
-          universeUUID={universeUuid}
+          operation={isAuditLogEnabled ? 'edit' : 'create'}
+          universeUuid={universeUuid}
           universeName={universeName}
+          onClose={() => setAuditLogSettingsModalOpen(false)}
         />
       )}
       {isQueryLogSettingsModalOpen && universeUuid && (

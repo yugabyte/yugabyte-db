@@ -125,7 +125,7 @@ export function getRegionsAndAZFromReadReplicaCluster(
 }
 
 export const getInitialValues = (data: UniverseRespResponse): Partial<AddRRContextProps> => {
-  const primaryClusterSpec = getClusterByType(data, ClusterSpecClusterType.ASYNC) as
+  const primaryClusterSpec = getClusterByType(data, ClusterSpecClusterType.PRIMARY) as
     | ClusterSpec
     | undefined;
   const primaryRf = getPrimaryReplicationFactor(data);
