@@ -1312,6 +1312,7 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
   std::unordered_set<uint32_t> db_oid_set;
   std::unordered_map<uint32_t, uint64_t> db_oids_updated;
   std::unordered_set<uint32_t> db_oids_deleted;
+  bool has_stale_new_version = false;
   for (int i = 0; i < db_catalog_version_data.db_catalog_versions_size(); i++) {
     const auto& db_catalog_version = db_catalog_version_data.db_catalog_versions(i);
     const uint32_t db_oid = db_catalog_version.db_oid();
@@ -1377,6 +1378,7 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
             shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions))
             << "Invalid shm_index: " << shm_index;
       } else if (new_version < existing_entry.current_version) {
+        has_stale_new_version = true;
         if (!db_catalog_version_data.ignore_catalog_version_staleness_check()) {
           ++existing_entry.new_version_ignored_count;
           // If the new version is continuously older than what we have seen, it implies that
@@ -1512,32 +1514,38 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
   }
 
   // We only do full catalog report for now, remove entries that no longer exist.
-  for (auto it = ysql_db_catalog_version_map_.begin();
-       it != ysql_db_catalog_version_map_.end();) {
-    const uint32_t db_oid = it->first;
-    if (db_oid_set.count(db_oid) == 0) {
-      // This means the entry for db_oid no longer exists.
-      db_oids_deleted.insert(db_oid);
-      catalog_changed = true;
-      auto shm_index = it->second.shm_index;
-      CHECK(shm_index >= 0 &&
-            shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions))
-        << "shm_index: " << shm_index << ", db_oid: " << db_oid;
-      // Mark the corresponding shared memory array db_catalog_versions_ slot as free.
-      (*ysql_db_catalog_version_index_used_)[shm_index] = false;
-      it = ysql_db_catalog_version_map_.erase(it);
-      ysql_db_invalidation_messages_map_.erase(db_oid);
-      // Also reset the shared memory array db_catalog_versions_ slot to 0 to assist
-      // debugging the shared memory array db_catalog_versions_ (e.g., when we can dump
-      // the shared memory file to examine its contents).
-      shared_object()->SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), 0);
-      LOG_WITH_FUNC(INFO) << "reset deleted db " << db_oid << " catalog version to 0"
-                          << ", shm_index: " << shm_index
-                          << ", debug_id: " << debug_id;
-    } else {
-      ++it;
+  if (!has_stale_new_version) {
+    for (auto it = ysql_db_catalog_version_map_.begin();
+         it != ysql_db_catalog_version_map_.end();) {
+      const uint32_t db_oid = it->first;
+      if (db_oid_set.count(db_oid) == 0) {
+        // This means the entry for db_oid no longer exists.
+        db_oids_deleted.insert(db_oid);
+        catalog_changed = true;
+        auto shm_index = it->second.shm_index;
+        CHECK(shm_index >= 0 &&
+              shm_index < static_cast<int>(TServerSharedData::kMaxNumDbCatalogVersions))
+          << "shm_index: " << shm_index << ", db_oid: " << db_oid;
+        // Mark the corresponding shared memory array db_catalog_versions_ slot as free.
+        (*ysql_db_catalog_version_index_used_)[shm_index] = false;
+        it = ysql_db_catalog_version_map_.erase(it);
+        ysql_db_invalidation_messages_map_.erase(db_oid);
+        // Also reset the shared memory array db_catalog_versions_ slot to 0 to assist
+        // debugging the shared memory array db_catalog_versions_ (e.g., when we can dump
+        // the shared memory file to examine its contents).
+        shared_object()->SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), 0);
+        LOG_WITH_FUNC(INFO) << "reset deleted db " << db_oid << " catalog version to 0"
+                            << ", shm_index: " << shm_index
+                            << ", debug_id: " << debug_id;
+      } else {
+        ++it;
+      }
     }
+  } else {
+    LOG_WITH_FUNC(INFO) << "Skipping database deletions because heartbeat contains stale "
+                        << "versions, debug_id: " << debug_id;
   }
+
   if (!catalog_changed) {
     return;
   }
