@@ -14,7 +14,7 @@ YugabyteDB offers the familiarity and extensibility of PostgreSQL, while also de
 
 Using the [pgvector](../../additional-features/pg-extensions/extension-pgvector/) PostgreSQL extension, YugabyteDB functions as a highly performant vector database, with enterprise scale and resilience. This means you can use YugabyteDB to support Retrieval-augmented generation (RAG) workloads, providing AI agents with knowledge of your unstructured data, while its scalability allows it to store and search billions of vectors.
 
-For integrated document preprocessing and embedding generation from SQL, use the [pg_dist_rag](../../additional-features/pg-extensions/extension-pg-dist-rag/) extension {{<tags/feature/tp>}} (YugabyteDB {{<release "2025.2">}} or later). It registers document sources, coordinates distributed chunking and embedding pipelines, and stores vectors in pgvector indexes—without building external ETL.
+For integrated document preprocessing and embedding generation from SQL, use the [pg_dist_rag](distributed-rag/) extension {{<tags/feature/tp>}} (YugabyteDB {{<release "2025.2">}} or later). It registers document sources, coordinates distributed chunking and embedding pipelines, and stores vectors in pgvector indexes—without building external ETL.
 
 Learn more about developing GenAI and RAG applications with YugabyteDB:
 
@@ -23,7 +23,6 @@ Learn more about developing GenAI and RAG applications with YugabyteDB:
 - [Introducing the YugabyteDB MCP Server](https://www.yugabyte.com/blog/yugabytedb-mcp-server/)
 - [How to Build a RAG Workflow for Agentic AI without Code](https://www.yugabyte.com/blog/build-a-rag-workflow-for-agentic-ai-without-codev/)
 - [From RAG to Riches: AI That Knows Your Support Stack](https://www.yugabyte.com/blog/rag-ai-that-knows-your-support-stack/)
-- [pg_dist_rag extension](../../additional-features/pg-extensions/extension-pg-dist-rag/): Manage document sources, embedding pipelines, and vector indexes from SQL.
 
 ## Get started
 
@@ -59,7 +58,7 @@ Explore the following tutorials to see how YugabyteDB integrates with different 
 | [YugabyteDB MCP server](mcp-server/) | Enable LLMs to interact directly with YugabyteDB using natural language. | Claude / Cursor | External |
 | [LlamaIndex](ai-llamaindex-openai/) | Connect LLMs to structured and unstructured data using LlamaIndex. | OpenAI / LlamaIndex | External |
 | [LangChain](ai-langchain-openai/) | Build a natural language interface to query your database without writing SQL. | OpenAI / LangChain | External |
-| [pg_dist_rag](../../additional-features/pg-extensions/extension-pg-dist-rag/) | Build distributed RAG pipelines with integrated document preprocessing and embedding generation from SQL. | OpenAI / LangGraph | External |
+| [Distributed RAG](distributed-rag/) | Build distributed RAG pipelines with integrated document preprocessing and embedding generation from SQL. | OpenAI / LangGraph | External |
 
 <!--
 ## Retrieval-augmented generation

@@ -36,7 +36,7 @@ Distributed RAG consists of two components:
 ### Prerequisites
 
 - YugabyteDB {{<release "2025.2">}} or later
-- [pgvector](../extension-pgvector/) extension (`vector` type support)
+- [pgvector](../../../../additional-features/pg-extensions/extension-pgvector/) extension (`vector` type support)
 - An OpenAI API key
 - Cloud credentials (AWS S3) when reading documents from object storage
 
@@ -274,7 +274,7 @@ WHERE index_name = 'my_knowledge_base';
 
 ## Query embeddings
 
-After a pipeline completes, embeddings are stored in the backing table created for the vector index (for example, `public.my_knowledge_base`). Query it using standard [pgvector](../extension-pgvector/) operators:
+After a pipeline completes, embeddings are stored in the backing table created for the vector index (for example, `public.my_knowledge_base`). Query it using standard [pgvector](../../../../additional-features/pg-extensions/extension-pgvector/) operators:
 
 ```sql
 SELECT id, chunk_text, metadata_filters,
@@ -313,7 +313,7 @@ CREATE EXTENSION IF NOT EXISTS pg_dist_rag;
 -- Create document sources
 SELECT dist_rag.create_source(
   r_source_uri := 's3://company-docs/engineering/',
-  r_metadata := '{"team": "engineering", "access": "internal"}'::jsonb,
+  r_metadata := '{"team": "engineering", "access": "internal"}'::jsonb
 ) AS eng_source_id;
 
 -- Initialize a vector index with both sources
