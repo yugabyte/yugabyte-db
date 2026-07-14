@@ -41,7 +41,7 @@ Consult your OIDC provider documentation.
 
 Before you start, note the [YugabyteDB Anywhere callback URI](../../../administer-yugabyte-platform/oidc-authentication/#oidc-callback-uri); you'll need to provide it as the redirect URI when registering your application in your OIDC provider.
 
-The following sections provide instructions for Azure AD (also known as [Microsoft Entra ID](https://www.microsoft.com/en-ca/security/business/identity-access/microsoft-entra-id)) and Jumpcloud.
+The following sections provide instructions for Azure AD (also known as [Microsoft Entra ID](https://www.microsoft.com/en-ca/security/business/identity-access/microsoft-entra-id)) and JumpCloud.
 
 {{< tabpane text=true >}}
 
@@ -147,7 +147,7 @@ For more information on configuring group claims and app roles, refer to [Config
 
   {{% /tab %}}
 
-  {{% tab header="Jumpcloud" lang="jumpcloud" %}}
+  {{% tab header="JumpCloud" lang="jumpcloud" %}}
 
 ### Configure an application in JumpCloud
 
@@ -205,7 +205,7 @@ You can fetch the JWT directly from the OIDC provider using any OAuth2-capable t
 
 YugabyteDB Anywhere can display your JWT on the sign-in page after you authenticate with your OIDC provider.
 
-You need to be signed in as a Super Admin and have your provider credentials. For Azure, this consists of the Azure application client ID, client secret, and tenant ID; for Jumpcloud, the JumpCloud application client ID and client secret.
+You need to be signed in as a Super Admin and have your provider credentials. For Azure, this consists of the Azure application client ID, client secret, and tenant ID; for JumpCloud, the JumpCloud application client ID and client secret.
 
 To enable OIDC authentication in YugabyteDB Anywhere, do the following:
 
@@ -217,7 +217,7 @@ To enable OIDC authentication in YugabyteDB Anywhere, do the following:
     
         For Azure, enter `login.microsoftonline.com/<tenant_id>/v2.0/.well-known/openid-configuration`.
 
-        For Jumpcloud, enter `https://oauth.id.jumpcloud.com/.well-known/openid-configuration`.
+        For JumpCloud, enter `https://oauth.id.jumpcloud.com/.well-known/openid-configuration`.
 
     - **Scope** - enter `openid email profile`.
     
@@ -268,7 +268,7 @@ The `ysql_hba_conf_csv` flag must be set to support using JWTs for authenticatio
 | Parameter | Description |
 | :-------- | :---------- |
 | `map` | The user-name map used to translate claim values to database roles. Optional if you aren't using the default Subject claim values. |
-| `jwt_issuers` | The first part of the discovery URL.<br>Azure: `login.microsoftonline.com/<tenant_id>/v2.0`<br>Jumpcloud: `https://oauth.id.jumpcloud.com/` |
+| `jwt_issuers` | The first part of the discovery URL.<br>Azure: `login.microsoftonline.com/<tenant_id>/v2.0`<br>JumpCloud: `https://oauth.id.jumpcloud.com/` |
 | `jwt_audiences` | The audience or target app for the token, which in this case is the client ID of the application you registered. |
 | `jwt_matching_claim_key` | The email attribute you set (for example, `preferred_username`). Optional if you aren't using the default Subject claim values. |
 | `jwt_jwks_path` | The JSON Web Key Set (JWKS) is a set of keys containing the public keys used to verify any JWT. These can be uploaded as entries in a single file. When configuring the flag in YugabyteDB Anywhere, click **Add JSON web key set (JWKS)** to upload the JWKS. |
@@ -284,7 +284,7 @@ The following shows an example `ysql_hba_conf_csv` flag configuration for Azure:
 host all all 0.0.0.0/0 jwt map=map1 jwt_audiences=""<client_id>"" jwt_issuers=""https://login.microsoftonline.com/<tenant_id>/v2.0"" jwt_matching_claim_key=""preferred_username""
 ```
 
-The following shows an example `ysql_hba_conf_csv` flag configuration for Jumpcloud:
+The following shows an example `ysql_hba_conf_csv` flag configuration for JumpCloud:
 
 ```sh
 host all all 0.0.0.0/0 jwt map=map1 jwt_audiences=""<client_id>"" jwt_issuers=""https://oauth.id.jumpcloud.com/"" jwt_matching_claim_key=""preferred_username""
