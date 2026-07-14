@@ -1237,6 +1237,11 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
     catalog_manager_->StartElectionIfReady(cstate, epoch, tablet);
   }
 
+  if (tablet_lock->pb.split_tablet_ids_size() > 0 && tablet_lock->is_hidden()) {
+    VLOG(1) << "Skipping AlterTable for hidden already-split tablet " << tablet->ToString();
+    return tablet_was_mutated;
+  }
+
   // 7. Send an AlterSchema RPC if the tablet has an old schema version.
   if (table_write_locks->count(tablet->table()->id())) {
     const TableInfo::WriteLock& table_lock = (*table_write_locks)[tablet->table()->id()];

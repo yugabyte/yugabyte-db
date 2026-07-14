@@ -183,6 +183,7 @@ DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_int32(max_create_tablets_per_ts);
 DECLARE_bool(tablet_split_use_middle_user_key);
 DECLARE_double(tablet_split_min_size_ratio);
+DECLARE_int32(unresponsive_ts_rpc_retry_limit);
 
 METRIC_DECLARE_gauge_uint64(tablet_split_candidates);
 METRIC_DECLARE_gauge_uint64(outstanding_tablet_splits);
@@ -4550,6 +4551,69 @@ TEST_F_EX(
   const auto table_info = ASSERT_RESULT(client_->GetYBTableInfo(client::kTableName));
   ASSERT_OK(WaitForRbsCompletionAndCheckFollowerLag(
       *cluster_, ts_map, parent_tablet_id, table_info, added_tserver, kTimeout));
+}
+
+class TabletSplitITestMultiMaster : public TabletSplitITest {
+ public:
+  void SetUp() override {
+    mini_cluster_opt_.num_masters = 3;
+    TabletSplitITest::SetUp();
+  }
+};
+
+// After a tablet split + alter table + master failover, the new master leader
+// must NOT enter a retry loop sending AlterTable RPCs to the split parent tablet.
+TEST_F(TabletSplitITestMultiMaster, AlterTableRetryLoopAfterSplitAndMasterFailover) {
+  constexpr auto kNumRows = kDefaultNumRows;
+
+  google::SetVLOGLevel("master_heartbeat_service", 1);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_unresponsive_ts_rpc_retry_limit) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 500;
+
+  CreateSingleTablet();
+
+  auto snapshot_util = std::make_unique<client::SnapshotTestUtil>();
+  snapshot_util->SetProxy(&client_->proxy_cache());
+  snapshot_util->SetCluster(cluster_.get());
+  const auto schedule_id = ASSERT_RESULT(snapshot_util->CreateSchedule(
+      table_, client::kTableName.namespace_type(), client::kTableName.namespace_name()));
+
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+  const TabletId parent_tablet_id = ASSERT_RESULT(SplitTabletAndValidate(
+      split_hash_code, kNumRows, true));
+
+  ASSERT_RESULT(snapshot_util->WaitScheduleSnapshot(schedule_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = false;
+  auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto parent = catalog_mgr->GetTabletInfo(parent_tablet_id);
+    if (!parent.ok()) {
+      return false;
+    }
+    return parent.get()->LockForRead()->is_hidden();
+  }, 30s * kTimeMultiplier, "Wait for split parent to become hidden"));
+
+  const auto table_name = table_.name();
+  auto alterer = client_->NewTableAlterer(table_name);
+  alterer->wait(true);
+  TableProperties table_properties;
+  table_properties.SetDefaultTimeToLive(300 * MonoTime::kMillisecondsPerSecond);
+  alterer->SetTableProperties(table_properties);
+  ASSERT_OK(alterer->Alter());
+
+  StringWaiterLogSink skip_sink(
+      "Skipping AlterTable for hidden already-split tablet " + parent_tablet_id);
+
+  ASSERT_OK(cluster_->StepDownMasterLeader());
+
+  ASSERT_OK(skip_sink.WaitFor(30s * kTimeMultiplier));
+
+  SleepFor(5s * kTimeMultiplier);
+
+  LOG(INFO) << "Skip count for split parent: " << skip_sink.GetEventCount();
 }
 
 }  // namespace yb
