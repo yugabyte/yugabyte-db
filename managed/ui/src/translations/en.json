@@ -4621,6 +4621,7 @@
         "replicationFactor": "Replication Factor",
         "replicationFactorTooltip": "Number of copies of primary cluster data maintained in this availability zone. Determines fault tolerance within the read replica.<br/>",
         "totalNodesPlacement": "Total Nodes",
+        "totalNodesPlacementTserver": "Total Nodes (T-Server)",
         "addAvailabilityZone": "Add Availability Zone",
         "removeRegion": "Remove region",
         "addRegion": "Add Region",

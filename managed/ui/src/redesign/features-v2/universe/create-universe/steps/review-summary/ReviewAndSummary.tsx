@@ -21,7 +21,7 @@ import {
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
-import { mapCreateUniversePayload } from '../../CreateUniverseUtils';
+import { mapCreateUniversePayload, getDedicatedTserverMasterCounts } from '../../CreateUniverseUtils';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
 import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
 
@@ -95,12 +95,16 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
 
-  const { resilienceAndRegionsSettings } = context;
+  const { resilienceAndRegionsSettings, nodesAvailabilitySettings } = context;
 
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.reviewAndSummary' });
   const toast = useYBToast();
   const payload = mapCreateUniversePayload({ ...context });
   const createUniverse = useCreateUniverse();
+  const dedicatedCounts = getDedicatedTserverMasterCounts(
+    resilienceAndRegionsSettings,
+    nodesAvailabilitySettings
+  );
   const { data: pricingData, isLoading: isLoadingPricing } = useQuery(
     ['getUniversePricing', payload],
     () => getUniverseResources(payload),
@@ -152,6 +156,9 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
 
   const costDaily = pricingData?.price_per_hour ? pricingData.price_per_hour * 24 : 0.0;
   const costMonthly = costDaily * 31;
+  const nodesDisplay = dedicatedCounts
+    ? dedicatedCounts.total
+    : pricingData?.num_nodes;
 
   return (
     <div style={{ display: 'flex', gap: '24px' }}>
@@ -186,7 +193,7 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
                 }}
               >
                 <StyledAttrib>{t('nodes')}</StyledAttrib>
-                <StyledValue>{pricingData?.num_nodes}</StyledValue>
+                <StyledValue>{nodesDisplay}</StyledValue>
               </div>
               <div
                 style={{
