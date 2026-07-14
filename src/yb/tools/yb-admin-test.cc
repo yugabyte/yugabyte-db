@@ -218,7 +218,7 @@ TEST_F(AdminCliTest, InvalidOperationSuggestsPrefixMatches) {
       ToStringVector(
           exe_path, "--master_addresses", kUnusedMasterAddress, "list_snapshot_schedule"),
       /* output */ nullptr, &error));
-  ASSERT_NE(error.find("Did you mean one of these?"), std::string::npos);
+  ASSERT_STR_CONTAINS(error, "Did you mean one of these?");
   ASSERT_NE(error.find("list_snapshot_schedules"), std::string::npos);
 
   // Prefix that matches multiple commands should list every candidate.
