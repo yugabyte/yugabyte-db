@@ -206,5 +206,27 @@ TEST_F(TestRaftGroupMetadata, IndexMapReturnsNotFoundForMissingTable) {
   ASSERT_TRUE(missing_result.status().IsNotFound()) << missing_result.status();
 }
 
+TEST_F(TestRaftGroupMetadata, SchemaPackingCountReport) {
+  auto* meta = harness_->tablet()->metadata();
+
+  size_t initial_schema_packing_count = meta->GetTotalSchemaPackingCount();
+  ASSERT_GE(initial_schema_packing_count, 1);
+  LOG(INFO) << "Initial schema packing count " << initial_schema_packing_count;
+
+  auto initial_table_info = meta->primary_table_info();
+  const Schema initial_schema = initial_table_info->schema();
+  const auto initial_version = initial_table_info->schema_version;
+  const qlexpr::IndexMap& index_map = *initial_table_info->index_map;
+  const TableId& table_id = initial_table_info->table_id;
+
+  // Perform schema changes 
+  meta->SetSchema(
+      initial_schema, index_map, /* deleted_cols */ {}, initial_version + 1, OpId() /* op_id */,
+      table_id);
+  
+  size_t updated_schema_packing_count = meta->GetTotalSchemaPackingCount();
+  ASSERT_EQ(updated_schema_packing_count, initial_schema_packing_count + 1);
+}
+
 } // namespace tablet
 } // namespace yb
