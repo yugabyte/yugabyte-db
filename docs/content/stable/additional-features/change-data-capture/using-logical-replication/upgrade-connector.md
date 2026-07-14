@@ -14,16 +14,16 @@ rightNav:
   hideH4: true
 ---
 
-The YugabyteDB connector for logical replication is based on Debezium and is published as a Kafka Connect plugin at [GitHub releases](https://github.com/yugabyte/debezium/releases) {{<icon/github>}}. This topic explains how to move an existing connector deployment to a newer version without losing your stream position, and how to handle the cases that need extra steps.
+The YugabyteDB connector for logical replication is based on Debezium and is published as a Kafka Connect plugin at [yugabyte/debezium GitHub releases](https://github.com/yugabyte/debezium/releases) {{<icon/github>}}. This page describes how to move an existing connector deployment to a newer version without losing your stream position, and how to handle the cases that need additional steps.
 
 ## Reasons to upgrade
 
 Each connector release ships fixes, features, and YugabyteDB-compatibility changes. Stay current for:
 
-- **Bug fixes** — Some defects cause data correctness or streaming issues. For example, version `dz.2.5.2.yb.2025.2` fails on deploy with `cannot export or import snapshot` when `ysql_enable_pg_export_snapshot` is disabled; the fix shipped in `dz.2.5.2.yb.2025.2.2`.
-- **New capabilities** — Recent releases added pgvector support, replication-origin (ORIGIN) messages for bi-directional setups, parallel streaming, transaction savepoints, and upstream heartbeat behavior.
-- **YugabyteDB compatibility** — Connector versions ship alongside YugabyteDB releases; newer database features need a recent connector end to end.
-- **Supportability** — Support and fixes target current releases. An old build makes triage harder.
+- Bug fixes: Some defects cause data correctness or streaming issues. For example, version `dz.2.5.2.yb.2025.2` fails to deploy with `cannot export or import snapshot` when `ysql_enable_pg_export_snapshot` is disabled; the fix shipped in `dz.2.5.2.yb.2025.2.2`.
+- New capabilities: Recent releases added pgvector support, replication-origin (ORIGIN) messages for bi-directional setups, parallel streaming, transaction savepoints, and upstream heartbeat behavior.
+- YugabyteDB compatibility: Connector versions ship alongside YugabyteDB releases; newer database features need a recent connector end to end.
+- Supportability: Support and fixes target current releases. An old build makes triage harder.
 
 ## Choose a connector version
 
@@ -44,7 +44,7 @@ For how connector versions map to YugabyteDB releases, see [Connector compatibil
 
 When you pick a target version:
 
-- Prefer the **latest stable** release. Connectors are backward compatible with YugabyteDB releases, so the newest stable build is the right target regardless of which YugabyteDB version you run — you don't need to pin the connector to your database's release series.
+- Prefer the _latest stable_ release. Connectors are backward compatible with YugabyteDB releases, so the newest stable build is the right target regardless of which YugabyteDB version you run; you don't need to pin the connector to your database's release series.
 - Never run a `*.SNAPSHOT.*` build in production; those are pre-releases.
 - If no newer release is available, use the last published stable release; don't stay on an older one.
 - Read the release notes for the target (and any versions you skip) for breaking changes, and confirm the minimum supported YugabyteDB version before you upgrade.
@@ -83,7 +83,7 @@ After the connector upgrade succeeds, you can upgrade YugabyteDB if needed.
 
 {{< warning title="Replica identity CHANGE and database upgrades" >}}
 
-If any table uses replica identity `CHANGE`, don't upgrade YugabyteDB from a version earlier than 2025.2.3 to 2025.2.3 or later while the connector is running. A connector that starts or restarts during that upgrade can emit change events with null keys ({{<issue 32426>}}). Stop the connector before the upgrade and restart it after the upgrade completes on all nodes. Other replica identities are unaffected.
+If any table uses replica identity `CHANGE`, don't upgrade YugabyteDB from a version earlier than v2025.2.3 to v2025.2.3 or later while the connector is running. A connector that starts or restarts during that upgrade can emit change events with null keys ({{<issue 32426>}}). Stop the connector before the upgrade and restart it after the upgrade completes on all nodes. Other replica identities are unaffected.
 
 {{< /warning >}}
 
@@ -91,11 +91,11 @@ In Kafka Connect distributed mode, configuration, offsets, and status live in Ka
 
 ## Perform a re-snapshot
 
-You need a re-snapshot — drop the slot and publication, then stream again from a fresh initial snapshot — when you can't reuse the existing slot. For example:
+You need a re-snapshot when you can't reuse the existing slot. To do so, drop the slot and publication, and then stream again from a fresh initial snapshot. For example:
 
 - The target release notes call out a breaking change that isn't backward compatible with existing slots or offsets.
 - The replication slot has expired or become invalid (for example, after certain DDL changes, after point-in-time recovery, or after you add an expired or not-of-interest table to the publication).
-- You're crossing a YSQL major version (PG 11 → PG 15); see [Upgrade across a YSQL major version](#ysql-major-upgrade) for the supported flow that avoids a full re-snapshot.
+- You're crossing a YSQL major version (PostgreSQL 11 to PostgreSQL 15); see [Upgrade across a YSQL major version](#ysql-major-upgrade) for the supported flow that avoids a full re-snapshot.
 
 To re-snapshot:
 
@@ -105,7 +105,7 @@ To re-snapshot:
 
 1. Deploy the new connector version with a fresh `slot.name` and `publication.name`.
 
-1. With `snapshot.mode=initial`, wait for the new initial snapshot, then streaming. Expect duplicate events at the sink during re-sync; design consumers to be idempotent.
+1. With `snapshot.mode=initial`, the connector takes a new initial snapshot and then streams. Expect duplicate events at the sink during re-sync; design consumers to be idempotent.
 
 ## Upgrade across a YSQL major version {#ysql-major-upgrade}
 
@@ -153,7 +153,7 @@ Don't perform DDL on replicated tables, or modify publications, between `stop_dd
    STATEMENT:  START_REPLICATION SLOT "test_slot" LOGICAL 0/2D3B0 ("proto_version" '1', "publication_names" 'test_pub', "messages" 'true')
    ```
 
-   Redeploy with this flag before the stream expires — the gap between killing the connector and redeploying must be shorter than the slot's expiry period. The connector then streams the accumulated lag and advances the slot's restart time.
+   Redeploy with this flag before the stream expires — the gap between deleting the connector and redeploying must be shorter than the slot's expiry period. The connector then streams the accumulated lag and advances the slot's restart time.
 
 1. After every slot's restart time has passed `upgrade_complete_time`, restart the connector with:
 

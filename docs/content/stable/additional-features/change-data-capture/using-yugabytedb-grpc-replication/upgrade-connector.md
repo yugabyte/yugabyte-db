@@ -14,7 +14,7 @@ rightNav:
   hideH4: true
 ---
 
-The YugabyteDB gRPC connector is based on Debezium and is published as a Kafka Connect plugin at [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases) {{<icon/github>}}. This topic explains how to move an existing gRPC connector deployment to a newer version without losing your stream position, and how to handle the cases that need extra steps.
+The YugabyteDB gRPC connector is based on Debezium and is published as a Kafka Connect plugin at [yugabyte/debezium-connector-yugabytedb GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases) {{<icon/github>}}. This topic explains how to move an existing gRPC connector deployment to a newer version without losing your stream position, and how to handle the cases that need extra steps.
 
 ## Reasons to upgrade
 
@@ -110,7 +110,7 @@ To re-snapshot:
 
 1. Deploy the new connector version with the new `database.streamid` (and `snapshot.mode=initial`).
 
-1. Wait for the fresh snapshot, then streaming. Expect duplicate events at the sink during re-sync; design consumers to be idempotent.
+1. Wait for the fresh snapshot to complete; streaming begins after it. Expect duplicate events at the sink during re-sync; design consumers to be idempotent.
 
 ## Verify the upgrade
 
