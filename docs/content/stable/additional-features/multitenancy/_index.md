@@ -61,7 +61,6 @@ Keep the following in mind when planning a multitenant deployment:
 - **CPU only.** The feature limits CPU usage. It does not limit memory, disk I/O, or network.
 - **Per node.** Limits apply to CPU usage on a single node (a single YB-TServer process), not to CPU aggregated across the cluster.
 - **Linux only.** The feature relies on Linux cgroups and is not available on macOS.
-- **cgroup version.** cgroup v2 is supported. (cgroup v1, used by older distributions such as AlmaLinux 8, is planned for a later release.)
 - **Shared configuration.** All tenants share the same cluster, and therefore the same flag values. You cannot, for example, enable packed rows for one tenant and disable it for another.
 - **No security isolation.** Multitenancy provides performance isolation only. It does not add any security or privacy isolation beyond the existing PostgreSQL security model.
 - **Container support.** In containerized environments (Docker, Kubernetes), the cgroups filesystem is typically mounted read-only, so the container must be privileged with a writable, dedicated cgroup mount. For more information, see [Set up multitenancy](./set-up/#other-deployments).
