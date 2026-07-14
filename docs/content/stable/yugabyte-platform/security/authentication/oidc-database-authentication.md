@@ -97,7 +97,7 @@ The following illustration shows an example of Azure token configuration to ensu
 
 The following is an example of a decoded JWT with groups claims (the Group GUID is used in Azure AD OIDC tokens):
 
-```json.output
+```json{.nocopy}
 "awd": "e12c03b1-7463-8e23-94d2-8d71f17ab99b",
 "iss": "https://login.microsoftonline.com/733dee2h-cb2e-41ab-91f2-29e2af034ffe/v2.0",
 "iat": 1669657223, "nbf": 1669657223, "exp": 1669651124,
@@ -123,7 +123,7 @@ The following illustration shows an example of Azure app roles configuration.
 
 The following shows an example of a decoded JWT with app roles claims:
 
-```json.output
+```json{.nocopy}
 "awd": "e12c03b1-7463-8e23-94d2-8d71f17ab99b",
 "iss": "https://login.microsoftonline.com/733dee2h-cb2e-41ab-91f2-29e2af034ffe/v2.0",
 "iat": 1669657223, "nbf": 1669657223, "exp": 1669651124,
