@@ -9,7 +9,15 @@ echo "Processing paths component in openapi ..."
 pushd paths
 tmp_out_file="../tmp/paths_index.yaml"
 rm -f $tmp_out_file
-GLOBIGNORE=_index.yaml && cat *.yaml > $tmp_out_file
+# Concatenate the per-tag path files in a locale-independent order. `cat *.yaml`
+# relies on shell glob expansion, which honours LC_COLLATE and therefore produces
+# different orderings under macOS's default en_US.UTF-8 locale (where punctuation
+# like '.'/'_' is effectively ignored for collation) vs Linux CI's typical
+# LC_ALL=C setup (byte-wise ASCII). That drift makes _index.yaml churn between
+# environments even when no path file changed.
+find . -maxdepth 1 -type f -name '*.yaml' ! -name '_index.yaml' -print0 \
+  | LC_ALL=C sort -z \
+  | xargs -0 cat > $tmp_out_file
 cmp -s $tmp_out_file _index.yaml
 if [ $? -ne 0 ]; then
   cp $tmp_out_file _index.yaml
