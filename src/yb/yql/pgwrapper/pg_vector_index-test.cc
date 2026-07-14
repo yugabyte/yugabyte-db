@@ -778,6 +778,44 @@ TEST_P(PgVectorIndexTest, DropWithFlush) {
   ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
 }
 
+// Regression test for GH#30640: DROP INDEX on a colocated, partitioned table
+// fails with "current transaction is expired or aborted".
+TEST_P(PgVectorIndexTest, DropPartitioned) {
+  tablet::TEST_fail_on_seq_scan_with_vector_indexes = false;
+
+  auto colocated = IsColocated();
+  auto conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+  if (colocated) {
+    ASSERT_OK(conn.Execute("CREATE DATABASE colocated_db COLOCATION = true"));
+    conn = ASSERT_RESULT(Connect());
+  }
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (id int, v1 varchar(100), vec_col vector(2), "
+      "PRIMARY KEY (id, v1)) PARTITION BY LIST(v1)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_part_a PARTITION OF test FOR VALUES IN ('cat a')"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_part_b PARTITION OF test FOR VALUES IN ('cat b')"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_part_default PARTITION OF test DEFAULT"));
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO test (id, v1, vec_col) "
+      "SELECT i, "
+      "  CASE WHEN i % 3 = 0 THEN 'cat a' "
+      "       WHEN i % 3 = 1 THEN 'cat b' "
+      "       ELSE 'cat c' END, "
+      "  ('[' || (i % 10)::text || ',' || ((i + 1) % 10)::text || ']')::vector "
+      "FROM generate_series(1, 100) AS s(i)"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE INDEX vi_part ON test USING ybhnsw (vec_col vector_l2_ops)"));
+
+  ASSERT_OK(conn.Execute("DROP INDEX vi_part"));
+}
+
 void PgVectorIndexTest::TestManyRows(AddFilter add_filter, Backfill backfill) {
   constexpr size_t kNumRows = RegularBuildVsSanitizers(2000, 64);
 
