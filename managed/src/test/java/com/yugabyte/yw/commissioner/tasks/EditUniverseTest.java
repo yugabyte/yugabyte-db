@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.EDIT;
+import static com.yugabyte.yw.models.TaskInfo.State.Aborted;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
@@ -116,6 +117,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer, // check if postgres is up
           TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
+          TaskType.MarkRollbackUnsafe,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.AnsibleClusterServerCtl,
@@ -171,6 +173,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer, // check if postgres is up
           TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
+          TaskType.MarkRollbackUnsafe,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.AnsibleClusterServerCtl,
@@ -782,6 +785,39 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     }
     assertTrue(hasAdd);
     assertNoMasterStateInNodeDetailsDelta(nodeDetailsDelta);
+  }
+
+  @Test
+  public void testStateTransitionDeltaRollbackUnsafeAfterCheckpoint() {
+    Universe universe = defaultUniverse;
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "false");
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    int markRollbackUnsafePosition =
+        UNIVERSE_EXPAND_TASK_SEQUENCE.indexOf(TaskType.MarkRollbackUnsafe);
+    assertTrue(markRollbackUnsafePosition >= 0);
+    // Abort before the next subtask so MarkRollbackUnsafe has already committed.
+    setAbortPosition(markRollbackUnsafePosition + 1);
+    try {
+      TaskInfo taskInfo = submitTask(taskParams);
+      assertEquals(Aborted, taskInfo.getTaskState());
+      boolean sawMarkRollbackUnsafe =
+          taskInfo.getSubTasks().stream()
+              .anyMatch(
+                  t ->
+                      t.getTaskType() == TaskType.MarkRollbackUnsafe
+                          && t.getTaskState() == Success);
+      assertTrue(sawMarkRollbackUnsafe);
+      universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+      assertNotNull(universe.getStateTransitionDetails());
+      assertFalse(universe.getStateTransitionDetails().isRollbackSafe());
+    } finally {
+      clearAbortOrPausePositions();
+    }
   }
 
   @Test

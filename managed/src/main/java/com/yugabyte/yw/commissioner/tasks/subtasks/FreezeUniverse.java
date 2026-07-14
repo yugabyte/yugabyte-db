@@ -32,7 +32,6 @@ public class FreezeUniverse extends UniverseDefinitionTaskBase {
     @JsonIgnore public Consumer<Universe> callback;
     @JsonIgnore public ExecutionContext executionContext;
     @JsonIgnore public Universe universe;
-    @JsonIgnore public UniverseDefinitionTaskParams targetUniverseDetails;
   }
 
   @Override
@@ -62,22 +61,9 @@ public class FreezeUniverse extends UniverseDefinitionTaskBase {
           deltaJsonNode.toPrettyString());
     }
 
-    UniverseDefinitionTaskParams beforeUniverseDetails = taskParams().universe.getUniverseDetails();
-    UniverseDefinitionTaskParams targetUniverseDetails = taskParams().targetUniverseDetails;
-    Consumer<Universe> freezeCallback = taskParams().callback;
-    if (targetUniverseDetails != null) {
-      freezeCallback =
-          universe -> {
-            if (taskParams().callback != null) {
-              taskParams().callback.accept(universe);
-            }
-            captureStateTransitionDelta(universe, beforeUniverseDetails, targetUniverseDetails);
-          };
-    }
-
     UniverseUpdaterConfig updaterConfig =
         currentUpdaterConfig.toBuilder()
-            .callback(freezeCallback)
+            .callback(taskParams().callback)
             .checkSuccess(true)
             .freezeUniverse(true)
             .build();

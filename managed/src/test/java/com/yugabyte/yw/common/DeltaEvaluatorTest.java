@@ -248,6 +248,65 @@ public class DeltaEvaluatorTest {
     assertEquals("n2", addedNode.get("$newValue").get("nodeName").asText());
   }
 
+  @Test
+  public void buildDeltaJsonTreeClustersInPlaceChangeUsesReplace() {
+    JsonNode current =
+        Json.parse("{\"clusters\":[{\"uuid\":\"c1\",\"userIntent\":{\"numNodes\":3}}]}");
+    JsonNode newValue =
+        Json.parse("{\"clusters\":[{\"uuid\":\"c1\",\"userIntent\":{\"numNodes\":4}}]}");
+    JsonNode delta =
+        DeltaEvaluator.buildDeltaJsonTree(current, newValue, new NodeDetailsArrayComparator());
+    JsonNode numNodesDelta = delta.get("clusters").get(0).get("userIntent").get("numNodes");
+    assertEquals("REPLACE", numNodesDelta.get("$deltaType").asText());
+    assertEquals(3, numNodesDelta.get("$oldValue").asInt());
+    assertEquals(4, numNodesDelta.get("$newValue").asInt());
+    assertEquals(current, DeltaEvaluator.generateOldValue(delta));
+    assertEquals(newValue, DeltaEvaluator.generateNewValue(delta));
+  }
+
+  @Test
+  public void buildDeltaJsonTreeClustersReorderWithInPlaceChangeUsesReplace() {
+    JsonNode current =
+        Json.parse(
+            "{\"clusters\":["
+                + "{\"uuid\":\"primary\",\"userIntent\":{\"numNodes\":3}},"
+                + "{\"uuid\":\"async\",\"userIntent\":{\"numNodes\":3}}"
+                + "]}");
+    // Reordered clusters plus an in-place edit on primary.
+    JsonNode newValue =
+        Json.parse(
+            "{\"clusters\":["
+                + "{\"uuid\":\"async\",\"userIntent\":{\"numNodes\":3}},"
+                + "{\"uuid\":\"primary\",\"userIntent\":{\"numNodes\":4}}"
+                + "]}");
+    JsonNode delta =
+        DeltaEvaluator.buildDeltaJsonTree(current, newValue, new NodeDetailsArrayComparator());
+    JsonNode clustersDelta = delta.get("clusters");
+    assertEquals(2, clustersDelta.size());
+    // Sorted by uuid: async then primary, nested REPLACE, not whole-cluster DELETE+ADD.
+    assertEquals("async", clustersDelta.get(0).get("uuid").asText());
+    JsonNode numNodesDelta = clustersDelta.get(1).get("userIntent").get("numNodes");
+    assertEquals("REPLACE", numNodesDelta.get("$deltaType").asText());
+    assertEquals(3, numNodesDelta.get("$oldValue").asInt());
+    assertEquals(4, numNodesDelta.get("$newValue").asInt());
+    // Reconstruction preserves content; array order follows uuid sort, not original order.
+    JsonNode reconstructedOld = DeltaEvaluator.generateOldValue(delta);
+    JsonNode reconstructedNew = DeltaEvaluator.generateNewValue(delta);
+    assertEquals(3, clusterNumNodes(reconstructedOld, "primary"));
+    assertEquals(4, clusterNumNodes(reconstructedNew, "primary"));
+    assertEquals(3, clusterNumNodes(reconstructedOld, "async"));
+    assertEquals(3, clusterNumNodes(reconstructedNew, "async"));
+  }
+
+  private static int clusterNumNodes(JsonNode root, String clusterUuid) {
+    for (JsonNode cluster : root.get("clusters")) {
+      if (clusterUuid.equals(cluster.get("uuid").asText())) {
+        return cluster.get("userIntent").get("numNodes").asInt();
+      }
+    }
+    throw new AssertionError("cluster not found: " + clusterUuid);
+  }
+
   // ---------------------------------------------------------------------------
   // Type transitions
   // ---------------------------------------------------------------------------

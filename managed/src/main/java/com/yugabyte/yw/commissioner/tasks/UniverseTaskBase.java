@@ -431,6 +431,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   private final AtomicReference<ExecutionContext> executionContext = new AtomicReference<>();
 
+  /** Ensures MarkRollbackUnsafe is enqueued only once per task build. */
+  private boolean markRollbackUnsafeAdded;
+
   public class ExecutionContext {
     private final UUID universeUuid;
     private final boolean blacklistLeaders;
@@ -1247,8 +1250,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /**
    * Captures the delta between the clean pre-task universe definition and the intended target
-   * definition. Invoked from {@link com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse}
-   * after the freeze callback, using the pre-lock snapshot as {@code beforeUDTP}.
+   * definition. Invoked from the freeze callback wrapper in {@link #createFreezeUniverseTask} after
+   * the freeze callback, using the pre-lock snapshot as {@code beforeUDTP}.
    */
   protected void captureStateTransitionDelta(
       Universe universe,
@@ -1365,11 +1368,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     FreezeUniverse.Params params = new FreezeUniverse.Params();
     params.setUniverseUUID(universe.getUniverseUUID());
     params.setUniverse(universe);
-    params.setCallback(callback);
     params.setExecutionContext(getOrCreateExecutionContext());
+    // Compute target after the freeze callback so taskParams() are finalized. EditUniverse
+    // already finalizes params in precheck; this keeps the generic path correct for other tasks.
     if (isFirstTry()) {
-      params.setTargetUniverseDetails(getTargetUniverseDetails());
+      UniverseDefinitionTaskParams beforeDetails = universe.getUniverseDetails();
+      Consumer<Universe> originalCallback = callback;
+      callback =
+          univ -> {
+            if (originalCallback != null) {
+              originalCallback.accept(univ);
+            }
+            UniverseDefinitionTaskParams target = getTargetUniverseDetails();
+            if (target != null) {
+              captureStateTransitionDelta(univ, beforeDetails, target);
+            }
+          };
     }
+    params.setCallback(callback);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -1513,6 +1529,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  /**
+   * Creates a subtask that flips {@code state_transition_details.rollbackSafe} to false when the
+   * task crosses the rollback checkpoint.
+   */
+  public SubTaskGroup createMarkRollbackUnsafeTask() {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("MarkRollbackUnsafe");
+    MarkRollbackUnsafe.Params params = new MarkRollbackUnsafe.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    MarkRollbackUnsafe task = createTask(MarkRollbackUnsafe.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Enqueues {@link #createMarkRollbackUnsafeTask()} at most once so the checkpoint flip sits
+   * immediately before the placement update on the master leader.
+   */
+  protected void createMarkRollbackUnsafeTaskOnce() {
+    if (markRollbackUnsafeAdded) {
+      return;
+    }
+    createMarkRollbackUnsafeTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    markRollbackUnsafeAdded = true;
   }
 
   /** Create a task to mark the change on a universe as success. */
