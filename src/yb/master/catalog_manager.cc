@@ -4893,11 +4893,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // Clone will create its own tablets as part of repartitioning.
   if (!joining_colocation_group && !req.is_clone()) {
-    auto opt_wal_retention = xcluster_manager_->GetDefaultWalRetentionSec(namespace_id);
-    if (opt_wal_retention) {
-      table->mutable_metadata()->mutable_dirty()->pb.set_wal_retention_secs(*opt_wal_retention);
-    }
-
     for (const auto& tablet : tablets) {
       // If new tablets are created, they will be in PREPARING state.
       CHECK_EQ(SysTabletsEntryPB::PREPARING, tablet->metadata().dirty().pb.state());

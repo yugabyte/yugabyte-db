@@ -345,21 +345,6 @@ XClusterSourceManager::GetPostTabletCreateTasks(
   return tasks;
 }
 
-std::optional<uint32> XClusterSourceManager::GetDefaultWalRetentionSec(
-    const NamespaceId& namespace_id) const {
-  if (namespace_id == kSystemNamespaceId) {
-    return std::nullopt;
-  }
-
-  for (const auto& outbound_replication_group : GetAllOutboundGroups()) {
-    if (outbound_replication_group->HasNamespace(namespace_id)) {
-      return FLAGS_cdc_wal_retention_time_secs;
-    }
-  }
-
-  return std::nullopt;
-}
-
 Status XClusterSourceManager::CreateOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
     const std::vector<NamespaceId>& namespace_ids, bool automatic_ddl_mode,
