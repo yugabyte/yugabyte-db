@@ -47,8 +47,12 @@ static void YBLogTupleDescIfRequested(const YbVirtualWalRecord *yb_record,
 									  TupleDesc tupdesc);
 
 /*
- * YB_TODO_PG19MERGE:
- * functions in this file need to be reworked (yb_is_omitted, ReorderBufferTupleBuf)
+ * YB_TODO_PG19MERGE: The is-omitted column optimization (yb_is_omitted) is not
+ * yet wired through the reorder buffer on PG19; PG commit 08e6344fd64 removed
+ * struct ReorderBufferTupleBuf (which carried YB's yb_is_omitted arrays) and
+ * ReorderBufferChange now stores a plain HeapTuple. The decoders below build
+ * the HeapTuple but do not forward yb_is_omitted; it stays disabled here and in
+ * reorderbuffer.c/pgoutput.c. Only affects yboutput's omitted-vs-NULL handling.
  */
 /*
  * Take every record received from the YB VirtualWAL and perform the actions
@@ -147,11 +151,10 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 static void
 YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
-#if 0
 	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
-	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
+	ReorderBufferChange *change = ReorderBufferAllocChange(ctx->reorder);
 	HeapTuple	tuple;
-	ReorderBufferTupleBuf *tuple_buf;
+	HeapTuple	tuple_buf;
 
 	Assert(ctx->reader->ReadRecPtr == yb_record->lsn);
 
@@ -174,9 +177,9 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 	 * created.
 	 */
 	tuple = YBGetHeapTuplesForRecord(yb_record);
-	tuple_buf =
-		ReorderBufferGetTupleBuf(ctx->reorder, tuple->t_len + HEAPTUPLESIZE);
-	yb_heap_copytuple_with_tuple(tuple, &tuple_buf->tuple);
+	tuple_buf = ReorderBufferAllocTupleBuf(ctx->reorder,
+										   tuple->t_len - SizeofHeapTupleHeader);
+	yb_heap_copytuple_with_tuple(tuple, tuple_buf);
 	pfree(tuple);
 
 	change->data.tp.newtuple = tuple_buf;
@@ -191,7 +194,6 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 	 */
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
 							 ctx->reader->ReadRecPtr, change, false /* toast_insert */ );
-#endif
 }
 
 /*
@@ -200,16 +202,15 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 static void
 YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
-#if 0
 	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
-	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
+	ReorderBufferChange *change = ReorderBufferAllocChange(ctx->reorder);
 	Relation	relation;
 	TupleDesc	tupdesc;
 	int			nattrs;
 	HeapTuple	after_op_tuple;
 	HeapTuple	before_op_tuple;
-	ReorderBufferTupleBuf *after_op_tuple_buf;
-	ReorderBufferTupleBuf *before_op_tuple_buf;
+	HeapTuple	after_op_tuple_buf;
+	HeapTuple	before_op_tuple_buf;
 	bool	   *before_op_is_omitted = NULL;
 	bool	   *after_op_is_omitted = NULL;
 	bool		should_handle_omitted_case;
@@ -297,13 +298,10 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	after_op_tuple =
 		heap_form_tuple(tupdesc, after_op_datums, after_op_is_nulls);
 	after_op_tuple_buf =
-		ReorderBufferGetTupleBuf(ctx->reorder,
-								 after_op_tuple->t_len + HEAPTUPLESIZE);
-	yb_heap_copytuple_with_tuple(after_op_tuple, &after_op_tuple_buf->tuple);
+		ReorderBufferAllocTupleBuf(ctx->reorder,
+								   after_op_tuple->t_len - SizeofHeapTupleHeader);
+	yb_heap_copytuple_with_tuple(after_op_tuple, after_op_tuple_buf);
 	pfree(after_op_tuple);
-	after_op_tuple_buf->yb_is_omitted = after_op_is_omitted;
-	after_op_tuple_buf->yb_is_omitted_size =
-		(should_handle_omitted_case) ? nattrs : 0;
 
 	/*
 	 * In YB, the primary key updates are sent as DELETE + INSERT. So the only
@@ -316,14 +314,10 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 		before_op_tuple =
 			heap_form_tuple(tupdesc, before_op_datums, before_op_is_nulls);
 		before_op_tuple_buf =
-			ReorderBufferGetTupleBuf(ctx->reorder,
-									 before_op_tuple->t_len + HEAPTUPLESIZE);
-		yb_heap_copytuple_with_tuple(before_op_tuple,
-									 &before_op_tuple_buf->tuple);
+			ReorderBufferAllocTupleBuf(ctx->reorder,
+									   before_op_tuple->t_len - SizeofHeapTupleHeader);
+		yb_heap_copytuple_with_tuple(before_op_tuple, before_op_tuple_buf);
 		pfree(before_op_tuple);
-		before_op_tuple_buf->yb_is_omitted = before_op_is_omitted;
-		before_op_tuple_buf->yb_is_omitted_size =
-			(should_handle_omitted_case) ? nattrs : 0;
 	}
 	else
 	{
@@ -332,12 +326,12 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 			pfree(before_op_is_omitted);
 	}
 
-	if (log_min_messages <= DEBUG2)
+	if (log_min_messages[MyBackendType] <= DEBUG2)
 	{
 		const char *new_tuple_string;
 
 		new_tuple_string =
-			YbHeapTupleToStringWithIsOmitted(&after_op_tuple_buf->tuple,
+			YbHeapTupleToStringWithIsOmitted(after_op_tuple_buf,
 											 tupdesc,
 											 after_op_is_omitted);
 
@@ -346,7 +340,7 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 			const char *old_tuple_string;
 
 			old_tuple_string =
-				YbHeapTupleToStringWithIsOmitted(&before_op_tuple_buf->tuple,
+				YbHeapTupleToStringWithIsOmitted(before_op_tuple_buf,
 												 tupdesc,
 												 before_op_is_omitted);
 			elog(DEBUG2,
@@ -371,7 +365,6 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 							 ctx->reader->ReadRecPtr, change, false /* toast_insert */ );
 
 	RelationClose(relation);
-#endif
 }
 
 /*
@@ -380,11 +373,10 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 static void
 YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
-#if 0
 	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
-	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
+	ReorderBufferChange *change = ReorderBufferAllocChange(ctx->reorder);
 	HeapTuple	tuple;
-	ReorderBufferTupleBuf *tuple_buf;
+	HeapTuple	tuple_buf;
 
 	Assert(ctx->reader->ReadRecPtr == yb_record->lsn);
 
@@ -396,9 +388,9 @@ YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 
 	/* See the comment in YBDecodeInsert on why we create tuples twice. */
 	tuple = YBGetHeapTuplesForRecord(yb_record);
-	tuple_buf =
-		ReorderBufferGetTupleBuf(ctx->reorder, tuple->t_len + HEAPTUPLESIZE);
-	yb_heap_copytuple_with_tuple(tuple, &tuple_buf->tuple);
+	tuple_buf = ReorderBufferAllocTupleBuf(ctx->reorder,
+										   tuple->t_len - SizeofHeapTupleHeader);
+	yb_heap_copytuple_with_tuple(tuple, tuple_buf);
 	pfree(tuple);
 
 	change->data.tp.newtuple = NULL;
@@ -408,7 +400,6 @@ YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->data.tp.clear_toast_afterwards = true;
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
 							 ctx->reader->ReadRecPtr, change, false /* toast_insert */ );
-#endif
 }
 
 /*
