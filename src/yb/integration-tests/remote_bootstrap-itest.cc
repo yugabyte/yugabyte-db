@@ -1722,6 +1722,7 @@ TEST_F(RemoteBootstrapITest, TestFailedTabletIsRemoteBootstrapped) {
       "--consensus_rpc_timeout_ms=300",
       "--TEST_delay_removing_peer_with_failed_tablet_secs=10",
       "--memstore_size_mb=1",
+      "--rocksdb_disable_compactions=true",
       // Increase the number of missed heartbeats used to detect leader failure since in slow
       // testing instances it is very easy to miss the default (6) heartbeats since they are being
       // sent very fast (50ms).
