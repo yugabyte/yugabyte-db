@@ -52,9 +52,14 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
     // The test suite asserts for DML failing with catalog version mismatch when run
     // immediately after DDLs, which isn't true with object locking enabled.
     flags.put("enable_object_locking_for_table_locks", "false");
-    // TODO(29142): Fix the test with txn ddl and reenable.
-    flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
     return flags;
+  }
+
+  private boolean isTransactionalDdlEnabled(Statement stmt) throws SQLException {
+    try (ResultSet rs = stmt.executeQuery("SHOW yb_ddl_transaction_block_enabled")) {
+      assertTrue(rs.next());
+      return "on".equalsIgnoreCase(rs.getString(1));
+    }
   }
 
   @Test
@@ -396,12 +401,14 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       waitForTServerHeartbeat();
 
       statement2.execute("BEGIN");
-      // Perform a DDL operation, which cannot (as of 07/01/2019) be rolled back.
+      // Without transactional DDL, CREATE TABLE runs in an autonomous transaction and cannot be
+      // rolled back. With transactional DDL, it participates in the enclosing transaction and can
+      // be rolled back when the transaction aborts.
       statement2.execute("CREATE TABLE other_table(id int)");
 
       statement2.execute("SELECT * FROM test_table");
 
-      // Modify table from connection 2.
+      // Modify table from connection 1.
       statement1.execute("ALTER TABLE test_table ADD COLUMN c int");
 
       waitForTServerHeartbeat();
@@ -412,8 +419,13 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // COMMIT will succeed as a command but will rollback the transaction due to the error above.
       statement2.execute("COMMIT");
 
-      // Check that the other table was created.
-      statement2.execute("SELECT * FROM other_table");
+      if (isTransactionalDdlEnabled(statement2)) {
+        // CREATE TABLE was part of the aborted transaction and should be rolled back.
+        runInvalidQuery(statement2, "SELECT * FROM other_table", "does not exist");
+      } else {
+        // Check that the other table was created.
+        statement2.execute("SELECT * FROM other_table");
+      }
     }
   }
 
