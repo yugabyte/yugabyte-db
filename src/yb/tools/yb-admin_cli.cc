@@ -543,8 +543,6 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   }
 
   if (args.size() < 2) {
-    // No operation was given. Returning an InvalidArgument status makes main() print the full
-    // usage message, which is the intended "help" output for this case.
     return ClusterAdminCli::kInvalidArguments;
   }
 
