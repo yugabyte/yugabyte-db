@@ -6,22 +6,14 @@ OBJS = \
 	pg_stat_statements.o
 
 EXTENSION = pg_stat_statements
-<<<<<<< HEAD
-DATA = pg_stat_statements--1.4.sql \
-	pg_stat_statements--1.12--1.13.sql \
-	pg_stat_statements--1.11--1.12.sql pg_stat_statements--1.10--1.11.sql \
-	pg_stat_statements--1.9--1.10.sql pg_stat_statements--1.8--1.9.sql \
-	pg_stat_statements--1.7--1.8.sql pg_stat_statements--1.6--1.7.sql \
-	pg_stat_statements--1.5--1.6.sql pg_stat_statements--1.4--1.5.sql \
-	pg_stat_statements--1.3--1.4.sql pg_stat_statements--1.2--1.3.sql \
-	pg_stat_statements--1.1--1.2.sql pg_stat_statements--1.0--1.1.sql
-=======
-DATA = pg_stat_statements--1.10-yb-2.1.sql \
+DATA = pg_stat_statements--1.13-yb-1.0.sql \
+	pg_stat_statements--1.10-yb-2.1--1.13-yb-1.0.sql \
+	pg_stat_statements--1.10-yb-2.1.sql \
+	pg_stat_statements--1.10-yb-1.0.sql \
 	pg_stat_statements--1.10-yb-2.0--1.10-yb-2.1.sql \
 	pg_stat_statements--1.10-yb-1.0--1.10-yb-2.0.sql \
 	pg_stat_statements--1.6-yb-1.0--1.10-yb-1.0.sql \
 	pg_stat_statements--1.6--1.6-yb-1.0.sql
->>>>>>> bc662ba705041e6573dd356e00d6418d40a405b9
 PGFILEDESC = "pg_stat_statements - execution statistics of SQL statements"
 SHLIB_LINK += -L$(YB_BUILD_ROOT)/lib -lserver_process -lyb_pggate_webserver -lhdr_histogram
 

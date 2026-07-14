@@ -4,10 +4,10 @@ SET pg_stat_statements.track_utility = TRUE;
 CREATE TABLE backfill_test(k INT PRIMARY KEY, v INT);
 INSERT INTO backfill_test SELECT i, i FROM generate_series(1, 5000) AS i;
 --Test: there should be exactly one BACKFILL entry.
-SELECT pg_stat_statements_reset();
- pg_stat_statements_reset 
---------------------------
- 
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
 (1 row)
 
 CREATE INDEX ON backfill_test(v);
@@ -41,10 +41,10 @@ WHERE query LIKE 'BACKFILL%';
 (1 row)
 
 --Verify that normal DML normalization is unaffected.
-SELECT pg_stat_statements_reset();
- pg_stat_statements_reset 
---------------------------
- 
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
 (1 row)
 
 SELECT * FROM backfill_test WHERE k = 1;

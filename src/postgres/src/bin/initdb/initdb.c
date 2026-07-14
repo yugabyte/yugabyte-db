@@ -3467,12 +3467,7 @@ initialize_data_directory(void)
 
 	load_plpgsql(cmdfd);
 
-	/*
-	 * YB_TODO_PG19MERGE: pg_stat_statements is not currently built in the
-	 * YB PG19 tree.
-	 */
-	/* enable_pg_stat_statements(cmdfd); */
-	(void) enable_pg_stat_statements; /* suppress unused warning */
+	enable_pg_stat_statements(cmdfd);
 
 	/*
 	 * YB: we used to skip the call of vacuum_db() because we don't need

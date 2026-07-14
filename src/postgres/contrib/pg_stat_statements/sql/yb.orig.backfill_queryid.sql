@@ -7,7 +7,7 @@ CREATE TABLE backfill_test(k INT PRIMARY KEY, v INT);
 INSERT INTO backfill_test SELECT i, i FROM generate_series(1, 5000) AS i;
 
 --Test: there should be exactly one BACKFILL entry.
-SELECT pg_stat_statements_reset();
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
 CREATE INDEX ON backfill_test(v);
 
 SELECT COUNT(*) AS num_backfill_entries
@@ -29,7 +29,7 @@ FROM pg_stat_statements
 WHERE query LIKE 'BACKFILL%';
 
 --Verify that normal DML normalization is unaffected.
-SELECT pg_stat_statements_reset();
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
 
 SELECT * FROM backfill_test WHERE k = 1;
 SELECT * FROM backfill_test WHERE k = 2;

@@ -9,7 +9,7 @@ SET pg_stat_statements.track_planning = TRUE;
 --
 -- create / alter user
 --
-SELECT pg_stat_statements_reset();
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
 CREATE USER foo PASSWORD 'fooooooo';
 ALTER USER foo PASSWORD 'foo2';
 CREATE ROLE fizzbuzz PASSWORD 'barrr';

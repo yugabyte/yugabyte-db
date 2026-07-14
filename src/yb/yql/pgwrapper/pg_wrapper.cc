@@ -113,10 +113,7 @@ DECLARE_string(metric_node_name);
 TAG_FLAG(pg_transactions_enabled, advanced);
 TAG_FLAG(pg_transactions_enabled, hidden);
 
-// YB_TODO_PG19MERGE: default flipped to false because pg_stat_statements is
-// not currently built in the YB PG19 tree. Flip back to true once contrib install
-// is wired up.
-DEFINE_UNKNOWN_bool(pg_stat_statements_enabled, false,
+DEFINE_NON_RUNTIME_bool(pg_stat_statements_enabled, true,
             "True to enable statement stats in PostgreSQL server");
 TAG_FLAG(pg_stat_statements_enabled, advanced);
 TAG_FLAG(pg_stat_statements_enabled, hidden);

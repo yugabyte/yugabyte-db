@@ -1,0 +1,105 @@
+--
+-- Cursors
+--
+-- These tests require track_utility to be enabled.
+SET pg_stat_statements.track_utility = TRUE;
+-- YB: track_planning defaults to TRUE in YB (FALSE in upstream); set FALSE to match upstream.
+SET pg_stat_statements.track_planning = FALSE;
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
+(1 row)
+
+-- DECLARE
+-- SELECT is normalized.
+DECLARE cursor_stats_1 CURSOR WITH HOLD FOR SELECT 1;
+CLOSE cursor_stats_1;
+DECLARE cursor_stats_1 CURSOR WITH HOLD FOR SELECT 2;
+CLOSE cursor_stats_1;
+SELECT calls, rows, query FROM pg_stat_statements ORDER BY query COLLATE "C";
+ calls | rows |                         query                         
+-------+------+-------------------------------------------------------
+     2 |    0 | CLOSE cursor_stats_1
+     2 |    0 | DECLARE cursor_stats_1 CURSOR WITH HOLD FOR SELECT $1
+     1 |    1 | SELECT pg_stat_statements_reset() IS NOT NULL AS t
+(3 rows)
+
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
+(1 row)
+
+-- FETCH
+BEGIN;
+DECLARE cursor_stats_1 CURSOR WITH HOLD FOR SELECT 2;
+DECLARE cursor_stats_2 CURSOR WITH HOLD FOR SELECT 3;
+FETCH 1 IN cursor_stats_1;
+ ?column? 
+----------
+        2
+(1 row)
+
+FETCH 1 IN cursor_stats_2;
+ ?column? 
+----------
+        3
+(1 row)
+
+CLOSE cursor_stats_1;
+CLOSE cursor_stats_2;
+COMMIT;
+SELECT calls, rows, query FROM pg_stat_statements ORDER BY query COLLATE "C";
+ calls | rows |                         query                         
+-------+------+-------------------------------------------------------
+     1 |    0 | BEGIN
+     1 |    0 | CLOSE cursor_stats_1
+     1 |    0 | CLOSE cursor_stats_2
+     1 |    0 | COMMIT
+     1 |    0 | DECLARE cursor_stats_1 CURSOR WITH HOLD FOR SELECT $1
+     1 |    0 | DECLARE cursor_stats_2 CURSOR WITH HOLD FOR SELECT $1
+     1 |    1 | FETCH $1 IN cursor_stats_1
+     1 |    1 | FETCH $1 IN cursor_stats_2
+     1 |    1 | SELECT pg_stat_statements_reset() IS NOT NULL AS t
+(9 rows)
+
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
+(1 row)
+
+-- Normalization of FETCH statements
+-- TODO(#6514): YB supports only forward FETCH; explicit directions and negative counts error.
+-- Upstream tests every direction; here we keep the forward fetches + one representative (BACKWARD).
+BEGIN;
+DECLARE pgss_cursor CURSOR FOR SELECT FROM generate_series(1, 10);
+FETCH pgss_cursor;
+--
+(1 row)
+
+FETCH 1 pgss_cursor;
+--
+(1 row)
+
+FETCH 2 pgss_cursor;
+--
+(2 rows)
+
+FETCH BACKWARD pgss_cursor;
+ERROR:  FETCH BACKWARD not supported yet
+LINE 1: FETCH BACKWARD pgss_cursor;
+              ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumbs up to raise its priority
+COMMIT;
+SELECT calls, query FROM pg_stat_statements ORDER BY query COLLATE "C";
+ calls |                               query                                
+-------+--------------------------------------------------------------------
+     1 | BEGIN
+     1 | COMMIT
+     1 | DECLARE pgss_cursor CURSOR FOR SELECT FROM generate_series($1, $2)
+     3 | FETCH pgss_cursor
+     1 | SELECT pg_stat_statements_reset() IS NOT NULL AS t
+(5 rows)
+

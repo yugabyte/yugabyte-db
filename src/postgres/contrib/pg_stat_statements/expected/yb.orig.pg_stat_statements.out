@@ -7,10 +7,10 @@ SET pg_stat_statements.track_planning = TRUE;
 --
 -- create / alter user
 --
-SELECT pg_stat_statements_reset();
- pg_stat_statements_reset 
---------------------------
- 
+SELECT pg_stat_statements_reset() IS NOT NULL AS t;
+ t 
+---
+ t
 (1 row)
 
 CREATE USER foo PASSWORD 'fooooooo';
@@ -64,7 +64,7 @@ SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
  CREATE ROLE minimalpass PASSWORD <REDACTED>                                          |     1 |    0
  CREATE ROLE smallpass PASSWORD <REDACTED>                                            |     1 |    0
  CREATE USER foo PASSWORD <REDACTED>                                                  |     1 |    0
- SELECT pg_stat_statements_reset()                                                    |     1 |    1
+ SELECT pg_stat_statements_reset() IS NOT NULL AS t                                   |     1 |    1
  SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C"         |     0 |    0
  SELECT returnArg($1, $2)                                                             |     1 |    1
  SELECT returnArg($1, $2, $3)                                                         |     1 |    1

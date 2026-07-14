@@ -1,5 +1,22 @@
 # contrib/pg_stat_statements/yb_schedule
-
-test: yb.port.pg_stat_statements
+#
+# yb.port.* : YB copies of upstream's per-topic pgss tests, in upstream REGRESS order.
+# yb.orig.* : YB-only tests; each self-creates and drops the extension.
+test: yb.port.select
+test: yb.port.dml
+test: yb.port.cursors
+test: yb.port.utility
+test: yb.port.level_tracking
+test: yb.port.planning
+test: yb.port.user_activity
+test: yb.port.wal
+test: yb.port.entry_timestamp
+test: yb.port.privileges
+test: yb.port.extended
+test: yb.port.parallel
+test: yb.port.plancache
+test: yb.port.squashing
+test: yb.port.cleanup
 test: yb.orig.pg_stat_statements
 test: yb.orig.backfill_queryid
+test: yb.orig.oldextversions

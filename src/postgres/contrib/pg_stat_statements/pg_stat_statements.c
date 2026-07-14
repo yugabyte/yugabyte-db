@@ -71,27 +71,25 @@
 #include "utils/timestamp.h"
 #include "utils/tuplestore.h"
 
-<<<<<<< HEAD
-PG_MODULE_MAGIC_EXT(
-					.name = "pg_stat_statements",
-					.version = PG_VERSION
-);
-=======
 /* YB includes */
 #include "common/jsonapi.h"
 #include "common/pg_yb_common.h"
 #include "hdr/hdr_histogram.h"
 #include "lib/stringinfo.h"
+#include "parser/scanner.h"
 #include "pg_yb_utils.h"
 #include "utils/json.h"
 #include "utils/jsonb.h"
 #include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
+#include "yb_ash.h"
 #include "yb_query_diagnostics.h"
 #include <inttypes.h>
 #include <stddef.h>
 
-PG_MODULE_MAGIC;
->>>>>>> yugabyte-db-squash-2
+PG_MODULE_MAGIC_EXT(
+					.name = "pg_stat_statements",
+					.version = PG_VERSION
+);
 
 /* Location of permanent stats file (valid when database is shut down) */
 #define PGSS_DUMP_FILE	PGSTAT_STAT_PERMANENT_DIRECTORY "/pg_stat_statements.stat"
@@ -102,14 +100,10 @@ PG_MODULE_MAGIC;
 #define PGSS_TEXT_FILE	PG_STAT_TMP_DIR "/pgss_query_texts.stat"
 
 /* Magic number identifying the stats file format */
-<<<<<<< HEAD
+/* YB: Postgres 19 uses the following number.
 static const uint32 PGSS_FILE_HEADER = 0x20250731;
-=======
-/* YB: Postgres 15 uses the following number.
-static const uint32 PGSS_FILE_HEADER = 0x20220408;
 */
-static const uint32 PGSS_FILE_HEADER = 0x20250425;
->>>>>>> yugabyte-db-squash-2
+static const uint32 PGSS_FILE_HEADER = 0x20260630;
 
 /* PostgreSQL major version number, changes in which invalidate all entries */
 static const uint32 PGSS_PG_MAJOR_VERSION = PG_VERSION_NUM / 100;
@@ -125,8 +119,6 @@ static const uint32 PGSS_PG_MAJOR_VERSION = PG_VERSION_NUM / 100;
 #define IS_STICKY(c)	((c.calls[PGSS_PLAN] + c.calls[PGSS_EXEC]) == 0)
 
 /*
-<<<<<<< HEAD
-=======
  * Utility statements that pgss_ProcessUtility and pgss_post_parse_analyze
  * ignores.
  */
@@ -138,7 +130,6 @@ static const uint32 PGSS_PG_MAJOR_VERSION = PG_VERSION_NUM / 100;
 #define YB_NUM_COUNTERS_DBL 40
 
 /*
->>>>>>> yugabyte-db-squash-2
  * Extension version number, for supporting older extension versions' objects
  */
 typedef enum pgssVersion
@@ -151,15 +142,13 @@ typedef enum pgssVersion
 	PGSS_V1_8,
 	PGSS_V1_9,
 	PGSS_V1_10,
-<<<<<<< HEAD
-	PGSS_V1_11,
-	PGSS_V1_12,
-	PGSS_V1_13,
-=======
 	YB_PGSS_V1_10,
 	YB_V2_0_PGSS_V1_10,
 	YB_V2_1_PGSS_V1_10,
->>>>>>> yugabyte-db-squash-2
+	PGSS_V1_11,
+	PGSS_V1_12,
+	PGSS_V1_13,
+	YB_PGSS_V1_13,
 } pgssVersion;
 
 /*
@@ -306,16 +295,14 @@ typedef struct Counters
 	int64		jit_emission_count; /* number of times emission time has been
 									 * > 0 */
 	double		jit_emission_time;	/* total time to emit jit code */
-<<<<<<< HEAD
 	int64		parallel_workers_to_launch; /* # of parallel workers planned
 											 * to be launched */
 	int64		parallel_workers_launched;	/* # of parallel workers actually
 											 * launched */
 	int64		generic_plan_calls; /* number of calls using a generic plan */
 	int64		custom_plan_calls;	/* number of calls using a custom plan */
-=======
+
 	YbCounters	yb_counters;	/* YB specific counters */
->>>>>>> yugabyte-db-squash-2
 } Counters;
 
 /*
@@ -400,12 +387,12 @@ static const ShmemCallbacks pgss_shmem_callbacks = {
 /* Current nesting depth of planner/ExecutorRun/ProcessUtility calls */
 static int	nesting_level = 0;
 
-<<<<<<< HEAD
-/* Saved hook values */
-=======
-/* Current nesting depth of planner calls */
-static int	plan_nested_level = 0;
-
+/*
+ * YB_TODO_PG19MERGE(#30592): port the normalization-after-reset feature
+ * (YB commit 1006ee929548). queryId is now int64 (was uint64). Kept below for
+ * reference.
+ */
+#if 0
 /*
  * YB: Session-local set of queryIds whose queries contain constants that
  * require normalization (i.e. clocations_count > 0 at parse time).
@@ -436,11 +423,9 @@ static int	plan_nested_level = 0;
 typedef uint64 YbPgssQueryNeedingNormalization;
 
 static HTAB *yb_pgss_queries_needing_normalization = NULL;
+#endif
 
-/* Saved hook values in case of unload */
-static shmem_request_hook_type prev_shmem_request_hook = NULL;
-static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
->>>>>>> yugabyte-db-squash-2
+/* Saved hook values */
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 static planner_hook_type prev_planner_hook = NULL;
 static ExecutorStart_hook_type prev_ExecutorStart = NULL;
@@ -466,25 +451,18 @@ static const struct config_enum_entry track_options[] =
 	{NULL, 0, false}
 };
 
-<<<<<<< HEAD
-static int	pgss_max = 5000;	/* max # statements to track */
-static int	pgss_track = PGSS_TRACK_TOP;	/* tracking level */
-static bool pgss_track_utility = true;	/* whether to track utility commands */
-static bool pgss_track_planning = false;	/* whether to track planning
-											 * duration */
-static bool pgss_save = true;	/* whether to save stats across shutdown */
-=======
 #define YB_HDR_DEFAULT_MAX_LATENCY_MS 1677721.6
 #define YB_HDR_DEFAULT_LATENCY_RES_MS 0.1
 #define YB_HDR_DEFAULT_BUCKET_FACTOR 16
 #define YB_HDR_DEFAULT_MAX_VALUE YB_HDR_DEFAULT_MAX_LATENCY_MS / YB_HDR_DEFAULT_LATENCY_RES_MS
 #define YB_DEFAULT_QTEXT_LIMIT_KB -1
 
-static int	pgss_max;			/* max # statements to track */
-static int	pgss_track;			/* tracking level */
-static bool pgss_track_utility; /* whether to track utility commands */
-static bool pgss_track_planning;	/* whether to track planning duration */
-static bool pgss_save;			/* whether to save stats across shutdown */
+static int	pgss_max = 5000;	/* max # statements to track */
+static int	pgss_track = PGSS_TRACK_TOP;	/* tracking level */
+static bool pgss_track_utility = true;	/* whether to track utility commands */
+static bool pgss_track_planning = false;	/* whether to track planning
+											 * duration */
+static bool pgss_save = true;	/* whether to save stats across shutdown */
 static float yb_hdr_max_latency_ms = YB_HDR_DEFAULT_MAX_LATENCY_MS; /* hardcoded in phase 1,
 																	 * max query latency
 																	 * tracked by histogram */
@@ -509,7 +487,6 @@ static int	yb_qtext_size_limit = YB_DEFAULT_QTEXT_LIMIT_KB;
  * yb_hdr_max_latency_ms accordingly based on the histogram-supported max and
  * latency resolution.
  */
->>>>>>> yugabyte-db-squash-2
 
 #define pgss_enabled(level) \
 	(!IsParallelWorker() && \
@@ -539,16 +516,12 @@ PG_FUNCTION_INFO_V1(pg_stat_statements_1_13);
 PG_FUNCTION_INFO_V1(pg_stat_statements);
 PG_FUNCTION_INFO_V1(pg_stat_statements_info);
 
-<<<<<<< HEAD
-=======
 PG_FUNCTION_INFO_V1(yb_pg_stat_statements_1_4);
 PG_FUNCTION_INFO_V1(yb_pg_stat_statements_1_10);
 PG_FUNCTION_INFO_V1(yb_2_0_pg_stat_statements_1_10);
 PG_FUNCTION_INFO_V1(yb_2_1_pg_stat_statements_1_10);
+PG_FUNCTION_INFO_V1(yb_pg_stat_statements_1_13);
 
-static void pgss_shmem_request(void);
-static void pgss_shmem_startup(void);
->>>>>>> yugabyte-db-squash-2
 static void pgss_shmem_shutdown(int code, Datum arg);
 static void pgss_post_parse_analyze(ParseState *pstate, Query *query,
 									const JumbleState *jstate);
@@ -575,15 +548,11 @@ static void pgss_store(const char *query, int64 queryId,
 					   const BufferUsage *bufusage,
 					   const WalUsage *walusage,
 					   const struct JitInstrumentation *jitusage,
-<<<<<<< HEAD
 					   const JumbleState *jstate,
 					   int parallel_workers_to_launch,
 					   int parallel_workers_launched,
-					   PlannedStmtOrigin planOrigin);
-=======
-					   JumbleState *jstate,
+					   PlannedStmtOrigin planOrigin,
 					   bool yb_is_sensitive_stmt);
->>>>>>> yugabyte-db-squash-2
 static void pg_stat_statements_internal(FunctionCallInfo fcinfo,
 										pgssVersion api_version,
 										bool showtext);
@@ -601,19 +570,17 @@ static TimestampTz entry_reset(Oid userid, Oid dbid, int64 queryid, bool minmax_
 static char *generate_normalized_query(const JumbleState *jstate,
 									   const char *query,
 									   int query_loc, int *query_len_p);
-<<<<<<< HEAD
-=======
 static void fill_in_constant_lengths(JumbleState *jstate, const char *query,
 									 int query_loc);
 static int	comp_location(const void *a, const void *b);
 
 /* YB functions */
 PG_FUNCTION_INFO_V1(yb_get_histogram_jsonb);
-static Datum yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid,
+static Datum yb_get_histogram_jsonb_args(int64 queryid, Oid userid, Oid dbid,
 										 bool top_level);
-static void yb_add_hdr_jsonb_object(JsonbParseState *state, char *buf,
+static void yb_add_hdr_jsonb_object(JsonbInState *state, char *buf,
 									count_t count, JsonbPair *pair);
-static Datum yb_add_histogram_jsonb(JsonbParseState *state,
+static Datum yb_add_histogram_jsonb(JsonbInState *state,
 									hdr_histogram *h, size_t yb_slow_executions);
 static void yb_hdr_reset(hdr_histogram *h);
 static int	read_entry_original(int header, FILE *file, FILE *qfile,
@@ -630,9 +597,11 @@ static bool yb_track_nested_queries(void);
 static int	YbGetPgssNormalizedQueryText(Size query_offset, int actual_query_len, char *normalized_query);
 static char *yb_generate_normalized_backfill_query(YbBackfillIndexStmt *stmt,
 												   int *query_len_p);
+/* YB_TODO_PG19MERGE(#30592): normalization-after-reset, kept for reference. */
+#if 0
 static void yb_pgss_mark_needs_normalization(uint64 queryId);
 static bool yb_pgss_needs_normalization(uint64 queryId);
->>>>>>> yugabyte-db-squash-2
+#endif
 
 /*
  * Module load callback
@@ -747,11 +716,6 @@ _PG_init(void)
 	MarkGUCPrefixReserved("pg_stat_statements");
 
 	/*
-<<<<<<< HEAD
-	 * Register our shared memory needs.
-	 */
-	RegisterShmemCallbacks(&pgss_shmem_callbacks);
-=======
 	 * Calculate actual max = 2^(sub_bucket_half_count_magnitude + bucket_count)
 	 * So hdr's max val should be actual max - 1
 	 * yb_hdr_max_latency_ms and yb_hdr_latency_res_ms will be made GUC vars
@@ -781,7 +745,11 @@ _PG_init(void)
 		yb_hdr_calculate_bucket_config(1, yb_hdr_max_value - 1,
 									   yb_hdr_bucket_factor, &cfg);
 	yb_hdr_max_latency_ms = yb_hdr_max_value * yb_hdr_latency_res_ms;
->>>>>>> yugabyte-db-squash-2
+
+	/*
+	 * Register our shared memory needs.
+	 */
+	RegisterShmemCallbacks(&pgss_shmem_callbacks);
 
 	/*
 	 * Install hooks.
@@ -832,7 +800,8 @@ pgss_shmem_request(void *arg)
 	ShmemRequestHash(.name = "pg_stat_statements hash",
 					 .nelems = pgss_max,
 					 .hash_info.keysize = sizeof(pgssHashKey),
-					 .hash_info.entrysize = sizeof(pgssEntry),
+					 /* YB: entrysize includes the trailing per-entry counter array */
+					 .hash_info.entrysize = sizeof(pgssEntry) + cfg.counts_len * sizeof(count_t),
 					 .hash_flags = HASH_ELEM | HASH_BLOBS,
 					 .ptr = &pgss_hash,
 		);
@@ -899,7 +868,7 @@ getYsqlStatementStats(void *cb_arg)
 	if (qbuffer == NULL)
 		return;
 
-	LWLockAcquire(pgss->lock, LW_SHARED);
+	LWLockAcquire(&pgss->lock.lock, LW_SHARED);
 
 	hash_seq_init(&hash_seq, pgss_hash);
 	while ((entry = hash_seq_search(&hash_seq)) != NULL)
@@ -955,7 +924,7 @@ getYsqlStatementStats(void *cb_arg)
 		}
 	}
 
-	LWLockRelease(pgss->lock);
+	LWLockRelease(&pgss->lock.lock);
 
 	pfree(qbuffer);
 }
@@ -1055,14 +1024,14 @@ read_entry_original(int header, FILE *file, FILE *qfile,
  * Parse in post-histogram pgssEntries from disk, throw out histogram parts if
  * config variables have changed between restarts.
  * File header version 0x20230330 can no longer be read as the file format has
- * changed between 0x20230330 and 0x20250425. The stats file is discarded in
- * pgss_shmem_startup() if the header is not 0x20250425.
+ * changed between 0x20230330 and 0x20260630. The stats file is discarded in
+ * pgss_shmem_init() if the header is not 0x20260630.
  */
 static int
 read_entry_hdr(int header, FILE *file, FILE *qfile,
 			   pgssYbReaderContext *context)
 {
-	Assert(header == 0x20250425);
+	Assert(header == PGSS_FILE_HEADER);
 
 	/* TODO: address case where hdr_histogram size changes due to 3p update */
 	int			prev_entry_total_size = (sizeof(pgssEntry) +
@@ -1106,6 +1075,8 @@ read_entry_hdr(int header, FILE *file, FILE *qfile,
 		}
 		/* copy in the actual stats */
 		entry->counters = counters;
+		entry->stats_since = temp->stats_since;
+		entry->minmax_stats_since = temp->minmax_stats_since;
 	}
 	return 0;
 }
@@ -1118,7 +1089,7 @@ static int
 extended_header_reader(int header, FILE *file,
 					   pgssYbReaderContext *context)
 {
-	if (header != 0x20250425)
+	if (header != PGSS_FILE_HEADER)
 		return -1;
 
 	int64_t		temp_yb_hdr_max_value;
@@ -1158,6 +1129,7 @@ pgssYbReader pgssReaderList[] =
 	{0x20171004, NULL, read_entry_original},
 	{0x20230330, extended_header_reader, read_entry_hdr},
 	{0x20250425, extended_header_reader, read_entry_hdr},
+	{0x20260630, extended_header_reader, read_entry_hdr},
 	{pgssReaderEndMarker, NULL, NULL}
 };
 
@@ -1193,55 +1165,14 @@ pgss_shmem_init(void *arg)
 	int			buffer_size;
 	char	   *buffer = NULL;
 
-<<<<<<< HEAD
-=======
-	if (prev_shmem_startup_hook)
-		prev_shmem_startup_hook();
-
 	RegisterGetYsqlStatStatements(&getYsqlStatementStats);
 	RegisterResetYsqlStatStatements(&resetYsqlStatementStats);
 
-	/* reset in case this is a restart within the postmaster */
-	pgss = NULL;
-	pgss_hash = NULL;
-
->>>>>>> yugabyte-db-squash-2
 	/*
 	 * We already checked that we're loaded from shared_preload_libraries in
 	 * _PG_init(), so we should not get here after postmaster startup.
 	 */
-<<<<<<< HEAD
 	Assert(!IsUnderPostmaster);
-=======
-	LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
-
-	pgss = ShmemInitStruct("pg_stat_statements",
-						   sizeof(pgssSharedState),
-						   &found);
-
-	if (!found)
-	{
-		/* First time through ... */
-		pgss->lock = &(GetNamedLWLockTranche("pg_stat_statements"))->lock;
-		pgss->cur_median_usage = ASSUMED_MEDIAN_INIT;
-		pgss->mean_query_len = ASSUMED_LENGTH_INIT;
-		SpinLockInit(&pgss->mutex);
-		pgss->extent = 0;
-		pgss->n_writers = 0;
-		pgss->gc_count = 0;
-		pgss->stats.dealloc = 0;
-		pgss->stats.stats_reset = GetCurrentTimestamp();
-	}
-
-	info.keysize = sizeof(pgssHashKey);
-	info.entrysize = sizeof(pgssEntry) + cfg.counts_len * sizeof(count_t);
-	pgss_hash = ShmemInitHash("pg_stat_statements hash",
-							  pgss_max, pgss_max,
-							  &info,
-							  HASH_ELEM | HASH_BLOBS);
-
-	LWLockRelease(AddinShmemInitLock);
->>>>>>> yugabyte-db-squash-2
 
 	/*
 	 * Initialize the shmem area with no statistics.
@@ -1327,36 +1258,7 @@ pgss_shmem_init(void *arg)
 			version_reader = &pgssReaderList[i];
 			break;
 		}
-<<<<<<< HEAD
-
-		if (fread(buffer, 1, temp.query_len + 1, file) != temp.query_len + 1)
-			goto read_error;
-
-		/* Should have a trailing null, but let's make sure */
-		buffer[temp.query_len] = '\0';
-
-		/* Skip loading "sticky" entries */
-		if (IS_STICKY(temp.counters))
-			continue;
-
-		/* Store the query text */
-		query_offset = pgss->extent;
-		if (fwrite(buffer, 1, temp.query_len + 1, qfile) != temp.query_len + 1)
-			goto write_error;
-		pgss->extent += temp.query_len + 1;
-
-		/* make the hashtable entry (discards old entries if too many) */
-		entry = entry_alloc(&temp.key, query_offset, temp.query_len,
-							temp.encoding,
-							false);
-
-		/* copy in the actual stats */
-		entry->counters = temp.counters;
-		entry->stats_since = temp.stats_since;
-		entry->minmax_stats_since = temp.minmax_stats_since;
-=======
 		i++;
->>>>>>> yugabyte-db-squash-2
 	}
 
 	if (version_reader == NULL)
@@ -1547,6 +1449,11 @@ error:
 }
 
 /*
+ * YB_TODO_PG19MERGE(#30592): normalization-after-reset helpers, kept for
+ * reference. queryId is now int64 (was uint64).
+ */
+#if 0
+/*
  * YB: Lazily initialize the session-local hash set that tracks which queryIds
  * need normalization.
  *
@@ -1585,6 +1492,7 @@ yb_pgss_needs_normalization(uint64 queryId)
 	return hash_search(yb_pgss_queries_needing_normalization, &queryId,
 					   HASH_FIND, NULL) != NULL;
 }
+#endif
 
 /*
  * Post-parse-analysis hook: mark query with a queryId
@@ -1623,7 +1531,10 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, const JumbleState *jst
 	 */
 	if (jstate && jstate->clocations_count > 0)
 	{
+		/* YB_TODO_PG19MERGE(#30592): normalization-after-reset, kept for reference. */
+#if 0
 		yb_pgss_mark_needs_normalization(query->queryId);
+#endif
 		pgss_store(pstate->p_sourcetext,
 				   query->queryId,
 				   query->stmt_location,
@@ -1635,14 +1546,11 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, const JumbleState *jst
 				   NULL,
 				   NULL,
 				   jstate,
-<<<<<<< HEAD
 				   0,
 				   0,
-				   PLAN_STMT_UNKNOWN);
-=======
+				   PLAN_STMT_UNKNOWN,
 				   false /* yb_is_sensitive_stmt */ );
 	}
->>>>>>> yugabyte-db-squash-2
 }
 
 /*
@@ -1722,13 +1630,10 @@ pgss_planner(Query *parse,
 				   &walusage,
 				   NULL,
 				   NULL,
-<<<<<<< HEAD
 				   0,
 				   0,
-				   result->planOrigin);
-=======
+				   result->planOrigin,
 				   false /* yb_is_sensitive_stmt */ );
->>>>>>> yugabyte-db-squash-2
 	}
 	else
 	{
@@ -1844,13 +1749,10 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 				   &queryDesc->query_instr->walusage,
 				   queryDesc->estate->es_jit ? &queryDesc->estate->es_jit->instr : NULL,
 				   NULL,
-<<<<<<< HEAD
 				   queryDesc->estate->es_parallel_workers_to_launch,
 				   queryDesc->estate->es_parallel_workers_launched,
-				   queryDesc->plannedstmt->planOrigin);
-=======
+				   queryDesc->plannedstmt->planOrigin,
 				   false /* yb_is_sensitive_stmt */ );
->>>>>>> yugabyte-db-squash-2
 	}
 
 	if (prev_ExecutorEnd)
@@ -1971,22 +1873,6 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		memset(&walusage, 0, sizeof(WalUsage));
 		WalUsageAccumDiff(&walusage, &pgWalUsage, &walusage_start);
 
-<<<<<<< HEAD
-		pgss_store(queryString,
-				   saved_queryId,
-				   saved_stmt_location,
-				   saved_stmt_len,
-				   PGSS_EXEC,
-				   INSTR_TIME_GET_MILLISEC(duration),
-				   rows,
-				   &bufusage,
-				   &walusage,
-				   NULL,
-				   NULL,
-				   0,
-				   0,
-				   pstmt->planOrigin);
-=======
 		/*
 		 * YB note: UTILITY statements are the only kind that are treated as
 		 * sensitive. The other pgss hooks (planner, analyze, end-of-execution)
@@ -2014,6 +1900,9 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					   &walusage,
 					   NULL,
 					   NULL,
+					   0,
+					   0,
+					   pstmt->planOrigin,
 					   false /* yb_is_sensitive_stmt */ );
 			pfree(norm_query);
 		}
@@ -2030,9 +1919,11 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					   &walusage,
 					   NULL,
 					   NULL,
+					   0,
+					   0,
+					   pstmt->planOrigin,
 					   true /* yb_is_sensitive_stmt */ );
 		}
->>>>>>> yugabyte-db-squash-2
 	}
 	else
 	{
@@ -2093,15 +1984,11 @@ pgss_store(const char *query, int64 queryId,
 		   const BufferUsage *bufusage,
 		   const WalUsage *walusage,
 		   const struct JitInstrumentation *jitusage,
-<<<<<<< HEAD
 		   const JumbleState *jstate,
 		   int parallel_workers_to_launch,
 		   int parallel_workers_launched,
-		   PlannedStmtOrigin planOrigin)
-=======
-		   JumbleState *jstate,
+		   PlannedStmtOrigin planOrigin,
 		   bool yb_is_sensitive_stmt)
->>>>>>> yugabyte-db-squash-2
 {
 	pgssHashKey key;
 	pgssEntry  *entry;
@@ -2121,12 +2008,8 @@ pgss_store(const char *query, int64 queryId,
 	 * Nothing to do if compute_query_id isn't enabled and no other module
 	 * computed a query identifier.
 	 */
-<<<<<<< HEAD
 	if (queryId == INT64CONST(0))
-=======
-	if (queryId == UINT64CONST(0))
 	{
->>>>>>> yugabyte-db-squash-2
 		return;
 	}
 
@@ -2187,6 +2070,8 @@ pgss_store(const char *query, int64 queryId,
 												   &query_len);
 			LWLockAcquire(&pgss->lock.lock, LW_SHARED);
 		}
+		/* YB_TODO_PG19MERGE(#30592): normalization-after-reset, kept for reference. */
+#if 0
 		else if (yb_pgss_needs_normalization(queryId))
 		{
 			/*
@@ -2198,6 +2083,7 @@ pgss_store(const char *query, int64 queryId,
 			 */
 			goto done;
 		}
+#endif
 
 		/* Append new query text to file with only shared lock held */
 		stored = qtext_store(norm_query ? norm_query : query, query_len,
@@ -2260,9 +2146,6 @@ pgss_store(const char *query, int64 queryId,
 		entry->counters.calls[kind] += 1;
 		entry->counters.total_time[kind] += total_time;
 
-<<<<<<< HEAD
-		if (entry->counters.calls[kind] == 1)
-=======
 		/*
 		 * Add record for only execution time for queries in latency
 		 * histograms
@@ -2272,14 +2155,12 @@ pgss_store(const char *query, int64 queryId,
 			int64_t		tt_int = (int64_t) (total_time / yb_hdr_latency_res_ms);
 
 			if (tt_int < yb_hdr_max_value)
-				hdr_record_value((hdr_histogram *) &e->yb_hdr_histogram, tt_int);
+				hdr_record_value((hdr_histogram *) &entry->yb_hdr_histogram, tt_int);
 			else
-				e->yb_slow_executions++;
+				entry->yb_slow_executions++;
 		}
 
-
-		if (e->counters.calls[kind] == 1)
->>>>>>> yugabyte-db-squash-2
+		if (entry->counters.calls[kind] == 1)
 		{
 			entry->counters.min_time[kind] = total_time;
 			entry->counters.max_time[kind] = total_time;
@@ -2360,7 +2241,6 @@ pgss_store(const char *query, int64 queryId,
 			entry->counters.jit_emission_time += INSTR_TIME_GET_MILLISEC(jitusage->emission_counter);
 		}
 
-<<<<<<< HEAD
 		/* parallel worker counters */
 		entry->counters.parallel_workers_to_launch += parallel_workers_to_launch;
 		entry->counters.parallel_workers_launched += parallel_workers_launched;
@@ -2371,8 +2251,6 @@ pgss_store(const char *query, int64 queryId,
 		else if (planOrigin == PLAN_STMT_CACHE_CUSTOM)
 			entry->counters.custom_plan_calls++;
 
-		SpinLockRelease(&entry->mutex);
-=======
 		if (kind == PGSS_EXEC)
 		{
 			/*
@@ -2382,63 +2260,62 @@ pgss_store(const char *query, int64 queryId,
 			YbInstrumentation yb_instr = {0};
 
 			YbUpdateSessionStats((YbInstrumentation *) &yb_instr);
-			e->counters.yb_counters.counters[YB_INT_DOCDB_READ_RPCS] +=
+			entry->counters.yb_counters.counters[YB_INT_DOCDB_READ_RPCS] +=
 				yb_instr.tbl_reads.count + yb_instr.index_reads.count;
-			e->counters.yb_counters.counters[YB_INT_DOCDB_WRITE_RPCS] +=
+			entry->counters.yb_counters.counters[YB_INT_DOCDB_WRITE_RPCS] +=
 				yb_instr.write_flushes.count;
-			e->counters.yb_counters.counters[YB_INT_DOCDB_READ_OPS] +=
+			entry->counters.yb_counters.counters[YB_INT_DOCDB_READ_OPS] +=
 				yb_instr.tbl_read_ops + yb_instr.index_read_ops;
-			e->counters.yb_counters.counters[YB_INT_DOCDB_WRITE_OPS] +=
+			entry->counters.yb_counters.counters[YB_INT_DOCDB_WRITE_OPS] +=
 				yb_instr.tbl_writes + yb_instr.index_writes;
-			e->counters.yb_counters.counters[YB_INT_DOCDB_ROWS_SCANNED] +=
+			entry->counters.yb_counters.counters[YB_INT_DOCDB_ROWS_SCANNED] +=
 				yb_instr.tbl_reads.rows_scanned + yb_instr.index_reads.rows_scanned;
-			e->counters.yb_counters.counters[YB_INT_DOCDB_ROWS_RETURNED] +=
+			entry->counters.yb_counters.counters[YB_INT_DOCDB_ROWS_RETURNED] +=
 				yb_instr.tbl_reads.rows_received + yb_instr.index_reads.rows_received;
 
-			e->counters.yb_counters.counters_dbl[YB_DBL_CATALOG_WAIT_TIME_MS] +=
+			entry->counters.yb_counters.counters_dbl[YB_DBL_CATALOG_WAIT_TIME_MS] +=
 				(yb_instr.catalog_reads.wait_time) / 1000000.0;
-			e->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_WAIT_TIME_MS] +=
+			entry->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_WAIT_TIME_MS] +=
 				(yb_instr.tbl_reads.wait_time + yb_instr.write_flushes.wait_time +
 				 yb_instr.index_reads.wait_time) / 1000000.0;
 
 			/* Update retry statistics, only after the statement has completed */
-			e->counters.yb_counters.counters[YB_INT_CONFLICT_RETRIES] +=
+			entry->counters.yb_counters.counters[YB_INT_CONFLICT_RETRIES] +=
 				YbGetRetryCount(YB_TXN_CONFLICT);
-			e->counters.yb_counters.counters[YB_INT_READ_RESTART_RETRIES] +=
+			entry->counters.yb_counters.counters[YB_INT_READ_RESTART_RETRIES] +=
 				YbGetRetryCount(YB_TXN_RESTART_READ);
-			e->counters.yb_counters.counters[YB_INT_TOTAL_RETRIES] += YbGetTotalRetryCount();
+			entry->counters.yb_counters.counters[YB_INT_TOTAL_RETRIES] += YbGetTotalRetryCount();
 
 			if (yb_instr.read_metrics.version)
 			{
-				e->counters.yb_counters.counters[YB_INT_DOCDB_OBSOLETE_ROWS_SCANNED] +=
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_OBSOLETE_ROWS_SCANNED] +=
 					yb_instr.read_metrics.counters[YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND];
-				e->counters.yb_counters.counters[YB_INT_DOCDB_SEEKS] +=
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_SEEKS] +=
 					yb_instr.read_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_SEEK];
-				e->counters.yb_counters.counters[YB_INT_DOCDB_NEXTS] +=
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_NEXTS] +=
 					yb_instr.read_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_NEXT];
-				e->counters.yb_counters.counters[YB_INT_DOCDB_PREVS] +=
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_PREVS] +=
 					yb_instr.read_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_PREV];
-				e->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_READ_TIME_MS] +=
+				entry->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_READ_TIME_MS] +=
 					yb_instr.read_metrics.events[YB_STORAGE_EVENT_QL_READ_LATENCY].sum / 1000.0;
 			}
 
 			if (yb_instr.write_metrics.version)
 			{
-				e->counters.yb_counters.counters[YB_INT_DOCDB_OBSOLETE_ROWS_SCANNED] +=
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_OBSOLETE_ROWS_SCANNED] +=
 					yb_instr.write_metrics.counters[YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND];
-				e->counters.yb_counters.counters[YB_INT_DOCDB_SEEKS] +=
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_SEEKS] +=
 					yb_instr.write_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_SEEK];
-				e->counters.yb_counters.counters[YB_INT_DOCDB_NEXTS] +=
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_NEXTS] +=
 					yb_instr.write_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_NEXT];
-				e->counters.yb_counters.counters[YB_INT_DOCDB_PREVS] +=
+				entry->counters.yb_counters.counters[YB_INT_DOCDB_PREVS] +=
 					yb_instr.write_metrics.gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_PREV];
-				e->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_WRITE_TIME_MS] +=
+				entry->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_WRITE_TIME_MS] +=
 					yb_instr.write_metrics.events[YB_STORAGE_EVENT_QL_WRITE_LATENCY].sum / 1000.0;
 			}
 		}
 
-		SpinLockRelease(&e->mutex);
->>>>>>> yugabyte-db-squash-2
+		SpinLockRelease(&entry->mutex);
 	}
 
 done:
@@ -2484,6 +2361,9 @@ pg_stat_statements_reset_1_11(PG_FUNCTION_ARGS)
 	queryid = PG_GETARG_INT64(2);
 	minmax_only = PG_GETARG_BOOL(3);
 
+	if (yb_enable_query_diagnostics && !minmax_only)
+		*yb_pgss_last_reset_time = GetCurrentTimestamp();
+
 	PG_RETURN_TIMESTAMPTZ(entry_reset(userid, dbid, queryid, minmax_only));
 }
 
@@ -2493,14 +2373,10 @@ pg_stat_statements_reset_1_11(PG_FUNCTION_ARGS)
 Datum
 pg_stat_statements_reset(PG_FUNCTION_ARGS)
 {
-<<<<<<< HEAD
-	entry_reset(0, 0, 0, false);
-=======
 	if (yb_enable_query_diagnostics)
 		*yb_pgss_last_reset_time = GetCurrentTimestamp();
 
-	entry_reset(0, 0, 0);
->>>>>>> yugabyte-db-squash-2
+	entry_reset(0, 0, 0, false);
 
 	PG_RETURN_VOID();
 }
@@ -2514,17 +2390,15 @@ pg_stat_statements_reset(PG_FUNCTION_ARGS)
 #define PG_STAT_STATEMENTS_COLS_V1_8	32
 #define PG_STAT_STATEMENTS_COLS_V1_9	33
 #define PG_STAT_STATEMENTS_COLS_V1_10	43
-<<<<<<< HEAD
 #define PG_STAT_STATEMENTS_COLS_V1_11	49
 #define PG_STAT_STATEMENTS_COLS_V1_12	52
 #define PG_STAT_STATEMENTS_COLS_V1_13	54
-#define PG_STAT_STATEMENTS_COLS			54	/* maximum of above */
-=======
 #define YB_PG_STAT_STATEMENTS_COLS_V1_10	44
 #define YB_V2_0_PG_STAT_STATEMENTS_COLS_V1_10	55
 #define YB_V2_1_PG_STAT_STATEMENTS_COLS_V1_10	61
-#define PG_STAT_STATEMENTS_COLS			61	/* maximum of above */
->>>>>>> yugabyte-db-squash-2
+#define YB_PG_STAT_STATEMENTS_COLS_V1_13	72
+#define PG_STAT_STATEMENTS_COLS			72	/* maximum of above */
+
 
 /*
  * Retrieve statement statistics.
@@ -2537,54 +2411,11 @@ pg_stat_statements_reset(PG_FUNCTION_ARGS)
  * function.  Unfortunately we weren't bright enough to do that for 1.1.
  */
 Datum
-<<<<<<< HEAD
-pg_stat_statements_1_13(PG_FUNCTION_ARGS)
-{
-	bool		showtext = PG_GETARG_BOOL(0);
-
-	pg_stat_statements_internal(fcinfo, PGSS_V1_13, showtext);
-=======
 yb_pg_stat_statements_1_4(PG_FUNCTION_ARGS)
 {
 	bool		showtext = PG_GETARG_BOOL(0);
 
 	pg_stat_statements_internal(fcinfo, YB_PGSS_V1_4, showtext);
->>>>>>> yugabyte-db-squash-2
-
-	return (Datum) 0;
-}
-
-Datum
-<<<<<<< HEAD
-pg_stat_statements_1_12(PG_FUNCTION_ARGS)
-{
-	bool		showtext = PG_GETARG_BOOL(0);
-
-	pg_stat_statements_internal(fcinfo, PGSS_V1_12, showtext);
-=======
-yb_2_0_pg_stat_statements_1_10(PG_FUNCTION_ARGS)
-{
-	bool		showtext = PG_GETARG_BOOL(0);
-
-	pg_stat_statements_internal(fcinfo, YB_V2_0_PGSS_V1_10, showtext);
->>>>>>> yugabyte-db-squash-2
-
-	return (Datum) 0;
-}
-
-Datum
-<<<<<<< HEAD
-pg_stat_statements_1_11(PG_FUNCTION_ARGS)
-{
-	bool		showtext = PG_GETARG_BOOL(0);
-
-	pg_stat_statements_internal(fcinfo, PGSS_V1_11, showtext);
-=======
-yb_2_1_pg_stat_statements_1_10(PG_FUNCTION_ARGS)
-{
-	bool		showtext = PG_GETARG_BOOL(0);
-
-	pg_stat_statements_internal(fcinfo, YB_V2_1_PGSS_V1_10, showtext);
 
 	return (Datum) 0;
 }
@@ -2595,7 +2426,66 @@ yb_pg_stat_statements_1_10(PG_FUNCTION_ARGS)
 	bool		showtext = PG_GETARG_BOOL(0);
 
 	pg_stat_statements_internal(fcinfo, YB_PGSS_V1_10, showtext);
->>>>>>> yugabyte-db-squash-2
+
+	return (Datum) 0;
+}
+
+Datum
+yb_2_0_pg_stat_statements_1_10(PG_FUNCTION_ARGS)
+{
+	bool		showtext = PG_GETARG_BOOL(0);
+
+	pg_stat_statements_internal(fcinfo, YB_V2_0_PGSS_V1_10, showtext);
+
+	return (Datum) 0;
+}
+
+Datum
+yb_2_1_pg_stat_statements_1_10(PG_FUNCTION_ARGS)
+{
+	bool		showtext = PG_GETARG_BOOL(0);
+
+	pg_stat_statements_internal(fcinfo, YB_V2_1_PGSS_V1_10, showtext);
+
+	return (Datum) 0;
+}
+
+Datum
+yb_pg_stat_statements_1_13(PG_FUNCTION_ARGS)
+{
+	bool		showtext = PG_GETARG_BOOL(0);
+
+	pg_stat_statements_internal(fcinfo, YB_PGSS_V1_13, showtext);
+
+	return (Datum) 0;
+}
+
+Datum
+pg_stat_statements_1_13(PG_FUNCTION_ARGS)
+{
+	bool		showtext = PG_GETARG_BOOL(0);
+
+	pg_stat_statements_internal(fcinfo, PGSS_V1_13, showtext);
+
+	return (Datum) 0;
+}
+
+Datum
+pg_stat_statements_1_12(PG_FUNCTION_ARGS)
+{
+	bool		showtext = PG_GETARG_BOOL(0);
+
+	pg_stat_statements_internal(fcinfo, PGSS_V1_12, showtext);
+
+	return (Datum) 0;
+}
+
+Datum
+pg_stat_statements_1_11(PG_FUNCTION_ARGS)
+{
+	bool		showtext = PG_GETARG_BOOL(0);
+
+	pg_stat_statements_internal(fcinfo, PGSS_V1_11, showtext);
 
 	return (Datum) 0;
 }
@@ -2730,7 +2620,6 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			if (api_version != PGSS_V1_10)
 				elog(ERROR, "incorrect number of output arguments");
 			break;
-<<<<<<< HEAD
 		case PG_STAT_STATEMENTS_COLS_V1_11:
 			if (api_version != PGSS_V1_11)
 				elog(ERROR, "incorrect number of output arguments");
@@ -2741,7 +2630,8 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			break;
 		case PG_STAT_STATEMENTS_COLS_V1_13:
 			if (api_version != PGSS_V1_13)
-=======
+				elog(ERROR, "incorrect number of output arguments");
+			break;
 		case YB_PG_STAT_STATEMENTS_COLS_V1_4:
 			if (api_version != YB_PGSS_V1_4)
 				elog(ERROR, "incorrect number of output arguments");
@@ -2756,7 +2646,10 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			break;
 		case YB_V2_1_PG_STAT_STATEMENTS_COLS_V1_10:
 			if (api_version != YB_V2_1_PGSS_V1_10)
->>>>>>> yugabyte-db-squash-2
+				elog(ERROR, "incorrect number of output arguments");
+			break;
+		case YB_PG_STAT_STATEMENTS_COLS_V1_13:
+			if (api_version != YB_PGSS_V1_13)
 				elog(ERROR, "incorrect number of output arguments");
 			break;
 		default:
@@ -3024,7 +2917,8 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 		}
 
 		if (api_version == YB_PGSS_V1_4 || api_version == YB_PGSS_V1_10 ||
-			api_version == YB_V2_0_PGSS_V1_10 || api_version == YB_V2_1_PGSS_V1_10)
+			api_version == YB_V2_0_PGSS_V1_10 || api_version == YB_V2_1_PGSS_V1_10 ||
+			api_version == YB_PGSS_V1_13)
 		{
 			values[i++] = yb_get_histogram_jsonb_args(queryid,
 													  entry->key.userid,
@@ -3064,16 +2958,14 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 					 api_version == PGSS_V1_8 ? PG_STAT_STATEMENTS_COLS_V1_8 :
 					 api_version == PGSS_V1_9 ? PG_STAT_STATEMENTS_COLS_V1_9 :
 					 api_version == PGSS_V1_10 ? PG_STAT_STATEMENTS_COLS_V1_10 :
-<<<<<<< HEAD
 					 api_version == PGSS_V1_11 ? PG_STAT_STATEMENTS_COLS_V1_11 :
 					 api_version == PGSS_V1_12 ? PG_STAT_STATEMENTS_COLS_V1_12 :
 					 api_version == PGSS_V1_13 ? PG_STAT_STATEMENTS_COLS_V1_13 :
-=======
 					 api_version == YB_PGSS_V1_4 ? YB_PG_STAT_STATEMENTS_COLS_V1_4 :
 					 api_version == YB_PGSS_V1_10 ? YB_PG_STAT_STATEMENTS_COLS_V1_10 :
 					 api_version == YB_V2_0_PGSS_V1_10 ? YB_V2_0_PG_STAT_STATEMENTS_COLS_V1_10 :
 					 api_version == YB_V2_1_PGSS_V1_10 ? YB_V2_1_PG_STAT_STATEMENTS_COLS_V1_10 :
->>>>>>> yugabyte-db-squash-2
+					 api_version == YB_PGSS_V1_13 ? YB_PG_STAT_STATEMENTS_COLS_V1_13 :
 					 -1 /* fail if you forget to update this assert */ ));
 
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
@@ -3120,24 +3012,6 @@ pg_stat_statements_info(PG_FUNCTION_ARGS)
 }
 
 /*
-<<<<<<< HEAD
-=======
- * Estimate shared memory space needed.
- */
-static Size
-pgss_memsize(void)
-{
-	Size		size;
-
-	size = MAXALIGN(sizeof(pgssSharedState));
-	size = add_size(size, hash_estimate_size(pgss_max,
-											 sizeof(pgssEntry) + cfg.counts_len * sizeof(count_t)));
-
-	return size;
-}
-
-/*
->>>>>>> yugabyte-db-squash-2
  * Allocate a new hashtable entry.
  * caller must hold an exclusive lock on pgss->lock
  *
@@ -3183,15 +3057,12 @@ entry_alloc(pgssHashKey *key, Size query_offset, int query_len, int encoding,
 		entry->query_offset = query_offset;
 		entry->query_len = query_len;
 		entry->encoding = encoding;
-<<<<<<< HEAD
 		entry->stats_since = GetCurrentTimestamp();
 		entry->minmax_stats_since = entry->stats_since;
-=======
 		entry->yb_slow_executions = 0;
 		/* zero out histogram space when new entry is created */
 		yb_hdr_reset(&entry->yb_hdr_histogram);
 		hdr_init_preallocated(&entry->yb_hdr_histogram, &cfg);
->>>>>>> yugabyte-db-squash-2
 	}
 
 	return entry;
@@ -3758,9 +3629,6 @@ if (e) { \
 }
 
 /*
-<<<<<<< HEAD
- * Reset entries corresponding to parameters passed.
-=======
  * Function that caches environmental variable
  * FLAGS_TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset.
  *
@@ -3781,8 +3649,7 @@ yb_lwlock_crash_after_acquire_pg_stat_statements_reset()
 }
 
 /*
- * Release entries corresponding to parameters passed.
->>>>>>> yugabyte-db-squash-2
+ * Reset entries corresponding to parameters passed.
  */
 static TimestampTz
 entry_reset(Oid userid, Oid dbid, int64 queryid, bool minmax_only)
@@ -4022,8 +3889,6 @@ generate_normalized_query(const JumbleState *jstate, const char *query,
 	*query_len_p = n_quer_loc;
 	return norm_query;
 }
-<<<<<<< HEAD
-=======
 
 /*
  * Given a valid SQL string and an array of constant-location records,
@@ -4078,9 +3943,6 @@ fill_in_constant_lengths(JumbleState *jstate, const char *query,
 							 &yyextra,
 							 &ScanKeywords,
 							 ScanKeywordTokens);
-
-	/* we don't want to re-emit any escape string warnings */
-	yyextra.escape_string_warning = false;
 
 	/* Search for each constant, in sequence */
 	for (i = 0; i < jstate->clocations_count; i++)
@@ -4173,26 +4035,18 @@ comp_location(const void *a, const void *b)
  * currently connected userid and dbid.
  */
 static Datum
-yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid, bool top_level)
+yb_get_histogram_jsonb_args(int64 queryid, Oid userid, Oid dbid, bool top_level)
 {
 	userid = userid != InvalidOid ? userid : GetUserId();
 	dbid = dbid != InvalidOid ? dbid : MyDatabaseId;
 	pgssHashKey key;
 	pgssEntry  *entry;
-	bool		is_allowed_role = has_privs_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS);
 
 	memset(&key, 0, sizeof(pgssHashKey));
 	key.queryid = queryid;
 	key.userid = userid;
 	key.dbid = dbid;
 	key.toplevel = top_level;
-
-	if (!is_allowed_role && userid != GetUserId())
-	{
-		ereport(ERROR,
-				(errmsg("insufficient privilege to read this query detail")));
-		PG_RETURN_DATUM(0);
-	}
 
 	entry = (pgssEntry *) hash_search(pgss_hash, &key, HASH_FIND, NULL);
 
@@ -4204,17 +4058,18 @@ yb_get_histogram_jsonb_args(uint64 queryid, Oid userid, Oid dbid, bool top_level
 		PG_RETURN_DATUM(0);
 	}
 
-	JsonbParseState *state = NULL;
+	JsonbInState state;
+	memset(&state, 0, sizeof(state));
 
-	return yb_add_histogram_jsonb(state, &entry->yb_hdr_histogram,
+	return yb_add_histogram_jsonb(&state, &entry->yb_hdr_histogram,
 								  entry->yb_slow_executions);
 }
 
 /*
- * Add histogram entries to the JsonbParseState.
+ * Add histogram entries to the JsonbInState.
  */
 static Datum
-yb_add_histogram_jsonb(JsonbParseState *state, hdr_histogram *h,
+yb_add_histogram_jsonb(JsonbInState *state, hdr_histogram *h,
 					   size_t yb_slow_executions)
 {
 	yb_hdr_iter iter;
@@ -4223,7 +4078,6 @@ yb_add_histogram_jsonb(JsonbParseState *state, hdr_histogram *h,
 
 	initStringInfo(&buf);
 
-	JsonbValue *res;
 	JsonbPair	pair;
 
 	pair.key.type = jbvString;
@@ -4234,7 +4088,7 @@ yb_add_histogram_jsonb(JsonbParseState *state, hdr_histogram *h,
 													  ALLOCSET_DEFAULT_SIZES);
 	MemoryContext oldContext = MemoryContextSwitchTo(tempContext);
 
-	pushJsonbValue(&state, WJB_BEGIN_ARRAY, NULL);
+	pushJsonbValue(state, WJB_BEGIN_ARRAY, NULL);
 	hdr_iter_init(&iter, h);
 	while (hdr_iter_next(&iter))
 	{
@@ -4255,9 +4109,9 @@ yb_add_histogram_jsonb(JsonbParseState *state, hdr_histogram *h,
 		yb_add_hdr_jsonb_object(state, buf.data, yb_slow_executions, &pair);
 	}
 
-	res = pushJsonbValue(&state, WJB_END_ARRAY, NULL);
+	pushJsonbValue(state, WJB_END_ARRAY, NULL);
 	MemoryContextSwitchTo(oldContext);
-	Jsonb	   *ret = JsonbValueToJsonb(res);
+	Jsonb	   *ret = JsonbValueToJsonb(state->result);
 
 	MemoryContextDelete(tempContext);
 	pfree(buf.data);
@@ -4266,7 +4120,7 @@ yb_add_histogram_jsonb(JsonbParseState *state, hdr_histogram *h,
 }
 
 static void
-yb_add_hdr_jsonb_object(JsonbParseState *state, char *buf,
+yb_add_hdr_jsonb_object(JsonbInState *state, char *buf,
 						count_t count, JsonbPair *pair)
 {
 	pair->key.val.string.len = strlen(buf);
@@ -4274,10 +4128,10 @@ yb_add_hdr_jsonb_object(JsonbParseState *state, char *buf,
 	pair->value.val.numeric = DatumGetNumeric(DirectFunctionCall1(int8_numeric,
 																  (int64_t) count));
 
-	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
-	(void) pushJsonbValue(&state, WJB_KEY, &pair->key);
-	(void) pushJsonbValue(&state, WJB_VALUE, &pair->value);
-	(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+	pushJsonbValue(state, WJB_BEGIN_OBJECT, NULL);
+	pushJsonbValue(state, WJB_KEY, &pair->key);
+	pushJsonbValue(state, WJB_VALUE, &pair->value);
+	pushJsonbValue(state, WJB_END_OBJECT, NULL);
 }
 
 /*
@@ -4289,7 +4143,7 @@ yb_add_hdr_jsonb_object(JsonbParseState *state, char *buf,
 Datum
 yb_get_histogram_jsonb(PG_FUNCTION_ARGS)
 {
-	uint64		queryid = PG_GETARG_INT64(0);
+	int64		queryid = PG_GETARG_INT64(0);
 	Oid			userid = (PG_NARGS() >= 2 && PG_GETARG_OID(1) != InvalidOid ?
 						  PG_GETARG_OID(1) :
 						  InvalidOid);
@@ -4426,4 +4280,3 @@ yb_generate_normalized_backfill_query(YbBackfillIndexStmt *stmt,
 	*query_len_p = buf.len;
 	return buf.data;
 }
->>>>>>> yugabyte-db-squash-2
