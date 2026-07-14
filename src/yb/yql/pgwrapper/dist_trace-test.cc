@@ -1905,4 +1905,45 @@ TEST_F(DistTraceRpcTest, TestRpcSpanAttributes) {
   }
 }
 
+// Regression test for the rpc.table_names publish path across a table rewrite.
+TEST_F(DistTraceRpcTest, TestRpcSpanTableNamesAfterTruncate) {
+  ASSERT_OK(CreateTable("rewrite_test", 5));
+
+  // Pre-rewrite: relfilenode == pg_table_id, so the traced SELECT works and publishes the name.
+  auto tp_before = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp_before.full));
+  ASSERT_OK(conn_->Fetch("SELECT * FROM rewrite_test"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.FindRpcSpanWithTableName(tp_before.trace_id, "rewrite_test").has_value();
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "RPC span with table name to appear for SELECT before TRUNCATE"));
+  ASSERT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
+
+  // TRUNCATE rewrites the table, rotating its relfilenode away from the stable pg_table_id.
+  ASSERT_OK(conn_->Execute("TRUNCATE rewrite_test"));
+
+  // Post-rewrite traced SELECT: must NOT crash the backend, though it does not publish table name.
+  // TODO(#32477)
+  auto tp_after = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp_after.full));
+  ASSERT_OK(conn_->Fetch("SELECT * FROM rewrite_test"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.HasSpanWithNamePrefix(tp_after.trace_id, "rpc ");
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "RPC span to appear for SELECT after TRUNCATE"));
+
+  // The connection must still be alive (backend did not crash).
+  ASSERT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
+  // TODO (#30816): FetchRow<T> for non-string types fails on simple query protocol connections,
+  // so fetch the count as text.
+  ASSERT_EQ(
+      ASSERT_RESULT(conn_->FetchRow<std::string>("SELECT count(*)::text FROM rewrite_test")), "0");
+}
+
 }  // namespace yb::pgwrapper
