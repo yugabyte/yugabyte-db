@@ -746,10 +746,27 @@ INSERT INTO distinct_inner
   FROM GENERATE_SERIES(1, 1000) AS i;
 ANALYZE distinct_outer;
 ANALYZE distinct_inner;
-SELECT DISTINCT o.k
-FROM distinct_outer o,
-     (SELECT DISTINCT a FROM distinct_inner) s
-ORDER BY 1;
+\set query ':P SELECT DISTINCT o.k FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s ORDER BY 1;'
+\set Pnext :iter_query
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                                                         QUERY PLAN                                                          
+-----------------------------------------------------------------------------------------------------------------------------
+ Unique (actual rows=2 loops=1)
+   ->  Nested Loop (actual rows=6 loops=1)
+         ->  Unique (actual rows=2 loops=1)
+               ->  Distinct Index Only Scan using distinct_outer_k_idx on distinct_outer o (actual rows=2 loops=1)
+                     Distinct Keys: o.k
+                     Heap Fetches: 0
+         ->  Materialize (actual rows=3 loops=2)
+               ->  Subquery Scan on s (actual rows=3 loops=1)
+                     ->  Unique (actual rows=3 loops=1)
+                           ->  Distinct Index Only Scan using distinct_inner_a_idx on distinct_inner (actual rows=3 loops=1)
+                                 Distinct Keys: distinct_inner.a
+                                 Heap Fetches: 0
+(12 rows)
+
  k 
 ---
  1

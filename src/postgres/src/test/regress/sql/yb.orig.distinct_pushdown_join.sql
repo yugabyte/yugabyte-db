@@ -132,10 +132,9 @@ INSERT INTO distinct_inner
 ANALYZE distinct_outer;
 ANALYZE distinct_inner;
 
-SELECT DISTINCT o.k
-FROM distinct_outer o,
-     (SELECT DISTINCT a FROM distinct_inner) s
-ORDER BY 1;
+\set query ':P SELECT DISTINCT o.k FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s ORDER BY 1;'
+\set Pnext :iter_query
+\i :iter_P2
 
 DROP TABLE distinct_outer;
 DROP TABLE distinct_inner;
