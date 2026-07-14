@@ -1484,8 +1484,6 @@ ParallelWorkerMain(Datum main_arg)
 	 */
 	if (fps->parallel_master_is_yb_session)
 	{
-/* YB_TODO_PG19MERGE: see postmaster.c */
-#if 0
 		YbcPgInitPostgresInfo yb_init_info = {
 			.parallel_leader_session_id = &fps->parallel_master_yb_session_state.session_id,
 			.shared_data = &fps->parallel_leader_pgproc->yb_shared_data
@@ -1495,7 +1493,6 @@ ParallelWorkerMain(Datum main_arg)
 													BGWORKER_BYPASS_ALLOWCONN |
 													BGWORKER_BYPASS_ROLELOGINCHECK,
 													&yb_init_info);
-#endif
 	}
 	else
 	{

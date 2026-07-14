@@ -920,6 +920,9 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
 				 init_flags,
 				 NULL);			/* no out_dbname */
 
+	if (yb_enable_ash)
+		YbAshSetMetadataForBgworkers();
+
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
 		ereport(ERROR,
@@ -931,7 +934,8 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
  * Connect background worker to a database using OIDs.
  */
 void
-BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags)
+YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags,
+											const YbcPgInitPostgresInfo *yb_init_info)
 {
 	BackgroundWorker *worker = MyBgworkerEntry;
 	uint32		init_flags = 0; /* never honor session_preload_libraries */
@@ -949,16 +953,26 @@ BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags)
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("database connection requirement not indicated during registration")));
 
-	InitPostgres(NULL, dboid,	/* database to connect to */
-				 NULL, useroid, /* role to connect as */
-				 init_flags,
-				 NULL);			/* no out_dbname */
+	YbInitPostgres(NULL, dboid,	/* database to connect to */
+				   NULL, useroid, /* role to connect as */
+				   init_flags,
+				   NULL,			/* no out_dbname */
+				   yb_init_info);
+
+	if (yb_enable_ash)
+		YbAshSetMetadataForBgworkers();
 
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
 		ereport(ERROR,
 				(errmsg("invalid processing mode in background worker")));
 	SetProcessingMode(NormalProcessing);
+}
+
+void
+BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags)
+{
+	YbBackgroundWorkerInitializeConnectionByOid(dboid, useroid, flags, NULL);
 }
 
 /*

@@ -42,6 +42,12 @@
 #include "utils/timeout.h"
 #include "utils/varlena.h"
 
+/* YB includes */
+#include "common/pg_yb_common.h"
+#include "pg_yb_utils.h"
+#include "yb_ysql_conn_mgr_helper.h"
+#include <arpa/inet.h>
+
 /* GUCs */
 bool		Trace_connection_negotiation = false;
 uint32		log_connections = 0;
@@ -182,6 +188,14 @@ BackendInitialize(ClientSocket *client_sock, CAC_state cac)
 	/* set these to empty in case they are needed before we set them up */
 	port->remote_host = "";
 	port->remote_port = "";
+
+	/*
+	 * YB: Initialize custom vars to avoid issue in control/auth backend startup
+	 */
+	port->yb_is_auth_passthrough_req = false;
+	port->yb_has_auth_passthrough_failed = false;
+	port->yb_is_tserver_auth_method = false;
+	port->yb_is_ssl_enabled_in_logical_conn = false;
 
 	/*
 	 * We arrange to do _exit(1) if we receive SIGTERM or timeout while trying
@@ -338,6 +352,7 @@ BackendInitialize(ClientSocket *client_sock, CAC_state cac)
 						 errmsg("the database system is in recovery mode")));
 				break;
 			case CAC_TOOMANY:
+				(*yb_too_many_conn)++;
 				ereport(FATAL,
 						(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 						 errmsg("sorry, too many clients already")));
@@ -389,6 +404,23 @@ BackendInitialize(ClientSocket *client_sock, CAC_state cac)
 	pfree(ps_data.data);
 
 	set_ps_display("initializing");
+
+	if (YBIsEnabledInPostgresEnvVar())
+	{
+		char		remote_ps_data[NI_MAXHOST];
+
+		if (remote_port[0] == '\0')
+			snprintf(remote_ps_data, sizeof(remote_ps_data), "%s", remote_host);
+		else
+			snprintf(remote_ps_data, sizeof(remote_ps_data), "%s(%s)", remote_host, remote_port);
+
+		YBC_LOG_INFO("Started %s backend with pid: %d, user_name: %s, "
+					 "remote_ps_data: %s",
+					 (am_walsender ?
+					  "walsender" :
+					  (yb_is_auth_backend ? "auth" : "regular")),
+					 getpid(), port->user_name, remote_ps_data);
+	}
 }
 
 /*
@@ -495,6 +527,19 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	char	   *buf = NULL;
 	ProtocolVersion proto;
 	MemoryContext oldcontext;
+
+	/*
+	 * YB: The remote host of the client that has connected to the connection
+	 * manager. The connection manager connects to the auth-backend for
+	 * authentication but to match hba rules correctly, we need the remote host
+	 * of the actual client. This information is passed by the connection
+	 * manager to the auth-backend.
+	 */
+	char	   *yb_auth_backend_remote_host = NULL;
+	char		yb_logical_conn_type = 'U'; /* Unencrypted */
+	bool		yb_logical_conn_type_provided = false;
+	bool		yb_auto_analyze_backend = false;
+	bool		yb_is_auth_via_conn_mgr = false;
 
 	pq_startmsgread();
 
@@ -719,8 +764,18 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	/*
 	 * Now fetch parameters out of startup packet and save them into the Port
 	 * structure.
+	 *
+	 * YB: When in auth passthrough mode, we reuse this ProcessStartupPacket
+	 * func to handle client startup packets. The specific details of the client
+	 * are not required after authentication is over. Thus, there is no need to
+	 * store startup data in TopMemoryContext; and allocating in
+	 * TopMemoryContext here leads to a memory leak in this scenario (requiring
+	 * explicit pfree's elsewhere). So, we continue allocating in the txn
+	 * MemoryContext (currently active) spawned specifically for Auth
+	 * Passthrough auth attempts.
 	 */
-	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+	if (!YbIsAuthPassthroughInProgress(port))
+		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
 	/* Handle protocol version 3 startup packet */
 	{
@@ -774,6 +829,55 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 									"replication",
 									valptr),
 							 errhint("Valid values are: \"false\", 0, \"true\", 1, \"database\".")));
+			}
+			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, "yb_authonly") == 0)
+			{
+				if (!parse_bool(valptr, &yb_is_auth_backend))
+					ereport(FATAL,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("invalid value for parameter \"%s\": \"%s\"",
+									"yb_authonly",
+									valptr),
+							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
+
+				/* Client needs to be connected on the unix domain socket */
+				if (port->raddr.addr.ss_family != AF_UNIX)
+					ereport(FATAL,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("yb_authonly can only be set "
+									"if the connection is made over unix domain "
+									"socket")));
+				yb_is_client_ysqlconnmgr = yb_is_auth_backend;
+			}
+			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, "yb_auth_remote_host") == 0)
+				yb_auth_backend_remote_host = pstrdup(valptr);
+			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, "yb_logical_conn_type") == 0)
+			{
+				if (strlen(valptr) != 1 ||
+					(valptr[0] != 'U' && valptr[0] != 'E'))
+					ereport(FATAL,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("invalid value for parameter \"%s\": \"%s\"",
+									"yb_logical_conn_type",
+									valptr),
+							 errhint("Valid values are: \"U\" or \"E\".")));
+
+				yb_logical_conn_type = *pstrdup(valptr);
+				yb_logical_conn_type_provided = true;
+			}
+			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, "yb_auto_analyze") == 0)
+			{
+				if (!parse_bool(valptr, &yb_auto_analyze_backend))
+					ereport(FATAL,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("invalid value for parameter \"%s\": \"%s\"",
+									"yb_auto_analyze",
+									valptr),
+							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
 			}
 			else if (strncmp(nameptr, "_pq_.", 5) == 0)
 			{
@@ -829,6 +933,48 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 		list_free_deep(unrecognized_protocol_options);
 	}
 
+	yb_is_auth_via_conn_mgr = yb_is_auth_backend ||
+		port->yb_is_auth_passthrough_req;
+
+	if (YBIsEnabledInPostgresEnvVar())
+	{
+		if (yb_auth_backend_remote_host != NULL)
+		{
+			if (!yb_is_auth_via_conn_mgr)
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("yb_auth_remote_host must only be provided "
+								"when yb_authonly is true or in an auth passthrough "
+								"'A' request packet")));
+
+			/*
+			 * HARD Code connection type between client and ysql_conn_mgr to
+			 * AF_INET which is the only supported connection type for
+			 * authentication.
+			 */
+			port->raddr.addr.ss_family = AF_INET;
+			port->remote_host = yb_auth_backend_remote_host;
+
+			struct sockaddr_in *ip_address_1;
+
+			ip_address_1 = (struct sockaddr_in *) (&MyProcPort->raddr.addr);
+			inet_pton(AF_INET, port->remote_host,
+					  &(ip_address_1->sin_addr));
+		}
+
+		if (yb_logical_conn_type_provided)
+		{
+			if (!yb_is_auth_via_conn_mgr)
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("yb_logical_conn_type must only be provided "
+								"when the client is the connection manager")));
+
+			port->yb_is_ssl_enabled_in_logical_conn =
+				yb_logical_conn_type == 'E';
+		}
+	}
+
 	/* Check a user name was given. */
 	if (port->user_name == NULL || port->user_name[0] == '\0')
 		ereport(FATAL,
@@ -851,6 +997,8 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	Assert(MyBackendType == B_BACKEND || MyBackendType == B_DEAD_END_BACKEND);
 	if (am_walsender)
 		MyBackendType = B_WAL_SENDER;
+	else if (yb_auto_analyze_backend)
+		MyBackendType = YB_AUTO_ANALYZE_BACKEND;
 
 	/*
 	 * Normal walsender backends, e.g. for streaming replication, are not
@@ -866,7 +1014,8 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	/*
 	 * Done filling the Port structure
 	 */
-	MemoryContextSwitchTo(oldcontext);
+	if (!YbIsAuthPassthroughInProgress(port))
+		MemoryContextSwitchTo(oldcontext);
 
 	pfree(buf);
 
