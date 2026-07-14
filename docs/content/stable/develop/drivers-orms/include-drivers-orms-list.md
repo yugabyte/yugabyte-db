@@ -110,7 +110,7 @@ block_indexing = true
 | :--------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
 | YugabyteDB C# Smart Driver for YSQL | [9.0.2.2](https://www.nuget.org/packages/NpgsqlYugabyteDB/) | Full | [CRUD](/stable/develop/drivers-orms/csharp/ysql/) |
-| PostgreSQL Npgsql Driver            | [9.0.2](https://www.nuget.org/packages/Npgsql/6.0.3) | Full | [CRUD](/stable/develop/drivers-orms/csharp/postgres-npgsql/) |
+| PostgreSQL Npgsql Driver            | [9.0.2](https://www.nuget.org/packages/Npgsql/9.0.2) | Full | [CRUD](/stable/develop/drivers-orms/csharp/postgres-npgsql/) |
 | YugabyteDB C# Driver for YCQL       | [3.6.0](https://github.com/yugabyte/cassandra-csharp-driver/releases/tag/3.6.0) | Full | [CRUD](/stable/develop/drivers-orms/csharp/ycql/) |
 | **ORM** | | | |
 | Entity Framework                    | 6.0.2  | Full | [CRUD](/stable/develop/drivers-orms/csharp/entityframework/) |
