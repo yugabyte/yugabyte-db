@@ -28,8 +28,15 @@ const useStyles = makeStyles((theme) => ({
 // forwarding to the PA Collector. The base URL corresponds to PAProxyController
 // routes in v1.routes and requires `yb.pa.embedded_ui.reverse_proxy.enabled=true`
 // on the backend.
-const buildProxyApiUrl = (customerId: string, paUuid: string) =>
-  `${ROOT_URL}/customers/${customerId}/pa_proxy/${paUuid}/api`;
+//
+// The returned URL must be absolute: perf-advisor-ui creates its axios instance
+// with baseURL="/api" and prepends it to any non-absolute URL, which would
+// otherwise produce a duplicated `/api/api/v1/...` prefix in production (where
+// ROOT_URL is "/api/v1").
+const buildProxyApiUrl = (customerId: string, paUuid: string) => {
+  const absoluteRoot = new URL(ROOT_URL, window.location.href).toString().replace(/\/+$/, '');
+  return `${absoluteRoot}/customers/${customerId}/pa_proxy/${paUuid}/api`;
+};
 
 export const RegisterYBAToPerfAdvisor = ({
   universeUuid,
