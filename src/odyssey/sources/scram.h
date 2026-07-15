@@ -7,6 +7,15 @@
  * Scalable PostgreSQL connection pooler.
  */
 
+#if PG_VERSION_NUM >= 180000
+#ifndef SCRAM_KEY_LEN
+#define SCRAM_KEY_LEN SCRAM_SHA_256_KEY_LEN
+#endif
+#ifndef SCRAM_DEFAULT_ITERATIONS
+#define SCRAM_DEFAULT_ITERATIONS SCRAM_SHA_256_DEFAULT_ITERATIONS
+#endif
+#endif
+
 #if PG_VERSION_NUM >= 130000
 #define od_b64_encode(src, src_len, dst, dst_len) \
 	pg_b64_encode(src, src_len, dst, dst_len);
@@ -55,7 +64,22 @@ typedef struct pg_hmac_ctx od_scram_ctx_t;
 
 #endif
 
-#if PG_VERSION_NUM < 150000
+#if PG_VERSION_NUM >= 180000
+
+#define od_scram_H(input, len, result, errstr) \
+	scram_H(input, PG_SHA256, SCRAM_SHA_256_KEY_LEN, result, errstr)
+#define od_scram_ServerKey(salted_password, result, errstr)                \
+	scram_ServerKey(salted_password, PG_SHA256, SCRAM_SHA_256_KEY_LEN, \
+			result, errstr)
+#define od_scram_SaltedPassword(password, salt, saltlen, iterations, result,   \
+				errstr)                                        \
+	scram_SaltedPassword(password, PG_SHA256, SCRAM_SHA_256_KEY_LEN, salt, \
+			     saltlen, iterations, result, errstr)
+#define od_scram_ClientKey(salted_password, result, errstr)                \
+	scram_ClientKey(salted_password, PG_SHA256, SCRAM_SHA_256_KEY_LEN, \
+			result, errstr)
+
+#elif PG_VERSION_NUM < 150000
 
 #define od_scram_H(input, len, result, errstr) scram_H(input, len, result)
 #define od_scram_ServerKey(salted_password, result, errstr) \
@@ -140,7 +164,7 @@ int od_scram_verify_final_nonce(od_scram_state_t *scram_state,
 				char *final_nonce, size_t final_nonce_size);
 
 int od_scram_verify_client_proof(od_scram_state_t *scram_state,
-				 char *client_proof);
+				 uint8_t *client_proof);
 
 int od_scram_parse_verifier(od_scram_state_t *scram_state, char *verifier);
 
@@ -154,6 +178,6 @@ int od_scram_read_client_final_message(od_scram_state_t *scram_state,
 				       char *auth_data, size_t auth_data_size,
 				       char **final_nonce_ptr,
 				       size_t *final_nonce_size_ptr,
-				       char **proof_ptr);
+				       uint8_t **proof_ptr);
 
 #endif /* ODYSSEY_SCRAM_H */

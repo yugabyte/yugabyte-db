@@ -18,6 +18,10 @@
 
 #define pg_attribute_noreturn() _NORETURN
 
+#ifndef pg_nodiscard
+#define pg_nodiscard __attribute__((warn_unused_result))
+#endif
+
 #define HIGHBIT (0x80)
 #define IS_HIGHBIT_SET(ch) ((unsigned char)(ch)&HIGHBIT)
 

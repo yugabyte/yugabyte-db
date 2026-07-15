@@ -412,11 +412,9 @@ set_default_yb_build_args() {
 
   # These will influence what targets to build if invoked with the packaged_targets meta-target.
   build_odyssey=false
-  # YB_TODO_PG19MERGE: Odyssey's src/odyssey/sources/scram.c does not compile against
-  # PG19's SCRAM API. Disable it for now.
-  # if is_linux; then
-  #   build_odyssey=true
-  # fi
+  if is_linux; then
+    build_odyssey=true
+  fi
 
   build_yugabyted_ui=false
 

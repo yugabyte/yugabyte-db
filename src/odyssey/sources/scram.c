@@ -17,9 +17,9 @@ int od_scram_parse_verifier(od_scram_state_t *scram_state, char *verifier)
 	char *salt_raw = NULL;
 	char *stored_key_raw = NULL;
 	char *server_key_raw = NULL;
-	char *salt = NULL;
-	char *stored_key = NULL;
-	char *server_key = NULL;
+	uint8_t *salt = NULL;
+	uint8_t *stored_key = NULL;
+	uint8_t *server_key = NULL;
 
 	value = strdup(verifier);
 	if (value == NULL)
@@ -130,8 +130,8 @@ int od_scram_init_from_plain_password(od_scram_state_t *scram_state,
 	else
 		password = plain_password;
 
-	char salt[SCRAM_DEFAULT_SALT_LEN];
-	RAND_bytes((uint8_t *)salt, sizeof(salt));
+	uint8_t salt[SCRAM_DEFAULT_SALT_LEN];
+	RAND_bytes(salt, sizeof(salt));
 
 	scram_state->iterations = SCRAM_DEFAULT_ITERATIONS;
 
@@ -179,7 +179,7 @@ od_scram_create_client_first_message(od_scram_state_t *scram_state)
 		return NULL;
 
 	int base64_nonce_len =
-		od_b64_encode((char *)nonce, SCRAM_RAW_NONCE_LEN,
+		od_b64_encode(nonce, SCRAM_RAW_NONCE_LEN,
 			      scram_state->client_nonce, client_nonce_dst_len);
 	scram_state->client_nonce[base64_nonce_len] = '\0';
 
@@ -214,7 +214,7 @@ error:
 
 int read_server_first_message(od_scram_state_t *scram_state, char *auth_data,
 			      size_t auth_data_size, char **server_nonce_ptr,
-			      size_t *server_nonce_size_ptr, char **salt_ptr,
+			      size_t *server_nonce_size_ptr, uint8_t **salt_ptr,
 			      int *iterations_ptr)
 {
 	scram_state->server_first_message =
@@ -224,7 +224,7 @@ int read_server_first_message(od_scram_state_t *scram_state, char *auth_data,
 
 	char *server_nonce;
 	size_t server_nonce_size;
-	char *salt = NULL;
+	uint8_t *salt = NULL;
 	if (read_attribute_buf(&auth_data, &auth_data_size, 'r', &server_nonce,
 			       &server_nonce_size))
 		goto error;
@@ -281,7 +281,7 @@ error:
 }
 
 static int calculate_client_proof(od_scram_state_t *scram_state,
-				  const char *password, const char *salt,
+				  const char *password, const uint8_t *salt,
 				  int iterations,
 				  const char *client_final_message,
 				  uint8_t *client_proof)
@@ -305,9 +305,9 @@ static int calculate_client_proof(od_scram_state_t *scram_state,
 	od_scram_ctx_t *ctx = od_scram_HMAC_create();
 	const char *errstr = NULL;
 
-	od_scram_SaltedPassword(prepared_password, salt, strlen(salt),
-				iterations, scram_state->salted_password,
-				&errstr);
+	od_scram_SaltedPassword(prepared_password, salt,
+				strlen((const char *)salt), iterations,
+				scram_state->salted_password, &errstr);
 
 	uint8_t client_key[SCRAM_KEY_LEN];
 	od_scram_ClientKey(scram_state->salted_password, client_key, &errstr);
@@ -367,7 +367,7 @@ static char *calculate_server_signature(od_scram_state_t *scram_state)
 		return NULL;
 
 	int base64_signature_len =
-		od_b64_encode((char *)server_signature, SCRAM_KEY_LEN,
+		od_b64_encode(server_signature, SCRAM_KEY_LEN,
 			      base64_signature, base64_signature_dst_len);
 	base64_signature[base64_signature_len] = '\0';
 
@@ -381,7 +381,7 @@ od_scram_create_client_final_message(od_scram_state_t *scram_state,
 {
 	char *server_nonce;
 	size_t server_nonce_size;
-	char *salt;
+	uint8_t *salt;
 	int iterations;
 
 	int rc = read_server_first_message(scram_state, auth_data,
@@ -419,8 +419,8 @@ od_scram_create_client_final_message(od_scram_state_t *scram_state,
 	result[size++] = 'p';
 	result[size++] = '=';
 
-	size += od_b64_encode((char *)client_proof, SCRAM_KEY_LEN,
-			      result + size, SCRAM_FINAL_MAX_SIZE - size);
+	size += od_b64_encode(client_proof, SCRAM_KEY_LEN, result + size,
+			      SCRAM_FINAL_MAX_SIZE - size);
 #undef SCRAM_FINAL_MAX_SIZE
 	result[size] = '\0';
 
@@ -438,7 +438,7 @@ error:
 }
 
 int read_server_final_message(char *auth_data, size_t auth_data_size,
-			      char *server_signature)
+			      uint8_t *server_signature)
 {
 	if (!auth_data_size || *auth_data == 'e')
 		return -1;
@@ -451,7 +451,7 @@ int read_server_final_message(char *auth_data, size_t auth_data_size,
 		return -1;
 
 	int decoded_signature_len = pg_b64_dec_len(signature_size);
-	char *decoded_signature = malloc(decoded_signature_len);
+	uint8_t *decoded_signature = malloc(decoded_signature_len);
 	if (decoded_signature == NULL)
 		return -1;
 
@@ -476,7 +476,7 @@ od_retcode_t od_scram_verify_server_signature(od_scram_state_t *scram_state,
 					      char *auth_data,
 					      size_t auth_data_size)
 {
-	char server_signature[SHA256_DIGEST_LENGTH];
+	uint8_t server_signature[SHA256_DIGEST_LENGTH];
 
 	od_retcode_t rc = read_server_final_message(auth_data, auth_data_size,
 						    server_signature);
@@ -601,13 +601,13 @@ int od_scram_read_client_final_message(od_scram_state_t *scram_state,
 				       char *auth_data, size_t auth_data_size,
 				       char **final_nonce_ptr,
 				       size_t *final_nonce_size_ptr,
-				       char **proof_ptr)
+				       uint8_t **proof_ptr)
 {
 	const char *input_start = auth_data;
 	char *proof_start;
 	char *base64_proof;
 	size_t base64_proof_size;
-	char *proof = NULL;
+	uint8_t *proof = NULL;
 
 	char *auth_data_copy = od_strdup_from_buf(auth_data, auth_data_size);
 	if (auth_data_copy == NULL)
@@ -691,7 +691,7 @@ od_scram_create_server_first_message(od_scram_state_t *scram_state)
 		goto error;
 
 	int base64_nonce_len =
-		od_b64_encode((char *)nonce, SCRAM_RAW_NONCE_LEN,
+		od_b64_encode(nonce, SCRAM_RAW_NONCE_LEN,
 			      scram_state->server_nonce, server_nonce_len);
 	scram_state->server_nonce[base64_nonce_len] = '\0';
 
@@ -744,7 +744,7 @@ od_retcode_t od_scram_verify_final_nonce(od_scram_state_t *scram_state,
 }
 
 od_retcode_t od_scram_verify_client_proof(od_scram_state_t *scram_state,
-					  char *client_proof)
+					  uint8_t *client_proof)
 {
 	uint8_t client_signature[SCRAM_KEY_LEN];
 	uint8_t client_key[SCRAM_KEY_LEN];
