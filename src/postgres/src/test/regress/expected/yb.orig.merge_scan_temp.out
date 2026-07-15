@@ -33,6 +33,7 @@ SET enable_bitmapscan = off;
 \i :iter_Q2
 \set _echo_Q :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM tmp WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, r4, n LIMIT 5;
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -47,6 +48,7 @@ SET enable_bitmapscan = off;
                Rows Removed by Filter: 3065
 (10 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM tmp WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, r4, n LIMIT 5;
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Limit (actual rows=5 loops=1)

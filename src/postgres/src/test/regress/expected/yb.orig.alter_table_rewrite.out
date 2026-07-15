@@ -1281,12 +1281,18 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(collation_test idx_collation) */
+SELECT encode(name::bytea, 'escape') as utf8_bytes
+FROM collation_test WHERE name > 'x' ORDER BY name;
                     QUERY PLAN                    
 --------------------------------------------------
  Index Scan using idx_collation on collation_test
    Index Cond: ((name)::text > 'x'::text)
 (2 rows)
 
+EXPLAIN (COSTS OFF) /*+ SeqScan(collation_test) */
+SELECT encode(name::bytea, 'escape') as utf8_bytes
+FROM collation_test WHERE name > 'x' ORDER BY name;
                      QUERY PLAN                     
 ----------------------------------------------------
  Sort
@@ -1295,12 +1301,18 @@ $$ AS query \gset
          Storage Filter: ((name)::text > 'x'::text)
 (4 rows)
 
+/*+ IndexScan(collation_test idx_collation) */
+SELECT encode(name::bytea, 'escape') as utf8_bytes
+FROM collation_test WHERE name > 'x' ORDER BY name;
  utf8_bytes 
 ------------
  xyz
  \303\244bc
 (2 rows)
 
+/*+ SeqScan(collation_test) */
+SELECT encode(name::bytea, 'escape') as utf8_bytes
+FROM collation_test WHERE name > 'x' ORDER BY name;
  utf8_bytes 
 ------------
  xyz

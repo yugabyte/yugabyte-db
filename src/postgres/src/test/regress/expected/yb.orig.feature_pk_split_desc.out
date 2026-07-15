@@ -58,11 +58,13 @@ INSERT INTO feature_pk_split_desc
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc;
             QUERY PLAN             
 -----------------------------------
  Seq Scan on feature_pk_split_desc
 (1 row)
 
+SELECT * FROM feature_pk_split_desc;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
       100000 | z           | partition 6 |         18
@@ -95,12 +97,14 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_text = 'partition 3';
                      QUERY PLAN                     
 ----------------------------------------------------
  Seq Scan on feature_pk_split_desc
    Storage Filter: (col_text = 'partition 3'::text)
 (2 rows)
 
+SELECT * FROM feature_pk_split_desc WHERE col_text = 'partition 3';
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
          100 | h           | partition 3 |          9
@@ -115,12 +119,14 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_text IN ('partition 2', 'partition 5');
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Seq Scan on feature_pk_split_desc
    Storage Filter: (col_text = ANY ('{"partition 2","partition 5"}'::text[]))
 (2 rows)
 
+SELECT * FROM feature_pk_split_desc WHERE col_text IN ('partition 2', 'partition 5');
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
        10000 | t           | partition 5 |         15
@@ -136,12 +142,14 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_double <= 10;
                         QUERY PLAN                        
 ----------------------------------------------------------
  Seq Scan on feature_pk_split_desc
    Storage Filter: (col_double <= '10'::double precision)
 (2 rows)
 
+SELECT * FROM feature_pk_split_desc WHERE col_double <= 10;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
          100 | i           | partition 4 |         10
@@ -163,12 +171,14 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_text >= 'partition 3' AND col_double <= 10;
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  Seq Scan on feature_pk_split_desc
    Storage Filter: ((col_text >= 'partition 3'::text) AND (col_double <= '10'::double precision))
 (2 rows)
 
+SELECT * FROM feature_pk_split_desc WHERE col_text >= 'partition 3' AND col_double <= 10;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
          100 | i           | partition 4 |         10
@@ -184,6 +194,7 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM feature_pk_split_desc;
                QUERY PLAN                
 -----------------------------------------
  Finalize Aggregate
@@ -191,6 +202,7 @@ $$ AS query \gset
          Partial Aggregate: true
 (3 rows)
 
+SELECT COUNT(*) FROM feature_pk_split_desc;
  count 
 -------
     18
@@ -200,6 +212,7 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT MAX(col_integer) FROM feature_pk_split_desc;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Result
@@ -209,6 +222,7 @@ $$ AS query \gset
                  Index Cond: (col_integer IS NOT NULL)
 (5 rows)
 
+SELECT MAX(col_integer) FROM feature_pk_split_desc;
   max   
 --------
  100000
@@ -218,12 +232,14 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT MIN(col_varchar) FROM feature_pk_split_desc;
                QUERY PLAN                
 -----------------------------------------
  Aggregate
    ->  Seq Scan on feature_pk_split_desc
 (2 rows)
 
+SELECT MIN(col_varchar) FROM feature_pk_split_desc;
  min 
 -----
  -
@@ -233,12 +249,14 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT AVG(col_double) FROM feature_pk_split_desc;
                QUERY PLAN                
 -----------------------------------------
  Aggregate
    ->  Seq Scan on feature_pk_split_desc
 (2 rows)
 
+SELECT AVG(col_double) FROM feature_pk_split_desc;
  avg 
 -----
  9.5
@@ -254,12 +272,14 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_integer = 50 AND col_varchar = 'a';
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Index Scan using feature_pk_split_desc_pkey on feature_pk_split_desc
    Index Cond: ((col_integer = 50) AND ((col_varchar)::text = 'a'::text))
 (2 rows)
 
+SELECT * FROM feature_pk_split_desc WHERE col_integer = 50 AND col_varchar = 'a';
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
           50 | a           | partition 3 |          8
@@ -274,12 +294,20 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc
+	WHERE col_integer >= 500 AND col_integer <= 5000 AND
+		  col_varchar >= 'a' AND col_varchar <= 'n'
+	ORDER BY col_integer, col_varchar;
                                                                   QUERY PLAN                                                                  
 ----------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan Backward using feature_pk_split_desc_pkey on feature_pk_split_desc
    Index Cond: ((col_integer >= 500) AND (col_integer <= 5000) AND ((col_varchar)::text >= 'a'::text) AND ((col_varchar)::text <= 'n'::text))
 (2 rows)
 
+SELECT * FROM feature_pk_split_desc
+	WHERE col_integer >= 500 AND col_integer <= 5000 AND
+		  col_varchar >= 'a' AND col_varchar <= 'n'
+	ORDER BY col_integer, col_varchar;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
          500 | m           | partition 4 |         11
@@ -293,6 +321,7 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM feature_pk_split_desc WHERE col_integer = 50 AND col_varchar = 'a';
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Finalize Aggregate
@@ -301,6 +330,7 @@ $$ AS query \gset
          Partial Aggregate: true
 (4 rows)
 
+SELECT COUNT(*) FROM feature_pk_split_desc WHERE col_integer = 50 AND col_varchar = 'a';
  count 
 -------
      1
@@ -314,6 +344,9 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM feature_pk_split_desc
+	WHERE col_integer >= 500 AND col_integer <= 5000 AND
+		  col_varchar >= 'a' AND col_varchar <= 'n';
                                                                      QUERY PLAN                                                                     
 ----------------------------------------------------------------------------------------------------------------------------------------------------
  Finalize Aggregate
@@ -322,6 +355,9 @@ $$ AS query \gset
          Partial Aggregate: true
 (4 rows)
 
+SELECT COUNT(*) FROM feature_pk_split_desc
+	WHERE col_integer >= 500 AND col_integer <= 5000 AND
+		  col_varchar >= 'a' AND col_varchar <= 'n';
  count 
 -------
      3
@@ -336,12 +372,14 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_double < 2;
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using idx_small_desc on feature_pk_split_desc
    Index Cond: (col_double < '2'::double precision)
 (2 rows)
 
+SELECT * FROM feature_pk_split_desc WHERE col_double < 2;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
           -1 | -           | partition 1 |          1
@@ -352,12 +390,14 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_double <= 5;
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using idx_small_desc on feature_pk_split_desc
    Index Cond: (col_double <= '5'::double precision)
 (2 rows)
 
+SELECT * FROM feature_pk_split_desc WHERE col_double <= 5;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
            1 | a           | partition 2 |          4
@@ -372,12 +412,14 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_double <= 8;
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using idx_small_desc on feature_pk_split_desc
    Index Cond: (col_double <= '8'::double precision)
 (2 rows)
 
+SELECT * FROM feature_pk_split_desc WHERE col_double <= 8;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
            1 | a           | partition 2 |          4
@@ -395,12 +437,14 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_double <= 11;
                         QUERY PLAN                        
 ----------------------------------------------------------
  Seq Scan on feature_pk_split_desc
    Storage Filter: (col_double <= '11'::double precision)
 (2 rows)
 
+SELECT * FROM feature_pk_split_desc WHERE col_double <= 11;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
          500 | m           | partition 4 |         11
@@ -421,12 +465,14 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_double <= 14;
                         QUERY PLAN                        
 ----------------------------------------------------------
  Seq Scan on feature_pk_split_desc
    Storage Filter: (col_double <= '14'::double precision)
 (2 rows)
 
+SELECT * FROM feature_pk_split_desc WHERE col_double <= 14;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
         5000 | m           | partition 5 |         14
@@ -450,12 +496,14 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_double <= 17;
                         QUERY PLAN                        
 ----------------------------------------------------------
  Seq Scan on feature_pk_split_desc
    Storage Filter: (col_double <= '17'::double precision)
 (2 rows)
 
+SELECT * FROM feature_pk_split_desc WHERE col_double <= 17;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
        50000 | m           | partition 6 |         17
@@ -482,12 +530,14 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_double <= 100;
                         QUERY PLAN                         
 -----------------------------------------------------------
  Seq Scan on feature_pk_split_desc
    Storage Filter: (col_double <= '100'::double precision)
 (2 rows)
 
+SELECT * FROM feature_pk_split_desc WHERE col_double <= 100;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
       100000 | z           | partition 6 |         18
@@ -515,12 +565,14 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT col_double FROM feature_pk_split_desc WHERE col_double <= 8;
                           QUERY PLAN                           
 ---------------------------------------------------------------
  Index Only Scan using idx_small_desc on feature_pk_split_desc
    Index Cond: (col_double <= '8'::double precision)
 (2 rows)
 
+SELECT col_double FROM feature_pk_split_desc WHERE col_double <= 8;
  col_double 
 ------------
           8
@@ -575,6 +627,7 @@ INSERT INTO feature_pk_split_desc_min_max
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer <= 1 ORDER BY col_integer DESC;
                                                   QUERY PLAN                                                  
 --------------------------------------------------------------------------------------------------------------
  Index Scan using feature_pk_split_desc_min_max_pkey on feature_pk_split_desc_min_max (actual rows=2 loops=1)
@@ -584,6 +637,7 @@ INSERT INTO feature_pk_split_desc_min_max
    Storage Table Rows Scanned: 2
 (5 rows)
 
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer <= 1 ORDER BY col_integer DESC;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
            1 | z           | partition 1 |          2
@@ -595,6 +649,7 @@ INSERT INTO feature_pk_split_desc_min_max
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer > 1 AND col_integer < 10 ORDER BY col_integer DESC;
                                                   QUERY PLAN                                                  
 --------------------------------------------------------------------------------------------------------------
  Index Scan using feature_pk_split_desc_min_max_pkey on feature_pk_split_desc_min_max (actual rows=3 loops=1)
@@ -604,6 +659,7 @@ INSERT INTO feature_pk_split_desc_min_max
    Storage Table Rows Scanned: 3
 (5 rows)
 
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer > 1 AND col_integer < 10 ORDER BY col_integer DESC;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
            9 | z           | partition 2 |          3
@@ -616,6 +672,7 @@ INSERT INTO feature_pk_split_desc_min_max
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 10 AND col_integer < 100 ORDER BY col_integer DESC;
                                                   QUERY PLAN                                                  
 --------------------------------------------------------------------------------------------------------------
  Index Scan using feature_pk_split_desc_min_max_pkey on feature_pk_split_desc_min_max (actual rows=4 loops=1)
@@ -625,6 +682,7 @@ INSERT INTO feature_pk_split_desc_min_max
    Storage Table Rows Scanned: 4
 (5 rows)
 
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 10 AND col_integer < 100 ORDER BY col_integer DESC;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
           99 | z           | partition 3 |          4
@@ -638,6 +696,7 @@ INSERT INTO feature_pk_split_desc_min_max
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 100 ORDER BY col_integer DESC;
                                                   QUERY PLAN                                                  
 --------------------------------------------------------------------------------------------------------------
  Index Scan using feature_pk_split_desc_min_max_pkey on feature_pk_split_desc_min_max (actual rows=5 loops=1)
@@ -647,6 +706,7 @@ INSERT INTO feature_pk_split_desc_min_max
    Storage Table Rows Scanned: 5
 (5 rows)
 
+SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 100 ORDER BY col_integer DESC;
  col_integer | col_varchar |  col_text   | col_double 
 -------------+-------------+-------------+------------
          999 | z           | partition 4 |          5

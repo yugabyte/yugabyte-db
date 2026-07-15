@@ -158,23 +158,35 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (costs off) /*+SeqScan(pg_depend) */
+SELECT deptype FROM pg_depend
+    WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Seq Scan on pg_depend
    Storage Filter: ((classid = '1259'::oid) AND (objid = '54321'::oid))
 (2 rows)
 
+EXPLAIN (costs off) /*+IndexScan(pg_depend pg_depend_depender_index) */
+SELECT deptype FROM pg_depend
+    WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
                              QUERY PLAN                             
 --------------------------------------------------------------------
  Index Scan using pg_depend_depender_index on pg_depend
    Index Cond: ((classid = '1259'::oid) AND (objid = '54321'::oid))
 (2 rows)
 
+/*+SeqScan(pg_depend) */
+SELECT deptype FROM pg_depend
+    WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
  deptype 
 ---------
  n
 (1 row)
 
+/*+IndexScan(pg_depend pg_depend_depender_index) */
+SELECT deptype FROM pg_depend
+    WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
  deptype 
 ---------
  n
@@ -186,12 +198,14 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (costs off) /*+SeqScan(tmp) */ SELECT i FROM tmp WHERE j = -5;
           QUERY PLAN           
 -------------------------------
  Seq Scan on tmp
    Filter: (j = '-5'::integer)
 (2 rows)
 
+EXPLAIN (costs off) /*+BitmapScan(tmp tmp_j_idx) */ SELECT i FROM tmp WHERE j = -5;
                QUERY PLAN                
 -----------------------------------------
  Bitmap Heap Scan on tmp
@@ -200,11 +214,13 @@ $$ AS query \gset
          Index Cond: (j = '-5'::integer)
 (4 rows)
 
+/*+SeqScan(tmp) */ SELECT i FROM tmp WHERE j = -5;
  i 
 ---
  5
 (1 row)
 
+/*+BitmapScan(tmp tmp_j_idx) */ SELECT i FROM tmp WHERE j = -5;
  i 
 ---
  5
@@ -216,23 +232,27 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (costs off) /*+SeqScan(yb) */ SELECT i FROM yb WHERE j = -5;
               QUERY PLAN               
 ---------------------------------------
  Seq Scan on yb
    Storage Filter: (j = '-5'::integer)
 (2 rows)
 
+EXPLAIN (costs off) /*+IndexScan(yb yb_j_idx) */ SELECT i FROM yb WHERE j = -5;
             QUERY PLAN             
 -----------------------------------
  Index Scan using yb_j_idx on yb
    Index Cond: (j = '-5'::integer)
 (2 rows)
 
+/*+SeqScan(yb) */ SELECT i FROM yb WHERE j = -5;
  i 
 ---
  5
 (1 row)
 
+/*+IndexScan(yb yb_j_idx) */ SELECT i FROM yb WHERE j = -5;
  i 
 ---
  5
@@ -285,23 +305,27 @@ REINDEX INDEX tmp_j_idx;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (costs off) /*+SeqScan(tmp) */ SELECT i FROM tmp WHERE j = -5;
           QUERY PLAN           
 -------------------------------
  Seq Scan on tmp
    Filter: (j = '-5'::integer)
 (2 rows)
 
+EXPLAIN (costs off) /*+Set(enable_seqscan off) Set(enable_bitmapscan off) */ SELECT i FROM tmp WHERE j = -5;
             QUERY PLAN             
 -----------------------------------
  Index Scan using tmp_j_idx on tmp
    Index Cond: (j = '-5'::integer)
 (2 rows)
 
+/*+SeqScan(tmp) */ SELECT i FROM tmp WHERE j = -5;
  i  
 ----
  11
 (1 row)
 
+/*+Set(enable_seqscan off) Set(enable_bitmapscan off) */ SELECT i FROM tmp WHERE j = -5;
  i  
 ----
  11
@@ -386,23 +410,35 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (costs off) /*+SeqScan(pg_depend) */
+SELECT deptype FROM pg_depend
+    WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Seq Scan on pg_depend
    Storage Filter: ((classid = '1259'::oid) AND (objid = '54321'::oid))
 (2 rows)
 
+EXPLAIN (costs off) /*+IndexScan(pg_depend pg_depend_depender_index) */
+SELECT deptype FROM pg_depend
+    WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
                              QUERY PLAN                             
 --------------------------------------------------------------------
  Index Scan using pg_depend_depender_index on pg_depend
    Index Cond: ((classid = '1259'::oid) AND (objid = '54321'::oid))
 (2 rows)
 
+/*+SeqScan(pg_depend) */
+SELECT deptype FROM pg_depend
+    WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
  deptype 
 ---------
  n
 (1 row)
 
+/*+IndexScan(pg_depend pg_depend_depender_index) */
+SELECT deptype FROM pg_depend
+    WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
  deptype 
 ---------
  n
@@ -414,23 +450,27 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (costs off) /*+SeqScan(yb) */ SELECT i FROM yb WHERE j = -5;
               QUERY PLAN               
 ---------------------------------------
  Seq Scan on yb
    Storage Filter: (j = '-5'::integer)
 (2 rows)
 
+EXPLAIN (costs off) /*+IndexScan(yb yb_j_idx) */ SELECT i FROM yb WHERE j = -5;
             QUERY PLAN             
 -----------------------------------
  Index Scan using yb_j_idx on yb
    Index Cond: (j = '-5'::integer)
 (2 rows)
 
+/*+SeqScan(yb) */ SELECT i FROM yb WHERE j = -5;
  i  
 ----
  11
 (1 row)
 
+/*+IndexScan(yb yb_j_idx) */ SELECT i FROM yb WHERE j = -5;
  i  
 ----
  11
@@ -502,6 +542,7 @@ INSERT INTO ing SELECT g, -g FROM generate_series(1, 10) g;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (costs off) /*+IndexScan(ing ing_j_idx)*/ SELECT i FROM ing WHERE j < -8 ORDER BY i;
                QUERY PLAN                
 -----------------------------------------
  Sort
@@ -510,6 +551,7 @@ INSERT INTO ing SELECT g, -g FROM generate_series(1, 10) g;
          Index Cond: (j < '-8'::integer)
 (4 rows)
 
+/*+IndexScan(ing ing_j_idx)*/ SELECT i FROM ing WHERE j < -8 ORDER BY i;
  i  
 ----
   9
@@ -523,6 +565,7 @@ REINDEX INDEX ing_j_idx;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (costs off) /*+IndexScan(ing ing_j_idx)*/ SELECT i FROM ing WHERE j < -8 ORDER BY i;
                QUERY PLAN                
 -----------------------------------------
  Sort
@@ -531,6 +574,7 @@ REINDEX INDEX ing_j_idx;
          Index Cond: (j < '-8'::integer)
 (4 rows)
 
+/*+IndexScan(ing ing_j_idx)*/ SELECT i FROM ing WHERE j < -8 ORDER BY i;
  i  
 ----
   9
@@ -541,12 +585,14 @@ REINDEX INDEX ing_j_idx;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (costs off) /*+IndexScan(ing ing_j_idx)*/ SELECT i FROM ing WHERE j = -9;
             QUERY PLAN             
 -----------------------------------
  Index Scan using ing_j_idx on ing
    Index Cond: (j = '-9'::integer)
 (2 rows)
 
+/*+IndexScan(ing ing_j_idx)*/ SELECT i FROM ing WHERE j = -9;
  i 
 ---
  9
@@ -561,6 +607,7 @@ CREATE INDEX NONCONCURRENTLY ON mv (j ASC);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (costs off) /*+IndexScan(mv mv_j_idx)*/ SELECT i FROM mv WHERE j > -3 ORDER BY i;
                QUERY PLAN                
 -----------------------------------------
  Sort
@@ -569,6 +616,7 @@ CREATE INDEX NONCONCURRENTLY ON mv (j ASC);
          Index Cond: (j > '-3'::integer)
 (4 rows)
 
+/*+IndexScan(mv mv_j_idx)*/ SELECT i FROM mv WHERE j > -3 ORDER BY i;
  i 
 ---
  1
@@ -582,6 +630,7 @@ REINDEX INDEX mv_j_idx;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (costs off) /*+IndexScan(mv mv_j_idx)*/ SELECT i FROM mv WHERE j > -3 ORDER BY i;
                QUERY PLAN                
 -----------------------------------------
  Sort
@@ -590,6 +639,7 @@ REINDEX INDEX mv_j_idx;
          Index Cond: (j > '-3'::integer)
 (4 rows)
 
+/*+IndexScan(mv mv_j_idx)*/ SELECT i FROM mv WHERE j > -3 ORDER BY i;
  i 
 ---
  1
@@ -608,6 +658,7 @@ INSERT INTO parted SELECT (2 * g), g FROM generate_series(1, 9) g;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (costs off) /*+IndexOnlyScan(parted parted_i_idx)*/ SELECT i FROM parted WHERE i = (2 * 5);
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Append
@@ -617,6 +668,7 @@ INSERT INTO parted SELECT (2 * g), g FROM generate_series(1, 9) g;
          Index Cond: (i = 10)
 (5 rows)
 
+/*+IndexOnlyScan(parted parted_i_idx)*/ SELECT i FROM parted WHERE i = (2 * 5);
  i  
 ----
  10
@@ -627,12 +679,14 @@ INSERT INTO parted SELECT (2 * g), g FROM generate_series(1, 9) g;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (costs off) /*+IndexOnlyScan(parted_odd parted_odd_i_idx)*/ SELECT i FROM parted_odd WHERE i = (2 * 5);
                       QUERY PLAN                      
 ------------------------------------------------------
  Index Only Scan using parted_odd_i_idx on parted_odd
    Index Cond: (i = 10)
 (2 rows)
 
+/*+IndexOnlyScan(parted_odd parted_odd_i_idx)*/ SELECT i FROM parted_odd WHERE i = (2 * 5);
  i  
 ----
  10
@@ -669,6 +723,7 @@ REINDEX INDEX parted_odd_i_idx;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (costs off) /*+IndexOnlyScan(parted parted_i_idx)*/ SELECT i FROM parted WHERE i = (2 * 5);
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Append
@@ -678,6 +733,7 @@ REINDEX INDEX parted_odd_i_idx;
          Index Cond: (i = 10)
 (5 rows)
 
+/*+IndexOnlyScan(parted parted_i_idx)*/ SELECT i FROM parted WHERE i = (2 * 5);
  i  
 ----
  10
@@ -688,12 +744,14 @@ REINDEX INDEX parted_odd_i_idx;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (costs off) /*+IndexOnlyScan(parted_odd parted_odd_i_idx)*/ SELECT i FROM parted_odd WHERE i = (2 * 5);
                       QUERY PLAN                      
 ------------------------------------------------------
  Index Only Scan using parted_odd_i_idx on parted_odd
    Index Cond: (i = 10)
 (2 rows)
 
+/*+IndexOnlyScan(parted_odd parted_odd_i_idx)*/ SELECT i FROM parted_odd WHERE i = (2 * 5);
  i  
 ----
  10

@@ -15,6 +15,7 @@ INSERT INTO test_levenshtein (name) VALUES ('GUMBO'), ('GAMBOL'), ('JUMBO'), ('B
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') < 3 ORDER BY name;
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Sort (actual rows=4 loops=1)
@@ -24,6 +25,7 @@ INSERT INTO test_levenshtein (name) VALUES ('GUMBO'), ('GAMBOL'), ('JUMBO'), ('B
          Storage Filter: (levenshtein(name, 'GUMBO'::text) < 3)
 (5 rows)
 
+SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') < 3 ORDER BY name;
   name  
 --------
  BUMBO
@@ -37,6 +39,7 @@ INSERT INTO test_levenshtein (name) VALUES ('GUMBO'), ('GAMBOL'), ('JUMBO'), ('B
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO', 1, 1, 2) < 3 ORDER BY name;
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
@@ -46,6 +49,7 @@ INSERT INTO test_levenshtein (name) VALUES ('GUMBO'), ('GAMBOL'), ('JUMBO'), ('B
          Storage Filter: (levenshtein(name, 'GUMBO'::text, 1, 1, 2) < 3)
 (5 rows)
 
+SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO', 1, 1, 2) < 3 ORDER BY name;
  name  
 -------
  BUMBO
@@ -58,6 +62,7 @@ INSERT INTO test_levenshtein (name) VALUES ('GUMBO'), ('GAMBOL'), ('JUMBO'), ('B
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein_less_equal(name, 'GUMBO', 2) <= 2 ORDER BY name;
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
@@ -67,6 +72,7 @@ INSERT INTO test_levenshtein (name) VALUES ('GUMBO'), ('GAMBOL'), ('JUMBO'), ('B
          Storage Filter: (levenshtein_less_equal(name, 'GUMBO'::text, 2) <= 2)
 (5 rows)
 
+SELECT name FROM test_levenshtein WHERE levenshtein_less_equal(name, 'GUMBO', 2) <= 2 ORDER BY name;
   name  
 --------
  BUMBO
@@ -80,6 +86,7 @@ INSERT INTO test_levenshtein (name) VALUES ('GUMBO'), ('GAMBOL'), ('JUMBO'), ('B
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein_less_equal(name, 'GUMBO', 1, 1, 2, 2) <= 2 ORDER BY name;
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
@@ -89,6 +96,7 @@ INSERT INTO test_levenshtein (name) VALUES ('GUMBO'), ('GAMBOL'), ('JUMBO'), ('B
          Storage Filter: (levenshtein_less_equal(name, 'GUMBO'::text, 1, 1, 2, 2) <= 2)
 (5 rows)
 
+SELECT name FROM test_levenshtein WHERE levenshtein_less_equal(name, 'GUMBO', 1, 1, 2, 2) <= 2 ORDER BY name;
  name  
 -------
  BUMBO
@@ -101,12 +109,14 @@ INSERT INTO test_levenshtein (name) VALUES ('GUMBO'), ('GAMBOL'), ('JUMBO'), ('B
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') = 0;
                         QUERY PLAN                        
 ----------------------------------------------------------
  Seq Scan on test_levenshtein (actual rows=1 loops=1)
    Storage Filter: (levenshtein(name, 'GUMBO'::text) = 0)
 (2 rows)
 
+SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') = 0;
  name  
 -------
  GUMBO
@@ -117,12 +127,14 @@ INSERT INTO test_levenshtein (name) VALUES ('GUMBO'), ('GAMBOL'), ('JUMBO'), ('B
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein(name, 'XXXXX') < 2;
                         QUERY PLAN                        
 ----------------------------------------------------------
  Seq Scan on test_levenshtein (actual rows=0 loops=1)
    Storage Filter: (levenshtein(name, 'XXXXX'::text) < 2)
 (2 rows)
 
+SELECT name FROM test_levenshtein WHERE levenshtein(name, 'XXXXX') < 2;
  name 
 ------
 (0 rows)
@@ -132,11 +144,13 @@ INSERT INTO test_levenshtein (name) VALUES ('GUMBO'), ('GAMBOL'), ('JUMBO'), ('B
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT levenshtein('GUMBO', 'GAMBOL');
                QUERY PLAN                
 -----------------------------------------
  Result *RESULT* (actual rows=1 loops=1)
 (1 row)
 
+SELECT levenshtein('GUMBO', 'GAMBOL');
  levenshtein 
 -------------
            2
@@ -147,6 +161,7 @@ INSERT INTO test_levenshtein (name) VALUES ('GUMBO'), ('GAMBOL'), ('JUMBO'), ('B
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') + length(name) < 10 ORDER BY name;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=5 loops=1)
@@ -156,6 +171,7 @@ INSERT INTO test_levenshtein (name) VALUES ('GUMBO'), ('GAMBOL'), ('JUMBO'), ('B
          Storage Filter: ((levenshtein(name, 'GUMBO'::text) + length(name)) < 10)
 (5 rows)
 
+SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') + length(name) < 10 ORDER BY name;
   name  
 --------
  BUMBO
@@ -173,6 +189,7 @@ CREATE EXTENSION IF NOT EXISTS fuzzystrmatch SCHEMA public;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE public.levenshtein(name, 'GUMBO') < 3 ORDER BY name;
                           QUERY PLAN                           
 ---------------------------------------------------------------
  Sort (actual rows=4 loops=1)
@@ -183,6 +200,7 @@ CREATE EXTENSION IF NOT EXISTS fuzzystrmatch SCHEMA public;
          Rows Removed by Filter: 2
 (6 rows)
 
+SELECT name FROM test_levenshtein WHERE public.levenshtein(name, 'GUMBO') < 3 ORDER BY name;
   name  
 --------
  BUMBO
@@ -199,6 +217,7 @@ SET search_path = public;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') < 3 ORDER BY name;
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Sort (actual rows=4 loops=1)
@@ -208,6 +227,7 @@ SET search_path = public;
          Storage Filter: (levenshtein(name, 'GUMBO'::text) < 3)
 (5 rows)
 
+SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') < 3 ORDER BY name;
   name  
 --------
  BUMBO
@@ -223,6 +243,7 @@ SET search_path = public, pg_catalog;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') < 3 ORDER BY name;
                          QUERY PLAN                         
 ------------------------------------------------------------
  Sort (actual rows=4 loops=1)
@@ -233,6 +254,7 @@ SET search_path = public, pg_catalog;
          Rows Removed by Filter: 2
 (6 rows)
 
+SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') < 3 ORDER BY name;
   name  
 --------
  BUMBO
@@ -323,6 +345,7 @@ CREATE INDEX t1_levenshtein_idx ON t1 (levenshtein(c4, 'body95855317') asc);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT c3 FROM t1 WHERE levenshtein(c4, 'body95855317') < 3 ORDER BY levenshtein(c4, 'body95855317') LIMIT 5;
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -330,6 +353,7 @@ CREATE INDEX t1_levenshtein_idx ON t1 (levenshtein(c4, 'body95855317') asc);
          Index Cond: (levenshtein(c4, 'body95855317'::text) < 3)
 (3 rows)
 
+SELECT c3 FROM t1 WHERE levenshtein(c4, 'body95855317') < 3 ORDER BY levenshtein(c4, 'body95855317') LIMIT 5;
       c3      
 --------------
  body95855317
@@ -364,6 +388,22 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
+SELECT count(x.agg_field) AS aggr
+FROM (
+  SELECT t.c3 AS agg_field
+  FROM t1 AS t
+  WHERE t.c1 = 100
+    AND t.c3 IS NOT NULL
+    AND t.c3 != ''
+    AND t.c3 != 'body95855317'
+    AND ((length('body95855317') + length(t.c3)
+          - levenshtein(sort_words('body95855317'), t.c4))::float
+         / (length('body95855317') + length(t.c3)))::float >= 0.85
+    AND t.c2 >= '2025-03-01'
+    AND t.c2 < '2025-09-01'
+  LIMIT 3
+) AS x;
                                                                                               QUERY PLAN                                                                                              
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Aggregate (actual rows=1 loops=1)
@@ -374,6 +414,21 @@ $$ AS query \gset
                Storage Filter: (((((12 + length(c3)) - levenshtein('body95855317'::text, c4)))::double precision / ((12 + length(c3)))::double precision) >= '0.85'::double precision)
 (6 rows)
 
+SELECT count(x.agg_field) AS aggr
+FROM (
+  SELECT t.c3 AS agg_field
+  FROM t1 AS t
+  WHERE t.c1 = 100
+    AND t.c3 IS NOT NULL
+    AND t.c3 != ''
+    AND t.c3 != 'body95855317'
+    AND ((length('body95855317') + length(t.c3)
+          - levenshtein(sort_words('body95855317'), t.c4))::float
+         / (length('body95855317') + length(t.c3)))::float >= 0.85
+    AND t.c2 >= '2025-03-01'
+    AND t.c2 < '2025-09-01'
+  LIMIT 3
+) AS x;
  aggr 
 ------
     3

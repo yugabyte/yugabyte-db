@@ -2855,6 +2855,7 @@ INSERT INTO pk_nn VALUES (5, 10, 20), (105, 110, 120);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) UPDATE pk_nn SET b = NULL WHERE k = 5;
         QUERY PLAN        
 --------------------------
  Update on pk_nn
@@ -2862,6 +2863,7 @@ INSERT INTO pk_nn VALUES (5, 10, 20), (105, 110, 120);
    ->  Result pk_nn
 (3 rows)
 
+EXPLAIN (COSTS OFF) UPDATE pk_nn SET b = NULL WHERE k = 105;
         QUERY PLAN        
 --------------------------
  Update on pk_nn
@@ -2869,6 +2871,7 @@ INSERT INTO pk_nn VALUES (5, 10, 20), (105, 110, 120);
    ->  Result pk_nn
 (3 rows)
 
+EXPLAIN (COSTS OFF) UPDATE pk_nn SET a = 11 WHERE k = 5;
         QUERY PLAN        
 --------------------------
  Update on pk_nn
@@ -2876,6 +2879,7 @@ INSERT INTO pk_nn VALUES (5, 10, 20), (105, 110, 120);
    ->  Result pk_nn
 (3 rows)
 
+EXPLAIN (COSTS OFF) UPDATE pk_nn SET a = 11 WHERE k = 105;
         QUERY PLAN        
 --------------------------
  Update on pk_nn
@@ -2883,10 +2887,14 @@ INSERT INTO pk_nn VALUES (5, 10, 20), (105, 110, 120);
    ->  Result pk_nn
 (3 rows)
 
+UPDATE pk_nn SET b = NULL WHERE k = 5;
 ERROR:  null value in column "b" of relation "pk_nn1" violates not-null constraint
 DETAIL:  Failing row contains (5, null, null).
+UPDATE pk_nn SET b = NULL WHERE k = 105;
 ERROR:  null value in column "b" of relation "pk_nn2" violates not-null constraint
 DETAIL:  Failing row contains (105, null, null).
+UPDATE pk_nn SET a = 11 WHERE k = 5;
+UPDATE pk_nn SET a = 11 WHERE k = 105;
 SELECT * FROM pk_nn ORDER BY k;
   k  | a  |  b  
 -----+----+-----
@@ -2907,6 +2915,7 @@ INSERT INTO pk_nn_drop VALUES (5, 10, 20);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) UPDATE pk_nn_drop SET b = NULL WHERE k = 5;
              QUERY PLAN             
 ------------------------------------
  Update on pk_nn_drop
@@ -2914,6 +2923,7 @@ INSERT INTO pk_nn_drop VALUES (5, 10, 20);
    ->  Result pk_nn_drop
 (3 rows)
 
+EXPLAIN (COSTS OFF) UPDATE pk_nn_drop SET a = 11 WHERE k = 5;
              QUERY PLAN             
 ------------------------------------
  Update on pk_nn_drop
@@ -2921,8 +2931,10 @@ INSERT INTO pk_nn_drop VALUES (5, 10, 20);
    ->  Result pk_nn_drop
 (3 rows)
 
+UPDATE pk_nn_drop SET b = NULL WHERE k = 5;
 ERROR:  null value in column "b" of relation "pk_nn_drop1" violates not-null constraint
 DETAIL:  Failing row contains (5, null, null).
+UPDATE pk_nn_drop SET a = 11 WHERE k = 5;
 \set Pnext :iter_query
 SELECT * FROM pk_nn_drop ORDER BY k;
  k | a  | b  

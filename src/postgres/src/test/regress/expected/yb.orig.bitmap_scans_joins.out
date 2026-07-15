@@ -31,6 +31,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
@@ -47,6 +48,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (k = joina.k)
 (12 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
@@ -64,6 +66,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (k = ANY (ARRAY[joina.k, $1, $2, ..., $1023]))
 (13 rows)
 
+/*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
  k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
@@ -72,6 +75,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
  4 | 8 | 12 | 4 | 8 | 12
 (4 rows)
 
+/*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
  k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
@@ -85,6 +89,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
@@ -101,6 +106,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (k = joina.a)
 (12 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
@@ -118,6 +124,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (k = ANY (ARRAY[joina.a, $1, $2, ..., $1023]))
 (13 rows)
 
+/*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
  k | a | b  | k | c  | d  
 ---+---+----+---+----+----
  1 | 2 |  3 | 2 |  4 |  6
@@ -126,6 +133,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
  4 | 8 | 12 | 8 | 16 | 24
 (4 rows)
 
+/*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
  k | a | b  | k | c  | d  
 ---+---+----+---+----+----
  1 | 2 |  3 | 2 |  4 |  6
@@ -139,6 +147,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=2 loops=1)
@@ -155,6 +164,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (c = joina.k)
 (12 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=2 loops=1)
@@ -172,12 +182,14 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (c = ANY (ARRAY[joina.k, $1, $2, ..., $1023]))
 (13 rows)
 
+/*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
  k | a | b  | k | c | d 
 ---+---+----+---+---+---
  2 | 4 |  6 | 1 | 2 | 3
  4 | 8 | 12 | 2 | 4 | 6
 (2 rows)
 
+/*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
  k | a | b  | k | c | d 
 ---+---+----+---+---+---
  2 | 4 |  6 | 1 | 2 | 3
@@ -189,6 +201,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
@@ -205,6 +218,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (c = joina.a)
 (12 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
@@ -222,6 +236,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (c = ANY (ARRAY[joina.a, $1, $2, ..., $1023]))
 (13 rows)
 
+/*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
  k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
@@ -230,6 +245,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
  4 | 8 | 12 | 4 | 8 | 12
 (4 rows)
 
+/*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
  k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
@@ -251,6 +267,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -262,6 +279,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (k = joina.k)
 (7 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -273,6 +291,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (k = joina.k)
 (7 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -284,6 +303,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (k = joina.k)
 (7 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -295,6 +315,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (k = joina.k)
 (7 rows)
 
+/*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
  k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
@@ -303,6 +324,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
  4 | 8 | 12 | 4 | 8 | 12
 (4 rows)
 
+/*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
  k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
@@ -311,6 +333,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
  4 | 8 | 12 | 4 | 8 | 12
 (4 rows)
 
+/*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
  k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
@@ -319,6 +342,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
  4 | 8 | 12 | 4 | 8 | 12
 (4 rows)
 
+/*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
  k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
@@ -332,6 +356,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -343,6 +368,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (k = joina.a)
 (7 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Merge Join (actual rows=4 loops=1)
@@ -354,6 +380,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
          ->  Index Scan using joinb_pkey on joinb (actual rows=10 loops=1)
 (7 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -365,6 +392,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (k = joina.a)
 (7 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -376,6 +404,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (k = joina.a)
 (7 rows)
 
+/*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
  k | a | b  | k | c  | d  
 ---+---+----+---+----+----
  1 | 2 |  3 | 2 |  4 |  6
@@ -384,6 +413,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
  4 | 8 | 12 | 8 | 16 | 24
 (4 rows)
 
+/*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
  k | a | b  | k | c  | d  
 ---+---+----+---+----+----
  1 | 2 |  3 | 2 |  4 |  6
@@ -392,6 +422,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
  4 | 8 | 12 | 8 | 16 | 24
 (4 rows)
 
+/*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
  k | a | b  | k | c  | d  
 ---+---+----+---+----+----
  1 | 2 |  3 | 2 |  4 |  6
@@ -400,6 +431,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
  4 | 8 | 12 | 8 | 16 | 24
 (4 rows)
 
+/*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
  k | a | b  | k | c  | d  
 ---+---+----+---+----+----
  1 | 2 |  3 | 2 |  4 |  6
@@ -413,6 +445,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -424,6 +457,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (c = joina.k)
 (7 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -435,6 +469,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (c = joina.k)
 (7 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -446,6 +481,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (c = joina.k)
 (7 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -457,6 +493,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (c = joina.k)
 (7 rows)
 
+/*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
  k | a  | b  | k | c | d  
 ---+----+----+---+---+----
  2 |  4 |  6 | 1 | 2 |  3
@@ -465,6 +502,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
  8 | 16 | 24 | 4 | 8 | 12
 (4 rows)
 
+/*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
  k | a  | b  | k | c | d  
 ---+----+----+---+---+----
  2 |  4 |  6 | 1 | 2 |  3
@@ -473,6 +511,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
  8 | 16 | 24 | 4 | 8 | 12
 (4 rows)
 
+/*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
  k | a  | b  | k | c | d  
 ---+----+----+---+---+----
  2 |  4 |  6 | 1 | 2 |  3
@@ -481,6 +520,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
  8 | 16 | 24 | 4 | 8 | 12
 (4 rows)
 
+/*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
  k | a  | b  | k | c | d  
 ---+----+----+---+---+----
  2 |  4 |  6 | 1 | 2 |  3
@@ -494,6 +534,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -505,6 +546,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (c = joina.a)
 (7 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Merge Join (actual rows=4 loops=1)
@@ -516,6 +558,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
          ->  Index Scan using joinb_c_idx on joinb (actual rows=10 loops=1)
 (7 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -527,6 +570,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (c = joina.a)
 (7 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -538,6 +582,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
                Index Cond: (c = joina.a)
 (7 rows)
 
+/*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
  k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
@@ -546,6 +591,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
  4 | 8 | 12 | 4 | 8 | 12
 (4 rows)
 
+/*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
  k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
@@ -554,6 +600,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
  4 | 8 | 12 | 4 | 8 | 12
 (4 rows)
 
+/*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
  k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
@@ -562,6 +609,7 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
  4 | 8 | 12 | 4 | 8 | 12
 (4 rows)
 
+/*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;
  k | a | b  | k | c | d  
 ---+---+----+---+---+----
  1 | 2 |  3 | 1 | 2 |  3
@@ -585,6 +633,11 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(joinb) */
+SELECT joina.a,
+       (SELECT joinb.c FROM joinb WHERE (joina.k = joinb.k OR joinb.d = 1)
+                                    AND joina.b = -1) -- unsatisfiable
+  FROM joina ORDER BY joina.a;
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -600,6 +653,11 @@ $$ AS query \gset
                              Index Cond: (d = 1)
 (11 rows)
 
+/*+ BitmapScan(joinb) */
+SELECT joina.a,
+       (SELECT joinb.c FROM joinb WHERE (joina.k = joinb.k OR joinb.d = 1)
+                                    AND joina.b = -1) -- unsatisfiable
+  FROM joina ORDER BY joina.a;
  a  | c 
 ----+---
   2 |  
@@ -633,6 +691,11 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(gr) */
+   SELECT grpname, is_colocated
+     FROM pg_catalog.yb_table_properties(16384) p
+LEFT JOIN pg_catalog.pg_yb_tablegroup gr
+       ON gr.oid = p.tablegroup_oid;
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Nested Loop Left Join (actual rows=1 loops=1)
@@ -643,6 +706,11 @@ $$ AS query \gset
                Index Cond: (oid = p.tablegroup_oid)
 (6 rows)
 
+/*+ BitmapScan(gr) */
+   SELECT grpname, is_colocated
+     FROM pg_catalog.yb_table_properties(16384) p
+LEFT JOIN pg_catalog.pg_yb_tablegroup gr
+       ON gr.oid = p.tablegroup_oid;
  grpname | is_colocated 
 ---------+--------------
          | f
@@ -676,6 +744,12 @@ $$ AS query \gset
 \i :iter_Q2
 \set _echo_Q :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(table2) SeqScan(table1) Leading(((table3 table2) table1)) */
+    SELECT table1.v, table1.b
+      FROM test_join_filter AS table1
+INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 ON (( table3.v = table2.v ) OR ( table3.b = table2.a ) ) ) )
+        ON (( table3.a >= table2.a ) AND (table3.a <> table2.b ) )
+     WHERE ( table1.v = 'g' AND table1.v = 's' ) OR table1.a <= table2.b;
                                                    QUERY PLAN                                                   
 ----------------------------------------------------------------------------------------------------------------
  Nested Loop (actual rows=173 loops=1)
@@ -692,6 +766,12 @@ $$ AS query \gset
          ->  Seq Scan on test_join_filter table1 (actual rows=20 loops=1)
 (12 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(table1) Leading(((table3 table2) table1)) */
+    SELECT table1.v, table1.b
+      FROM test_join_filter AS table1
+INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 ON (( table3.v = table2.v ) OR ( table3.b = table2.a ) ) ) )
+        ON (( table3.a >= table2.a ) AND (table3.a <> table2.b ) )
+     WHERE ( table1.v = 'g' AND table1.v = 's' ) OR table1.a <= table2.b;
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Nested Loop (actual rows=173 loops=1)
@@ -721,6 +801,7 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(joina) */ SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Sort (actual rows=6 loops=1)
@@ -736,6 +817,7 @@ $$ AS query \gset
                        Index Cond: (a >= joinb.d)
 (11 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ Set(enable_bitmapscan false) */ SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
                                     QUERY PLAN                                     
 -----------------------------------------------------------------------------------
  Sort (actual rows=6 loops=1)
@@ -750,6 +832,7 @@ $$ AS query \gset
                  Heap Fetches: 0
 (10 rows)
 
+/*+ BitmapScan(joina) */ SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
  k | c  | d  
 ---+----+----
  1 |  2 |  3
@@ -760,6 +843,7 @@ $$ AS query \gset
  6 | 12 | 18
 (6 rows)
 
+/*+ Set(enable_bitmapscan false) */ SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;
  k | c  | d  
 ---+----+----
  1 |  2 |  3
@@ -781,6 +865,7 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ BitmapScan(b) */ SELECT b.* FROM (VALUES (2,2), (12,12), (4,4), (16,16), (6,6), (20,20), (8,8)) v(c1, c2) JOIN joinb b ON v.c1 = b.c WHERE b.c + 5 > v.c2;
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Nested Loop
@@ -793,6 +878,7 @@ $$ AS query \gset
                Storage Index Filter: ((c + 5) > "*VALUES*".column2)
 (8 rows)
 
+/*+ BitmapScan(b) */ SELECT b.* FROM (VALUES (2,2), (12,12), (4,4), (16,16), (6,6), (20,20), (8,8)) v(c1, c2) JOIN joinb b ON v.c1 = b.c WHERE b.c + 5 > v.c2;
  k  | c  | d  
 ----+----+----
   1 |  2 |  3
@@ -849,6 +935,7 @@ COPY c (pk, col_int_nokey, col_int_key, col_date_key, col_date_nokey, col_time_k
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(subquery1_t1) */ SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key;
                                                                             QUERY PLAN                                                                             
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=1 loops=1)
@@ -874,6 +961,7 @@ COPY c (pk, col_int_nokey, col_int_key, col_date_key, col_date_nokey, col_time_k
          Heap Fetches: 0
 (21 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ Set(enable_bitmapscan false) */ SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key;
                                                                          QUERY PLAN                                                                          
 -------------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=1 loops=1)
@@ -893,11 +981,13 @@ COPY c (pk, col_int_nokey, col_int_key, col_date_key, col_date_nokey, col_time_k
          Heap Fetches: 0
 (15 rows)
 
+/*+ BitmapScan(subquery1_t1) */ SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key;
  pk 
 ----
   8
 (1 row)
 
+/*+ Set(enable_bitmapscan false) */ SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key;
  pk 
 ----
   8
@@ -1011,6 +1101,7 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */ SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Nested Loop (actual rows=1 loops=1)
@@ -1025,6 +1116,7 @@ $$ AS query \gset
                      Index Cond: (oid = c.relnamespace)
 (10 rows)
 
+/*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */ SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';
  relname  
 ----------
  pg_class

@@ -18,6 +18,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.r1 FROM t t1 CROSS JOIN t t2;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -30,6 +31,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
                      Distinct Keys: t2.r1
 (8 rows)
 
+SELECT DISTINCT t1.r1, t2.r1 FROM t t1 CROSS JOIN t t2;
  r1 | r1 
 ----+----
   1 |  1
@@ -43,6 +45,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 USING (r1);
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Merge Join (actual rows=2 loops=1)
@@ -56,6 +59,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
                      Distinct Keys: t2.r1
 (9 rows)
 
+SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 USING (r1);
  r1 
 ----
   1
@@ -67,6 +71,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 ON t1.r1 = t2.r2;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -82,6 +87,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
                      Distinct Keys: t2.r1, t2.r2
 (11 rows)
 
+SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 ON t1.r1 = t2.r2;
  r1 
 ----
   1
@@ -92,6 +98,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 LEFT JOIN t t2 ON t1.r1 = t2.r2;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
@@ -107,6 +114,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
                      Distinct Keys: t2.r1, t2.r2
 (11 rows)
 
+SELECT DISTINCT t1.r1 FROM t t1 LEFT JOIN t t2 ON t1.r1 = t2.r2;
  r1 
 ----
   1
@@ -118,6 +126,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 RIGHT JOIN t t2 ON t1.r1 = t2.r2;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  HashAggregate (actual rows=2 loops=1)
@@ -133,6 +142,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
                      Distinct Keys: t2.r1, t2.r2
 (11 rows)
 
+SELECT DISTINCT t1.r1 FROM t t1 RIGHT JOIN t t2 ON t1.r1 = t2.r2;
  r1 
 ----
    
@@ -144,6 +154,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.r2 FROM t t1 FULL JOIN t t2 ON t1.r1 = t2.r2;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  HashAggregate (actual rows=4 loops=1)
@@ -159,6 +170,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
                      Distinct Keys: t2.r1, t2.r2
 (11 rows)
 
+SELECT DISTINCT t1.r1, t2.r2 FROM t t1 FULL JOIN t t2 ON t1.r1 = t2.r2;
  r1 | r2 
 ----+----
     |  2
@@ -173,6 +185,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -187,6 +200,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
                      Distinct Keys: t2.r1, t2.r2
 (10 rows)
 
+SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;
  r1 
 ----
   1
@@ -196,6 +210,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t2.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
@@ -209,6 +224,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
                      Distinct Keys: t1.r1
 (9 rows)
 
+SELECT DISTINCT t2.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;
  r1 
 ----
   1
@@ -220,6 +236,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r2 IN (SELECT r1 FROM t);
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  HashAggregate (actual rows=2 loops=1)
@@ -236,6 +253,7 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
                            Distinct Keys: t_1.r1
 (12 rows)
 
+SELECT DISTINCT r1 FROM t WHERE r2 IN (SELECT r1 FROM t);
  r1 
 ----
  10
@@ -283,6 +301,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+MergeJoin(t1 t2)*/ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Merge Join (actual rows=2 loops=1)
@@ -296,6 +315,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
                      Distinct Keys: t2.r1
 (9 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+HashJoin(t1 t2)*/ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Hash Join (actual rows=2 loops=1)
@@ -310,6 +330,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
                      Distinct Keys: t2.r1
 (10 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+Nestloop(t1 t2)*/ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=2 loops=1)
@@ -324,18 +345,21 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
                      Distinct Keys: t2.r1
 (10 rows)
 
+/*+MergeJoin(t1 t2)*/ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
  r1 
 ----
   1
  10
 (2 rows)
 
+/*+HashJoin(t1 t2)*/ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
  r1 
 ----
   1
  10
 (2 rows)
 
+/*+Nestloop(t1 t2)*/ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
  r1 
 ----
   1
@@ -350,6 +374,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 = t2.r2 WHERE t1.r1 + RANDOM() < 5;
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  HashAggregate (actual rows=1 loops=1)
@@ -364,6 +389,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
                      Distinct Keys: t2.r1, t2.r2
 (10 rows)
 
+SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 = t2.r2 WHERE t1.r1 + RANDOM() < 5;
  r1 
 ----
   1
@@ -373,6 +399,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) JOIN t t3 USING (r1) WHERE t3.r1 + RANDOM() < 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -392,6 +419,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
                                  Storage Filter: (((r1)::double precision + random()) < '5'::double precision)
 (15 rows)
 
+SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) JOIN t t3 USING (r1) WHERE t3.r1 + RANDOM() < 5;
  r1 
 ----
   1
@@ -404,6 +432,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Merge Join (actual rows=2 loops=1)
@@ -417,6 +446,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
                      Distinct Keys: t2.r1
 (9 rows)
 
+SELECT DISTINCT t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
  r1 | r1 
 ----+----
   1 |  1
@@ -428,6 +458,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t2.r1, t1.r1 FROM t t1 JOIN t t2 USING (r1);
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Merge Join (actual rows=2 loops=1)
@@ -441,6 +472,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
                      Distinct Keys: t2.r1
 (9 rows)
 
+SELECT DISTINCT t2.r1, t1.r1 FROM t t1 JOIN t t2 USING (r1);
  r1 | r1 
 ----+----
   1 |  1
@@ -452,6 +484,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.r1, t2.r2 FROM t t1 JOIN t t2 USING (r1);
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Merge Join (actual rows=6 loops=1)
@@ -465,6 +498,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
                      Distinct Keys: t1.r1
 (9 rows)
 
+SELECT DISTINCT t1.r1, t2.r1, t2.r2 FROM t t1 JOIN t t2 USING (r1);
  r1 | r1 | r2 
 ----+----+----
   1 |  1 |  0
@@ -480,6 +514,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t2.r2, t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Merge Join (actual rows=6 loops=1)
@@ -493,6 +528,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
                      Distinct Keys: t2.r1, t2.r2
 (9 rows)
 
+SELECT DISTINCT t2.r2, t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
  r2 | r1 | r1 
 ----+----+----
   0 |  1 |  1
@@ -509,6 +545,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r2 FROM t t1 JOIN t t2 USING (r2) WHERE t2.r2 = 2;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=1 loops=1)
@@ -523,6 +560,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
                      Distinct Keys: t2.r1
 (10 rows)
 
+SELECT DISTINCT t1.r2 FROM t t1 JOIN t t2 USING (r2) WHERE t2.r2 = 2;
  r2 
 ----
   2
@@ -534,6 +572,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ Seqscan(t1) */ SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) WHERE t2.r1 = 1;
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -547,6 +586,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
                            Distinct Keys: t2.r1
 (9 rows)
 
+/*+ Seqscan(t1) */ SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) WHERE t2.r1 = 1;
  r1 
 ----
   1
@@ -565,6 +605,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+MergeJoin(t1 t2)*/ SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Merge Join (actual rows=6 loops=1)
@@ -581,6 +622,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
                Distinct Keys: t2.h1, t2.h2
 (12 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+HashJoin(t1 t2)*/ SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Hash Join (actual rows=6 loops=1)
@@ -593,6 +635,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
                Distinct Keys: t2.h1, t2.h2
 (8 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+Nestloop(t1 t2)*/ SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Nested Loop (actual rows=6 loops=1)
@@ -605,6 +648,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
                Distinct Keys: t2.h1, t2.h2
 (8 rows)
 
+/*+MergeJoin(t1 t2)*/ SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
  h1 | h2 
 ----+----
   1 |  0
@@ -615,6 +659,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
  10 |  2
 (6 rows)
 
+/*+HashJoin(t1 t2)*/ SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
  h1 | h2 
 ----+----
   1 |  0
@@ -625,6 +670,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
   1 |  2
 (6 rows)
 
+/*+Nestloop(t1 t2)*/ SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
  h1 | h2 
 ----+----
   1 |  0
@@ -643,6 +689,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+MergeJoin(th t)*/ SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Merge Join (actual rows=6 loops=1)
@@ -657,6 +704,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
                Distinct Keys: th.h1, th.h2
 (10 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+HashJoin(th t)*/ SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Hash Join (actual rows=6 loops=1)
@@ -670,6 +718,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
                Distinct Keys: th.h1, th.h2
 (9 rows)
 
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+Nestloop(th t)*/ SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Nested Loop (actual rows=6 loops=1)
@@ -683,6 +732,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
                Distinct Keys: th.h1, th.h2
 (9 rows)
 
+/*+MergeJoin(th t)*/ SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
  h1 | h2 
 ----+----
   1 |  0
@@ -693,6 +743,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
  10 |  2
 (6 rows)
 
+/*+HashJoin(th t)*/ SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
  h1 | h2 
 ----+----
   1 |  0
@@ -703,6 +754,7 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
  10 |  2
 (6 rows)
 
+/*+Nestloop(th t)*/ SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
  h1 | h2 
 ----+----
   1 |  0
@@ -747,6 +799,7 @@ ANALYZE t2;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ Set(enable_mergejoin off) Set(enable_hashjoin off) Set(enable_material off) */ SELECT DISTINCT t2.pk FROM t1 JOIN t2 ON t1.col_int_key = t2.col_int WHERE t2.pk < 5;
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
@@ -761,6 +814,7 @@ ANALYZE t2;
                      Distinct Keys: t1.col_int_key
 (10 rows)
 
+/*+ Set(enable_mergejoin off) Set(enable_hashjoin off) Set(enable_material off) */ SELECT DISTINCT t2.pk FROM t1 JOIN t2 ON t1.col_int_key = t2.col_int WHERE t2.pk < 5;
  pk 
 ----
   3

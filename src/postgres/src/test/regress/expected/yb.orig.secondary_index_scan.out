@@ -32,6 +32,7 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Sort
@@ -40,6 +41,7 @@ $$ AS query \gset
          Index Cond: (author = 'Hello World'::text)
 (4 rows)
 
+SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
  id 
 ----
 (0 rows)
@@ -51,6 +53,8 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM text_books
+  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Sort
@@ -59,6 +63,8 @@ $$ AS query \gset
          Index Cond: (author = '{ "first_name": "William", "last_name": "Shakespeare" }'::text)
 (4 rows)
 
+SELECT id FROM text_books
+  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
  id 
 ----
   2
@@ -73,6 +79,7 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
                        QUERY PLAN                       
 --------------------------------------------------------
  Sort
@@ -81,6 +88,7 @@ $$ AS query \gset
          Storage Filter: (author = 'Hello World'::text)
 (4 rows)
 
+SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
  id 
 ----
 (0 rows)
@@ -92,6 +100,8 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM text_books
+  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
  Sort
@@ -100,6 +110,8 @@ $$ AS query \gset
          Storage Filter: (author = '{ "first_name": "William", "last_name": "Shakespeare" }'::text)
 (4 rows)
 
+SELECT id FROM text_books
+  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
  id 
 ----
   2
@@ -146,6 +158,8 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
+  ORDER BY details->>'name';
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  Sort
@@ -154,6 +168,8 @@ $$ AS query \gset
          Index Cond: (((details -> 'author'::text) ->> 'first_name'::text) = 'Hello World'::text)
 (4 rows)
 
+SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
+  ORDER BY details->>'name';
  id 
 ----
 (0 rows)
@@ -165,6 +181,8 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
+  ORDER BY details->>'name';
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Sort
@@ -173,6 +191,8 @@ $$ AS query \gset
          Index Cond: (((details -> 'author'::text) ->> 'first_name'::text) = 'Charles'::text)
 (4 rows)
 
+SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
+  ORDER BY details->>'name';
  id 
 ----
   4
@@ -188,6 +208,8 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
+  ORDER BY details->>'name';
                                               QUERY PLAN                                              
 ------------------------------------------------------------------------------------------------------
  Sort
@@ -196,6 +218,8 @@ $$ AS query \gset
          Storage Filter: (((details -> 'author'::text) ->> 'first_name'::text) = 'Hello World'::text)
 (4 rows)
 
+SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
+  ORDER BY details->>'name';
  id 
 ----
 (0 rows)
@@ -207,6 +231,8 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
+  ORDER BY details->>'name';
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  Sort
@@ -215,6 +241,8 @@ $$ AS query \gset
          Storage Filter: (((details -> 'author'::text) ->> 'first_name'::text) = 'Charles'::text)
 (4 rows)
 
+SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
+  ORDER BY details->>'name';
  id 
 ----
   4

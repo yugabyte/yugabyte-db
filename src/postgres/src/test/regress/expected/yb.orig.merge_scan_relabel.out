@@ -49,6 +49,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t::varchar FROM relabel_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -69,6 +70,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
                Storage Index Rows Scanned: 50
 (16 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t::varchar FROM relabel_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                        QUERY PLAN                                                        
 -------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -88,6 +90,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
                Storage Index Rows Scanned: 50
 (15 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t::varchar FROM relabel_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -108,6 +111,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
                Storage Index Rows Scanned: 50
 (16 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t::varchar FROM relabel_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                        QUERY PLAN                                                        
 -------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -132,6 +136,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
                Storage Index Rows Scanned: 50
 (20 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t::varchar FROM relabel_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v | t 
 ----+----+-------+---+---
   0 |  1 | 11810 | 1 | 1
@@ -141,6 +146,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
   1 |  5 | 11151 | 1 | 1
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t::varchar FROM relabel_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v | t 
 ----+----+-------+---+---
   0 |  1 | 11810 | 1 | 1
@@ -150,6 +156,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
   1 |  5 | 11151 | 1 | 1
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t::varchar FROM relabel_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v | t 
 ----+----+-------+---+---
   0 |  1 | 11810 | 1 | 1
@@ -159,6 +166,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
   1 |  5 | 11151 | 1 | 1
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t::varchar FROM relabel_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v | t 
 ----+----+-------+---+---
   0 |  1 | 11810 | 1 | 1
@@ -174,6 +182,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v::text, t::varchar FROM relabel_tbl WHERE v::text = '1' AND t::varchar = '1' ORDER BY i2, i4, n LIMIT 5;
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -194,6 +203,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
                Storage Index Rows Scanned: 50
 (16 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v::text, t::varchar FROM relabel_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                        QUERY PLAN                                                        
 -------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -213,6 +223,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
                Storage Index Rows Scanned: 50
 (15 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v::text, t::varchar FROM relabel_tbl WHERE v::text = '1' AND t::varchar = '1' ORDER BY i2, i4, n LIMIT 5;
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -233,6 +244,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
                Storage Index Rows Scanned: 50
 (16 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v::text, t::varchar FROM relabel_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                        QUERY PLAN                                                        
 -------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -257,6 +269,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
                Storage Index Rows Scanned: 50
 (20 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v::text, t::varchar FROM relabel_tbl WHERE v::text = '1' AND t::varchar = '1' ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v | t 
 ----+----+-------+---+---
   0 |  1 | 11810 | 1 | 1
@@ -266,6 +279,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
   1 |  5 | 11151 | 1 | 1
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v::text, t::varchar FROM relabel_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v | t 
 ----+----+-------+---+---
   0 |  1 | 11810 | 1 | 1
@@ -275,6 +289,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
   1 |  5 | 11151 | 1 | 1
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v::text, t::varchar FROM relabel_tbl WHERE v::text = '1' AND t::varchar = '1' ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v | t 
 ----+----+-------+---+---
   0 |  1 | 11810 | 1 | 1
@@ -284,6 +299,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
   1 |  5 | 11151 | 1 | 1
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v::text, t::varchar FROM relabel_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v | t 
 ----+----+-------+---+---
   0 |  1 | 11810 | 1 | 1
@@ -308,6 +324,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t FROM relabel_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -328,6 +345,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
                Storage Index Rows Scanned: 50
 (16 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t FROM relabel_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                        QUERY PLAN                                                        
 -------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -347,6 +365,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
                Storage Index Rows Scanned: 50
 (15 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t FROM relabel_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -367,6 +386,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
                Storage Index Rows Scanned: 50
 (16 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t FROM relabel_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                        QUERY PLAN                                                        
 -------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -391,6 +411,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
                Storage Index Rows Scanned: 50
 (20 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t FROM relabel_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v | t 
 ----+----+-------+---+---
   0 |  1 | 11810 | 1 | 1
@@ -400,6 +421,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
   1 |  5 | 11151 | 1 | 1
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t FROM relabel_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v | t 
 ----+----+-------+---+---
   0 |  1 | 11810 | 1 | 1
@@ -409,6 +431,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
   1 |  5 | 11151 | 1 | 1
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t FROM relabel_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v | t 
 ----+----+-------+---+---
   0 |  1 | 11810 | 1 | 1
@@ -418,6 +441,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
   1 |  5 | 11151 | 1 | 1
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t FROM relabel_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v | t 
 ----+----+-------+---+---
   0 |  1 | 11810 | 1 | 1
@@ -445,6 +469,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v = '1' ORDER BY i2, i4, n LIMIT 5;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -465,6 +490,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
                Storage Index Rows Scanned: 491
 (16 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -484,6 +510,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
                Storage Index Rows Scanned: 491
 (15 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -504,6 +531,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
                Storage Index Rows Scanned: 491
 (16 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -523,6 +551,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
                Storage Index Rows Scanned: 491
 (15 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v = '1' ORDER BY i2, i4, n LIMIT 5;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -543,6 +572,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
                Storage Index Rows Scanned: 491
 (16 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -567,6 +597,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
                Storage Index Rows Scanned: 491
 (20 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -587,6 +618,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
                Storage Index Rows Scanned: 491
 (16 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -611,6 +643,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
                Storage Index Rows Scanned: 491
 (20 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v = '1' ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v 
 ----+----+-------+---
   0 |  0 | 13300 | 1
@@ -620,6 +653,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
   0 |  1 | 13010 | 1
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v 
 ----+----+-------+---
   0 |  0 | 13300 | 1
@@ -629,6 +663,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
   0 |  1 | 13010 | 1
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v 
 ----+----+-------+---
   0 |  0 | 13300 | 1
@@ -638,6 +673,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
   0 |  1 | 13010 | 1
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v 
 ----+----+-------+---
   0 |  0 | 13300 | 1
@@ -647,6 +683,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
   0 |  1 | 13010 | 1
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v = '1' ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v 
 ----+----+-------+---
   0 |  0 | 13300 | 1
@@ -656,6 +693,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
   0 |  1 | 13010 | 1
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v 
 ----+----+-------+---
   0 |  0 | 13300 | 1
@@ -665,6 +703,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
   0 |  1 | 13010 | 1
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v 
 ----+----+-------+---
   0 |  0 | 13300 | 1
@@ -674,6 +713,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
   0 |  1 | 13010 | 1
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | v 
 ----+----+-------+---
   0 |  0 | 13300 | 1
