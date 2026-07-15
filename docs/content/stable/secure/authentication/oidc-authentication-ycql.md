@@ -185,4 +185,4 @@ To use OIDC authentication with role-based usernames on a new universe, follow t
 ## Related articles
 
 - [OAuth 2.0 and OpenID Connect protocols](https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols) on Microsoft Learn
-- [OIDC authentication with Azure AD in YugabyteDB Anywhere](../../../yugabyte-platform/security/authentication/oidc-authentication-aad/)
+- [OIDC database authentication in YugabyteDB Anywhere](../../../yugabyte-platform/security/authentication/oidc-database-authentication/)
