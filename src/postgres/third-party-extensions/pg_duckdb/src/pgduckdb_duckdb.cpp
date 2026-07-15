@@ -292,6 +292,14 @@ DuckDBManager::DropSecrets(duckdb::ClientContext &context) {
 
 void
 DuckDBManager::LoadExtensions(duckdb::ClientContext &context) {
+	/*
+	 * YB: no table-driven extension loading in lake_io mode -- extension
+	 * management is disabled and the built-in extensions load automatically.
+	 */
+	if (YbIsLakeIoMode()) {
+		return;
+	}
+
 	auto duckdb_extensions = ReadDuckdbExtensions();
 
 	for (auto &extension : duckdb_extensions) {
@@ -303,6 +311,14 @@ DuckDBManager::LoadExtensions(duckdb::ClientContext &context) {
 
 void
 DuckDBManager::InstallExtensions(duckdb::ClientContext &context) {
+	/*
+	 * YB: no table-driven extension installation in lake_io mode -- extension
+	 * management is disabled and the built-in extensions install automatically.
+	 */
+	if (YbIsLakeIoMode()) {
+		return;
+	}
+
 	auto duckdb_extensions = ReadDuckdbExtensions();
 
 	for (auto &extension : duckdb_extensions) {
