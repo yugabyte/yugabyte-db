@@ -5226,6 +5226,11 @@ ExecModifyTable(PlanState *pstate)
 	context.mtstate = node;
 	context.epqstate = &node->mt_epqstate;
 	context.estate = estate;
+	/*
+	 * YB: Initialize before the insert-on-conflict flush/pickup path below
+	 * reads it; upstream only sets it inside the per-row loop.
+	 */
+	context.cpDeletedSlot = NULL;
 
 	Relation	relation = resultRelInfo->ri_RelationDesc;
 
