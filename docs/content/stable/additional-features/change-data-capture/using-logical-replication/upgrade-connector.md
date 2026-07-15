@@ -111,7 +111,7 @@ To re-snapshot:
 
 ## Upgrade across a YSQL major version {#ysql-major-upgrade}
 
-Moving YugabyteDB from a PostgreSQL 11–based version (v2025.1) to a PostgreSQL 15–based version (v2025.1 or later (stable)) needs special handling for logical replication streams. The database upgrade itself is fully online, but you must pause the stream around finalization. You can upgrade logical replication streams to YugabyteDB v2025.1.1 and later.
+Moving YugabyteDB from a PostgreSQL 11–based version (v2024.1) to a PostgreSQL 15–based version (v2025.1 or later (stable)) needs special handling for logical replication streams. The database upgrade itself is fully online, but you must pause the stream around finalization. You can upgrade logical replication streams to YugabyteDB v2025.1.1 and later.
 
 For the full procedure, see [YSQL major upgrade - logical replication](../../../../manage/ysql-major-upgrade-logical-replication/).
 
