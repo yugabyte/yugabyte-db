@@ -100,7 +100,11 @@ LIBS += $(YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS)
 
 SHLIB_EXPORTS = exports.txt
 
-override LDFLAGS := $(LDFLAGS) $(LDFLAGS_EX) $(LDFLAGS_EX_BE)
+# Shared libs must not inherit LDFLAGS_EX's -Wl,--no-undefined: sanitizer -shared
+# links leave __asan_*/__tsan_* undefined in the .so (resolved at runtime), so
+# filter it out (build_postgres.py strips it from LDFLAGS for the same reason).
+yb_comma := ,
+override LDFLAGS := $(LDFLAGS) $(filter-out -Wl$(yb_comma)--no-undefined -Wl$(yb_comma)--no-allow-shlib-undefined,$(LDFLAGS_EX)) $(LDFLAGS_EX_BE)
 
 .NOTPARALLEL:
 
