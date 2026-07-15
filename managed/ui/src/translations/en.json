@@ -4195,7 +4195,9 @@
           "ysqlGroup": "YSQL",
           "ycqlGroup": "YCQL",
           "redisGroup": "Redis",
-          "othersGroup": "Others"
+          "othersGroup": "Others",
+          "ysqlServerRpcPortHelper": "Used by application clients to connect to the database.",
+          "internalYsqlServerRpcPortHelper": "Used by <strong>connection pooling</strong> to connect to the database."
         },
         "userTags": {
           "subText": "Assign custom metadata to help manage, bill, or audit the resources.",

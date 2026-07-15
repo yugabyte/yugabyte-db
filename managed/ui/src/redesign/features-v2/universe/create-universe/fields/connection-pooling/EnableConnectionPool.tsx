@@ -60,20 +60,34 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
       id: 'ysqlServerRpcPort',
       label: t('ysqlPortlabel'),
       helperText: (
-        <Trans
-          i18nKey={'createUniverseV2.databaseSettings.conPool.defaultPortMsg'}
-          values={{ port: DEFAULT_COMMUNICATION_PORTS.ysqlServerRpcPort }}
-        />
+        <>
+          <Trans
+            i18nKey={'createUniverseV2.databaseSettings.conPool.defaultPortMsg'}
+            values={{ port: DEFAULT_COMMUNICATION_PORTS.ysqlServerRpcPort }}
+          />
+          <br />
+          {t('ysqlServerRpcPortHelper', {
+            keyPrefix: 'createUniverseV2.otherAdvancedSettings.deployPortsFeild'
+          })}
+        </>
       )
     },
     {
       id: 'internalYsqlServerRpcPort',
       label: t('internalPortLabel'),
       helperText: (
-        <Trans
-          i18nKey={'createUniverseV2.databaseSettings.conPool.defaultPortMsg'}
-          values={{ port: DEFAULT_COMMUNICATION_PORTS.internalYsqlServerRpcPort }}
-        />
+        <>
+          <Trans
+            i18nKey={'createUniverseV2.databaseSettings.conPool.defaultPortMsg'}
+            values={{ port: DEFAULT_COMMUNICATION_PORTS.internalYsqlServerRpcPort }}
+          />
+          <br />
+          <Trans
+            i18nKey={
+              'createUniverseV2.otherAdvancedSettings.deployPortsFeild.internalYsqlServerRpcPortHelper'
+            }
+          />
+        </>
       )
     }
   ];

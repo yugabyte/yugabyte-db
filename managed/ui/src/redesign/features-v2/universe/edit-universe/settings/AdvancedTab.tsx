@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { isEmpty } from 'lodash';
+import { isEmpty, drop } from 'lodash';
 import { useTranslation, Trans } from 'react-i18next';
-import { mui, YBButton, YBTag, YBTab, YBTabs, YBTable } from '@yugabyte-ui-library/core';
+import { mui, YBButton, YBTag, YBTab, YBTabs, YBTable, YBTooltip } from '@yugabyte-ui-library/core';
 import { useToggle } from 'react-use';
 import { toast } from 'react-toastify';
 import {
@@ -276,11 +276,28 @@ export const AdvancedTab = () => {
     if (!networking_spec?.proxy_config?.no_proxy_list?.length) {
       return '-';
     }
+
     return (
       <>
         {networking_spec?.proxy_config?.no_proxy_list?.[0]}
         <YBTag size="small" variant="light">
-          +{(networking_spec?.proxy_config?.no_proxy_list?.length ?? 1) - 1}
+          <YBTooltip
+            title={
+              <Box sx={{ display: 'flex', flexDirection: 'column', color: '#4E5F6D' }}>
+                <ul style={{ listStyleType: 'disc', paddingInlineStart: '20px' }}>
+                  {drop(networking_spec?.proxy_config?.no_proxy_list, 1).map((nl) => (
+                    <li>
+                      <Typography sx={{ lineHeight: '20px' }} variant="subtitle1">
+                        {nl}
+                      </Typography>
+                    </li>
+                  ))}
+                </ul>
+              </Box>
+            }
+          >
+            <span>+{(networking_spec?.proxy_config?.no_proxy_list?.length ?? 1) - 1}</span>
+          </YBTooltip>
         </YBTag>
       </>
     );
