@@ -57,9 +57,9 @@ create rule rtest_pers_del as on delete to rtest_person do also
 --
 -- Tables and rules for the logging test
 --
-create table rtest_emp (ename char(20), salary money);
-create table rtest_emplog (ename char(20), who name, action char(10), newsal money, oldsal money);
-create table rtest_empmass (ename char(20), salary money);
+create table rtest_emp (ename char(20), salary numeric);
+create table rtest_emplog (ename char(20), who name, action char(10), newsal numeric, oldsal numeric);
+create table rtest_empmass (ename char(20), salary numeric);
 
 create rule rtest_emp_ins as on insert to rtest_emp do
 	insert into rtest_emplog values (new.ename, current_user,
@@ -171,7 +171,7 @@ insert into rtest_t3 values (5, 35);
 -- insert values
 insert into rtest_v1 values (1, 11);
 insert into rtest_v1 values (2, 12);
-select * from rtest_v1 ORDER BY a, b;
+select * from rtest_v1;
 
 -- delete with constant expression
 delete from rtest_v1 where a = 1;
@@ -181,7 +181,7 @@ delete from rtest_v1 where b = 12;
 select * from rtest_v1;
 insert into rtest_v1 values (2, 12);
 insert into rtest_v1 values (2, 13);
-select * from rtest_v1 ORDER BY a, b;
+select * from rtest_v1;
 ** Remember the delete rule on rtest_v1: It says
 ** DO INSTEAD DELETE FROM rtest_t1 WHERE a = old.a
 ** So this time both rows with a = 2 must get deleted
@@ -193,46 +193,49 @@ delete from rtest_v1;
 
 -- insert select
 insert into rtest_v1 select * from rtest_t2;
-select * from rtest_v1 ORDER BY a, b;
+select * from rtest_v1;
 delete from rtest_v1;
 
 -- same with swapped targetlist
 insert into rtest_v1 (b, a) select b, a from rtest_t2;
-select * from rtest_v1 ORDER BY a, b;
+select * from rtest_v1;
 
 -- now with only one target attribute
 insert into rtest_v1 (a) select a from rtest_t3;
-select * from rtest_v1 ORDER BY a, b;
-select * from rtest_v1 where b isnull ORDER BY a, b;
+select * from rtest_v1;
+select * from rtest_v1 where b isnull;
 
 -- let attribute a differ (must be done on rtest_t1 - see above)
 update rtest_t1 set a = a + 10 where b isnull;
 delete from rtest_v1 where b isnull;
-select * from rtest_v1 ORDER BY a, b;
+select * from rtest_v1;
 
 -- now updates with constant expression
+WITH ybtmp AS (DELETE FROM rtest_t1 WHERE a = 2 RETURNING *)
+    	INSERT INTO rtest_t1 SELECT * FROM ybtmp; -- YB: imitate PG ctid reallocation for the following update
 update rtest_v1 set b = 42 where a = 2;
-select * from rtest_v1 ORDER BY a, b;
+select * from rtest_v1;
 update rtest_v1 set b = 99 where b = 42;
-select * from rtest_v1 ORDER BY a, b;
+select * from rtest_v1;
+WITH ybtmp AS (DELETE FROM rtest_t1 WHERE b < 50 RETURNING *)
+    	INSERT INTO rtest_t1 SELECT * FROM ybtmp; -- YB: imitate PG ctid reallocation for the following update
 update rtest_v1 set b = 88 where b < 50;
-select * from rtest_v1 ORDER BY a, b;
+select * from rtest_v1;
 delete from rtest_v1;
 insert into rtest_v1 select rtest_t2.a, rtest_t3.b
     from rtest_t2, rtest_t3
     where rtest_t2.a = rtest_t3.a;
-select * from rtest_v1 ORDER BY a, b;
+select * from rtest_v1;
 
 -- updates in a mergejoin
 update rtest_v1 set b = rtest_t2.b from rtest_t2 where rtest_v1.a = rtest_t2.a;
-
-select * from rtest_v1 ORDER BY a, b;
+select * from rtest_v1;
 insert into rtest_v1 select * from rtest_t3;
-select * from rtest_v1 ORDER BY a, b;
+select * from rtest_v1;
 update rtest_t1 set a = a + 10 where b > 30;
-select * from rtest_v1 ORDER BY a, b;
+select * from rtest_v1;
 update rtest_v1 set a = rtest_t3.a + 20 from rtest_t3 where rtest_v1.b = rtest_t3.b;
-select * from rtest_v1 ORDER BY a, b;
+select * from rtest_v1;
 
 --
 -- Test for constraint updates/deletes
@@ -255,9 +258,11 @@ insert into rtest_admin values ('bm', 'neptun');
 
 update rtest_system set sysname = 'pluto' where sysname = 'neptun';
 
-select * from rtest_interface ORDER BY sysname, ifname;
-select * from rtest_admin ORDER BY pname, sysname;
+select * from rtest_interface;
+select * from rtest_admin;
 
+WITH ybtmp AS (DELETE FROM rtest_admin WHERE pname = 'jw' RETURNING *)
+    	INSERT INTO rtest_admin SELECT * FROM ybtmp; -- YB: imitate PG ctid reallocation for the following update
 update rtest_person set pname = 'jwieck' where pdesc = 'Jan Wieck';
 
 -- Note: use ORDER BY here to ensure consistent output across all systems.
@@ -268,8 +273,8 @@ select * from rtest_admin order by pname, sysname;
 
 delete from rtest_system where sysname = 'orion';
 
-select * from rtest_interface ORDER BY sysname, ifname;
-select * from rtest_admin ORDER BY pname, sysname;
+select * from rtest_interface;
+select * from rtest_admin;
 
 --
 -- Rule qualification test
@@ -281,7 +286,7 @@ update rtest_emp set ename = 'wieck', salary = '6000.00' where ename = 'wiecx';
 update rtest_emp set salary = '7000.00' where ename = 'wieck';
 delete from rtest_emp where ename = 'gates';
 
-select ename, who = current_user as "matches user", action, newsal, oldsal from rtest_emplog order by ename, action, newsal;
+select ename, who = current_user as "matches user", action, newsal, oldsal from rtest_emplog order by ename, action, newsal; -- YB: numeric loses trailing zeros (5000 vs 5000.00), here and below
 insert into rtest_empmass values ('meyer', '4000.00');
 insert into rtest_empmass values ('maier', '5000.00');
 insert into rtest_empmass values ('mayr', '6000.00');
@@ -307,11 +312,11 @@ insert into rtest_t4 values (28, 'Record should go to rtest_t4 and t8');
 insert into rtest_t4 values (30, 'Record should go to rtest_t4');
 insert into rtest_t4 values (40, 'Record should go to rtest_t4');
 
-select * from rtest_t4 ORDER BY a, b;
-select * from rtest_t5 ORDER BY a, b;
-select * from rtest_t6 ORDER BY a, b;
-select * from rtest_t7 ORDER BY a, b;
-select * from rtest_t8 ORDER BY a, b;
+select * from rtest_t4;
+select * from rtest_t5;
+select * from rtest_t6;
+select * from rtest_t7;
+select * from rtest_t8;
 
 delete from rtest_t4;
 delete from rtest_t5;
@@ -332,33 +337,33 @@ insert into rtest_t9 values (40, 'Record should go to rtest_t4');
 
 insert into rtest_t4 select * from rtest_t9 where a < 20;
 
-select * from rtest_t4 ORDER BY a, b;
-select * from rtest_t5 ORDER BY a, b;
+select * from rtest_t4;
+select * from rtest_t5;
 select * from rtest_t6;
 select * from rtest_t7;
 select * from rtest_t8;
 
 insert into rtest_t4 select * from rtest_t9 where b ~ 'and t8';
 
-select * from rtest_t4 ORDER BY a, b;
-select * from rtest_t5 ORDER BY a, b;
+select * from rtest_t4;
+select * from rtest_t5;
 select * from rtest_t6;
 select * from rtest_t7;
-select * from rtest_t8 ORDER BY a, b;
+select * from rtest_t8;
 
 insert into rtest_t4 select a + 1, b from rtest_t9 where a in (20, 30, 40);
 
-select * from rtest_t4 ORDER BY a, b;
-select * from rtest_t5 ORDER BY a, b;
+select * from rtest_t4;
+select * from rtest_t5;
 select * from rtest_t6;
 select * from rtest_t7;
-select * from rtest_t8 ORDER BY a, b;
+select * from rtest_t8;
 
 --
 -- Check that the ordering of rules fired is correct
 --
 insert into rtest_order1 values (1);
-select * from rtest_order2 ORDER BY a, b, c;
+select * from rtest_order2;
 
 --
 -- Check if instead nothing w/without qualification works
@@ -375,7 +380,7 @@ insert into rtest_nothn1 values (40, 'want this');
 insert into rtest_nothn1 values (50, 'want this');
 insert into rtest_nothn1 values (60, 'want this');
 
-select * from rtest_nothn1 ORDER BY a, b;
+select * from rtest_nothn1;
 
 insert into rtest_nothn2 values (10, 'too small');
 insert into rtest_nothn2 values (50, 'too small');
@@ -383,7 +388,7 @@ insert into rtest_nothn2 values (100, 'OK');
 insert into rtest_nothn2 values (200, 'OK');
 
 select * from rtest_nothn2;
-select * from rtest_nothn3 ORDER BY a, b;
+select * from rtest_nothn3;
 
 delete from rtest_nothn1;
 delete from rtest_nothn2;
@@ -403,7 +408,7 @@ insert into rtest_nothn4 values (60, 'want this');
 
 insert into rtest_nothn1 select * from rtest_nothn4;
 
-select * from rtest_nothn1 ORDER BY a, b;
+select * from rtest_nothn1;
 
 delete from rtest_nothn4;
 
@@ -415,7 +420,7 @@ insert into rtest_nothn4 values (200, 'OK');
 insert into rtest_nothn2 select * from rtest_nothn4;
 
 select * from rtest_nothn2;
-select * from rtest_nothn3 ORDER BY a, b;
+select * from rtest_nothn3;
 
 create table rtest_view1 (a int4, b text, v bool);
 create table rtest_view2 (a int4);
@@ -454,22 +459,22 @@ insert into rtest_view2 values (7);
 insert into rtest_view2 values (7);
 insert into rtest_view2 values (7);
 
-select * from rtest_vview1 ORDER BY a, b;
-select * from rtest_vview2 ORDER BY a, b;
-select * from rtest_vview3 ORDER BY a, b;
+select * from rtest_vview1;
+select * from rtest_vview2;
+select * from rtest_vview3;
 select * from rtest_vview4 order by a, b;
-select * from rtest_vview5 ORDER BY a, b, refcount;
+select * from rtest_vview5;
 
 insert into rtest_view3 select * from rtest_vview1 where a < 7;
-select * from rtest_view3 ORDER BY a, b;
+select * from rtest_view3;
 delete from rtest_view3;
 
 insert into rtest_view3 select * from rtest_vview2 where a != 5 and b !~ '2';
-select * from rtest_view3 ORDER BY a, b;
+select * from rtest_view3;
 delete from rtest_view3;
 
 insert into rtest_view3 select * from rtest_vview3;
-select * from rtest_view3 ORDER BY a, b;
+select * from rtest_view3;
 delete from rtest_view3;
 
 insert into rtest_view4 select * from rtest_vview4 where 3 > refcount;
@@ -477,7 +482,7 @@ select * from rtest_view4 order by a, b;
 delete from rtest_view4;
 
 insert into rtest_view4 select * from rtest_vview5 where a > 2 and refcount = 0;
-select * from rtest_view4 ORDER BY a, b, c;
+select * from rtest_view4;
 delete from rtest_view4;
 --
 -- Test for computations in views
@@ -723,7 +728,7 @@ do instead insert into rules_foo2 values (new.f1);
 insert into rules_foo values(2);
 insert into rules_foo values(100);
 
-select * from rules_foo ORDER BY f1;
+select * from rules_foo;
 select * from rules_foo2;
 
 drop rule rules_foorule on rules_foo;
@@ -754,14 +759,14 @@ create rule rrule as
   update cchild set descrip = new.descrip where cchild.pid = old.pid;
 );
 
-select * from vview ORDER BY pid, txt, descrip;
+select * from vview;
 update vview set descrip='test1' where pid=1;
-select * from vview ORDER BY pid, txt, descrip;
+select * from vview;
 update vview set descrip='test2' where pid=2;
-select * from vview ORDER BY pid, txt, descrip;
+select * from vview;
 update vview set descrip='test3' where pid=3;
-select * from vview ORDER BY pid, txt, descrip;
-select * from cchild ORDER BY pid, descrip;
+select * from vview;
+select * from cchild;
 
 drop rule rrule on vview;
 drop view vview;
@@ -776,7 +781,7 @@ drop table cchild;
 -- temporarily disable fancy output, so view changes create less diff noise
 \a\t
 
--- TODO(jason): port `create_view`, `matview`, and `tablesample` Postgres
+-- YB: TODO(jason): port `create_view`, `matview`, and `tablesample` Postgres
 -- regress tests, then add the appropriate rows to the output.
 SELECT viewname, definition FROM pg_views
 WHERE schemaname = 'pg_catalog'
@@ -806,7 +811,176 @@ CREATE OR REPLACE RULE myrule AS ON INSERT TO ruletest_tbl
 
 INSERT INTO ruletest_tbl VALUES (99, 99);
 
-SELECT * FROM ruletest_tbl2 ORDER BY a, b;
+SELECT * FROM ruletest_tbl2;
+
+-- Check that rewrite rules splitting one INSERT into multiple
+-- conditional statements does not disable FK checking.
+create table rule_and_refint_t1 (
+	id1a integer,
+	id1b integer,
+
+	primary key (id1a, id1b)
+);
+
+create table rule_and_refint_t2 (
+	id2a integer,
+	id2c integer,
+
+	primary key (id2a, id2c)
+);
+
+create table rule_and_refint_t3 (
+	id3a integer,
+	id3b integer,
+	id3c integer,
+	data text,
+
+	primary key (id3a, id3b, id3c),
+
+	foreign key (id3a, id3b) references rule_and_refint_t1 (id1a, id1b),
+	foreign key (id3a, id3c) references rule_and_refint_t2 (id2a, id2c)
+);
+
+
+insert into rule_and_refint_t1 values (1, 11);
+insert into rule_and_refint_t1 values (1, 12);
+insert into rule_and_refint_t1 values (2, 21);
+insert into rule_and_refint_t1 values (2, 22);
+
+insert into rule_and_refint_t2 values (1, 11);
+insert into rule_and_refint_t2 values (1, 12);
+insert into rule_and_refint_t2 values (2, 21);
+insert into rule_and_refint_t2 values (2, 22);
+
+insert into rule_and_refint_t3 values (1, 11, 11, 'row1');
+insert into rule_and_refint_t3 values (1, 11, 12, 'row2');
+insert into rule_and_refint_t3 values (1, 12, 11, 'row3');
+insert into rule_and_refint_t3 values (1, 12, 12, 'row4');
+insert into rule_and_refint_t3 values (1, 11, 13, 'row5');
+insert into rule_and_refint_t3 values (1, 13, 11, 'row6');
+-- Ordinary table
+insert into rule_and_refint_t3 values (1, 13, 11, 'row6')
+  on conflict do nothing;
+-- rule not fired, so fk violation
+insert into rule_and_refint_t3 values (1, 13, 11, 'row6')
+  on conflict (id3a, id3b, id3c) do update
+  set id3b = excluded.id3b;
+-- rule fired, so unsupported
+insert into shoelace values ('sl9', 0, 'pink', 35.0, 'inch', 0.0)
+  on conflict (sl_name) do update
+  set sl_avail = excluded.sl_avail;
+
+create rule rule_and_refint_t3_ins as on insert to rule_and_refint_t3
+	where (exists (select 1 from rule_and_refint_t3
+			where (((rule_and_refint_t3.id3a = new.id3a)
+			and (rule_and_refint_t3.id3b = new.id3b))
+			and (rule_and_refint_t3.id3c = new.id3c))))
+	do instead update rule_and_refint_t3 set data = new.data
+	where (((rule_and_refint_t3.id3a = new.id3a)
+	and (rule_and_refint_t3.id3b = new.id3b))
+	and (rule_and_refint_t3.id3c = new.id3c));
+
+insert into rule_and_refint_t3 values (1, 11, 13, 'row7');
+insert into rule_and_refint_t3 values (1, 13, 11, 'row8');
+
+--
+-- disallow dropping a view's rule (bug #5072)
+--
+
+create view rules_fooview as select 'rules_foo'::text;
+drop rule "_RETURN" on rules_fooview;
+drop view rules_fooview;
+
+--
+-- We used to allow converting a table to a view by creating a "_RETURN"
+-- rule for it, but no more.
+--
+
+create table rules_fooview (x int, y text);
+create rule "_RETURN" as on select to rules_fooview do instead
+  select 1 as x, 'aaa'::text as y;
+drop table rules_fooview;
+
+-- likewise, converting a partitioned table or partition to view is not allowed
+create table rules_fooview (x int, y text) partition by list (x);
+create rule "_RETURN" as on select to rules_fooview do instead
+  select 1 as x, 'aaa'::text as y;
+
+create table rules_fooview_part partition of rules_fooview for values in (1);
+create rule "_RETURN" as on select to rules_fooview_part do instead
+  select 1 as x, 'aaa'::text as y;
+
+drop table rules_fooview;
+
+--
+-- check for planner problems with complex inherited UPDATES
+--
+
+create table id (id serial primary key, name text);
+-- currently, must respecify PKEY for each inherited subtable
+create table test_1 (id integer primary key) inherits (id);
+create table test_2 (id integer primary key) inherits (id);
+create table test_3 (id integer primary key) inherits (id);
+
+insert into test_1 (name) values ('Test 1');
+insert into test_1 (name) values ('Test 2');
+insert into test_2 (name) values ('Test 3');
+insert into test_2 (name) values ('Test 4');
+insert into test_3 (name) values ('Test 5');
+insert into test_3 (name) values ('Test 6');
+
+create view id_ordered as select * from id order by id;
+
+create rule update_id_ordered as on update to id_ordered
+	do instead update id set name = new.name where id = old.id;
+
+select * from id_ordered;
+update id_ordered set name = 'update 2' where id = 2;
+update id_ordered set name = 'update 4' where id = 4;
+update id_ordered set name = 'update 5' where id = 5;
+select * from id_ordered;
+
+drop table id cascade;
+
+--
+-- check corner case where an entirely-dummy subplan is created by
+-- constraint exclusion
+--
+
+create temp table t1 (a integer primary key);
+
+create temp table t1_1 (check (a >= 0 and a < 10)) inherits (t1);
+create temp table t1_2 (check (a >= 10 and a < 20)) inherits (t1);
+
+create rule t1_ins_1 as on insert to t1
+	where new.a >= 0 and new.a < 10
+	do instead
+	insert into t1_1 values (new.a);
+create rule t1_ins_2 as on insert to t1
+	where new.a >= 10 and new.a < 20
+	do instead
+	insert into t1_2 values (new.a);
+
+create rule t1_upd_1 as on update to t1
+	where old.a >= 0 and old.a < 10
+	do instead
+	update t1_1 set a = new.a where a = old.a;
+create rule t1_upd_2 as on update to t1
+	where old.a >= 10 and old.a < 20
+	do instead
+	update t1_2 set a = new.a where a = old.a;
+
+set constraint_exclusion = on;
+
+insert into t1 select * from generate_series(5,19,1) g;
+update t1 set a = 4 where a = 5;
+
+select * from only t1;
+select * from only t1_1;
+select * from only t1_2;
+
+reset constraint_exclusion;
+
 -- test FOR UPDATE in rules
 
 create table rules_base(f1 int, f2 int);
@@ -820,6 +994,446 @@ update rules_base set f2 = f2 + 1;
 create or replace rule r1 as on update to rules_base do instead
   select * from rules_base where f1 = 11 for update of old; -- error
 drop table rules_base;
+
+-- test various flavors of pg_get_viewdef()
+
+select pg_get_viewdef('shoe'::regclass) as unpretty;
+select pg_get_viewdef('shoe'::regclass,true) as pretty;
+select pg_get_viewdef('shoe'::regclass,0) as prettier;
+
+--
+-- check multi-row VALUES in rules
+--
+
+create table rules_src(f1 int, f2 int default 0);
+create table rules_log(f1 int, f2 int, tag text, id serial);
+insert into rules_src values(1,2), (11,12);
+create rule r1 as on update to rules_src do also
+  insert into rules_log values(old.*, 'old', default), (new.*, 'new', default);
+update rules_src set f2 = f2 + 1;
+update rules_src set f2 = f2 * 10;
+select * from rules_src;
+select * from rules_log;
+create rule r2 as on update to rules_src do also
+  values(old.*, 'old'), (new.*, 'new');
+update rules_src set f2 = f2 / 10;
+create rule r3 as on insert to rules_src do also
+  insert into rules_log values(null, null, '-', default), (new.*, 'new', default);
+insert into rules_src values(22,23), (33,default);
+select * from rules_src;
+select * from rules_log;
+create rule r4 as on delete to rules_src do notify rules_src_deletion;
+
+--
+-- Ensure an aliased target relation for insert is correctly deparsed.
+--
+create rule r5 as on insert to rules_src do instead insert into rules_log AS trgt SELECT NEW.* RETURNING trgt.f1, trgt.f2;
+create rule r6 as on update to rules_src do instead UPDATE rules_log AS trgt SET tag = 'updated' WHERE trgt.f1 = new.f1;
+
+--
+-- Check deparse disambiguation of INSERT/UPDATE/DELETE targets.
+--
+create rule r7 as on delete to rules_src do instead
+  with wins as (insert into int4_tbl as trgt values (0) returning *),
+       wupd as (update int4_tbl trgt set f1 = f1+1 returning *),
+       wdel as (delete from int4_tbl trgt where f1 = 0 returning *)
+  insert into rules_log AS trgt select old.* from wins, wupd, wdel
+  returning trgt.f1, trgt.f2;
+
+-- check display of all rules added above
+\d+ rules_src
+
+--
+-- Also check multiassignment deparsing.
+--
+create table rule_t1(f1 int, f2 int);
+create table rule_dest(f1 int, f2 int[], tag text);
+create rule rr as on update to rule_t1 do instead UPDATE rule_dest trgt
+  SET (f2[1], f1, tag) = (SELECT new.f2, new.f1, 'updated'::varchar)
+  WHERE trgt.f1 = new.f1 RETURNING new.*;
+\d+ rule_t1
+drop table rule_t1, rule_dest;
+
+--
+-- Test implicit LATERAL references to old/new in rules
+--
+CREATE TABLE rule_t1(a int, b text DEFAULT 'xxx', c int);
+CREATE VIEW rule_v1 AS SELECT * FROM rule_t1;
+CREATE RULE v1_ins AS ON INSERT TO rule_v1
+  DO ALSO INSERT INTO rule_t1
+  SELECT * FROM (SELECT a + 10 FROM rule_t1 WHERE a = NEW.a) tt;
+CREATE RULE v1_upd AS ON UPDATE TO rule_v1
+  DO ALSO UPDATE rule_t1 t
+  SET c = tt.a * 10
+  FROM (SELECT a FROM rule_t1 WHERE a = OLD.a) tt WHERE t.a = tt.a;
+INSERT INTO rule_v1 VALUES (1, 'a'), (2, 'b');
+UPDATE rule_v1 SET b = upper(b);
+SELECT * FROM rule_t1;
+DROP TABLE rule_t1 CASCADE;
+
+--
+-- check alter rename rule
+--
+CREATE TABLE rule_t1 (a INT);
+CREATE VIEW rule_v1 AS SELECT * FROM rule_t1;
+
+CREATE RULE InsertRule AS
+    ON INSERT TO rule_v1
+    DO INSTEAD
+        INSERT INTO rule_t1 VALUES(new.a);
+
+ALTER RULE InsertRule ON rule_v1 RENAME to NewInsertRule; -- YB: ALTER RULE is not supported
+
+INSERT INTO rule_v1 VALUES(1);
+SELECT * FROM rule_v1;
+
+/* YB: the rest depends on ALTER RULE
+\d+ rule_v1
+
+--
+-- error conditions for alter rename rule
+--
+ALTER RULE InsertRule ON rule_v1 RENAME TO NewInsertRule; -- doesn't exist
+ALTER RULE NewInsertRule ON rule_v1 RENAME TO "_RETURN"; -- already exists
+ALTER RULE "_RETURN" ON rule_v1 RENAME TO abc; -- ON SELECT rule cannot be renamed
+*/ -- YB
+
+DROP VIEW rule_v1;
+DROP TABLE rule_t1;
+
+--
+-- check display of VALUES in view definitions
+--
+create view rule_v1 as values(1,2);
+\d+ rule_v1
+alter table rule_v1 rename column column2 to q2;
+\d+ rule_v1
+drop view rule_v1;
+create view rule_v1(x) as values(1,2);
+\d+ rule_v1
+drop view rule_v1;
+create view rule_v1(x) as select * from (values(1,2)) v;
+\d+ rule_v1
+drop view rule_v1;
+create view rule_v1(x) as select * from (values(1,2)) v(q,w);
+\d+ rule_v1
+drop view rule_v1;
+
+--
+-- Check DO INSTEAD rules with ON CONFLICT
+--
+CREATE TABLE hats (
+	hat_name    char(10) primary key,
+	hat_color   char(10)      -- hat color
+);
+
+CREATE TABLE hat_data (
+	hat_name    char(10),
+	hat_color   char(10)      -- hat color
+);
+create unique index hat_data_unique_idx
+  on hat_data (hat_name COLLATE "C" bpchar_pattern_ops);
+
+-- DO NOTHING with ON CONFLICT
+CREATE RULE hat_nosert AS ON INSERT TO hats
+    DO INSTEAD
+    INSERT INTO hat_data VALUES (
+           NEW.hat_name,
+           NEW.hat_color)
+        ON CONFLICT (hat_name COLLATE "C" bpchar_pattern_ops) WHERE hat_color = 'green'
+        DO NOTHING
+        RETURNING *;
+SELECT definition FROM pg_rules WHERE tablename = 'hats' ORDER BY rulename;
+
+-- Works (projects row)
+INSERT INTO hats VALUES ('h7', 'black') RETURNING *;
+-- Works (does nothing)
+INSERT INTO hats VALUES ('h7', 'black') RETURNING *;
+SELECT tablename, rulename, definition FROM pg_rules
+	WHERE tablename = 'hats';
+DROP RULE hat_nosert ON hats;
+
+-- DO NOTHING without ON CONFLICT
+CREATE RULE hat_nosert_all AS ON INSERT TO hats
+    DO INSTEAD
+    INSERT INTO hat_data VALUES (
+           NEW.hat_name,
+           NEW.hat_color)
+        ON CONFLICT
+        DO NOTHING
+        RETURNING *;
+SELECT definition FROM pg_rules WHERE tablename = 'hats' ORDER BY rulename;
+DROP RULE hat_nosert_all ON hats;
+
+-- Works (does nothing)
+INSERT INTO hats VALUES ('h7', 'black') RETURNING *;
+
+-- DO UPDATE with a WHERE clause
+CREATE RULE hat_upsert AS ON INSERT TO hats
+    DO INSTEAD
+    INSERT INTO hat_data VALUES (
+           NEW.hat_name,
+           NEW.hat_color)
+        ON CONFLICT (hat_name)
+        DO UPDATE
+           SET hat_name = hat_data.hat_name, hat_color = excluded.hat_color
+           WHERE excluded.hat_color <>  'forbidden' AND hat_data.* != excluded.*
+        RETURNING *;
+SELECT definition FROM pg_rules WHERE tablename = 'hats' ORDER BY rulename;
+
+-- Works (does upsert)
+INSERT INTO hats VALUES ('h8', 'black') RETURNING *;
+SELECT * FROM hat_data WHERE hat_name = 'h8';
+INSERT INTO hats VALUES ('h8', 'white') RETURNING *;
+SELECT * FROM hat_data WHERE hat_name = 'h8';
+INSERT INTO hats VALUES ('h8', 'forbidden') RETURNING *;
+SELECT * FROM hat_data WHERE hat_name = 'h8';
+SELECT tablename, rulename, definition FROM pg_rules
+	WHERE tablename = 'hats';
+-- ensure explain works for on insert conflict rules
+explain (costs off) INSERT INTO hats VALUES ('h8', 'forbidden') RETURNING *;
+
+-- ensure upserting into a rule, with a CTE (different offsets!) works
+WITH data(hat_name, hat_color) AS MATERIALIZED (
+    VALUES ('h8', 'green'),
+        ('h9', 'blue'),
+        ('h7', 'forbidden')
+)
+INSERT INTO hats
+    SELECT * FROM data
+RETURNING *;
+EXPLAIN (costs off)
+WITH data(hat_name, hat_color) AS MATERIALIZED (
+    VALUES ('h8', 'green'),
+        ('h9', 'blue'),
+        ('h7', 'forbidden')
+)
+INSERT INTO hats
+    SELECT * FROM data
+RETURNING *;
+SELECT * FROM hat_data WHERE hat_name IN ('h8', 'h9', 'h7') ORDER BY hat_name;
+
+DROP RULE hat_upsert ON hats;
+
+-- DO SELECT with a WHERE clause
+CREATE RULE hat_confsel AS ON INSERT TO hats
+    DO INSTEAD
+    INSERT INTO hat_data VALUES (
+           NEW.hat_name,
+           NEW.hat_color)
+        ON CONFLICT (hat_name)
+        DO SELECT FOR UPDATE
+           WHERE excluded.hat_color <>  'forbidden' AND hat_data.* != excluded.*
+        RETURNING *;
+SELECT definition FROM pg_rules WHERE tablename = 'hats' ORDER BY rulename;
+
+-- fails without RETURNING
+INSERT INTO hats VALUES ('h7', 'blue');
+
+-- works (returns conflicts)
+/* YB: TODO(#32495): ON CONFLICT DO SELECT runs as a plain INSERT on YB tables
+EXPLAIN (costs off)
+INSERT INTO hats VALUES ('h7', 'blue') RETURNING *;
+*/ -- YB
+INSERT INTO hats VALUES ('h7', 'blue') RETURNING *; -- YB: TODO(#32495): fails with duplicate key
+
+-- conflicts excluded by WHERE clause
+/* YB: TODO(#32495): ON CONFLICT DO SELECT runs as a plain INSERT on YB tables
+INSERT INTO hats VALUES ('h7', 'forbidden') RETURNING *;
+INSERT INTO hats VALUES ('h7', 'black') RETURNING *;
+*/ -- YB
+
+DROP RULE hat_confsel ON hats;
+
+drop table hats;
+drop table hat_data;
+
+-- test for pg_get_functiondef properly regurgitating SET parameters
+-- Note that the function is kept around to stress pg_dump.
+CREATE FUNCTION func_with_set_params() RETURNS integer
+    AS 'select 1;'
+    LANGUAGE SQL
+    SET search_path TO PG_CATALOG
+    SET extra_float_digits TO 2
+    SET work_mem TO '4MB'
+    SET datestyle to iso, mdy
+    SET temp_tablespaces to NULL
+    SET local_preload_libraries TO "Mixed/Case", 'c:/''a"/path', '', '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'
+    IMMUTABLE STRICT;
+SELECT pg_get_functiondef('func_with_set_params()'::regprocedure);
+
+-- tests for pg_get_*def with invalid objects
+SELECT pg_get_constraintdef(0);
+SELECT pg_get_functiondef(0);
+SELECT pg_get_indexdef(0);
+SELECT pg_get_ruledef(0);
+SELECT pg_get_statisticsobjdef(0);
+SELECT pg_get_triggerdef(0);
+SELECT pg_get_viewdef(0);
+SELECT pg_get_function_arguments(0);
+SELECT pg_get_function_identity_arguments(0);
+SELECT pg_get_function_result(0);
+SELECT pg_get_function_arg_default(0, 0);
+SELECT pg_get_function_arg_default('pg_class'::regclass, 0);
+SELECT pg_get_partkeydef(0);
+
+-- test rename for a rule defined on a partitioned table
+CREATE TABLE rules_parted_table (a int) PARTITION BY LIST (a);
+CREATE TABLE rules_parted_table_1 PARTITION OF rules_parted_table FOR VALUES IN (1);
+CREATE RULE rules_parted_table_insert AS ON INSERT to rules_parted_table
+    DO INSTEAD INSERT INTO rules_parted_table_1 VALUES (NEW.*);
+ALTER RULE rules_parted_table_insert ON rules_parted_table RENAME TO rules_parted_table_insert_redirect; -- YB: ALTER RULE is not supported
+DROP TABLE rules_parted_table;
+
+--
+-- test MERGE
+--
+CREATE TABLE rule_merge1 (a int, b text);
+CREATE TABLE rule_merge2 (a int, b text);
+CREATE RULE rule1 AS ON INSERT TO rule_merge1
+	DO INSTEAD INSERT INTO rule_merge2 VALUES (NEW.*);
+CREATE RULE rule2 AS ON UPDATE TO rule_merge1
+	DO INSTEAD UPDATE rule_merge2 SET a = NEW.a, b = NEW.b
+	WHERE a = OLD.a;
+CREATE RULE rule3 AS ON DELETE TO rule_merge1
+	DO INSTEAD DELETE FROM rule_merge2 WHERE a = OLD.a;
+
+-- MERGE not supported for table with rules
+MERGE INTO rule_merge1 t USING (SELECT 1 AS a) s
+	ON t.a = s.a
+	WHEN MATCHED AND t.a < 2 THEN
+		UPDATE SET b = b || ' updated by merge'
+	WHEN MATCHED AND t.a > 2 THEN
+		DELETE
+	WHEN NOT MATCHED THEN
+		INSERT VALUES (s.a, ''); -- YB: MERGE is not supported, so this fails with a different error
+
+/* YB: MERGE and ALTER TABLE ... DISABLE RULE are not supported
+-- should be ok with the other table though
+MERGE INTO rule_merge2 t USING (SELECT 1 AS a) s
+	ON t.a = s.a
+	WHEN MATCHED AND t.a < 2 THEN
+		UPDATE SET b = b || ' updated by merge'
+	WHEN MATCHED AND t.a > 2 THEN
+		DELETE
+	WHEN NOT MATCHED THEN
+		INSERT VALUES (s.a, '');
+
+-- also ok if the rules are disabled
+ALTER TABLE rule_merge1 DISABLE RULE rule1;
+ALTER TABLE rule_merge1 DISABLE RULE rule2;
+ALTER TABLE rule_merge1 DISABLE RULE rule3;
+MERGE INTO rule_merge1 t USING (SELECT 1 AS a) s
+	ON t.a = s.a
+	WHEN MATCHED AND t.a < 2 THEN
+		UPDATE SET b = b || ' updated by merge'
+	WHEN MATCHED AND t.a > 2 THEN
+		DELETE
+	WHEN NOT MATCHED THEN
+		INSERT VALUES (s.a, '');
+
+-- test deparsing
+CREATE TABLE sf_target(id int, data text, filling int[]);
+
+CREATE FUNCTION merge_sf_test()
+ RETURNS TABLE(action text, a int, b text,
+               id int, data text, filling int[],
+               old_id int, old_data text, old_filling int[],
+               new_id int, new_data text, new_filling int[])
+ LANGUAGE sql
+BEGIN ATOMIC
+ MERGE INTO sf_target t
+   USING rule_merge1 s
+   ON (s.a = t.id)
+WHEN MATCHED
+   AND (s.a + t.id) = 42
+   THEN UPDATE SET data = repeat(t.data, s.a) || s.b, id = length(s.b)
+WHEN NOT MATCHED
+   AND (s.b IS NOT NULL)
+   THEN INSERT (data, id)
+   VALUES (s.b, s.a)
+WHEN MATCHED
+   AND length(s.b || t.data) > 10
+   THEN UPDATE SET data = s.b
+WHEN MATCHED
+   AND s.a > 200
+   THEN UPDATE SET filling[s.a] = t.id
+WHEN MATCHED
+   AND s.a > 100
+   THEN DELETE
+WHEN MATCHED
+   THEN DO NOTHING
+WHEN NOT MATCHED
+   AND s.a > 200
+   THEN INSERT DEFAULT VALUES
+WHEN NOT MATCHED
+   AND s.a > 100
+   THEN INSERT (id, data) OVERRIDING USER VALUE
+   VALUES (s.a, DEFAULT)
+WHEN NOT MATCHED
+   AND s.a > 0
+   THEN INSERT
+   VALUES (s.a, s.b, DEFAULT)
+WHEN NOT MATCHED
+   THEN INSERT (filling[1], id)
+   VALUES (s.a, s.a)
+RETURNING
+   WITH (OLD AS o, NEW AS n)
+   merge_action() AS action, *, o.*, n.*;
+END;
+
+\sf merge_sf_test
+
+CREATE FUNCTION merge_sf_test2()
+ RETURNS void
+ LANGUAGE sql
+BEGIN ATOMIC
+ MERGE INTO sf_target t
+   USING rule_merge1 s
+   ON (s.a = t.id)
+WHEN NOT MATCHED
+   THEN INSERT (data, id)
+   VALUES (s.a, s.a)
+WHEN MATCHED
+   THEN UPDATE SET data = s.b
+WHEN NOT MATCHED BY SOURCE
+   THEN DELETE;
+END;
+
+\sf merge_sf_test2
+
+DROP FUNCTION merge_sf_test;
+DROP FUNCTION merge_sf_test2;
+DROP TABLE sf_target;
+*/ -- YB
+
+--
+-- Test enabling/disabling
+--
+CREATE TABLE ruletest1 (a int);
+CREATE TABLE ruletest2 (b int);
+
+CREATE RULE rule1 AS ON INSERT TO ruletest1
+    DO INSTEAD INSERT INTO ruletest2 VALUES (NEW.*);
+
+INSERT INTO ruletest1 VALUES (1);
+ALTER TABLE ruletest1 DISABLE RULE rule1; -- YB: ENABLE/DISABLE RULE is not supported
+/* YB: the rest depends on ENABLE/DISABLE RULE
+INSERT INTO ruletest1 VALUES (2);
+ALTER TABLE ruletest1 ENABLE RULE rule1;
+SET session_replication_role = replica;
+INSERT INTO ruletest1 VALUES (3);
+ALTER TABLE ruletest1 ENABLE REPLICA RULE rule1;
+INSERT INTO ruletest1 VALUES (4);
+RESET session_replication_role;
+INSERT INTO ruletest1 VALUES (5);
+
+SELECT * FROM ruletest1;
+SELECT * FROM ruletest2;
+*/ -- YB
+
+DROP TABLE ruletest1;
+DROP TABLE ruletest2;
 
 --
 -- Test non-SELECT rule on security invoker view.
@@ -840,10 +1454,25 @@ SET SESSION AUTHORIZATION regress_rule_user1;
 INSERT INTO ruletest_v1 VALUES (1);
 
 RESET SESSION AUTHORIZATION;
+
+-- Test that main query's relation's permissions are checked before
+-- the rule action's relation's.
+CREATE TABLE ruletest_t3 (x int);
+CREATE RULE rule2 AS ON UPDATE TO ruletest_t1
+    DO INSTEAD INSERT INTO ruletest_t2 VALUES (OLD.*);
+REVOKE ALL ON ruletest_t2 FROM regress_rule_user1;
+REVOKE ALL ON ruletest_t3 FROM regress_rule_user1;
+ALTER TABLE ruletest_t1 OWNER TO regress_rule_user1;
+SET SESSION AUTHORIZATION regress_rule_user1;
+UPDATE ruletest_t1 t1 SET x = 0 FROM ruletest_t3 t3 WHERE t1.x = t3.x;
+
+RESET SESSION AUTHORIZATION;
 SELECT * FROM ruletest_t1;
 SELECT * FROM ruletest_t2;
 
 DROP VIEW ruletest_v1;
+DROP RULE rule2 ON ruletest_t1;
+DROP TABLE ruletest_t3;
 DROP TABLE ruletest_t2;
 DROP TABLE ruletest_t1;
 
