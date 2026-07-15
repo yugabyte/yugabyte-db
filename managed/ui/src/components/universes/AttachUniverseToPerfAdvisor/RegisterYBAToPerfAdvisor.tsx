@@ -10,6 +10,10 @@ import {
 import { AppName } from '../../../redesign/helpers/dtos';
 import { isEmptyArray } from '../../../utils/ObjectUtils';
 import { ROOT_URL } from '../../../config';
+// Side-effect import: registers a CSRF header provider on PA UI's internal
+// axios instance so its XHRs pass Play's CSRFFilter. Must be imported by the
+// only PA UI entry point in YBA so the setup runs before any PA UI XHR.
+import './perfAdvisorHeaders';
 
 interface RegisterYBAToPerfAdvisorProps {
   universeUuid: string;

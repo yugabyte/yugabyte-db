@@ -56,7 +56,7 @@
       "react-dom": "17.0.2"
     },
     "@yugabytedb/perf-advisor-ui": {
-      "@yugabyte-ui-library/core": "2.0.28"
+      "@yugabyte-ui-library/core": "2.0.29"
     }
   },
   "prettier": {
@@ -120,8 +120,8 @@
     "@types/react-select": "3.0.19",
     "@types/redux-form": "8.3.1",
     "@types/yup": "0.29.11",
-    "@yugabyte-ui-library/core": "2.0.28",
-    "@yugabytedb/perf-advisor-ui": "1.0.137",
+    "@yugabyte-ui-library/core": "2.0.29",
+    "@yugabytedb/perf-advisor-ui": "1.0.154",
     "ace-builds": "1.4.12",
     "axios": "0.21.3",
     "bootstrap": "3.4.1",
