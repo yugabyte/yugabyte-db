@@ -545,9 +545,31 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testRollbackEditUniverseNotYetSupported() {
-    // Edit-universe rollback is a placeholder (PLAT-21484/21485). Even when eligibility is forced,
-    // the dispatch must fail explicitly rather than attempt a rollback.
+  public void testRollbackEditUniverseDisabledByRuntimeFlag() {
+    // With yb.task.allow_edit_universe_rollback off (default), edit-universe rollback is rejected.
+    universe = ModelFactory.createUniverse(customer.getId());
+    CustomerTask failedTask =
+        createFailedUniverseTask(
+            universe, TaskType.EditUniverse, CustomerTask.TaskType.Update, Json.newObject());
+    UUID failedTaskUUID = failedTask.getTaskUUID();
+    when(mockCommissioner.canTaskRollback(any())).thenReturn(true);
+    when(mockCommissioner.getTaskParams(failedTaskUUID)).thenReturn(Json.newObject());
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> taskManager.rollbackCustomerTask(customer.getUuid(), failedTaskUUID));
+    assertTrue(ex.getMessage().contains("not enabled"));
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
+  public void testRollbackEditUniverseNotYetSupportedWhenEnabled() {
+    // With the flag on, edit-universe rollback passes the gate but is still a placeholder
+    // (PLAT-21484/21485), so the dispatch fails explicitly rather than attempt a rollback.
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.task.allow_edit_universe_rollback", "true");
     universe = ModelFactory.createUniverse(customer.getId());
     CustomerTask failedTask =
         createFailedUniverseTask(

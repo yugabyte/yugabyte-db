@@ -859,9 +859,18 @@ public class CustomerTaskManager {
           newTaskUUID);
       return CustomerTask.getOrBadRequest(customerUUID, newTaskUUID);
     } else if (taskType == TaskType.EditUniverse || taskType == TaskType.EditKubernetesUniverse) {
-      // TODO(PLAT-21484, PLAT-21485): edit-universe rollback (VM + K8s) placeholder. Currently
-      // unreachable, as these tasks are not yet annotated @CanRollback; wired up once the
-      // rollback tasks and registry land.
+      // Edit-universe rollback is gated behind a runtime flag while the feature is built out. The
+      // eligibility gate/annotation should also consult this flag once the rollback path lands.
+      if (!confGetter.getGlobalConf(GlobalConfKeys.allowEditUniverseRollback)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Rollback of %s tasks is not enabled. Set yb.task.allow_edit_universe_rollback to"
+                    + " enable it.",
+                taskType));
+      }
+      // TODO(PLAT-21484, PLAT-21485): edit-universe rollback (VM + K8s) placeholder. Wired up once
+      // the rollback tasks and registry land.
       throw new PlatformServiceException(
           NOT_IMPLEMENTED,
           String.format(
