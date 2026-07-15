@@ -4649,9 +4649,10 @@ void PreparePgTablesQuery(
     AddIfMissing(table_ids, op.has_read() ? op.read().table_id() : op.write().table_id());
   }
   if (PREDICT_FALSE(FLAGS_TEST_request_unknown_tables_during_perform)) {
-    AddIfMissing(table_ids, GetPgsqlTableId(0, 0));
-    AddIfMissing(table_ids, GetPgsqlTableId(0, 1));
-    AddIfMissing(table_ids, GetPgsqlTableId(0, 2));
+    table_ids.insert(
+        table_ids.end(),
+        { GetPgsqlTableId(kPgInvalidOid, 0), GetPgsqlTableId(kPgInvalidOid, 1),
+          GetPgsqlTableId(kPgInvalidOid, 2) });
   }
 }
 
