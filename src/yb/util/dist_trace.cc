@@ -34,7 +34,6 @@
 #include "opentelemetry/trace/span_metadata.h"
 #include "opentelemetry/trace/tracer.h"
 
-#include "yb/util/env.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/signal_util.h"
@@ -44,8 +43,8 @@ DEFINE_NON_RUNTIME_PREVIEW_string(otel_collector_traces_endpoint, "",
     "enabled and spans are exported to this endpoint on each query execution.");
 
 DEFINE_NON_RUNTIME_string(otel_ssl_ca_cert_path, "",
-    "CA certificate bundle path for OTLP HTTPS trace export. When empty and no CA certificate "
-    "string is configured, YugabyteDB uses the first known platform CA bundle path that exists.");
+    "CA certificate bundle path for OTLP HTTPS trace export. Takes precedence over "
+    "otel_ssl_ca_cert_string when configured.");
 
 DEFINE_NON_RUNTIME_string(otel_ssl_ca_cert_string, "",
     "CA certificate bundle contents for OTLP HTTPS trace export. Used only when no CA certificate "
@@ -85,16 +84,6 @@ namespace context = opentelemetry::context;
 namespace {
 
 const nostd::string_view ysql_resource_name = "ysql";
-
-const std::vector<std::string>& GetPlatformCaBundlePaths() {
-  static const auto* const v = new std::vector<std::string>{
-      "/etc/ssl/certs/ca-certificates.crt",  // Debian/Ubuntu
-      "/etc/pki/tls/certs/ca-bundle.crt",    // RHEL/CentOS/AlmaLinux
-      "/etc/ssl/ca-bundle.pem",              // OpenSUSE/SLES
-      "/etc/pki/tls/cacert.pem",
-  };
-  return *v;
-}
 
 // Owns string attribute data and maintains a parallel vector of string_view/AttributeValue pairs
 // that can be passed directly to the OTel Tracer::StartSpan API. Uses std::deque for pointer
@@ -199,12 +188,6 @@ auto CreateExporter() {
     opts.ssl_ca_cert_string = FLAGS_otel_ssl_ca_cert_string;
   }
 
-  if (opts.ssl_ca_cert_path.empty() && opts.ssl_ca_cert_string.empty()) {
-    if (const auto platform_ca_cert_path = FindFirstExistingFile(GetPlatformCaBundlePaths())) {
-      opts.ssl_ca_cert_path = *platform_ca_cert_path;
-    }
-  }
-
   LOG(INFO) << "OTEL: Exporting traces to collector at " << opts.url;
   if (!opts.ssl_ca_cert_path.empty()) {
     LOG(INFO) << "OTEL: Using CA certificate bundle at " << opts.ssl_ca_cert_path;
@@ -264,16 +247,6 @@ class TraceparentCarrier : public context::propagation::TextMapCarrier {
 
 bool IsDistTraceEnabled() {
   return !FLAGS_otel_collector_traces_endpoint.empty();
-}
-
-std::optional<std::string> FindFirstExistingFile(const std::vector<std::string>& paths) {
-  for (const auto& path : paths) {
-    if (Env::Default()->FileExists(path)) {
-      return path;
-    }
-  }
-
-  return std::nullopt;
 }
 
 void InitDistTrace(int64_t process_pid, nostd::string_view node_uuid) {
