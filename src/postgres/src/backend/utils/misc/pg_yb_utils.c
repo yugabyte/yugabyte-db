@@ -3905,13 +3905,31 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * (eg: partitions) cannot be created using this statement.
 			 */
 		case T_CreateTableAsStmt:
-			/*
-			 * Simple add objects are not breaking changes, and they do not even require
-			 * a version increment because we do not do any negative caching for them.
-			 */
-			is_version_increment = should_increment_version_by_default;
-			is_breaking_change = false;
-			break;
+			{
+				CreateTableAsStmt *stmt = castNode(CreateTableAsStmt, parsetree);
+
+				/*
+				 * Simple add objects are not breaking changes, and they do not even require
+				 * a version increment because we do not do any negative caching for them.
+				 *
+				 * Temp tables are session-local, so they do not need catalog version
+				 * increments. They also alter existing data since they create relations
+				 * visible only to this transaction/session.
+				 */
+				if (stmt->into && stmt->into->rel &&
+					stmt->into->rel->relpersistence == RELPERSISTENCE_TEMP)
+				{
+					is_version_increment = false;
+					is_altering_existing_data = true;
+					YBMarkTxnUsesTempRelAndSetTxnId();
+				}
+				else
+				{
+					is_version_increment = should_increment_version_by_default;
+				}
+				is_breaking_change = false;
+				break;
+			}
 
 		case T_CreateSeqStmt:
 			is_breaking_change = false;

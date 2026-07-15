@@ -6,6 +6,7 @@
 ####################################################################################################
 
 test: yb.orig.catalog_version
+test: yb.orig.catalog_version_ctas_temp
 test: yb.orig.alter_operator
 test: yb.orig.boolean
 test: yb.orig.errors
