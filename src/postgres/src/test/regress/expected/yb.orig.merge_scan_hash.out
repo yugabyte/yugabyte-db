@@ -23,6 +23,7 @@
 \i :iter_Q2
 \set _echo_Q :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM h3r2n WHERE h1 = 6 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 LIMIT 5;
                                                    QUERY PLAN                                                   
 ----------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -35,6 +36,7 @@
          Storage Table Rows Scanned: 19
 (8 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM h3r2n WHERE h1 = 6 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 LIMIT 5;
                                                    QUERY PLAN                                                   
 ----------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -53,6 +55,7 @@
 \i :iter_Q2
 \set _echo_Q :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 6 AND h2 IN (1, 3, 5, 7, 9) ORDER BY h3, r1, r2, n LIMIT 5;
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -69,6 +72,7 @@
                Storage Table Rows Scanned: 5048
 (12 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 6 AND h2 IN (1, 3, 5, 7, 9) ORDER BY h3, r1, r2, n LIMIT 5;
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -90,6 +94,7 @@
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2, n LIMIT 5;
                                                       QUERY PLAN                                                      
 ----------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -106,6 +111,7 @@
                Storage Table Rows Scanned: 44
 (12 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2, n LIMIT 5;
                                                       QUERY PLAN                                                      
 ----------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -127,6 +133,7 @@
                Storage Table Rows Scanned: 38
 (17 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2, n LIMIT 5;
  h1 | h3 | r1 | r2 |   n   | h2 
 ----+----+----+----+-------+----
   1 |  1 |  0 |  1 | 10141 |  4
@@ -136,6 +143,7 @@
   1 |  1 |  1 |  2 | 21121 |  2
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2, n LIMIT 5;
  h1 | h3 | r1 | r2 |   n   | h2 
 ----+----+----+----+-------+----
   1 |  1 |  0 |  1 | 10141 |  4
@@ -150,6 +158,7 @@
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY h3, r1, r2, n LIMIT 5;
                                                       QUERY PLAN                                                      
 ----------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -166,6 +175,7 @@
                Storage Table Rows Scanned: 44
 (12 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY h3, r1, r2, n LIMIT 5;
                                                       QUERY PLAN                                                      
 ----------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -187,6 +197,7 @@
                Storage Table Rows Scanned: 38
 (17 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY h3, r1, r2, n LIMIT 5;
  h1 | h3 | r1 | r2 |   n   | h2 
 ----+----+----+----+-------+----
   1 |  1 |  0 |  1 | 10141 |  4
@@ -196,6 +207,7 @@
   1 |  1 |  1 |  2 | 21121 |  2
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY h3, r1, r2, n LIMIT 5;
  h1 | h3 | r1 | r2 |   n   | h2 
 ----+----+----+----+-------+----
   1 |  1 |  0 |  1 | 10141 |  4
@@ -210,6 +222,7 @@
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT h1, h2, r1, r2, n, h3 FROM h3r2n WHERE h1 = 1 AND h2 = 8 AND h3 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) ORDER BY r1, r2, n LIMIT 5;
                                                       QUERY PLAN                                                       
 -----------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -226,6 +239,7 @@
                Storage Table Rows Scanned: 42
 (12 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT h1, h2, r1, r2, n, h3 FROM h3r2n WHERE h1 = 1 AND h2 = 8 AND h3 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) ORDER BY r1, r2, n LIMIT 5;
                                                       QUERY PLAN                                                       
 -----------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -247,6 +261,7 @@
                Storage Table Rows Scanned: 37
 (17 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT h1, h2, r1, r2, n, h3 FROM h3r2n WHERE h1 = 1 AND h2 = 8 AND h3 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) ORDER BY r1, r2, n LIMIT 5;
  h1 | h2 | r1 | r2 |   n   | h3 
 ----+----+----+----+-------+----
   1 |  8 |  0 |  4 | 40881 |  8
@@ -256,6 +271,7 @@
   1 |  8 |  1 |  4 | 41781 |  7
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT h1, h2, r1, r2, n, h3 FROM h3r2n WHERE h1 = 1 AND h2 = 8 AND h3 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) ORDER BY r1, r2, n LIMIT 5;
  h1 | h2 | r1 | r2 |   n   | h3 
 ----+----+----+----+-------+----
   1 |  8 |  0 |  4 | 40881 |  8
@@ -271,6 +287,7 @@
 \i :iter_Q2
 \set _echo_Q :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT h1, h2, h3, r1, r2, n FROM h3r2n WHERE h1 = 1 AND h2 = 8 AND h3 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) ORDER BY h3, r1, r2, n LIMIT 5;
                                                       QUERY PLAN                                                       
 -----------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -287,6 +304,7 @@
                Storage Table Rows Scanned: 42
 (12 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT h1, h2, h3, r1, r2, n FROM h3r2n WHERE h1 = 1 AND h2 = 8 AND h3 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) ORDER BY h3, r1, r2, n LIMIT 5;
                                                       QUERY PLAN                                                       
 -----------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -308,6 +326,7 @@
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT h1, r1, r2, n, h2, h3 FROM h3r2n WHERE h1 = 2 AND h2 IN (3, 4, 5, 6, 7) AND h3 IN (6, 7, 8, 9, 10) ORDER BY h1, r1, r2, n LIMIT 5;
                                                                  QUERY PLAN                                                                 
 --------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -324,6 +343,7 @@
                Storage Table Rows Scanned: 106
 (12 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT h1, r1, r2, n, h2, h3 FROM h3r2n WHERE h1 = 2 AND h2 IN (3, 4, 5, 6, 7) AND h3 IN (6, 7, 8, 9, 10) ORDER BY h1, r1, r2, n LIMIT 5;
                                                                  QUERY PLAN                                                                 
 --------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -345,6 +365,7 @@
                Storage Table Rows Scanned: 87
 (17 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT h1, r1, r2, n, h2, h3 FROM h3r2n WHERE h1 = 2 AND h2 IN (3, 4, 5, 6, 7) AND h3 IN (6, 7, 8, 9, 10) ORDER BY h1, r1, r2, n LIMIT 5;
  h1 | r1 | r2 |   n   | h2 | h3 
 ----+----+----+-------+----+----
   2 |  0 |  0 |   752 |  5 |  7
@@ -354,6 +375,7 @@
   2 |  0 |  3 | 30952 |  5 |  9
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT h1, r1, r2, n, h2, h3 FROM h3r2n WHERE h1 = 2 AND h2 IN (3, 4, 5, 6, 7) AND h3 IN (6, 7, 8, 9, 10) ORDER BY h1, r1, r2, n LIMIT 5;
  h1 | r1 | r2 |   n   | h2 | h3 
 ----+----+----+-------+----+----
   2 |  0 |  0 |   752 |  5 |  7
@@ -380,6 +402,7 @@
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) IN (17834, 28655, 32412) AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;
                                                                         QUERY PLAN                                                                        
 ----------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -398,6 +421,7 @@
                Storage Table Rows Scanned: 86
 (14 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) IN (17834, 28655, 32412) AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;
                                                                         QUERY PLAN                                                                        
 ----------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -416,6 +440,7 @@
                Storage Table Rows Scanned: 86
 (14 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) IN (17834, 28655, 32412) AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;
                                                                         QUERY PLAN                                                                        
 ----------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -439,6 +464,7 @@
                Storage Table Rows Scanned: 86
 (19 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) IN (17834, 28655, 32412) AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;
  r1 | r2 |   n   | yb_hash_code | h1 | h2 | h3 
 ----+----+-------+--------------+----+----+----
   0 |  7 | 70615 |        28655 |  5 |  1 |  6
@@ -448,6 +474,7 @@
   3 |  8 | 83615 |        28655 |  5 |  1 |  6
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) IN (17834, 28655, 32412) AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;
  r1 | r2 |   n   | yb_hash_code | h1 | h2 | h3 
 ----+----+-------+--------------+----+----+----
   0 |  7 | 70615 |        28655 |  5 |  1 |  6
@@ -457,6 +484,7 @@
   3 |  8 | 83615 |        28655 |  5 |  1 |  6
 (5 rows)
 
+/*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) IN (17834, 28655, 32412) AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;
  r1 | r2 |   n   | yb_hash_code | h1 | h2 | h3 
 ----+----+-------+--------------+----+----+----
   0 |  7 | 70615 |        28655 |  5 |  1 |  6
@@ -473,6 +501,7 @@
 \i :iter_Q4
 \set _echo_Q :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2;
                                                    QUERY PLAN                                                   
 ----------------------------------------------------------------------------------------------------------------
  Sort (actual rows=44 loops=1)
@@ -487,6 +516,7 @@
          Storage Table Rows Scanned: 44
 (10 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2;
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Index Scan using h3r2n_pkey on public.h3r2n (actual rows=44 loops=1)
@@ -501,6 +531,7 @@
    Storage Table Rows Scanned: 44
 (10 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2;
                                                       QUERY PLAN                                                      
 ----------------------------------------------------------------------------------------------------------------------
  Gather Merge (actual rows=44 loops=1)
@@ -525,6 +556,7 @@
                Worker 1:  actual rows=0 loops=1
 (20 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2;
                                                       QUERY PLAN                                                      
 ----------------------------------------------------------------------------------------------------------------------
  Gather Merge (actual rows=44 loops=1)
@@ -554,6 +586,7 @@
 \i :iter_Q4
 \set _echo_Q :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC;
                                                    QUERY PLAN                                                   
 ----------------------------------------------------------------------------------------------------------------
  Sort (actual rows=44 loops=1)
@@ -568,6 +601,7 @@
          Storage Table Rows Scanned: 44
 (10 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC;
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Index Scan Backward using h3r2n_pkey on public.h3r2n (actual rows=44 loops=1)
@@ -582,6 +616,7 @@
    Storage Table Rows Scanned: 44
 (10 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC;
                                                       QUERY PLAN                                                      
 ----------------------------------------------------------------------------------------------------------------------
  Gather Merge (actual rows=44 loops=1)
@@ -606,6 +641,7 @@
                Worker 1:  actual rows=0 loops=1
 (20 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC;
                                                       QUERY PLAN                                                      
 ----------------------------------------------------------------------------------------------------------------------
  Gather Merge (actual rows=44 loops=1)

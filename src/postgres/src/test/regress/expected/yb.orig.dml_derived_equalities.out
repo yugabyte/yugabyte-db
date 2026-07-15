@@ -383,6 +383,7 @@ SET enable_bitmapscan = true;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+BitmapScan(orders_no_bucket)*/ SELECT * FROM orders_no_bucket WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Sort
@@ -392,6 +393,7 @@ SET enable_bitmapscan = true;
                Storage Index Filter: ((user_id = 50) OR (user_id = 60) OR (user_id = 70))
 (5 rows)
 
+EXPLAIN (COSTS OFF) /*+BitmapScan(orders_gen)*/ SELECT * FROM orders_gen WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
                                                                                                  QUERY PLAN                                                                                                  
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -407,6 +409,7 @@ SET enable_bitmapscan = true;
                      Index Cond: ((bucket_id = (yb_hash_code(70) % 5)) AND (user_id = 70))
 (11 rows)
 
+EXPLAIN (COSTS OFF) /*+BitmapScan(orders_expr)*/ SELECT * FROM orders_expr WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
                                                                                                                             QUERY PLAN                                                                                                                             
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -422,6 +425,7 @@ SET enable_bitmapscan = true;
                      Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(70) % 3)) AND (user_id = 70))
 (11 rows)
 
+/*+BitmapScan(orders_no_bucket)*/ SELECT * FROM orders_no_bucket WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
  order_id | user_id 
 ----------+---------
         1 |      50
@@ -430,6 +434,7 @@ SET enable_bitmapscan = true;
         4 |      70
 (4 rows)
 
+/*+BitmapScan(orders_gen)*/ SELECT * FROM orders_gen WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
  order_id | user_id | bucket_id 
 ----------+---------+-----------
         1 |      50 |         0
@@ -438,6 +443,7 @@ SET enable_bitmapscan = true;
         4 |      70 |         0
 (4 rows)
 
+/*+BitmapScan(orders_expr)*/ SELECT * FROM orders_expr WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
  order_id | user_id 
 ----------+---------
         1 |      50
@@ -451,6 +457,7 @@ SET enable_bitmapscan = true;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+BitmapScan(orders_no_bucket)*/ SELECT * FROM orders_no_bucket WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id;
                                               QUERY PLAN                                              
 ------------------------------------------------------------------------------------------------------
  Sort
@@ -464,6 +471,7 @@ SET enable_bitmapscan = true;
                      Index Cond: (user_id = 60)
 (9 rows)
 
+EXPLAIN (COSTS OFF) /*+BitmapScan(orders_gen)*/ SELECT * FROM orders_gen WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id;
                                                                                       QUERY PLAN                                                                                      
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -477,6 +485,7 @@ SET enable_bitmapscan = true;
                      Index Cond: ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60) AND (order_id = 3))
 (9 rows)
 
+EXPLAIN (COSTS OFF) /*+BitmapScan(orders_expr)*/ SELECT * FROM orders_expr WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id;
                                                                                      QUERY PLAN                                                                                     
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -491,18 +500,21 @@ SET enable_bitmapscan = true;
                      Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(60) % 3)) AND (user_id = 60))
 (10 rows)
 
+/*+BitmapScan(orders_no_bucket)*/ SELECT * FROM orders_no_bucket WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id;
  order_id | user_id 
 ----------+---------
         1 |      50
         3 |      60
 (2 rows)
 
+/*+BitmapScan(orders_gen)*/ SELECT * FROM orders_gen WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id;
  order_id | user_id | bucket_id 
 ----------+---------+-----------
         1 |      50 |         0
         3 |      60 |         1
 (2 rows)
 
+/*+BitmapScan(orders_expr)*/ SELECT * FROM orders_expr WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id;
  order_id | user_id 
 ----------+---------
         1 |      50
@@ -521,6 +533,7 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ NestLoop(u o) BitmapScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 OR o.user_id = 60 ORDER BY u.id, o.order_id;
                                                                          QUERY PLAN                                                                         
 ------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -538,6 +551,7 @@ $$ AS query \gset
                                  Index Cond: ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60))
 (13 rows)
 
+/*+ NestLoop(u o) BitmapScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 OR o.user_id = 60 ORDER BY u.id, o.order_id;
  id |      email      | order_id | user_id | bucket_id 
 ----+-----------------+----------+---------+-----------
  50 | user50@test.com |        1 |      50 |         0
@@ -552,6 +566,7 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ BitmapScan(orders_gen) */ SELECT * FROM orders_gen WHERE user_id = 50 OR user_id = NULL ORDER BY user_id, order_id;
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Sort
@@ -563,6 +578,7 @@ $$ AS query \gset
                Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
 (7 rows)
 
+/*+ BitmapScan(orders_gen) */ SELECT * FROM orders_gen WHERE user_id = 50 OR user_id = NULL ORDER BY user_id, order_id;
  order_id | user_id | bucket_id 
 ----------+---------+-----------
         1 |      50 |         0
@@ -589,6 +605,7 @@ INSERT INTO transitive(id, x, y, z) VALUES (1, 5, 5, 5), (2, 6, 6, 2);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ BitmapScan(transitive transitive_pkey) */ SELECT * FROM transitive WHERE y = x AND ((x = 5 AND z = y) OR (x = 6 AND z = 6)) ORDER BY id;
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Sort
@@ -603,6 +620,7 @@ INSERT INTO transitive(id, x, y, z) VALUES (1, 5, 5, 5), (2, 6, 6, 2);
                      Index Cond: ((bucket_id = (yb_hash_code(6) % 5)) AND (x = 6))
 (10 rows)
 
+/*+ BitmapScan(transitive transitive_pkey) */ SELECT * FROM transitive WHERE y = x AND ((x = 5 AND z = y) OR (x = 6 AND z = 6)) ORDER BY id;
  id | x | y | z | bucket_id 
 ----+---+---+---+-----------
   1 | 5 | 5 | 5 |         0
@@ -641,12 +659,15 @@ CREATE INDEX NONCONCURRENTLY ON guard_type_expr ((yb_hash_code(c) % 5) ASC, c AS
 \i :iter_R2
 \set _echo_R :ECHO
 \set ECHO none
+INSERT INTO guard_type_gen(c) VALUES (5), (6), (7);
+INSERT INTO guard_type_expr(c) VALUES (5), (6), (7);
 \set Pnext :iter_R2
 \set Rnext :abs_srcdir '/yb_commands/bitmap_hint_iter_R.sql'
 \set query ':P :hint SELECT c FROM :R WHERE c = 6 OR c = 5::bigint ORDER BY c;'
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+BitmapScan(guard_type_gen)*/ SELECT c FROM guard_type_gen WHERE c = 6 OR c = 5::bigint ORDER BY c;
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Sort
@@ -660,6 +681,7 @@ CREATE INDEX NONCONCURRENTLY ON guard_type_expr ((yb_hash_code(c) % 5) ASC, c AS
                      Index Cond: (c = '5'::bigint)
 (9 rows)
 
+EXPLAIN (COSTS OFF) /*+BitmapScan(guard_type_expr)*/ SELECT c FROM guard_type_expr WHERE c = 6 OR c = 5::bigint ORDER BY c;
                                                  QUERY PLAN                                                 
 ------------------------------------------------------------------------------------------------------------
  Sort
@@ -673,12 +695,14 @@ CREATE INDEX NONCONCURRENTLY ON guard_type_expr ((yb_hash_code(c) % 5) ASC, c AS
                      Index Cond: (c = '5'::bigint)
 (9 rows)
 
+/*+BitmapScan(guard_type_gen)*/ SELECT c FROM guard_type_gen WHERE c = 6 OR c = 5::bigint ORDER BY c;
  c 
 ---
  5
  6
 (2 rows)
 
+/*+BitmapScan(guard_type_expr)*/ SELECT c FROM guard_type_expr WHERE c = 6 OR c = 5::bigint ORDER BY c;
  c 
 ---
  5
@@ -707,6 +731,8 @@ $$ AS query \gset
 \i :iter_R2
 \set _echo_R :ECHO
 \set ECHO none
+INSERT INTO guard_coerce_gen(c) VALUES ('a'), ('b'), ('c');
+INSERT INTO guard_coerce_expr(c) VALUES ('a'), ('b'), ('c');
 \set Pnext :iter_R2
 \set Rnext :abs_srcdir '/yb_commands/bitmap_hint_iter_R.sql'
 SELECT $$
@@ -715,6 +741,7 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+BitmapScan(guard_coerce_gen)*/ SELECT c FROM guard_coerce_gen WHERE c = 'a'::text OR c = 'b' ORDER BY c;
                                                                                    QUERY PLAN                                                                                   
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -728,6 +755,7 @@ $$ AS query \gset
                      Index Cond: ((bucket_id = (yb_hash_code('b'::text) % 5)) AND ((c)::text = 'b'::text))
 (9 rows)
 
+EXPLAIN (COSTS OFF) /*+BitmapScan(guard_coerce_expr)*/ SELECT c FROM guard_coerce_expr WHERE c = 'a'::text OR c = 'b' ORDER BY c;
                                                                                                QUERY PLAN                                                                                               
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -741,12 +769,14 @@ $$ AS query \gset
                      Index Cond: (((yb_hash_code(c) % 5) = (yb_hash_code('b'::text) % 5)) AND ((c)::text = 'b'::text))
 (9 rows)
 
+/*+BitmapScan(guard_coerce_gen)*/ SELECT c FROM guard_coerce_gen WHERE c = 'a'::text OR c = 'b' ORDER BY c;
  c 
 ---
  a
  b
 (2 rows)
 
+/*+BitmapScan(guard_coerce_expr)*/ SELECT c FROM guard_coerce_expr WHERE c = 'a'::text OR c = 'b' ORDER BY c;
  c 
 ---
  a
@@ -791,6 +821,8 @@ $$ AS query \gset
 \i :iter_R2
 \set _echo_R :ECHO
 \set ECHO none
+INSERT INTO guard_op_gen(id, x, y) VALUES (1, 1, '((0,0),(4,1))'), (2, 2, '((0,0),(1,4))');
+INSERT INTO guard_op_expr(id, x, y) VALUES (1, 1, '((0,0),(4,1))'), (2, 2, '((0,0),(1,4))');
 \set Pnext :iter_R2
 \set Rnext :abs_srcdir '/yb_commands/bitmap_hint_iter_R.sql'
 SELECT $$
@@ -799,6 +831,7 @@ $$ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+BitmapScan(guard_op_gen)*/ SELECT id, x FROM guard_op_gen WHERE (x = 1 AND y = '((0,0),(2,2))'::box) OR (x = 2 AND y = '((1,1),(3,3))'::box) ORDER BY id;
                                                  QUERY PLAN                                                 
 ------------------------------------------------------------------------------------------------------------
  Sort
@@ -812,6 +845,7 @@ $$ AS query \gset
                      Index Cond: (x = 2)
 (9 rows)
 
+EXPLAIN (COSTS OFF) /*+BitmapScan(guard_op_expr)*/ SELECT id, x FROM guard_op_expr WHERE (x = 1 AND y = '((0,0),(2,2))'::box) OR (x = 2 AND y = '((1,1),(3,3))'::box) ORDER BY id;
                                                  QUERY PLAN                                                 
 ------------------------------------------------------------------------------------------------------------
  Sort
@@ -825,12 +859,14 @@ $$ AS query \gset
                      Index Cond: (x = 2)
 (9 rows)
 
+/*+BitmapScan(guard_op_gen)*/ SELECT id, x FROM guard_op_gen WHERE (x = 1 AND y = '((0,0),(2,2))'::box) OR (x = 2 AND y = '((1,1),(3,3))'::box) ORDER BY id;
  id | x 
 ----+---
   1 | 1
   2 | 2
 (2 rows)
 
+/*+BitmapScan(guard_op_expr)*/ SELECT id, x FROM guard_op_expr WHERE (x = 1 AND y = '((0,0),(2,2))'::box) OR (x = 2 AND y = '((1,1),(3,3))'::box) ORDER BY id;
  id | x 
 ----+---
   1 | 1
@@ -914,6 +950,7 @@ ANALYZE t_const_expr;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(t_const_expr t_const_expr_idx) */ SELECT * FROM t_const_expr ORDER BY a;
            QUERY PLAN           
 --------------------------------
  Sort
@@ -921,6 +958,7 @@ ANALYZE t_const_expr;
    ->  Seq Scan on t_const_expr
 (3 rows)
 
+/*+ IndexScan(t_const_expr t_const_expr_idx) */ SELECT * FROM t_const_expr ORDER BY a;
  a  
 ----
  10
@@ -939,6 +977,7 @@ ANALYZE t_mixed_expr;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(t_mixed_expr t_mixed_expr_idx) */ SELECT * FROM t_mixed_expr WHERE b = 4 ORDER BY a;
                        QUERY PLAN                        
 ---------------------------------------------------------
  Sort
@@ -948,6 +987,7 @@ ANALYZE t_mixed_expr;
          Storage Filter: (b = 4)
 (5 rows)
 
+/*+ IndexScan(t_mixed_expr t_mixed_expr_idx) */ SELECT * FROM t_mixed_expr WHERE b = 4 ORDER BY a;
  a | b 
 ---+---
  2 | 4
@@ -971,6 +1011,7 @@ ANALYZE demo_b;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(demo_a demo_a_nullif_idx) */ SELECT count(*) FROM demo_a WHERE x = 0;
            QUERY PLAN            
 ---------------------------------
  Finalize Aggregate
@@ -979,6 +1020,7 @@ ANALYZE demo_b;
          Partial Aggregate: true
 (4 rows)
 
+/*+ IndexScan(demo_a demo_a_nullif_idx) */ SELECT count(*) FROM demo_a WHERE x = 0;
  count 
 -------
     10
@@ -989,6 +1031,7 @@ ANALYZE demo_b;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(demo_a demo_a_nullif_idx) */ SELECT count(*) FROM demo_a WHERE x = 3;
                      QUERY PLAN                     
 ----------------------------------------------------
  Finalize Aggregate
@@ -998,6 +1041,7 @@ ANALYZE demo_b;
          Partial Aggregate: true
 (5 rows)
 
+/*+ IndexScan(demo_a demo_a_nullif_idx) */ SELECT count(*) FROM demo_a WHERE x = 3;
  count 
 -------
     10
@@ -1009,6 +1053,7 @@ ANALYZE demo_b;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ NestLoop(a b) IndexScan(b demo_b_nullif_idx) */ SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x;
                QUERY PLAN               
 ----------------------------------------
  Aggregate
@@ -1019,6 +1064,7 @@ ANALYZE demo_b;
                ->  Seq Scan on demo_b b
 (6 rows)
 
+/*+ NestLoop(a b) IndexScan(b demo_b_nullif_idx) */ SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x;
  count 
 -------
    700
@@ -1029,6 +1075,7 @@ ANALYZE demo_b;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ NestLoop(a b) IndexScan(b demo_b_nullif_idx) */ SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x WHERE a.x = 5;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Aggregate
@@ -1041,6 +1088,7 @@ ANALYZE demo_b;
                      Storage Filter: (x = 5)
 (8 rows)
 
+/*+ NestLoop(a b) IndexScan(b demo_b_nullif_idx) */ SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x WHERE a.x = 5;
  count 
 -------
    100
@@ -1092,6 +1140,7 @@ ANALYZE demo_or;
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ BitmapScan(demo_or) */ SELECT count(*) FROM demo_or WHERE id = 1 OR arr = '{}';
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Aggregate
@@ -1099,6 +1148,7 @@ ANALYZE demo_or;
          Filter: ((id = 1) OR (arr = '{}'::character varying[]))
 (3 rows)
 
+/*+ BitmapScan(demo_or) */ SELECT count(*) FROM demo_or WHERE id = 1 OR arr = '{}';
  count 
 -------
     11

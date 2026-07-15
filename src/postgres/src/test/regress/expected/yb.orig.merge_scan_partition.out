@@ -23,6 +23,7 @@
 \i :iter_Q2
 \set _echo_Q :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) LIMIT 5;
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -45,6 +46,7 @@
                Index Cond: (parent_5.r1 = ANY ('{0,1,2,3}'::integer[]))
 (18 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) LIMIT 5;
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -72,6 +74,7 @@
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5;
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -107,6 +110,7 @@
                      Storage Table Rows Scanned: 546
 (31 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5;
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -160,6 +164,7 @@
                      Storage Table Rows Scanned: 20
 (49 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5;
    n   | r3 | p1 | r1 | r2 | p2 
 -------+----+----+----+----+----
  30002 |  0 |  0 |  2 |  0 |  3
@@ -169,6 +174,7 @@
  24002 |  0 |  4 |  2 |  0 |  2
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5;
    n   | r3 | p1 | r1 | r2 | p2 
 -------+----+----+----+----+----
  30002 |  0 |  0 |  2 |  0 |  3
@@ -183,6 +189,7 @@
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, p1 DESC, p2 DESC, n LIMIT 5;
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -218,6 +225,7 @@
                      Storage Table Rows Scanned: 546
 (31 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, p1 DESC, p2 DESC, n LIMIT 5;
                                                  QUERY PLAN                                                  
 -------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -271,6 +279,7 @@
                      Storage Table Rows Scanned: 20
 (49 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, p1 DESC, p2 DESC, n LIMIT 5;
    n   | r3 | p1 | r1 | r2 | p2 
 -------+----+----+----+----+----
  48991 |  9 |  8 |  1 |  9 |  4
@@ -280,6 +289,7 @@
  27992 |  9 |  7 |  2 |  9 |  2
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, p1 DESC, p2 DESC, n LIMIT 5;
    n   | r3 | p1 | r1 | r2 | p2 
 -------+----+----+----+----+----
  48991 |  9 |  8 |  1 |  9 |  4
@@ -299,6 +309,7 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
 \i :iter_Q2
 \set _echo_Q :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) LIMIT 5;
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -318,6 +329,7 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
                Index Cond: (parent_4.p2 = ANY ('{0,1,2,3}'::double precision[]))
 (15 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) LIMIT 5;
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -342,6 +354,7 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5;
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -371,6 +384,7 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
                      Storage Table Rows Scanned: 393
 (25 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5;
                                                     QUERY PLAN                                                    
 ------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -423,6 +437,7 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
                      Storage Index Rows Scanned: 20
 (48 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5;
    n   | r3 | p1 | r1 | r2 | p2 
 -------+----+----+----+----+----
  30002 |  0 |  0 |  2 |  0 |  3
@@ -432,6 +447,7 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
    103 |  1 |  0 |  3 |  0 |  0
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5;
    n   | r3 | p1 | r1 | r2 | p2 
 -------+----+----+----+----+----
  30002 |  0 |  0 |  2 |  0 |  3
@@ -446,6 +462,7 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2 DESC, p1 DESC, r3 DESC, r1 DESC, n LIMIT 5;
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -475,6 +492,7 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
                      Storage Table Rows Scanned: 393
 (25 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2 DESC, p1 DESC, r3 DESC, r1 DESC, n LIMIT 5;
                                                         QUERY PLAN                                                         
 ---------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -527,6 +545,7 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
                      Storage Index Rows Scanned: 20
 (48 rows)
 
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2 DESC, p1 DESC, r3 DESC, r1 DESC, n LIMIT 5;
    n   | r3 | p1 | r1 | r2 | p2 
 -------+----+----+----+----+----
   9996 |  9 |  9 |  6 |  9 |  0
@@ -536,6 +555,7 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
  39796 |  7 |  9 |  6 |  9 |  3
 (5 rows)
 
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2 DESC, p1 DESC, r3 DESC, r1 DESC, n LIMIT 5;
    n   | r3 | p1 | r1 | r2 | p2 
 -------+----+----+----+----+----
   9996 |  9 |  9 |  6 |  9 |  0

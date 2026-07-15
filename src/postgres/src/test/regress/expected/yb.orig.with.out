@@ -22,6 +22,9 @@ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) with w(i) as (
+    insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
+) insert into b values (2) on conflict on constraint b_i_key do update set i = (select 20 from w);
                  QUERY PLAN                  
 ---------------------------------------------
  Insert on b
@@ -37,6 +40,9 @@ AS query \gset
    ->  Result *RESULT*_1
 (11 rows)
 
+with w(i) as (
+    insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
+) insert into b values (2) on conflict on constraint b_i_key do update set i = (select 20 from w);
 /* Test B */
 drop table if exists a;
 create table a (i int unique);
@@ -48,6 +54,9 @@ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) with w(i) as (
+    insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
+) insert into a values (2) on conflict on constraint a_i_key do update set i = (select 20 from w);
                  QUERY PLAN                  
 ---------------------------------------------
  Insert on a
@@ -63,6 +72,9 @@ AS query \gset
    ->  Result *RESULT*_1
 (11 rows)
 
+with w(i) as (
+    insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
+) insert into a values (2) on conflict on constraint a_i_key do update set i = (select 20 from w);
 /* Test C */
 drop table if exists a;
 create table a (i int unique);
@@ -76,6 +88,11 @@ AS query \gset
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) with w(i) as (
+    insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
+), x(i) as (
+    insert into a values (2) on conflict on constraint a_i_key do update set i = 20 returning i
+) insert into a values (3) on conflict on constraint a_i_key do update set i = (select 30 from w);
                  QUERY PLAN                  
 ---------------------------------------------
  Insert on a
@@ -96,3 +113,8 @@ AS query \gset
    ->  Result *RESULT*_2
 (16 rows)
 
+with w(i) as (
+    insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
+), x(i) as (
+    insert into a values (2) on conflict on constraint a_i_key do update set i = 20 returning i
+) insert into a values (3) on conflict on constraint a_i_key do update set i = (select 30 from w);
