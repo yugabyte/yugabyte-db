@@ -18522,15 +18522,12 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			firstitem = true;
 			for (j = 0; j < tbinfo->numatts; j++)
 			{
-				if (tbinfo->attisdropped[j])
+				/*
+				 * YB: for backups we do not recreate dropped columns; DocDB
+				 * snapshot import tolerates gaps in the column order.
+				 */
+				if (tbinfo->attisdropped[j] && !dopt->include_yb_metadata)
 				{
-					/*
-					 * YB_TODO_PG19MERGE: upstream PG commit
-					 * 2fa989e6a3407b9da625e1524c8694bc028e25ba batched these
-					 * UPDATE/DROP COLUMN statements. Port YB's dropped and inherited
-					 * columns handling and include_yb_metadata guard (YB
-					 * commit6deb862d0affa6124c446098d94ec944405ffaae).
-					 */
 					if (firstitem)
 					{
 						appendPQExpBufferStr(q, "\n-- For binary upgrade, recreate dropped columns.\n"
@@ -18573,8 +18570,14 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			firstitem = true;
 			for (j = 0; j < tbinfo->numatts; j++)
 			{
+				/*
+				 * YB: partition columns already have attislocal = false after
+				 * ATTACH PARTITION, so skip the fixup for them; it is needed
+				 * only for classic inheritance children.
+				 */
 				if (!tbinfo->attisdropped[j] &&
-					!tbinfo->attislocal[j])
+					!tbinfo->attislocal[j] &&
+					(IsYugabyteEnabled && !tbinfo->ispartition))
 				{
 					if (firstitem)
 					{
