@@ -7,10 +7,10 @@ import {
   QueryLogsTelemetrySpec,
   TelemetryConfig,
   UniverseLogsExporterConfig,
-  UniverseQueryLogsExporterConfig,
-  YSQLAuditConfig,
-  YSQLAuditConfigLogLevel
+  UniverseQueryLogsExporterConfig
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+
+import { getPreservedTelemetrySections } from '../../shared/telemetryConfigPreserveUtils';
 
 export type LogExportType = 'query' | 'audit';
 
@@ -19,9 +19,6 @@ export type LogExportOperation = 'create' | 'edit';
 export interface LogExportFormValues {
   telemetryConfigUuid: string;
 }
-
-const DEFAULT_AUDIT_LOG_LEVEL = YSQLAuditConfigLogLevel.LOG;
-const DEFAULT_LOG_PARAMETER_MAX_SIZE = 0;
 
 export const getLogExportTranslationKeyPrefix = (logExportType: LogExportType): string =>
   logExportType === 'query'
@@ -80,21 +77,6 @@ export const getDefaultFormValues = (
   };
 };
 
-const normalizeYsqlAuditConfig = (ysqlAuditConfig: YSQLAuditConfig): YSQLAuditConfig => ({
-  ...ysqlAuditConfig,
-  enabled: ysqlAuditConfig.enabled ?? true,
-  log_level: ysqlAuditConfig.log_level ?? DEFAULT_AUDIT_LOG_LEVEL,
-  log_parameter_max_size:
-    ysqlAuditConfig.log_parameter_max_size ?? DEFAULT_LOG_PARAMETER_MAX_SIZE
-});
-
-const preserveAuditLogs = (auditLogs: AuditLogsTelemetrySpec): AuditLogsTelemetrySpec => ({
-  ...auditLogs,
-  ...(auditLogs.ysql_audit_config && {
-    ysql_audit_config: normalizeYsqlAuditConfig(auditLogs.ysql_audit_config)
-  })
-});
-
 const buildQueryLogsExporter = (
   telemetryConfigUuid: string,
   existingExporter?: UniverseQueryLogsExporterConfig
@@ -111,20 +93,15 @@ const buildAuditLogsExporter = (
   exporter_uuid: telemetryConfigUuid
 });
 
-/**
- * The export-telemetry-configs API fully replaces the telemetry config, so we preserve the
- * existing log capture settings and other telemetry sections and only update exporters for the
- * selected log export type.
- */
 export const buildTelemetryConfig = (
   logExportType: LogExportType,
   values: LogExportFormValues,
   currentTelemetryConfig?: TelemetryConfig
 ): TelemetryConfig => {
-  const telemetryConfig: TelemetryConfig = {};
+  const preserved = getPreservedTelemetrySections(currentTelemetryConfig);
 
   if (logExportType === 'query') {
-    const existingQueryLogs = currentTelemetryConfig?.query_logs;
+    const existingQueryLogs = preserved.query_logs;
     const queryLogs: QueryLogsTelemetrySpec = {
       exporters: [
         buildQueryLogsExporter(values.telemetryConfigUuid, existingQueryLogs?.exporters?.[0])
@@ -135,38 +112,70 @@ export const buildTelemetryConfig = (
       queryLogs.ysql_query_log_config = existingQueryLogs.ysql_query_log_config;
     }
 
-    telemetryConfig.query_logs = queryLogs;
+    return {
+      ...preserved,
+      query_logs: queryLogs
+    };
+  }
 
-    if (currentTelemetryConfig?.audit_logs) {
-      telemetryConfig.audit_logs = preserveAuditLogs(currentTelemetryConfig.audit_logs);
-    }
-  } else {
-    const existingAuditLogs = currentTelemetryConfig?.audit_logs;
-    const auditLogs: AuditLogsTelemetrySpec = {
-      exporters: [
-        buildAuditLogsExporter(values.telemetryConfigUuid, existingAuditLogs?.exporters?.[0])
-      ]
+  const existingAuditLogs = preserved.audit_logs;
+  const auditLogs: AuditLogsTelemetrySpec = {
+    exporters: [
+      buildAuditLogsExporter(values.telemetryConfigUuid, existingAuditLogs?.exporters?.[0])
+    ]
+  };
+
+  if (existingAuditLogs?.ysql_audit_config) {
+    auditLogs.ysql_audit_config = existingAuditLogs.ysql_audit_config;
+  }
+  if (existingAuditLogs?.ycql_audit_config) {
+    auditLogs.ycql_audit_config = existingAuditLogs.ycql_audit_config;
+  }
+
+  return {
+    ...preserved,
+    audit_logs: auditLogs
+  };
+};
+
+export const buildDisableTelemetryConfig = (
+  logExportType: LogExportType,
+  currentTelemetryConfig?: TelemetryConfig
+): TelemetryConfig => {
+  const preserved = getPreservedTelemetrySections(currentTelemetryConfig);
+
+  if (logExportType === 'query') {
+    const existingQueryLogs = preserved.query_logs;
+    const queryLogs: QueryLogsTelemetrySpec = {
+      exporters: []
     };
 
-    if (existingAuditLogs?.ysql_audit_config) {
-      auditLogs.ysql_audit_config = normalizeYsqlAuditConfig(existingAuditLogs.ysql_audit_config);
-    }
-    if (existingAuditLogs?.ycql_audit_config) {
-      auditLogs.ycql_audit_config = existingAuditLogs.ycql_audit_config;
+    if (existingQueryLogs?.ysql_query_log_config) {
+      queryLogs.ysql_query_log_config = existingQueryLogs.ysql_query_log_config;
     }
 
-    telemetryConfig.audit_logs = auditLogs;
-
-    if (currentTelemetryConfig?.query_logs) {
-      telemetryConfig.query_logs = currentTelemetryConfig.query_logs;
-    }
+    return {
+      ...preserved,
+      query_logs: queryLogs
+    };
   }
 
-  if (currentTelemetryConfig?.metrics) {
-    telemetryConfig.metrics = currentTelemetryConfig.metrics;
+  const existingAuditLogs = preserved.audit_logs;
+  const auditLogs: AuditLogsTelemetrySpec = {
+    exporters: []
+  };
+
+  if (existingAuditLogs?.ysql_audit_config) {
+    auditLogs.ysql_audit_config = existingAuditLogs.ysql_audit_config;
+  }
+  if (existingAuditLogs?.ycql_audit_config) {
+    auditLogs.ycql_audit_config = existingAuditLogs.ycql_audit_config;
   }
 
-  return telemetryConfig;
+  return {
+    ...preserved,
+    audit_logs: auditLogs
+  };
 };
 
 export const getValidationSchema = (t: TFunction) =>

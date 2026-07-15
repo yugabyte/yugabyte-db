@@ -9,9 +9,9 @@ import { toast } from 'react-toastify';
 
 import { YBModal } from '@app/redesign/components';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
-import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
 import { getIsLogsExportSupported } from '@app/redesign/features/export-telemetry/utils';
-import { api, telemetryProviderQueryKey } from '@app/redesign/helpers/api';
+import { api, telemetryProviderQueryKey, universeQueryKey } from '@app/redesign/helpers/api';
+import { handleServerError } from '@app/utils/errorHandlingUtils';
 import {
   useConfigureExportTelemetryConfig,
   useGetExportTelemetryConfig,
@@ -38,6 +38,7 @@ interface LogExportSettingsModalProps {
   operation: LogExportOperation;
   universeUuid: string;
   universeName: string;
+  replicationFactor: number;
   onClose: () => void;
 }
 
@@ -92,6 +93,7 @@ export const LogExportSettingsModal: FC<LogExportSettingsModalProps> = ({
   operation,
   universeUuid,
   universeName,
+  replicationFactor,
   onClose
 }) => {
   const classes = useStyles();
@@ -145,8 +147,11 @@ export const LogExportSettingsModal: FC<LogExportSettingsModalProps> = ({
       {
         uniUUID: universeUuid,
         data: {
-          upgrade_options: { rolling_upgrade: true },
-          telemetry_config: buildTelemetryConfig(logExportType, values, currentTelemetryConfig)
+          telemetry_config: buildTelemetryConfig(
+            logExportType,
+            values,
+            currentTelemetryConfig
+          )
         }
       },
       {
@@ -157,12 +162,18 @@ export const LogExportSettingsModal: FC<LogExportSettingsModalProps> = ({
             </Typography>
           );
           queryClient.invalidateQueries(telemetryConfigQuery.queryKey);
+          queryClient.invalidateQueries(universeQueryKey.detailsV2(universeUuid));
           queryClient.invalidateQueries(getGetUniverseQueryKey(universeUuid));
           setIsConfirmationOpen(false);
           onClose();
         },
         onError: (error) => {
-          toast.error(createErrorMessage(error));
+          handleServerError(error, {
+            customErrorLabel:
+              operation === 'create'
+                ? t('toast.enableRequestFailedLabel')
+                : t('toast.updateRequestFailedLabel')
+          });
           setIsConfirmationOpen(false);
         }
       }
@@ -251,6 +262,7 @@ export const LogExportSettingsModal: FC<LogExportSettingsModalProps> = ({
           logExportType={logExportType}
           operation={operation}
           universeName={universeName}
+          replicationFactor={replicationFactor}
           isSubmitting={configureTelemetry.isLoading}
           onSubmit={onConfirm}
           modalProps={{

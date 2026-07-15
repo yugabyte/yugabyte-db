@@ -4590,6 +4590,10 @@
         "disableDatabaseQueryLogging": "Disable Database Query Logging",
         "enableAuditLogging": "Enable Audit Logging",
         "telemetryExportNote": "<bold>Note:</bold> To send logs to external tools, go to <telemetryLink>Telemetry Export</telemetryLink>.",
+        "toast": {
+          "disableQueryLogRequestFailedLabel": "Database query logging disable request failed",
+          "disableAuditLogRequestFailedLabel": "Database audit logging disable request failed"
+        },
         "navigateToTelemetryExportConfirmation": {
           "title": "You are about to leave this page",
           "message": "To send logs to external tools, navigate to <bold>Settings / Telemetry Export</bold>.",
@@ -4650,6 +4654,10 @@
             "title": "Confirm Configuration Change",
             "message": "Enabling database query logging requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
             "back": "Back"
+          },
+          "toast": {
+            "enableRequestFailedLabel": "Database query logging enable request failed",
+            "updateRequestFailedLabel": "Database query logging update request failed"
           }
         },
         "editAuditLogging": "Audit Logging Configuration",
@@ -4695,12 +4703,51 @@
             "title": "Confirm Configuration Change",
             "message": "Enabling database audit logging requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
             "back": "Back"
+          },
+          "toast": {
+            "enableRequestFailedLabel": "Database audit logging enable request failed",
+            "updateRequestFailedLabel": "Database audit logging update request failed"
           }
+        }
+      },
+      "telemetryConfigConfirmation": {
+        "enableTitle": "Enable {{featureName}}",
+        "disableTitle": "Disable {{featureName}}",
+        "editTitle": "Confirm Configuration Change",
+        "enableSubmit": "Enable {{featureName}}",
+        "disableSubmit": "Disable {{featureName}}",
+        "editSubmit": "Apply Changes",
+        "acceptDowntimeProceed": "Accept Downtime and Proceed",
+        "back": "Back",
+        "enableMessageRolling": "Enabling {{featureNameLower}} requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+        "enableMessageRestart": "Enabling {{featureNameLower}} requires a <bold>restart</bold> of universe <bold>{{universeName}}</bold>.",
+        "enableDowntimeNote": "<bold>Note!</bold> The universe won’t be available for reads and writes during the restart.",
+        "disableConfirmMessage": "Are you sure you want to disable {{featureNameLower}}?",
+        "disableNoteRolling": "<bold>Note!</bold> Disabling {{featureNameLower}} requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+        "disableNoteRestart": "<bold>Note!</bold> Disabling {{featureNameLower}} requires a <bold>restart</bold> of universe <bold>{{universeName}}</bold>. The universe won’t be available for reads and writes during the restart.",
+        "featureNames": {
+          "queryLog": "Database Query Logging",
+          "auditLog": "Database Audit Logging",
+          "metricsExport": "Metrics Export",
+          "queryLogExport": "Query Log Export",
+          "auditLogExport": "Audit Log Export"
+        },
+        "featureNamesLower": {
+          "queryLog": "database query logging",
+          "auditLog": "database audit logging",
+          "metricsExport": "metrics export",
+          "queryLogExport": "query log export",
+          "auditLogExport": "audit log export"
         }
       },
       "telemetryExport": {
         "title": "Telemetry Export",
         "subtitle": "Export metrics and logs to external observability tools.",
+        "toast": {
+          "disableMetricsExportRequestFailedLabel": "Metrics export disable request failed",
+          "disableQueryLogExportRequestFailedLabel": "Query log export disable request failed",
+          "disableAuditLogExportRequestFailedLabel": "Audit log export disable request failed"
+        },
         "navigateToLogsConfirmation": {
           "title": "You are about to leave this page",
           "message": {
@@ -4744,6 +4791,10 @@
           "applyChanges": "Apply Changes",
           "enableInProgress": "Enabling metrics export",
           "updateInProgress": "Updating metrics export configuration",
+          "toast": {
+            "enableRequestFailedLabel": "Metrics export enable request failed",
+            "updateRequestFailedLabel": "Metrics export update request failed"
+          },
           "collectionLevelOptions": {
             "all": "All",
             "normal": "Normal",
@@ -4815,6 +4866,10 @@
           "applyChanges": "Apply Changes",
           "enableInProgress": "Enabling query log export",
           "updateInProgress": "Updating query log export configuration",
+          "toast": {
+            "enableRequestFailedLabel": "Query log export enable request failed",
+            "updateRequestFailedLabel": "Query log export update request failed"
+          },
           "errors": {
             "exportConfigurationRequired": "Select an export configuration"
           },
@@ -4837,6 +4892,10 @@
           "applyChanges": "Apply Changes",
           "enableInProgress": "Enabling audit log export",
           "updateInProgress": "Updating audit log export configuration",
+          "toast": {
+            "enableRequestFailedLabel": "Audit log export enable request failed",
+            "updateRequestFailedLabel": "Audit log export update request failed"
+          },
           "errors": {
             "exportConfigurationRequired": "Select an export configuration"
           },

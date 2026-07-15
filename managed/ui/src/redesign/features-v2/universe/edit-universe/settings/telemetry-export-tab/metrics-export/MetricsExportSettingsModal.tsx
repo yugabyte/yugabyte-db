@@ -10,9 +10,9 @@ import { toast } from 'react-toastify';
 
 import { YBModal } from '@app/redesign/components';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
-import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
 import { getIsMetricsExportSupported } from '@app/redesign/features/export-telemetry/utils';
-import { api, telemetryProviderQueryKey } from '@app/redesign/helpers/api';
+import { api, telemetryProviderQueryKey, universeQueryKey } from '@app/redesign/helpers/api';
+import { handleServerError } from '@app/utils/errorHandlingUtils';
 import {
   useConfigureExportTelemetryConfig,
   useGetExportTelemetryConfig,
@@ -46,6 +46,7 @@ interface MetricsExportSettingsModalProps {
   operation: MetricsExportOperation;
   universeUuid: string;
   universeName: string;
+  replicationFactor: number;
   onClose: () => void;
 }
 
@@ -218,6 +219,7 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
   operation,
   universeUuid,
   universeName,
+  replicationFactor,
   onClose
 }) => {
   const classes = useStyles();
@@ -270,7 +272,6 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
       {
         uniUUID: universeUuid,
         data: {
-          upgrade_options: { rolling_upgrade: true },
           telemetry_config: buildTelemetryConfig(values, currentTelemetryConfig)
         }
       },
@@ -282,12 +283,18 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
             </Typography>
           );
           queryClient.invalidateQueries(telemetryConfigQuery.queryKey);
+          queryClient.invalidateQueries(universeQueryKey.detailsV2(universeUuid));
           queryClient.invalidateQueries(getGetUniverseQueryKey(universeUuid));
           setIsConfirmationOpen(false);
           onClose();
         },
         onError: (error) => {
-          toast.error(createErrorMessage(error));
+          handleServerError(error, {
+            customErrorLabel:
+              operation === 'create'
+                ? t('toast.enableRequestFailedLabel')
+                : t('toast.updateRequestFailedLabel')
+          });
           setIsConfirmationOpen(false);
         }
       }
@@ -617,6 +624,7 @@ export const MetricsExportSettingsModal: FC<MetricsExportSettingsModalProps> = (
         <MetricsExportConfirmationModal
           operation={operation}
           universeName={universeName}
+          replicationFactor={replicationFactor}
           isSubmitting={configureTelemetry.isLoading}
           onSubmit={onConfirm}
           modalProps={{

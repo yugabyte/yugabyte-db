@@ -1,13 +1,18 @@
 import { useMemo, useState } from 'react';
 import { makeStyles, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from 'react-query';
+import { useQuery, useQueryClient } from 'react-query';
 import { browserHistory } from 'react-router';
 
 import { StyledContent, StyledPanel } from '../../../create-universe/components/DefaultComponents';
-import { api, telemetryProviderQueryKey } from '@app/redesign/helpers/api';
+import { api, telemetryProviderQueryKey, taskQueryKey, universeQueryKey } from '@app/redesign/helpers/api';
+import { assertUnreachableCase, handleServerError } from '@app/utils/errorHandlingUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { useGetExportTelemetryConfig } from '@app/v2/api/universe/universe';
+import {
+  getGetUniverseQueryKey,
+  useConfigureExportTelemetryConfig,
+  useGetExportTelemetryConfig
+} from '@app/v2/api/universe/universe';
 import {
   getClusterByType,
   isKubernetesUniverse,
@@ -16,16 +21,19 @@ import {
 } from '../../EditUniverseUtils';
 import { EditUniverseTabs } from '../../EditUniverseContext';
 import { getEditUniverseSettingsRoute } from '../../editUniverseTabUtils';
+import { TelemetryConfigConfirmationModal } from '../shared/TelemetryConfigConfirmationModal';
 import { useExportTelemetryConfigTaskStatus } from '../useExportTelemetryConfigTaskStatus';
 import { NavigateToLogsConfirmationModal } from './NavigateToLogsConfirmationModal';
 import { TelemetryExportCard } from './TelemetryExportCard';
 import { MetricsExportSettingsModal } from './metrics-export/MetricsExportSettingsModal';
 import {
+  buildDisableTelemetryConfig as buildDisableMetricsExportTelemetryConfig,
   getMetricsExportDisplayInfo,
   isMetricsExportEnabled
 } from './metrics-export/metricsExportHelpers';
 import { LogExportSettingsModal } from './log-export/LogExportSettingsModal';
 import {
+  buildDisableTelemetryConfig as buildDisableLogExportTelemetryConfig,
   getLogExportCardTranslationKeyPrefix,
   getLogExportDisplayInfo,
   isLogExportEnabled,
@@ -39,6 +47,8 @@ import AuditLogIcon from '@app/redesign/assets/approved/audit-log.svg';
 const TRANSLATION_KEY_PREFIX = 'editUniverse.telemetryExport';
 const METRICS_EXPORT_CARD_TRANSLATION_KEY_PREFIX = `${TRANSLATION_KEY_PREFIX}.metricsExport`;
 const NO_METADATA_FALLBACK = '-';
+
+type DisableConfigType = 'metricsExport' | 'queryLogExport' | 'auditLogExport';
 
 const useStyles = makeStyles((theme) => ({
   telemetryExportTabContainer: {
@@ -72,11 +82,13 @@ const useStyles = makeStyles((theme) => ({
 export const TelemetryExportTab = () => {
   const classes = useStyles();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
+  const queryClient = useQueryClient();
   const { universeData } = useEditUniverseContext();
   const isUniverseReady = useIsUniverseReady();
   const [isMetricsExportModalOpen, setIsMetricsExportModalOpen] = useState(false);
   const [openLogExportType, setOpenLogExportType] = useState<LogExportType | null>(null);
   const [navigateToLogsLogType, setNavigateToLogsLogType] = useState<LogExportType | null>(null);
+  const [disableConfigType, setDisableConfigType] = useState<DisableConfigType | null>(null);
 
   const universeUuid = universeData?.info?.universe_uuid ?? '';
   const universeName = universeData?.spec?.name ?? '';
@@ -84,6 +96,7 @@ export const TelemetryExportTab = () => {
   const primaryCluster = universeData
     ? getClusterByType(universeData, ClusterSpecClusterType.PRIMARY)
     : undefined;
+  const replicationFactor = primaryCluster?.replication_factor ?? 1;
   const isQueryLogEnabled = !!primaryCluster?.query_log_config?.ysql_query_log_config?.enabled;
   const isAuditLogEnabled = !!primaryCluster?.audit_log_config?.ysql_audit_config?.enabled;
   const logsTabRoute = getEditUniverseSettingsRoute(universeUuid, EditUniverseTabs.LOGS);
@@ -94,6 +107,7 @@ export const TelemetryExportTab = () => {
   const telemetryProvidersQuery = useQuery(telemetryProviderQueryKey.list(), () =>
     api.fetchTelemetryProviderList()
   );
+  const configureTelemetry = useConfigureExportTelemetryConfig();
 
   const isMetricsExportConfigured = isMetricsExportEnabled(telemetryConfigQuery.data);
   const isQueryLogExportConfigured = isLogExportEnabled('query', telemetryConfigQuery.data);
@@ -120,6 +134,57 @@ export const TelemetryExportTab = () => {
     [telemetryConfigQuery.data, telemetryProvidersQuery.data]
   );
 
+  const onDisableConfirm = () => {
+    if (!disableConfigType) {
+      return;
+    }
+
+    const configTypeToDisable = disableConfigType;
+    let telemetryConfig;
+    switch (configTypeToDisable) {
+      case 'metricsExport':
+        telemetryConfig = buildDisableMetricsExportTelemetryConfig(telemetryConfigQuery.data);
+        break;
+      case 'queryLogExport':
+        telemetryConfig = buildDisableLogExportTelemetryConfig('query', telemetryConfigQuery.data);
+        break;
+      case 'auditLogExport':
+        telemetryConfig = buildDisableLogExportTelemetryConfig('audit', telemetryConfigQuery.data);
+        break;
+      default:
+        return assertUnreachableCase(configTypeToDisable);
+    }
+
+    configureTelemetry.mutate(
+      {
+        uniUUID: universeUuid,
+        data: {
+          telemetry_config: telemetryConfig
+        }
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries(telemetryConfigQuery.queryKey);
+          queryClient.invalidateQueries(universeQueryKey.detailsV2(universeUuid));
+          queryClient.invalidateQueries(getGetUniverseQueryKey(universeUuid));
+          queryClient.invalidateQueries(taskQueryKey.universe(universeUuid));
+          setDisableConfigType(null);
+        },
+        onError: (error) => {
+          handleServerError(error, {
+            customErrorLabel:
+              configTypeToDisable === 'metricsExport'
+                ? t('toast.disableMetricsExportRequestFailedLabel')
+                : configTypeToDisable === 'queryLogExport'
+                ? t('toast.disableQueryLogExportRequestFailedLabel')
+                : t('toast.disableAuditLogExportRequestFailedLabel')
+          });
+          setDisableConfigType(null);
+        }
+      }
+    );
+  };
+
   return (
     <div className={classes.telemetryExportTabContainer}>
       <StyledPanel>
@@ -142,6 +207,7 @@ export const TelemetryExportTab = () => {
               actionDisabled={actionDisabled}
               actionTestId="TelemetryExportTab-EditMetricsExportButton"
               onEditClick={() => setIsMetricsExportModalOpen(true)}
+              onDisableClick={() => setDisableConfigType('metricsExport')}
             />
           ) : (
             <TelemetryExportCard
@@ -172,6 +238,7 @@ export const TelemetryExportTab = () => {
               actionDisabled={actionDisabled}
               actionTestId="TelemetryExportTab-EditQueryLogExportButton"
               onEditClick={() => setOpenLogExportType('query')}
+              onDisableClick={() => setDisableConfigType('queryLogExport')}
             />
           ) : (
             <TelemetryExportCard
@@ -219,6 +286,7 @@ export const TelemetryExportTab = () => {
               actionDisabled={actionDisabled}
               actionTestId="TelemetryExportTab-EditAuditLogExportButton"
               onEditClick={() => setOpenLogExportType('audit')}
+              onDisableClick={() => setDisableConfigType('auditLogExport')}
             />
           ) : (
             <TelemetryExportCard
@@ -260,6 +328,7 @@ export const TelemetryExportTab = () => {
           operation={isMetricsExportConfigured ? 'edit' : 'create'}
           universeUuid={universeUuid}
           universeName={universeName}
+          replicationFactor={replicationFactor}
           onClose={() => setIsMetricsExportModalOpen(false)}
         />
       )}
@@ -273,6 +342,7 @@ export const TelemetryExportTab = () => {
           }
           universeUuid={universeUuid}
           universeName={universeName}
+          replicationFactor={replicationFactor}
           onClose={() => setOpenLogExportType(null)}
         />
       )}
@@ -287,6 +357,21 @@ export const TelemetryExportTab = () => {
           modalProps={{
             open: !!navigateToLogsLogType,
             onClose: () => setNavigateToLogsLogType(null)
+          }}
+        />
+      )}
+
+      {disableConfigType && (
+        <TelemetryConfigConfirmationModal
+          configType={disableConfigType}
+          operation="disable"
+          universeName={universeName}
+          replicationFactor={replicationFactor}
+          isSubmitting={configureTelemetry.isLoading}
+          onSubmit={onDisableConfirm}
+          modalProps={{
+            open: !!disableConfigType,
+            onClose: () => setDisableConfigType(null)
           }}
         />
       )}
