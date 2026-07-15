@@ -592,8 +592,8 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 													  ObjectIdGetDatum(relid),
 													  YbGetCatalogCacheVersion(),
 													  YBIsDBCatalogVersionMode(),
-													  newdataform->last_value /* last_val */ ,
-													  newdataform->is_called /* is_called */ ,
+													  last_value /* last_val */ ,
+													  is_called /* is_called */ ,
 													  &skipped));
 				if (skipped)
 				{
