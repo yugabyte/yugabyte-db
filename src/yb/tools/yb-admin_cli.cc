@@ -32,6 +32,8 @@
 
 #include "yb/tools/yb-admin_cli.h"
 
+#include <algorithm>
+#include <limits>
 #include <memory>
 #include <unordered_set>
 #include <utility>
@@ -396,6 +398,30 @@ Status PrintJsonResult(Result<rapidjson::Document>&& action_result) {
   return Status::OK();
 }
 
+// Levenshtein edit distance between two strings, used to suggest the closest command names when
+// the operation the user typed is not a prefix of any registered command. Uses two rolling rows
+// instead of the full matrix since only the previous row is needed.
+size_t EditDistance(const string& lhs, const string& rhs) {
+  vector<size_t> prev(rhs.size() + 1);
+  vector<size_t> curr(rhs.size() + 1);
+  for (size_t j = 0; j <= rhs.size(); ++j) {
+    prev[j] = j;
+  }
+  for (size_t i = 1; i <= lhs.size(); ++i) {
+    curr[0] = i;
+    for (size_t j = 1; j <= rhs.size(); ++j) {
+      const size_t substitution_cost = (lhs[i - 1] == rhs[j - 1]) ? 0 : 1;
+      curr[j] = std::min({
+          prev[j] + 1,                     // deletion
+          curr[j - 1] + 1,                 // insertion
+          prev[j - 1] + substitution_cost  // substitution
+      });
+    }
+    prev.swap(curr);
+  }
+  return prev[rhs.size()];
+}
+
 }  // namespace
 
 std::string ClusterAdminCli::GetArgumentExpressions(const std::string& usage_arguments) {
@@ -412,6 +438,60 @@ std::string ClusterAdminCli::GetArgumentExpressions(const std::string& usage_arg
     }
   }
   return expressions.empty() ? "" : "Definitions: " + expressions;
+}
+
+std::vector<std::string> ClusterAdminCli::GetSuggestedCommands(const std::string& op) const {
+  if (op.empty()) {
+    return {};
+  }
+
+  // Prefer commands that the typed operation is a prefix of, e.g. "list_snapshot_schedule" points
+  // the user at "list_snapshot_schedules". command_indexes_ is sorted, so the prefix matches form
+  // a contiguous range starting at lower_bound(op).
+  std::vector<std::string> candidates;
+  for (auto it = command_indexes_.lower_bound(op); it != command_indexes_.end(); ++it) {
+    if (!boost::starts_with(it->first, op)) {
+      break;
+    }
+    if (!commands_[it->second].hidden_) {
+      candidates.push_back(it->first);
+    }
+  }
+  if (!candidates.empty()) {
+    return candidates;
+  }
+
+  // Otherwise fall back to fuzzy matching so that a typo anywhere in the name - a transposition or
+  // a wrong or missing leading character - still resolves to the closest command(s), e.g.
+  // "list_tabels" -> "list_tables". Scale the tolerance with the length of the operation so that
+  // short names don't match everything, and keep only the commands tied for the smallest distance
+  // so the suggestion list stays short.
+  const size_t max_distance = std::max<size_t>(2, op.size() / 3);
+  size_t best_distance = std::numeric_limits<size_t>::max();
+  for (const auto& [name, index] : command_indexes_) {
+    if (commands_[index].hidden_) {
+      continue;
+    }
+    // The edit distance is at least the difference in lengths, so skip the full computation for
+    // commands that cannot possibly be within the tolerance.
+    const size_t len_diff =
+        op.size() > name.size() ? op.size() - name.size() : name.size() - op.size();
+    if (len_diff > max_distance) {
+      continue;
+    }
+    const size_t distance = EditDistance(op, name);
+    if (distance > max_distance) {
+      continue;
+    }
+    if (distance < best_distance) {
+      best_distance = distance;
+      candidates.clear();
+    }
+    if (distance == best_distance) {
+      candidates.push_back(name);
+    }
+  }
+  return candidates;
 }
 
 Status ClusterAdminCli::RunCommand(
@@ -471,7 +551,19 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
 
   if (cmd == command_indexes_.end()) {
     cerr << "Invalid operation: " << op << endl;
-    return ClusterAdminCli::kInvalidArguments;
+
+    const auto suggestions = GetSuggestedCommands(op);
+    if (!suggestions.empty()) {
+      cerr << "Did you mean one of these?" << endl;
+      for (const auto& suggestion : suggestions) {
+        cerr << "  " << suggestion << endl;
+      }
+    }
+    cerr << "Run '" << prog_name << "' with no operation to see all available operations." << endl;
+
+    // The targeted error and suggestions above are more helpful than the full command list, so
+    // return a non-InvalidArgument status to keep main() from additionally dumping the usage.
+    return STATUS_FORMAT(RuntimeError, "Invalid operation: $0", op);
   }
 
   // Init client.
