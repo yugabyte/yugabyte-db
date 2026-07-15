@@ -205,7 +205,10 @@ You can fetch the JWT directly from the OIDC provider using any OAuth2-capable t
 
 YugabyteDB Anywhere can display your JWT on the sign-in page after you authenticate with your OIDC provider.
 
-You need to be signed in as a Super Admin and have your provider credentials. For Azure, this consists of the Azure application client ID, client secret, and tenant ID; for JumpCloud, the JumpCloud application client ID and client secret.
+You need to be signed in as a Super Admin and have your provider credentials:
+
+- Azure: Application client ID, client secret, and tenant ID
+- JumpCloud: Application client ID and client secret
 
 To enable OIDC authentication in YugabyteDB Anywhere, do the following:
 
@@ -215,9 +218,17 @@ To enable OIDC authentication in YugabyteDB Anywhere, do the following:
     - **Client ID** and **Client Secret** - enter the client ID and secret of the application you created.
     - **Discovery URL** - the discovery URL for your provider.
     
-        For Azure, enter `login.microsoftonline.com/<tenant_id>/v2.0/.well-known/openid-configuration`.
+        For Azure:
 
-        For JumpCloud, enter `https://oauth.id.jumpcloud.com/.well-known/openid-configuration`.
+        ```text
+        login.microsoftonline.com/<tenant_id>/v2.0/.well-known/openid-configuration
+        ```
+
+        For JumpCloud:
+
+        ```text
+        https://oauth.id.jumpcloud.com/.well-known/openid-configuration
+        ```
 
     - **Scope** - enter `openid email profile`.
     
