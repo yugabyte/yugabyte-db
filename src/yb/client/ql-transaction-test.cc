@@ -92,6 +92,8 @@ DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(transaction_resend_applying_interval_usec);
 
+METRIC_DECLARE_event_stats(conflict_resolution_latency);
+
 namespace yb {
 namespace client {
 
@@ -583,6 +585,26 @@ TEST_F(QLTransactionTest, ConflictResolution) {
   for (const auto& value : values) {
     ASSERT_EQ(values.front(), value) << "Values: " << yb::ToString(values);
   }
+
+  // Verify that conflict resolution latency metric is recorded correctly.
+  uint64_t total_count = 0;
+  uint64_t max_value = 0;
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
+    for (const auto& peer : peers) {
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      auto stats = tablet->GetTabletMetricsEntity()->FindOrCreateMetric<EventStats>(
+          &METRIC_conflict_resolution_latency);
+      total_count += stats->TotalCount();
+      max_value = std::max(max_value, stats->MaxValue());
+    }
+  }
+  LOG(INFO) << "conflict_resolution_latency: count=" << total_count << ", max=" << max_value;
+  ASSERT_GT(total_count, 0);
+  ASSERT_GT(max_value, 10);
 }
 
 TEST_F(QLTransactionTest, SimpleWriteConflict) {

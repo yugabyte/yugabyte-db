@@ -1636,7 +1636,7 @@ class TransactionParticipant::Impl
   }
 
   void RecordConflictResolutionScanLatency(MonoDelta latency) {
-    metric_conflict_resolution_latency_->Increment(latency.ToMilliseconds());
+    metric_conflict_resolution_latency_->Increment(latency.ToMicroseconds());
   }
 
   Result<HybridTime> SimulateProcessRecentlyAppliedTransactions(
