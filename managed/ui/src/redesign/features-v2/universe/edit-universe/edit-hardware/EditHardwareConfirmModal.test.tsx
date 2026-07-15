@@ -269,6 +269,28 @@ describe('EditHardwareConfirmModal payloads', () => {
     expect(mockState.resizeMutate).not.toHaveBeenCalled();
   });
 
+  it('uses edit-universe for VM non-dedicated storage-type (EBS) edits', () => {
+    mockState.settings = vmSettings({
+      // Match fixture instance type so only storage_type differs from resize-eligible fields.
+      instanceType: 'c5.xlarge',
+      deviceInfo: {
+        ...vmSettings().deviceInfo!,
+        storageType: 'IO1',
+        diskIops: 3000,
+        throughput: 125
+      }
+    });
+
+    renderModal(makeNonGeoUniverse());
+    submitAndConfirm();
+
+    const payload = getFirstEditPayload();
+    expect(payload.node_spec.storage_spec.storage_type).toBe('IO1');
+    expect(payload.node_spec.storage_spec.volume_size).toBe(100);
+    expect(payload.node_spec.storage_spec.num_volumes).toBe(1);
+    expect(mockState.resizeMutate).not.toHaveBeenCalled();
+  });
+
   it('keeps geo-partitioned VM hardware edits cluster-level only', () => {
     renderModal(makeSingleGeoPartitionUniverse());
     submitAndConfirm();

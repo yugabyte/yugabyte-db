@@ -22,7 +22,6 @@ import { InstanceSettings, InstanceSettingsViewMode } from '../../create-univers
 import { InstanceSettingProps } from '../../create-universe/steps/hardware-settings/dtos';
 import {
   ClusterResizeNodeSpec,
-  ClusterResizeStorageSpec,
   ClusterNodeSpec,
   ClusterSpecClusterType,
   ClusterStorageSpec,
@@ -41,6 +40,14 @@ import {
   ReviewHardwareChangesModal,
   hardwareReviewSectionHasVisibleChanges
 } from './ReviewHardwareChangesModal';
+import {
+  NormalizedStorage,
+  normalizeClusterStorage,
+  normalizeDeviceInfo,
+  storageRequiresEditUniverse,
+  toClusterStorageSpec,
+  toResizeStorageSpec
+} from './EditHardwareStorageUtils';
 import { DeviceInfo, K8NodeSpec } from '../../../../features/universe/universe-form/utils/dto';
 import { useQuery } from 'react-query';
 import { QUERY_KEY, api } from '../../../../features/universe/universe-form/utils/api';
@@ -107,46 +114,6 @@ const TotalNodesBadge = styled(Box)(({ theme }) => ({
     color: theme.palette.grey[900]
   }
 }));
-
-/**
- * Normalized intermediate representation of a storage spec used to compare and
- * render hardware diffs. Keeps `null` for empty values so that `isEqual` works
- * across both API payload (snake_case) and form values (camelCase) sources.
- */
-type NormalizedStorage = {
-  volumeSize: number | null;
-  numVolumes: number | null;
-  diskIops: number | null;
-  throughput: number | null;
-  storageClass: string | null;
-  storageType: string | null;
-  mountPoints: string | null;
-};
-
-const normalizeStorageType = (value: unknown): string | null =>
-  value === undefined || value === null ? null : String(value);
-
-const normalizeClusterStorage = (spec: ClusterStorageSpec | undefined): NormalizedStorage => ({
-  volumeSize: spec?.volume_size ?? null,
-  numVolumes: spec?.num_volumes ?? null,
-  diskIops: spec?.disk_iops ?? null,
-  throughput: spec?.throughput ?? null,
-  storageClass: spec?.storage_class ?? null,
-  storageType: normalizeStorageType(spec?.storage_type),
-  mountPoints: spec?.mount_points ?? null
-});
-
-const normalizeDeviceInfo = (
-  deviceInfo: DeviceInfo | null | undefined
-): NormalizedStorage => ({
-  volumeSize: deviceInfo?.volumeSize ?? null,
-  numVolumes: deviceInfo?.numVolumes ?? null,
-  diskIops: deviceInfo?.diskIops ?? null,
-  throughput: deviceInfo?.throughput ?? null,
-  storageClass: deviceInfo?.storageClass ?? null,
-  storageType: normalizeStorageType(deviceInfo?.storageType),
-  mountPoints: deviceInfo?.mountPoints ?? null
-});
 
 const buildHardwareSummary = (
   instanceType: string | null | undefined,
@@ -534,45 +501,6 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
     return sections;
   }, [targetCluster, pendingInstanceSettings, formatInstanceTypeLabel, useDedicatedNodes, isK8s, effectiveMode]);
 
-  const toResizeStorageSpec = (
-    deviceInfo: DeviceInfo | null | undefined,
-    currentSpec: ClusterStorageSpec | undefined
-  ): ClusterResizeStorageSpec => ({
-    volume_size: deviceInfo?.volumeSize ?? currentSpec?.volume_size,
-    disk_iops: deviceInfo?.diskIops ?? currentSpec?.disk_iops ?? undefined,
-    throughput: deviceInfo?.throughput ?? currentSpec?.throughput ?? undefined
-  });
-
-  const toClusterStorageSpec = (
-    deviceInfo: DeviceInfo | null | undefined,
-    currentSpec: ClusterStorageSpec | undefined
-  ): ClusterStorageSpec => ({
-    volume_size: deviceInfo?.volumeSize ?? currentSpec?.volume_size ?? 0,
-    num_volumes: deviceInfo?.numVolumes ?? currentSpec?.num_volumes ?? 1,
-    ...(deviceInfo?.mountPoints ?? currentSpec?.mount_points
-      ? { mount_points: deviceInfo?.mountPoints ?? currentSpec?.mount_points }
-      : {}),
-    ...(deviceInfo?.storageClass ?? currentSpec?.storage_class
-      ? { storage_class: deviceInfo?.storageClass ?? currentSpec?.storage_class }
-      : {}),
-    ...(deviceInfo?.storageType ?? currentSpec?.storage_type
-      ? { storage_type: deviceInfo?.storageType ?? currentSpec?.storage_type }
-      : {}),
-    ...(deviceInfo?.diskIops !== undefined && deviceInfo?.diskIops !== null
-      ? { disk_iops: deviceInfo.diskIops }
-      : currentSpec?.disk_iops !== undefined && currentSpec?.disk_iops !== null
-        ? { disk_iops: currentSpec.disk_iops }
-        : {}),
-    ...(deviceInfo?.throughput !== undefined && deviceInfo?.throughput !== null
-      ? { throughput: deviceInfo.throughput }
-      : currentSpec?.throughput !== undefined && currentSpec?.throughput !== null
-        ? { throughput: currentSpec.throughput }
-        : {}),
-    ...(currentSpec?.cloud_volume_encryption
-      ? { cloud_volume_encryption: currentSpec.cloud_volume_encryption }
-      : {})
-  });
-
   const buildResizeNodeSpec = (
     settings: InstanceSettingProps,
     dedicatedNodes: boolean
@@ -741,24 +669,6 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
     return dedicatedNodeSpec;
   };
 
-  const hasNumVolumesChange = (settings: InstanceSettingProps, dedicatedNodes: boolean) => {
-    const currentTserverVolumes = targetCluster?.node_spec?.storage_spec?.num_volumes ?? null;
-    const nextTserverVolumes = settings.deviceInfo?.numVolumes ?? currentTserverVolumes;
-    if (nextTserverVolumes !== currentTserverVolumes) {
-      return true;
-    }
-
-    if (!dedicatedNodes) {
-      return false;
-    }
-
-    const currentMasterVolumes =
-      targetCluster?.node_spec?.master?.storage_spec?.num_volumes ?? currentTserverVolumes;
-    const nextMasterVolumes =
-      settings.masterDeviceInfo?.numVolumes ?? settings.deviceInfo?.numVolumes ?? currentMasterVolumes;
-    return nextMasterVolumes !== currentMasterVolumes;
-  };
-
   const getExistingClusterNodeCount = () => {
     if (!targetCluster) {
       return undefined;
@@ -840,7 +750,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
     if (
       isK8s ||
       clusterType === ClusterSpecClusterType.ASYNC ||
-      hasNumVolumesChange(pendingInstanceSettings, !!useDedicatedNodes)
+      storageRequiresEditUniverse(pendingInstanceSettings, targetCluster, !!useDedicatedNodes)
     ) {
       submitEditUniverse(pendingInstanceSettings);
       return;

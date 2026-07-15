@@ -337,10 +337,10 @@ export const InstanceSettings = forwardRef<
                   <StorageTypeField disabled={disableTserverFields} provider={provider} />
                 )}
                 {ebsVolumeEnabled && provider?.code === CloudType.aws && (
-                  <EBSVolumeField disabled={disableTserverFields} />
+                  <EBSVolumeField disabled={disableTserverFields || editMode} />
                 )}
                 {ebsVolumeEnabled && provider?.code === CloudType.aws && ebsEnabled && (
-                  <EBSKmsConfigField disabled={disableTserverFields} />
+                  <EBSKmsConfigField disabled={disableTserverFields || editMode} />
                 )}
               </InstanceBox>
               {!showDedicatedNodesSection && !isK8s && (
