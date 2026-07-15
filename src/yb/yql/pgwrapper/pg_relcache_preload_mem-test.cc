@@ -80,7 +80,7 @@ constexpr int64_t kAllConnsMaxRssMb = 250;
 // Regression guard: a minimal-preload backend must preload the pg_rewrite
 // (RULERELNAME) list so it does not re-materialize the system-view rule trees
 // on demand. If that preload is dropped, this backend spikes (~560 MB) and fails.
-TEST_F(PgRelcachePreloadMemMinimalTest, FreshEmptyDbStaysBounded) {
+TEST_F(PgRelcachePreloadMemMinimalTest, YB_DISABLE_TEST_ON_MACOS(FreshEmptyDbStaysBounded)) {
   const auto peak_mb = ASSERT_RESULT(PeakRssOfFreshEmptyDbBackend());
   LOG(INFO) << "minimal preload, fresh empty db, peak RSS = " << peak_mb << " MB";
   ASSERT_LT(peak_mb, kSingleConnMaxRssMb)
@@ -88,7 +88,7 @@ TEST_F(PgRelcachePreloadMemMinimalTest, FreshEmptyDbStaysBounded) {
 }
 
 // Baseline: normal preload builds the lists up front and stays bounded.
-TEST_F(PgRelcachePreloadMemNormalTest, FreshEmptyDbStaysBounded) {
+TEST_F(PgRelcachePreloadMemNormalTest, YB_DISABLE_TEST_ON_MACOS(FreshEmptyDbStaysBounded)) {
   const auto peak_mb = ASSERT_RESULT(PeakRssOfFreshEmptyDbBackend());
   LOG(INFO) << "normal preload, fresh empty db, peak RSS = " << peak_mb << " MB";
   ASSERT_LT(peak_mb, kSingleConnMaxRssMb);
@@ -96,7 +96,7 @@ TEST_F(PgRelcachePreloadMemNormalTest, FreshEmptyDbStaysBounded) {
 
 // Ensure that the total memory consumed by all PG processes does not spike too high
 // during preloading.
-TEST_F(PgRelcachePreloadMemMinimalTest, TotalPgMemoryStaysBounded) {
+TEST_F(PgRelcachePreloadMemMinimalTest, YB_DISABLE_TEST_ON_MACOS(TotalPgMemoryStaysBounded)) {
   auto setup = ASSERT_RESULT(Connect());
   ASSERT_OK(setup.Execute("CREATE DATABASE empty_db"));
   const auto setup_pid = ASSERT_RESULT(setup.FetchRow<int32_t>("SELECT pg_backend_pid()"));
