@@ -213,6 +213,69 @@ class AdminCliTest : public AdminTestBase {
   TmpDirProvider tmp_dir_;
 };
 
+// Verify the "did you mean" help for a misspelled operation, none of which needs a running
+// cluster (the operation is checked before yb-admin connects to the master): prefix matches,
+// fuzzy (edit-distance) matches, and that an invalid operation no longer dumps the full command
+// list (the original complaint in the issue) while running with no operation still prints the
+// full usage as help.
+TEST_F(AdminCliTest, InvalidOperationSuggestsClosestCommands) {
+  const auto exe_path = GetAdminToolPath();
+  constexpr auto kUnusedMasterAddress = "127.0.0.1:0";
+  // This marker only appears in the full usage/command listing (which is printed to stdout).
+  constexpr auto kFullUsageMarker = "<operation> must be one of";
+  std::string output;
+  std::string error;
+
+  // Prefix match: an unambiguous typo suggests the single command it is a prefix of.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(
+          exe_path, "--master_addresses", kUnusedMasterAddress, "list_snapshot_schedule"),
+      /* output */ nullptr, &error));
+  ASSERT_STR_CONTAINS(error, "Did you mean one of these?");
+  ASSERT_STR_CONTAINS(error, "list_snapshot_schedules");
+
+  // Prefix match: a prefix of several commands lists every candidate and a hint, and must not dump
+  // the full command list on either stream.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "list_table"), &output,
+      &error));
+  ASSERT_STR_CONTAINS(error, "Did you mean one of these?");
+  ASSERT_STR_CONTAINS(error, "list_tables");
+  ASSERT_STR_CONTAINS(error, "list_tablets");
+  ASSERT_STR_CONTAINS(error, "to see all available operations");
+  ASSERT_STR_NOT_CONTAINS(output, kFullUsageMarker);
+  ASSERT_STR_NOT_CONTAINS(error, kFullUsageMarker);
+
+  // Fuzzy match: a transposition ("tabels" instead of "tables") is not a prefix but is close.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "list_tabels"), nullptr,
+      &error));
+  ASSERT_STR_CONTAINS(error, "Did you mean one of these?");
+  ASSERT_STR_CONTAINS(error, "list_tables");
+
+  // Fuzzy match: a missing leading character ("ist_tables") is one edit away from "list_tables".
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "ist_tables"), nullptr,
+      &error));
+  ASSERT_STR_CONTAINS(error, "list_tables");
+
+  // An empty operation is a prefix of every command, but should not list all of them.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, ""), nullptr, &error));
+  ASSERT_STR_NOT_CONTAINS(error, "Did you mean one of these?");
+
+  // A far-off garbage string is beyond the edit-distance tolerance, so nothing is suggested.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress, "zzzzzzzzzzzzzzzzzz"),
+      nullptr, &error));
+  ASSERT_STR_NOT_CONTAINS(error, "Did you mean one of these?");
+
+  // Running with no operation at all should still print the full usage as help on stdout.
+  ASSERT_NOK(Subprocess::Call(
+      ToStringVector(exe_path, "--master_addresses", kUnusedMasterAddress), &output, &error));
+  ASSERT_STR_CONTAINS(output, kFullUsageMarker);
+}
+
 // Test yb-admin config change while running a workload.
 // 1. Instantiate external mini cluster with 3 TS.
 // 2. Create table with 2 replicas.
