@@ -1544,19 +1544,6 @@ dumpRoleMembership(PGconn *conn)
 
 		remaining = end - start;
 		done = pg_malloc0_array(bool, remaining);
-		/*
-		 * YB_TODO_PG19MERGE: Integrate yb_dump_role_checks /
-		 * YBWwrapInRoleChecks into PG19's new code
-		 * (see upstream PG commit ce6b672e4455820a0348214be0da1a024c3f619f)
-		 */
-#if 0
-		char	   *yb_grantor = NULL;
-		PQExpBuffer yb_sql = createPQExpBuffer();
-		appendPQExpBuffer(yb_sql, "GRANT %s", fmtId(roleid));
-		appendPQExpBuffer(yb_sql, " TO %s", fmtId(member));
-		if (*option == 't')
-			appendPQExpBufferStr(yb_sql, " WITH ADMIN OPTION");
-#endif
 
 		/*
 		 * We use a hashtable to track the member names that have been granted
@@ -1685,7 +1672,30 @@ dumpRoleMembership(PGconn *conn)
 				appendPQExpBuffer(querybuf, ";\n");
 
 				if (archDumpFormat == archNull)
-					fprintf(OPF, "%s", querybuf->data);
+				{
+					/*
+					 * YB: with --dump-role-checks, wrap the GRANT in existence
+					 * checks for the member and grantor so a restore that is
+					 * missing those roles skips it instead of failing. The checks
+					 * are psql meta-commands, so bracket them out of the \restrict
+					 * region the plain-text dump otherwise runs in.
+					 */
+					if (yb_dump_role_checks)
+					{
+						PQExpBuffer yb_wrapped = createPQExpBuffer();
+
+						/* These meta commands must run outside restricted mode. */
+						ybAppendUnrestrict(yb_wrapped, restrict_key);
+						YBWwrapInRoleChecks(conn, querybuf, "grant privilege",
+											member, dump_this_grantor ? grantor : NULL,
+											NULL, yb_wrapped);
+						ybAppendRestrict(yb_wrapped, restrict_key);
+						fprintf(OPF, "%s", yb_wrapped->data);
+						destroyPQExpBuffer(yb_wrapped);
+					}
+					else
+						fprintf(OPF, "%s", querybuf->data);
+				}				/* YB */
 				else
 					ArchiveEntry(fout,
 								 nilCatalogId,	/* catalog ID */
@@ -1700,34 +1710,6 @@ dumpRoleMembership(PGconn *conn)
 		rolename_destroy(ht);
 		pg_free(done);
 		start = end;
-		/*
-		 * YB_TODO_PG19MERGE (continued)
-		 */
-#if 0
-		if (!PQgetisnull(res, i, 3))
-		{
-			yb_grantor = PQgetvalue(res, i, 3);
-			appendPQExpBuffer(yb_sql, " GRANTED BY %s", fmtId(yb_grantor));
-		}
-		appendPQExpBufferStr(yb_sql, ";\n");
-
-		if (yb_dump_role_checks)
-		{
-			PQExpBuffer yb_source_sql = yb_sql;
-
-			yb_sql = createPQExpBuffer();
-			YBWwrapInRoleChecks(conn, yb_source_sql, "grant privilege",
-								member, /* role1 */
-								yb_grantor, /* role2; note: yb_grantor can be
-											 * NULL */
-								NULL,	/* role3 */
-								yb_sql);
-			destroyPQExpBuffer(yb_source_sql);
-		}
-
-		fprintf(OPF, "%s", yb_sql->data);
-		destroyPQExpBuffer(yb_sql);
-#endif
 	}
 
 	PQclear(res);
