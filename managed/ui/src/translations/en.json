@@ -4467,7 +4467,9 @@
         "nodeAccess": "Node Access",
         "sshKey": "SSH ACCESS KEY",
         "awsArn": "INSTANCE PROFILE ARN",
-        "networkPorts": "Network Ports"
+        "networkPorts": "Network Ports",
+        "enableProxyServer": "Enable Proxy Server",
+        "proxyHelper": "Configure web proxies as gateways for traffic from your database nodes. <a>Learn more</a>"
       },
       "logs": {
         "troubleshootingLogs": "Troubleshooting Logs",
