@@ -2709,30 +2709,33 @@ agg_retrieve_direct(AggState *aggstate)
 						Datum		count_value = outerslot->tts_values[valno];
 						bool		count_isnull = outerslot->tts_isnull[valno];
 
-						if (isnull || count_isnull)
-							continue;
+						if (!isnull && !count_isnull)
+						{
+							/*
+							 * Like COUNT, add the sum and count values
+							 * directly. The datum is guaranteed to be an
+							 * Int8TransTypeData.
+							 * The checking code is taken from int8_avg()
+							 * in numeric.c.
+							 */
+							Int8TransTypeData *transdata;
+							ArrayType  *transarray = (ArrayType *) (pergroupstate->transValue);
+							oldContext = MemoryContextSwitchTo(aggstate->curaggcontext->ecxt_per_tuple_memory);
 
-						/*
-						 * Like COUNT, add the sum and count values directly.
-						 * The datum is guaranteed to be an Int8TransTypeData.
-						 * The checking code is taken from int8_avg()
-						 * in numeric.c.
-						 */
-						oldContext = MemoryContextSwitchTo(aggstate->curaggcontext->ecxt_per_tuple_memory);
-						Int8TransTypeData *transdata;
-						ArrayType  *transarray = (ArrayType *) (pergroupstate->transValue);
+							if (ARR_HASNULL(transarray) ||
+								ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) +
+								sizeof(Int8TransTypeData))
+							{
+								elog(ERROR, "expected 2-element int8 array");
+							}
 
-						if (ARR_HASNULL(transarray) ||
-							ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) +
-							sizeof(Int8TransTypeData))
-							elog(ERROR, "expected 2-element int8 array");
+							transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
 
-						transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
+							transdata->sum += value;
+							transdata->count += count_value;
 
-						transdata->sum += value;
-						transdata->count += count_value;
-
-						MemoryContextSwitchTo(oldContext);
+							MemoryContextSwitchTo(oldContext);
+						}
 					}
 					else
 					{
