@@ -163,7 +163,7 @@ For PostgreSQL users seeking to transition to a modern, horizontally scalable da
 
 YugabyteDB enables midsize applications running on single-node instances to effortlessly migrate to a fully distributed database environment. As applications grow, YugabyteDB seamlessly transitions to distributed mode, allowing for massive scaling capabilities.
 
-[YugabyteDB Voyager](/stable/yugabyte-voyager/) simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports offline and live migration from PostgreSQL to various YugabyteDB offerings, including Aeon, Anywhere, and the core open-source database. Offline migration from MySQL and Oracle is deprecated and will no longer be supported after October 13, 2026.
+[YugabyteDB Voyager](/stable/yugabyte-voyager/) simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports offline and live migration from PostgreSQL to various YugabyteDB offerings, including Aeon, Anywhere, and the core open-source database.
 
 You can [install](/stable/yugabyte-voyager/install-yb-voyager/) YugabyteDB Voyager on different operating systems such as RHEL, Ubuntu, macOS, or deploy it via Docker or Airgapped installations.
 
