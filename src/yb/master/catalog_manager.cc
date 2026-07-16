@@ -3102,7 +3102,13 @@ Status CatalogManager::DoSplitTablet(
     }
 
     auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
-    if (!is_manual_split) {
+    const bool children_already_registered =
+        source_tablet_lock->pb.split_tablet_ids().size() > 0;
+    // Skip validation for tablets whose children have already been registered in the past, as we
+    // might be retrying a previously failed split operation (failed at the tserver), and the table
+    // could have entered a different split phase now.
+    const bool should_validate_split = !is_manual_split && !children_already_registered;
+    if (should_validate_split) {
       // It is possible that we queued up a split candidate in TabletSplitManager which was, at the
       // time, a valid split candidate, but by the time the candidate was actually processed here,
       // the cluster may have changed, putting us in a new split threshold phase, and it may no
@@ -3120,7 +3126,7 @@ Status CatalogManager::DoSplitTablet(
     // After this point, we expect to split the tablet.
 
     // If child tablets are already registered, use the existing split key and tablets.
-    if (source_tablet_lock->pb.split_tablet_ids().size() > 0) {
+    if (children_already_registered) {
       const auto parent_partition = source_tablet_lock->pb.partition();
       for (auto& split_tablet_id : source_tablet_lock->pb.split_tablet_ids()) {
         // This should only fail if there is a concurrent split on the same tablet that has not yet
