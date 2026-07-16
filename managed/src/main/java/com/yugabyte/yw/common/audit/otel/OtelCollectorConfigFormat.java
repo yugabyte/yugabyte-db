@@ -4,10 +4,13 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Data
 public class OtelCollectorConfigFormat {
@@ -26,6 +29,7 @@ public class OtelCollectorConfigFormat {
     private List<String> include;
     private List<String> exclude;
     private String start_at;
+    private String poll_interval;
     private String storage;
     private MultilineConfig multiline;
     private List<Operator> operators;
@@ -82,6 +86,21 @@ public class OtelCollectorConfigFormat {
   @Data
   public static class Operator {
     private String type;
+
+    // OTEL operators support an optional "if" expression to conditionally apply the operator.
+    // "if" is a Java reserved word, so the field is named ifExpr and Lombok accessors are
+    // suppressed; the hand-written getIf()/setIf() make SnakeYAML emit/read the key as "if".
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private String ifExpr;
+
+    public String getIf() {
+      return ifExpr;
+    }
+
+    public void setIf(String ifExpr) {
+      this.ifExpr = ifExpr;
+    }
   }
 
   @Data
@@ -95,6 +114,7 @@ public class OtelCollectorConfigFormat {
   public static class RegexOperator extends Operator {
     private String regex;
     private String on_error;
+    private String parse_from;
     private OperatorTimestamp timestamp;
     private OperatorSeverity severity;
   }
@@ -103,6 +123,36 @@ public class OtelCollectorConfigFormat {
   @EqualsAndHashCode(callSuper = true)
   public static class FilterOperator extends Operator {
     private String expr;
+    private Double drop_ratio;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class AddOperator extends Operator {
+    private String field;
+    private String value;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class TimeParserOperator extends Operator {
+    private String parse_from;
+    private String layout_type;
+    private String layout;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class SeverityParserOperator extends Operator {
+    private String parse_from;
+    private Map<String, String> mapping;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class MoveOperator extends Operator {
+    private String from;
+    private String to;
   }
 
   @Data

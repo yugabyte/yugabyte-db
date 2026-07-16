@@ -12,7 +12,6 @@ package com.yugabyte.yw.controllers;
 import static java.util.stream.Collectors.toMap;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
 import com.google.inject.Inject;
@@ -360,20 +359,17 @@ public class XClusterConfigController extends AuthenticatedController {
       // Query for replication lag
       Map<String, String> metricParams = new HashMap<>();
       String metric = "tserver_async_replication_lag_micros";
-      metricParams.put("metrics[0]", metric);
       String startTime = Long.toString(Instant.now().minus(Duration.ofMinutes(1)).getEpochSecond());
       metricParams.put("start", startTime);
-      ObjectNode filterJson = Json.newObject();
       Universe sourceUniverse =
           Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
       String nodePrefix = sourceUniverse.getUniverseDetails().nodePrefix;
-      filterJson.put("node_prefix", nodePrefix);
-      String streamIdFilter = String.join("|", streamIds);
-      filterJson.put("stream_id", streamIdFilter);
-      metricParams.put("filters", Json.stringify(filterJson));
+      Map<String, String> additionalFilters = new HashMap<>();
+      additionalFilters.put("node_prefix", nodePrefix);
+      additionalFilters.put("stream_id", String.join("|", streamIds));
       lagMetricData =
           metricQueryHelper.query(
-              customer, Collections.singletonList(metric), metricParams, Collections.emptyMap());
+              customer, List.of(metric), metricParams, Map.of(), additionalFilters);
     } catch (Exception e) {
       String errorMsg =
           String.format(

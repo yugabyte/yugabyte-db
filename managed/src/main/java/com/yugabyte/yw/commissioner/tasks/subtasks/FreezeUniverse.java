@@ -32,7 +32,7 @@ public class FreezeUniverse extends UniverseDefinitionTaskBase {
     @JsonIgnore public Consumer<Universe> callback;
     @JsonIgnore public ExecutionContext executionContext;
     @JsonIgnore public Universe universe;
-    @JsonIgnore public UniverseDefinitionTaskParams stateTransitionCaptureTarget;
+    @JsonIgnore public UniverseDefinitionTaskParams targetUniverseDetails;
   }
 
   @Override
@@ -55,24 +55,23 @@ public class FreezeUniverse extends UniverseDefinitionTaskBase {
     // DB state can be changed only during freezing the universe.
     JsonNode deltaJsonNode = Util.findDiffJsonNode(taskParams().universe);
     if (deltaJsonNode != null && !deltaJsonNode.isEmpty()) {
-      log.error(
+      // Do not throw as some background tasks can still mutate the universe details JSON.
+      log.warn(
           "Freezing universe {} with non-empty delta: {}",
           taskParams().getUniverseUUID(),
           deltaJsonNode.toPrettyString());
-      throw new RuntimeException(
-          "Some fields in the universe have changed since the lock was acquired before freezing");
     }
 
     UniverseDefinitionTaskParams beforeUniverseDetails = taskParams().universe.getUniverseDetails();
-    UniverseDefinitionTaskParams captureTarget = taskParams().stateTransitionCaptureTarget;
+    UniverseDefinitionTaskParams targetUniverseDetails = taskParams().targetUniverseDetails;
     Consumer<Universe> freezeCallback = taskParams().callback;
-    if (captureTarget != null) {
+    if (targetUniverseDetails != null) {
       freezeCallback =
           universe -> {
             if (taskParams().callback != null) {
               taskParams().callback.accept(universe);
             }
-            captureStateTransitionDelta(universe, beforeUniverseDetails, captureTarget);
+            captureStateTransitionDelta(universe, beforeUniverseDetails, targetUniverseDetails);
           };
     }
 

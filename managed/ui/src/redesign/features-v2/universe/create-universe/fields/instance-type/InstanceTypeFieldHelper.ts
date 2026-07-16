@@ -44,6 +44,19 @@ export const AZURE_INSTANCE_TYPE_GROUPS = {
   'P-Series': /^standard_p.+/i
 };
 
+/** OCI shape families — broader groups than per-shape prefixes to avoid single-item sections. */
+export const OCI_INSTANCE_TYPE_GROUPS = {
+  'VM - Standard': /^VM\.Standard/i,
+  'VM - Dense I/O': /^VM\.DenseIO/i,
+  'VM - GPU': /^VM\.GPU/i,
+  'VM - Optimized': /^VM\.Optimized/i,
+  'Bare metal - Standard': /^BM\.Standard/i,
+  'Bare metal - Dense I/O': /^BM\.DenseIO/i,
+  'Bare metal - GPU': /^BM\.GPU/i,
+  'Bare metal - HPC': /^BM\.HPC/i,
+  'Bare metal - Optimized': /^BM\.Optimized/i
+};
+
 export const getDefaultInstanceType = (providerCode: string, runtimeConfigs: any) => {
   let instanceType = null;
 
@@ -94,6 +107,11 @@ export const sortAndGroup = (data?: InstanceType[], cloud?: CloudType): Instance
         return instanceTypeCode.split('-')[0]; // n1-standard-1 --> n1
       case CloudType.azu:
         for (const [groupName, regexp] of Object.entries(AZURE_INSTANCE_TYPE_GROUPS)) {
+          if (regexp.test(instanceTypeCode)) return groupName;
+        }
+        return 'Other';
+      case CloudType.oci:
+        for (const [groupName, regexp] of Object.entries(OCI_INSTANCE_TYPE_GROUPS)) {
           if (regexp.test(instanceTypeCode)) return groupName;
         }
         return 'Other';

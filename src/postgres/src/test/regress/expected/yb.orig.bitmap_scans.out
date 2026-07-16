@@ -2167,7 +2167,12 @@ DROP TABLE bitmap_pk_diff_type_2;
 DROP TABLE bitmap_pk_same_type;
 -- In a Bitmap Index Scan, filters pushed down as Storage Index Filters must be
 -- included in the recheck conditions.
-CREATE TABLE bitmap_recheck (a float4, b INT, c INT);
+-- The table has no primary key, so rows get a random internal ybrowid and are
+-- hash-distributed randomly across tablets.  Because count(*) is pushed down as
+-- a partial aggregate, the scan node's actual row count equals the number of
+-- tablets holding a matching row, which is nondeterministic across runs.  Pin
+-- the table to a single tablet to make the plan output deterministic.
+CREATE TABLE bitmap_recheck (a float4, b INT, c INT) SPLIT INTO 1 TABLETS;
 INSERT INTO bitmap_recheck (a, b, c) (SELECT s::float4/10, s, s % 10 FROM generate_series(1,40) s);
 CREATE INDEX bitmap_recheck_a ON bitmap_recheck (a ASC);
 CREATE INDEX bitmap_recheck_b_c ON bitmap_recheck (b ASC) INCLUDE (c) WHERE c > 2;
@@ -2187,7 +2192,7 @@ CREATE INDEX bitmap_recheck_b_c ON bitmap_recheck (b ASC) INCLUDE (c) WHERE c > 
                              QUERY PLAN                             
 --------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
-   ->  Seq Scan on bitmap_recheck (actual rows=3 loops=1)
+   ->  Seq Scan on bitmap_recheck (actual rows=1 loops=1)
          Storage Filter: ((a = '0.4'::double precision) OR (c > 5))
          Partial Aggregate: true
 (4 rows)
@@ -2195,7 +2200,7 @@ CREATE INDEX bitmap_recheck_b_c ON bitmap_recheck (b ASC) INCLUDE (c) WHERE c > 
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
-   ->  YB Bitmap Table Scan on bitmap_recheck (actual rows=3 loops=1)
+   ->  YB Bitmap Table Scan on bitmap_recheck (actual rows=1 loops=1)
          Storage Recheck Cond: ((a = '0.4'::double precision) OR ((c > 2) AND (c > 5)))
          Partial Aggregate: true
          ->  BitmapOr (actual rows=40 loops=1)

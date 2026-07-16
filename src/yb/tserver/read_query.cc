@@ -123,7 +123,7 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
 
   void RespondIfFailed(const Status& status) {
     if (!status.ok()) {
-      RespondFailure(status);
+      RespondFailure(PreferLeaderNotReady(status));
     }
   }
 
@@ -140,6 +140,11 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   };
 
   Status DoPerform();
+
+  // Maps a read failure to LEADER_NOT_READY_TO_SERVE when this peer is a strong-read (leader)
+  // target that is not yet a ready leader, preferring that retryable status over the original
+  // failure.
+  Status PreferLeaderNotReady(const Status& status);
 
   // Picks read based for specified read context.
   Status DoPickReadTime(server::Clock* clock);
@@ -188,6 +193,10 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   rpc::RpcContext context_;
 
   std::shared_ptr<tablet::AbstractTablet> abstract_tablet_;
+  // Leader tablet peer resolved for this read, populated progressively as the read path narrows it
+  // down (initial metadata lookup, leader lookup, or the serving-tablet fallback). Retained so the
+  // leader-readiness check and the consensus-info lookup can reuse it without a second lookup.
+  LeaderTabletPeer leader_peer_;
 
   ReadHybridTime read_time_;
   HybridTime safe_ht_to_read_;
@@ -241,6 +250,26 @@ bool ReadQuery::IsForBackfill() const {
   return false;
 }
 
+Status ReadQuery::PreferLeaderNotReady(const Status& status) {
+  // A failed strong (leader) read may mean this peer has just won an election but not yet committed
+  // its term's NoOp: it has not applied the operations replicated in the previous term, so an
+  // in-flight transaction's first write on the tablet (which carries its metadata record, including
+  // the isolation level) is not visible yet. That surfaces as a terminal "transaction aborted"
+  // error, which READ COMMITTED cannot retry once rows have been sent to the client. If this peer
+  // is not a ready leader, prefer the retryable LEADER_NOT_READY_TO_SERVE, so the client retries
+  // and succeeds once the NoOp is committed and the metadata has been applied. A genuine failure on
+  // a ready leader is returned unchanged.
+  //
+  // A known leader_term means the leader-readiness check already ran (and passed) on the read path,
+  // so the failure is genuine and there is nothing to re-check.
+  if (req_->consistency_level() != YBConsistencyLevel::STRONG || !leader_peer_.peer ||
+      leader_peer_.leader_term != OpId::kUnknownTerm) {
+    return status;
+  }
+  auto leader_status = ResultToStatus(LeaderTerm(*leader_peer_.peer));
+  return leader_status.ok() ? status : leader_status;
+}
+
 Status ReadQuery::DoPerform() {
   if (req_->include_trace()) {
     context_.EnsureTraceCreated();
@@ -249,8 +278,17 @@ Status ReadQuery::DoPerform() {
   TRACE("Start Read");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read", "tablet_id", req_->tablet_id().ToBuffer());
 
-  TabletPeerTablet peer_tablet;
-  const auto isolation_level = VERIFY_RESULT(GetIsolationLevel(*req_, &server_, &peer_tablet));
+  IsolationLevel isolation_level;
+  {
+    // GetIsolationLevel looks up the tablet peer before resolving the transaction metadata, so keep
+    // it (even when resolution fails) in leader_peer_ for PreferLeaderNotReady and the
+    // consensus-info lookup below to reuse without a second lookup. A leader lookup below fills in
+    // the term.
+    TabletPeerTablet peer_tablet;
+    auto isolation_level_result = GetIsolationLevel(*req_, &server_, &peer_tablet);
+    leader_peer_.FillTabletPeer(std::move(peer_tablet));
+    isolation_level = VERIFY_RESULT(std::move(isolation_level_result));
+  }
   if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
     if (PREDICT_FALSE(FLAGS_TEST_transactional_read_delay_ms > 0)) {
       SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_transactional_read_delay_ms));
@@ -283,31 +321,32 @@ Status ReadQuery::DoPerform() {
   }
   const auto has_row_mark = IsValidRowMarkType(batch_row_mark);
 
-  LeaderTabletPeer leader_peer;
-
   if (serializable_isolation || has_row_mark || req_->has_pending_async_write_op_id()) {
-    // At this point we expect that we don't have pure read serializable transactions, and
-    // always write read intents to detect conflicts with other writes.
-    leader_peer = VERIFY_RESULT(LookupLeaderTablet(
-        server_.tablet_peer_lookup(), req_->tablet_id(), resp_, std::move(peer_tablet)));
-    abstract_tablet_ = VERIFY_RESULT(leader_peer.peer->shared_tablet());
+    // At this point we expect that we don't have pure read serializable transactions, and always
+    // write read intents to detect conflicts with other writes. Reuse the peer already resolved
+    // above (LookupLeaderTablet looks one up itself when it is absent, e.g. when the transaction
+    // carried its isolation inline) and fill in its term.
+    leader_peer_ = VERIFY_RESULT(LookupLeaderTablet(
+        server_.tablet_peer_lookup(), req_->tablet_id(), resp_,
+        TabletPeerTablet{leader_peer_.peer, leader_peer_.tablet}));
+    abstract_tablet_ = VERIFY_RESULT(leader_peer_.peer->shared_tablet());
 
     if (serializable_isolation || has_row_mark) {
       // Serializable read adds intents, i.e. writes data.
       // We should check for memory pressure in this case.
-      RETURN_NOT_OK(CheckWriteThrottling(req_->rejection_score(), leader_peer.peer.get()));
+      RETURN_NOT_OK(CheckWriteThrottling(req_->rejection_score(), leader_peer_.peer.get()));
     }
 
     if (req_->has_pending_async_write_op_id()) {
       // The client had in-flight async write(s) on this tablet - verify this leader has it.
-      RETURN_NOT_OK(leader_peer.peer->VerifyAsyncWriteReceived(
+      RETURN_NOT_OK(leader_peer_.peer->VerifyAsyncWriteReceived(
           OpId::FromPB(req_->pending_async_write_op_id())));
     }
   } else {
     abstract_tablet_ = VERIFY_RESULT(read_tablet_provider_.GetTabletForRead(
-        req_->tablet_id(), std::move(peer_tablet.tablet_peer), req_->consistency_level(),
+        req_->tablet_id(), leader_peer_.peer, req_->consistency_level(),
         AllowSplitTablet::kFalse, resp_));
-    leader_peer.leader_term = OpId::kUnknownTerm;
+    leader_peer_.leader_term = OpId::kUnknownTerm;
   }
 
   CatalogVersionChecker catalog_version_checker(server_);
@@ -323,11 +362,11 @@ Status ReadQuery::DoPerform() {
   }
 
   // For virtual tables held at master the tablet peer may not be found.
-  auto tablet_peer = peer_tablet.tablet_peer;
-  if (!tablet_peer) {
-    tablet_peer = ResultToValue(
+  if (!leader_peer_.peer) {
+    leader_peer_.peer = ResultToValue(
         server_.tablet_peer_lookup()->GetServingTablet(req_->tablet_id()), {});
   }
+  auto tablet_peer = leader_peer_.peer;
 
   if (tablet_peer) {
     tablet_consensus_info_ = GetTabletConsensusInfoFromTabletPeer(tablet_peer);
@@ -424,8 +463,8 @@ Status ReadQuery::DoPerform() {
       response = req_->arena().ArenaObjectFactory();
     }
     auto query = std::make_unique<tablet::WriteQuery>(
-        leader_peer.leader_term, context_.GetClientDeadline(), leader_peer.peer.get(),
-        leader_peer.tablet, nullptr /* rpc_context */, response);
+        leader_peer_.leader_term, context_.GetClientDeadline(), leader_peer_.peer.get(),
+        leader_peer_.tablet, nullptr /* rpc_context */, response);
 
     auto& write = *query->operation().AllocateRequest();
     if (use_async_write) {
@@ -449,13 +488,13 @@ Status ReadQuery::DoPerform() {
     }
     // TODO(dtxn) write request id
 
-    RETURN_NOT_OK(leader_peer.tablet->CreateReadIntents(
+    RETURN_NOT_OK(leader_peer_.tablet->CreateReadIntents(
         isolation_level, req_->transaction(), req_->subtransaction(),
         req_->ql_batch(), req_->pgsql_batch(), &write_batch));
 
     query->AdjustYsqlQueryTransactionality(req_->pgsql_batch_size());
 
-    query->set_callback([peer = leader_peer.peer, self = shared_from_this(), response]
+    query->set_callback([peer = leader_peer_.peer, self = shared_from_this(), response]
         (const Status& status) {
       if (!status.ok()) {
         self->RespondFailure(status);
@@ -467,7 +506,7 @@ Status ReadQuery::DoPerform() {
         peer->Enqueue(self.get());
       }
     });
-    leader_peer.peer->WriteAsync(std::move(query));
+    leader_peer_.peer->WriteAsync(std::move(query));
     return Status::OK();
   }
 

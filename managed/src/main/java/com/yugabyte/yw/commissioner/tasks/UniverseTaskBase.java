@@ -83,6 +83,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
@@ -149,6 +150,7 @@ import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -251,7 +253,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.CreateKubernetesUniverse,
           TaskType.ReadOnlyClusterCreate,
           TaskType.ReadOnlyClusterDelete,
-          TaskType.EditUniverse,
+          TaskType.ReadOnlyKubernetesClusterCreate,
+          TaskType.ReadOnlyKubernetesClusterDelete,
           TaskType.AddNodeToUniverse,
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
@@ -1215,15 +1218,31 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * Returns the target universe definition to diff against the pre-lock snapshot when capturing
-   * state transition delta during freeze. Return null to skip capture.
-   *
-   * <p>Today this is typically the interim task params (e.g. {@code ToBeAdded} nodes). TODO
-   * (PLAT-21497): derive the post-success steady-state UDTP instead.
+   * Returns the post-success steady-state universe definition to diff against the pre-lock snapshot
+   * when capturing state transition delta during freeze. Derives from interim task params (e.g.
+   * {@code ToBeAdded}/{@code ToBeRemoved}/{@code masterState}). Subclasses may override to
+   * customize or return null to skip capture.
    */
   @Nullable
-  protected UniverseDefinitionTaskParams getStateTransitionCaptureTarget() {
-    return null;
+  protected UniverseDefinitionTaskParams getTargetUniverseDetails() {
+    UniverseDefinitionTaskParams target =
+        Json.fromJson(Json.toJson(taskParams()), UniverseDefinitionTaskParams.class);
+    if (target.nodeDetailsSet == null) {
+      return target;
+    }
+    target.nodeDetailsSet.removeIf(node -> node.state == NodeState.ToBeRemoved);
+    for (NodeDetails node : target.nodeDetailsSet) {
+      if (node.state == NodeState.ToBeAdded) {
+        node.state = NodeState.Live;
+      }
+      if (node.masterState == MasterState.ToStart) {
+        node.isMaster = true;
+      } else if (node.masterState == MasterState.ToStop) {
+        node.isMaster = false;
+      }
+      node.masterState = null;
+    }
+    return target;
   }
 
   /**
@@ -1349,7 +1368,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.setCallback(callback);
     params.setExecutionContext(getOrCreateExecutionContext());
     if (isFirstTry()) {
-      params.setStateTransitionCaptureTarget(getStateTransitionCaptureTarget());
+      params.setTargetUniverseDetails(getTargetUniverseDetails());
     }
     task.initialize(params);
     subTaskGroup.addSubTask(task);
@@ -1454,14 +1473,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     // Add audit log config from the primary cluster
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    params.auditLogConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
-    params.metricsExportConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
-
-    // Add query log config from primary cluster
-    params.queryLogConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig;
+    params.telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
 
     // The software package to install for this cluster.
     params.ybSoftwareVersion = userIntent.ybSoftwareVersion;

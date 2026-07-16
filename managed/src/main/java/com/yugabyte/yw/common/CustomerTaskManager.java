@@ -9,6 +9,7 @@ import static io.ebean.DB.commitTransaction;
 import static io.ebean.DB.endTransaction;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.NOT_IMPLEMENTED;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -36,6 +37,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -132,6 +134,7 @@ public class CustomerTaskManager {
   private final FileDataService fileDataService;
   private final ReleaseManager releaseManager;
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
+  private final UpgradeUniverseHandler upgradeUniverseHandler;
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskManager.class);
   private static final List<TaskType> LOAD_BALANCER_TASK_TYPES =
@@ -151,7 +154,8 @@ public class CustomerTaskManager {
       RuntimeConfGetter confGetter,
       FileDataService fileDataService,
       ReleaseManager releaseManager,
-      SoftwareUpgradeHelper softwareUpgradeHelper) {
+      SoftwareUpgradeHelper softwareUpgradeHelper,
+      UpgradeUniverseHandler upgradeUniverseHandler) {
     this.ybService = ybService;
     this.commissioner = commissioner;
     this.ybcManager = ybcManager;
@@ -160,6 +164,7 @@ public class CustomerTaskManager {
     this.fileDataService = fileDataService;
     this.releaseManager = releaseManager;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
+    this.upgradeUniverseHandler = upgradeUniverseHandler;
   }
 
   // Invoked if the task is in incomplete state.
@@ -834,6 +839,44 @@ public class CustomerTaskManager {
                 + " universe the dr universe again, you can run another switchover task.");
       }
       log.debug("Rolling back switchover task with old xCluster config: {}", currentXClusterConfig);
+    } else if (taskType == TaskType.SoftwareUpgradeYB
+        || taskType == TaskType.SoftwareKubernetesUpgradeYB) {
+      // Roll back a failed software upgrade via the dedicated downgrade path. It gates on the
+      // universe's software-upgrade state and must run as a fresh task (no previousTaskUUID),
+      // so we submit and return directly instead of using the shared tail below.
+      Universe universe = Universe.getOrBadRequest(customerTask.getTargetUUID(), customer);
+      RollbackUpgradeParams rollbackParams =
+          Json.fromJson(oldTaskParams, RollbackUpgradeParams.class);
+      // Skip the version check for this programmatically-submitted task.
+      rollbackParams.expectedUniverseVersion = -1;
+      UUID newTaskUUID = upgradeUniverseHandler.rollbackUpgrade(rollbackParams, customer, universe);
+      log.info(
+          "Submitted rollback (downgrade) for failed software upgrade task {} on {}:{}, task uuid"
+              + " = {}.",
+          taskUUID,
+          customerTask.getTargetUUID(),
+          customerTask.getTargetName(),
+          newTaskUUID);
+      return CustomerTask.getOrBadRequest(customerUUID, newTaskUUID);
+    } else if (taskType == TaskType.EditUniverse || taskType == TaskType.EditKubernetesUniverse) {
+      // Edit-universe rollback is gated behind a runtime flag while the feature is built out. The
+      // eligibility gate/annotation should also consult this flag once the rollback path lands.
+      if (!confGetter.getGlobalConf(GlobalConfKeys.allowEditUniverseRollback)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Rollback of %s tasks is not enabled. Set yb.task.allow_edit_universe_rollback to"
+                    + " enable it.",
+                taskType));
+      }
+      // TODO(PLAT-21484, PLAT-21485): edit-universe rollback (VM + K8s) placeholder. Wired up once
+      // the rollback tasks and registry land.
+      throw new PlatformServiceException(
+          NOT_IMPLEMENTED,
+          String.format(
+              "Rollback for task type %s is not yet supported; edit-universe rollback is under"
+                  + " development (tracked by PLAT-21484).",
+              taskType));
     } else {
       String errMsg =
           String.format(

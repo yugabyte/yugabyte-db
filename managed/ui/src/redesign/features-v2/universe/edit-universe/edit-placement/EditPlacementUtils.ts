@@ -8,7 +8,7 @@ import {
   ClusterPlacementSpec
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { Region } from '@app/redesign/helpers/dtos';
-import { ResilienceAndRegionsProps } from '../../create-universe/steps/resilence-regions/dtos';
+import { ResilienceAndRegionsProps, ResilienceFormMode } from '../../create-universe/steps/resilence-regions/dtos';
 import { NodeAvailabilityProps } from '../../create-universe/steps/nodes-availability/dtos';
 import { InstanceSettingProps } from '../../create-universe/steps/hardware-settings/dtos';
 import {
@@ -27,6 +27,8 @@ import {
   isKubernetesCluster,
   mapUniversePayloadToResilienceAndRegionsProps
 } from '../EditUniverseUtils';
+import { values } from 'lodash';
+import { isDefinedNotNull } from '@yugabytedb/perf-advisor-ui';
 
 export const useGetEditPlacementContext = (): EditPlacementContextMethods => {
   const context = useContext(EditPlacementContext);
@@ -43,6 +45,9 @@ export const getResilienceAndRegionsProps = (
 ): ResilienceAndRegionsProps => {
   const hasGeoPartitions = getExistingGeoPartitions(universeData!).length > 0;
   const primaryCluster = getClusterByType(universeData, ClusterSpecClusterType.PRIMARY);
+  const resilienceFormMode = getUniverseCreationMode(universeData);
+  let resilience: ResilienceAndRegionsProps;
+
   if (hasGeoPartitions) {
     const selectedPartition = primaryCluster?.partitions_spec?.find(
       (partition) => partition.uuid === selectedPartitionUUID
@@ -53,7 +58,7 @@ export const getResilienceAndRegionsProps = (
     const effectiveReplicationFactor =
       selectedPartition.replication_factor ?? primaryCluster?.replication_factor ?? 1;
     const stats = countRegionsAzsAndNodes(selectedPartition.placement);
-    return mapUniversePayloadToResilienceAndRegionsProps(
+    resilience = mapUniversePayloadToResilienceAndRegionsProps(
       providerRegions!,
       stats,
       {
@@ -61,10 +66,16 @@ export const getResilienceAndRegionsProps = (
         replication_factor: effectiveReplicationFactor
       }
     );
+
   } else {
     const stats = countRegionsAzsAndNodes(primaryCluster!.placement_spec!);
-    return mapUniversePayloadToResilienceAndRegionsProps(providerRegions!, stats, primaryCluster!);
+    resilience = mapUniversePayloadToResilienceAndRegionsProps(providerRegions!, stats, primaryCluster!);
+    
   }
+  return {
+    ...resilience,
+    resilienceFormMode
+  };
 };
 
 /** Defaults for edit-placement nodes step (honors dedicated nodes and geo partition/default partition placement). */
@@ -339,4 +350,21 @@ export const buildMasterAllocationEditPayload = (
     node_spec,
     placement_spec: placementSpec
   };
+};
+
+export const getUniverseCreationMode = (universeData: Universe): ResilienceFormMode => {
+  return isDefinedNotNull(universeData.spec?.universe_settings?.expert_mode) ? 
+  universeData.spec?.universe_settings?.expert_mode ? 
+  ResilienceFormMode.EXPERT_MODE : ResilienceFormMode.GUIDED : 
+  ResilienceFormMode.EXPERT_MODE; 
+};
+
+export const isCurrentConfigSupportedByGuidedMode = (_resilience: ResilienceAndRegionsProps, nodesAndAvailability: NodeAvailabilityProps) => {
+
+  // 1. The no of nodes in all AZs should be equal.
+  const numOfNodesInAllAz = values(nodesAndAvailability.availabilityZones).map(az => az.map(z => z.nodeCount)).flat();
+
+  if(new Set(numOfNodesInAllAz).size !== 1) return false;
+  
+  return true;
 };

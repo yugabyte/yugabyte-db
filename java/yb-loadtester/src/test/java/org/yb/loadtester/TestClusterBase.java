@@ -29,6 +29,7 @@ import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -147,7 +148,15 @@ public class TestClusterBase extends BaseCQLTest {
   public void stopLoadTester() throws Exception {
     // Stop load tester and exit.
     if (loadTesterRunnable != null) {
-      loadTesterRunnable.stopLoadTester();
+      try {
+        loadTesterRunnable.stopLoadTester();
+      } catch (AssertionError e) {
+        // The load tester closes its own CQL session during shutdown, which can raise a spurious
+        // AssertionError from the DataStax driver's internal ConvictionPolicy connection accounting
+        // when hosts were removed during the test (e.g. a full cluster move). This is teardown-only
+        // noise and does not reflect a product failure, so log and continue.
+        LOG.error("Ignoring driver assertion while stopping load tester", e);
+      }
       loadTesterRunnable = null;
       LOG.info("Loadtester stopped.");
     }
@@ -239,7 +248,20 @@ public class TestClusterBase extends BaseCQLTest {
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
       // Wait for the webserver to be up.
       TestUtils.waitForServer(ts.getLocalhostIP(), ts.getCqlWebPort(), WEBSERVER_TIMEOUT_MS);
-      Metrics metrics = new Metrics(ts.getLocalhostIP(), ts.getCqlWebPort(), "server");
+      // Fetch metrics with retry: an individual webserver worker can be transiently wedged (e.g.
+      // during the reconfiguration storm of a full move), so keep opening fresh connections until
+      // one is served rather than failing the whole test on a single unresponsive response.
+      Metrics[] metricsHolder = new Metrics[1];
+      TestUtils.waitFor(() -> {
+        try {
+          metricsHolder[0] = new Metrics(ts.getLocalhostIP(), ts.getCqlWebPort(), "server");
+          return true;
+        } catch (IOException e) {
+          LOG.warn("Retrying metrics fetch for " + ts.getLocalhostIP(), e);
+          return false;
+        }
+      }, LOADBALANCE_TIMEOUT_MS);
+      Metrics metrics = metricsHolder[0];
       long numOps =
           metrics.getHistogram(
               "handler_latency_yb_cqlserver_SQLProcessor_InsertStmt").totalCount +

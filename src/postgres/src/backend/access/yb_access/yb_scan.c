@@ -3956,17 +3956,11 @@ YbBeginScan(Relation table,
 	 *
 	 * Initdb and walsender don't have local catalog version, so ignore for
 	 * those cases as well.
-	 *
-	 * Also skip when the catalog cache version is uninitialized. This
-	 * happens in the logical replication pull model path where
-	 * assign_yb_read_time resets it to 0 for historical reads. Sending 0
-	 * would cause the tserver to reject the request with MISMATCHED_SCHEMA.
 	 */
 	if (!(is_internal_scan && IsSystemRelation(table)) &&
 		!IsBootstrapProcessingMode() &&
 		MyBackendType != B_WAL_SENDER &&
-		MyBackendType != YB_YSQL_CONN_MGR_WAL_SENDER &&
-		YbGetCatalogCacheVersion() != YB_CATCACHE_VERSION_UNINITIALIZED)
+		MyBackendType != YB_YSQL_CONN_MGR_WAL_SENDER)
 		YbSetCatalogCacheVersion(ybScan->handle,
 								 YbGetCatalogCacheVersion());
 
@@ -5641,16 +5635,14 @@ yb_remove_key_unsynchronized(YBParallelPartitionKeys ppk)
 
 /*
  * Structure to encapsulate ppk_buffer_fetch_callback's state.
- * When worker fetches next portion of keys the buffer may become full. In such
- * a case rest of the keys have to be discarded to avoid skipping keys.
- * There's no way to let caller know about discarded keys, so callback should
- * remember the fact in its state and ignore the rest of the keys.
- * The ppk_buffer_initialize_callback changes the fetch status back to IDLE for
- * the same purpose because it uses the YBParallelPartitionKeys structure
- * exclusively, but ppk_buffer_fetch_callback may work concurrently with other
- * workers taking keys from the buffer, and at some point other worker may need
- * to fetch more and change the fetch state to WORKING. Hence the separate
- * field, a counter, to be able to report inefficient fetch.
+ *
+ * One field, the ppk is a pointer to the YB parallel scan state, which has
+ * the buffer to write the parallel keys to.
+ * The other field is a counter of the discarded parallel keys.
+ * Since callback discards a key due to insufficient space in the buffer, it
+ * should discard all subsequent keys within the same fetch. The callback can
+ * detect this by checking if the discarded value is greater than zero. Also
+ * the fetcher may take the value into the account to plan the next fetch.
  */
 typedef struct YbFetchKeysParam
 {
@@ -5724,41 +5716,57 @@ ppk_buffer_fetch_callback(void *param, const char *key, size_t key_size)
 static void
 yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 {
-	const char *latest_key;
-	size_t		latest_key_size;
-	uint64_t	max_num_ranges;
+	const char *lower_bound_key = NULL;
+	size_t		lower_bound_key_size = 0;
+	const char *upper_bound_key = NULL;
+	size_t		upper_bound_key_size = 0;
+	uint64_t	max_num_ranges = YB_PARTITION_KEYS_DEFAULT_FETCH_SIZE;
 	YbFetchKeysParam fkp = {0, ppk};
 
 	/* Estimate fetch parameter values */
 	SpinLockAcquire(&ppk->mutex);
 	/* Until fetch is done at least one key must remain in the buffer */
 	Assert(ppk->key_count > 0);
-	yb_keylen_t key_len;
+	if (ppk->total_key_count > 0)
+	{
+		const char *latest_key;
+		yb_keylen_t key_len;
+		double		average_key_size;
 
-	memcpy(&key_len, KEY_LEN(ppk, ppk->high_offset), sizeof(yb_keylen_t));
-	latest_key_size = key_len;
-	/* Empty key indicates the end of the keys, fetch shouldn't be possible. */
-	Assert(latest_key_size);
-	/*
-	 * It is safe to refer the key data in place, since the highest key can not
-	 * be removed from the buffer until fetch is completed.
-	 */
-	latest_key = KEY_DATA(ppk, ppk->high_offset);
+		/* Find average key size so far. */
+		average_key_size = ppk->total_key_size / ppk->total_key_count;
+		/* Account for the key length stored in the buffer */
+		average_key_size += sizeof(yb_keylen_t);
+		max_num_ranges =
+			floor(ppk->key_data_capacity / average_key_size) - ppk->key_count;
+		/* Global minimum and maximum limits for number of parallel ranges */
+		if (max_num_ranges < 16)
+			max_num_ranges = 16;
+		else if (max_num_ranges > 1024)
+			max_num_ranges = 1024;
 
-	/*
-	 * Find average key size so far. We expect reasonable number have already
-	 * been received during initialization.
-	 */
-	double		average_key_size = ppk->total_key_size / ppk->total_key_count;
-
-	/* Account for the key length stored in the buffer */
-	average_key_size += sizeof(yb_keylen_t);
-	max_num_ranges =
-		floor(ppk->key_data_capacity / average_key_size) - ppk->key_count;
-	if (max_num_ranges < 16)
-		max_num_ranges = 16;
-	else if (max_num_ranges > 1024)
-		max_num_ranges = 1024;
+		/*
+		 * Determine starting point to fetch from.
+		 * Currently the ending point is always null.
+		 */
+		memcpy(&key_len, KEY_LEN(ppk, ppk->high_offset), sizeof(yb_keylen_t));
+		Assert(key_len);
+		/*
+		 * It is safe to refer the key data in place, since the latest key can
+		 * not be removed from the buffer until fetch is completed.
+		 */
+		latest_key = KEY_DATA(ppk, ppk->high_offset);
+		if (ppk->is_forward)
+		{
+			lower_bound_key = latest_key;
+			lower_bound_key_size = key_len;
+		}
+		else
+		{
+			upper_bound_key = latest_key;
+			upper_bound_key_size = key_len;
+		}
+	}
 	SpinLockRelease(&ppk->mutex);
 
 	/*
@@ -5769,12 +5777,10 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 	 */
 	HandleYBStatus(YBCGetTableKeyRanges(ppk->database_oid,
 										ppk->table_relfilenode_oid,
-										ppk->is_forward ? latest_key : NULL /* lower_bound_key */ ,
-										ppk->is_forward ? latest_key_size : 0 /* lower_bound_key_size */ ,
-										ppk->is_forward ? NULL : latest_key /* upper_bound_key */ ,
-										ppk->is_forward ? 0 : latest_key_size /* upper_bound_key_size */ ,
+										lower_bound_key, lower_bound_key_size,
+										upper_bound_key, upper_bound_key_size,
 										max_num_ranges, yb_parallel_range_size, ppk->is_forward,
-										(ppk->key_data_capacity / 3) - sizeof(yb_keylen_t) /* max_key_length */ ,
+										(ppk->key_data_capacity / 3) - sizeof(yb_keylen_t),
 										ppk_buffer_fetch_callback, &fkp));
 	SpinLockAcquire(&ppk->mutex);
 	/* Update fetch status */
@@ -5793,37 +5799,6 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 	if (ppk->fetch_status == FETCH_STATUS_DONE)
 		elog(LOG, "Fetch is done, received %.0f keys (%.0f bytes)",
 			 ppk->total_key_count, ppk->total_key_size);
-}
-
-static void
-ppk_buffer_initialize_callback(void *param, const char *key, size_t key_size)
-{
-	YBParallelPartitionKeys ppk = (YBParallelPartitionKeys) param;
-
-	if (ppk->fetch_status != FETCH_STATUS_WORKING)
-	{
-		/*
-		 * Status changes from WORKING to IDLE when buffer is full, in that
-		 * case the remaining keys are ignored.
-		 * Status changes to DONE if the key is empty, indicating the end of
-		 * the keys, callback must not be called after that.
-		 */
-		Assert(ppk->fetch_status == FETCH_STATUS_IDLE);
-		return;
-	}
-	if (key_size == 0)
-	{
-		elog(LOG,
-			 "All ranges are fetched at once, received %.0f keys (%.0f bytes)",
-			 ppk->total_key_count, ppk->total_key_size);
-		ppk->fetch_status = FETCH_STATUS_DONE;
-	}
-	else if (!yb_add_key_unsynchronized(ppk, key, key_size))
-	{
-		elog(LOG, "Buffer is full after %d initial keys are loaded, "
-			 "discard the rest", ppk->key_count);
-		ppk->fetch_status = FETCH_STATUS_IDLE;
-	}
 }
 
 /*
@@ -5872,19 +5847,6 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 	 * be useful here. We need to move this logic.
 	 */
 	yb_add_key_unsynchronized(ppk, NULL, 0);
-	/* Fetch the first set of keys */
-	ppk->fetch_status = FETCH_STATUS_WORKING;
-	HandleYBStatus(YBCGetTableKeyRanges(ppk->database_oid,
-										ppk->table_relfilenode_oid,
-										NULL /* lower_bound_key */ , 0 /* lower_bound_key_size */ ,
-										NULL /* upper_bound_key */ , 0 /* upper_bound_key_size */ ,
-										YB_PARTITION_KEYS_DEFAULT_FETCH_SIZE,
-										yb_parallel_range_size, is_forward,
-										(ppk->key_data_capacity / 3) - sizeof(yb_keylen_t),
-										ppk_buffer_initialize_callback, ppk));
-	/* Update fetch status, unless updated by the callback */
-	if (ppk->fetch_status == FETCH_STATUS_WORKING)
-		ppk->fetch_status = FETCH_STATUS_IDLE;
 }
 
 typedef enum YbNextRangeResult

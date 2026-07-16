@@ -38,6 +38,25 @@ export enum CloudType {
   other = 'other'
 }
 
+/** Public cloud providers (AWS, GCP, Azure, OCI). */
+export const CloudVendorCloudTypes = [
+  CloudType.aws,
+  CloudType.gcp,
+  CloudType.azu,
+  CloudType.oci
+] as const;
+export type CloudVendorCloudType = (typeof CloudVendorCloudTypes)[number];
+
+/** Cloud providers that expose a storage type selector during universe create/edit. */
+export const StorageTypeSelectableCloudTypes = [
+  CloudType.gcp,
+  CloudType.azu,
+  CloudType.oci
+] as const;
+
+/** Cloud providers that support spot/preemptible instances during universe creation. */
+export const SpotInstanceCloudTypes = [CloudType.aws, CloudType.gcp, CloudType.azu] as const;
+
 export enum MasterPlacementMode {
   COLOCATED = 'COLOCATED',
   DEDICATED = 'DEDICATED'
@@ -76,7 +95,10 @@ export enum StorageType {
   PremiumV2_LRS = 'PremiumV2_LRS',
   UltraSSD_LRS = 'UltraSSD_LRS',
   Hyperdisk_Balanced = 'Hyperdisk_Balanced',
-  Hyperdisk_Extreme = 'Hyperdisk_Extreme'
+  Hyperdisk_Extreme = 'Hyperdisk_Extreme',
+  OCI_BALANCED = 'OCI_BALANCED',
+  OCI_HIGHERPERFORMANCE = 'OCI_HIGHERPERFORMANCE',
+  OCI_LOWERCOST = 'OCI_LOWERCOST'
 }
 export interface DeviceInfo {
   volumeSize: number;
@@ -903,6 +925,10 @@ export interface OverridesError {
 }
 export interface HelmOverridesError {
   overridesErrors: OverridesError[];
+}
+
+export interface K8sHelmOverridesError {
+  errors: OverridesError[];
 }
 
 export interface UniverseResource {

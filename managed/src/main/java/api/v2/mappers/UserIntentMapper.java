@@ -80,19 +80,33 @@ public interface UserIntentMapper {
     UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
     if (overrides != null && overrides.getPerProcess() != null) {
       if (overrides.getPerProcess().get(ServerType.TSERVER) != null) {
+        PerProcessDetails perProcessDetails = overrides.getPerProcess().get(ServerType.TSERVER);
         PerProcessNodeSpec tserverNodeSpec = new PerProcessNodeSpec();
-        tserverNodeSpec.setInstanceType(userIntent.instanceType);
-        tserverNodeSpec.setStorageSpec(deviceInfoToStorageSpec(userIntent.deviceInfo));
+        tserverNodeSpec.setInstanceType(perProcessDetails.getInstanceType());
+        tserverNodeSpec.setStorageSpec(deviceInfoToStorageSpec(perProcessDetails.getDeviceInfo()));
         clusterNodeSpec.setTserver(tserverNodeSpec);
       }
       if (overrides.getPerProcess().get(ServerType.MASTER) != null) {
+        PerProcessDetails perProcessDetails = overrides.getPerProcess().get(ServerType.MASTER);
         PerProcessNodeSpec masterNodeSpec = new PerProcessNodeSpec();
-        masterNodeSpec.setInstanceType(userIntent.instanceType);
-        masterNodeSpec.setStorageSpec(deviceInfoToStorageSpec(userIntent.deviceInfo));
+        masterNodeSpec.setInstanceType(perProcessDetails.getInstanceType());
+        masterNodeSpec.setStorageSpec(deviceInfoToStorageSpec(perProcessDetails.getDeviceInfo()));
         clusterNodeSpec.setMaster(masterNodeSpec);
       }
     }
-
+    if (userIntent.masterDeviceInfo != null || userIntent.masterInstanceType != null) {
+      PerProcessNodeSpec masterNodeSpec = clusterNodeSpec.getMaster();
+      if (masterNodeSpec == null) {
+        masterNodeSpec = new PerProcessNodeSpec();
+      }
+      if (userIntent.masterInstanceType != null) {
+        masterNodeSpec.setInstanceType(userIntent.masterInstanceType);
+      }
+      if (userIntent.masterDeviceInfo != null) {
+        masterNodeSpec.setStorageSpec(deviceInfoToStorageSpec(userIntent.masterDeviceInfo));
+      }
+      clusterNodeSpec.setMaster(masterNodeSpec);
+    }
     // az node spec from UserIntent
     if (overrides != null && overrides.getAzOverrides() != null) {
       Map<String, AvailabilityZoneNodeSpec> azNodeSpec = new HashMap<>();
@@ -477,18 +491,24 @@ public interface UserIntentMapper {
       }
       boolean hasChanges = false;
       PerProcessDetails masterOverrides = new PerProcessDetails();
-      if (clusterResizeNodeSpec.getMaster().getInstanceType() != null) {
-        masterOverrides.setInstanceType(clusterResizeNodeSpec.getMaster().getInstanceType());
+      String masterInstanceType = clusterResizeNodeSpec.getMaster().getInstanceType();
+      DeviceInfo incomingDeviceInfo = null;
+      if (masterInstanceType != null) {
+        userIntent.masterInstanceType = masterInstanceType;
+        masterOverrides.setInstanceType(masterInstanceType);
         hasChanges = true;
       }
       if (clusterResizeNodeSpec.getMaster().getStorageSpec() != null) {
-        DeviceInfo incoming =
+        // Our code is using masterInstanceType and masterDeviceInfo now instead of overrides.
+        DeviceInfo currentDeviceInfo = userIntent.masterDeviceInfo;
+        incomingDeviceInfo =
             resizeStorageSpecToDeviceInfo(clusterResizeNodeSpec.getMaster().getStorageSpec());
-        if (masterOverrides.getDeviceInfo() == null) {
-          masterOverrides.setDeviceInfo(incoming);
+        if (currentDeviceInfo == null) {
+          currentDeviceInfo = incomingDeviceInfo;
         } else {
-          masterOverrides.getDeviceInfo().mergeDeviceInfo(incoming);
+          currentDeviceInfo.mergeDeviceInfo(incomingDeviceInfo);
         }
+        masterOverrides.setDeviceInfo(currentDeviceInfo);
         hasChanges = true;
       }
       if (hasChanges) {
@@ -501,6 +521,14 @@ public interface UserIntentMapper {
             perProcess.getOrDefault(ServerType.MASTER, new PerProcessDetails());
         existingMasterOverrides.mergeWith(masterOverrides);
         perProcess.put(ServerType.MASTER, existingMasterOverrides);
+      }
+
+      if (incomingDeviceInfo != null) {
+        if (userIntent.masterDeviceInfo == null) {
+          userIntent.masterDeviceInfo = incomingDeviceInfo;
+        } else {
+          userIntent.masterDeviceInfo.mergeDeviceInfo(incomingDeviceInfo);
+        }
       }
     }
     if (clusterResizeNodeSpec.getTserver() != null) {

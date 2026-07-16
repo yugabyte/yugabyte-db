@@ -64,7 +64,8 @@ export interface StorageTypeOption {
 export const DEFAULT_STORAGE_TYPES = {
   [CloudType.aws]: StorageType.GP3,
   [CloudType.gcp]: StorageType.Persistent,
-  [CloudType.azu]: StorageType.Premium_LRS
+  [CloudType.azu]: StorageType.Premium_LRS,
+  [CloudType.oci]: StorageType.OCI_BALANCED
 };
 
 export const AWS_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
@@ -87,6 +88,14 @@ export const AZURE_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
   { value: StorageType.PremiumV2_LRS, label: 'PremiumV2' },
   { value: StorageType.UltraSSD_LRS, label: 'Ultra' }
 ];
+
+export const OCI_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
+  { value: StorageType.OCI_BALANCED, label: 'Balanced' },
+  { value: StorageType.OCI_HIGHERPERFORMANCE, label: 'Higher Performance' },
+  { value: StorageType.OCI_LOWERCOST, label: 'Lower Cost' }
+];
+
+export const DEFAULT_OCI_VOLUME_SIZE_GB = 250;
 
 export const getMinDiskIops = (storageType: StorageType, volumeSize: number) => {
   switch (storageType) {
@@ -154,6 +163,8 @@ export const getStorageTypeOptions = (
       return filteredGcpStorageTypes;
     case CloudType.azu:
       return filteredAzureStorageTypes;
+    case CloudType.oci:
+      return OCI_STORAGE_TYPE_OPTIONS;
     default:
       return [];
   }
@@ -248,6 +259,8 @@ const getVolumeSize = (instance: InstanceType, providerRuntimeConfigs: any) => {
     volumeSize = providerRuntimeConfigs?.configEntries?.find(
       (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.AZURE_DEFAULT_VOLUME_SIZE
     )?.value;
+  } else if (instance.providerCode === CloudType.oci) {
+    volumeSize = DEFAULT_OCI_VOLUME_SIZE_GB;
   }
   return volumeSize;
 };
@@ -270,6 +283,8 @@ const getStorageType = (instance: InstanceType, providerRuntimeConfigs: any) => 
     storageType = providerRuntimeConfigs?.configEntries?.find(
       (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.AZURE_DEFAULT_STORAGE_TYPE
     )?.value;
+  } else if (instance.providerCode === CloudType.oci) {
+    storageType = DEFAULT_STORAGE_TYPES[CloudType.oci];
   }
   return storageType;
 };

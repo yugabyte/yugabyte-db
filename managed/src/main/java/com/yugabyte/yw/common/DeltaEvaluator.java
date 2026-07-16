@@ -9,8 +9,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import play.libs.Json;
@@ -258,6 +258,7 @@ public final class DeltaEvaluator {
       for (JsonNode element : newData) {
         newList.add(element);
       }
+      // Original order is not preserved.
       Collections.sort(newList, (a, b) -> arrayElementComparator.compare(path, a, b));
 
       ArrayNode deltaArray = MAPPER.createArrayNode();
@@ -311,7 +312,7 @@ public final class DeltaEvaluator {
       // Iterate the union of both sides' field names. Iterating only currentData would miss keys
       // present solely in newData (e.g. a newly added gflag or instanceTags entry), dropping them
       // from the delta so they could not be reconstructed by generateNewValue.
-      Set<String> fieldNames = new HashSet<>();
+      Set<String> fieldNames = new LinkedHashSet<>();
       currentData.fieldNames().forEachRemaining(fieldNames::add);
       newData.fieldNames().forEachRemaining(fieldNames::add);
       for (String fieldName : fieldNames) {

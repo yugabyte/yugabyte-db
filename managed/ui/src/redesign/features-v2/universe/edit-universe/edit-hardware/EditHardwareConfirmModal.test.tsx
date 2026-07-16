@@ -87,6 +87,16 @@ vi.mock('../hooks/useEditUniverseTaskHandler', () => ({
   useEditUniverseTaskHandler: () => vi.fn()
 }));
 
+vi.mock('../../create-universe/helpers/ToastUtils', () => ({
+  useYBToast: () => ({
+    info: vi.fn(),
+    success: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    inProgress: vi.fn()
+  })
+}));
+
 vi.mock('./ReviewHardwareChangesModal', () => ({
   hardwareReviewSectionHasVisibleChanges: (current: Record<string, unknown>, next: Record<string, unknown>) =>
     JSON.stringify(current) !== JSON.stringify(next),
@@ -259,6 +269,28 @@ describe('EditHardwareConfirmModal payloads', () => {
     expect(mockState.resizeMutate).not.toHaveBeenCalled();
   });
 
+  it('uses edit-universe for VM non-dedicated storage-type (EBS) edits', () => {
+    mockState.settings = vmSettings({
+      // Match fixture instance type so only storage_type differs from resize-eligible fields.
+      instanceType: 'c5.xlarge',
+      deviceInfo: {
+        ...vmSettings().deviceInfo!,
+        storageType: 'IO1',
+        diskIops: 3000,
+        throughput: 125
+      }
+    });
+
+    renderModal(makeNonGeoUniverse());
+    submitAndConfirm();
+
+    const payload = getFirstEditPayload();
+    expect(payload.node_spec.storage_spec.storage_type).toBe('IO1');
+    expect(payload.node_spec.storage_spec.volume_size).toBe(100);
+    expect(payload.node_spec.storage_spec.num_volumes).toBe(1);
+    expect(mockState.resizeMutate).not.toHaveBeenCalled();
+  });
+
   it('keeps geo-partitioned VM hardware edits cluster-level only', () => {
     renderModal(makeSingleGeoPartitionUniverse());
     submitAndConfirm();
@@ -301,6 +333,7 @@ describe('EditHardwareConfirmModal payloads', () => {
 
     const payload = getFirstEditPayload();
     expect(payload.uuid).toBe(FIXTURE_ASYNC_CLUSTER_UUID);
+    expect(payload.num_nodes).toBe(1);
     expect(payload.node_spec.instance_type).toBe('c5.2xlarge');
     expect(mockState.resizeMutate).not.toHaveBeenCalled();
   });
@@ -344,6 +377,78 @@ describe('EditHardwareConfirmModal payloads', () => {
     });
   });
 
+  it('includes both K8s resource specs for dedicated K8s tserver-only edits', () => {
+    mockState.settings = k8sSettings({
+      tserverK8SNodeResourceSpec: { cpuCoreCount: 3, memoryGib: 5 },
+      masterK8SNodeResourceSpec: { cpuCoreCount: 2, memoryGib: 3 }
+    });
+
+    renderModal(makeK8sUniverse(true), { mode: 'tserver' });
+    submitAndConfirm();
+
+    const payload = getFirstEditPayload();
+    expect(payload.node_spec.k8s_tserver_resource_spec).toEqual({
+      cpu_core_count: 3,
+      memory_gib: 5
+    });
+    expect(payload.node_spec.k8s_master_resource_spec).toEqual({
+      cpu_core_count: 2,
+      memory_gib: 3
+    });
+  });
+
+  it('emits master resize payload when keepMasterTserverSame is checked with no field delta', () => {
+    const matchingDeviceInfo = {
+      ...vmSettings().deviceInfo!,
+      volumeSize: 100,
+      numVolumes: 1,
+      diskIops: 3000,
+      throughput: 125
+    };
+    mockState.settings = vmSettings({
+      instanceType: 'c5.xlarge',
+      masterInstanceType: 'c5.xlarge',
+      keepMasterTserverSame: true,
+      deviceInfo: matchingDeviceInfo,
+      masterDeviceInfo: matchingDeviceInfo
+    });
+
+    renderModal(makeNonGeoUniverseWithDedicatedNodeDetails(), { mode: 'master' });
+    submitAndConfirm();
+
+    const payload = getFirstResizePayload();
+    expect(payload.node_spec.master).toEqual({
+      instance_type: 'c5.xlarge',
+      storage_spec: {
+        volume_size: 100,
+        disk_iops: 3000,
+        throughput: 125
+      }
+    });
+    expect(payload.node_spec).not.toHaveProperty('tserver');
+  });
+
+  it('routes K8s master-only provisioned throughput edits through edit-universe', () => {
+    mockState.settings = k8sSettings({
+      masterDeviceInfo: {
+        ...k8sSettings().masterDeviceInfo!,
+        volumeSize: 200,
+        numVolumes: 2
+      }
+    });
+
+    renderModal(makeK8sUniverse(true), { mode: 'master' });
+    submitAndConfirm();
+
+    const payload = getFirstEditPayload();
+    expect(payload.node_spec.master?.storage_spec).toEqual({
+      volume_size: 200,
+      num_volumes: 2,
+      storage_class: 'standard'
+    });
+    expect(mockState.resizeMutate).not.toHaveBeenCalled();
+  });
+
   it('keeps geo-partitioned K8s hardware edits cluster-level only', () => {
     mockState.settings = k8sSettings();
 
@@ -355,6 +460,10 @@ describe('EditHardwareConfirmModal payloads', () => {
     expect(payload.node_spec.k8s_tserver_resource_spec).toEqual({
       cpu_core_count: 3,
       memory_gib: 5
+    });
+    expect(payload.node_spec.k8s_master_resource_spec).toEqual({
+      cpu_core_count: 2,
+      memory_gib: 3
     });
     expect(payload).not.toHaveProperty('placement_spec');
     expect(payload).not.toHaveProperty('partitions_spec');

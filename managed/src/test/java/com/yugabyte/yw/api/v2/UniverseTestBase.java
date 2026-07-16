@@ -11,6 +11,7 @@ import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.hasEntry;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.isNotNull;
 
@@ -43,6 +44,7 @@ import com.yugabyte.yba.v2.client.models.EncryptionInTransitSpec;
 import com.yugabyte.yba.v2.client.models.K8SNodeResourceSpec;
 import com.yugabyte.yba.v2.client.models.NodeDetails;
 import com.yugabyte.yba.v2.client.models.NodeProxyConfig;
+import com.yugabyte.yba.v2.client.models.PerProcessNodeSpec;
 import com.yugabyte.yba.v2.client.models.PlacementAZ;
 import com.yugabyte.yba.v2.client.models.PlacementCloud;
 import com.yugabyte.yba.v2.client.models.PlacementRegion;
@@ -88,8 +90,10 @@ import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -99,6 +103,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.ProxyConfig;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
@@ -808,7 +813,67 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     validateK8SNodeResourceSpec(v2NodeSpec, dbUserIntent);
     validateStorageSpec(
         v2NodeSpec.getStorageSpec(), dbUserIntent, v2PrimaryNodeSpec.getStorageSpec());
-    // TODO: validate the master node spec and tserver node spec if user intent overrides are used
+    validatePerProcessNodeSpecs(v2NodeSpec, dbUserIntent);
+  }
+
+  private void validatePerProcessNodeSpecs(ClusterNodeSpec v2NodeSpec, UserIntent dbUserIntent) {
+    UserIntentOverrides overrides = dbUserIntent.getUserIntentOverrides();
+    PerProcessDetails expectedTserverDetails = null;
+    if (overrides != null && overrides.getPerProcess() != null) {
+      expectedTserverDetails = overrides.getPerProcess().get(ServerType.TSERVER);
+    }
+    if (expectedTserverDetails != null) {
+      assertThat(v2NodeSpec.getTserver(), is(notNullValue()));
+      validatePerProcessNodeSpec(v2NodeSpec.getTserver(), expectedTserverDetails);
+    } else {
+      assertThat(v2NodeSpec.getTserver(), is(nullValue()));
+    }
+
+    PerProcessDetails expectedMasterDetails = null;
+    if (overrides != null && overrides.getPerProcess() != null) {
+      expectedMasterDetails = overrides.getPerProcess().get(ServerType.MASTER);
+    }
+    if (dbUserIntent.masterInstanceType != null || dbUserIntent.masterDeviceInfo != null) {
+      if (expectedMasterDetails == null) {
+        expectedMasterDetails = new PerProcessDetails();
+      }
+      if (dbUserIntent.masterInstanceType != null) {
+        expectedMasterDetails.setInstanceType(dbUserIntent.masterInstanceType);
+      }
+      if (dbUserIntent.masterDeviceInfo != null) {
+        expectedMasterDetails.setDeviceInfo(dbUserIntent.masterDeviceInfo);
+      }
+    }
+    if (expectedMasterDetails != null) {
+      assertThat(v2NodeSpec.getMaster(), is(notNullValue()));
+      validatePerProcessNodeSpec(v2NodeSpec.getMaster(), expectedMasterDetails);
+    } else {
+      assertThat(v2NodeSpec.getMaster(), is(nullValue()));
+    }
+  }
+
+  private void validatePerProcessNodeSpec(
+      PerProcessNodeSpec v2NodeSpec, PerProcessDetails expectedDetails) {
+    if (expectedDetails.getInstanceType() == null) {
+      assertThat(v2NodeSpec.getInstanceType(), is(nullValue()));
+    } else {
+      assertThat(v2NodeSpec.getInstanceType(), is(expectedDetails.getInstanceType()));
+    }
+    if (expectedDetails.getDeviceInfo() == null) {
+      assertThat(v2NodeSpec.getStorageSpec(), is(nullValue()));
+    } else {
+      validateStorageSpec(v2NodeSpec.getStorageSpec(), expectedDetails.getDeviceInfo());
+    }
+  }
+
+  private void validateStorageSpec(ClusterStorageSpec v2StorageSpec, DeviceInfo deviceInfo) {
+    assertThat(v2StorageSpec.getNumVolumes(), is(deviceInfo.numVolumes));
+    assertThat(v2StorageSpec.getVolumeSize(), is(deviceInfo.volumeSize));
+    assertThat(v2StorageSpec.getDiskIops(), is(deviceInfo.diskIops));
+    assertThat(v2StorageSpec.getMountPoints(), is(deviceInfo.mountPoints));
+    assertThat(v2StorageSpec.getStorageClass(), is(deviceInfo.storageClass));
+    assertThat(v2StorageSpec.getStorageType().getValue(), is(deviceInfo.storageType.name()));
+    assertThat(v2StorageSpec.getThroughput(), is(deviceInfo.throughput));
   }
 
   private void validateK8SNodeResourceSpec(ClusterNodeSpec v2NodeSpec, UserIntent dbUserIntent) {

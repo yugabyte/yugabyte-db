@@ -1,7 +1,8 @@
-import { values } from 'lodash';
+import { isEmpty, values } from 'lodash';
 import { Region } from '@app/redesign/helpers/dtos';
 import {
   assignRegionsAZNodeByReplicationFactor,
+  getExpertNodesStepDefaultPlacement,
   getFaultToleranceNeeded,
   getGuidedNodesStepReplicationFactor
 } from '../../create-universe/CreateUniverseUtils';
@@ -43,6 +44,66 @@ function countAzRows(availabilityZones: NodeAvailabilityProps['availabilityZones
 
 function selectedRegionCodes(resilience: ResilienceAndRegionsProps): Set<string> {
   return new Set((resilience.regions ?? []).map((region) => region.code));
+}
+
+/** Same region-key equality as useNodesAvailabilityStep.regionCodesMatchAvailabilityZones. */
+function regionCodesMatchAvailabilityZones(
+  regions: Region[],
+  availabilityZones: NodeAvailabilityProps['availabilityZones'] | undefined
+): boolean {
+  const selectedCodes = new Set(regions.map((r) => r.code));
+  const zoneKeys = new Set(Object.keys(availabilityZones ?? {}));
+  if (selectedCodes.size !== zoneKeys.size) {
+    return false;
+  }
+  for (const code of zoneKeys) {
+    if (!selectedCodes.has(code)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Prefer existing (universe) AZ rows for regions that stay selected; only fill
+ * missing/new regions from expert defaults (or guided assign fallback).
+ */
+function recalculateExpertNodesAvailability(
+  resilience: ResilienceAndRegionsProps,
+  nodesAndAvailability: NodeAvailabilityProps
+): NodeAvailabilityProps {
+  const selectedCodes = selectedRegionCodes(resilience);
+  const keptExisting = filterToSelectedRegions(
+    nodesAndAvailability.availabilityZones ?? {},
+    selectedCodes
+  );
+  const expertPlacement = getExpertNodesStepDefaultPlacement(resilience);
+  const defaultZones =
+    expertPlacement?.availabilityZones ?? assignRegionsAZNodeByReplicationFactor(resilience);
+
+  const mergedZones: NodeAvailabilityProps['availabilityZones'] = {};
+  for (const region of resilience.regions ?? []) {
+    const existing = keptExisting[region.code];
+    if (existing?.length) {
+      mergedZones[region.code] = existing;
+      continue;
+    }
+    const generated = defaultZones[region.code];
+    if (generated?.length) {
+      mergedZones[region.code] = generated;
+    }
+  }
+
+  return {
+    ...nodesAndAvailability,
+    useDedicatedNodes: nodesAndAvailability.useDedicatedNodes,
+    availabilityZones: mergedZones,
+    [REPLICATION_FACTOR]:
+      expertPlacement?.replicationFactor ??
+      nodesAndAvailability[REPLICATION_FACTOR] ??
+      resilience.resilienceFactor ??
+      1
+  };
 }
 
 function filterToSelectedRegions(
@@ -219,7 +280,15 @@ export function normalizeEditPlacementNodesAvailability(
   }
 
   if (resilience.resilienceFormMode === ResilienceFormMode.EXPERT_MODE) {
-    return nodesAndAvailability;
+    const regions = resilience.regions ?? [];
+    const { availabilityZones } = nodesAndAvailability;
+    if (
+      !isEmpty(availabilityZones) &&
+      regionCodesMatchAvailabilityZones(regions, availabilityZones)
+    ) {
+      return nodesAndAvailability;
+    }
+    return recalculateExpertNodesAvailability(resilience, nodesAndAvailability);
   }
 
   const { availabilityZones, ...rest } = nodesAndAvailability;

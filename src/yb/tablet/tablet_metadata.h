@@ -212,6 +212,18 @@ struct TableInfo {
   void CompleteInit();
 };
 
+// In-memory representation of one TierPathPB: maps a RocksDB path_id to an absolute directory on
+// this node for a given storage tier.
+struct TierPathInfo {
+  uint32_t    path_id = 0;
+  std::string tier;
+  std::string path;
+
+  bool operator==(const TierPathInfo& o) const {
+    return path_id == o.path_id && tier == o.tier && path == o.path;
+  }
+};
+
 // Describes KV-store. Single KV-store is backed by one or two RocksDB instances, depending on
 // whether distributed transactions are enabled for the table. KV-store for sys catalog could
 // contain multiple tables.
@@ -259,6 +271,15 @@ struct KvStoreInfo {
   // tables with distributed transactions enabled an additional RocksDB is created in directory at
   // `rocksdb_dir + kIntentsDBSuffix` path.
   std::string rocksdb_dir;
+
+  // Tiered storage directory pins for every disk configured on this node, ordered by path_id.
+  // Entry 0 is always the home disk (path == rocksdb_dir). Every other disk on the node
+  // gets its own slot. This is necessary because it is not possible to determine
+  // which disk might host the data in case of a tier migration.
+  // DBOptions::db_paths is fixed at DB::Open and cannot be extended later so all
+  // disks must be pre-registered to allow a tier migration to place SSTs on any disk without
+  // ever reopening the DB. Persisted in the superblock at tablet creation.
+  std::vector<TierPathInfo> tier_paths;
 
   // Optional inclusive lower bound and exclusive upper bound for keys served by this KV-store.
   // See docdb::KeyBounds.
@@ -405,6 +426,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const TableId& table_id = "") const;
 
   const std::string& rocksdb_dir() const { return kv_store_.rocksdb_dir; }
+  const std::vector<TierPathInfo>& tier_paths() const { return kv_store_.tier_paths; }
+
+  void TEST_SetTierPaths(std::vector<TierPathInfo> paths) EXCLUDES(data_mutex_);
+
   std::string intents_rocksdb_dir() const;
   std::string snapshots_dir() const;
   std::string vector_index_dir(const PgVectorIdxOptionsPB& vector_index_options) const;

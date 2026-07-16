@@ -16,6 +16,7 @@ import { SecuritySettingsProps } from '../../create-universe/steps/security-sett
 import { getClusterByType, useEditUniverseContext, useIsUniverseReady } from '../EditUniverseUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/helpers/dtos';
+import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { EditNetworkAcessModal } from '../edit-security/EditNetworkAcessModal';
 
 import Checked from '@app/redesign/assets/check-new.svg';
@@ -67,8 +68,8 @@ export const SecurityTab = () => {
   const clientToNodeEnabled =
     !!universeData?.spec?.encryption_in_transit_spec?.enable_client_to_node_encrypt;
 
-  const isPublicIPAssigned = Boolean(!!universeData?.spec?.networking_spec?.assign_public_ip);
-  const isIPV6Enabled = Boolean(!!universeData?.spec?.networking_spec?.enable_ipv6);
+  const isPublicIPAssigned = !!universeData?.spec?.networking_spec?.assign_public_ip;
+  const isIPV6Enabled = !!universeData?.spec?.networking_spec?.enable_ipv6;
   const isK8sPublicIPAssigned =
     primaryCluster?.networking_spec?.enable_exposing_service === 'EXPOSED';
 
@@ -100,7 +101,7 @@ export const SecurityTab = () => {
             </StyledHeader>
             <StyledContent>
               <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
-                {[CloudType.aws, CloudType.gcp, CloudType.azu].includes(providerCode) && (
+                {isCloudVendorCloudType(providerCode) && (
                   <div>
                     <span className="header">{t('publicIP')}</span>
                     <span className="value sameline nogap">

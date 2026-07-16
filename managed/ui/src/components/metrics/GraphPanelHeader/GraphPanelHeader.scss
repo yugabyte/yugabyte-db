@@ -208,6 +208,12 @@
     }
   }
 
+  .export-metrics-menu-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
   .dropdown-header {
     padding: 5px 20px;
   }

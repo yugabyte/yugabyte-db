@@ -6,10 +6,14 @@ export {
   canSelectMultipleRegions,
   computeResilienceTypeFromProvider
 } from './utils/resilienceReplication';
-export type { ExpertNodesStepDefaultPlacement } from './utils/placementAndAvailability';
+export type {
+  DedicatedTserverMasterCounts,
+  ExpertNodesStepDefaultPlacement
+} from './utils/placementAndAvailability';
 export {
   getNodeCount,
   getNodeCountNeeded,
+  getDedicatedTserverMasterCounts,
   assignRegionsAZNodeByReplicationFactor,
   reduceExpertNodeCountsToAtMostRf,
   getExpertNodesStepDefaultPlacement,

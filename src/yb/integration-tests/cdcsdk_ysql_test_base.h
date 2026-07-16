@@ -965,8 +965,6 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void TestStreamsDroppedOnDBDropAndMasterRestart(
       const string& sync_point_name, bool use_logical_replication);
 
-  void TestStreamCreationRollbackWithBatchedAlterTables(const std::string& sync_point);
-
   Status CdcReleaseBarriersOnTablet(const TabletId& tablet_id);
 };
 

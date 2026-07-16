@@ -776,10 +776,53 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     for (JsonNode node : nodeDetailsDelta) {
       if (node.has("$deltaType") && "ADD".equals(node.get("$deltaType").asText())) {
         hasAdd = true;
-        break;
+        assertEquals(NodeState.Live.name(), node.get("$newValue").get("state").asText());
       }
     }
     assertTrue(hasAdd);
+    assertNoMasterStateInNodeDetailsDelta(nodeDetailsDelta);
+  }
+
+  @Test
+  public void testStateTransitionDeltaCapturedOnFailedShrink() {
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                ShellResponse listResponse = new ShellResponse();
+                listResponse.message = "";
+                return listResponse;
+              }
+              ShellResponse shellResponse = new ShellResponse();
+              shellResponse.code = 100;
+              shellResponse.message = "Nope";
+              return shellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "false");
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performShrink(universe);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertNotNull(universe.getStateTransitionDetails());
+    JsonNode nodeDetailsDelta =
+        universe.getStateTransitionDetails().getDelta().get("nodeDetailsSet");
+    assertNotNull(nodeDetailsDelta);
+    boolean hasDelete = false;
+    for (JsonNode node : nodeDetailsDelta) {
+      if (node.has("$deltaType") && "DELETE".equals(node.get("$deltaType").asText())) {
+        hasDelete = true;
+        break;
+      }
+    }
+    assertTrue(hasDelete);
+    assertNoMasterStateInNodeDetailsDelta(nodeDetailsDelta);
   }
 
   @Test
@@ -1043,5 +1086,54 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     doReturn(freeResponseList)
         .when(mockMetricQueryHelper)
         .queryDirect(contains("node_filesystem_free_bytes"));
+  }
+
+  private void assertNoMasterStateInNodeDetailsDelta(JsonNode nodeDetailsDelta) {
+    for (JsonNode node : nodeDetailsDelta) {
+      assertFalse("Delta must not contain masterState", nodeDeltaContainsMasterState(node));
+    }
+  }
+
+  private boolean nodeDeltaContainsMasterState(JsonNode node) {
+    if (node == null || node.isNull()) {
+      return false;
+    }
+    // DELETE entries reflect the pre-task node; transient masterState on old values is expected.
+    if (node.has("$deltaType") && "DELETE".equals(node.get("$deltaType").asText())) {
+      return false;
+    }
+    if (node.has("masterState") && !node.get("masterState").isNull()) {
+      return true;
+    }
+    if (node.has("$deltaType")) {
+      String deltaType = node.get("$deltaType").asText();
+      if ("ADD".equals(deltaType) && node.has("$newValue")) {
+        return containsNonNullMasterState(node.get("$newValue"));
+      }
+    }
+    java.util.Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+    while (fields.hasNext()) {
+      Map.Entry<String, JsonNode> entry = fields.next();
+      if (entry.getKey().startsWith("$")) {
+        continue;
+      }
+      if ("masterState".equals(entry.getKey())) {
+        JsonNode masterStateDelta = entry.getValue();
+        if (masterStateDelta.has("$deltaType")
+            && masterStateDelta.has("$newValue")
+            && !masterStateDelta.get("$newValue").isNull()) {
+          return true;
+        }
+        continue;
+      }
+      if (nodeDeltaContainsMasterState(entry.getValue())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private boolean containsNonNullMasterState(JsonNode node) {
+    return node != null && node.has("masterState") && !node.get("masterState").isNull();
   }
 }

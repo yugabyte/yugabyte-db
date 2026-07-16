@@ -2,9 +2,9 @@
 -- PARALLEL queries to range sharded tables
 --
 -- create tables
-CREATE TABLE pctest1(k int, a int, b int, c int, d text, primary key(k asc));
+CREATE TABLE pctest1(k int, a int, b int, c int, d text, primary key(k asc)) SPLIT AT VALUES ((300), (900));
 CREATE TABLE pctest2(k int, a int, b int, c int, d text, primary key(k asc));
-CREATE UNIQUE INDEX ON pctest1(a asc);
+CREATE UNIQUE INDEX ON pctest1(a asc) SPLIT AT VALUES ((100), (700));
 CREATE INDEX ON pctest1(c asc);
 CREATE INDEX ON pctest2(b asc);
 INSERT INTO pctest1
@@ -190,6 +190,74 @@ SELECT * FROM pctest1 WHERE k < 10;
 
 /*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
+SELECT * FROM pctest1 WHERE k > 950;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Index Scan using pctest1_pkey on pctest1
+         Index Cond: (k > 950)
+(4 rows)
+
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 WHERE k > 950;
+  k   | a  |  b  | c  |     d     
+------+----+-----+----+-----------
+  951 | 49 | 317 |  1 | Value951
+  952 | 48 | 317 |  2 | Value952
+  953 | 47 | 317 |  3 | Value953
+  954 | 46 | 318 |  4 | Value954
+  955 | 45 | 318 |  5 | Value955
+  956 | 44 | 318 |  6 | Value956
+  957 | 43 | 319 |  7 | Value957
+  958 | 42 | 319 |  8 | Value958
+  959 | 41 | 319 |  9 | Value959
+  960 | 40 | 320 | 10 | Value960
+  961 | 39 | 320 | 11 | Value961
+  962 | 38 | 320 | 12 | Value962
+  963 | 37 | 321 | 13 | Value963
+  964 | 36 | 321 | 14 | Value964
+  965 | 35 | 321 | 15 | Value965
+  966 | 34 | 322 | 16 | Value966
+  967 | 33 | 322 | 17 | Value967
+  968 | 32 | 322 | 18 | Value968
+  969 | 31 | 323 | 19 | Value969
+  970 | 30 | 323 | 20 | Value970
+  971 | 29 | 323 | 21 | Value971
+  972 | 28 | 324 | 22 | Value972
+  973 | 27 | 324 | 23 | Value973
+  974 | 26 | 324 | 24 | Value974
+  975 | 25 | 325 | 25 | Value975
+  976 | 24 | 325 | 26 | Value976
+  977 | 23 | 325 | 27 | Value977
+  978 | 22 | 326 | 28 | Value978
+  979 | 21 | 326 | 29 | Value979
+  980 | 20 | 326 | 30 | Value980
+  981 | 19 | 327 | 31 | Value981
+  982 | 18 | 327 | 32 | Value982
+  983 | 17 | 327 | 33 | Value983
+  984 | 16 | 328 | 34 | Value984
+  985 | 15 | 328 | 35 | Value985
+  986 | 14 | 328 | 36 | Value986
+  987 | 13 | 329 | 37 | Value987
+  988 | 12 | 329 | 38 | Value988
+  989 | 11 | 329 | 39 | Value989
+  990 | 10 | 330 | 40 | Value990
+  991 |  9 | 330 | 41 | Value991
+  992 |  8 | 330 | 42 | Value992
+  993 |  7 | 331 | 43 | Value993
+  994 |  6 | 331 | 44 | Value994
+  995 |  5 | 331 | 45 | Value995
+  996 |  4 | 332 | 46 | Value996
+  997 |  3 | 332 | 47 | Value997
+  998 |  2 | 332 | 48 | Value998
+  999 |  1 | 333 | 49 | Value999
+ 1000 |  0 | 333 |  0 | Value1000
+(50 rows)
+
+-- with sort
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off)
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k;
                        QUERY PLAN                        
 ---------------------------------------------------------
@@ -212,6 +280,32 @@ SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k;
  79 | 921 | 26 | 29 | Value79
  89 | 911 | 29 | 39 | Value89
  99 | 901 | 33 | 49 | Value99
+(9 rows)
+
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off)
+SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k DESC;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Gather Merge
+   Workers Planned: 2
+   ->  Parallel Index Scan Backward using pctest1_pkey on pctest1
+         Storage Filter: (d ~~ 'Value_9'::text)
+(4 rows)
+
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k DESC;
+ k  |  a  | b  | c  |    d    
+----+-----+----+----+---------
+ 99 | 901 | 33 | 49 | Value99
+ 89 | 911 | 29 | 39 | Value89
+ 79 | 921 | 26 | 29 | Value79
+ 69 | 931 | 23 | 19 | Value69
+ 59 | 941 | 19 |  9 | Value59
+ 49 | 951 | 16 | 49 | Value49
+ 39 | 961 | 13 | 39 | Value39
+ 29 | 971 |  9 | 29 | Value29
+ 19 | 981 |  6 | 19 | Value19
 (9 rows)
 
 --secondary index
@@ -253,18 +347,17 @@ SELECT * FROM pctest1 WHERE c = 10;
 (20 rows)
 
 --secondary index
+set enable_sort to false;
 /*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
 SELECT * FROM pctest1 ORDER BY a LIMIT 10;
-                   QUERY PLAN                   
-------------------------------------------------
+                           QUERY PLAN                           
+----------------------------------------------------------------
  Limit
    ->  Gather Merge
          Workers Planned: 2
-         ->  Sort
-               Sort Key: a
-               ->  Parallel Seq Scan on pctest1
-(6 rows)
+         ->  Parallel Index Scan using pctest1_a_idx on pctest1
+(4 rows)
 
 /*+ Parallel(pctest1 2 hard) */
 SELECT * FROM pctest1 ORDER BY a LIMIT 10;
@@ -282,6 +375,34 @@ SELECT * FROM pctest1 ORDER BY a LIMIT 10;
   991 | 9 | 330 | 41 | Value991
 (10 rows)
 
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off)
+SELECT * FROM pctest1 ORDER BY a DESC LIMIT 10;
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Limit
+   ->  Gather Merge
+         Workers Planned: 2
+         ->  Parallel Index Scan Backward using pctest1_a_idx on pctest1
+(4 rows)
+
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 ORDER BY a DESC LIMIT 10;
+ k  |  a  | b | c  |    d    
+----+-----+---+----+---------
+  1 | 999 | 0 |  1 | Value1
+  2 | 998 | 0 |  2 | Value2
+  3 | 997 | 1 |  3 | Value3
+  4 | 996 | 1 |  4 | Value4
+  5 | 995 | 1 |  5 | Value5
+  6 | 994 | 2 |  6 | Value6
+  7 | 993 | 2 |  7 | Value7
+  8 | 992 | 2 |  8 | Value8
+  9 | 991 | 3 |  9 | Value9
+ 10 | 990 | 3 | 10 | Value10
+(10 rows)
+
+reset enable_sort;
 -- with aggregates
 /*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)

@@ -50,7 +50,7 @@ DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_bool(ysql_yb_skip_redundant_update_ops);
 DECLARE_uint64(transaction_resend_applying_interval_usec);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
-DECLARE_int32(maintenance_manager_polling_interval_ms);
+DECLARE_bool(enable_backfilling_cdc_stream_with_replication_slot);
 
 namespace yb {
 
@@ -14549,6 +14549,86 @@ TEST_F(CDCSDKYsqlTest, TestCreateStreamWithBatchedAlterTables) {
       << "Unexpected 'TSHeartbeat running for' warning(s) during multi-stream creation";
   ASSERT_EQ(long_operation_sink_2.GetEventCount(), 0)
       << "Unexpected 'TSHeartbeat took a long time' warning(s) during multi-stream creation";
+}
+
+// Test to ensure no lock-order inversion between the background CDCSDK metadata cleanup and a
+// concurrent YsqlBackfillReplicationSlotNameToCDCSDKStream, forced via sync points.
+TEST_F(CDCSDKYsqlTest, TestCleanUpCDCSDKMetadataDeadlockWithConcurrentSlotBackfill) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_backfilling_cdc_stream_with_replication_slot) = true;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */));
+
+  auto table_to_drop = ASSERT_RESULT(
+      CreateTable(&test_cluster_, test_namespace_name, "test_table_to_drop", 1 /* num_tablets */));
+  auto non_dropped_table = ASSERT_RESULT(
+      CreateTable(&test_cluster_, test_namespace_name, "test_table_keep", 1 /* num_tablets */));
+
+  // A slot-less stream so that the backfill RPC can later add a slot name to it.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  DropTable(&test_cluster_, "test_table_to_drop");
+  VerifyTablesAndStateInStreamMetadata(
+      stream_id,
+      std::unordered_set<std::string>{table_to_drop.table_id(), non_dropped_table.table_id()},
+      std::nullopt /* expected_unqualified_table_ids */,
+      std::nullopt /* expected_dropped_table_ids */, master::SysCDCStreamEntryPB::DELETING_METADATA,
+      false /* include_catalog_tables */,
+      "Timed out waiting for stream to be in DELETING_METADATA state" /* timeout_msg */);
+
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->LoadDependency(
+      {{"GetDroppedTablesFromCDCSDKStream::Entered",
+        "YsqlBackfillReplicationSlotNameToCDCSDKStream::BeforeAcquireMutex"},
+       {"YsqlBackfillReplicationSlotNameToCDCSDKStream::AcquiredMutex",
+        "GetDroppedTablesFromCDCSDKStream::BeforeFindTableById"}});
+  sync_point->EnableProcessing();
+
+  auto& leader_master = *ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster());
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &test_cluster_.client_->proxy_cache(), leader_master.bound_rpc_addr());
+
+  std::atomic<bool> backfill_done{false};
+  Status backfill_status;
+  std::thread backfill_thread([&]() {
+    master::YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB req;
+    master::YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB resp;
+    req.set_stream_id(stream_id.ToString());
+    req.set_cdcsdk_ysql_replication_slot_name("test_deadlock_backfill_slot");
+    rpc::RpcController rpc;
+    // Larger than the WaitFor below, so a deadlock surfaces as a WaitFor timeout (not an RPC one).
+    rpc.set_timeout(MonoDelta::FromSeconds(120));
+    auto s = master_proxy->YsqlBackfillReplicationSlotNameToCDCSDKStream(req, &resp, &rpc);
+    if (s.ok() && resp.has_error()) {
+      s = StatusFromPB(resp.error().status());
+    }
+    backfill_status = s;
+    backfill_done.store(true, std::memory_order_release);
+  });
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) = false;
+
+  auto wait_status = WaitFor(
+      [&backfill_done]() { return backfill_done.load(std::memory_order_acquire); },
+      MonoDelta::FromSeconds(60), "concurrent slot-name backfill to complete");
+
+  if (!wait_status.ok()) {
+    // The master is wedged by the real deadlock; the thread will never finish. Detach it so the
+    // test can report the failure (the process is torn down afterwards).
+    backfill_thread.detach();
+    FAIL()
+        << "Deadlock reproduced: the slot-name backfill did not complete within 60s. The "
+           "background CDCSDK metadata cleanup holds the stream's CowObject write lock and waits "
+           "on mutex_ (via FindTableById), while the backfill holds mutex_ and waits on the same "
+           "stream's CowObject write lock.";
+  }
+
+  backfill_thread.join();
+  ASSERT_OK(backfill_status);
+  sync_point->DisableProcessing();
 }
 
 }  // namespace cdc

@@ -10,7 +10,10 @@ import {
 } from '../EditUniverseUtils';
 import { ClusterType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { buildPrimaryPlacementEditPayload, useGetEditPlacementContext } from './EditPlacementUtils';
-import { getFaultToleranceNeeded, getNodeCount } from '../../create-universe/CreateUniverseUtils';
+import {
+  getEffectiveReplicationFactorForResilience,
+  getNodeCount
+} from '../../create-universe/CreateUniverseUtils';
 import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
 import { AZ_NOT_PREFERRED } from '../../create-universe/helpers/constants';
 
@@ -18,7 +21,6 @@ import pluralize from 'pluralize';
 import { keys } from 'lodash';
 import { ArrowDownward, ArrowUpward } from '@material-ui/icons';
 import NextLineIcon from '@app/redesign/assets/next-line.svg';
-import { ResilienceFormMode } from '../../create-universe/steps/resilence-regions/dtos';
 
 interface EditPlacementConfirmModalProps {
   visible: boolean;
@@ -112,14 +114,15 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
 
   const targetPayload = buildPrimaryPlacementEditPayload(universeData!, resilience!, nodesAndAvailability!);
 
-  const newReplicationFactor = resilience?.resilienceFormMode === ResilienceFormMode.GUIDED ?  resilience!.resilienceFactor : nodesAndAvailability?.replicationFactor ?? 0;
-  
+  const newReplicationFactor = getEffectiveReplicationFactorForResilience(
+    resilience!,
+    nodesAndAvailability!
+  );
   const newResilientType = getResilientType(
     targetPayload.placementSpec,
-    getFaultToleranceNeeded(newReplicationFactor),
+    newReplicationFactor,
     t
   ).replace('t Resilient to ', '');
-
   const currentRegions = placementSpec?.cloud_list.map((cloud) => cloud?.region_list)
     .flat()
     .sort((a, b) => (a?.name ?? '').localeCompare(b?.name ?? ''));

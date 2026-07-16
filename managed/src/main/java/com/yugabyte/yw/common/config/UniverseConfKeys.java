@@ -1579,6 +1579,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Hard memory limit for the OpenTelemetry Collector process in the systemd unit file.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> masterLogsAdditionalDropPatterns =
+      new ConfKeyInfo<>(
+          "yb.universe.telemetry.master_logs_additional_drop_patterns",
+          ScopeType.UNIVERSE,
+          "Additional master log redaction drop patterns",
+          "Comma-separated substrings; matching yb-master log lines are dropped before export, on"
+              + " top of the hardcoded redaction list.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowDisableMasterOnNonMasterNodeSubtask =
       new ConfKeyInfo<>(
           "yb.universe.allow_disable_master_on_non_master_node_subtask",

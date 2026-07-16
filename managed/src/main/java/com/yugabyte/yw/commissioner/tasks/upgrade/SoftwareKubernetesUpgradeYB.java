@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
@@ -25,6 +26,7 @@ import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 @Slf4j
 @Abortable
 @Retryable
+@CanRollback
 public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
 
   private final SoftwareUpgradeHelper softwareUpgradeHelper;

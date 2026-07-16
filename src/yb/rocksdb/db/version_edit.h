@@ -53,7 +53,15 @@ class TableCache;
 class VersionSet;
 class VersionEditPB;
 
-const uint64_t kFileNumberMask = 0x3FFFFFFFFFFFFFFF;
+// In-memory packing of an SST file number and path_id (index into DBOptions::db_paths) into a
+// single uint64. 5 bits for path_id supports up to 32 distinct paths/disks (tiered storage),
+// leaving 59 bits for the file number (~5.8e17 - never exhausted in practice).
+
+constexpr uint32_t kFilePathIdBits  = 5;                       // 2^5 = 32 paths/disks
+constexpr uint32_t kFileNumberBits  = 64 - kFilePathIdBits;    // 59
+static_assert(kFilePathIdBits + kFileNumberBits == 64);
+const uint64_t kFileNumberMask = (1ULL << kFileNumberBits) - 1;  // 2^59 - 1
+const uint32_t kMaxPathId      = (1u   << kFilePathIdBits)  - 1;  // 2^5 - 1
 
 extern uint64_t PackFileNumberAndPathId(uint64_t number, uint64_t path_id);
 

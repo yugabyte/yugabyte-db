@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include "yb/common/value.messages.h"
+
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/packed_row.h"
@@ -83,6 +85,14 @@ class DocVectorValue final : public PackableValue {
 };
 
 bool IsNull(const DocVectorValue& v);
+
+// Encodes a raw pgvector binary value into DocDB format for schema missing_value storage.
+// The result has no VectorId suffix (trailing 0 byte).
+Result<QLValuePB> EncodeVectorSchemaMissingValue(
+    const QLValuePB& raw_pgvector_value, VectorValueFormat format);
+
+// Converts a DocDB-encoded vector schema missing_value into the format used by PgTableRow.
+Result<QLValuePB> DecodeVectorSchemaMissingValueForPgRow(const QLValuePB& docdb_missing_value);
 
 KeyBytes DocVectorKey(vector_index::VectorId vector_id);
 std::array<Slice, 3> DocVectorKeyAsParts(Slice id, Slice encoded_write_time);

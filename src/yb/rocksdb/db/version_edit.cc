@@ -47,6 +47,7 @@ namespace rocksdb {
 
 uint64_t PackFileNumberAndPathId(uint64_t number, uint64_t path_id) {
   assert(number <= kFileNumberMask);
+  DCHECK_LE(path_id, kMaxPathId);
   return number | (path_id * (kFileNumberMask + 1));
 }
 

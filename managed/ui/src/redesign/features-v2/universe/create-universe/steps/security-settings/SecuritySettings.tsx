@@ -17,6 +17,7 @@ import {
   StepsRef
 } from '../../CreateUniverseContext';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { SecuritySettingsProps } from './dtos';
 import { useUpdateEffect } from 'react-use';
 import {
@@ -87,8 +88,7 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
           <StyledPanel>
             <StyledHeader>{t('networkAcessTitle')}</StyledHeader>
             <StyledContent sx={{ gap: '16px' }}>
-              {provider &&
-                [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) && (
+              {provider && isCloudVendorCloudType(provider?.code) && (
                   <AssignPublicIPField
                     disabled={false}
                     providerCode={generalSettings?.providerConfiguration?.code ?? ''}

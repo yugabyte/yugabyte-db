@@ -1239,6 +1239,34 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
   const auto& db_dir = metadata()->rocksdb_dir();
   RETURN_NOT_OK(CreateTabletDirectories(db_dir, metadata()->fs_manager()));
 
+  // Tiered storage: populate db_paths from the tablet's persisted tier_paths so RocksDB is
+  // aware of all tier directories at open time.
+  // Invariants:
+  //   - slot 0 must equal db_dir (MANIFEST/CURRENT/OPTIONS live there).
+  //   - target_size = UINT64_MAX for every slot so RocksDB's automatic
+  //    size-based db_path selection does not spill files to another path_id.
+  {
+    const auto& tier_paths = metadata()->tier_paths();
+    if (!tier_paths.empty()) {
+      auto* fs = metadata()->fs_manager();
+      regular_rocksdb_options.db_paths.clear();
+      std::string desc;
+      for (const auto& tp : tier_paths) {
+        if (tp.path != db_dir) {
+          RETURN_NOT_OK(CreateTabletDirectories(tp.path, fs));
+        }
+        regular_rocksdb_options.db_paths.emplace_back(
+            tp.path, std::numeric_limits<uint64_t>::max());
+        desc += Format("$0[$1]=$2 ", tp.tier, tp.path_id, tp.path);
+      }
+      LOG_IF_WITH_PREFIX(DFATAL, regular_rocksdb_options.db_paths.front().path != db_dir)
+          << "tier_paths[0] (" << regular_rocksdb_options.db_paths.front().path
+          << ") does not match home rocksdb_dir (" << db_dir << ")";
+      LOG_WITH_PREFIX(INFO) << "Opening RocksDB with " << tier_paths.size()
+                            << " tiered db_paths: " << desc;
+    }
+  }
+
   LOG(INFO) << "Opening RocksDB at: " << db_dir;
   rocksdb::DB* db = nullptr;
   rocksdb::Status rocksdb_open_status = rocksdb::DB::Open(regular_rocksdb_options, db_dir, &db);
@@ -1802,6 +1830,12 @@ std::vector<std::string> Tablet::CompleteShutdownStorages(
 Status Tablet::DeleteStorages(const std::vector<std::string>& db_paths) {
   rocksdb::Options rocksdb_options;
   InitRocksDBOptions(&rocksdb_options, LogPrefix());
+
+  // Tiered storage: hand DestroyDB the regular DB's tier disks so its cleanup removes SST files
+  // spread across all tiers.
+  for (const auto& tp : metadata()->tier_paths()) {
+    rocksdb_options.db_paths.emplace_back(tp.path, std::numeric_limits<uint64_t>::max());
+  }
 
   Status status;
   for (const auto& db_path : db_paths) {
@@ -5720,17 +5754,13 @@ Status Tablet::GetTabletKeyRanges(
     WriteBuffer* keys_buffer, TableIdView colocated_table_id) const {
   if (table_type_ != PGSQL_TABLE_TYPE) {
     return STATUS_FORMAT(
-        NotSupported, "GetTabletKeyRanges is only supported for YSQL, tablet_id: ", tablet_id());
-  }
-  if (!metadata_->colocated()) {
-    return STATUS_FORMAT(
-        NotSupported,
-        "GetTabletKeyRanges is only supported for colocated tables, tablet_id: ", tablet_id());
+        NotSupported, "GetTabletKeyRanges is only supported for YSQL, tablet_id: $0", tablet_id());
   }
   if (!metadata_->partition_schema()->IsRangePartitioning()) {
     return STATUS_FORMAT(
         NotSupported,
-        "GetTabletKeyRanges is only supported for range-sharded tables, tablet_id: ", tablet_id());
+        "GetTabletKeyRanges is only supported for range-sharded tables, tablet_id: $0",
+        tablet_id());
   }
   return GetTabletKeyRanges(
       lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, direction, max_key_length,
@@ -6003,9 +6033,6 @@ Status Tablet::GetTabletKeyRanges(
     partition_lower_bound_key = table_key_prefix;
     encoded_partition_key_end = IncrementedCopy(table_key_prefix);
     partition_upper_bound_key = encoded_partition_key_end;
-  } else if (key_bounds_.IsInitialized()) {
-    partition_lower_bound_key = key_bounds_.lower;
-    partition_upper_bound_key = key_bounds_.upper;
   } else {
     const auto partition_schema = metadata_->partition_schema();
     const auto partition = metadata_->partition();

@@ -71,12 +71,9 @@ Infer as much as you can from context first, then **batch-confirm with the user 
    If you find a candidate, surface it to the user and ask them to confirm it's the one to use *before* asking them to supply a fresh one. Only prompt for a new reference if no candidate is found or the user rejects the candidate. Acceptable forms are:
    - A GitHub issue number (e.g., `#31151`)
    - A JIRA ticket (e.g., `PLAT-20518`)
-   - Offer to **auto-create** a GitHub issue or JIRA ticket if the user doesn't have one yet. If they accept:
-     - For GitHub: before calling `gh issue create`, pick a matching issue template from `.github/ISSUE_TEMPLATE/` based on the component (e.g., `docDB.yml` for DocDB, `ysql.yml` for YSQL, `ycql.yml` for YCQL, `cdc.yml` for CDC, `ui.yml` for YBA/UI, `yugabyted.yml` for yugabyted, `docs.yml` for docs, `feature_request.yml` as the generic fallback for tooling/other). Read the chosen template YAML, then (a) collect its `labels` and pass them via `--label`, (b) construct a markdown body mirroring the template's `body` sections (e.g., `### Description` textarea → `## Description` + user-facing content; `Issue Type` dropdown → pick one of the listed `options`; sensitivity checkbox → include a confirming line). Run `gh issue create --assignee @me --repo yugabyte/yugabyte-db --title <...> --body-file <path> --label <labels>`. Confirm the title/body with the user before creating. Always assign the issue to the current user.
-     - For JIRA: ask the user which project (e.g., `PLAT`) and use the Atlassian MCP tool `createJiraIssue` to create it. Confirm the summary/description with the user before creating.
-   - Capture the resulting issue number or JIRA key.
+   - Offer to **auto-create** a GitHub issue or JIRA ticket if the user doesn't have one yet. If they accept, invoke the **`/create-issue`** skill to file it (GitHub issue for core DB code, JIRA ticket for `managed/` platform work), then capture the issue number / JIRA key it reports back.
 
-   - Don't reuse an issue across multiple in-flight master PRs — auto-create a fresh issue (per the flow above) when starting unrelated work, even if a related closed/merged PR used a similar issue.
+   - Don't reuse an issue across multiple in-flight master PRs — create a fresh issue (via `/create-issue`) when starting unrelated work, even if a related closed/merged PR used a similar issue.
 
 2. **Component** — the component tag that will appear in the title (e.g., `DocDB`, `YSQL`, `YBA`, `CDC`, `xCluster`). Infer from the files changed (`git diff --name-only <upstream>/master..HEAD`):
    - `src/yb/` → `DocDB`

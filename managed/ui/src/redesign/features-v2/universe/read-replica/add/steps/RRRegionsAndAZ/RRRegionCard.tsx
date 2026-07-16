@@ -97,6 +97,8 @@ type Props = {
   allowAzUndo?: boolean;
   showRemoveRegion?: boolean;
   onRemoveRegion?: () => void;
+  /** When primary uses dedicated nodes, AZ node inputs are labeled as T-Server counts. */
+  useDedicatedNodes?: boolean;
 };
 
 export const RRRegionCard: FC<Props> = ({

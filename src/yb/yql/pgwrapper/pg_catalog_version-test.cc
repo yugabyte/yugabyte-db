@@ -178,7 +178,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ShmCatalogVersionMap result;
     for (size_t tablet_index = 0; tablet_index != cluster_->num_tablet_servers(); ++tablet_index) {
       // Get the shared memory object from tserver at 'tablet_index'.
-      auto uuid = cluster_->tablet_server(0)->instance_id().permanent_uuid();
+      auto uuid = cluster_->tablet_server(tablet_index)->instance_id().permanent_uuid();
       tserver::SharedMemoryManager shared_mem_manager;
       RETURN_NOT_OK(shared_mem_manager.InitializePgBackend(uuid));
 

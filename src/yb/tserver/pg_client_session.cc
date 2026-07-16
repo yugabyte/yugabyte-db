@@ -44,12 +44,15 @@
 #include "yb/common/common_util.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/transaction_priority.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/object_lock_shared_state_manager.h"
+
+#include "yb/dockv/doc_vector_id.h"
 
 #include "yb/master/master_ddl.pb.h"
 
@@ -1940,12 +1943,25 @@ class PgClientSession::Impl {
     if (req.increment_schema_version()) {
       alterer->set_increment_schema_version();
     }
+    std::optional<dockv::VectorValueFormat> vector_value_format;
     for (const auto& add_column : req.add_columns()) {
       const auto yb_type = QLType::Create(ToLW(
           static_cast<PersistentDataType>(add_column.attr_ybtype())));
-      alterer->AddColumn(add_column.attr_name())
-            ->Type(yb_type)->Order(add_column.attr_num())->PgTypeOid(add_column.attr_pgoid())
-            ->SetMissing(add_column.attr_missing_val());
+      auto column_spec = alterer->AddColumn(add_column.attr_name())
+            ->Type(yb_type)->Order(add_column.attr_num())->PgTypeOid(add_column.attr_pgoid());
+      auto missing_val = add_column.attr_missing_val();
+      if (yb_type->main() == DataType::VECTOR && !IsNull(missing_val)) {
+        if (!vector_value_format) {
+          client::YBTablePtr yb_table;
+          RETURN_NOT_OK(GetTable(table_id, table_cache(), &yb_table));
+          vector_value_format = yb_table->schema().table_properties().owns_vector_reverse_mapping()
+              ? dockv::VectorValueFormat::kTyped
+              : dockv::VectorValueFormat::kLegacy;
+        }
+        missing_val =
+            VERIFY_RESULT(dockv::EncodeVectorSchemaMissingValue(missing_val, *vector_value_format));
+      }
+      column_spec->SetMissing(missing_val);
       // Do not set 'nullable' attribute as PgCreateTable::AddColumn() does not do it.
     }
     for (const auto& rename_column : req.rename_columns()) {
@@ -2254,7 +2270,10 @@ class PgClientSession::Impl {
                           kind == PgClientSessionKind::kPlain ? "kPlain" : "kAutonomousDdl",
                           subtxn_id));
     const auto deadline = context->GetClientDeadline();
-    RETURN_NOT_OK(transaction->RollbackToSubTransaction(subtxn_id, deadline));
+    bool is_heartbeat_aborted_or_expired = false;
+    RETURN_NOT_OK(
+        transaction->RollbackToSubTransaction(
+            subtxn_id, deadline, &is_heartbeat_aborted_or_expired));
 
     if (YsqlDdlSavepointEnabled() &&
         is_ddl_mode && req.options().ddl_use_regular_transaction_block() &&
@@ -2266,6 +2285,17 @@ class PgClientSession::Impl {
       RSTATUS_DCHECK(ddl_txn_metadata_.transaction_id == transaction->id(), IllegalState,
                      Format("Unexpected DDL transaction metadata found. Expected: $0, found: $1",
                             transaction->id(), ddl_txn_metadata_.transaction_id));
+
+      // Prevent split-brain: if the transaction is completely aborted at the DocDB level,
+      // we must propagate an error back to PostgreSQL so it triggers a full rollback and
+      // clears the stale relcache.
+      if (is_heartbeat_aborted_or_expired) {
+        return STATUS_FORMAT(
+            Aborted,
+            "Distributed transaction $0 was aborted due to deadlock or other failure",
+            transaction->id());
+      }
+
       RETURN_NOT_OK(client_.RollbackDocdbSchemaToSubtxn(ddl_txn_metadata_, subtxn_id));
       RETURN_NOT_OK(
           client_.WaitForRollbackDocdbSchemaToSubtxnToFinish(ddl_txn_metadata_, subtxn_id));
@@ -2689,9 +2719,9 @@ class PgClientSession::Impl {
     read_request->set_is_forward_scan(req.is_forward());
     auto* embedded_req = read_request->mutable_get_tablet_key_ranges_request();
 
-    // IsInclusive is actually ignored by Tablet::GetTabletKeyRanges, and it always treats both
-    // boundaries as inclusive. But we are setting it here to avoid check failures inside
-    // YBPgsqlReadOp.
+    // IsInclusive is actually ignored by Tablet::GetTabletKeyRanges, it does not matter for
+    // the parallel ranges collection. We set it here to route the request to the correct tablet,
+    // if the bound is equal to the tablet key.
     if (!req.lower_bound_key().empty()) {
       read_request->mutable_lower_bound()->set_is_inclusive(true);
       for (auto* dest_key :
@@ -2702,7 +2732,7 @@ class PgClientSession::Impl {
       }
     }
     if (!req.upper_bound_key().empty()) {
-      read_request->mutable_upper_bound()->set_is_inclusive(true);
+      read_request->mutable_upper_bound()->set_is_inclusive(false);
       for (auto* dest_key :
            {embedded_req->mutable_upper_bound_key(),
             read_request->mutable_upper_bound()->mutable_key()}) {

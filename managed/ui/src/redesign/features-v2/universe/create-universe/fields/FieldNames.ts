@@ -63,3 +63,7 @@ export const YCQL_CONFIRM_PWD = 'ycql.confirm_pwd';
 
 export const CONNECTION_POOLING_FIELD = 'enableConnectionPooling';
 export const PG_COMPATIBILITY_FIELD = 'enablePGCompatibitilty';
+
+export const UNIVERSE_OVERRIDES_FIELD = 'universeOverrides';
+export const AZ_OVERRIDES_FIELD = 'azOverrides';
+export const K8S_AZ_OVERRIDES_FIELD = 'k8sAzOverrides';

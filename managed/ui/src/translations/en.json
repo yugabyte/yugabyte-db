@@ -2339,6 +2339,14 @@
         "cancelButton": "Stay on this page"
       }
     },
+    "universeMetricsExport": {
+      "redirectToSettingsModal": {
+        "title": "You are about to leave this page",
+        "message": "To export metrics, navigate to <bold>Settings / Telemetry Export</bold>.",
+        "cancelButton": "Back",
+        "submitButton": "Navigate to Settings / Telemetry Export"
+      }
+    },
     "customCACerts": {
       "listing": {
         "header": "Trusted CA Certificates",
@@ -3839,6 +3847,7 @@
         "helpText": "Advanced placement options such as  <a>Read Replicas</a>  and  <a>Geo Partitioning</a>  can be configured post cluster creation.",
         "expertModeHelpText": "Set the replication factor for your data.  <a>What is this?</a>",
         "expertModeFaultToleranceMinMsg": "Clusters with replication factor of 1 won't be resilient to outages and are subject to downtime during operations that require a restart.",
+        "guidedModeNotSupported": "This Universe configuration is not supported in Guided mode.",
         "regions": "Regions",
         "replicationFactor": "Replication Factor",
         "availabilityZonesCount": "{{count}} Availability Zone",
@@ -4185,8 +4194,8 @@
           "ysqlServerHttpPort": "YSQL HTTP Port",
           "ysqlServerRpcPort": "YSQL Port",
           "internalYsqlServerRpcPort": "Internal YSQL Port",
-          "redisServerHttpPort": "Redis HTTP Port",
-          "redisServerRpcPort": "Redis HTTP Port",
+          "redisServerHttpPort": "Yedis HTTP Port",
+          "redisServerRpcPort": "Yedis RPC Port",
           "nodeExporterPort": "Node Exporter Port",
           "ybControllerRpcPort": "YB Controller RPC Port",
           "masterGroup": "Master Server",
@@ -4194,7 +4203,9 @@
           "ysqlGroup": "YSQL",
           "ycqlGroup": "YCQL",
           "redisGroup": "Redis",
-          "othersGroup": "Others"
+          "othersGroup": "Others",
+          "ysqlServerRpcPortHelper": "Used by application clients to connect to the database.",
+          "internalYsqlServerRpcPortHelper": "Used by <strong>connection pooling</strong> to connect to the database."
         },
         "userTags": {
           "subText": "Assign custom metadata to help manage, bill, or audit the resources.",
@@ -4218,7 +4229,13 @@
         "networkAccessField": {
           "label": "Enable Public Network Access",
           "subText": "Assign a load balancer or nodeport for connecting to the DB endpoints over the internet."
-        }
+        },
+        "k8sOverrides": "Kubernetes Overrides",
+        "overrideInfo": "Override default Helm chart values for this cluster.",
+        "addHelmOverrides": "Add Helm Overrides",
+        "overrideConfigured": "Helm Override Configured",
+        "editHelmOverrides": "Edit Helm Overrides",
+        "helmOverrides": "HELM OVERRIDES"
       },
       "reviewAndSummary": {
         "daily": "Daily",
@@ -4284,7 +4301,8 @@
         "security": "Security",
         "database": "Database",
         "advanced": "Advanced",
-        "logs": "Logs"
+        "logs": "Logs",
+        "telemetryExport": "Telemetry Export"
       },
       "general": {
         "title": "General",
@@ -4323,6 +4341,7 @@
         "clusterPlacement": "Cluster Placement",
         "primaryCluster": "Primary Cluster",
         "addReadReplica": "Add Read Replica",
+        "editReadReplica": "Edit Read Replica",
         "readReplica": "Read Replica",
         "addReadReplicaHelpText": "Enhance read scalability and availability with Read Replicas.",
         "addGeoPartition": "Add Geo Partition",
@@ -4459,7 +4478,9 @@
         "nodeAccess": "Node Access",
         "sshKey": "SSH ACCESS KEY",
         "awsArn": "INSTANCE PROFILE ARN",
-        "networkPorts": "Network Ports"
+        "networkPorts": "Network Ports",
+        "enableProxyServer": "Enable Proxy Server",
+        "proxyHelper": "Configure web proxies as gateways for traffic from your database nodes. <a>Learn more</a>"
       },
       "logs": {
         "troubleshootingLogs": "Troubleshooting Logs",
@@ -4469,10 +4490,15 @@
         "databaseAuditLog": "Database Audit Log",
         "databaseAuditLogDescription": "Capture session database audit logs to comply with government, financial, or ISO certification.",
         "learnMore": "Learn more",
+        "active": "Active",
+        "configuring": "Configuring",
+        "logStatus": "Log Status",
         "enableQueryLogging": "Enable Query Logging",
-        "editQueryLogging": "Edit",
+        "editQueryLogging": "Query Logging Configuration",
+        "editDatabaseQueryLogging": "Edit Database Query Logging",
+        "disableDatabaseQueryLogging": "Disable Database Query Logging",
         "enableAuditLogging": "Enable Audit Logging",
-        "telemetryExportNote": "<bold>Note:</bold> To send logs to external tools, go to Telemetry Export.",
+        "telemetryExportNote": "<bold>Note:</bold> To send logs to external tools, go to <telemetryLink>Telemetry Export</telemetryLink>.",
         "queryLogSettings": {
           "title": "Configure Database Query Logging",
           "selectParameters": "Select Parameters",
@@ -4528,6 +4554,116 @@
             "message": "Enabling database query logging requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
             "back": "Back"
           }
+        },
+        "editAuditLogging": "Audit Logging Configuration",
+        "editDatabaseAuditLogging": "Edit Database Audit Logging",
+        "disableDatabaseAuditLogging": "Disable Database Audit Logging",
+        "auditLogSettings": {
+          "title": "Configure Database Audit Logging",
+          "introTitle": "YSQL audit log",
+          "introText": "Customize the YSQL statements, relations, and log settings logged using PostgreSQL Audit Extension (<pgAuditLink>pgAudit</pgAuditLink>). Database audit logging will add performance overhead, especially for verbose logs. <docsLink>Learn more about YSQL audit logging</docsLink>.",
+          "section1Title": "1. Select YSQL statements and relations to log",
+          "section2Title": "2. Configure YSQL audit log settings",
+          "cancel": "Cancel",
+          "enableAuditLogging": "Enable Database Audit Logging",
+          "applyChanges": "Apply Changes",
+          "enableInProgress": "Enabling database audit logging",
+          "updateInProgress": "Updating database audit logging configuration",
+          "fields": {
+            "logCatalog": "pgaudit.log_catalog",
+            "logClient": "pgaudit.log_client",
+            "logLevel": "Level",
+            "logParameter": "pgaudit.log_parameter",
+            "logRelation": "pgaudit.log_relation",
+            "logStatement": "pgaudit.log_statement",
+            "logStatementOnce": "pgaudit.log_statement_once"
+          },
+          "tooltips": {
+            "read": "Log SELECT and COPY when the source is a relation or a query.",
+            "write": "Log INSERT, UPDATE, DELETE, TRUNCATE, and COPY when the destination is a relation.",
+            "function": "Log function calls and DO blocks.",
+            "role": "Log statements related to roles and privileges: GRANT, REVOKE, CREATE/ALTER/DROP ROLE.",
+            "ddl": "Log all DDL that is not included in the ROLE class.",
+            "misc": "Log miscellaneous commands, such as DISCARD, FETCH, CHECKPOINT, VACUUM, SET.",
+            "miscSet": "Log miscellaneous SET commands, such as SET ROLE.",
+            "logCatalog": "Log statements for the PostgreSQL system catalog relations in pg_catalog. Disable this option to reduce noise in the log.",
+            "logClient": "Log messages directly to clients such as ysqlsh and psql for debugging. When enabled, you can set the level of logs that are output using pgaudit.log_client.",
+            "logLevel": "Set the severity level of logs displayed in clients when pgaudit.log_client is on.",
+            "logParameter": "Include parameters passed with the statement. Parameters are provided in .csv format after the statement text.",
+            "logRelation": "Create separate log entries for each relation (TABLE, VIEW, etc.) referenced in a SELECT or DML statement. This is a shortcut for exhaustive logging without using object audit logging.",
+            "logStatement": "Include statement text with every log entry.",
+            "logStatementOnce": "Statement text (and, if enabled, parameters) are included with every log entry. Enable this option to only include them with the first log entry for a statement or sub-statement combination. This results in less verbose logging, but can make it more difficult to determine the statement that generated a log entry."
+          },
+          "confirmation": {
+            "title": "Confirm Configuration Change",
+            "message": "Enabling database audit logging requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+            "back": "Back"
+          }
+        }
+      },
+      "telemetryExport": {
+        "title": "Telemetry Export",
+        "subtitle": "Export metrics and logs to external observability tools.",
+        "metricsExport": {
+          "title": "Export Metrics",
+          "description": "Export cluster's metrics to 3rd party monitoring dashboards.",
+          "exportOff": "Export Off",
+          "exportOn": "Export On",
+          "actionLabel": "Export Metrics",
+          "editActionLabel": "Edit",
+          "active": "Active",
+          "configuring": "Configuring",
+          "exportStatus": "Export Status",
+          "exportConfigurationName": "Export Configuration Name",
+          "exportingTo": "Exporting to",
+          "editMetricsExportConfiguration": "Metrics Export Configuration",
+          "editMetricsExport": "Edit Metrics Export Configuration",
+          "disableMetricsExport": "Disable Metrics Export"
+        },
+        "metricsExportSettings": {
+          "title": "Export Metrics",
+          "subtitle": "Select a destination for the metrics.",
+          "exportConfiguration": "Export Configuration",
+          "exportConfigurationPlaceholder": "Select export configuration",
+          "collectionSettings": "Collection Settings",
+          "collectionInterval": "Collection Interval (s)",
+          "collectionTimeout": "Collection Timeout (s)",
+          "advanced": "Advanced",
+          "collectionLevel": "Collection Level",
+          "collectionLevelHelper": "Select how much metric detail to collect. <learnMore>Learn more</learnMore>",
+          "metricSources": "Metric Sources",
+          "metricSourcesHelper": "Select the universe components to collect and export metrics from. <learnMore>Learn more</learnMore>",
+          "cancel": "Cancel",
+          "exportMetrics": "Export Metrics",
+          "applyChanges": "Apply Changes",
+          "enableInProgress": "Enabling metrics export",
+          "updateInProgress": "Updating metrics export configuration",
+          "collectionLevelOptions": {
+            "all": "All",
+            "normal": "Normal",
+            "tableOff": "Table Off",
+            "minimal": "Minimal"
+          },
+          "errors": {
+            "exportConfigurationRequired": "Select an export configuration",
+            "intervalRequired": "Enter a collection interval",
+            "intervalInteger": "Collection interval must be a whole number",
+            "intervalMin": "Collection interval must be at least 1 second",
+            "timeoutRequired": "Enter a collection timeout",
+            "timeoutInteger": "Collection timeout must be a whole number",
+            "timeoutMin": "Collection timeout must be at least 1 second",
+            "timeoutLessThanInterval": "Collection timeout must be less than collection interval",
+            "collectionLevelRequired": "Select a collection level",
+            "metricSourcesRequired": "Select at least one metric source"
+          },
+          "confirmation": {
+            "enableTitle": "Enable Metrics Export",
+            "editTitle": "Confirm Configuration Change",
+            "enableSubmit": "Enable Metrics Export",
+            "editSubmit": "Apply Changes",
+            "message": "Enable metrics export requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+            "back": "Back"
+          }
         }
       },
       "masterServerNodeAllocationModal": {
@@ -4561,6 +4697,7 @@
         "replicationFactor": "Replication Factor",
         "replicationFactorTooltip": "Number of copies of primary cluster data maintained in this availability zone. Determines fault tolerance within the read replica.<br/>",
         "totalNodesPlacement": "Total Nodes",
+        "totalNodesPlacementTserver": "Total Nodes (T-Server)",
         "addAvailabilityZone": "Add Availability Zone",
         "removeRegion": "Remove region",
         "addRegion": "Add Region",

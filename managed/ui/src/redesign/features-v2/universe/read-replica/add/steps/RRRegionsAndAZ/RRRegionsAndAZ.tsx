@@ -224,6 +224,7 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
     ? getClusterByType(universeData, ClusterSpecClusterType.PRIMARY)
     : undefined;
   const providerUUID = primaryCluster?.provider_spec?.provider ?? '';
+  const useDedicatedNodes = Boolean(primaryCluster?.node_spec?.dedicated_nodes);
 
   const { data: regionsList = [], isLoading: isRegionsLoading } = useQuery(
     [QUERY_KEY.getRegionsList, providerUUID],
@@ -338,6 +339,7 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
                     regionsList={regionsList as Region[]}
                     baselineRegion={regionsAndAZBaseline?.regions?.[index]}
                     allowAzUndo={Boolean(readReplicaPlacementFromUniverse)}
+                    useDedicatedNodes={useDedicatedNodes}
                     showRemoveRegion={regionFields.length > 1}
                     onRemoveRegion={
                       regionFields.length > 1
@@ -373,7 +375,9 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
                       letterSpacing: '0.026px'
                     }}
                   >
-                    {t('totalNodesPlacement')}
+                    {useDedicatedNodes
+                      ? t('totalNodesPlacementTserver')
+                      : t('totalNodesPlacement')}
                   </Typography>
                   <Typography
                     sx={{
