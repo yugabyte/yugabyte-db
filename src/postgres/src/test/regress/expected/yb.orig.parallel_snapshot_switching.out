@@ -34,14 +34,14 @@ SET DEFAULT_TRANSACTION_ISOLATION = 'READ COMMITTED';
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set pq_param :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :pq_param
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 'EXPLAIN (COSTS OFF)'
 \set P2
 \set query ':P SELECT count(*) FROM pss_test WHERE pss_snapshot_fn(k) = k;'
 BEGIN;
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT count(*) FROM pss_test WHERE pss_snapshot_fn(k) = k;
                       QUERY PLAN                      
@@ -62,8 +62,8 @@ SELECT count(*) FROM pss_test WHERE pss_snapshot_fn(k) = k;
 
 COMMIT;
 -- Also run outside a transaction block.
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT count(*) FROM pss_test WHERE pss_snapshot_fn(k) = k;
                       QUERY PLAN                      
@@ -87,14 +87,14 @@ SET DEFAULT_TRANSACTION_ISOLATION = 'REPEATABLE READ';
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set pq_param :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :pq_param
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 'EXPLAIN (COSTS OFF)'
 \set P2
 \set query ':P SELECT count(*) FROM pss_test WHERE pss_snapshot_fn(k) = k;'
 BEGIN;
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT count(*) FROM pss_test WHERE pss_snapshot_fn(k) = k;
                       QUERY PLAN                      
@@ -115,8 +115,8 @@ SELECT count(*) FROM pss_test WHERE pss_snapshot_fn(k) = k;
 
 COMMIT;
 -- Also run outside a transaction block.
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT count(*) FROM pss_test WHERE pss_snapshot_fn(k) = k;
                       QUERY PLAN                      
@@ -140,14 +140,14 @@ SET DEFAULT_TRANSACTION_ISOLATION = 'SERIALIZABLE';
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set pq_param :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :pq_param
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 'EXPLAIN (COSTS OFF)'
 \set P2
 \set query ':P SELECT count(*) FROM pss_test WHERE pss_snapshot_fn(k) = k;'
 BEGIN;
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT count(*) FROM pss_test WHERE pss_snapshot_fn(k) = k;
                 QUERY PLAN                
@@ -165,8 +165,8 @@ SELECT count(*) FROM pss_test WHERE pss_snapshot_fn(k) = k;
 
 COMMIT;
 -- Also run outside a transaction block.
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT count(*) FROM pss_test WHERE pss_snapshot_fn(k) = k;
                 QUERY PLAN                
@@ -189,15 +189,15 @@ SET DEFAULT_TRANSACTION_ISOLATION = 'READ COMMITTED';
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set pq_param :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :pq_param
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 'EXPLAIN (COSTS OFF)'
 \set P2
 -- The ORDER BY on the primary key with a parallel scan should produce a Gather Merge plan.
 \set query ':P SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER BY k) t;'
 BEGIN;
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER BY k) t;
                       QUERY PLAN                      
@@ -219,8 +219,8 @@ SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER 
 
 COMMIT;
 -- Also run outside a transaction block.
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER BY k) t;
                       QUERY PLAN                      
@@ -245,15 +245,15 @@ SET DEFAULT_TRANSACTION_ISOLATION = 'REPEATABLE READ';
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set pq_param :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :pq_param
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 'EXPLAIN (COSTS OFF)'
 \set P2
 -- The ORDER BY on the primary key with a parallel scan should produce a Gather Merge plan.
 \set query ':P SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER BY k) t;'
 BEGIN;
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER BY k) t;
                       QUERY PLAN                      
@@ -275,8 +275,8 @@ SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER 
 
 COMMIT;
 -- Also run outside a transaction block.
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER BY k) t;
                       QUERY PLAN                      
@@ -301,15 +301,15 @@ SET DEFAULT_TRANSACTION_ISOLATION = 'SERIALIZABLE';
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set pq_param :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :pq_param
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 'EXPLAIN (COSTS OFF)'
 \set P2
 -- The ORDER BY on the primary key with a parallel scan should produce a Gather Merge plan.
 \set query ':P SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER BY k) t;'
 BEGIN;
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER BY k) t;
                    QUERY PLAN                   
@@ -329,8 +329,8 @@ SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER 
 
 COMMIT;
 -- Also run outside a transaction block.
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER BY k) t;
                    QUERY PLAN                   

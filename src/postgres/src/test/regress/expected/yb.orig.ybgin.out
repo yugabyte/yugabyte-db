@@ -4,7 +4,7 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 ':explain'
 \set P2
@@ -37,8 +37,8 @@ INSERT INTO vectors (v) VALUES
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a') ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a') ORDER BY i;
                    QUERY PLAN                    
@@ -60,8 +60,8 @@ SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a') ORDER BY i;
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a & e') ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a & e') ORDER BY i;
                      QUERY PLAN                      
@@ -81,8 +81,8 @@ SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a & e') ORDER BY i;
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb | cc') ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb | cc') ORDER BY i;
                       QUERY PLAN                       
@@ -99,8 +99,8 @@ DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb & !ccc') ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb & !ccc') ORDER BY i;
                        QUERY PLAN                        
@@ -117,8 +117,8 @@ DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'cc:*') ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'cc:*') ORDER BY i;
                    QUERY PLAN                    
@@ -140,8 +140,8 @@ SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'cc:*') ORDER BY i;
 SELECT $$
 :P SELECT count(*) FROM vectors WHERE v @@ to_tsquery('simple', 'a');
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT count(*) FROM vectors WHERE v @@ to_tsquery('simple', 'a');
                    QUERY PLAN                    
@@ -173,8 +173,8 @@ INSERT INTO arrays (a) VALUES
 SELECT $$
 :P SELECT * FROM arrays WHERE a && '{1, 100, 3}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM arrays WHERE a && '{1, 100, 3}' ORDER BY i;
                     QUERY PLAN                     
@@ -191,8 +191,8 @@ DETAIL:  ybgin index method cannot use more than one required scan entry: got 3.
 SELECT $$
 :P SELECT * FROM arrays WHERE a @> '{5, 3}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM arrays WHERE a @> '{5, 3}' ORDER BY i;
                   QUERY PLAN                   
@@ -213,8 +213,8 @@ SELECT * FROM arrays WHERE a @> '{5, 3}' ORDER BY i;
 SELECT $$
 :P SELECT * FROM arrays WHERE a <@ '{5, 4, 3, 2}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM arrays WHERE a <@ '{5, 4, 3, 2}' ORDER BY i;
                     QUERY PLAN                     
@@ -231,8 +231,8 @@ DETAIL:  ybgin index method does not support non-default search mode: include-em
 SELECT $$
 :P SELECT * FROM arrays WHERE a = '{3}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM arrays WHERE a = '{3}' ORDER BY i;
                   QUERY PLAN                   
@@ -252,8 +252,8 @@ SELECT * FROM arrays WHERE a = '{3}' ORDER BY i;
 SELECT $$
 :P SELECT count(*) FROM arrays WHERE a = '{3}';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT count(*) FROM arrays WHERE a = '{3}';
                   QUERY PLAN                   
@@ -285,8 +285,8 @@ INSERT INTO jsonbs (j) VALUES
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j ? 'aaa' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ? 'aaa' ORDER BY i;
                   QUERY PLAN                   
@@ -309,8 +309,8 @@ SELECT * FROM jsonbs WHERE j ? 'aaa' ORDER BY i;
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}' ORDER BY i;
                    QUERY PLAN                   
@@ -327,8 +327,8 @@ DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}' ORDER BY i;
                    QUERY PLAN                   
@@ -348,8 +348,8 @@ SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}' ORDER BY i;
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @> '{"bbb":[4]}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @> '{"bbb":[4]}' ORDER BY i;
                     QUERY PLAN                    
@@ -368,8 +368,8 @@ SELECT * FROM jsonbs WHERE j @> '{"bbb":[4]}' ORDER BY i;
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i;
                         QUERY PLAN                         
@@ -389,8 +389,8 @@ SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i;
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
                          QUERY PLAN                         
@@ -410,8 +410,8 @@ SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
                             QUERY PLAN                             
@@ -428,8 +428,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT count(*) FROM jsonbs WHERE j ? 'aaa';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT count(*) FROM jsonbs WHERE j ? 'aaa';
                   QUERY PLAN                   
@@ -482,8 +482,8 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}' ORDER BY i;
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i;
                         QUERY PLAN                         
@@ -503,8 +503,8 @@ SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i;
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
                          QUERY PLAN                         
@@ -524,8 +524,8 @@ SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
                             QUERY PLAN                             
@@ -566,8 +566,8 @@ INSERT INTO expression VALUES
 SELECT $$
 :P SELECT count(*) FROM expression WHERE tsvector_to_array(v) && ARRAY['b'];
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT count(*) FROM expression WHERE tsvector_to_array(v) && ARRAY['b'];
                               QUERY PLAN                               
@@ -586,8 +586,8 @@ SELECT count(*) FROM expression WHERE tsvector_to_array(v) && ARRAY['b'];
 SELECT $$
 :P SELECT count(*) FROM expression WHERE array_to_tsvector(a) @@ 'e';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT count(*) FROM expression WHERE array_to_tsvector(a) @@ 'e';
                               QUERY PLAN                               
@@ -606,8 +606,8 @@ SELECT count(*) FROM expression WHERE array_to_tsvector(a) @@ 'e';
 SELECT $$
 :P SELECT count(*) FROM expression WHERE jsonb_to_tsvector('simple', j, '["string"]') @@ 'h';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT count(*) FROM expression WHERE jsonb_to_tsvector('simple', j, '["string"]') @@ 'h';
                                                 QUERY PLAN                                                
@@ -648,8 +648,8 @@ $$ AS query \gset
 SELECT $$
 :P SELECT count(*) FROM partial WHERE v @@ 'c';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'c';
                       QUERY PLAN                      
@@ -675,8 +675,8 @@ $$ AS query \gset
 SELECT $$
 :P SELECT count(*) FROM partial WHERE a && ARRAY['e'] and j @> '{"g":["i"]}';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT count(*) FROM partial WHERE a && ARRAY['e'] and j @> '{"g":["i"]}';
                    QUERY PLAN                    
@@ -707,8 +707,8 @@ $$ AS query \gset
 SELECT $$
 :P SELECT count(*) FROM partial WHERE j @? '$.g[*] ? (@ == "h")' and a && ARRAY['f'];
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT count(*) FROM partial WHERE j @? '$.g[*] ? (@ == "h")' and a && ARRAY['f'];
                          QUERY PLAN                         

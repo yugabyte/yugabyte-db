@@ -7,7 +7,7 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 \set off '/*+Set(yb_max_merge_scan_streams 0)*/'
@@ -16,12 +16,11 @@
 \set P2
 \set Q1 ':off'
 \set Q2 ':on'
-\set Pnext :iter_Q2
 -- No order
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) LIMIT 5;'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) LIMIT 5;
                                             QUERY PLAN                                             
@@ -71,8 +70,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 
 -- Forward scan
 \set query ':P :Q SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5;
                                                QUERY PLAN                                                
@@ -186,8 +185,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 
 -- Backward scan
 \set query ':P :Q SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, p1 DESC, p2 DESC, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, p1 DESC, p2 DESC, n LIMIT 5;
                                                QUERY PLAN                                                
@@ -306,8 +305,8 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
 -- No order
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) LIMIT 5;'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) LIMIT 5;
                                             QUERY PLAN                                             
@@ -351,8 +350,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 
 -- Forward scan
 \set query ':P :Q SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5;
                                                QUERY PLAN                                                
@@ -459,8 +458,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 
 -- Backward scan
 \set query ':P :Q SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2 DESC, p1 DESC, r3 DESC, r1 DESC, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2 DESC, p1 DESC, r3 DESC, r1 DESC, n LIMIT 5;
                                                QUERY PLAN                                                

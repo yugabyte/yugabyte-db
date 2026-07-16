@@ -4,7 +4,7 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 ':explain'
 \set P2
@@ -25,8 +25,8 @@ INSERT INTO gin_pushdown
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}';
                             QUERY PLAN                             
@@ -46,8 +46,8 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}';
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status <> '9';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status <> '9';
                             QUERY PLAN                             
@@ -66,8 +66,8 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND s
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status = '9';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status = '9';
                             QUERY PLAN                             
@@ -88,8 +88,8 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND s
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' <> '"9"';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' <> '"9"';
                                          QUERY PLAN                                         
@@ -108,8 +108,8 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND j
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' = '"9"';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' = '"9"';
                                         QUERY PLAN                                         
@@ -129,8 +129,8 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND j
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() > 2.0;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() > 2.0;
                             QUERY PLAN                             
@@ -148,8 +148,8 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND r
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() < 2.0;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() < 2.0;
                             QUERY PLAN                             
@@ -170,8 +170,8 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND r
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE guid = '9';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM gin_pushdown WHERE guid = '9';
                        QUERY PLAN                       
@@ -190,8 +190,8 @@ SELECT * FROM gin_pushdown WHERE guid = '9';
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE guid = '9' AND status <> '9';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM gin_pushdown WHERE guid = '9' AND status <> '9';
                        QUERY PLAN                       
@@ -209,8 +209,8 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND status <> '9';
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE guid = '9' AND status = '9';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM gin_pushdown WHERE guid = '9' AND status = '9';
                        QUERY PLAN                       
@@ -230,8 +230,8 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND status = '9';
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' <> '"9"';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' <> '"9"';
                                          QUERY PLAN                                         
@@ -249,8 +249,8 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' <
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' = '"9"';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' = '"9"';
                                         QUERY PLAN                                         
@@ -270,8 +270,8 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' =
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE guid = '9' AND random() > 2.0;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM gin_pushdown WHERE guid = '9' AND random() > 2.0;
                          QUERY PLAN                         
@@ -289,8 +289,8 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND random() > 2.0;
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE guid = '9' AND random() < 2.0;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM gin_pushdown WHERE guid = '9' AND random() < 2.0;
                          QUERY PLAN                         

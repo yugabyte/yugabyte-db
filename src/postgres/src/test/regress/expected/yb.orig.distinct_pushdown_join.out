@@ -1,7 +1,7 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 ':explain'
 \set P2
@@ -15,8 +15,8 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 -- Start with CROSS/INNER/LEFT/RIGHT/FULL joins.
 -- CROSS JOIN
 \set query ':P SELECT DISTINCT t1.r1, t2.r1 FROM t t1 CROSS JOIN t t2;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.r1 FROM t t1 CROSS JOIN t t2;
                                      QUERY PLAN                                     
@@ -42,8 +42,8 @@ SELECT DISTINCT t1.r1, t2.r1 FROM t t1 CROSS JOIN t t2;
 
 -- INNER JOIN
 \set query ':P SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 USING (r1);'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 USING (r1);
                                      QUERY PLAN                                     
@@ -68,8 +68,8 @@ SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 USING (r1);
 
 -- In the Distinct Index Scan of t2, there are 7 rows, not 6, because the tablet split ends up with 1, 1 represented in two tablets.
 \set query ':P SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 ON t1.r1 = t2.r2;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 ON t1.r1 = t2.r2;
                                      QUERY PLAN                                     
@@ -95,8 +95,8 @@ SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 ON t1.r1 = t2.r2;
 
 -- LEFT JOIN
 \set query ':P SELECT DISTINCT t1.r1 FROM t t1 LEFT JOIN t t2 ON t1.r1 = t2.r2;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 LEFT JOIN t t2 ON t1.r1 = t2.r2;
                                      QUERY PLAN                                     
@@ -123,8 +123,8 @@ SELECT DISTINCT t1.r1 FROM t t1 LEFT JOIN t t2 ON t1.r1 = t2.r2;
 
 -- RIGHT JOIN
 \set query ':P SELECT DISTINCT t1.r1 FROM t t1 RIGHT JOIN t t2 ON t1.r1 = t2.r2;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 RIGHT JOIN t t2 ON t1.r1 = t2.r2;
                                      QUERY PLAN                                     
@@ -151,8 +151,8 @@ SELECT DISTINCT t1.r1 FROM t t1 RIGHT JOIN t t2 ON t1.r1 = t2.r2;
 
 -- FULL JOIN
 \set query ':P SELECT DISTINCT t1.r1, t2.r2 FROM t t1 FULL JOIN t t2 ON t1.r1 = t2.r2;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.r2 FROM t t1 FULL JOIN t t2 ON t1.r1 = t2.r2;
                                      QUERY PLAN                                     
@@ -182,8 +182,8 @@ SELECT DISTINCT t1.r1, t2.r2 FROM t t1 FULL JOIN t t2 ON t1.r1 = t2.r2;
 -- Now, let's test various join predicate types.
 -- Range predicates.
 \set query ':P SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;
                                      QUERY PLAN                                     
@@ -207,8 +207,8 @@ SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;
 (1 row)
 
 \set query ':P SELECT DISTINCT t2.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t2.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;
                                      QUERY PLAN                                     
@@ -233,8 +233,8 @@ SELECT DISTINCT t2.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;
 
 -- "DISTINCT" Semijoin. These queries could be optimized by extending our distinctness analysis.
 \set query ':P SELECT DISTINCT r1 FROM t WHERE r2 IN (SELECT r1 FROM t);'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r2 IN (SELECT r1 FROM t);
                                         QUERY PLAN                                         
@@ -297,9 +297,8 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 \set Q2 '/*+HashJoin(t1 t2)*/'
 \set Q3 '/*+Nestloop(t1 t2)*/'
 \set query ':P :Q SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);'
-\set Pnext :iter_Q3
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+MergeJoin(t1 t2)*/ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
                                      QUERY PLAN                                     
@@ -370,9 +369,8 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+Nestloop(t1 t2)*/ SELEC
 -- Pushdown distinct only into the relation which has no volatile clause.
 -- Require additional distinctification on top when distinct is pushed down to only one of the relations.
 \set query ':P SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 = t2.r2 WHERE t1.r1 + RANDOM() < 5;'
-\set Pnext :iter_query
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 = t2.r2 WHERE t1.r1 + RANDOM() < 5;
                                          QUERY PLAN                                          
@@ -396,8 +394,8 @@ SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 = t2.r2 WHERE t1.r1 + RANDOM(
 (1 row)
 
 \set query ':P SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) JOIN t t3 USING (r1) WHERE t3.r1 + RANDOM() < 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) JOIN t t3 USING (r1) WHERE t3.r1 + RANDOM() < 5;
                                                   QUERY PLAN                                                   
@@ -429,8 +427,8 @@ SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) JOIN t t3 USING (r1) WHERE 
 -- In vanilla postgres, the order of the target list matters, i.e. SELECT DISTINCT t1.r1, t2.r1 does not generate the same plan as SELECT DISTINCT t2.r1, t1.r1.
 -- Original order.
 \set query ':P SELECT DISTINCT t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
                                      QUERY PLAN                                     
@@ -455,8 +453,8 @@ SELECT DISTINCT t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
 
 -- Permuted order.
 \set query ':P SELECT DISTINCT t2.r1, t1.r1 FROM t t1 JOIN t t2 USING (r1);'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t2.r1, t1.r1 FROM t t1 JOIN t t2 USING (r1);
                                      QUERY PLAN                                     
@@ -481,8 +479,8 @@ SELECT DISTINCT t2.r1, t1.r1 FROM t t1 JOIN t t2 USING (r1);
 
 -- Original order.
 \set query ':P SELECT DISTINCT t1.r1, t2.r1, t2.r2 FROM t t1 JOIN t t2 USING (r1);'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.r1, t2.r2 FROM t t1 JOIN t t2 USING (r1);
                                      QUERY PLAN                                     
@@ -511,8 +509,8 @@ SELECT DISTINCT t1.r1, t2.r1, t2.r2 FROM t t1 JOIN t t2 USING (r1);
 
 -- Permuted order.
 \set query ':P SELECT DISTINCT t2.r2, t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t2.r2, t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
                                      QUERY PLAN                                     
@@ -542,8 +540,8 @@ SELECT DISTINCT t2.r2, t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
 -- t1.r2 = t2.r2 and t2.r2 = 2 => t1.r2 = 2.
 -- Moreover, constants are excluded from the prefix, so r2 is not in either distinct index scan prefix.
 \set query ':P SELECT DISTINCT t1.r2 FROM t t1 JOIN t t2 USING (r2) WHERE t2.r2 = 2;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r2 FROM t t1 JOIN t t2 USING (r2) WHERE t2.r2 = 2;
                                      QUERY PLAN                                     
@@ -569,8 +567,8 @@ SELECT DISTINCT t1.r2 FROM t t1 JOIN t t2 USING (r2) WHERE t2.r2 = 2;
 -- Check constants for distinctness as well.
 \set Q1 '/*+ Seqscan(t1) */'
 \set query ':P :Q1 SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) WHERE t2.r1 = 1;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ Seqscan(t1) */ SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) WHERE t2.r1 = 1;
                                         QUERY PLAN                                        
@@ -601,9 +599,8 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
 \set Q2 '/*+HashJoin(t1 t2)*/'
 \set Q3 '/*+Nestloop(t1 t2)*/'
 \set query ':P :Q SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);'
-\set Pnext :iter_Q3
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+MergeJoin(t1 t2)*/ SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
                                    QUERY PLAN                                   
@@ -686,8 +683,8 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+Nestloop(t1 t2)*/ SELEC
 \set Q2 '/*+HashJoin(th t)*/'
 \set Q3 '/*+Nestloop(th t)*/'
 \set query ':P :Q SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+MergeJoin(th t)*/ SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
                                  QUERY PLAN                                  
@@ -795,9 +792,8 @@ INSERT INTO t2 (SELECT i, i FROM generate_series(1, 1000) i);
 ANALYZE t2;
 \set Q1 '/*+ Set(enable_mergejoin off) Set(enable_hashjoin off) Set(enable_material off) */'
 \set query ':P :Q1 SELECT DISTINCT t2.pk FROM t1 JOIN t2 ON t1.col_int_key = t2.col_int WHERE t2.pk < 5;'
-\set Pnext :iter_query
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ Set(enable_mergejoin off) Set(enable_hashjoin off) Set(enable_material off) */ SELECT DISTINCT t2.pk FROM t1 JOIN t2 ON t1.col_int_key = t2.col_int WHERE t2.pk < 5;
                                          QUERY PLAN                                          
