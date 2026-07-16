@@ -3375,6 +3375,12 @@
         "timeoutSecondsPlaceholder": "Optional",
         "compression": "Compression",
         "bearerToken": "Bearer Token",
+        "headers": "Custom Headers",
+        "headersTooltip": "Optional HTTP headers sent with OTLP export requests (e.g. DD-API-KEY for Datadog OTLP intake).",
+        "headerKeyPlaceholder": "Header name",
+        "headerValuePlaceholder": "Header value",
+        "addHeader": "Add Header",
+        "validationHeaderKeyRequired": "Header name is required",
         "validationEndpointRequired": "Endpoint is required",
         "validationProtocolRequired": "Protocol is required",
         "validationFieldRequired": "This field is required"
