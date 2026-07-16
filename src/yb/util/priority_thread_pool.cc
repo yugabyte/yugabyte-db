@@ -28,10 +28,12 @@
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/compare_util.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"
 
 using namespace std::placeholders;

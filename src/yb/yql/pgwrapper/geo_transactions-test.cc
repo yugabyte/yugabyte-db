@@ -13,6 +13,7 @@
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
+#include "yb/client/transaction_status_tablets.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"

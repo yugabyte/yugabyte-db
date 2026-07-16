@@ -30,6 +30,7 @@
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_output_client.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 

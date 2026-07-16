@@ -37,6 +37,7 @@
 
 #include "yb/rocksdb/status.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
 

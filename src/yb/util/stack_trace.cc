@@ -37,6 +37,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/symbolize.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"

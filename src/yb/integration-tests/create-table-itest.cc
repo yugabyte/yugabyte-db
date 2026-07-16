@@ -30,6 +30,8 @@
 // under the License.
 //
 
+#include "yb/client/namespace_info.h"
+
 #include "yb/integration-tests/create-table-itest-base.h"
 
 #include "yb/common/colocated_util.h"

@@ -21,6 +21,7 @@
 
 #include "yb/gutil/dynamic_annotations.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tostring.h"

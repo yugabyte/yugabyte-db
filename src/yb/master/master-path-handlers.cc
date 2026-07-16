@@ -102,6 +102,7 @@
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/object_provider.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_case.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/url-coding.h"

@@ -15,6 +15,8 @@
 
 #include <utility>
 
+#include "yb/util/status_format.h"
+
 namespace yb::pggate {
 
 InsertOnConflictBuffer::InsertOnConflictBuffer()

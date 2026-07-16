@@ -20,6 +20,7 @@
 
 #include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
+#include "yb/util/logging.h"
 #include "yb/util/tostring.h"
 
 #include "yb/vector_index/coordinate_types.h"

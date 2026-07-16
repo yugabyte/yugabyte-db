@@ -35,6 +35,8 @@
 #include <string>
 #include <string_view>
 
+#include <gflags/gflags_declare.h>
+
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_ec.h"
 

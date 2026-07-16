@@ -34,6 +34,8 @@
 #include "yb/util/shmem/interprocess_semaphore.h"
 #include "yb/util/shmem/shared_mem_segment.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"

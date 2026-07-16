@@ -22,6 +22,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
 using std::string;

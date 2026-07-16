@@ -24,6 +24,7 @@
 
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 using namespace std::placeholders;

@@ -30,6 +30,8 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"

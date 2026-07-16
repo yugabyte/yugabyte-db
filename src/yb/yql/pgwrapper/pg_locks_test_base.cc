@@ -31,6 +31,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
 
 DECLARE_int32(heartbeat_interval_ms);

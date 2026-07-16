@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <ranges>
 #include <regex>
 #include <string>
 #include <vector>
@@ -19,6 +20,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/status_format.h"
 
 namespace yb::integration_tests::path_handlers_util {
 

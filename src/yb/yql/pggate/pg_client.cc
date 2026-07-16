@@ -53,6 +53,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_shared_mem.h"

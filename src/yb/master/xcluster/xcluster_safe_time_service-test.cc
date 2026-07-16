@@ -14,8 +14,12 @@
 #include <mutex>
 
 #include "yb/common/hybrid_time.h"
+
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
+
+#include "yb/util/format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
 using std::string;

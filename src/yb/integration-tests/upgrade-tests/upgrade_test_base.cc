@@ -25,6 +25,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/common/version_info.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 

@@ -343,7 +343,7 @@ class StringSource: public RandomAccessFile {
 
   const std::string& filename() const override { return filename_; }
 
-  size_t memory_footprint() const override { LOG(FATAL) << "Not supported"; }
+  size_t memory_footprint() const override;
 
   int total_reads() const { return total_reads_; }
 

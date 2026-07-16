@@ -16,6 +16,7 @@
 #include "yb/docdb/docdb.pb.h"
 #include "yb/gutil/casts.h"
 #include "yb/rocksdb/metadata.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
 namespace yb::docdb {

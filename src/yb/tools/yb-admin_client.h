@@ -41,6 +41,7 @@
 #include "yb/common/transaction.h"
 
 #include "yb/client/client.h"
+#include "yb/client/namespace_info.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/master/master_admin.pb.h"

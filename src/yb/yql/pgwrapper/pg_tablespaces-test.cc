@@ -15,6 +15,7 @@
 #include "yb/client/transaction_pool.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/tablespace_parser.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_tablespace_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/master/catalog_manager.h"

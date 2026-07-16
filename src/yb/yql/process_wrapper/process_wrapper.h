@@ -12,6 +12,8 @@
 
 #pragma once
 
+#include <condition_variable>
+
 #include "yb/util/status.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/thread.h"

@@ -22,6 +22,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/metrics_writer.h"
 #include "yb/util/signal_util.h"
+#include "yb/util/status_log.h"
 #include "yb/yql/pggate/util/ybc-internal.h"
 
 using std::string;

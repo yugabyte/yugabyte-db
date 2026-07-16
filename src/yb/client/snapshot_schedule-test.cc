@@ -14,6 +14,7 @@
 #include "yb/client/snapshot_schedule-test.h"
 
 #include "yb/client/client-test-util.h"
+#include "yb/client/namespace_info.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"

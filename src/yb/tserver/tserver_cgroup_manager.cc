@@ -26,6 +26,7 @@
 #include "yb/util/html_print_helper.h"
 #include "yb/util/metrics.h"
 #include "yb/util/os-util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/url-coding.h"
 
