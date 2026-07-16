@@ -229,6 +229,14 @@ DEFINE_RUNTIME_uint64(reject_writes_min_disk_space_mb, 0,
     "--reject_writes_when_disk_full is enabled. If set to 0, defaults to "
     "--max_disk_throughput_mbps * min(10, --reject_writes_min_disk_space_check_interval_sec).");
 
+DEFINE_RUNTIME_uint32(reject_writes_min_disk_space_pct, 5,
+    "Reject writes if the available disk space on the WAL directory falls below this percentage of "
+    "the total disk capacity and --reject_writes_when_disk_full is enabled. For example, a value "
+    "5 rejects writes when free space drops below 5% of the disk's total capacity. This lets the "
+    "rejection threshold scale automatically with disk size. If both this flag and "
+    "--reject_writes_min_disk_space_mb yield a threshold, the larger of the two is used. "
+    "Ignored if zero.");
+
 DEFINE_validator(log_min_segments_to_retain, FLAG_GT_VALUE_VALIDATOR(0));
 DEFINE_validator(max_disk_throughput_mbps, FLAG_GT_VALUE_VALIDATOR(0));
 DEFINE_validator(reject_writes_min_disk_space_check_interval_sec, FLAG_GT_VALUE_VALIDATOR(0));
@@ -2294,9 +2302,25 @@ bool Log::HasSufficientDiskSpaceForWrite() {
   check_interval_sec =
       std::min(kAggressiveCheckIntervalSec, FLAGS_reject_writes_min_disk_space_check_interval_sec);
 
-  const uint64 min_allowed_disk_space_mb =
+  uint64 min_allowed_disk_space_mb =
       FLAGS_reject_writes_min_disk_space_mb ? FLAGS_reject_writes_min_disk_space_mb
                                             : FLAGS_max_disk_throughput_mbps * check_interval_sec;
+
+  // If a percentage-based threshold is configured (non-zero), derive a minimum disk space from the
+  // total disk capacity and use whichever threshold (MB-based or percentage-based) is larger. This
+  // lets the rejection threshold scale automatically with disk size.
+  if (FLAGS_reject_writes_min_disk_space_pct > 0) {
+    auto stats_result = get_env()->GetFilesystemStatsBytes(path);
+    if (stats_result.ok()) {
+      const uint64 pct_based_min_disk_space_mb = static_cast<uint64>(
+          stats_result->total_space * FLAGS_reject_writes_min_disk_space_pct / 100.0) / 1024 / 1024;
+      min_allowed_disk_space_mb = std::max(min_allowed_disk_space_mb, pct_based_min_disk_space_mb);
+    } else {
+      YB_LOG_EVERY_N_SECS(WARNING, 300)
+          << "Unable to get filesystem stats to compute percentage-based disk space threshold: "
+          << stats_result.status();
+    }
+  }
 
   const uint64 min_space_to_trigger_aggressive_check_mb =
       FLAGS_max_disk_throughput_mbps * FLAGS_reject_writes_min_disk_space_check_interval_sec;
