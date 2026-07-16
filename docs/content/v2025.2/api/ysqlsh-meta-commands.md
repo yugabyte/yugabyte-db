@@ -504,7 +504,7 @@ This command is inherited from psql, but large objects are not supported in Yuga
 
 ##### \lo_import *filename* [ *comment* ]
 
-Stores the file into a YugabyteDB large object. Optionally, it associates the given comment with the object.
+Stores the file into a large object. Optionally, it associates the given comment with the object.
 
 {{< note title="Note" >}}
 
@@ -514,7 +514,7 @@ This command is inherited from psql, but large objects are not supported in Yuga
 
 ##### \lo_list
 
-Shows a list of all YugabyteDB large objects currently stored in the database, along with any comments provided for them.
+Shows a list of all large objects currently stored in the database, along with any comments provided for them.
 
 {{< note title="Note" >}}
 

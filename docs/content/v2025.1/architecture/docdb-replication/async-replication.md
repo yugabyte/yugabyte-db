@@ -314,7 +314,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - Global objects like Users, Roles, and Tablespaces are not replicated. These objects must be manually managed on the standby universe.
 - DDLs related to Materialized Views (`CREATE`, `DROP`, and `REFRESH`) are not replicated. You can manually run these on both universes by setting the YSQL configuration parameter `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`.
-- `ALTER COLUMN TYPE`, `ADD COLUMN ... SERIAL`, and [ALTER LARGE OBJECT](https://www.postgresql.org/docs/15/sql-alterlargeobject.html) DDLs are not supported (YugabyteDB does not support [large objects](https://www.postgresql.org/docs/15/largeobjects.html), see {{<issue 25318>}}).
+- `ALTER COLUMN TYPE`, `ADD COLUMN ... SERIAL`, and [ALTER LARGE OBJECT](https://www.postgresql.org/docs/15/sql-alterlargeobject.html) DDLs are not supported (YugabyteDB does not support [large objects](https://www.postgresql.org/docs/15/largeobjects.html), see issue {{<issue 25318>}}).
 - DDLs related to `PUBLICATION` and `SUBSCRIPTION` are not supported.
 - Replication of colocated tables is not yet supported.  See {{<issue 25926>}}.
 - Rewinding of sequences (for example, restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
