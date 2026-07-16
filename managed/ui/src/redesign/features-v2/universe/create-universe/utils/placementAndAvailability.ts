@@ -381,8 +381,9 @@ export function reduceExpertNodeCountsToAtMostRf(
 }
 
 /**
- * Expert-mode defaults when landing on Nodes & availability with no prior zone selection
- * Applies when fault tolerance is AZ-level or region-level; node-level and none use {@link assignRegionsAZNodeByReplicationFactor}.
+ * Expert-mode defaults when landing on Nodes & availability with no prior zone selection.
+ * Applies for AZ/region-level and NONE (edit RF=1 maps to NONE). NODE_LEVEL uses
+ * {@link assignRegionsAZNodeByReplicationFactor}.
  * Returns null when defaults do not apply.
  */
 export function getExpertNodesStepDefaultPlacement(
@@ -395,7 +396,11 @@ export function getExpertNodesStepDefaultPlacement(
     return null;
   }
   const ft = resilience[FAULT_TOLERANCE_TYPE];
-  if (ft !== FaultToleranceType.AZ_LEVEL && ft !== FaultToleranceType.REGION_LEVEL) {
+  if (
+    ft !== FaultToleranceType.AZ_LEVEL &&
+    ft !== FaultToleranceType.REGION_LEVEL &&
+    ft !== FaultToleranceType.NONE
+  ) {
     return null;
   }
 

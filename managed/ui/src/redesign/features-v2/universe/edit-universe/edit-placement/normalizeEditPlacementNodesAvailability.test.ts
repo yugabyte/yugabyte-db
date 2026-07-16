@@ -183,7 +183,7 @@ describe('normalizeEditPlacementNodesAvailability', () => {
     expect(result?.availabilityZones.r0).toHaveLength(3);
   });
 
-  it('returns nodes unchanged for expert mode', () => {
+  it('returns nodes unchanged for expert mode when region codes match', () => {
     const resilience = guidedBase({
       resilienceFormMode: ResilienceFormMode.EXPERT_MODE,
       faultToleranceType: FaultToleranceType.AZ_LEVEL
@@ -197,6 +197,78 @@ describe('normalizeEditPlacementNodesAvailability', () => {
     const result = normalizeEditPlacementNodesAvailability({ resilience, nodesAndAvailability });
 
     expect(result).toBe(nodesAndAvailability);
+  });
+
+  it('drops stale region keys and generates placement for newly selected regions', () => {
+    const resilience = guidedBase({
+      resilienceFormMode: ResilienceFormMode.EXPERT_MODE,
+      faultToleranceType: FaultToleranceType.NONE,
+      resilienceFactor: 1,
+      regions: [makeRegion('r1', 5)]
+    });
+    const nodesAndAvailability: NodeAvailabilityProps = {
+      availabilityZones: {
+        r0: [
+          { uuid: 'r0-z0', name: 'Z0', nodeCount: 1, preffered: 1 },
+          { uuid: 'r0-z1', name: 'Z1', nodeCount: 1, preffered: 2 },
+          { uuid: 'r0-z2', name: 'Z2', nodeCount: 1, preffered: 3 }
+        ]
+      },
+      useDedicatedNodes: true,
+      replicationFactor: 3
+    };
+
+    const result = normalizeEditPlacementNodesAvailability({ resilience, nodesAndAvailability });
+
+    expect(result).not.toBe(nodesAndAvailability);
+    expect(Object.keys(result?.availabilityZones ?? {})).toEqual(['r1']);
+    expect(result?.availabilityZones.r1.length).toBeGreaterThan(0);
+    expect(result?.useDedicatedNodes).toBe(true);
+    expect(result?.[REPLICATION_FACTOR]).toBeDefined();
+  });
+
+  it('keeps original universe placement for regions that stay selected', () => {
+    const existingR0 = [
+      { uuid: 'r0-z0', name: 'Existing AZ', nodeCount: 2, preffered: 1 }
+    ];
+    const resilience = guidedBase({
+      resilienceFormMode: ResilienceFormMode.EXPERT_MODE,
+      faultToleranceType: FaultToleranceType.NONE,
+      resilienceFactor: 1,
+      regions: [makeRegion('r0', 5), makeRegion('r1', 5)]
+    });
+    const nodesAndAvailability: NodeAvailabilityProps = {
+      availabilityZones: { r0: existingR0 },
+      useDedicatedNodes: false,
+      replicationFactor: 1
+    };
+
+    const result = normalizeEditPlacementNodesAvailability({ resilience, nodesAndAvailability });
+
+    expect(result?.availabilityZones.r0).toEqual(existingR0);
+    expect(Object.keys(result?.availabilityZones ?? {}).sort()).toEqual(['r0', 'r1']);
+    expect(result?.availabilityZones.r1.length).toBeGreaterThan(0);
+    expect(result?.availabilityZones.r1[0].name).not.toBe('Existing AZ');
+  });
+
+  it('generates expert placement when zones are empty', () => {
+    const resilience = guidedBase({
+      resilienceFormMode: ResilienceFormMode.EXPERT_MODE,
+      faultToleranceType: FaultToleranceType.AZ_LEVEL,
+      resilienceFactor: 1,
+      regions: [makeRegion('r0', 5)]
+    });
+    const nodesAndAvailability: NodeAvailabilityProps = {
+      availabilityZones: {},
+      useDedicatedNodes: false,
+      replicationFactor: 1
+    };
+
+    const result = normalizeEditPlacementNodesAvailability({ resilience, nodesAndAvailability });
+
+    expect(Object.keys(result?.availabilityZones ?? {})).toEqual(['r0']);
+    expect(result?.availabilityZones.r0.length).toBeGreaterThan(0);
+    expect(result?.[REPLICATION_FACTOR]).toBe(3);
   });
 
   it('returns nodes unchanged when already compatible', () => {
