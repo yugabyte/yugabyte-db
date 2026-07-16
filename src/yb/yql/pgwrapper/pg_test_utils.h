@@ -26,6 +26,9 @@
 #include "yb/util/status.h"
 
 namespace yb {
+
+class ExternalDaemon;
+
 namespace server {
 
 class RpcServerBase;
@@ -35,6 +38,8 @@ class RpcServerBase;
 namespace pgwrapper {
 
 class PGConn;
+
+Result<uint64_t> GetPostgresAuthKey(ExternalDaemon* ts);
 
 struct MetricWatcherDescriptor {
   MetricWatcherDescriptor(

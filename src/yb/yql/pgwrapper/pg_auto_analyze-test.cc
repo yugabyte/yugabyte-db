@@ -1896,8 +1896,6 @@ class PgConcurrentCreateIndexTest : public PgConcurrentDDLAnalyzeTest {
                    5000 * kTimeMultiplier));
     options->extra_tserver_flags.emplace_back(
             "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=1000");
-    options->extra_tserver_flags.emplace_back(
-            "--TEST_ysql_bypass_auto_analyze_auth_check=true");
     options->extra_master_flags.emplace_back("--master_ysql_operation_lease_ttl_ms=10000");
     PgConcurrentDDLAnalyzeTest::UpdateMiniClusterOptions(options);
   }
@@ -1916,12 +1914,13 @@ TEST_F(PgConcurrentCreateIndexTest, ConcurrentCreateIndex) {
       .host = ts1->bind_host(),
       .port = ts1->ysql_port(),
     }).Connect());
-    auto conn2 = ASSERT_RESULT(PGConnBuilder({
-      .host = PgDeriveSocketDir(HostPort(ts2->bind_host(), ts2->ysql_port())),
-      .port = ts2->ysql_port(),
-      .user = "yugabyte",
-      .yb_auto_analyze = true,
-    }).Connect());
+    const uint64_t pg_auth_key = ASSERT_RESULT(GetPostgresAuthKey(ts2));
+    auto conn2 = ASSERT_RESULT(
+        pgwrapper::CreateInternalPGConnBuilder(
+            HostPort(ts2->bind_host(), ts2->ysql_port()), "yugabyte", pg_auth_key,
+            /*deadline=*/std::nullopt,
+            pgwrapper::YbInternalConnKindWireName::kAutoAnalyze)
+            .Connect());
 
     ASSERT_OK(conn1.Execute("CREATE TABLE test (k TEXT PRIMARY KEY)"));
     ASSERT_OK(conn1.Execute("INSERT INTO test SELECT repeat('abcdefg', 100) || '-' || s::TEXT "
