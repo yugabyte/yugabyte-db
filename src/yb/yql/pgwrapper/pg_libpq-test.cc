@@ -4227,7 +4227,12 @@ TEST_F(PgLibPqTest, CatalogCacheMemoryLeak) {
 
 static std::optional<std::string> GetCatalogTableNameFromIndexName(const string& index_name) {
   static const std::regex table_name_regex(
-      "(pg_publication_namespace|"
+      "(pg_propgraph_label_property|"
+      "pg_propgraph_element_label|"
+      "pg_propgraph_element|"
+      "pg_propgraph_property|"
+      "pg_propgraph_label|"
+      "pg_publication_namespace|"
       "pg_foreign_data_wrapper|"
       "pg_largeobject_metadata|"
       "pg_replication_origin|"
@@ -5041,7 +5046,9 @@ TEST_F_EX(PgLibPqTest, BlockDangerousRoles, PgLibPqBlockDangerousRolesTest) {
     ASSERT_NOK_PG_ERROR_CODE(conn_admin.ExecuteFormat("GRANT $0 TO r", granted_role),
                              YBPgErrorCode::YB_PG_INSUFFICIENT_PRIVILEGE);
     ASSERT_OK(conn_yugabyte.ExecuteFormat("GRANT $0 to r", granted_role));
-    ASSERT_OK(conn_admin.ExecuteFormat("REVOKE $0 FROM r", granted_role));
+    // Revoke as the granting superuser: a CREATEROLE user (admin) may only
+    // revoke a role membership it holds ADMIN OPTION on.
+    ASSERT_OK(conn_yugabyte.ExecuteFormat("REVOKE $0 FROM r", granted_role));
     // Avoid catalog version mismatch by refreshing session.
     conn_yugabyte.Reset();
     for (const auto& option : {"IN ROLE", "IN GROUP"}) {
