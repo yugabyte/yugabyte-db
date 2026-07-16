@@ -1481,16 +1481,40 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
 
   for (const ListTabletServersResponsePB::Entry& server : servers) {
     auto ts_uuid = server.instance_id().permanent_uuid();
+    const auto rpc_addr_str = FormatFirstHostPort(
+        server.registration().common().private_rpc_addresses());
 
-    HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS(ts_uuid));
+    // Skip RPCs to dead tservers; connecting would time out and abort the whole command.
+    if (server.has_alive() && !server.alive()) {
+      cout << ts_uuid << kColumnSep
+           << rpc_addr_str << kColumnSep
+           << "N/A (DEAD)" << endl;
+      continue;
+    }
 
+    if (!server.has_registration() ||
+        server.registration().common().private_rpc_addresses().empty()) {
+      cout << ts_uuid << kColumnSep
+           << rpc_addr_str << kColumnSep
+           << "N/A (no RPC address)" << endl;
+      continue;
+    }
+
+    HostPort ts_addr = HostPortFromPB(server.registration().common().private_rpc_addresses(0));
     TabletServerServiceProxy ts_proxy(proxy_cache_.get(), ts_addr);
 
-    const auto resp = VERIFY_RESULT(InvokeRpc(
-        &TabletServerServiceProxy::GetLogLocation, ts_proxy, tserver::GetLogLocationRequestPB()));
+    // Soft-fail per-server errors so one unreachable tserver does not hide the rest.
+    const auto resp = InvokeRpc(
+        &TabletServerServiceProxy::GetLogLocation, ts_proxy, tserver::GetLogLocationRequestPB());
+    if (!resp.ok()) {
+      cout << ts_uuid << kColumnSep
+           << ts_addr << kColumnSep
+           << "ERROR: " << resp.status() << endl;
+      continue;
+    }
     cout << ts_uuid << kColumnSep
          << ts_addr << kColumnSep
-         << resp.log_location() << endl;
+         << resp->log_location() << endl;
   }
 
   return Status::OK();
