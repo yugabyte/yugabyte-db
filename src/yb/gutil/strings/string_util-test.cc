@@ -258,6 +258,17 @@ TEST_F(StringUtilTest, TestHumanizeBytes) {
   // The precision argument controls the number of fractional digits.
   ASSERT_EQ("1.234 KB", HumanizeBytes(1234, 3));
   ASSERT_EQ("1.2 KB", HumanizeBytes(1234, 1));
+
+  // Rounding boundary: a value just under the next unit must be promoted once
+  // display rounding pushes it to 1000, rather than rendering "1000.00 <unit>".
+  ASSERT_EQ("1.00 GB", HumanizeBytes(999999999ULL));       // 999.999999 MB -> 1.00 GB
+  ASSERT_EQ("1.00 MB", HumanizeBytes(999999ULL));          // 999.999 KB    -> 1.00 MB
+  ASSERT_EQ("1.00 PB", HumanizeBytes(999999999999999ULL)); // 999.999... TB -> 1.00 PB
+  // Promotion must also respect the precision argument.
+  ASSERT_EQ("1 GB", HumanizeBytes(999999999ULL, 0));       // 999.99... MB -> 1 GB
+  // Values that round up but stay within the same unit must NOT be promoted.
+  ASSERT_EQ("999.50 MB", HumanizeBytes(999499999ULL));
+  ASSERT_EQ("999.99 MB", HumanizeBytes(999994999ULL));
 }
 
 } // namespace yb

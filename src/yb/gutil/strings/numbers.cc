@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <cmath>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -1542,6 +1543,21 @@ string HumanizeBytes(uint64_t bytes, int precision) {
     value /= 1000.0;
     ++unit;
   }
+
+  // Round to the requested precision BEFORE settling on the unit. Otherwise a
+  // value such as 999.999999 MB would be rendered as "1000.00 MB" (the display
+  // rounding pushes it to 1000) instead of being promoted to "1.00 GB". After
+  // rounding, if it lands on 1000 we bump to the next unit (unless we are
+  // already at the largest one). The stream then prints this already-rounded
+  // value, so there is no second, inconsistent rounding step.
+  const double scale = std::pow(10.0, precision);
+  value = std::round(value * scale) / scale;
+  while (value >= 1000.0 && unit + 1 < kNumUnits) {
+    value /= 1000.0;
+    value = std::round(value * scale) / scale;
+    ++unit;
+  }
+
   op_stream << std::fixed << std::setprecision(precision) << value << " " << kUnits[unit];
   return op_stream.str();
 }
