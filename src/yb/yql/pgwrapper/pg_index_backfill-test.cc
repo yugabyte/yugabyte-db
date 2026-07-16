@@ -3070,4 +3070,80 @@ TEST_P(PgIndexBackfillBlockDoBackfill, ConcurrentInplaceUpdateCoveringIndex) {
   ASSERT_OK(CheckIndexConsistency("idx_tbl"));
 }
 
+class PgIndexBackfillFastSessionExpiry : public PgIndexBackfillTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        Format("--pg_client_session_expiration_ms=$0",
+               kPgClientSessionExpiration.ToMilliseconds()));
+    options->extra_tserver_flags.push_back(
+        Format("--pg_client_heartbeat_interval_ms=$0",
+               kPgClientHeartbeatInterval.ToMilliseconds()));
+  }
+ protected:
+  const MonoDelta kPgClientHeartbeatInterval = 1100ms;
+  const MonoDelta kPgClientSessionExpiration = 3s;
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillFastSessionExpiry, ::testing::Bool());
+TEST_P(
+    PgIndexBackfillFastSessionExpiry,
+    YB_DISABLE_TEST_IN_TSAN(MasterDoesntBatchYsqlBackfillRequests)) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto conn_admin = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT, v1 INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test SELECT i,i,i from generate_series(1, 100) as i"));
+
+  // Block CREATE INDEX at the backfill phase.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "backfill"));
+
+  auto conn1_pid = ASSERT_RESULT(conn1.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+  LogWaiter log_waiter1(ts1, "blocking concurrent index backfill");
+  auto create_index_future = std::async(std::launch::async, [&]() -> Status {
+    return conn1.Execute("CREATE INDEX test_v ON test(v)");
+  });
+  ASSERT_OK(log_waiter1.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+
+  // Kill the backend while it is blocked at the backfill phase.
+  LOG(INFO) << "Killing backend pid " << conn1_pid;
+  ASSERT_EQ(
+      ASSERT_RESULT(
+          conn_admin.FetchRowAsString(yb::Format("SELECT pg_terminate_backend($0)", conn1_pid))),
+      "1");
+  ASSERT_NOK(create_index_future.get());
+
+  // Unblock the phase so it doesn't affect subsequent CREATE INDEX statements.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+
+  if (EnableTableLocks()) {
+    // Wait for session expiry so that the locks are released.
+    SleepFor(kPgClientSessionExpiration * kTimeMultiplier * 2);
+  }
+
+  LogWaiter log_waiter2(
+      cluster_->GetLeaderMaster(), "Will be only backfilling one index at a time");
+  // A subsequent create index should succeed and its backfill shouldn't be batched.
+  ASSERT_OK(conn2.Execute("CREATE INDEX test_v1 ON test(v1)"));
+  ASSERT_OK(log_waiter2.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+
+  // Verify the index is consistent using the built-in consistency checker.
+  ASSERT_RESULT(conn2.Fetch("SELECT yb_index_check('test_v1'::regclass)"));
+
+  // Verify the index is actually usable.
+  auto values = ASSERT_RESULT(conn2.FetchRows<std::string>(
+      "EXPLAIN SELECT * FROM test WHERE v1 = 1"));
+  bool found_index_scan = false;
+  for (const auto& value : values) {
+    if (value.find("Index") != std::string::npos && value.find("test_v1") != std::string::npos) {
+      found_index_scan = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(found_index_scan) << "Expected index scan using test_v1 in EXPLAIN output";
+}
+
 } // namespace yb::pgwrapper
