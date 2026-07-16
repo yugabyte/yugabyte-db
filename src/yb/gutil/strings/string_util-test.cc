@@ -32,6 +32,7 @@
 // Some portions Copyright 2013 The Chromium Authors. All rights reserved.
 
 #include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_util.h"
@@ -229,6 +230,34 @@ TEST_F(StringUtilTest, JoinStringsLimitCount) {
   std::string result = "test";
   JoinStringsLimitCount(std::vector<std::string>{"foo"}, ",", 1, &result);
   ASSERT_EQ(result, "foo");
+}
+
+TEST_F(StringUtilTest, TestHumanizeBytes) {
+  // Below 1 KB the raw byte count is printed with no fractional part.
+  ASSERT_EQ("0 B", HumanizeBytes(0));
+  ASSERT_EQ("1 B", HumanizeBytes(1));
+  ASSERT_EQ("999 B", HumanizeBytes(999));
+
+  // Decimal (base 1000) scaling with explicit labels.
+  ASSERT_EQ("1.00 KB", HumanizeBytes(1000));
+  ASSERT_EQ("1.00 MB", HumanizeBytes(1000000));
+  ASSERT_EQ("1.00 GB", HumanizeBytes(1000000000));
+
+  // A binary "1 MiB" (1048576 bytes) is 1.05 MB in base 1000.
+  ASSERT_EQ("1.05 MB", HumanizeBytes(1048576));
+  // Example from GitHub issue #28753: 6,347,254,071 bytes -> 6.35 GB.
+  ASSERT_EQ("6.35 GB", HumanizeBytes(6347254071ULL));
+
+  // Large sizes must keep scaling past GB instead of showing "10000.00 GB".
+  ASSERT_EQ("10.00 TB", HumanizeBytes(10000000000000ULL));
+  ASSERT_EQ("2.50 PB", HumanizeBytes(2500000000000000ULL));
+  ASSERT_EQ("1.00 EB", HumanizeBytes(1000000000000000000ULL));
+  // EB is the largest unit; values beyond it stay in EB.
+  ASSERT_EQ("5.00 EB", HumanizeBytes(5000000000000000000ULL));
+
+  // The precision argument controls the number of fractional digits.
+  ASSERT_EQ("1.234 KB", HumanizeBytes(1234, 3));
+  ASSERT_EQ("1.2 KB", HumanizeBytes(1234, 1));
 }
 
 } // namespace yb

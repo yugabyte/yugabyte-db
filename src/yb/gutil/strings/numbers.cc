@@ -1522,23 +1522,26 @@ string UInt64ToString(uint64 ui64, const char* format) {
   return StringPrintf(format, ui64);
 }
 
-namespace {
-  constexpr int64_t kBytesPerGB = 1000000000;
-  constexpr int64_t kBytesPerMB = 1000000;
-  constexpr int64_t kBytesPerKB = 1000;
-}
-
 string HumanizeBytes(uint64_t bytes, int precision) {
+  // Decimal (base 1000) units with explicit labels, scaling all the way up to
+  // exabytes so that large sizes (multi-TB/PB tablets and tables) don't render
+  // as unwieldy GB values (e.g. "10000.00 GB").
+  static const char* const kUnits[] = {"B", "KB", "MB", "GB", "TB", "PB", "EB"};
+  static const size_t kNumUnits = sizeof(kUnits) / sizeof(kUnits[0]);
+
   std::ostringstream op_stream;
-  op_stream << std::fixed << std::setprecision(precision);
-  if (bytes >= kBytesPerGB) {
-    op_stream << static_cast<double> (bytes)/kBytesPerGB << " GB";
-  } else if (bytes >= kBytesPerMB) {
-    op_stream << static_cast<double> (bytes)/kBytesPerMB << " MB";
-  } else if (bytes >= kBytesPerKB) {
-    op_stream << static_cast<double> (bytes)/kBytesPerKB << " KB";
-  } else {
+  // Print exact whole bytes below 1 KB (no fractional part for raw byte counts).
+  if (bytes < 1000) {
     op_stream << bytes << " B";
+    return op_stream.str();
   }
+
+  double value = static_cast<double>(bytes);
+  size_t unit = 0;
+  while (value >= 1000.0 && unit + 1 < kNumUnits) {
+    value /= 1000.0;
+    ++unit;
+  }
+  op_stream << std::fixed << std::setprecision(precision) << value << " " << kUnits[unit];
   return op_stream.str();
 }
