@@ -12,6 +12,10 @@
 -- left unset and \unsets all three afterwards, so each run re-infers from
 -- scratch and any override is strictly run-scoped.
 
+-- Clear collapse state left by any earlier run, even one that died mid-run:
+-- collapse never crosses runs.
+\! rm -f "$_YB_REGRESS_PREV_OUT"
+
 -- Capture the query template to a file and detect dimensions.  ":P"/":Q"/":R"
 -- count only when the next char is not an identifier char, so ":Q1" (a fixed
 -- literal) is excluded while ":Q" (the iterated dim) matches.  "[:]P" prevents

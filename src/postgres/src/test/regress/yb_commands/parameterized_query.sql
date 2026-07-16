@@ -50,12 +50,18 @@
 \set _iter_R5 :abs_srcdir '/yb_commands/_iter_R5.sql'
 \set run_query :abs_srcdir '/yb_commands/run_query.sql'
 
--- Scratch file for run_query's dimension detection.  The fixed filename
--- assumes tests using this infrastructure run on serial schedule lines:
--- parallel tests within one pg_regress run share the outputdir and would race
--- on it.  (Concurrent Java tests are fine: each run has its own abs_builddir.)
+-- Scratch files, written under PG_ABS_BUILDDIR, which should be a private tmp
+-- dir for each Java test invocation.  The fixed filenames assume tests using
+-- this infrastructure run on serial schedule lines: parallel tests within one
+-- pg_regress run would share them and race.  The psql vars are for \o (which
+-- interpolates psql vars); the _YB_REGRESS_* env vars are for \! (which does
+-- not interpolate psql vars).
 \getenv abs_builddir PG_ABS_BUILDDIR
 \set _cur_query :abs_builddir '/results/yb_regress_cur_query'
+\set _cur_out :abs_builddir '/results/yb_regress_cur_out'
+\set _prev_out :abs_builddir '/results/yb_regress_prev_out'
 \setenv _YB_REGRESS_CUR_QUERY :_cur_query
+\setenv _YB_REGRESS_CUR_OUT :_cur_out
+\setenv _YB_REGRESS_PREV_OUT :_prev_out
 
 \set ECHO :_echo_parameterized_query

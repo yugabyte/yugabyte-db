@@ -794,12 +794,7 @@ EXPLAIN (COSTS OFF) /*+BitmapScan(guard_type_expr)*/ SELECT c FROM guard_type_ex
 (2 rows)
 
 /*+BitmapScan(guard_type_expr)*/ SELECT c FROM guard_type_expr WHERE c = 6 OR c = 5::bigint ORDER BY c;
- c 
----
- 5
- 6
-(2 rows)
-
+(output identical to previous)
 DROP TABLE guard_type_gen, guard_type_expr;
 -- Positive control.  Here c is varchar and one arm compares it to a text
 -- constant.  text is binary-coercible to varchar (same representation), so
@@ -865,12 +860,7 @@ EXPLAIN (COSTS OFF) /*+BitmapScan(guard_coerce_expr)*/ SELECT c FROM guard_coerc
 (2 rows)
 
 /*+BitmapScan(guard_coerce_expr)*/ SELECT c FROM guard_coerce_expr WHERE c = 'a'::text OR c = 'b' ORDER BY c;
- c 
----
- a
- b
-(2 rows)
-
+(output identical to previous)
 DROP TABLE guard_coerce_gen, guard_coerce_expr;
 -- Operator guard.  The operator must be a real equality, not just one the
 -- planner treats like equality for selectivity (an eqsel operator).  box's "="
@@ -952,12 +942,7 @@ EXPLAIN (COSTS OFF) /*+BitmapScan(guard_op_expr)*/ SELECT id, x FROM guard_op_ex
 (2 rows)
 
 /*+BitmapScan(guard_op_expr)*/ SELECT id, x FROM guard_op_expr WHERE (x = 1 AND y = '((0,0),(2,2))'::box) OR (x = 2 AND y = '((1,1),(3,3))'::box) ORDER BY id;
- id | x 
-----+---
-  1 | 1
-  2 | 2
-(2 rows)
-
+(output identical to previous)
 DROP TABLE guard_op_gen, guard_op_expr;
 -- Multi-way joins
 CREATE TABLE t1 (x int);

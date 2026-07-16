@@ -1309,12 +1309,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(multi multi_b_c_i
 (2 rows)
 
 /*+ BitmapScan(multi multi_b_c_idx) Set(yb_enable_expression_pushdown false) */ SELECT * FROM multi WHERE (b < 10 AND b % 4 = 0) ORDER BY b;
- a | b | c  | h  
----+---+----+----
- 2 | 4 |  6 |  8
- 4 | 8 | 12 | 16
-(2 rows)
-
+(output identical to previous)
 \set Q1 '/*+ BitmapScan(multi) */'
 \set Q2 '/*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */'
 \set query ':P :Q SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;'
@@ -1380,13 +1375,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(multi) Set(yb_ena
 (3 rows)
 
 /*+ BitmapScan(multi) Set(yb_enable_expression_pushdown false) */ SELECT * FROM multi WHERE (a < 5 AND a % 2 = 0) OR (c <= 10 AND a % 3 = 0) ORDER BY a;
- a | b | c  | h  
----+---+----+----
- 2 | 4 |  6 |  8
- 3 | 6 |  9 | 12
- 4 | 8 | 12 | 16
-(3 rows)
-
+(output identical to previous)
 --
 -- test recheck index conditions
 --
@@ -1809,11 +1798,7 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */ select count(*) f
 (1 row)
 
 /*+ BitmapScan(t) */ select count(*) from recheck_test t where text_col like 'a%' AND text_col IN ('a', 'b', 'c');
- count 
--------
-     1
-(1 row)
-
+(output identical to previous)
 --
 -- test pk of different types
 --
@@ -2326,11 +2311,7 @@ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) /*+ BitmapScan(bitmap_recheck) */ SELE
 (1 row)
 
 /*+ BitmapScan(bitmap_recheck) */ SELECT count(*) FROM bitmap_recheck WHERE a = 0.4 OR c > 5;
- count 
--------
-    16
-(1 row)
-
+(output identical to previous)
 DROP TABLE bitmap_recheck;
 RESET yb_fetch_size_limit;
 RESET yb_fetch_row_limit;

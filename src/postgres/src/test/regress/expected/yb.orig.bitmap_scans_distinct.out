@@ -316,17 +316,7 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ Set(enable_seqscan off) Set(enable
 (7 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(test_distinct_hash) */ SELECT DISTINCT k FROM test_distinct_hash ORDER BY k;
-                                       QUERY PLAN                                       
-----------------------------------------------------------------------------------------
- Sort (actual rows=4 loops=1)
-   Sort Key: k
-   Sort Method: quicksort
-   ->  HashAggregate (actual rows=4 loops=1)
-         Group Key: k
-         ->  YB Bitmap Table Scan on test_distinct_hash (actual rows=1000 loops=1)
-               ->  Bitmap Index Scan on test_distinct_hash_k (actual rows=1000 loops=1)
-(7 rows)
-
+(output identical to previous)
 SELECT DISTINCT k FROM test_distinct_hash ORDER BY k;
  k 
 ---
@@ -337,22 +327,8 @@ SELECT DISTINCT k FROM test_distinct_hash ORDER BY k;
 (4 rows)
 
 /*+ Set(enable_seqscan off) Set(enable_indexscan off) */ SELECT DISTINCT k FROM test_distinct_hash ORDER BY k;
- k 
----
- 0
- 1
- 2
- 3
-(4 rows)
-
+(output identical to previous)
 /*+ BitmapScan(test_distinct_hash) */ SELECT DISTINCT k FROM test_distinct_hash ORDER BY k;
- k 
----
- 0
- 1
- 2
- 3
-(4 rows)
-
+(output identical to previous)
 RESET yb_enable_distinct_pushdown;
 DROP TABLE test_distinct_hash;

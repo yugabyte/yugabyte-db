@@ -1312,12 +1312,7 @@ FROM collation_test WHERE name > 'x' ORDER BY name;
 /*+ SeqScan(collation_test) */
 SELECT encode(name::bytea, 'escape') as utf8_bytes
 FROM collation_test WHERE name > 'x' ORDER BY name;
- utf8_bytes 
-------------
- xyz
- \303\244bc
-(2 rows)
-
+(output identical to previous)
 DROP TABLE table_info;
 DROP TABLE index_info;
 RESET enable_seqscan;

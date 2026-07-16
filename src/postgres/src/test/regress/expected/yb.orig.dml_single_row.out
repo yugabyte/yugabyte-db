@@ -2921,13 +2921,7 @@ EXPLAIN (COSTS OFF) UPDATE pk_nn_drop SET b = NULL WHERE k = 5;
 (3 rows)
 
 EXPLAIN (COSTS OFF) UPDATE pk_nn_drop SET a = 11 WHERE k = 5;
-             QUERY PLAN             
-------------------------------------
- Update on pk_nn_drop
-   Update on pk_nn_drop1 pk_nn_drop
-   ->  Result pk_nn_drop
-(3 rows)
-
+(output identical to previous)
 UPDATE pk_nn_drop SET b = NULL WHERE k = 5;
 ERROR:  null value in column "b" of relation "pk_nn_drop1" violates not-null constraint
 DETAIL:  Failing row contains (5, null, null).
