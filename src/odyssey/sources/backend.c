@@ -488,19 +488,32 @@ int od_backend_ready(od_server_t *server, char *data, uint32_t size)
 	// sticky, and then assumes the usual code workflow of being outside the 
 	// transaction block.
 	if (status == 'I' || status == 'i') {
+		od_route_t *route = server->route;
 		if (status == 'i') {
 			if(!yb_is_control_pool(server->route)) {
 				/* increment only if becoming sticky for the first time */
-				if (!server->yb_sticky_connection)
-					((od_route_t *)(server->route))->server_pool.yb_count_sticky++;
-	
+				if (!server->yb_sticky_connection) {
+					/*
+					 * YB: guard the route-shared sticky counter with the route
+					 * lock. od_router_attach/od_router_detach mutate the same
+					 * counter under this lock, so an unlocked update here races
+					 * with connection churn (e.g. on ysql lease loss).
+					 */
+					od_route_lock(route);
+					route->server_pool.yb_count_sticky++;
+					od_route_unlock(route);
+				}
+
 				server->yb_sticky_connection = true;
 			}
 			*kiwi_header_data((kiwi_header_t *)data) = 'I';
 		} else {
 			/* decrement only if transitioning from sticky to unsticky */
-			if (server->yb_sticky_connection)
-				((od_route_t *)(server->route))->server_pool.yb_count_sticky--;
+			if (server->yb_sticky_connection) {
+				od_route_lock(route);
+				route->server_pool.yb_count_sticky--;
+				od_route_unlock(route);
+			}
 			server->yb_sticky_connection = false;
 		}
 		/* no active transaction */
