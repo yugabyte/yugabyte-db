@@ -19,7 +19,8 @@ import {
   YSQL_FIELD,
   YCQL_FIELD,
   YSQL_CONFIRM_PWD,
-  YCQL_CONFIRM_PWD
+  YCQL_CONFIRM_PWD,
+  GFLAGS_FIELD
 } from '../../fields/FieldNames';
 
 //icons
@@ -62,6 +63,7 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const enableYCQLVal = watch(YCQL_FIELD);
   const ysqlConfirmPwd = watch(YSQL_CONFIRM_PWD);
   const ycqlConfirmPwd = watch(YCQL_CONFIRM_PWD);
+  const gflagVal = watch(GFLAGS_FIELD);
 
   useUpdateEffect(() => {
     if (!enableYCQLVal && !enableYSQLVal) {
@@ -91,6 +93,7 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
         })();
       },
       onPrev: () => {
+        saveDatabaseSettings(methods.getValues());
         moveToPreviousPage();
       }
     }),
@@ -126,10 +129,14 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
             />
           </StyledContent>
         </StyledPanel>
-        <YBAccordion titleContent={t('databaseSettings.advFlags')} sx={{ width: '100%' }}>
+        <YBAccordion
+          titleContent={t('databaseSettings.advFlags')}
+          sx={{ width: '100%' }}
+          defaultExpanded={gflagVal?.length > 0 ? true : false}
+        >
           <GFlagsFieldNew
             control={control}
-            fieldPath={'gFlags'}
+            fieldPath={GFLAGS_FIELD}
             dbVersion={generalSettings?.databaseVersion ?? ''}
             isReadReplica={false}
             editMode={false}

@@ -100,10 +100,11 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     ebsKmsConfigUUID: null
   },
   securitySettings: {
-    enableClientToNodeEncryption: false,
-    enableNodeToNodeEncryption: false,
+    enableClientToNodeEncryption: true,
+    enableNodeToNodeEncryption: true,
     enableIPV6: false,
-    enableExposingService: false
+    enableExposingService: false,
+    assignPublicIP: false
   },
   resilienceType: ResilienceType.REGULAR,
   proxySettings: {

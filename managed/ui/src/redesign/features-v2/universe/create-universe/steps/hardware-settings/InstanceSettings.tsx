@@ -47,6 +47,7 @@ import {
   TSERVER_K8_NODE_SPEC_FIELD,
   MASTER_TSERVER_SAME_FIELD,
   ENABLE_EBS_CONFIG_FIELD,
+  EBS_KMS_CONFIG_FIELD,
   CPU_ARCH_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
 
@@ -103,7 +104,13 @@ export const InstanceSettings = forwardRef<
   }
 >(({ editMode = false, viewMode = 'all', disableTserverFields = false }, forwardRef) => {
   const [
-    { instanceSettings, generalSettings, nodesAvailabilitySettings, resilienceAndRegionsSettings },
+    {
+      instanceSettings,
+      generalSettings,
+      nodesAvailabilitySettings,
+      resilienceAndRegionsSettings,
+      securitySettings
+    },
     { moveToNextPage, moveToPreviousPage, saveInstanceSettings, setActiveStep }
   ] = useContext(CreateUniverseContext) as unknown as CreateUniverseContextMethods;
 
@@ -127,13 +134,18 @@ export const InstanceSettings = forwardRef<
     keyPrefix: 'createUniverseV2.instanceSettings'
   });
 
+  const earKMSConfig = securitySettings?.kmsConfig ?? null;
+
   const methods = useForm<InstanceSettingProps>({
     defaultValues: instanceSettings,
+    context: {
+      earKmsConfig: earKMSConfig
+    },
     resolver: yupResolver(
       InstanceSettingsValidationSchema(t, useK8CustomResources, provider?.code, !!useDedicatedNodes)
     )
   });
-  const { watch, setValue, control } = methods;
+  const { watch, setValue, control, trigger } = methods;
 
   const deviceInfo = watch(DEVICE_INFO_FIELD);
   const sameAsTserver = watch(MASTER_TSERVER_SAME_FIELD);
@@ -171,6 +183,12 @@ export const InstanceSettings = forwardRef<
       setValue(LINUX_VERSION_FIELD, null);
     }
   }, [provider?.uuid]);
+
+  useEffect(() => {
+    if (earKMSConfig && ebsEnabled) {
+      trigger(EBS_KMS_CONFIG_FIELD);
+    }
+  }, [earKMSConfig, ebsEnabled, trigger]);
 
   useEffect(() => {
     if (deviceInfo && sameAsTserver) {

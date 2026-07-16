@@ -18,7 +18,7 @@ import {
 } from '../../CreateUniverseContext';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
-import { SecuritySettingsProps } from './dtos';
+import { SecuritySettingsProps, CertType } from './dtos';
 import { useUpdateEffect } from 'react-use';
 import {
   NTON_CERT_FIELD,
@@ -43,7 +43,12 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
   });
 
   const methods = useForm<SecuritySettingsProps>({
-    defaultValues: { ...securitySettings },
+    defaultValues: {
+      useSameCertificate: true,
+      enableBothEncryption: true,
+      certType: CertType.SELF_SIGNED,
+      ...securitySettings
+    },
     mode: 'onChange'
   });
 
@@ -75,6 +80,7 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
         })();
       },
       onPrev: () => {
+        saveSecuritySettings(methods.getValues());
         moveToPreviousPage();
       }
     }),
@@ -89,11 +95,11 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
             <StyledHeader>{t('networkAcessTitle')}</StyledHeader>
             <StyledContent sx={{ gap: '16px' }}>
               {provider && isCloudVendorCloudType(provider?.code) && (
-                  <AssignPublicIPField
-                    disabled={false}
-                    providerCode={generalSettings?.providerConfiguration?.code ?? ''}
-                  />
-                )}
+                <AssignPublicIPField
+                  disabled={false}
+                  providerCode={generalSettings?.providerConfiguration?.code ?? ''}
+                />
+              )}
               {provider?.code === CloudType.kubernetes && <IPV6Field disabled={false} />}
               {provider?.code === CloudType.kubernetes && <NetworkAcessField disabled={false} />}
             </StyledContent>

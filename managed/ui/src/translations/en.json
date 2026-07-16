@@ -4048,6 +4048,7 @@
         "useSpotInstance": "Use Spot Instances",
         "kmsConfig": "Key Management Service Config",
         "kmsConfigPlaceHolder": "Select Configuration",
+        "kmsValidationMsg": "This KMS configuration is already used for encryption at rest.",
         "provisionedIopsPerNode": "Provisioned IOPS / Node ",
         "provisionedThroughputPerNode": "Provisioned Throughput / Node",
         "provisionedThroughputPerPod": "Provisioned Throughput / Pod",
@@ -4124,7 +4125,7 @@
           "label": "Enable Encryption At Rest",
           "kmsConfig": "Key Management Service Config",
           "kmsConfigPlaceHolder": "Select",
-          "kmsValidationMsg": "'This KMS configuration is already used for EBS volume encryption.'"
+          "kmsValidationMsg": "This KMS configuration is already used for EBS volume encryption."
         },
         "eitField": {
           "useSameCert": "Use the same certificate for Node-to-Node and Client-to-Node encryption.",

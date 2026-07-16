@@ -29,6 +29,7 @@ import { constructPlacements } from '../../utils/createUniversePayload';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { OtherAdvancedProps } from './dtos';
+import { USER_TAGS_FIELD } from '../../fields/FieldNames';
 import { OtherAdvancedValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/advanced-settings/ValidationSchema';
 
 const { Box, Typography } = mui;
@@ -69,6 +70,10 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
     mode: 'onChange'
   });
 
+  const { watch } = methods;
+
+  const userTagsValue = watch(USER_TAGS_FIELD);
+
   useImperativeHandle(
     forwardRef,
     () => ({
@@ -79,6 +84,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
         })();
       },
       onPrev: () => {
+        saveOtherAdvancedSettings(methods.getValues());
         moveToPreviousPage();
       }
     }),
@@ -113,7 +119,11 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
           </YBAccordion>
         )}
         {provider && isCloudVendorCloudType(provider?.code) && (
-          <YBAccordion titleContent={t('userTagsHeader')} sx={{ width: '100%' }}>
+          <YBAccordion
+            titleContent={t('userTagsHeader')}
+            sx={{ width: '100%' }}
+            defaultExpanded={userTagsValue?.length > 1 ? true : false}
+          >
             <UserTagsField disabled={false} />
           </YBAccordion>
         )}
