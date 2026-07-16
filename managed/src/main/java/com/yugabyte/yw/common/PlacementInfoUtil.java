@@ -2271,7 +2271,7 @@ public class PlacementInfoUtil {
     return result;
   }
 
-  public static NodeDetails createToBeAddedNode(NodeDetails templateNode) {
+  public static NodeDetails createToBeAddedNode(Universe universe, NodeDetails templateNode) {
     NodeDetails newNode = new NodeDetails();
     newNode.cloudInfo = new CloudSpecificInfo();
     newNode.ybPrebuiltAmi = templateNode.ybPrebuiltAmi;
@@ -2280,10 +2280,28 @@ public class PlacementInfoUtil {
 
     newNode.disksAreMountedByUUID = true;
     newNode.isMaster = templateNode.isMaster;
+    newNode.isTserver = templateNode.isTserver;
+
+    if (!newNode.isMaster && !newNode.isTserver) {
+      Cluster cluster = universe.getCluster(templateNode.placementUuid);
+      if (cluster == null) {
+        throw new IllegalStateException(
+            "Cluster for " + templateNode.nodeName + " node is not found");
+      }
+      if (templateNode.dedicatedTo != null && cluster.userIntent.dedicatedNodes) {
+        if (templateNode.dedicatedTo == ServerType.TSERVER) {
+          newNode.isTserver = true;
+        } else if (templateNode.dedicatedTo == ServerType.MASTER) {
+          newNode.isMaster = true;
+        }
+      } else {
+        newNode.isTserver = true;
+      }
+    }
     if (newNode.isMaster) {
       newNode.masterState = NodeDetails.MasterState.ToStart;
     }
-    newNode.isTserver = templateNode.isTserver;
+
     newNode.state = ToBeAdded;
 
     if (templateNode.cloudInfo == null) {
