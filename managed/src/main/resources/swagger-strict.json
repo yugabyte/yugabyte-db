@@ -27570,7 +27570,6 @@
         }
       },
       "required" : [
-        "bootstrapParams",
         "tables"
       ],
       "type" : "object"
