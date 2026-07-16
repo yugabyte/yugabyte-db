@@ -1,7 +1,7 @@
 ---
 title: Upgrade the YugabyteDB gRPC connector
 headerTitle: Upgrade the connector
-linkTitle: Upgrade the connector
+linkTitle: Upgrade connector
 description: Upgrade an existing YugabyteDB gRPC connector deployment to a later version without losing stream position.
 headcontent: Move an existing gRPC connector deployment to a later version
 menu:

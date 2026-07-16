@@ -109,7 +109,7 @@ After the upgrade is finalized and complete, do the following:
 After any upgrade, confirm the stream is healthy as follows:
 
 - Connector status: `GET /connectors/<name>/status` returns `RUNNING` for the connector and its tasks, with no failures.
-- Slot progressing: — `restart_lsn` / `confirmed_flush_lsn` advance and lag drains.
+- Slot progressing: `restart_lsn` / `confirmed_flush_lsn` advance and lag drains.
 
   ```plpgsql
   SELECT slot_name, confirmed_flush_lsn,
@@ -123,5 +123,5 @@ After any upgrade, confirm the stream is healthy as follows:
 
 Downgrade isn't supported. If a new version misbehaves:
 
-- Prefer fixing forward to a later patch on the same line.
+- If possible, upgrade the connector to a later patch of the same version.
 - If you must return to a previous version, re-snapshot on that version (new slot, fresh snapshot) rather than pointing the previous connector at the existing slot.
