@@ -204,6 +204,7 @@ public class TestPgRangePresplit extends BasePgSQLTest {
       expectedRows.clear();
       expectedRows.add(new Row("Update on t3"));
       expectedRows.add(new Row("  ->  Result t3"));
+      expectedRows.add(new Row("        Replaces: Aggregate"));
       try (ResultSet rs = statement.executeQuery(
           "EXPLAIN(costs off) UPDATE t3 SET v = 0 WHERE a = 10 AND b = 10")) {
         assertEquals(expectedRows, getRowList(rs));
@@ -239,6 +240,7 @@ public class TestPgRangePresplit extends BasePgSQLTest {
       expectedRows.clear();
       expectedRows.add(new Row("Delete on t3"));
       expectedRows.add(new Row("  ->  Result t3"));
+      expectedRows.add(new Row("        Replaces: Aggregate"));
       try (ResultSet rs = statement.executeQuery(
           "EXPLAIN(costs off) DELETE FROM t3 WHERE a = 10 AND b = 10")) {
         assertEquals(expectedRows, getRowList(rs));
