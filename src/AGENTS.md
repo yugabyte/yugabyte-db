@@ -100,9 +100,26 @@ After addressing review comments in follow-up commits, follow these rules:
 
 Write temporary files (PR bodies, commit messages, lint logs, etc.) to **`/tmp/claude/`** rather than `/tmp/` directly — the folder is allowlisted in `.claude/settings.json` for `Read`, `Edit`, and the common `Bash` write patterns, so writes there don't trigger a permission prompt. Pick a filename that disambiguates across concurrent uses (e.g. `/tmp/claude/pr-body-31407.md`, not `/tmp/claude/body.md`). Run `mkdir -p /tmp/claude` once if it doesn't exist.
 
+## C++ style
+
+- Use `yb::Thread` instead of `std::thread`.
+- In tests, use `TestThreadHolder` instead of manually managed vectors of threads.
+- In tests, prefer `ASSERT_*` macros over `EXPECT_*` macros when possible.
+- Keep lists of `DECLARE_xxx(yyy)` flag declarations in alphabetical order.
+- Keep lists of forward declarations in alphabetical order.
+
+## Commit messages
+
+- Use backticks for method, class, and other code references.
+- Prefer `DocDB` over `docdb` as a component prefix.
+- When referencing other commits (for instance as the cause of a regression), use the form
+  `<COMMIT_HASH>/<DIFF_ID>`.
+
 ## Build System
 
 The primary build entry point is `yb_build.sh` at the repository root.
+Use only `yb_build.sh` for building and running tests; do not run `ninja`, `cmake`, or test
+binaries directly.
 
 Reuse existing build compiler/type if available (see `build/latest` symlink); default to `release` otherwise.
 
@@ -140,15 +157,23 @@ Further information is in [the docs page build-and-test](../docs/content/stable/
 
 ### C++ Tests
 
-```bash
-./yb_build.sh release --cxx-test tablet-test
+To build a test binary without running it:
 
+```bash
+./yb_build.sh release --target tablet-test
+```
+
+To run tests:
+
+```bash
 ./yb_build.sh release --cxx-test cluster_balance_preferred_leader-test --gtest_filter TestLoadBalancerPreferredLeader.TestBalancingMultiPriorityWildcardLeaderPreference
 
 ./yb_build.sh release --cxx-test cluster_balance_preferred_leader-test --gtest_filter "*Wildcard*"
 
 ./yb_build.sh release --cxx-test cluster_balance_preferred_leader-test -n 10
 ```
+
+Run one test per execution; do not use a `--gtest_filter` that matches more than one test.
 
 ### Java Tests
 
