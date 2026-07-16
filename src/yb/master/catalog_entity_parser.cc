@@ -19,7 +19,9 @@
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/catalog_entity_types.h"
 
+#include "yb/util/format.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/status_format.h"
 
 namespace yb::master {
 

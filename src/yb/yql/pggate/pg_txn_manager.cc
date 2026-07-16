@@ -36,6 +36,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pggate.h"

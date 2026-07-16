@@ -73,6 +73,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 #include "yb/util/trace.h"

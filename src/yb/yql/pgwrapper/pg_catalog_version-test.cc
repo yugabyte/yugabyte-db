@@ -17,6 +17,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/test_thread_holder.h"

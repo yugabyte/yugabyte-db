@@ -35,6 +35,7 @@
 
 #include "yb/util/flag_validators.h"
 #include "yb/util/is_operation_done_result.h"
+#include "yb/util/status_log.h"
 
 // TODO (mbautin, 2019-12): switch the default to true after updating all external callers
 // (yb-ctl, YugaWare) and unit tests.

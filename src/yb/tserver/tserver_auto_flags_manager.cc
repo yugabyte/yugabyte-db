@@ -12,7 +12,11 @@
 //
 
 #include "yb/tserver/tserver_auto_flags_manager.h"
+
 #include "yb/common/clock.h"
+
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 DECLARE_uint64(max_clock_skew_usec);
 

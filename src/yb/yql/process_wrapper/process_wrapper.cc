@@ -18,6 +18,7 @@
 #include "yb/util/env.h"
 #include "yb/util/format.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"
 

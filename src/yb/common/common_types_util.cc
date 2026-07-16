@@ -17,6 +17,7 @@
 #include <utility>
 
 #include "yb/util/result.h"
+#include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_uuid.h"
 
 using std::array;

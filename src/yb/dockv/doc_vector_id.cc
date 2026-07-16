@@ -24,6 +24,7 @@
 #include "yb/dockv/value_type.h"
 
 #include "yb/util/format.h"
+#include "yb/util/status_format.h"
 
 namespace yb::dockv {
 

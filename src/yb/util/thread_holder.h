@@ -21,6 +21,7 @@
 
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/thread.h"
 
 namespace yb {

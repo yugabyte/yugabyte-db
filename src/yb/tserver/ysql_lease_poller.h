@@ -13,9 +13,12 @@
 
 #pragma once
 
+#include <future>
+
 #include "yb/server/server_fwd.h"
 #include "yb/tserver/tserver_fwd.h"
 
+#include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb::tserver {

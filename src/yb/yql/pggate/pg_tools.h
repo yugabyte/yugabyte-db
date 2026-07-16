@@ -32,11 +32,13 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/pg_types.h"
+
 #include "yb/common/transaction.pb.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/format.h"
 #include "yb/util/lru_cache.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/slice.h"

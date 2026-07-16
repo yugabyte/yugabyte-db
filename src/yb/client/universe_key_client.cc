@@ -26,6 +26,8 @@
 
 #include "yb/rpc/secure.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"

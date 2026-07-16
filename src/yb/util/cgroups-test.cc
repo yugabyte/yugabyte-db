@@ -19,6 +19,8 @@
 
 #include "yb/util/cgroups.h"
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 

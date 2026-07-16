@@ -45,8 +45,11 @@
 #include <vector>
 
 #include "yb/gutil/strings/split.h"
+#include "yb/gutil/strings/substitute.h"
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 
 using std::ifstream;
 using std::istreambuf_iterator;

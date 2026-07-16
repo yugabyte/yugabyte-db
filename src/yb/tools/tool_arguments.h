@@ -22,6 +22,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 // Framework for creating command line tool with multiple subcommands.
 // Usage:

@@ -27,6 +27,7 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 DEFINE_RUNTIME_int32(dump_heap_snapshot_min_interval_sec, 600,
     "The minimum time to wait between dumping heap snapshots. A value of <= 0 means the logging is "

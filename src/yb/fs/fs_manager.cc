@@ -66,6 +66,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 
 DEFINE_UNKNOWN_bool(enable_data_block_fsync, true,

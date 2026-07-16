@@ -27,6 +27,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
 
 #include "yb/ann_methods/index_memory_consumption.h"
 

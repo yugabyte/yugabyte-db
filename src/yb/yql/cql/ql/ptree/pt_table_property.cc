@@ -25,6 +25,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"

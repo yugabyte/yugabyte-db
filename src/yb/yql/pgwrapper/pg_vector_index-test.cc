@@ -52,6 +52,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/path_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 

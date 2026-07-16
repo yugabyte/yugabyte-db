@@ -54,6 +54,7 @@
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/to_stream.h"
 #include "yb/util/trace.h"
 

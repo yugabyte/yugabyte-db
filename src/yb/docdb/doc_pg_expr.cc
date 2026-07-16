@@ -29,6 +29,7 @@
 #include "yb/dockv/reader_projection.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/pg_value.h"
 

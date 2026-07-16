@@ -19,6 +19,7 @@
 #include "yb/gutil/endian.h"
 
 #include "yb/util/slice.h"
+#include "yb/util/status_format.h"
 #include "yb/util/write_buffer.h"
 
 namespace yb {

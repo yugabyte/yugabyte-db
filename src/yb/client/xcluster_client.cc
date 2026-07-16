@@ -26,6 +26,9 @@
 #include "yb/rpc/secure_stream.h"
 #include "yb/rpc/secure.h"
 #include "yb/util/path_util.h"
+#include "yb/util/status_format.h"
+
+#include "yb/server/clock.h"
 
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_for_cdc_dir);

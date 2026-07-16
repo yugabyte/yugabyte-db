@@ -24,6 +24,7 @@
 #include "yb/util/faststring.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"

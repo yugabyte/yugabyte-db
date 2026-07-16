@@ -27,6 +27,7 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_value.h"

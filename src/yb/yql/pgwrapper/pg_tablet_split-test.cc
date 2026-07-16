@@ -61,6 +61,7 @@
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/range.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_case.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"

@@ -30,6 +30,7 @@
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
 #include "yb/util/path_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"

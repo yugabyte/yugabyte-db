@@ -13,6 +13,7 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 using std::string;
 

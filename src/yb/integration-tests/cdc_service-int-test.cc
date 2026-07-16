@@ -54,6 +54,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"

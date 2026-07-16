@@ -58,6 +58,7 @@
 #include "yb/util/net/tunnel.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"

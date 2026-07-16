@@ -21,6 +21,7 @@
 
 #include "yb/master/master_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 
 namespace yb::client {
 

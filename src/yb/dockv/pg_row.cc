@@ -29,6 +29,8 @@
 
 #include "yb/util/decimal.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 

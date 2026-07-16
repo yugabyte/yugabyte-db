@@ -27,6 +27,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
+#include "yb/client/transaction_status_tablets.h"
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"

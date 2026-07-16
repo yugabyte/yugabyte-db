@@ -57,6 +57,7 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"

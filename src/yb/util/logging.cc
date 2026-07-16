@@ -61,6 +61,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/path_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/symbolize.h"
 #include "yb/util/thread.h"
 

@@ -48,6 +48,7 @@
 #include "yb/util/fast_varint.h"
 #include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/status_format.h"
 
 DEFINE_UNKNOWN_bool(enable_transaction_sealing, false,
             "Whether transaction sealing is enabled.");
