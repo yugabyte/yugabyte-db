@@ -273,7 +273,8 @@ public class TestPgAlterTable extends BasePgSQLTest {
       runInvalidQuery(
           statement,
           "DELETE FROM test_table WHERE pk = 2",
-          "violates foreign key constraint \"ref_table_id_restrict_fkey\" on table \"ref_table\""
+          "violates RESTRICT setting of foreign key constraint " +
+              "\"ref_table_id_restrict_fkey\" on table \"ref_table\""
       );
 
       // Neither tables dropped rows.
@@ -359,7 +360,8 @@ public class TestPgAlterTable extends BasePgSQLTest {
       runInvalidQuery(
           statement,
           "UPDATE test_table SET id = 12 WHERE pk = 2",
-          "violates foreign key constraint \"ref_table_id_restrict_fkey\" on table \"ref_table\""
+          "violates RESTRICT setting of foreign key constraint " +
+              "\"ref_table_id_restrict_fkey\" on table \"ref_table\""
       );
 
       // Neither row was modified.
