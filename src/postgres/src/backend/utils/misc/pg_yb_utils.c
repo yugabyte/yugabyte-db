@@ -2805,11 +2805,19 @@ YBGetDdlUseRegularTransactionBlock()
 }
 
 void
-YBSetDdlOriginalNodeAndCommandTag(NodeTag nodeTag,
-								  CommandTag commandTag)
+YBGetDdlOriginalStmtState(YbDdlOriginalStmtState *state)
 {
-	ddl_transaction_state.current_stmt_node_tag = nodeTag;
-	ddl_transaction_state.current_stmt_ddl_command_tag = commandTag;
+	state->node_tag = ddl_transaction_state.current_stmt_node_tag;
+	state->command_tag = ddl_transaction_state.current_stmt_ddl_command_tag;
+	state->is_top_level_ddl_active = ddl_transaction_state.is_top_level_ddl_active;
+}
+
+void
+YBSetDdlOriginalStmtState(const YbDdlOriginalStmtState *state)
+{
+	ddl_transaction_state.current_stmt_node_tag = state->node_tag;
+	ddl_transaction_state.current_stmt_ddl_command_tag = state->command_tag;
+	ddl_transaction_state.is_top_level_ddl_active = state->is_top_level_ddl_active;
 }
 
 void

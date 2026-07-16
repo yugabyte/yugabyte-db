@@ -1019,8 +1019,20 @@ extern NodeTag YBGetCurrentStmtDdlNodeTag();
 extern bool YBIsCurrentStmtDdl();
 extern CommandTag YBGetCurrentStmtDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
-extern void YBSetDdlOriginalNodeAndCommandTag(NodeTag nodeTag,
-											  CommandTag commandTag);
+
+/*
+ * Snapshot of the current top-level DDL statement identity. Used to preserve
+ * and restore state across intermediate commits (YbCommitTransactionCommandIntermediate).
+ */
+typedef struct YbDdlOriginalStmtState
+{
+	NodeTag		node_tag;
+	CommandTag	command_tag;
+	bool		is_top_level_ddl_active;
+} YbDdlOriginalStmtState;
+
+extern void YBGetDdlOriginalStmtState(YbDdlOriginalStmtState *state);
+extern void YBSetDdlOriginalStmtState(const YbDdlOriginalStmtState *state);
 extern void YbSetIsGlobalDDL();
 extern void YbIncrementPgTxnsCommitted();
 extern bool YbTrackPgTxnInvalMessagesForAnalyze();
