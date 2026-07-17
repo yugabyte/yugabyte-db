@@ -124,4 +124,4 @@ After any upgrade, confirm the stream is healthy as follows:
 Downgrade isn't supported. If a new version misbehaves:
 
 - Prefer fixing forward to a later patch on the same line.
-- If you must return to a previous version, re-snapshot on that version (new slot, fresh snapshot) rather than pointing the previous connector at the existing slot.
+- If you must return to a previous version, [re-snapshot](../../additional-features/change-data-capture/using-logical-replication/upgrade-connector/#when-a-re-snapshot-is-required) on that version (new slot, fresh snapshot) rather than pointing the previous connector at the existing slot.
