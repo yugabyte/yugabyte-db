@@ -2224,7 +2224,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   retryable_requests.SetRequestTimeout(FLAGS_retryable_request_timeout_secs);
 
   if (FLAGS_enable_copy_retryable_requests_from_parent &&
-          cmeta->has_split_parent_tablet_id()) {
+      cmeta->has_split_parent_tablet_id() && !bootstrap_state_manager->has_file_on_disk()) {
     auto parent_tablet_requests = GetTabletRetryableRequests(cmeta->split_parent_tablet_id());
     if (parent_tablet_requests.ok()) {
       retryable_requests.CopyFrom(*parent_tablet_requests);
