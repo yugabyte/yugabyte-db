@@ -1430,20 +1430,29 @@ Status VectorIndexesUpdater::Feed(
   if (sizes.doc_key_size < key.size()) {
     auto entry_type = static_cast<KeyEntryType>(key[sizes.doc_key_size]);
     if (entry_type == KeyEntryType::kColumnId) {
+      auto column_id_slice = key.WithoutPrefix(sizes.doc_key_size + 1);
+
+      // Postpone column decoding until we know it is needed.
+      ColumnId column_id = kInvalidColumnId;
+
       // The value entry can start with kVector only when table owns vector reverse mapping.
       const bool apply_reverse_entry = value.starts_with(ValueEntryTypeAsChar::kVector);
       bool need_reverse_entry = apply_to_storages_.TestRegularDB();
       if (need_reverse_entry && apply_reverse_entry) {
+        column_id = VERIFY_RESULT(ColumnId::Decode(&column_id_slice));
         auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(sizes.prefix_size);
         DocVectorIndex::ApplyReverseEntry(
-            handler, ybctid, value, DocHybridTime(commit_ht_, write_id_));
+            handler, ybctid, value, DocHybridTime(commit_ht_, write_id_),
+            column_id, key.Prefix(sizes.prefix_size));
         need_reverse_entry = false; // Apply only once, not during vector index processing.
       }
 
       // Regular vector index processing and legacy vector reverse mapping are handled together.
       if (indexes_) {
-        auto column_id_slice = key.WithoutPrefix(sizes.doc_key_size + 1);
-        auto column_id = VERIFY_RESULT(ColumnId::Decode(&column_id_slice));
+        if (column_id == kInvalidColumnId) {
+          column_id = VERIFY_RESULT(ColumnId::Decode(&column_id_slice));
+        }
+
         // We expect small amount of vector indexes, usually 1. So it's faster to iterate over them.
         for (size_t i = 0; i != indexes_->size(); ++i) {
           const auto& vector_index = *(*indexes_)[i];
@@ -1554,7 +1563,8 @@ Status VectorIndexesUpdater::FeedPackedRowTableOwnedReverseMapping(
 
     if (apply_to_storages_.TestRegularDB()) {
       DocVectorIndex::ApplyReverseEntry(
-          handler, ybctid, *column_value, DocHybridTime(commit_ht_, write_id_));
+          handler, ybctid, *column_value, DocHybridTime(commit_ht_, write_id_),
+          column_id, table_key_prefix);
     }
 
     if (!indexes_) {

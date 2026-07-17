@@ -2004,7 +2004,7 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::DeleteObsoleteChunks() {
   CHECK(obsolete_files_cleanup_in_progress_);
 
-  // TODO(vector-index): move this paradigm into a separate utility class (already have the same
+  // TODO(vector_index): move this paradigm into a separate utility class (already have the same
   // approach somewhere, it is good to combine them).
   for (;;) {
     DoDeleteObsoleteChunks();
@@ -3030,7 +3030,7 @@ void VectorLSM<Vector, DistanceResult>::RemoveTaskUnlocked(CompactionTask& task)
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::SubmitTask(CompactionTaskPtr task) {
-  // TODO(vector-index): specify disk_group_no during submitting.
+  // TODO(vector_index): specify disk_group_no during submitting.
   auto submitted = options_.compaction_token->Submit(&task);
   if (!submitted.ok()) {
     LOG_WITH_PREFIX(ERROR) << "Failed to submit task " << task->ToString()

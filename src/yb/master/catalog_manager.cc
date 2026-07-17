@@ -633,9 +633,7 @@ DEFINE_validator(vector_index_backend,
 TAG_FLAG(vector_index_backend, hidden);
 TAG_FLAG(vector_index_backend, advanced);
 
-// TODO(GH31886): this flag will be coverted into an auto-flag when all ownership and
-// new value format changes are completed.
-DEFINE_RUNTIME_bool(enable_table_owned_vector_reverse_mapping, false,
+DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
     "Such tables write vector reverse mappings on row insert/update regardless of "
     "whether a vector index exists, and vector index backfill skips reverse mapping.");
