@@ -221,7 +221,7 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 
 | Wait Event | Type | <div style="width:100px">Aux</div> | Description |
 | :--------- | :--- | :-- | :---------- |
-| VectorIndex_Search | CPU | Tablet ID | The vector index is performing an approximate nearest neighbor search. |
+| VectorIndex_Search | CPU | Tablet ID | The vector index is performing an approximate nearest neighbor search. <br> Supported in v2025.2.5.0 or later.|
 
 ### YCQL
 
