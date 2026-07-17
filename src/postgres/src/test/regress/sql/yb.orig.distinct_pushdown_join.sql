@@ -115,7 +115,56 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t t
 
 DROP INDEX irv;
 
+-- Do not partially translate uniqkeys through a subquery scan.
+\set query ':P SELECT DISTINCT s.r1 FROM (SELECT DISTINCT r1 FROM t WHERE r1 = r2) s;'
+\set Pnext :iter_query
+\i :iter_P2
+
+-- Retain the outer distinct when the subquery has additional distinct keys.
+\set query ':P SELECT DISTINCT s.r1 FROM (SELECT DISTINCT r1, r2 FROM t) s;'
+\i :iter_P2
+
 DROP TABLE t;
+
+CREATE TABLE distinct_expr (a INT);
+INSERT INTO distinct_expr
+  SELECT i % 5 FROM GENERATE_SERIES(1, 1000) AS i;
+ANALYZE distinct_expr;
+
+-- Do not propagate uniqkeys when the subquery has no distinct pushdown.
+CREATE INDEX distinct_expr_a_idx ON distinct_expr (a ASC);
+\set query ':P SELECT DISTINCT s.a FROM (SELECT DISTINCT a, a + 1 FROM distinct_expr) s ORDER BY 1;'
+\i :iter_P2
+
+-- Preserve distinct pushdown through a subquery without DISTINCT.
+\set query ':P SELECT DISTINCT s.a FROM (SELECT a FROM distinct_expr) s ORDER BY 1;'
+\i :iter_P2
+
+-- Translate uniqkeys through nested subquery scans.
+\set query ':P SELECT DISTINCT s2.a FROM (SELECT DISTINCT s1.a FROM (SELECT DISTINCT a FROM distinct_expr) s1) s2 ORDER BY 1;'
+\i :iter_P2
+
+DROP INDEX distinct_expr_a_idx;
+
+-- Drop uniqkeys when one key is not exposed by the subquery scan.
+CREATE INDEX distinct_expr_a_expr_idx
+  ON distinct_expr (a ASC, (a + 1) ASC);
+\set query ':P SELECT DISTINCT s.a FROM (SELECT DISTINCT a, a + 1 FROM distinct_expr) s ORDER BY 1;'
+\i :iter_P2
+
+DROP TABLE distinct_expr;
+
+-- Do not translate uniqkeys when collations do not match.
+CREATE TABLE distinct_collate (a TEXT);
+CREATE INDEX distinct_collate_c_idx ON distinct_collate (a COLLATE "C" ASC);
+INSERT INTO distinct_collate
+  SELECT (i % 5)::TEXT FROM GENERATE_SERIES(1, 1000) AS i;
+ANALYZE distinct_collate;
+
+\set query ':P SELECT DISTINCT s.x FROM (SELECT DISTINCT a COLLATE "C" AS x FROM distinct_collate) s ORDER BY 1;'
+\i :iter_P2
+
+DROP TABLE distinct_collate;
 
 -- Regression test for untranslated uniqkeys leaking from subquery paths.
 CREATE TABLE distinct_outer(k INT);
@@ -127,13 +176,25 @@ INSERT INTO distinct_outer
   SELECT CASE WHEN i <= 500 THEN 1 ELSE 2 END
   FROM GENERATE_SERIES(1, 1000) AS i;
 INSERT INTO distinct_inner
-  SELECT 10 * (i % 3)
+  SELECT i % 3
   FROM GENERATE_SERIES(1, 1000) AS i;
 ANALYZE distinct_outer;
 ANALYZE distinct_inner;
 
 \set query ':P SELECT DISTINCT o.k FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s ORDER BY 1;'
 \set Pnext :iter_query
+\i :iter_P2
+
+-- Propagate uniqkeys from a subquery through a cross join.
+\set query ':P SELECT DISTINCT o.k, s.a FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s ORDER BY 1, 2;'
+\i :iter_P2
+
+-- Propagate uniqkeys from a subquery through an inner join.
+\set query ':P SELECT DISTINCT o.k, s.a FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s WHERE o.k = s.a ORDER BY 1, 2;'
+\i :iter_P2
+
+-- Handle propagated uniqkeys from the nullable side of a left join.
+\set query ':P SELECT DISTINCT o.k, s.a FROM distinct_outer o LEFT JOIN (SELECT DISTINCT a FROM distinct_inner) s ON o.k = s.a AND s.a = 1 ORDER BY 1, 2;'
 \i :iter_P2
 
 DROP TABLE distinct_outer;

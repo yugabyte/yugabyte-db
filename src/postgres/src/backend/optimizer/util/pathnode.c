@@ -59,9 +59,6 @@ typedef enum
 #define STD_FUZZ_FACTOR 1.01
 
 static List *translate_sub_tlist(List *tlist, int relid);
-static void yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields,
-											 RelOptInfo *rel, Path *subpath);
-static Var *yb_find_var_for_subquery_tle(RelOptInfo *rel, int resno);
 static int	append_total_cost_compare(const ListCell *a, const ListCell *b);
 static int	append_startup_cost_compare(const ListCell *a, const ListCell *b);
 static List *reparameterize_pathlist_by_child(PlannerInfo *root,
@@ -71,6 +68,8 @@ static bool contain_references_to(PlannerInfo *root, Node *clause,
 								  Relids relids);
 static bool ris_contain_references_to(PlannerInfo *root, List *rinfos,
 									  Relids relids);
+static void yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields,
+											 RelOptInfo *rel, Path *subpath);
 
 
 /*****************************************************************************
@@ -1320,90 +1319,6 @@ yb_propagate_fields_list(YbPathInfo *parent_fields, List *child_paths)
 	 * values across the child pathnodes before we can do that.
 	 */
 	parent_fields->yb_uniqkeys = NIL;
-}
-
-/*
- * Propagate YugabyteDB fields through a SubqueryScanPath.
- *
- * SubqueryScanPath crosses a namespace boundary:
- * fields represented in the subquery's terms must be translated to
- * the outer query.
- */
-static void
-yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields, RelOptInfo *rel,
-								 Path *subpath)
-{
-	List	   *retval = NIL;
-	ListCell   *lc;
-
-	if (!IsYugaByteEnabled())
-		return;
-
-	yb_propagate_fields(parent_fields, &subpath->yb_path_info);
-
-	parent_fields->yb_uniqkeys = NIL;
-
-	if (subpath->yb_path_info.yb_uniqkeys == NIL)
-		return;
-
-	foreach(lc, subpath->yb_path_info.yb_uniqkeys)
-	{
-		Expr	   *uniqkey = (Expr *) lfirst(lc);
-		ListCell   *tl;
-		Var		   *outer_var = NULL;
-		int			resno = 1;
-
-		foreach(tl, subpath->pathtarget->exprs)
-		{
-			Expr	   *target_expr = (Expr *) lfirst(tl);
-			Expr	   *target_expr_canonical;
-
-			target_expr_canonical = canonicalize_ec_expression(target_expr,
-															  exprType((Node *) uniqkey),
-															  exprCollation((Node *) uniqkey));
-			if (equal(target_expr_canonical, uniqkey))
-			{
-				outer_var = yb_find_var_for_subquery_tle(rel, resno);
-				if (outer_var)
-					break;
-			}
-
-			resno++;
-		}
-
-		if (!outer_var)
-			return;
-
-		retval = lappend(retval, outer_var);
-	}
-
-	parent_fields->yb_uniqkeys = retval;
-}
-
-/*
- * If the given subquery tlist resno is emitted by the subquery scan node,
- * return a Var for it; otherwise return NULL.
- */
-static Var *
-yb_find_var_for_subquery_tle(RelOptInfo *rel, int resno)
-{
-	ListCell   *lc;
-
-	foreach(lc, rel->reltarget->exprs)
-	{
-		Var		   *var = (Var *) lfirst(lc);
-
-		if (!IsA(var, Var))
-			continue;
-
-		if (var->varno != rel->relid)
-			continue;
-
-		if (var->varattno == resno)
-			return copyObject(var);
-	}
-
-	return NULL;
 }
 
 /*
@@ -5851,4 +5766,27 @@ yb_assign_unique_path_node_id(PlannerInfo *root, Path *path)
 			path->ybHasHintedUid = true;
 		}
 	}
+}
+
+/*
+ * Propagate YugabyteDB fields through a SubqueryScanPath.
+ *
+ * SubqueryScanPath crosses a namespace boundary:
+ * fields represented in the subquery's terms must be translated to
+ * the outer query.
+ */
+static void
+yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields, RelOptInfo *rel,
+								 Path *subpath)
+{
+	if (!IsYugaByteEnabled())
+		return;
+
+	if (subpath->yb_path_info.yb_uniqkeys == NIL)
+		return;
+
+	parent_fields->yb_uniqkeys =
+		yb_convert_subquery_uniqkeys(rel,
+									 subpath->yb_path_info.yb_uniqkeys,
+									 make_tlist_from_pathtarget(subpath->pathtarget));
 }
