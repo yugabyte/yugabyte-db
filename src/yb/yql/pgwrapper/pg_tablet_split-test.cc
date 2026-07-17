@@ -1867,6 +1867,11 @@ TEST_F(PgDelayedSplitAtFollower, TestDelayedSplitAtFollower) {
   // Insert a row in a transaction
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0, $1)", kKey, kValue));
+  // Make sure every replica has applied all the writes before flushing. Otherwise a lagging
+  // follower may flush an empty regular memtable (a no-op) and end up without any level-0 SST file.
+  // If such a follower later becomes the leader, GetSplitKey fails with "No SST file at level 0",
+  // which is not retried for a manual split, so the split never completes.
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), 30s * kTimeMultiplier));
   ASSERT_OK(cluster_->FlushTablets());
 
   // Stop tserver C (index 2)
