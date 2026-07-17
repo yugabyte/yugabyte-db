@@ -51,6 +51,21 @@ using std::vector;
 using util::Decimal;
 using common::Jsonb;
 
+namespace {
+
+int CompareDecimalEncoding(const Slice& lhs, const Slice& rhs) {
+  // Specials use reserved sentinels that are not byte-ordered relative to finite encodings.
+  // Decode and use numerical CompareTo (PostgreSQL order).
+  if (Decimal::IsComparableSpecialEncoding(lhs) ||
+      Decimal::IsComparableSpecialEncoding(rhs)) {
+    return util::DecimalFromComparable(lhs).CompareTo(util::DecimalFromComparable(rhs));
+  }
+  // Finite comparable encodings are byte-ordered.
+  return lhs.compare(rhs);
+}
+
+}  // namespace
+
 template <class T1, class T2>
 static int GenericCompare(const T1& lhs, const T2& rhs) {
   return OrderingToInt(lhs <=> rhs);
@@ -92,8 +107,8 @@ int QLValue::CompareTo(const QLValue& other) const {
       if (!is_nan_0 && is_nan_1) return -1;
       return GenericCompare(double_value(), other.double_value());
     }
-    // Encoded decimal is byte-comparable.
-    case InternalType::kDecimalValue: return decimal_value().compare(other.decimal_value());
+    case InternalType::kDecimalValue:
+      return CompareDecimalEncoding(decimal_value(), other.decimal_value());
     case InternalType::kVarintValue:  return varint_value().CompareTo(other.varint_value());
     case InternalType::kStringValue: return string_value().compare(other.string_value());
     case InternalType::kBoolValue: return Compare(bool_value(), other.bool_value());
@@ -998,8 +1013,8 @@ int DoCompare(const PB1& lhs, const PB2& rhs) {
       if (!is_nan_0 && is_nan_1) return -1;
       return GenericCompare(lhs.double_value(), rhs.double_value());
     }
-    // Encoded decimal is byte-comparable.
-    case QLValuePB::kDecimalValue: return lhs.decimal_value().compare(rhs.decimal_value());
+    case QLValuePB::kDecimalValue:
+      return CompareDecimalEncoding(lhs.decimal_value(), rhs.decimal_value());
     case QLValuePB::kVarintValue: return lhs.varint_value().compare(rhs.varint_value());
     case QLValuePB::kStringValue: return lhs.string_value().compare(rhs.string_value());
     case QLValuePB::kBoolValue: return Compare(lhs.bool_value(), rhs.bool_value());
@@ -1087,8 +1102,8 @@ int Compare(const QLValuePB& lhs, const QLValue& rhs) {
       if (!is_nan_0 && is_nan_1) return -1;
       return GenericCompare(lhs.double_value(), rhs.double_value());
     }
-    // Encoded decimal is byte-comparable.
-    case QLValuePB::kDecimalValue: return lhs.decimal_value().compare(rhs.decimal_value());
+    case QLValuePB::kDecimalValue:
+      return CompareDecimalEncoding(lhs.decimal_value(), rhs.decimal_value());
     case QLValuePB::kVarintValue: return lhs.varint_value().compare(rhs.value().varint_value());
     case QLValuePB::kStringValue: return lhs.string_value().compare(rhs.string_value());
     case QLValuePB::kBoolValue: return Compare(lhs.bool_value(), rhs.bool_value());
