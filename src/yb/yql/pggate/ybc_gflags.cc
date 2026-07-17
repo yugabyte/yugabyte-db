@@ -141,10 +141,6 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_relcache_init_optimization, true,
     "disconnected. Instead an internal super user connection is made to perform the "
     "relcache init file rebuild.");
 
-DEFINE_test_flag(bool, ysql_bypass_auto_analyze_auth_check, false,
-    "Bypass the yb-tserver-key authentication method check when connecting using "
-    "yb_auto_analyze backend type.");
-
 DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
     "Add this delay after each table is analyzed.");
 
@@ -260,7 +256,6 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_scram_channel_binding = &FLAGS_ysql_enable_scram_channel_binding,
       .TEST_ysql_conn_mgr_auth_delay_ms = &FLAGS_TEST_ysql_conn_mgr_auth_delay_ms,
       .ysql_enable_relcache_init_optimization = &FLAGS_ysql_enable_relcache_init_optimization,
-      .TEST_ysql_bypass_auto_analyze_auth_check = &FLAGS_TEST_ysql_bypass_auto_analyze_auth_check,
       .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
       .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
   };
