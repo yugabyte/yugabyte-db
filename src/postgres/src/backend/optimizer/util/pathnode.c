@@ -68,6 +68,7 @@ static bool contain_references_to(PlannerInfo *root, Node *clause,
 								  Relids relids);
 static bool ris_contain_references_to(PlannerInfo *root, List *rinfos,
 									  Relids relids);
+/* YB declarations */
 static void yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields,
 											 RelOptInfo *rel, Path *subpath);
 
