@@ -24,6 +24,7 @@ import {
 } from '@app/redesign/features-v2/universe/create-universe/fields';
 import { isImgBundleSupportedByProvider } from '@app/components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
+import { usePersistStepFormValues } from '@app/redesign/features-v2/universe/create-universe/helpers/persistStepFormValues';
 import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/utils/api';
 import { useGetZones } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
 import { CloudType, Placement } from '@app/redesign/features/universe/universe-form/utils/dto';
@@ -145,6 +146,7 @@ export const InstanceSettings = forwardRef<
       InstanceSettingsValidationSchema(t, useK8CustomResources, provider?.code, !!useDedicatedNodes)
     )
   });
+  usePersistStepFormValues(methods.watch, methods.getValues, saveInstanceSettings);
   const { watch, setValue, control, trigger } = methods;
 
   const deviceInfo = watch(DEVICE_INFO_FIELD);
@@ -208,12 +210,10 @@ export const InstanceSettings = forwardRef<
     forwardRef,
     () => ({
       onNext: () =>
-        methods.handleSubmit((data) => {
-          saveInstanceSettings(data);
+        methods.handleSubmit(() => {
           moveToNextPage();
         })(),
       onPrev: () => {
-        saveInstanceSettings(methods.getValues());
         if (resilienceAndRegionsSettings?.resilienceType === ResilienceType.SINGLE_NODE) {
           setActiveStep(CreateUniverseSteps.RESILIENCE_AND_REGIONS);
         } else {

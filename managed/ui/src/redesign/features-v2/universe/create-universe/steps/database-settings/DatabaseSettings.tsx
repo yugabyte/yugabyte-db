@@ -13,6 +13,7 @@ import {
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
+import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
 import { DatabaseSettingsProps } from './dtos';
 import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 import {
@@ -57,6 +58,8 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
     mode: 'onChange'
   });
 
+  usePersistStepFormValues(methods.watch, methods.getValues, saveDatabaseSettings);
+
   const [showErrorsAfterSubmit, setShowErrorsAfterSubmit] = useState(false);
   const { trigger, formState, watch, control, setError, clearErrors } = methods;
   const { errors, isSubmitted } = formState;
@@ -91,13 +94,11 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
     () => ({
       onNext: () => {
         setShowErrorsAfterSubmit(true);
-        return methods.handleSubmit((data) => {
-          saveDatabaseSettings(data);
+        return methods.handleSubmit(() => {
           moveToNextPage();
         })();
       },
       onPrev: () => {
-        saveDatabaseSettings(methods.getValues());
         moveToPreviousPage();
       }
     }),

@@ -34,6 +34,7 @@ import {
   initialCreateUniverseFormState,
   StepsRef
 } from '../../CreateUniverseContext';
+import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
 import { FaultToleranceType, ResilienceAndRegionsProps, ResilienceFormMode, ResilienceType } from './dtos';
 import {
   FAULT_TOLERANCE_TYPE,
@@ -92,6 +93,8 @@ export const ResilienceAndRegions = forwardRef<
     resolver: yupResolver(ResilienceAndRegionsSchema(t))
   });
 
+  usePersistStepFormValues(methods.watch, methods.getValues, saveResilienceAndRegionsSettings);
+
   const { watch, trigger, clearErrors } = methods;
 
   const formMode = watch(RESILIENCE_FORM_MODE);
@@ -109,10 +112,21 @@ export const ResilienceAndRegions = forwardRef<
   const { errors, isSubmitted } = methods.formState;
   const [showErrorsAfterSubmit, setShowErrorsAfterSubmit] = useState(false);
 
+  const prevResilienceTypeRef = useRef<ResilienceType | null>(null);
+
   useEffect(() => {
     setResilienceType(resilienceType);
 
-    //reset nodes availability settings when resilience type changes
+    if (prevResilienceTypeRef.current === null) {
+      prevResilienceTypeRef.current = resilienceType;
+      return;
+    }
+    if (prevResilienceTypeRef.current === resilienceType) {
+      return;
+    }
+    prevResilienceTypeRef.current = resilienceType;
+
+    // Reset nodes only when resilience type actually changes (not on remount).
     saveNodesAvailabilitySettings(initialCreateUniverseFormState.nodesAvailabilitySettings!);
   }, [resilienceType]);
 
@@ -141,6 +155,33 @@ export const ResilienceAndRegions = forwardRef<
       }
     }
   }, [formMode, methods, saveNodesAvailabilitySettings, saveResilienceAndRegionsSettings]);
+
+  // RF / region selection drive node placement. Clear stale nodesAndAvailability so the Nodes
+  // step rebuilds from the new resilience settings (same as resilience-type / form-mode resets).
+  const prevPlacementDriversRef = useRef<{
+    resilienceFactor: number;
+    regionSignature: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const regionSignature = JSON.stringify(
+      (regions ?? []).map((r) => r.uuid ?? r.code).sort()
+    );
+    const next = { resilienceFactor, regionSignature };
+    if (prevPlacementDriversRef.current === null) {
+      prevPlacementDriversRef.current = next;
+      return;
+    }
+    const prev = prevPlacementDriversRef.current;
+    if (
+      prev.resilienceFactor === next.resilienceFactor &&
+      prev.regionSignature === next.regionSignature
+    ) {
+      return;
+    }
+    prevPlacementDriversRef.current = next;
+    saveNodesAvailabilitySettings(initialCreateUniverseFormState.nodesAvailabilitySettings!);
+  }, [resilienceFactor, regions, saveNodesAvailabilitySettings]);
 
   // When guided/expert mode, fault tolerance type, RF, or resilience type changes, hide submit
   // errors until the user clicks Next again (do not carry forward stale validation UI).
@@ -189,8 +230,7 @@ export const ResilienceAndRegions = forwardRef<
     () => ({
       onNext: () => {
         setShowErrorsAfterSubmit(true);
-        return methods.handleSubmit((data) => {
-          saveResilienceAndRegionsSettings(data);
+        return methods.handleSubmit(() => {
           moveToNextPage();
         })();
       },

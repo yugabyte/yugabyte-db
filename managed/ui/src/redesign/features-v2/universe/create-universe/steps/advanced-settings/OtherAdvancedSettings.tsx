@@ -25,6 +25,7 @@ import {
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
+import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
 import { constructPlacements } from '../../utils/createUniversePayload';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
@@ -70,6 +71,8 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
     mode: 'onChange'
   });
 
+  usePersistStepFormValues(methods.watch, methods.getValues, saveOtherAdvancedSettings);
+
   const { watch } = methods;
 
   const userTagsValue = watch(USER_TAGS_FIELD);
@@ -78,13 +81,11 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
     forwardRef,
     () => ({
       onNext: () => {
-        return methods.handleSubmit((data) => {
-          saveOtherAdvancedSettings(data);
+        return methods.handleSubmit(() => {
           moveToNextPage();
         })();
       },
       onPrev: () => {
-        saveOtherAdvancedSettings(methods.getValues());
         moveToPreviousPage();
       }
     }),

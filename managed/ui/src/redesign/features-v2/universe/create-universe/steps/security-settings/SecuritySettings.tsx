@@ -16,6 +16,7 @@ import {
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
+import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { SecuritySettingsProps, CertType } from './dtos';
@@ -52,6 +53,8 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
     mode: 'onChange'
   });
 
+  usePersistStepFormValues(methods.watch, methods.getValues, saveSecuritySettings);
+
   const { trigger, formState, watch } = methods;
   const [showErrorsAfterSubmit, setShowErrorsAfterSubmit] = useState(false);
   const { errors, isSubmitted } = formState;
@@ -74,13 +77,11 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
     () => ({
       onNext: () => {
         setShowErrorsAfterSubmit(true);
-        return methods.handleSubmit((data) => {
-          saveSecuritySettings(data);
+        return methods.handleSubmit(() => {
           moveToNextPage();
         })();
       },
       onPrev: () => {
-        saveSecuritySettings(methods.getValues());
         moveToPreviousPage();
       }
     }),
