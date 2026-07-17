@@ -58,6 +58,14 @@ void DoSerializeValue(
       return;
     case DataType::DECIMAL: {
       auto decimal = util::DecimalFromComparable(pb.decimal_value());
+      if (decimal.IsSpecial()) {
+        // Cassandra BigDecimal has no NaN/Infinity encoding. Do not invent wire bytes;
+        // clients should CAST AS text/double. Same pattern as out-of-range finites below.
+        LOG(ERROR) << "Unable to encode special decimal " << decimal.ToString()
+                   << " into a BigDecimal serialized representation";
+        CQLEncodeBytes(std::string(), buffer);
+        return;
+      }
       bool is_out_of_range = false;
       CQLEncodeBytes(decimal.EncodeToSerializedBigDecimal(&is_out_of_range), buffer);
       if(is_out_of_range) {

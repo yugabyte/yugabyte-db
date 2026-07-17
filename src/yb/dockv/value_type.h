@@ -84,6 +84,10 @@ namespace yb::dockv {
     ((kStrongObjectLock, '4')) /* ASCII code 52 */ \
     ((kFrozen, '<')) /* ASCII code 60 */ \
     ((kFrozenDescending, '>')) /* ASCII code 62 */ \
+    /* DECIMAL specials (payload-less). ASC order: -Inf < finite(kDecimal) < +Inf < NaN. */ \
+    ((kDecimalNaNDescending, '?')) /* ASCII code 63 */ \
+    ((kDecimalPosInfinityDescending, '@')) /* ASCII code 64 */ \
+    ((kDecimalNegInfinity, 'A')) /* ASCII code 65 */ \
     ((kVarInt, 'B')) /* ASCII code 66 */ \
     ((kFloat, 'C'))  /* ASCII code 67 */ \
     ((kDouble, 'D'))  /* ASCII code 68 */ \
@@ -96,7 +100,9 @@ namespace yb::dockv {
     ((kColumnId, 'K'))  /* ASCII code 75 */ \
     ((kDoubleDescending, 'L'))  /* ASCII code 76 */ \
     ((kFloatDescending, 'M')) /* ASCII code 77 */ \
+    ((kDecimalPosInfinity, 'N')) /* ASCII code 78 */ \
     ((kUInt32, 'O'))  /* ASCII code 79 */ \
+    ((kDecimalNaN, 'P')) /* ASCII code 80 */ \
     ((kString, 'S'))  /* ASCII code 83 */ \
     ((kTrue, 'T'))  /* ASCII code 84 */ \
     ((kUInt64, 'U')) /* ASCII code 85 */ \
@@ -128,6 +134,7 @@ namespace yb::dockv {
     ((kSubTransactionId, 'n')) /* ASCII code 110 */ \
     ((kBson, 'o')) /* ASCII code 111 */ \
     ((kBsonDescending, 'p')) /* ASCII code 112 */ \
+    ((kDecimalNegInfinityDescending, 'q')) /* ASCII code 113 */ \
     /* Timestamp value in microseconds */ \
     ((kTimestamp, 's'))  /* ASCII code 115 */ \
     /* TTL value in milliseconds, optionally present at the start of a value. */ \

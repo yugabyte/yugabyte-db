@@ -379,10 +379,15 @@ Status PTLiteralString::ToDouble(long double *value, bool negate) const {
 
 Status PTLiteralString::ToDecimal(util::Decimal *value, bool negate) const {
   if (negate) {
-    return value->FromString(string("-") + value_->c_str());
+    RETURN_NOT_OK(value->FromString(string("-") + value_->c_str()));
   } else {
-    return value->FromString(value_->c_str());
+    RETURN_NOT_OK(value->FromString(value_->c_str()));
   }
+  // YCQL DECIMAL literals remain finite-only (Cassandra BigDecimal semantics).
+  if (value->IsSpecial()) {
+    return STATUS(InvalidArgument, "Invalid decimal input");
+  }
+  return Status::OK();
 }
 
 template <class T>
@@ -396,13 +401,24 @@ Result<T> PTLiteralString::FromString(bool negate) const {
   return t;
 }
 
+namespace {
+
+Result<util::Decimal> DecimalFromLiteralString(const PTLiteralString& lit, bool negate) {
+  util::Decimal d;
+  RETURN_NOT_OK(lit.ToDecimal(&d, negate));
+  return d;
+}
+
+}  // namespace
+
 Status PTLiteralString::ToDecimal(string *value, bool negate) const {
-  *value = VERIFY_RESULT(FromString<util::Decimal>(negate)).EncodeToComparable();
+  *value = VERIFY_RESULT(DecimalFromLiteralString(*this, negate)).EncodeToComparable();
   return Status::OK();
 }
 
 Result<Slice> PTLiteralString::ToDecimal(ThreadSafeArena& arena, bool negate) const {
-  return arena.DupSlice(VERIFY_RESULT(FromString<util::Decimal>(negate)).EncodeToComparable());
+  return arena.DupSlice(
+      VERIFY_RESULT(DecimalFromLiteralString(*this, negate)).EncodeToComparable());
 }
 
 Status PTLiteralString::ToVarInt(string *value, bool negate) const {
