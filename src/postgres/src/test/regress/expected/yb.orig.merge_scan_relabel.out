@@ -145,35 +145,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (5 rows)
 
 /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t::varchar FROM relabel_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
- i2 | i4 |   n   | v | t 
-----+----+-------+---+---
-  0 |  1 | 11810 | 1 | 1
-  0 |  6 | 11060 | 1 | 1
-  1 |  4 | 11141 | 1 | 1
-  1 |  4 | 11241 | 1 | 1
-  1 |  5 | 11151 | 1 | 1
-(5 rows)
-
+(output identical to previous)
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t::varchar FROM relabel_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
- i2 | i4 |   n   | v | t 
-----+----+-------+---+---
-  0 |  1 | 11810 | 1 | 1
-  0 |  6 | 11060 | 1 | 1
-  1 |  4 | 11141 | 1 | 1
-  1 |  4 | 11241 | 1 | 1
-  1 |  5 | 11151 | 1 | 1
-(5 rows)
-
+(output identical to previous)
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t::varchar FROM relabel_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
- i2 | i4 |   n   | v | t 
-----+----+-------+---+---
-  0 |  1 | 11810 | 1 | 1
-  0 |  6 | 11060 | 1 | 1
-  1 |  4 | 11141 | 1 | 1
-  1 |  4 | 11241 | 1 | 1
-  1 |  5 | 11151 | 1 | 1
-(5 rows)
-
+(output identical to previous)
 -- Explicit-cast predicates behave identically: v::text parses to the same
 -- wrapped LHS as bare v, and t::varchar is const-folded back to bare t.
 \set query ':P :Q SELECT i2, i4, n, v::text, t::varchar FROM relabel_tbl WHERE v::text :R AND t::varchar :R ORDER BY i2, i4, n LIMIT 5;'
@@ -278,35 +254,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (5 rows)
 
 /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v::text, t::varchar FROM relabel_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
- i2 | i4 |   n   | v | t 
-----+----+-------+---+---
-  0 |  1 | 11810 | 1 | 1
-  0 |  6 | 11060 | 1 | 1
-  1 |  4 | 11141 | 1 | 1
-  1 |  4 | 11241 | 1 | 1
-  1 |  5 | 11151 | 1 | 1
-(5 rows)
-
+(output identical to previous)
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v::text, t::varchar FROM relabel_tbl WHERE v::text = '1' AND t::varchar = '1' ORDER BY i2, i4, n LIMIT 5;
- i2 | i4 |   n   | v | t 
-----+----+-------+---+---
-  0 |  1 | 11810 | 1 | 1
-  0 |  6 | 11060 | 1 | 1
-  1 |  4 | 11141 | 1 | 1
-  1 |  4 | 11241 | 1 | 1
-  1 |  5 | 11151 | 1 | 1
-(5 rows)
-
+(output identical to previous)
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v::text, t::varchar FROM relabel_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
- i2 | i4 |   n   | v | t 
-----+----+-------+---+---
-  0 |  1 | 11810 | 1 | 1
-  0 |  6 | 11060 | 1 | 1
-  1 |  4 | 11141 | 1 | 1
-  1 |  4 | 11241 | 1 | 1
-  1 |  5 | 11151 | 1 | 1
-(5 rows)
-
+(output identical to previous)
 DROP INDEX idx;
 --
 -- Index 2: v and t merge streams on cast leading columns.
@@ -420,35 +372,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (5 rows)
 
 /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v, t FROM relabel_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
- i2 | i4 |   n   | v | t 
-----+----+-------+---+---
-  0 |  1 | 11810 | 1 | 1
-  0 |  6 | 11060 | 1 | 1
-  1 |  4 | 11141 | 1 | 1
-  1 |  4 | 11241 | 1 | 1
-  1 |  5 | 11151 | 1 | 1
-(5 rows)
-
+(output identical to previous)
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t FROM relabel_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
- i2 | i4 |   n   | v | t 
-----+----+-------+---+---
-  0 |  1 | 11810 | 1 | 1
-  0 |  6 | 11060 | 1 | 1
-  1 |  4 | 11141 | 1 | 1
-  1 |  4 | 11241 | 1 | 1
-  1 |  5 | 11151 | 1 | 1
-(5 rows)
-
+(output identical to previous)
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t FROM relabel_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
- i2 | i4 |   n   | v | t 
-----+----+-------+---+---
-  0 |  1 | 11810 | 1 | 1
-  0 |  6 | 11060 | 1 | 1
-  1 |  4 | 11141 | 1 | 1
-  1 |  4 | 11241 | 1 | 1
-  1 |  5 | 11151 | 1 | 1
-(5 rows)
-
+(output identical to previous)
 DROP INDEX idx;
 --
 -- Index 3: minimal repro -- one bare varchar stream column, no redundant
@@ -651,73 +579,17 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (5 rows)
 
 /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
- i2 | i4 |   n   | v 
-----+----+-------+---
-  0 |  0 | 13300 | 1
-  0 |  0 | 15100 | 1
-  0 |  1 | 11810 | 1
-  0 |  1 | 12510 | 1
-  0 |  1 | 13010 | 1
-(5 rows)
-
+(output identical to previous)
 /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
- i2 | i4 |   n   | v 
-----+----+-------+---
-  0 |  0 | 13300 | 1
-  0 |  0 | 15100 | 1
-  0 |  1 | 11810 | 1
-  0 |  1 | 12510 | 1
-  0 |  1 | 13010 | 1
-(5 rows)
-
+(output identical to previous)
 /*+Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
- i2 | i4 |   n   | v 
-----+----+-------+---
-  0 |  0 | 13300 | 1
-  0 |  0 | 15100 | 1
-  0 |  1 | 11810 | 1
-  0 |  1 | 12510 | 1
-  0 |  1 | 13010 | 1
-(5 rows)
-
+(output identical to previous)
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v = '1' ORDER BY i2, i4, n LIMIT 5;
- i2 | i4 |   n   | v 
-----+----+-------+---
-  0 |  0 | 13300 | 1
-  0 |  0 | 15100 | 1
-  0 |  1 | 11810 | 1
-  0 |  1 | 12510 | 1
-  0 |  1 | 13010 | 1
-(5 rows)
-
+(output identical to previous)
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
- i2 | i4 |   n   | v 
-----+----+-------+---
-  0 |  0 | 13300 | 1
-  0 |  0 | 15100 | 1
-  0 |  1 | 11810 | 1
-  0 |  1 | 12510 | 1
-  0 |  1 | 13010 | 1
-(5 rows)
-
+(output identical to previous)
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
- i2 | i4 |   n   | v 
-----+----+-------+---
-  0 |  0 | 13300 | 1
-  0 |  0 | 15100 | 1
-  0 |  1 | 11810 | 1
-  0 |  1 | 12510 | 1
-  0 |  1 | 13010 | 1
-(5 rows)
-
+(output identical to previous)
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM relabel_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
- i2 | i4 |   n   | v 
-----+----+-------+---
-  0 |  0 | 13300 | 1
-  0 |  0 | 15100 | 1
-  0 |  1 | 11810 | 1
-  0 |  1 | 12510 | 1
-  0 |  1 | 13010 | 1
-(5 rows)
-
+(output identical to previous)
 DROP INDEX idx;

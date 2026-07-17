@@ -1549,20 +1549,7 @@ EXPLAIN (COSTS OFF) /*+SeqScan(tt)*/ SELECT i, j, yb_hash_code(i) hash_code_i, y
 (10 rows)
 
 /*+SeqScan(tt)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(1) hash_code_1 FROM tt WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2;
-      i      | j | hash_code_i | hash_code_1 
--------------+---+-------------+-------------
- -2147483648 | 2 |        4001 |        4624
- -2147483648 | 3 |        4001 |        4624
-           0 | 1 |       47650 |        4624
-           0 | 2 |       47650 |        4624
-           0 | 3 |       47650 |        4624
-           2 | 2 |       49348 |        4624
-           3 | 3 |       64672 |        4624
-  2147483647 | 1 |       40388 |        4624
-  2147483647 | 2 |       40388 |        4624
-  2147483647 | 3 |       40388 |        4624
-(10 rows)
-
+(output identical to previous)
 -- Try variation.
 \set query ':P :Q SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(2) hash_code_2 FROM tt WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2;'
 \i :run_query
@@ -1600,18 +1587,7 @@ EXPLAIN (COSTS OFF) /*+SeqScan(tt)*/ SELECT i, j, yb_hash_code(i) hash_code_i, y
 (8 rows)
 
 /*+SeqScan(tt)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(2) hash_code_2 FROM tt WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2;
-      i      | j | hash_code_i | hash_code_2 
--------------+---+-------------+-------------
- -2147483648 | 0 |        4001 |       49348
- -2147483648 | 1 |        4001 |       49348
-           0 | 0 |       47650 |       49348
-           0 | 1 |       47650 |       49348
-           1 | 0 |        4624 |       49348
-           1 | 1 |        4624 |       49348
-  2147483647 | 0 |       40388 |       49348
-  2147483647 | 1 |       40388 |       49348
-(8 rows)
-
+(output identical to previous)
 -- Try a 1 element IN with row constructor. Should get an index scan since this turns into an equality.
 \set query ':P :Q SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(1) hash_code_1 FROM tt WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2;'
 \i :run_query
@@ -1643,11 +1619,7 @@ EXPLAIN (COSTS OFF) /*+SeqScan(tt)*/ SELECT i, j, yb_hash_code(i) hash_code_i, y
 (1 row)
 
 /*+SeqScan(tt)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(1) hash_code_1 FROM tt WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2;
- i | j | hash_code_i | hash_code_1 
----+---+-------------+-------------
- 1 | 1 |        4624 |        4624
-(1 row)
-
+(output identical to previous)
 -- Try an IN with yb_hash_code().
 -- TODO(#23362): expect index condition to be pushed down rather than PG filter.
 \set query ':P :Q SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(1) hash_code_1, yb_hash_code(2) hash_code_2 FROM tt WHERE yb_hash_code(i) IN (yb_hash_code(1), yb_hash_code(2)) ORDER BY 1, 2;'
@@ -1681,11 +1653,5 @@ EXPLAIN (COSTS OFF) /*+SeqScan(tt)*/ SELECT i, j, yb_hash_code(i) hash_code_i, y
 (3 rows)
 
 /*+SeqScan(tt)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(1) hash_code_1, yb_hash_code(2) hash_code_2 FROM tt WHERE yb_hash_code(i) IN (yb_hash_code(1), yb_hash_code(2)) ORDER BY 1, 2;
- i | j | hash_code_i | hash_code_1 | hash_code_2 
----+---+-------------+-------------+-------------
- 1 | 0 |        4624 |        4624 |       49348
- 1 | 1 |        4624 |        4624 |       49348
- 2 | 2 |       49348 |        4624 |       49348
-(3 rows)
-
+(output identical to previous)
 drop table tt;

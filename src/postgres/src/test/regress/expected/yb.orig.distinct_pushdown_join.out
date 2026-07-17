@@ -352,19 +352,9 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+Nestloop(t1 t2)*/ SELEC
 (2 rows)
 
 /*+HashJoin(t1 t2)*/ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
- r1 
-----
-  1
- 10
-(2 rows)
-
+(output identical to previous)
 /*+Nestloop(t1 t2)*/ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
- r1 
-----
-  1
- 10
-(2 rows)
-
+(output identical to previous)
 -- Test queries for whether they need a HashAggregate or a Unique node on top of the join plan.
 -- Pushdown distinct only into the relation which has no volatile clause.
 -- Require additional distinctification on top when distinct is pushed down to only one of the relations.
@@ -668,16 +658,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+Nestloop(t1 t2)*/ SELEC
 (6 rows)
 
 /*+Nestloop(t1 t2)*/ SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
- h1 | h2 
-----+----
-  1 |  0
- 10 |  1
- 10 |  0
- 10 |  2
-  1 |  1
-  1 |  2
-(6 rows)
-
+(output identical to previous)
 -- Try join across hash and range partitioned tables.
 \set Q1 '/*+MergeJoin(th t)*/'
 \set Q2 '/*+HashJoin(th t)*/'
@@ -741,27 +722,9 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+Nestloop(th t)*/ SELECT
 (6 rows)
 
 /*+HashJoin(th t)*/ SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
- h1 | h2 
-----+----
-  1 |  0
-  1 |  1
-  1 |  2
- 10 |  0
- 10 |  1
- 10 |  2
-(6 rows)
-
+(output identical to previous)
 /*+Nestloop(th t)*/ SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
- h1 | h2 
-----+----
-  1 |  0
-  1 |  1
-  1 |  2
- 10 |  0
- 10 |  1
- 10 |  2
-(6 rows)
-
+(output identical to previous)
 DROP TABLE th;
 -- Secondary index only scan.
 CREATE INDEX irv ON t(v, r1);

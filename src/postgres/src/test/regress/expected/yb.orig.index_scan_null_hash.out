@@ -123,16 +123,7 @@ EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF) /*+ IndexScan(t1)
 (6 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF) /*+ IndexScan(t1 i_nulltest_ba) */ SELECT * FROM nulltest t1 WHERE (a, b) <= (null, 1);
-                   QUERY PLAN                    
--------------------------------------------------
- Seq Scan on nulltest t1 (actual rows=0 loops=1)
-   Filter: (ROW(a, b) <= ROW(NULL::integer, 1))
-   Rows Removed by Filter: 4
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 3
-   Storage Table Rows Scanned: 4
-(6 rows)
-
+(output identical to previous)
 \set query ':explain :Q SELECT a FROM nulltest t1 WHERE a IN (null, null);'
 \i :run_query
 \set _echo_run_query :ECHO
@@ -200,12 +191,7 @@ EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF) /*+ IndexScan(t1 
 (2 rows)
 
 /*+ IndexScan(t1 i_nulltest_ba) */ SELECT a FROM nulltest t1 WHERE a IN (null, 1);
- a 
----
- 1
- 1
-(2 rows)
-
+(output identical to previous)
 /*+ IndexScan(t1) */
 \set query ':P :Q SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);'
 \i :run_query
@@ -223,16 +209,7 @@ EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF) /*+ IndexScan(t1)
 (6 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF) /*+ IndexScan(t1 i_nulltest_ba) */ SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
-                   QUERY PLAN                    
--------------------------------------------------
- Seq Scan on nulltest t1 (actual rows=2 loops=1)
-   Filter: (ROW(a, b) <= ROW(2, NULL::integer))
-   Rows Removed by Filter: 2
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 3
-   Storage Table Rows Scanned: 4
-(6 rows)
-
+(output identical to previous)
 /*+ IndexScan(t1) */ SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
  a 
 ---
@@ -241,12 +218,7 @@ EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF) /*+ IndexScan(t1 
 (2 rows)
 
 /*+ IndexScan(t1 i_nulltest_ba) */ SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
- a 
----
- 1
- 1
-(2 rows)
-
+(output identical to previous)
 -- Should return nulls
 \set Q1 '/*+ IndexScan(t1) */'
 \set query ':P :Q1 SELECT a FROM nulltest t1 WHERE a IS NULL;'

@@ -176,12 +176,7 @@ EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF) /*+ IndexScan(t1 
 (2 rows)
 
 /*+ IndexScan(t1 i_nulltest_ba) */ SELECT a FROM nulltest t1 WHERE a IN (null, 1);
- a 
----
- 1
- 1
-(2 rows)
-
+(output identical to previous)
 /*+ IndexScan(t1) */
 \set query ':P :Q SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);'
 \i :run_query
@@ -223,12 +218,7 @@ EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF) /*+ IndexScan(t1 
 (2 rows)
 
 /*+ IndexScan(t1 i_nulltest_ba) */ SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
- a 
----
- 1
- 1
-(2 rows)
-
+(output identical to previous)
 -- Should return nulls
 \set Q1 '/*+ IndexScan(t1) */'
 \set query ':P :Q1 SELECT a FROM nulltest t1 WHERE a IS NULL;'

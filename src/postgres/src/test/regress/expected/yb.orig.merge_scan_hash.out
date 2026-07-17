@@ -36,18 +36,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (8 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM h3r2n WHERE h1 = 6 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 LIMIT 5;
-                                                   QUERY PLAN                                                   
-----------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: n, r1, r2, h1, h2, h3
-   ->  Index Scan using h3r2n_pkey on public.h3r2n (actual rows=5 loops=1)
-         Output: n, r1, r2, h1, h2, h3
-         Index Cond: ((h3r2n.h1 = 6) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
-         Storage Table Read Requests: 1
-         Storage Table Read Ops: 4
-         Storage Table Rows Scanned: 19
-(8 rows)
-
+(output identical to previous)
 -- =, IN, sort...
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 6 AND h2 IN (1, 3, 5, 7, 9) ORDER BY h3, r1, r2, n LIMIT 5;'
@@ -72,22 +61,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 6 AND h2 IN (1, 3, 5, 7, 9) ORDER BY h3, r1, r2, n LIMIT 5;
-                                          QUERY PLAN                                           
------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: h1, h3, r1, r2, n, h2
-   ->  Sort (actual rows=5 loops=1)
-         Output: h1, h3, r1, r2, n, h2
-         Sort Key: h3r2n.h3, h3r2n.r1, h3r2n.r2, h3r2n.n
-         Sort Method: top-N heapsort
-         ->  Seq Scan on public.h3r2n (actual rows=251 loops=1)
-               Output: h1, h3, r1, r2, n, h2
-               Storage Filter: ((h3r2n.h1 = 6) AND (h3r2n.h2 = ANY ('{1,3,5,7,9}'::bigint[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 5048
-(12 rows)
-
+(output identical to previous)
 -- =, IN, =, sort...
 \set query ':P :Q SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2, n LIMIT 5;'
 \i :run_query
@@ -143,15 +117,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (5 rows)
 
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2, n LIMIT 5;
- h1 | h3 | r1 | r2 |   n   | h2 
-----+----+----+----+-------+----
-  1 |  1 |  0 |  1 | 10141 |  4
-  1 |  1 |  0 |  3 | 30161 |  6
-  1 |  1 |  0 |  6 | 60141 |  4
-  1 |  1 |  1 |  0 |  1171 |  7
-  1 |  1 |  1 |  2 | 21121 |  2
-(5 rows)
-
+(output identical to previous)
 -- =, IN, =/sort, sort...
 \set query ':P :Q SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY h3, r1, r2, n LIMIT 5;'
 \i :run_query
@@ -207,15 +173,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (5 rows)
 
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT h1, h3, r1, r2, n, h2 FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY h3, r1, r2, n LIMIT 5;
- h1 | h3 | r1 | r2 |   n   | h2 
-----+----+----+----+-------+----
-  1 |  1 |  0 |  1 | 10141 |  4
-  1 |  1 |  0 |  3 | 30161 |  6
-  1 |  1 |  0 |  6 | 60141 |  4
-  1 |  1 |  1 |  0 |  1171 |  7
-  1 |  1 |  1 |  2 | 21121 |  2
-(5 rows)
-
+(output identical to previous)
 -- =, =, IN, sort...
 \set query ':P :Q SELECT h1, h2, r1, r2, n, h3 FROM h3r2n WHERE h1 = 1 AND h2 = 8 AND h3 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) ORDER BY r1, r2, n LIMIT 5;'
 \i :run_query
@@ -271,15 +229,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (5 rows)
 
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT h1, h2, r1, r2, n, h3 FROM h3r2n WHERE h1 = 1 AND h2 = 8 AND h3 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) ORDER BY r1, r2, n LIMIT 5;
- h1 | h2 | r1 | r2 |   n   | h3 
-----+----+----+----+-------+----
-  1 |  8 |  0 |  4 | 40881 |  8
-  1 |  8 |  0 |  5 | 50581 |  5
-  1 |  8 |  1 |  0 |  1681 |  6
-  1 |  8 |  1 |  0 |  1781 |  7
-  1 |  8 |  1 |  4 | 41781 |  7
-(5 rows)
-
+(output identical to previous)
 -- =, =, IN/sort, sort...
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT h1, h2, h3, r1, r2, n FROM h3r2n WHERE h1 = 1 AND h2 = 8 AND h3 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) ORDER BY h3, r1, r2, n LIMIT 5;'
@@ -304,22 +254,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT h1, h2, h3, r1, r2, n FROM h3r2n WHERE h1 = 1 AND h2 = 8 AND h3 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) ORDER BY h3, r1, r2, n LIMIT 5;
-                                                      QUERY PLAN                                                       
------------------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: h1, h2, h3, r1, r2, n
-   ->  Sort (actual rows=5 loops=1)
-         Output: h1, h2, h3, r1, r2, n
-         Sort Key: h3r2n.h3, h3r2n.r1, h3r2n.r2, h3r2n.n
-         Sort Method: top-N heapsort
-         ->  Index Scan using h3r2n_pkey on public.h3r2n (actual rows=42 loops=1)
-               Output: h1, h2, h3, r1, r2, n
-               Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = 8) AND (h3r2n.h3 = ANY ('{1,2,3,4,5,6,7,8,9}'::integer[])))
-               Storage Table Read Requests: 1
-               Storage Table Read Ops: 7
-               Storage Table Rows Scanned: 42
-(12 rows)
-
+(output identical to previous)
 -- =/sort, IN, IN, sort...
 \set query ':P :Q SELECT h1, r1, r2, n, h2, h3 FROM h3r2n WHERE h1 = 2 AND h2 IN (3, 4, 5, 6, 7) AND h3 IN (6, 7, 8, 9, 10) ORDER BY h1, r1, r2, n LIMIT 5;'
 \i :run_query
@@ -375,15 +310,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (5 rows)
 
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT h1, r1, r2, n, h2, h3 FROM h3r2n WHERE h1 = 2 AND h2 IN (3, 4, 5, 6, 7) AND h3 IN (6, 7, 8, 9, 10) ORDER BY h1, r1, r2, n LIMIT 5;
- h1 | r1 | r2 |   n   | h2 | h3 
-----+----+----+-------+----+----
-  2 |  0 |  0 |   752 |  5 |  7
-  2 |  0 |  2 | 20872 |  7 |  8
-  2 |  0 |  2 | 20972 |  7 |  9
-  2 |  0 |  3 | 30652 |  5 |  6
-  2 |  0 |  3 | 30952 |  5 |  9
-(5 rows)
-
+(output identical to previous)
 /* TODO(#29079): uncomment when fixing this issue.
 -- yb_hash_code equality
 \set query ':P :Q SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) = 28655 AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;'
@@ -420,24 +347,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (14 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) IN (17834, 28655, 32412) AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;
-                                                                        QUERY PLAN                                                                        
-----------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: r1, r2, n, (yb_hash_code(h1, h2, h3)), h1, h2, h3
-   ->  Sort (actual rows=5 loops=1)
-         Output: r1, r2, n, (yb_hash_code(h1, h2, h3)), h1, h2, h3
-         Sort Key: h3r2n.r1, h3r2n.r2, h3r2n.n
-         Sort Method: top-N heapsort
-         ->  Index Scan using h3r2n_pkey on public.h3r2n (actual rows=11 loops=1)
-               Output: r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3
-               Index Cond: ((h3r2n.h1 = ANY ('{5,7}'::integer[])) AND (h3r2n.h2 = ANY ('{1,3,7}'::bigint[])) AND (h3r2n.h3 = ANY ('{3,6,7}'::integer[])))
-               Filter: (yb_hash_code(h3r2n.h1, h3r2n.h2, h3r2n.h3) = ANY ('{17834,28655,32412}'::integer[]))
-               Rows Removed by Filter: 75
-               Storage Table Read Requests: 1
-               Storage Table Read Ops: 7
-               Storage Table Rows Scanned: 86
-(14 rows)
-
+(output identical to previous)
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) IN (17834, 28655, 32412) AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;
                                                                         QUERY PLAN                                                                        
 ----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -473,25 +383,9 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 (5 rows)
 
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) IN (17834, 28655, 32412) AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;
- r1 | r2 |   n   | yb_hash_code | h1 | h2 | h3 
-----+----+-------+--------------+----+----+----
-  0 |  7 | 70615 |        28655 |  5 |  1 |  6
-  1 |  6 | 61715 |        17834 |  5 |  1 |  7
-  3 |  2 | 23615 |        28655 |  5 |  1 |  6
-  3 |  5 | 53715 |        17834 |  5 |  1 |  7
-  3 |  8 | 83615 |        28655 |  5 |  1 |  6
-(5 rows)
-
+(output identical to previous)
 /*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) IN (17834, 28655, 32412) AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5;
- r1 | r2 |   n   | yb_hash_code | h1 | h2 | h3 
-----+----+-------+--------------+----+----+----
-  0 |  7 | 70615 |        28655 |  5 |  1 |  6
-  1 |  6 | 61715 |        17834 |  5 |  1 |  7
-  3 |  2 | 23615 |        28655 |  5 |  1 |  6
-  3 |  5 | 53715 |        17834 |  5 |  1 |  7
-  3 |  8 | 83615 |        28655 |  5 |  1 |  6
-(5 rows)
-
+(output identical to previous)
 -- #30096: Merge scan shouldn't be used in a parallel scan.
 \set query ':explain :Q SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2;'
 \set Q3 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_merge_scan_streams 0)*/'
@@ -555,30 +449,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Parallel
 (20 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2;
-                                                      QUERY PLAN                                                      
-----------------------------------------------------------------------------------------------------------------------
- Gather Merge (actual rows=44 loops=1)
-   Output: n, r1, r2, h1, h2, h3
-   Workers Planned: 2
-   Workers Launched: 2
-   ->  Sort (actual rows=15 loops=3)
-         Output: n, r1, r2, h1, h2, h3
-         Sort Key: h3r2n.r1, h3r2n.r2
-         Sort Method: quicksort
-         Worker 0:  actual rows=0 loops=1
-           Sort Method: quicksort  Memory: 25kB
-         Worker 1:  actual rows=0 loops=1
-           Sort Method: quicksort  Memory: 25kB
-         ->  Parallel Index Scan using h3r2n_pkey on public.h3r2n (actual rows=15 loops=3)
-               Output: n, r1, r2, h1, h2, h3
-               Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 15
-               Worker 0:  actual rows=0 loops=1
-               Worker 1:  actual rows=0 loops=1
-(20 rows)
-
+(output identical to previous)
 -- Same thing with backwards scan.
 \set query ':explain :Q SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC;'
 \i :run_query
@@ -640,27 +511,4 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Parallel
 (20 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC;
-                                                      QUERY PLAN                                                      
-----------------------------------------------------------------------------------------------------------------------
- Gather Merge (actual rows=44 loops=1)
-   Output: n, r1, r2, h1, h2, h3
-   Workers Planned: 2
-   Workers Launched: 2
-   ->  Sort (actual rows=15 loops=3)
-         Output: n, r1, r2, h1, h2, h3
-         Sort Key: h3r2n.r1 DESC, h3r2n.r2 DESC
-         Sort Method: quicksort
-         Worker 0:  actual rows=0 loops=1
-           Sort Method: quicksort  Memory: 25kB
-         Worker 1:  actual rows=0 loops=1
-           Sort Method: quicksort  Memory: 25kB
-         ->  Parallel Index Scan using h3r2n_pkey on public.h3r2n (actual rows=15 loops=3)
-               Output: n, r1, r2, h1, h2, h3
-               Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 15
-               Worker 0:  actual rows=0 loops=1
-               Worker 1:  actual rows=0 loops=1
-(20 rows)
-
+(output identical to previous)

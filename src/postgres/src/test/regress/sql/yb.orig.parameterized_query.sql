@@ -34,7 +34,37 @@ INSERT INTO pq_test VALUES (1, 'one'), (2, 'two'), (3, 'three');
 \set query 'SELECT count(*) FROM pq_test;'
 \i :run_query
 
+-- All parameter combinations yield identical output: the first prints, the
+-- rest collapse, regardless of which combination produced them.
+\set Q1 1
+\set Q2 2
+\set query 'SELECT v FROM pq_test WHERE k IN (:P, :Q, 1, 2) ORDER BY v;'
+\i :run_query
+
+-- A new \i :run_query never collapses against the previous one: the first
+-- combination prints in full again.
+\i :run_query
+
+-- Zero-row results output multiple lines and collapse.
+\set query 'SELECT v FROM pq_test WHERE k = -:P;'
+\i :run_query
+
+-- Zero-line outputs never collapse.
+\set query 'UPDATE pq_test SET v = v WHERE k = -:P;'
+\i :run_query
+
+-- One-line outputs never collapse.
+\set query 'COPY (SELECT 1 WHERE :P > 0) TO STDOUT;'
+\i :run_query
+
+-- Bare queries bypass run_query: identical outputs print verbatim.
+\set query 'SELECT v FROM pq_test ORDER BY v;'
+:query
+:query
+
 \unset P1
 \unset P2
+\unset Q1
+\unset Q2
 
 DROP TABLE pq_test;

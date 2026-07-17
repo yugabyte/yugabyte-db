@@ -46,28 +46,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (18 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) LIMIT 5;
-                                            QUERY PLAN                                             
----------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
-   ->  Append (actual rows=5 loops=1)
-         ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=5 loops=1)
-               Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
-               Index Cond: (parent_2.r1 = ANY ('{0,1,2,3}'::integer[]))
-               Storage Table Read Requests: 1
-               Storage Table Read Ops: 1
-               Storage Table Rows Scanned: 5
-         ->  Index Scan using child1b_pkey on public.child1b parent_3 (never executed)
-               Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
-               Index Cond: (parent_3.r1 = ANY ('{0,1,2,3}'::integer[]))
-         ->  Index Scan using child2_pkey on public.child2 parent_4 (never executed)
-               Output: parent_4.n, parent_4.r3, parent_4.p1, parent_4.r1, parent_4.r2, parent_4.p2
-               Index Cond: (parent_4.r1 = ANY ('{0,1,2,3}'::integer[]))
-         ->  Index Scan using child3_pkey on public.child3 parent_5 (never executed)
-               Output: parent_5.n, parent_5.r3, parent_5.p1, parent_5.r1, parent_5.r2, parent_5.p2
-               Index Cond: (parent_5.r1 = ANY ('{0,1,2,3}'::integer[]))
-(18 rows)
-
+(output identical to previous)
 -- Forward scan
 \set query ':P :Q SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5;'
 \i :run_query
@@ -174,15 +153,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (5 rows)
 
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5;
-   n   | r3 | p1 | r1 | r2 | p2 
--------+----+----+----+----+----
- 30002 |  0 |  0 |  2 |  0 |  3
- 52001 |  0 |  2 |  1 |  0 |  5
- 62001 |  0 |  2 |  1 |  0 |  6
- 14003 |  0 |  4 |  3 |  0 |  1
- 24002 |  0 |  4 |  2 |  0 |  2
-(5 rows)
-
+(output identical to previous)
 -- Backward scan
 \set query ':P :Q SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, p1 DESC, p2 DESC, n LIMIT 5;'
 \i :run_query
@@ -289,15 +260,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (5 rows)
 
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, p1 DESC, p2 DESC, n LIMIT 5;
-   n   | r3 | p1 | r1 | r2 | p2 
--------+----+----+----+----+----
- 48991 |  9 |  8 |  1 |  9 |  4
- 48993 |  9 |  8 |  3 |  9 |  4
- 87991 |  9 |  7 |  1 |  9 |  8
- 37991 |  9 |  7 |  1 |  9 |  3
- 27992 |  9 |  7 |  2 |  9 |  2
-(5 rows)
-
+(output identical to previous)
 --
 -- Partitioned index
 --
@@ -329,25 +292,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (15 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) LIMIT 5;
-                                            QUERY PLAN                                             
----------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
-   ->  Append (actual rows=5 loops=1)
-         ->  Index Scan using child1a_pkey on public.child1a parent_2 (actual rows=5 loops=1)
-               Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
-               Index Cond: (parent_2.p2 = ANY ('{0,1,2,3}'::double precision[]))
-               Storage Table Read Requests: 1
-               Storage Table Read Ops: 1
-               Storage Table Rows Scanned: 5
-         ->  Index Scan using child2_pkey on public.child2 parent_3 (never executed)
-               Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
-               Index Cond: (parent_3.p2 = ANY ('{0,1,2,3}'::double precision[]))
-         ->  Index Scan using child3_pkey on public.child3 parent_4 (never executed)
-               Output: parent_4.n, parent_4.r3, parent_4.p1, parent_4.r1, parent_4.r2, parent_4.p2
-               Index Cond: (parent_4.p2 = ANY ('{0,1,2,3}'::double precision[]))
-(15 rows)
-
+(output identical to previous)
 -- Forward scan
 \set query ':P :Q SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5;'
 \i :run_query
@@ -447,15 +392,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (5 rows)
 
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5;
-   n   | r3 | p1 | r1 | r2 | p2 
--------+----+----+----+----+----
- 30002 |  0 |  0 |  2 |  0 |  3
-     6 |  0 |  0 |  6 |  0 |  0
-     8 |  0 |  0 |  8 |  0 |  0
- 20009 |  0 |  0 |  9 |  0 |  2
-   103 |  1 |  0 |  3 |  0 |  0
-(5 rows)
-
+(output identical to previous)
 -- Backward scan
 \set query ':P :Q SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2 DESC, p1 DESC, r3 DESC, r1 DESC, n LIMIT 5;'
 \i :run_query
@@ -555,14 +492,6 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 (5 rows)
 
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2 DESC, p1 DESC, r3 DESC, r1 DESC, n LIMIT 5;
-   n   | r3 | p1 | r1 | r2 | p2 
--------+----+----+----+----+----
-  9996 |  9 |  9 |  6 |  9 |  0
- 29996 |  9 |  9 |  6 |  9 |  2
- 39994 |  9 |  9 |  4 |  9 |  3
- 29799 |  7 |  9 |  9 |  9 |  2
- 39796 |  7 |  9 |  6 |  9 |  3
-(5 rows)
-
+(output identical to previous)
 -- (Drop this index)
 DROP INDEX parent_p2_r2_p1_r3_r1_idx;

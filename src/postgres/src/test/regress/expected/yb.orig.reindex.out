@@ -186,11 +186,7 @@ SELECT deptype FROM pg_depend
 /*+IndexScan(pg_depend pg_depend_depender_index) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
- deptype 
----------
- n
-(1 row)
-
+(output identical to previous)
 \set Q1 '/*+SeqScan(tmp) */'
 \set Q2 '/*+BitmapScan(tmp tmp_j_idx) */'
 \set query ':P :Q SELECT i FROM tmp WHERE j = -5;'
@@ -220,11 +216,7 @@ EXPLAIN (costs off) /*+BitmapScan(tmp tmp_j_idx) */ SELECT i FROM tmp WHERE j = 
 (1 row)
 
 /*+BitmapScan(tmp tmp_j_idx) */ SELECT i FROM tmp WHERE j = -5;
- i 
----
- 5
-(1 row)
-
+(output identical to previous)
 \set Q1 '/*+SeqScan(yb) */'
 \set Q2 '/*+IndexScan(yb yb_j_idx) */'
 \set query ':P :Q SELECT i FROM yb WHERE j = -5;'
@@ -252,11 +244,7 @@ EXPLAIN (costs off) /*+IndexScan(yb yb_j_idx) */ SELECT i FROM yb WHERE j = -5;
 (1 row)
 
 /*+IndexScan(yb yb_j_idx) */ SELECT i FROM yb WHERE j = -5;
- i 
----
- 5
-(1 row)
-
+(output identical to previous)
 -- 2. corruption (for temp index)
 --
 -- Fully test the temp index first because system indexes require require a
@@ -325,11 +313,7 @@ EXPLAIN (costs off) /*+Set(enable_seqscan off) Set(enable_bitmapscan off) */ SEL
 (1 row)
 
 /*+Set(enable_seqscan off) Set(enable_bitmapscan off) */ SELECT i FROM tmp WHERE j = -5;
- i  
-----
- 11
-(1 row)
-
+(output identical to previous)
 -- 5. corruption (for YB indexes)
 --
 -- Now, test the YB-backed indexes.
@@ -438,11 +422,7 @@ SELECT deptype FROM pg_depend
 /*+IndexScan(pg_depend pg_depend_depender_index) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
- deptype 
----------
- n
-(1 row)
-
+(output identical to previous)
 \set Q1 '/*+SeqScan(yb) */'
 \set Q2 '/*+IndexScan(yb yb_j_idx) */'
 \set query ':P :Q SELECT i FROM yb WHERE j = -5;'
@@ -470,11 +450,7 @@ EXPLAIN (costs off) /*+IndexScan(yb yb_j_idx) */ SELECT i FROM yb WHERE j = -5;
 (1 row)
 
 /*+IndexScan(yb yb_j_idx) */ SELECT i FROM yb WHERE j = -5;
- i  
-----
- 11
-(1 row)
-
+(output identical to previous)
 --
 -- PART 3: misc
 --
