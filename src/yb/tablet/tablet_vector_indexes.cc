@@ -448,6 +448,7 @@ Status ReverseMappingBackfiller::Apply(rocksdb::DirectWriteHandler& handler) {
   const auto& ybctids = context_->ybctids();
   DCHECK_EQ(entries.size(), ybctids.size());
 
+  // Backfiller always uses legacy format, while table-owned vector reverse mapping uses v1 format.
   for (size_t i = 0; i != ybctids.size(); ++i) {
     docdb::DocVectorIndex::ApplyReverseEntry(
         handler, ybctids[i], entries[i].value.AsSlice(), DocHybridTime(backfill_ht, 0));
@@ -843,7 +844,7 @@ Status TabletVectorIndexes::Verify() {
     while (VERIFY_RESULT(reader.FetchNext())) {
       auto value = dockv::EncodedDocVectorValue::FromSlice(reader.current_vector_slice());
       auto vector_id = VERIFY_RESULT(value.DecodeId());
-      auto ybctid = VERIFY_RESULT(reverse_mapping_reader->Fetch(vector_id));
+      auto ybctid = VERIFY_RESULT(reverse_mapping_reader->FetchYbctid(vector_id));
       if (reader.current_ybctid() != ybctid) {
         LOG_WITH_FUNC(DFATAL)
             << "Wrong reverse record for: " << vector_id << ": " << ybctid.ToDebugHexString()

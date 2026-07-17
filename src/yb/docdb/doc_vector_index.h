@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/entity_ids_types.h"
 
@@ -166,8 +167,11 @@ class DocVectorIndex {
 
   bool BackfillDone();
 
+  // Writes reverse mapping for the vector id in `value`.
+  // kInvalidColumnId means legacy raw-ybctid format; otherwise V1 value format.
   static void ApplyReverseEntry(
-      rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht);
+      rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht,
+      ColumnId column_id = kInvalidColumnId, Slice table_key_prefix = {});
 
  private:
   std::atomic<bool> backfill_done_cache_{false};

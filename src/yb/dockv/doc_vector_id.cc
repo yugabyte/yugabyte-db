@@ -17,6 +17,8 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/value.messages.h"
 
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_packing_v2.h"
 #include "yb/dockv/value_type.h"
@@ -38,6 +40,13 @@ namespace {
 
 constexpr const size_t kEncodedVectorIdValueSize = 1 + kUuidSize;
 constexpr const size_t kEncodedVectorIdSize = kEncodedVectorIdValueSize + 1;
+
+constexpr const char kDocVectorMetaValueFormatVersion = 0x01;
+
+// kVectorIndexMetadata (1 byte) + format version (1 byte).
+constexpr const size_t kEncodedDocVectorMetaValueHeaderSize =
+    1 + sizeof(kDocVectorMetaValueFormatVersion);
+static_assert(kEncodedDocVectorMetaValueHeaderSize == 2);
 
 char* GrowAtLeast(std::string* buffer, size_t size) {
   const auto current_size = buffer->size();
@@ -78,6 +87,54 @@ EncodedDocVectorValue EncodedDocVectorValue::FromSlice(Slice encoded) {
 
 Result<vector_index::VectorId> EncodedDocVectorValue::DecodeId() const {
   return vector_index::FullyDecodeVectorId(id);
+}
+
+Result<EncodedDocVectorMetaValue> EncodedDocVectorMetaValue::Decode(Slice encoded) {
+  if (encoded.empty()) {
+    return EncodedDocVectorMetaValue{};
+  }
+
+  // Return tombstone or legacy value.
+  if (encoded.starts_with(ValueEntryTypeAsChar::kTombstone) ||
+      !encoded.starts_with(KeyEntryTypeAsChar::kVectorIndexMetadata)) {
+    SCHECK(!encoded.starts_with(ValueEntryTypeAsChar::kTombstone) || encoded.size() == 1,
+           Corruption, "kTombstone should have no extra data");
+    return EncodedDocVectorMetaValue { .table_key_prefix = {}, .ybctid = encoded };
+  }
+
+  // Parse new format value.
+  Slice original_encoded = encoded;
+
+  // Drop kVectorIndexMetadata, which is guaranteed by the check above.
+  encoded.consume_byte();
+
+  SCHECK(encoded.TryConsumeByte(kDocVectorMetaValueFormatVersion), Corruption,
+         Format("Expected v1 vector meta value format, got: $0",
+                original_encoded.ToDebugHexString()));
+
+  const auto sizes = VERIFY_RESULT(DocKey::EncodedPrefixAndDocKeySizes(encoded));
+  SCHECK_GE(encoded.size(), sizes.doc_key_size, Corruption,
+            Format("Truncated doc key in vector meta value: $0",
+                   original_encoded.ToDebugHexString()));
+
+  auto table_key_prefix = encoded.Prefix(sizes.prefix_size);
+  auto ybctid = encoded.Prefix(sizes.doc_key_size).WithoutPrefix(sizes.prefix_size);
+  encoded.remove_prefix(sizes.doc_key_size);
+
+  SCHECK(encoded.starts_with(KeyEntryTypeAsChar::kColumnId), Corruption,
+         Format("Expected column id subkey in vector meta value: $0",
+                original_encoded.ToDebugHexString()));
+  encoded.consume_byte();
+  ColumnId column_id = VERIFY_RESULT(ColumnId::Decode(&encoded));
+  SCHECK(encoded.empty(), Corruption,
+         Format("Trailing bytes in vector meta value: $0",
+                original_encoded.ToDebugHexString()));
+
+  return EncodedDocVectorMetaValue {
+    .table_key_prefix = table_key_prefix,
+    .ybctid = ybctid,
+    .column_id = column_id,
+  };
 }
 
 template <class Buffer>
@@ -276,6 +333,48 @@ Result<std::string> DocVectorMetaKeyToString(Slice input) {
   auto doc_ht = VERIFY_RESULT_PREPEND(
       DocHybridTime::DecodeFromEnd(input), DocVectorKeyToString(vector_id));
   return DocVectorKeyToString(vector_id, doc_ht);
+}
+
+Result<std::string> DocVectorMetaValueToString(Slice value) {
+  if (value.starts_with(ValueEntryTypeAsChar::kTombstone)) {
+    SCHECK_EQ(value.size(), 1, Corruption, "kTombstone should have no extra data");
+    return PrimitiveValue::kTombstone.ToString();
+  }
+
+  // V1: kVectorIndexMetadata + version + SubDocKey without HT.
+  if (value.starts_with(KeyEntryTypeAsChar::kVectorIndexMetadata)) {
+    SCHECK_GE(value.size(), kEncodedDocVectorMetaValueHeaderSize, Corruption,
+              "Truncated v1 vector meta value");
+    SCHECK_EQ(value[1], kDocVectorMetaValueFormatVersion, Corruption,
+              "Unexpected vector meta value format version");
+    SubDocKey sub_doc_key;
+    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(
+        value.WithoutPrefix(kEncodedDocVectorMetaValueHeaderSize), HybridTimeRequired::kFalse));
+    return sub_doc_key.ToString(AutoDecodeKeys::kTrue);
+  }
+
+  // Legacy: raw ybctid (DocKey without coprefix).
+  DocKey ybctid;
+  RETURN_NOT_OK(ybctid.DecodeFrom(value));
+  return ybctid.ToString(AutoDecodeKeys::kTrue);
+}
+
+KeyBytes DocVectorMetaValue(Slice table_key_prefix, Slice ybctid, ColumnId column_id) {
+  // Sanity checks.
+  DCHECK_NE(column_id, kInvalidColumnId) << "Invalid column id";
+  DCHECK(!ybctid.empty()) << "Invalid ybctid";
+  DCHECK(!ybctid.starts_with(dockv::ValueEntryTypeAsChar::kTombstone));
+
+  // Using key bytes because vector meta value is a row sub doc key.
+  KeyBytes key;
+
+  key.AppendKeyEntryType(dockv::KeyEntryType::kVectorIndexMetadata);
+  key.AppendRawBytes(Slice(&kDocVectorMetaValueFormatVersion, 1));
+  key.AppendRawBytes(table_key_prefix);
+  key.AppendRawBytes(ybctid);
+  KeyEntryValue::MakeColumnId(column_id).AppendToKey(&key);
+
+  return key;
 }
 
 } // namespace yb::dockv
