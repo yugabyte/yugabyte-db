@@ -54,6 +54,7 @@
 
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -650,8 +651,10 @@ class MasterFailoverTestWithPlacement : public MasterFailoverTest {
 };
 
 TEST_F_EX(MasterFailoverTest, TestFailoverWithReadReplicas, MasterFailoverTestWithPlacement) {
+  constexpr int kNumReadReplicas = 1;
+  constexpr int kNumReplicas = kNumTabletServerReplicas + kNumReadReplicas;
   ASSERT_OK(yb_admin_client_->AddReadReplicaPlacementInfo(
-      "c.r.z0:1", 1, kReadReplicaPlacementUuid));
+      "c.r.z0:1", kNumReadReplicas, kReadReplicaPlacementUuid));
 
   // Add a new read replica tserver to the cluster with a matching cloud info to a live placement,
   // to test that we distinguish not just by cloud info but also by peer role.
@@ -664,6 +667,37 @@ TEST_F_EX(MasterFailoverTest, TestFailoverWithReadReplicas, MasterFailoverTestWi
 
   YBTableName table_name(YQL_DATABASE_CQL, "test", "testFailoverWithReadReplicas");
   ASSERT_OK(CreateTable(table_name, kWaitForCreate));
+
+  master::GetTableLocationsResponsePB table_locations;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    table_locations.Clear();
+    RETURN_NOT_OK(itest::GetTableLocations(
+        cluster_.get(), table_name, MonoDelta::FromSeconds(10), RequireTabletsRunning::kTrue,
+        &table_locations));
+    if (table_locations.tablet_locations().empty()) {
+      return false;
+    }
+    for (const auto& tablet : table_locations.tablet_locations()) {
+      if (tablet.replicas_size() != kNumReplicas) {
+        return false;
+      }
+    }
+    return true;
+  }, MonoDelta::FromSeconds(30), "Wait for read replicas"));
+
+  {
+    auto unexpected_replica_count_log = cluster_->GetMasterLogWaiter(
+        Format("Expected replicas $0 but found $1", kNumTabletServerReplicas, kNumReplicas));
+    for (const auto& tablet : table_locations.tablet_locations()) {
+      master::TabletLocationsPB tablet_locations;
+      ASSERT_OK(itest::GetTabletLocations(
+          cluster_.get(), tablet.tablet_id(), MonoDelta::FromSeconds(10), &tablet_locations));
+      ASSERT_EQ(tablet_locations.expected_live_replicas(), kNumTabletServerReplicas);
+      ASSERT_EQ(tablet_locations.expected_read_replicas(), kNumReadReplicas);
+      ASSERT_EQ(tablet_locations.replicas_size(), kNumReplicas);
+    }
+    ASSERT_FALSE(unexpected_replica_count_log.IsEventOccurred());
+  }
 
   // Shutdown the live ts in c.r.z0
   auto live_ts_uuid = cluster_->tablet_server(0)->instance_id().permanent_uuid();
