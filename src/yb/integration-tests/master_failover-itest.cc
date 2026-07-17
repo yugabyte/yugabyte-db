@@ -671,9 +671,12 @@ TEST_F_EX(MasterFailoverTest, TestFailoverWithReadReplicas, MasterFailoverTestWi
   master::GetTableLocationsResponsePB table_locations;
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     table_locations.Clear();
-    RETURN_NOT_OK(itest::GetTableLocations(
+    auto status = itest::GetTableLocations(
         cluster_.get(), table_name, MonoDelta::FromSeconds(10), RequireTabletsRunning::kTrue,
-        &table_locations));
+        &table_locations);
+    if (!status.ok()) {
+      return false;
+    }
     if (table_locations.tablet_locations().empty()) {
       return false;
     }
