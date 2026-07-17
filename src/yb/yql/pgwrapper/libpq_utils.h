@@ -468,6 +468,9 @@ struct PGConnSettings {
   // shutting down). Checked between connection attempts, not during one. Carried by the builder, so
   // it also applies to any later reconnect made from a stored builder.
   std::function<bool()> should_stop = {};
+  // W3C traceparent for the distributed-trace root span the backend should
+  // activate intializing connection.
+  std::string traceparent = {};
 };
 
 class PGConnBuilder {

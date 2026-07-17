@@ -92,7 +92,8 @@ RpcRetrier::RpcRetrier(CoarseTimePoint deadline, Messenger* messenger, ProxyCach
     : start_(CoarseMonoClock::now()),
       deadline_(deadline),
       messenger_(messenger),
-      proxy_cache_(*proxy_cache) {
+      proxy_cache_(*proxy_cache),
+      trace_parent_(dist_trace::GetActiveSpanContext()) {
   DCHECK(deadline != CoarseTimePoint());
 }
 
@@ -228,6 +229,10 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
   if (new_status.ok()) {
     controller_.Reset();
     VTRACE_TO(1, rpc->trace(), "Sending Rpc");
+    // DoRetry runs on a scope-less reactor thread; re-establish the caller's parent (captured in
+    // the ctor) so the OutboundCall rebuilt in SendRpc captures it. No-op when trace_parent_ is
+    // invalid.
+    auto parent_scope = dist_trace::ActivateParentScope(trace_parent_);
     rpc->SendRpc();
   } else {
     // Service unavailable here means that we failed to schedule delayed task, i.e. reactor
