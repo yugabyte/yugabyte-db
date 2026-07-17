@@ -66,12 +66,13 @@ public class TestPgSortNumeric extends BasePgSortingOrderTest {
       "1.0000000000000002", "-1.0000000000000002", "0.9999999999999998", "-0.9999999999999998",
       "0", "56.78", "-56.78", "'NaN'", "'Infinity'", "'-Infinity'" },
 
-    // DECIMAL
+    // DECIMAL (NaN / Infinity supported when AutoFlag yb_enable_decimal_infinity_nan is on).
     { "12345678901234567890123456789012345678901234567890123456789012345678901234567890123456",
       "-12345678901234567890123456789012345678901234567890123456789012345678901234567890123456",
       "0.12345678901234567890123456789012345678901234567890123456789012345678901234567890123456",
       "-0.12345678901234567890123456789012345678901234567890123456789012345678901234567890123456",
-      "1.2E-16382", "-1.2E-16382", "1.2E+131071", "-1.2E+131071", "0", "12.34", "-12.34" },
+      "1.2E-16382", "-1.2E-16382", "1.2E+131071", "-1.2E+131071", "0", "12.34", "-12.34",
+      "'NaN'", "'Infinity'", "'-Infinity'" },
 
     // BIGSERIAL
     { "9223372036854775807", "-9223372036854775808", "0", "1", "-1", "100", "-100" },
@@ -114,8 +115,8 @@ public class TestPgSortNumeric extends BasePgSortingOrderTest {
     { "NULL", "'nan'", "NaN", "'Inf'", "'-Inf'", "Infinity", "-Infinity",
       "4.9E-325", "-4.9E-325", "1.8E+308", "-1.8E+308" },
 
-    // DECIMAL
-    { "NULL", "'NaN'", "'Infinity'", "'-Infinity'", "NaN", "Infinity", "-Infinity",
+    // DECIMAL - quoted NaN/Infinity are valid (see testValues); unquoted / Inf abbrev still invalid.
+    { "NULL", "NaN", "Infinity", "-Infinity",
       "Inf", "-Inf", "1.2E-16383", "-1.2E-16383", "1.2E+131072", "-1.2E+131072" },
 
     // BIGSERIAL
