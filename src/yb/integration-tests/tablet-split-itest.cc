@@ -65,6 +65,7 @@
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/ts_manager.h"
 
 #include "yb/qlexpr/ql_expr.h"
 
@@ -2483,6 +2484,11 @@ class TabletSplitSingleServerITest : public TabletSplitITest {
   void TestRetryableWrite();
 };
 
+class TabletSplitMasterFailoverITest : public TabletSplitSingleServerITest {
+ public:
+  TabletSplitMasterFailoverITest() { mini_cluster_opt_.num_masters = 3; }
+};
+
 // Parameterized extension to test N-way tablet split.
 class TabletNSplitSingleServerITest :
     public TabletSplitSingleServerITest,
@@ -2968,6 +2974,74 @@ TEST_F(TabletSplitSingleServerITest, SplitBeforeParentDeleted) {
 
 TEST_F(TabletSplitSingleServerITest, SplitBeforeParentHidden) {
   ASSERT_OK(TestSplitBeforeParentDeletion(true /* hide_only */));
+}
+
+TEST_F(TabletSplitMasterFailoverITest, NoAlterRetryForHiddenSplitParent) {
+  constexpr auto kNumRows = 1000;
+  CreateSingleTablet();
+
+  const auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
+      table_, kTableName.namespace_type(), kTableName.namespace_name(),
+      client::WaitSnapshot::kFalse));
+  ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
+
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+  const auto parent_tablet_id =
+      ASSERT_RESULT(SplitTabletAndValidate(split_hash_code, kNumRows, true));
+  auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
+  const auto parent_tablet = ASSERT_RESULT(catalog_mgr->GetTabletInfo(parent_tablet_id));
+  ASSERT_OK(WaitFor(
+      [&] { return parent_tablet->LockForRead()->is_hidden(); }, 10s * kTimeMultiplier,
+      "Wait for split parent to be hidden"));
+
+  auto parent_peers = ASSERT_RESULT(ListSplitCompleteTabletPeers());
+  ASSERT_EQ(parent_peers.size(), 1);
+  ASSERT_EQ(parent_peers[0]->tablet_id(), parent_tablet_id);
+  auto parent = ASSERT_RESULT(parent_peers[0]->shared_tablet());
+  const auto parent_schema_version = parent->metadata()->primary_table_schema_version();
+
+  auto alterer = client_->NewTableAlterer(table_.name());
+  alterer->wait(true);
+  alterer->AddColumn("new_column")->Type(DataType::INT32);
+  ASSERT_OK(alterer->Alter());
+  ASSERT_EQ(parent->metadata()->primary_table_schema_version(), parent_schema_version);
+  auto active_peers = ASSERT_RESULT(ListTestTableActiveTabletPeers());
+  ASSERT_EQ(active_peers.size(), kDefaultNumSplitParts);
+  for (const auto& peer : active_peers) {
+    const auto active_tablet = ASSERT_RESULT(peer->shared_tablet());
+    ASSERT_EQ(active_tablet->metadata()->primary_table_schema_version(), parent_schema_version + 1);
+  }
+
+  const auto* old_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  std::string new_leader_uuid;
+  for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+    if (cluster_->mini_master(i)->permanent_uuid() != old_leader->permanent_uuid()) {
+      new_leader_uuid = cluster_->mini_master(i)->permanent_uuid();
+      break;
+    }
+  }
+  ASSERT_FALSE(new_leader_uuid.empty());
+  ASSERT_EQ(ASSERT_RESULT(cluster_->StepDownMasterLeader(new_leader_uuid)), new_leader_uuid);
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->permanent_uuid() == new_leader_uuid;
+      },
+      10s * kTimeMultiplier, "Wait for new master leader"));
+
+  const auto* new_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  ASSERT_OK(WaitFor(
+      [&] {
+        master::TSDescriptorVector descriptors;
+        new_leader->ts_manager().GetAllReportedDescriptors(&descriptors);
+        return descriptors.size() == cluster_->num_tablet_servers();
+      },
+      10s * kTimeMultiplier, "Wait for full tablet reports"));
+
+  for (const auto& task : new_leader->catalog_manager().GetRecentTasks()) {
+    if (task->type() == server::MonitoredTaskType::kAlterTable) {
+      ASSERT_STR_NOT_CONTAINS(task->description(), parent_tablet_id);
+    }
+  }
 }
 
 // Test scenario of GH issue: https://github.com/yugabyte/yugabyte-db/issues/14005
