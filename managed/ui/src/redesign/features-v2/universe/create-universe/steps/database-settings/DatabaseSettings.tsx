@@ -18,6 +18,8 @@ import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 import {
   YSQL_FIELD,
   YCQL_FIELD,
+  YSQL_AUTH_FIELD,
+  YCQL_AUTH_FIELD,
   YSQL_CONFIRM_PWD,
   YCQL_CONFIRM_PWD,
   GFLAGS_FIELD
@@ -61,6 +63,8 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
 
   const enableYSQLVal = watch(YSQL_FIELD);
   const enableYCQLVal = watch(YCQL_FIELD);
+  const enableYSQLAuth = watch(YSQL_AUTH_FIELD);
+  const enableYCQLAuth = watch(YCQL_AUTH_FIELD);
   const ysqlConfirmPwd = watch(YSQL_CONFIRM_PWD);
   const ycqlConfirmPwd = watch(YCQL_CONFIRM_PWD);
   const gflagVal = watch(GFLAGS_FIELD);
@@ -80,7 +84,7 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
         if (isValid) setShowErrorsAfterSubmit(false);
       });
     }
-  }, [ysqlConfirmPwd, ycqlConfirmPwd]);
+  }, [ysqlConfirmPwd, ycqlConfirmPwd, enableYSQLAuth, enableYCQLAuth]);
 
   useImperativeHandle(
     forwardRef,
