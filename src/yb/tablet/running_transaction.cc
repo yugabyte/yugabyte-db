@@ -390,13 +390,15 @@ void RunningTransaction::DoStatusReceived(const TabletId& status_tablet,
   PgSessionRequestVersion pg_session_req_version = 0;
   SubtxnSet aborted_subtxn_set;
   const bool ok = status.ok();
+  const bool deleted = !ok && status.IsDeleted();
   int64_t new_request_id = -1;
   TabletId current_status_tablet;
   bool did_abort_txn = false;
+  HybridTime coordinator_safe_time;
   {
     MinRunningNotifier min_running_notifier(&context_.applier_);
     std::unique_lock<std::mutex> lock(context_.mutex_);
-    if (!ok) {
+    if (!ok && !deleted) {
       status_waiters_.swap(status_waiters);
       lock.unlock();
       for (const auto& waiter : status_waiters) {
@@ -405,44 +407,52 @@ void RunningTransaction::DoStatusReceived(const TabletId& status_tablet,
       return;
     }
 
-    if (response.status_hybrid_time().size() != 1 || response.status().size() != 1 ||
-        response.aborted_subtxn_set().size() > 1 || response.deadlock_reason().size() > 1) {
-      LOG_WITH_PREFIX(DFATAL)
-          << "Wrong number of status, status hybrid time, deadlock_reason, or aborted subtxn "
-          << "set entries, exactly one entry expected: "
-          << response.ShortDebugString();
-    } else if (PREDICT_FALSE(response.aborted_subtxn_set().empty())) {
-      YB_LOG_EVERY_N(WARNING, 1)
-          << "Empty aborted_subtxn_set in transaction status response. "
-          << "This should only happen when nodes are on different versions, e.g. during upgrade.";
+    if (deleted) {
+      transaction_status = TransactionStatus::ABORTED;
     } else {
-      auto aborted_subtxn_set_or_status = SubtxnSet::FromPB(
-          response.aborted_subtxn_set(0).set());
-      if (aborted_subtxn_set_or_status.ok()) {
-        time_of_status = HybridTime(response.status_hybrid_time()[0]);
-        transaction_status = response.status(0);
-        aborted_subtxn_set = aborted_subtxn_set_or_status.get();
-        if (!response.deadlock_reason().empty() &&
-            response.deadlock_reason(0).code() != AppStatusPB::OK) {
-          // response contains a deadlock specific error.
-          expected_deadlock_status = StatusFromPB(response.deadlock_reason(0));
-        }
-        if (!response.pg_session_req_version().empty() && response.pg_session_req_version(0)) {
-          pg_session_req_version = response.pg_session_req_version(0);
-        }
-      } else {
+      if (response.status_hybrid_time().size() != 1 || response.status().size() != 1 ||
+          response.aborted_subtxn_set().size() > 1 || response.deadlock_reason().size() > 1) {
         LOG_WITH_PREFIX(DFATAL)
-            << "Could not deserialize SubtxnSet: "
-            << "error - " << aborted_subtxn_set_or_status.status().ToString()
-            << " response - " << response.ShortDebugString();
+            << "Wrong number of status, status hybrid time, deadlock_reason, or aborted subtxn "
+            << "set entries, exactly one entry expected: "
+            << response.ShortDebugString();
+      } else if (PREDICT_FALSE(response.aborted_subtxn_set().empty())) {
+        YB_LOG_EVERY_N(WARNING, 1)
+            << "Empty aborted_subtxn_set in transaction status response. "
+            << "This should only happen when nodes are on different versions, e.g. during upgrade.";
+      } else {
+        auto aborted_subtxn_set_or_status = SubtxnSet::FromPB(
+            response.aborted_subtxn_set(0).set());
+        if (aborted_subtxn_set_or_status.ok()) {
+          time_of_status = HybridTime(response.status_hybrid_time()[0]);
+          transaction_status = response.status(0);
+          aborted_subtxn_set = aborted_subtxn_set_or_status.get();
+          if (!response.deadlock_reason().empty() &&
+              response.deadlock_reason(0).code() != AppStatusPB::OK) {
+            // response contains a deadlock specific error.
+            expected_deadlock_status = StatusFromPB(response.deadlock_reason(0));
+          }
+          if (!response.pg_session_req_version().empty() && response.pg_session_req_version(0)) {
+            pg_session_req_version = response.pg_session_req_version(0);
+          }
+        } else {
+          LOG_WITH_PREFIX(DFATAL)
+              << "Could not deserialize SubtxnSet: "
+              << "error - " << aborted_subtxn_set_or_status.status().ToString()
+              << " response - " << response.ShortDebugString();
+        }
+      }
+
+      if (const auto num_entries = response.coordinator_safe_time().size();
+          num_entries > 1) {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Wrong number of coordinator safe time entries, at most one expected: "
+            << response.ShortDebugString();
+      } else if (num_entries == 1) {
+        coordinator_safe_time = HybridTime::FromPB(response.coordinator_safe_time(0));
       }
     }
 
-    LOG_IF_WITH_PREFIX(DFATAL, response.coordinator_safe_time().size() > 1)
-        << "Wrong number of coordinator safe time entries, at most one expected: "
-        << response.ShortDebugString();
-    auto coordinator_safe_time = response.coordinator_safe_time().size() == 1
-        ? HybridTime::FromPB(response.coordinator_safe_time(0)) : HybridTime();
     did_abort_txn = UpdateStatus(
         status_tablet, transaction_status, time_of_status, coordinator_safe_time,
         aborted_subtxn_set, expected_deadlock_status, pg_session_req_version);

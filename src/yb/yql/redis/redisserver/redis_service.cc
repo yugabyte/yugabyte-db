@@ -461,7 +461,7 @@ class Block : public std::enable_shared_from_this<Block> {
     bool tablet_not_found = false;
     if (!flush_status->status.ok()) {
       for (const auto& error : flush_status->errors) {
-        if (error->status().IsNotFound()) {
+        if (error->status().IsNotFound() || error->status().IsDeleted()) {
           tablet_not_found = true;
         }
         op_errors[&error->failed_op()] = std::move(error->status());
