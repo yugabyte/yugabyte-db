@@ -16,39 +16,24 @@ rightNav:
 
 The YugabyteDB gRPC connector is based on Debezium and is published as a Kafka Connect plugin at [yugabyte/debezium-connector-yugabytedb GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases) {{<icon/github>}}. This page explains how to move an existing gRPC connector deployment to a later version without losing your stream position, and how to handle the cases that need additional steps.
 
-## Reasons to upgrade
+## When to upgrade
 
-Each connector release ships fixes, features, and YugabyteDB-compatibility changes. Stay current for:
+Check [yugabyte/debezium-connector-yugabytedb GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases) for new versions, and review the release notes as part of planning any YugabyteDB upgrade.
 
-- Bug fixes. Correctness and stability fixes such as tablet-split checkpoint resume, before-image handling, and null-key handling.
-- New capabilities. Recent releases expose `xrepl_origin_id` on change events and improve new-table polling.
-- Performance and security. Releases tune default polling intervals, optimize the YSQL type registry, and update dependencies that fix CVEs (for example, Jackson and Netty).
-- YugabyteDB compatibility. Connector releases are cut alongside YugabyteDB releases; newer database behavior needs a recent connector.
-- Supportability. Support and fixes target current releases. An old build makes triage harder.
+Upgrade the connector:
+
+- _Before upgrading YugabyteDB_ to a release series newer than the one your connector was built for. The connector is backward compatible only; running it against a newer database release is unsupported and can disrupt streaming. See [Choose a connector version](#choose-a-connector-version).
+- _When a release fixes a bug or security issue_ that affects your deployment.
+
+As a best practice, run the latest stable connector release regardless of your YugabyteDB version.
 
 ## Choose a connector version
 
-Connector versions follow this scheme:
+For the connector version naming scheme and how connector versions map to YugabyteDB releases, see [Connector compatibility](../debezium-connector-yugabytedb/#connector-compatibility).
 
-```output
-dz.<debezium-base>.yb.grpc.<yugabytedb-series>.<connector-patch>[.SNAPSHOT.<n>]
-```
+When you pick a target connector version:
 
-| Component | Example | Description |
-| :---- | :------ | :------ |
-| `dz.<debezium-base>` | `dz.1.9.5` | Upstream Debezium release the connector is built on (the gRPC connector uses Debezium 1.9.5). |
-| `yb.grpc` | `yb.grpc` | Identifies the gRPC-protocol connector (distinct from the logical replication connector). |
-| `<yugabytedb-series>` | `2025.2` | YugabyteDB release series the build is aligned to. |
-| `<connector-patch>` | `.3` | Connector patch in that series. Higher is more recent. |
-| `.SNAPSHOT.<n>` | `.SNAPSHOT.1` | Pre-release. Don't use in production. |
-
-Release tags carry a leading `v`. For example, version `dz.1.9.5.yb.grpc.2025.2` is tagged `vdz.1.9.5.yb.grpc.2025.2`.
-
-For how connector versions map to YugabyteDB releases, see [Connector compatibility](../debezium-connector-yugabytedb/#connector-compatibility).
-
-When you pick a target Connector version:
-
-- Use the _latest stable_ release (recommended). Upgrades are backward compatible, so the latest stable build is the right target regardless of which YugabyteDB version you run.
+- Use the _latest stable_ release (recommended). Connectors are backward compatible with YugabyteDB releases, so you don't need to match the connector to the database release.
 - Never run a `*.SNAPSHOT.*` build in production; those are pre-releases.
 - If no newer release is available, use the last published stable release; don't stay on an older one.
 - Read the release notes for the target (and any versions you skip) for breaking changes before you upgrade.
@@ -65,6 +50,12 @@ Starting with `dz.1.9.5.yb.grpc.2024.2` (YugabyteDB v2024.2), the `transaction.o
 
 Use this path for the common case: a later build with no breaking change that affects you. The stream ID, server-side checkpoints, connector configuration, and Kafka offsets are all preserved.
 
+### Before you begin
+
+- Upgrade the connector first, then YugabyteDB. The connector is backward compatible with earlier database releases but not newer ones, so if a database upgrade is what's driving this, complete the connector upgrade before you upgrade YugabyteDB. See [When to upgrade](#when-to-upgrade).
+
+- In Kafka Connect distributed mode, connector configuration, offsets, and status live in Kafka topics, so the connector recovers cleanly when workers restart. Plan to restart workers one at a time (rolling), and finish with every worker on the same connector version. Don't run mixed versions beyond the rollout window.
+
 ### How the connector resumes without a re-snapshot
 
 The connector records the WAL position (an OpId checkpoint) for the changes it emits. Checkpoints live on the Kafka side (connector offsets) and on the YugabyteDB server (the `cdc_state` table, keyed by stream ID and tablet). On restart, the connector reads the last committed checkpoint and asks the server to resume just after it.
@@ -75,25 +66,25 @@ Expect a small number of duplicate events around the restart; Debezium events ar
 
 ### Perform the upgrade
 
-1. Before you start, record the current connector version, `database.streamid`, the SMT (transforms) configuration, and the full connector configuration. Confirm the connector is healthy and lag is low.
+1. Record the current connector version, `database.streamid`, the SMT (transforms) configuration, and the full connector configuration. Confirm the connector is healthy and lag is low.
 
-1. Download the target connector archive from [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases) {{<icon/github>}} and extract it.
+1. Download the new version of the connector JAR file (`debezium-connector-yugabytedb-<version>.jar`) from [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases) {{<icon/github>}}.
 
-1. Stop the Kafka Connect worker gracefully. A graceful shutdown flushes in-flight records to Kafka and commits the last offsets. Plugins load at worker startup, so you need a restart to pick up new JARs.
+1. Stop the Kafka Connect worker gracefully. A graceful shutdown flushes in-flight records to Kafka and commits the last offsets. Because Kafka Connect loads plugins only at worker startup, you must restart the worker to switch connector versions; pausing the connector alone isn't enough.
 
-1. Replace the JARs in the connector's directory under the Kafka Connect `plugin.path`. Remove the old version's JARs and add the new ones. Don't leave both versions on the path.
+1. Install the new version: in the connector's directory under the Kafka Connect `plugin.path`, delete the old connector JAR file and copy in the one you downloaded, so that only one version is on the plugin path.
 
 1. Restart the Kafka Connect worker. It reloads the connector from its stored configuration and resumes from the last committed checkpoint.
 
 1. Confirm the connector is `RUNNING`, there are no errors, and checkpoints and lag are advancing.
 
-After the connector upgrade succeeds, you can upgrade YugabyteDB if needed.
-
-In Kafka Connect distributed mode, configuration, offsets, and status live in Kafka topics, so the connector recovers after a worker restarts. Upgrade workers one at a time (rolling), and get every worker onto the same connector version. Avoid mixed versions beyond the rollout window.
+With the connector upgraded, you can proceed with the YugabyteDB upgrade if one is planned.
 
 ## When a re-snapshot is required
 
-You need a re-snapshot: a new stream ID and a fresh snapshot, when you can't reuse the existing stream ID. For example:
+A re-snapshot rebuilds the stream from scratch. Instead of resuming from stored checkpoints, you delete the connector, create a new stream ID, and redeploy the connector so it takes a fresh initial snapshot of the captured tables before it starts streaming.
+
+A re-snapshot is required when the existing stream ID can't be reused:
 
 - The connector was down longer than the CDC retention window, so the server no longer has history to resume from. (Default CDC retention is 8 hours, configurable up to 24 hours on v2024.2.1+; 4 hours before that. See [Retain data for longer durations](../cdc-get-started/#retain-data-for-longer-durations).) The connector reports that it's restarting from a checkpoint YugabyteDB no longer has.
 - The stream ID was dropped or expired, or it doesn't include the table you need (for example, a table that had no primary key when the stream was created).
@@ -110,9 +101,11 @@ To re-snapshot:
      create_change_data_stream ysql.<database-name>
    ```
 
-1. Deploy the new connector version with the new `database.streamid` (and `snapshot.mode=initial`).
+1. Deploy the new connector version with the new `database.streamid`, following the same registration steps as a new deployment (see [Deploy the YugabyteDB gRPC Connector](../cdc-get-started/#deploy-the-yugabytedb-grpc-connector)).
 
-1. Wait for the fresh snapshot to complete; streaming begins after it. Expect duplicate events at the sink during re-sync; design consumers to be idempotent.
+1. In the connector configuration, set `snapshot.mode` to `initial`. Because the new stream ID has no completed snapshot, the connector takes a full snapshot of the captured tables and then switches to streaming automatically. For details on snapshot modes, see [Snapshots](../debezium-connector-yugabytedb/#snapshots).
+
+1. Wait for the snapshot to complete and verify that streaming resumes. During the re-sync, the sink receives every row again, so downstream consumers reprocess data they have already seen. Make sure they apply events idempotently (for example, upsert on the primary key instead of appending) so the duplicates don't corrupt downstream state.
 
 ## Verify the upgrade
 
