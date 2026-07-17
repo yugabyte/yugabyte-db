@@ -3946,6 +3946,8 @@
           "title": "Availability Zones and Nodes",
           "region": "Region {{region_count}}",
           "add_button": "Add Availability Zone",
+          "tServer": "Nodes (TServer)",
+          "nodes": "Nodes",
           "tooltips": {
             "regionTag": "You can add or remove regions in the previous step (Regions).",
             "addAvailabilityZoneDisabled": "{{outage_count}} availability zone outage resilience supports exactly {{az_count}} AZs. Remove an availability zone from another region before adding one here.<br/><br/><a>Learn more</a>",
