@@ -1401,6 +1401,17 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 				YbcPgExpr	missing_value = NULL;
 				Node	   *default_expr = ybFetchDefaultConstraintExpr(colDef, rel);
 
+				/*
+				 * Vector missing_value lacks a VectorId, which breaks reverse mapping.
+				 * Reject ADD COLUMN ... DEFAULT for vector.
+				 */
+				if (typeOid == VECTOROID && default_expr != NULL)
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot add a vector column with a default value"),
+							 errdetail("ALTER TABLE ADD COLUMN with DEFAULT is not supported for type vector."),
+							 errhint("Add the column without a DEFAULT, then UPDATE existing rows if needed, or recreate the table with the column included.")));
+
 				if (default_expr && yb_enable_add_column_missing_default)
 				{
 					ParseState *pstate = make_parsestate(NULL);
