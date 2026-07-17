@@ -1655,6 +1655,12 @@ TEST_F(PgCatalogVersionTest, AlterDatabaseRename) {
   auto v3_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
   auto v3_postgres = ASSERT_RESULT(GetCatalogVersion(&conn_postgres));
 
+  // Wait for the global-impact RENAME version bump to propagate to conn_postgres's tserver so
+  // that conn_postgres refreshes its catalog snapshot to the new version before running the
+  // DROP below. Otherwise conn_postgres may still send the DROP with its stale catalog version
+  // while the tserver has already advanced, producing a spurious MISMATCHED_SCHEMA (40001) error.
+  WaitForCatalogVersionToPropagate();
+
   // If we did not bump up the catalog version of postgres DB, this DROP DATABASE would
   // stuck and the test timed out.
   ASSERT_OK(conn_postgres.Execute("DROP DATABASE test_db_renamed"));
