@@ -109,7 +109,7 @@ After the upgrade is finalized and complete, do the following:
 After any upgrade, confirm the stream is healthy as follows:
 
 - Connector status: `GET /connectors/<name>/status` returns `RUNNING` for the connector and its tasks, with no failures.
-- Slot progressing: — `restart_lsn` / `confirmed_flush_lsn` advance and lag drains.
+- Slot progressing: `restart_lsn` / `confirmed_flush_lsn` advance and lag drains.
 
   ```plpgsql
   SELECT slot_name, confirmed_flush_lsn,

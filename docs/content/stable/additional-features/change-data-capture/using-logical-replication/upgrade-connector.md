@@ -1,7 +1,7 @@
 ---
 title: Upgrade the YugabyteDB logical replication connector
 headerTitle: Upgrade the connector
-linkTitle: Upgrade the connector
+linkTitle: Upgrade connector
 description: Upgrade an existing YugabyteDB logical replication connector deployment to a later version without losing stream position.
 headcontent: Move an existing logical replication connector deployment to a later version
 menu:
@@ -44,7 +44,7 @@ For how connector versions map to YugabyteDB releases, see [Connector compatibil
 
 When you pick a target Connector version:
 
-- Use the _latest stable_ release (recommended). Connectors are backward compatible with YugabyteDB releases, so the latest stable build is the right target regardless of which YugabyteDB version you run; you don't need to pin the connector to your database's release series.
+- Always use the _latest stable_ release (recommended). Connectors are backward compatible with YugabyteDB releases, so running the latest stable connector is recommended regardless of the version of YugabyteDB you are running. You don't need to match the connector to the database release.
 - Never run a `*.SNAPSHOT.*` build in production; those are pre-releases.
 - If no newer release is available, use the last published stable release; don't stay on an older one.
 - Read the release notes for the target (and any versions you skip) for breaking changes, and confirm the minimum supported YugabyteDB version before you upgrade.
@@ -69,7 +69,7 @@ That's why an in-place upgrade is non-disruptive. Expect a small number of dupli
 
 ### Perform the upgrade
 
-1. Before you start, record the current connector version, `slot.name`, `publication.name`, and the full connector configuration. Confirm the slot is healthy and lag is low.
+1. Record the current connector version, `slot.name`, `publication.name`, and the full connector configuration. Confirm the slot is healthy and lag is low.
 
 1. Download the target connector plugin archive from [GitHub releases](https://github.com/yugabyte/debezium/releases) {{<icon/github>}} and extract it.
 
@@ -97,7 +97,7 @@ You need a re-snapshot: dropping the slot and publication, and streaming again f
 
 - The target release notes call out a breaking change that isn't backward compatible with existing slots or offsets.
 - The replication slot has expired or become invalid (for example, after certain DDL changes, after point-in-time recovery, or after you add an expired or not-of-interest table to the publication).
-- You're crossing a YSQL major version (PostgreSQL 11 to PostgreSQL 15); see [Upgrade across a YSQL major version](#ysql-major-upgrade) for the supported flow that avoids a full re-snapshot.
+- You are planning a YSQL major upgrade (PostgreSQL 11 to PostgreSQL 15); see [Upgrade across a YSQL major version](#ysql-major-upgrade) for the supported flow that avoids a full re-snapshot.
 
 To re-snapshot:
 
@@ -109,9 +109,9 @@ To re-snapshot:
 
 1. With `snapshot.mode=initial`, the connector takes a new initial snapshot and then streams. Expect duplicate events at the sink during re-sync; design consumers to be idempotent.
 
-## Upgrade across a YSQL major version {#ysql-major-upgrade}
+## Perform a YSQL major upgrade {#ysql-major-upgrade}
 
-Moving YugabyteDB from a PostgreSQL 11–based version (v2025.1) to a PostgreSQL 15–based version (v2025.1 or later (stable)) needs special handling for logical replication streams. The database upgrade itself is fully online, but you must pause the stream around finalization. You can upgrade logical replication streams to YugabyteDB v2025.1.1 and later.
+Upgrading YugabyteDB from a PostgreSQL 11–based version (v2024.1) to a PostgreSQL 15–based version (v2025.1 or later (stable)) requires special handling for logical replication streams. The database upgrade itself is fully online, but you must pause the stream around finalization. You can upgrade logical replication streams to YugabyteDB v2025.1.1 and later.
 
 For the full procedure, see [YSQL major upgrade - logical replication](../../../../manage/ysql-major-upgrade-logical-replication/).
 
