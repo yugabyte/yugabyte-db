@@ -1723,7 +1723,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         << status;
     const auto split_child_tablet_ids = SplitChildTabletIdsData(status).value();
     const bool tablet_has_been_split = !split_child_tablet_ids.empty();
-    if (status.IsNotFound() || tablet_has_been_split) {
+    if (status.IsNotFound() || status.IsDeleted() || tablet_has_been_split) {
       Lock lock(this, context_.LeaderTerm());
       auto it = managed_transactions_.find(action.transaction);
       if (it == managed_transactions_.end()) {
