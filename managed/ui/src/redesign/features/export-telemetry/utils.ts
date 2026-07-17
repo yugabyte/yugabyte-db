@@ -1,8 +1,32 @@
 import { Cluster, Universe } from '@app/redesign/helpers/dtos';
 import { getPrimaryCluster } from '@app/utils/universeUtilsTyped';
-import { TelemetryProviderItem, TelemetryProviderType } from './types';
+import { HeaderKeyValue, TelemetryProviderItem, TelemetryProviderType } from './types';
 import { TelemetryProvider } from './dtos';
 import { assertUnreachableCase } from '@app/utils/errorHandlingUtils';
+
+export const headerRecordToItems = (headers?: Record<string, string>): HeaderKeyValue[] => {
+  if (!headers) {
+    return [];
+  }
+  return Object.entries(headers).map(([key, value]) => ({ key, value }));
+};
+
+export const headerItemsToRecord = (
+  headerItems?: HeaderKeyValue[]
+): Record<string, string> | undefined => {
+  if (!headerItems?.length) {
+    return undefined;
+  }
+  const headers: Record<string, string> = {};
+  headerItems.forEach((headerItem) => {
+    const headerKey = headerItem.key?.trim();
+    if (!headerKey) {
+      return;
+    }
+    headers[headerKey] = headerItem.value ?? '';
+  });
+  return Object.keys(headers).length > 0 ? headers : undefined;
+};
 /**
  * Although we support more than one universe log exporter config from the backend,
  * the designed UI for YBA supports only a single log exporter config per universe.
