@@ -30,18 +30,20 @@ Learn more about the YugabyteDB MCP Server:
 - [Build a Retail Agent with MCP Toolbox, YugabyteDB, and Google ADK](https://www.yugabyte.com/blog/build-a-retail-agent/)
 - [How to Integrate the YugabyteDB MCP Server with Visual Studio Code](https://www.yugabyte.com/blog/integrate-yugabytedb-mcp-server-with-vs-code/)
 
+## Example: Claude Desktop
+
 This tutorial walks you through using the YugabyteDB MCP Server to allow an AI application to access, query, analyze, and interpret data in your YugabyteDB database, using only natural language prompts.
 
 The tutorial uses a YugabyteDB cluster running the [Northwind dataset](/stable/develop/sample-data/northwind/). You connect [Claude](https://claude.com/product/overview) to this database using MCP, and then explore it using natural language prompts.
 
-## Prerequisites
+### Prerequisites
 
 - YugabyteDB {{<release "2025.2">}} or later
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip / pipx
 - [Claude Desktop](https://claude.ai/download)
 
-## MCP tools
+### MCP tools
 
 The server exposes three tools that MCP clients can call:
 
@@ -51,21 +53,21 @@ The server exposes three tools that MCP clients can call:
 | `run_read_only_query` | Executes a SQL query inside `BEGIN READ ONLY` and returns rows as JSON. Read-only. |
 | `run_write_query` | Runs INSERT/UPDATE/DELETE/MERGE/TRUNCATE/DDL behind a guardrail blocklist. Destructive; **disabled by default**. Enable with `--enable-write-query` or `YB_MCP_ENABLE_WRITE_QUERY=true`. |
 
-All three tools accept an optional `requested_role` parameter. When OIDC is enabled and the caller's identity claim resolves to multiple mapped database roles (for example, Cognito groups or Keycloak realm roles), the agent can pass `requested_role` to pick one. The server clamps the choice to the JWT's mapped candidates — the agent cannot SET ROLE to a role that is not in the token.
+All three tools accept an optional `requested_role` parameter. When [OIDC is enabled](#oidc-and-per-user-database-roles) and the caller's identity claim resolves to multiple mapped database roles (for example, Cognito groups or Keycloak realm roles), the agent can pass `requested_role` to pick one. The server clamps the choice to the JWT's mapped candidates; the agent cannot SET ROLE to a role that is not in the token.
 
 Claude Desktop surfaces read-only badges on the read tools and a confirmation prompt before each `run_write_query` call (`destructiveHint: true`).
 
-## Set up YugabyteDB MCP Server
+### Set up YugabyteDB MCP Server
 
 Install and run the server using one of the following options.
 
-**Option 1 — `uvx` (no install):**
+**Option 1: `uvx` (no install)**
 
 ```sh
 uvx yugabytedb-mcp-server --help
 ```
 
-**Option 2 — install the package:**
+**Option 2: Install the package**
 
 ```sh
 pipx install yugabytedb-mcp-server
@@ -75,7 +77,7 @@ pipx install yugabytedb-mcp-server
 yugabytedb-mcp --help
 ```
 
-**Option 3 — from source (development):**
+**Option 3: From source (development)**
 
 ```sh
 git clone https://github.com/yugabyte/yugabytedb-mcp-server.git
@@ -88,7 +90,7 @@ uv run yugabytedb-mcp --help
 There is no longer a `src/server.py` entry point. Always invoke the server via the `yugabytedb-mcp` (or `yugabytedb-mcp-server`) console script.
 {{< /note >}}
 
-## Set up YugabyteDB
+### Set up YugabyteDB
 
 1. [Download and install](https://download.yugabyte.com) YugabyteDB {{<release "2025.2">}} or later.
 
@@ -100,11 +102,11 @@ There is no longer a `src/server.py` entry point. Always invoke the server via t
 
 1. [Install the Northwind sample database](/stable/develop/sample-data/northwind/#install-the-northwind-sample-database).
 
-## Connect Claude to the server
+### Connect Claude to the server
 
 1. In Claude Desktop, navigate to **Settings > Developer > Edit Config**.
 
-1. Add a new mcpServer entry in the `claude_desktop_config.json`.
+1. Add a new `mcpServers` entry in the `claude_desktop_config.json`.
 
     **Via `uvx` (no install):**
 
@@ -141,7 +143,7 @@ There is no longer a `src/server.py` entry point. Always invoke the server via t
 
     Replace the database user and password as appropriate.
 
-    Config file locations:
+    Configuration file locations:
 
     - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
     - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
@@ -150,7 +152,7 @@ There is no longer a `src/server.py` entry point. Always invoke the server via t
 
 The same configuration works with **Cursor** (Settings → MCP) and **Windsurf** (Settings → Cascade → MCP Servers).
 
-## Prompt 1: Summarize the database
+### Prompt 1: Summarize the database
 
 Prompt:
 
@@ -202,7 +204,7 @@ inventory tracking, employee territories, and supplier relationships. Would
 you like me to run any specific queries or analysis on this data?
 ```
 
-## Prompt 2: Build a dashboard
+### Prompt 2: Build a dashboard
 
 Prompt:
 
