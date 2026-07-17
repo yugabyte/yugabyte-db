@@ -51,10 +51,14 @@ DEFINE_UNKNOWN_int64(global_memstore_size_percentage, 10,
              "Percentage of process' hard memory limit to use for the global memstore. "
              "Default is 10. See also memstore_size_mb and "
              "global_memstore_size_mb_max.");
+// NOTE: The default here is for tools and tests; the actual defaults
+// for the TServer and master processes are set in server_main_util.cc.
 DEFINE_UNKNOWN_int64(global_memstore_size_mb_max, 2048,
              "Global memstore size is determined as a percentage of the process' hard "
              "memory limit. However, this flag limits it in absolute size. Value of 0 "
-             "means no limit on the value obtained by the percentage. Default is 2048.");
+             "means no limit on the value obtained by the percentage. The YB-TServer default "
+             "is 4096 on systems with at least 64 GiB of available RAM and 2048 otherwise. "
+             "Other processes default to 2048.");
 
 // NOTE: The default here is for tools and tests; the actual defaults
 // for the TServer and master processes are set in server_main_util.cc.
