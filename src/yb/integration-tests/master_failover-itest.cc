@@ -689,12 +689,12 @@ TEST_F_EX(MasterFailoverTest, TestFailoverWithReadReplicas, MasterFailoverTestWi
     auto unexpected_replica_count_log = cluster_->GetMasterLogWaiter(
         Format("Expected replicas $0 but found $1", kNumTabletServerReplicas, kNumReplicas));
     for (const auto& tablet : table_locations.tablet_locations()) {
-      master::TabletLocationsPB tablet_locations;
+      master::TabletLocationsPB tablet_details;
       ASSERT_OK(itest::GetTabletLocations(
-          cluster_.get(), tablet.tablet_id(), MonoDelta::FromSeconds(10), &tablet_locations));
-      ASSERT_EQ(tablet_locations.expected_live_replicas(), kNumTabletServerReplicas);
-      ASSERT_EQ(tablet_locations.expected_read_replicas(), kNumReadReplicas);
-      ASSERT_EQ(tablet_locations.replicas_size(), kNumReplicas);
+          cluster_.get(), tablet.tablet_id(), MonoDelta::FromSeconds(10), &tablet_details));
+      ASSERT_EQ(tablet_details.expected_live_replicas(), kNumTabletServerReplicas);
+      ASSERT_EQ(tablet_details.expected_read_replicas(), kNumReadReplicas);
+      ASSERT_EQ(tablet_details.replicas_size(), kNumReplicas);
     }
     ASSERT_FALSE(unexpected_replica_count_log.IsEventOccurred());
   }
