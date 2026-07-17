@@ -7,7 +7,7 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 ':explain'
 \set P2
@@ -26,8 +26,8 @@ CREATE INDEX ON jsonbs USING ybgin (j);
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ + 2 == 4)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ + 2 == 4)';
                         QUERY PLAN                        
@@ -43,8 +43,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (+@ == 5)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (+@ == 5)';
                       QUERY PLAN                       
@@ -60,8 +60,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ - 2 == 3)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ - 2 == 3)';
                         QUERY PLAN                        
@@ -77,8 +77,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa.bbb[*] ? (-@ < -3)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa.bbb[*] ? (-@ < -3)';
                          QUERY PLAN                          
@@ -94,8 +94,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ * 2 == 4)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ * 2 == 4)';
                         QUERY PLAN                        
@@ -111,8 +111,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ / 2 == 1)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ / 2 == 1)';
                         QUERY PLAN                        
@@ -128,8 +128,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ % 2 == 1)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ % 2 == 1)';
                         QUERY PLAN                        
@@ -145,8 +145,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$[*] ? (@.type() == "string")';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$[*] ? (@.type() == "string")';
                           QUERY PLAN                          
@@ -162,8 +162,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @@ '$.aaa.size() == 3';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.aaa.size() == 3';
                        QUERY PLAN                       
@@ -179,8 +179,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @@ '$.double() * 3 == 9';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.double() * 3 == 9';
                        QUERY PLAN                       
@@ -196,8 +196,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.ceiling() == 2)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.ceiling() == 2)';
                            QUERY PLAN                           
@@ -213,8 +213,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.floor() == 2)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.floor() == 2)';
                           QUERY PLAN                          
@@ -230,8 +230,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.abs() == 1)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.abs() == 1)';
                          QUERY PLAN                         
@@ -247,8 +247,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @@ '$.date.datetime() < "2021-07-01".datetime()';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.date.datetime() < "2021-07-01".datetime()';
                                     QUERY PLAN                                    
@@ -270,8 +270,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != 1)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != 1)';
                       QUERY PLAN                      
@@ -295,8 +295,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != -1 && @ != 2.5)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != -1 && @ != 2.5)';
                             QUERY PLAN                             
@@ -312,8 +312,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == -1 || @ == 1)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == -1 || @ == 1)';
                            QUERY PLAN                            
@@ -329,8 +329,8 @@ DETAIL:  ybgin index method cannot use more than one required scan entry: got 3.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (!(@ > 0))';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (!(@ > 0))';
                        QUERY PLAN                       
@@ -346,8 +346,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? ((@ == "1") is unknown)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? ((@ == "1") is unknown)';
                              QUERY PLAN                              
@@ -363,8 +363,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ like_regex "^[4-7]+$")';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ like_regex "^[4-7]+$")';
                               QUERY PLAN                               
@@ -380,8 +380,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ starts with "5")';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ starts with "5")';
                            QUERY PLAN                            
@@ -397,8 +397,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.* ? (exists (@ ? (@[*] < 0 || @[*] > 5)))';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.* ? (exists (@ ? (@[*] < 0 || @[*] > 5)))';
                                 QUERY PLAN                                
@@ -420,8 +420,8 @@ CREATE INDEX ON jsonbs USING ybgin (j jsonb_path_ops);
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ + 2 == 4)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ + 2 == 4)';
                         QUERY PLAN                        
@@ -437,8 +437,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (+@ == 5)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (+@ == 5)';
                       QUERY PLAN                       
@@ -454,8 +454,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ - 2 == 3)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ - 2 == 3)';
                         QUERY PLAN                        
@@ -471,8 +471,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa.bbb[*] ? (-@ < -3)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa.bbb[*] ? (-@ < -3)';
                          QUERY PLAN                          
@@ -488,8 +488,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ * 2 == 4)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ * 2 == 4)';
                         QUERY PLAN                        
@@ -505,8 +505,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ / 2 == 1)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ / 2 == 1)';
                         QUERY PLAN                        
@@ -522,8 +522,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ % 2 == 1)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ % 2 == 1)';
                         QUERY PLAN                        
@@ -539,8 +539,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$[*] ? (@.type() == "string")';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$[*] ? (@.type() == "string")';
                           QUERY PLAN                          
@@ -556,8 +556,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @@ '$.aaa.size() == 3';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.aaa.size() == 3';
                        QUERY PLAN                       
@@ -573,8 +573,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @@ '$.double() * 3 == 9';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.double() * 3 == 9';
                        QUERY PLAN                       
@@ -590,8 +590,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.ceiling() == 2)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.ceiling() == 2)';
                            QUERY PLAN                           
@@ -607,8 +607,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.floor() == 2)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.floor() == 2)';
                           QUERY PLAN                          
@@ -624,8 +624,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.abs() == 1)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.abs() == 1)';
                          QUERY PLAN                         
@@ -641,8 +641,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @@ '$.date.datetime() < "2021-07-01".datetime()';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @@ '$.date.datetime() < "2021-07-01".datetime()';
                                     QUERY PLAN                                    
@@ -664,8 +664,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != 1)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != 1)';
                       QUERY PLAN                      
@@ -689,8 +689,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != -1 && @ != 2.5)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != -1 && @ != 2.5)';
                             QUERY PLAN                             
@@ -706,8 +706,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == -1 || @ == 1)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == -1 || @ == 1)';
                            QUERY PLAN                            
@@ -723,8 +723,8 @@ DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (!(@ > 0))';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (!(@ > 0))';
                        QUERY PLAN                       
@@ -740,8 +740,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ is unknown)';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ is unknown)';
 ERROR:  syntax error at or near " " of jsonpath input
@@ -755,8 +755,8 @@ LINE 1: SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ is unknown)';
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ like_regex "^[4-7]+$")';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ like_regex "^[4-7]+$")';
                               QUERY PLAN                               
@@ -772,8 +772,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ starts with "5")';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ starts with "5")';
                            QUERY PLAN                            
@@ -789,8 +789,8 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
 :P SELECT * FROM jsonbs WHERE j @? '$.* ? (exists (@ ? (@[*] < 0 || @[*] > 5)))';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j @? '$.* ? (exists (@ ? (@[*] < 0 || @[*] > 5)))';
                                 QUERY PLAN                                

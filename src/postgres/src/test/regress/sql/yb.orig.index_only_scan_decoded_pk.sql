@@ -17,12 +17,12 @@ ANALYZE t_hash;
 SELECT $$
 :P SELECT id FROM t_hash WHERE v = 'val_1';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P SELECT id, v FROM t_hash WHERE v = 'val_3';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 :explain SELECT v FROM t_hash WHERE v = 'val_1';
 
@@ -39,17 +39,17 @@ ANALYZE t_range;
 SELECT $$
 :P SELECT id FROM t_range WHERE v = 'val_5';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P SELECT id, v FROM t_range WHERE v >= 'val_10' AND v < 'val_15' ORDER BY v;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P SELECT id FROM t_range WHERE id = 5;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: composite primary key (multi-column)
 CREATE TABLE t_composite(a int, b int, c text, v text, PRIMARY KEY(a, b ASC));
@@ -60,12 +60,12 @@ ANALYZE t_composite;
 SELECT $$
 :P SELECT a, b FROM t_composite WHERE v = 'v_15';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P SELECT a, b, v FROM t_composite WHERE v = 'v_15';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 :explain SELECT a, b, c FROM t_composite WHERE v = 'v_15';
 
@@ -78,7 +78,7 @@ ANALYZE t_pk_in_idx;
 SELECT $$
 :P SELECT id FROM t_pk_in_idx WHERE v1 = 100;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 :explain SELECT id, v2 FROM t_pk_in_idx WHERE v1 = 100;
 
@@ -90,7 +90,7 @@ ANALYZE t_uniq;
 SELECT $$
 :P SELECT id FROM t_uniq WHERE email = 'user5@test.com';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 :explain SELECT id, name FROM t_uniq WHERE email = 'user5@test.com';
 
@@ -115,7 +115,7 @@ ANALYZE t_multi_col;
 SELECT $$
 :P SELECT id FROM t_multi_col WHERE a = 2 AND b = 2;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 :explain SELECT id, a, b FROM t_multi_col WHERE a = 2;
 
@@ -132,12 +132,12 @@ ANALYZE t_hash_comp;
 SELECT $$
 :P SELECT h1, h2 FROM t_hash_comp WHERE v = 50;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P SELECT h1, h2, v FROM t_hash_comp WHERE v = 50;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: mixed hash + range composite primary key
 CREATE TABLE t_mixed_pk(h int, r int, v text, PRIMARY KEY(h HASH, r ASC));
@@ -148,41 +148,41 @@ ANALYZE t_mixed_pk;
 SELECT $$
 :P SELECT h, r FROM t_mixed_pk WHERE v = 'v_7';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: filter on decoded PK column (pushdown disabled)
 SELECT $$
 :P SELECT id FROM t_range WHERE v = 'val_5' AND id % 2 = 1;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P SELECT id, v FROM t_range WHERE v >= 'val_10' AND v < 'val_20' AND id % 3 = 1 ORDER BY v;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: aggregates on decoded PK columns (pushdown disabled)
 SELECT $$
 :P SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P SELECT MIN(id), MAX(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: filters on physical columns still push down
 SELECT $$
 :P SELECT id FROM t_range WHERE v >= 'val_10' AND v < 'val_15';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: aggregates on physical index columns still push down
 SELECT $$
 :P SELECT COUNT(*) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: NULL index column with primary key decoded
 CREATE TABLE t_null_idx(id int PRIMARY KEY, v int);
@@ -197,7 +197,7 @@ SELECT id FROM t_null_idx WHERE v IS NULL ORDER BY id;
 SELECT $$
 :P SELECT id FROM t_null_idx WHERE v = 10;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: different primary key data types
 CREATE TABLE t_text_pk(id text PRIMARY KEY, v int);
@@ -208,7 +208,7 @@ ANALYZE t_text_pk;
 SELECT $$
 :P SELECT id FROM t_text_pk WHERE v = 3;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 CREATE TABLE t_uuid_pk(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), v int);
 INSERT INTO t_uuid_pk(v) SELECT i FROM generate_series(1, 80) i;
@@ -225,7 +225,7 @@ ANALYZE t_float_pk;
 SELECT $$
 :P SELECT id FROM t_float_pk WHERE v = 3;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 CREATE TABLE t_double_pk(id float8 PRIMARY KEY, v int);
 INSERT INTO t_double_pk SELECT i * 1.1, i FROM generate_series(1, 80) i;
@@ -235,7 +235,7 @@ ANALYZE t_double_pk;
 SELECT $$
 :P SELECT id FROM t_double_pk WHERE v = 3;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 CREATE TABLE t_ts_pk(id timestamp PRIMARY KEY, v int);
 INSERT INTO t_ts_pk SELECT '2024-01-01'::timestamp + (i || ' hours')::interval, i
@@ -246,7 +246,7 @@ ANALYZE t_ts_pk;
 SELECT $$
 :P SELECT id FROM t_ts_pk WHERE v = 3;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 CREATE TABLE t_bool_pk(id boolean, v int, extra int, PRIMARY KEY(id, extra));
 INSERT INTO t_bool_pk SELECT i % 2 = 1, i, i FROM generate_series(1, 80) i;
@@ -256,7 +256,7 @@ ANALYZE t_bool_pk;
 SELECT $$
 :P SELECT id, extra FROM t_bool_pk WHERE v = 3;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: Join where the join key is a decoded decoded PK column.
 CREATE TABLE t_join_parent(tag_id int, label text, PRIMARY KEY(tag_id ASC));
@@ -271,13 +271,13 @@ ANALYZE t_join_child;
 SELECT $$
 :P SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 ORDER BY i.item_id;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: join with filter on decoded PK column (pushdown disabled)
 SELECT $$
 :P SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 AND i.item_id % 500 = 1 ORDER BY i.item_id;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: optimizer should prefer INCLUDE index over decoded pk index due to pushdown limitations
 CREATE TABLE t_include_cmp(id int, v int, pad text, PRIMARY KEY(id ASC));
@@ -290,17 +290,17 @@ ANALYZE t_include_cmp;
 SELECT $$
 :P SELECT id FROM t_include_cmp WHERE v = 50 AND id > 5000;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P SELECT COUNT(id) FROM t_include_cmp WHERE v = 50;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P SELECT COUNT(id) FROM t_include_cmp WHERE v >= 20 AND v < 80;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: partial INCLUDE with both decoded and included pk columns.
 CREATE TABLE t_partial_include(h1 int, h2 int, v int, extra text, PRIMARY KEY(h1 ASC, h2 ASC));
@@ -312,18 +312,18 @@ ANALYZE t_partial_include;
 SELECT $$
 :P SELECT h1, h2 FROM t_partial_include WHERE v = 25 AND h1 > 5 AND h2 > 800 ORDER BY h2;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P SELECT COUNT(h1), COUNT(h2) FROM t_partial_include WHERE v >= 20 AND v < 30;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: join on table with included pk column
 SELECT $$
 :P SELECT c.h1, c.h2, p.label FROM t_partial_include c JOIN t_join_parent p ON c.h1 = p.tag_id WHERE c.v = 25 ORDER BY c.h2;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: expression index
 CREATE TABLE t_expr(id int PRIMARY KEY, name text);
@@ -334,29 +334,29 @@ ANALYZE t_expr;
 SELECT $$
 :P SELECT id FROM t_expr WHERE lower(name) = 'name_5';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P SELECT id, lower(name) FROM t_expr WHERE lower(name) = 'name_3';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: IN queries with decoded PK
 SELECT $$
 :P SELECT id FROM t_range WHERE v IN ('val_3', 'val_7', 'val_15') ORDER BY id;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P SELECT id FROM t_multi_col WHERE a IN (1, 3) AND b = 2 ORDER BY id;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: LIKE queries with decoded PK
 SELECT $$
 :P SELECT id FROM t_range WHERE v LIKE 'val\_1%' ESCAPE '\' ORDER BY v;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: partial index with composite columns
 CREATE TABLE t_partial_comp(id int PRIMARY KEY, cat text, sub int, val int);
@@ -370,7 +370,7 @@ ANALYZE t_partial_comp;
 SELECT $$
 :P SELECT id FROM t_partial_comp WHERE cat = 'A' AND sub = 2 AND val > 10 ORDER BY id;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 :explain SELECT id, val FROM t_partial_comp WHERE cat = 'A' AND sub = 0;
 
@@ -384,7 +384,7 @@ ANALYZE t_jsonb_expr;
 SELECT $$
 :P SELECT id FROM t_jsonb_expr WHERE (data->>'key')::int = 5;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: temporary table should not use decoded PK
 CREATE TEMP TABLE t_temp(id int PRIMARY KEY, v int);
@@ -395,7 +395,7 @@ ANALYZE t_temp;
 SELECT $$
 :P SELECT id FROM t_temp WHERE v = 50;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 DROP TABLE t_temp;
 
@@ -421,27 +421,27 @@ SET yb_enable_primary_key_decode_from_index = off;
 SELECT $$
 :P SELECT id FROM t_range WHERE v = 'val_5';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P SELECT a, b FROM t_composite WHERE v = 'v_15';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P SELECT id FROM t_range WHERE v = 'val_5' AND id % 2 = 1;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 SELECT $$
 :P SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 ORDER BY i.item_id;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Cleanup non-colocated tables before switching database.
 DROP TABLE t_expr CASCADE;
@@ -492,13 +492,13 @@ ANALYZE t_colocated;
 SELECT $$
 :P SELECT id FROM t_colocated WHERE v = 5;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: range scan on colocated table.
 SELECT $$
 :P SELECT id, v FROM t_colocated WHERE v >= 10 AND v < 15 ORDER BY v;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Test: filter on decoded PK should not push down on colocated table.
 :explain SELECT id FROM t_colocated WHERE v = 5 AND id > 50;

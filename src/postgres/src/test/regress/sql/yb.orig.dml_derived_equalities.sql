@@ -160,23 +160,20 @@ SET yb_enable_bitmapscan = true;
 SET enable_bitmapscan = true;
 
 -- Use a custom Rnext that builds BitmapScan(:R) hint per table.
-\set Pnext :iter_R3
-\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_iter_R.sql'
+\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_from_R.sql'
 \set R1 'orders_no_bucket'
 \set R2 'orders_gen'
 \set R3 'orders_expr'
 
 -- Three-way OR
 \set query ':P :hint SELECT * FROM :R WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;'
-\i :iter_P2
+\i :run_query
 
 -- OR with AND
+\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_from_R.sql'
 \set query ':P :hint SELECT * FROM :R WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id;'
-\i :iter_P2
-
--- Restore defaults.
-\set Pnext :iter_query
-\set Rnext :iter_query
+\i :run_query
+\unset R3
 
 -- Join with an OR on a column that is also the join key.  The derivation must
 -- still apply within each arm so the bitmap scan on orders_gen uses the bucket.
@@ -184,13 +181,13 @@ SET enable_bitmapscan = true;
 SELECT $$
 :P :hint SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 OR o.user_id = 60 ORDER BY u.id, o.order_id;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- A NULL constant does not pin the column to a value, so no bucket is derived
 -- from a "user_id = NULL" arm (the arm is also a constant the planner drops).
 \set hint '/*+ BitmapScan(orders_gen) */'
 \set query ':P :hint SELECT * FROM orders_gen WHERE user_id = 50 OR user_id = NULL ORDER BY user_id, order_id;'
-\i :iter_P2
+\i :run_query
 
 -- TODO(#31672): within an OR arm an equality is only followed one step.
 -- bucket_id is computed from z, so deriving it needs a constant value for z.
@@ -209,7 +206,7 @@ CREATE TABLE transitive (
 INSERT INTO transitive(id, x, y, z) VALUES (1, 5, 5, 5), (2, 6, 6, 2);
 \set hint '/*+ BitmapScan(transitive transitive_pkey) */'
 \set query ':P :hint SELECT * FROM transitive WHERE y = x AND ((x = 5 AND z = y) OR (x = 6 AND z = 6)) ORDER BY id;'
-\i :iter_P2
+\i :run_query
 DROP TABLE transitive;
 
 -- Guards on when an OR-arm equality may be derived.
@@ -242,13 +239,10 @@ CREATE INDEX NONCONCURRENTLY ON guard_type_expr ((yb_hash_code(c) % 5) ASC, c AS
 \set R1 'guard_type_gen'
 \set R2 'guard_type_expr'
 \set query 'INSERT INTO :R(c) VALUES (5), (6), (7);'
-\i :iter_R2
-\set Pnext :iter_R2
-\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_iter_R.sql'
+\i :run_query
+\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_from_R.sql'
 \set query ':P :hint SELECT c FROM :R WHERE c = 6 OR c = 5::bigint ORDER BY c;'
-\i :iter_P2
-\set Pnext :iter_query
-\set Rnext :iter_query
+\i :run_query
 DROP TABLE guard_type_gen, guard_type_expr;
 
 -- Positive control.  Here c is varchar and one arm compares it to a text
@@ -267,15 +261,12 @@ CREATE INDEX NONCONCURRENTLY ON guard_coerce_expr ((yb_hash_code(c) % 5) ASC, c 
 SELECT $$
 INSERT INTO :R(c) VALUES ('a'), ('b'), ('c');
 $$ AS query \gset
-\i :iter_R2
-\set Pnext :iter_R2
-\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_iter_R.sql'
+\i :run_query
+\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_from_R.sql'
 SELECT $$
 :P :hint SELECT c FROM :R WHERE c = 'a'::text OR c = 'b' ORDER BY c;
 $$ AS query \gset
-\i :iter_P2
-\set Pnext :iter_query
-\set Rnext :iter_query
+\i :run_query
 DROP TABLE guard_coerce_gen, guard_coerce_expr;
 
 -- Operator guard.  The operator must be a real equality, not just one the
@@ -310,15 +301,12 @@ CREATE INDEX NONCONCURRENTLY ON guard_op_expr ((yb_hash_code(y::text) % 5) ASC, 
 SELECT $$
 INSERT INTO :R(id, x, y) VALUES (1, 1, '((0,0),(4,1))'), (2, 2, '((0,0),(1,4))');
 $$ AS query \gset
-\i :iter_R2
-\set Pnext :iter_R2
-\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_iter_R.sql'
+\i :run_query
+\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_from_R.sql'
 SELECT $$
 :P :hint SELECT id, x FROM :R WHERE (x = 1 AND y = '((0,0),(2,2))'::box) OR (x = 2 AND y = '((1,1),(3,3))'::box) ORDER BY id;
 $$ AS query \gset
-\i :iter_P2
-\set Pnext :iter_query
-\set Rnext :iter_query
+\i :run_query
 DROP TABLE guard_op_gen, guard_op_expr;
 
 -- Multi-way joins
@@ -366,7 +354,7 @@ INSERT INTO t_const_expr VALUES (10), (20);
 ANALYZE t_const_expr;
 \set hint '/*+ IndexScan(t_const_expr t_const_expr_idx) */'
 \set query ':P :hint SELECT * FROM t_const_expr ORDER BY a;'
-\i :iter_P2
+\i :run_query
 
 -- Mixed index where only some expression columns are constant: derived
 -- equalities should still fire for the non-constant expression column.
@@ -377,7 +365,7 @@ INSERT INTO t_mixed_expr VALUES (1, 9), (2, 4);
 ANALYZE t_mixed_expr;
 \set hint '/*+ IndexScan(t_mixed_expr t_mixed_expr_idx) */'
 \set query ':P :hint SELECT * FROM t_mixed_expr WHERE b = 4 ORDER BY a;'
-\i :iter_P2
+\i :run_query
 
 DROP TABLE t_const_expr;
 DROP TABLE t_mixed_expr;
@@ -397,21 +385,21 @@ ANALYZE demo_b;
 
 -- Single-rel, NULL-yielding const (no derived clause emitted)
 \set query ':P :hint SELECT count(*) FROM demo_a WHERE x = 0;'
-\i :iter_P2
+\i :run_query
 
 -- Single-rel, non-NULL const (derived clause emitted)
 \set query ':P :hint SELECT count(*) FROM demo_a WHERE x = 3;'
-\i :iter_P2
+\i :run_query
 
 \set hint '/*+ NestLoop(a b) IndexScan(b demo_b_nullif_idx) */'
 
 -- Join with no constant predicate (no derived clause emitted)
 \set query ':P :hint SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x;'
-\i :iter_P2
+\i :run_query
 
 -- Join + WHERE on a join column = const (derived clause emitted)
 \set query ':P :hint SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x WHERE a.x = 5;'
-\i :iter_P2
+\i :run_query
 
 DROP TABLE demo_a, demo_b;
 
@@ -453,7 +441,7 @@ ANALYZE demo_or;
 -- returns zero rows, and the count drops to 1.
 \set hint '/*+ BitmapScan(demo_or) */'
 \set query ':P :hint SELECT count(*) FROM demo_or WHERE id = 1 OR arr = ''{}'';'
-\i :iter_P2
+\i :run_query
 DROP TABLE demo_or;
 RESET yb_enable_bitmapscan;
 RESET enable_bitmapscan;

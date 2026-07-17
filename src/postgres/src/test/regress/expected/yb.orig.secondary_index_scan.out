@@ -7,7 +7,7 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 ':explain'
 \set P2
@@ -29,8 +29,8 @@ INSERT INTO text_books (id, author, year)
 SELECT $$
 :P SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
                             QUERY PLAN                             
@@ -50,8 +50,8 @@ SELECT $$
 :P SELECT id FROM text_books
   WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT id FROM text_books
   WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
@@ -76,8 +76,8 @@ DROP index text_books_author_first_name;
 SELECT $$
 :P SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
                        QUERY PLAN                       
@@ -97,8 +97,8 @@ SELECT $$
 :P SELECT id FROM text_books
   WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT id FROM text_books
   WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
@@ -155,8 +155,8 @@ SELECT $$
 :P SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
   ORDER BY details->>'name';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
   ORDER BY details->>'name';
@@ -178,8 +178,8 @@ SELECT $$
 :P SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
   ORDER BY details->>'name';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
   ORDER BY details->>'name';
@@ -205,8 +205,8 @@ SELECT $$
 :P SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
   ORDER BY details->>'name';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
   ORDER BY details->>'name';
@@ -228,8 +228,8 @@ SELECT $$
 :P SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
   ORDER BY details->>'name';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
   ORDER BY details->>'name';

@@ -4,7 +4,7 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 ':explain'
 \set P2
@@ -17,8 +17,8 @@ INSERT INTO test_distinct (SELECT 2, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) A
 SET yb_enable_distinct_pushdown = true;
 SET enable_bitmapscan = false;
 \set query ':P SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
                                          QUERY PLAN                                          
@@ -36,8 +36,8 @@ SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
 (1 row)
 
 \set query ':P SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
                                          QUERY PLAN                                          
@@ -60,8 +60,8 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2
 (6 rows)
 
 \set query ':P SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER BY r1, r2;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER BY r1, r2;
                             QUERY PLAN                            
@@ -89,8 +89,8 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER
 RESET enable_bitmapscan;
 \set Q1 '/*+ BitmapScan(test_distinct) */'
 \set query ':P :Q1 SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(test_distinct) */ SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
                                       QUERY PLAN                                      
@@ -111,8 +111,8 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(test_distinct) */ SELEC
 (1 row)
 
 \set query ':P :Q1 SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(test_distinct) */ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
                                          QUERY PLAN                                         
@@ -141,8 +141,8 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(test_distinct) */ SELEC
 (6 rows)
 
 \set query ':P :Q1 SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER BY r1, r2;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(test_distinct) */ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER BY r1, r2;
                                          QUERY PLAN                                         
@@ -175,8 +175,8 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(test_distinct) */ SELEC
 SET yb_enable_distinct_pushdown TO false;
 SET enable_bitmapscan = false;
 \set query ':P SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
                                       QUERY PLAN                                       
@@ -193,8 +193,8 @@ SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
 (1 row)
 
 \set query ':P SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
                             QUERY PLAN                            
@@ -221,8 +221,8 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2
 
 RESET enable_bitmapscan;
 \set query ':P :Q1 SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(test_distinct) */ SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
                                       QUERY PLAN                                      
@@ -243,8 +243,8 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(test_distinct) */ SELEC
 (1 row)
 
 \set query ':P :Q1 SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(test_distinct) */ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
                                          QUERY PLAN                                         
@@ -285,13 +285,12 @@ CREATE INDEX test_distinct_hash_k ON test_distinct_hash (k HASH);
 SET yb_enable_distinct_pushdown = true;
 -- Default plan and different hints to enforce bitmap scan. Result should be 4
 -- distinct values of k in each case.
-\set Pnext :iter_Q3
 \set Q1
 \set Q2 '/*+ Set(enable_seqscan off) Set(enable_indexscan off) */'
 \set Q3 '/*+ BitmapScan(test_distinct_hash) */'
 \set query ':P :Q SELECT DISTINCT k FROM test_distinct_hash ORDER BY k;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)  SELECT DISTINCT k FROM test_distinct_hash ORDER BY k;
                                                QUERY PLAN                                                

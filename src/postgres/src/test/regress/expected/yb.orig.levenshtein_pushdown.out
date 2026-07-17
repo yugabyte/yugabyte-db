@@ -3,7 +3,7 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 ':explain'
 \set P2
@@ -12,8 +12,8 @@ CREATE TABLE test_levenshtein (id SERIAL PRIMARY KEY, name TEXT);
 INSERT INTO test_levenshtein (name) VALUES ('GUMBO'), ('GAMBOL'), ('JUMBO'), ('BUMBO'), ('HELLO'), ('WORLD');
 -- Test levenshtein(text, text) push down
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein(name, ''GUMBO'') < 3 ORDER BY name;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') < 3 ORDER BY name;
                            QUERY PLAN                           
@@ -36,8 +36,8 @@ SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') < 3 ORDER BY 
 
 -- Test levenshtein(text, text, int, int, int) push down
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein(name, ''GUMBO'', 1, 1, 2) < 3 ORDER BY name;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO', 1, 1, 2) < 3 ORDER BY name;
                                QUERY PLAN                                
@@ -59,8 +59,8 @@ SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO', 1, 1, 2) < 3 
 
 -- Test levenshtein_less_equal(text, text, int) push down
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein_less_equal(name, ''GUMBO'', 2) <= 2 ORDER BY name;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein_less_equal(name, 'GUMBO', 2) <= 2 ORDER BY name;
                                   QUERY PLAN                                   
@@ -83,8 +83,8 @@ SELECT name FROM test_levenshtein WHERE levenshtein_less_equal(name, 'GUMBO', 2)
 
 -- Test levenshtein_less_equal(text, text, int, int, int, int) push down
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein_less_equal(name, ''GUMBO'', 1, 1, 2, 2) <= 2 ORDER BY name;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein_less_equal(name, 'GUMBO', 1, 1, 2, 2) <= 2 ORDER BY name;
                                        QUERY PLAN                                       
@@ -106,8 +106,8 @@ SELECT name FROM test_levenshtein WHERE levenshtein_less_equal(name, 'GUMBO', 1,
 
 -- Test exact match (distance = 0)
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein(name, ''GUMBO'') = 0;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') = 0;
                         QUERY PLAN                        
@@ -124,8 +124,8 @@ SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') = 0;
 
 -- Test no matches case
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein(name, ''XXXXX'') < 2;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein(name, 'XXXXX') < 2;
                         QUERY PLAN                        
@@ -141,8 +141,8 @@ SELECT name FROM test_levenshtein WHERE levenshtein(name, 'XXXXX') < 2;
 
 -- Test SELECT with levenshtein function call
 \set query ':P SELECT levenshtein(''GUMBO'', ''GAMBOL'');'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT levenshtein('GUMBO', 'GAMBOL');
                QUERY PLAN                
@@ -158,8 +158,8 @@ SELECT levenshtein('GUMBO', 'GAMBOL');
 
 -- Test levenshtein in complex expression
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein(name, ''GUMBO'') + length(name) < 10 ORDER BY name;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') + length(name) < 10 ORDER BY name;
                                     QUERY PLAN                                    
@@ -186,8 +186,8 @@ SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') + length(name
 CREATE EXTENSION IF NOT EXISTS fuzzystrmatch SCHEMA public;
 -- Test levenshtein with schema qualified
 \set query ':P SELECT name FROM test_levenshtein WHERE public.levenshtein(name, ''GUMBO'') < 3 ORDER BY name;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE public.levenshtein(name, 'GUMBO') < 3 ORDER BY name;
                           QUERY PLAN                           
@@ -214,8 +214,8 @@ SELECT name FROM test_levenshtein WHERE public.levenshtein(name, 'GUMBO') < 3 OR
 -- so levenshtein functions will still be pushed down when search_path is set to public
 SET search_path = public;
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein(name, ''GUMBO'') < 3 ORDER BY name;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') < 3 ORDER BY name;
                            QUERY PLAN                           
@@ -240,8 +240,8 @@ SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') < 3 ORDER BY 
 -- levenshtein calls will then refer to the non built-in version
 SET search_path = public, pg_catalog;
 \set query ':P SELECT name FROM test_levenshtein WHERE levenshtein(name, ''GUMBO'') < 3 ORDER BY name;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT name FROM test_levenshtein WHERE levenshtein(name, 'GUMBO') < 3 ORDER BY name;
                          QUERY PLAN                         
@@ -342,8 +342,8 @@ WHERE ts < '2025-09-01';
 -- Test expression index with levenshtein uses Index Cond without Sort
 CREATE INDEX t1_levenshtein_idx ON t1 (levenshtein(c4, 'body95855317') asc);
 \set query ':P SELECT c3 FROM t1 WHERE levenshtein(c4, ''body95855317'') < 3 ORDER BY levenshtein(c4, ''body95855317'') LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT c3 FROM t1 WHERE levenshtein(c4, 'body95855317') < 3 ORDER BY levenshtein(c4, 'body95855317') LIMIT 5;
                                QUERY PLAN                                
@@ -385,8 +385,8 @@ FROM (
   LIMIT 3
 ) AS x;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
 SELECT count(x.agg_field) AS aggr

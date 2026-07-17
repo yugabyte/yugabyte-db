@@ -4,7 +4,7 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 ':explain'
 \set P2
@@ -22,8 +22,8 @@ SHOW yb_test_ybgin_disable_cost_factor;
 -- use sequential scan.
 -- GIN_SEARCH_MODE_ALL
 \set query ':explain :Q SELECT * FROM vectors WHERE v @@ to_tsquery(''simple'', ''!aa'');'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off)  SELECT * FROM vectors WHERE v @@ to_tsquery('simple', '!aa');
                  QUERY PLAN                  
@@ -41,8 +41,8 @@ EXPLAIN (costs off) /*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/ SELECT * FRO
 
 -- multiple scan keys
 \set query ':explain :Q SELECT * FROM vectors WHERE v @@ ''a'' and v @@ ''bb'';'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off)  SELECT * FROM vectors WHERE v @@ 'a' and v @@ 'bb';
                                 QUERY PLAN                                
@@ -64,8 +64,8 @@ EXPLAIN (costs off) /*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/ SELECT * FRO
 -- probably better to spend the time supporting the query instead.  So it
 -- currently will suggest index scan, unfortunately.
 \set query ':explain :Q SELECT * FROM vectors WHERE v @@ to_tsquery(''simple'', ''aa | bb'');'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off)  SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'aa | bb');
                    QUERY PLAN                    
@@ -87,8 +87,8 @@ EXPLAIN (costs off) /*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/ SELECT * FRO
 -- probably better to spend the time supporting the query instead.  So it
 -- currently will suggest index scan, unfortunately.
 \set query ':explain :Q SELECT * FROM arrays WHERE a @> ''{null}'';'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off)  SELECT * FROM arrays WHERE a @> '{null}';
                 QUERY PLAN                
@@ -109,8 +109,8 @@ CREATE INDEX NONCONCURRENTLY idx_partial ON arrays
     WHERE a <@ '{1}' or a @> '{}' or a is null;
 -- GIN_SEARCH_MODE_INCLUDE_EMPTY
 \set query ':explain :Q SELECT * FROM arrays WHERE a <@ ''{1}'';'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off)  SELECT * FROM arrays WHERE a <@ '{1}';
             QUERY PLAN             
@@ -128,8 +128,8 @@ EXPLAIN (costs off) /*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/ SELECT * FRO
 
 -- GIN_SEARCH_MODE_ALL
 \set query ':explain :Q SELECT * FROM arrays WHERE a @> ''{}'';'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off)  SELECT * FROM arrays WHERE a @> '{}';
             QUERY PLAN            
@@ -147,8 +147,8 @@ EXPLAIN (costs off) /*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/ SELECT * FRO
 
 -- GIN_SEARCH_MODE_EVERYTHING, GIN_CAT_NULL_ITEM
 \set query ':explain :Q SELECT * FROM arrays WHERE a is null;'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off)  SELECT * FROM arrays WHERE a is null;
           QUERY PLAN           
@@ -172,8 +172,8 @@ DROP INDEX idx_partial;
 -- probably better to spend the time supporting the query instead.  So it
 -- currently will suggest index scan, unfortunately.
 \set query ':explain :Q SELECT * FROM jsonbs WHERE j ?| ''{"ggg", "eee"}'';'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off)  SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}';
                 QUERY PLAN                
@@ -191,8 +191,8 @@ EXPLAIN (costs off) /*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/ SELECT * FRO
 
 -- GIN_SEARCH_MODE_ALL
 \set query ':explain :Q SELECT * FROM jsonbs WHERE j @? ''$.aaa[*] ? (@ > 2)'';'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off)  SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ > 2)';
                        QUERY PLAN                        
@@ -211,8 +211,8 @@ EXPLAIN (costs off) /*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/ SELECT * FRO
 -- On the other hand, these queries would succeed, so they should use index
 -- scan.
 \set query ':explain :Q SELECT * FROM vectors WHERE v @@ to_tsquery(''simple'', ''(aa | bb) & (cc & dd)'');'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off)  SELECT * FROM vectors WHERE v @@ to_tsquery('simple', '(aa | bb) & (cc & dd)');
                               QUERY PLAN                               
