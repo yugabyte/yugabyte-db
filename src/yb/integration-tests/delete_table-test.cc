@@ -216,7 +216,7 @@ Status DeleteTableTest::CheckTabletTombstonedOrDeletedOnTS(
   } else {
     RaftGroupReplicaSuperBlockPB superblock_pb;
     Status s = inspect_->ReadTabletSuperBlockOnTS(index, tablet_id, &superblock_pb);
-    if (!s.IsNotFound()) {
+    if (!s.IsNotFound() && !s.IsDeleted()) {
       return STATUS(IllegalState, "Found unexpected superblock for tablet " + tablet_id);
     }
   }
@@ -356,7 +356,7 @@ Result<bool> DeleteTableTest::VerifyTableCompletelyDeleted(
     RETURN_NOT_OK(cluster_->GetMasterProxy<master::MasterClientProxy>(
         leader_idx).GetTabletLocations(req, &resp, &rpc));
 
-    if (resp.errors(0).ShortDebugString().find("code: NOT_FOUND") == std::string::npos) {
+    if (resp.errors(0).ShortDebugString().find("code: DELETED") == std::string::npos) {
       return false;
     }
   }

@@ -27,7 +27,7 @@ INSERT INTO vectors (v) VALUES ('a b c i k'), ('abc j k');
 SELECT $$
 :P UPDATE vectors SET v = ts_delete(v, '{c, j}'::text[]) WHERE v @@ 'k';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT v FROM vectors WHERE v @@ 'k' ORDER BY i;
 DELETE FROM vectors WHERE v @@ 'k';
 -- jsonb
@@ -35,7 +35,7 @@ INSERT INTO jsonbs (j) VALUES ('[4,7,"sh",3,"du"]'), ('{"du":[7,9], "sh":13}');
 SELECT $$
 :P UPDATE jsonbs SET j = j - 'sh' WHERE j ? 'du';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT j FROM jsonbs WHERE j ? 'du' ORDER BY i;
 DELETE FROM jsonbs WHERE j ? 'du';
 
@@ -85,11 +85,11 @@ INSERT INTO vectors (v) VALUES
 SELECT $$
 :P SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P DELETE FROM vectors WHERE v @@ E'\x7F:*';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 --
 -- Prefix match with other odd characters.
@@ -142,17 +142,17 @@ DELETE FROM vectors WHERE v @@ E'\x7F:*';
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ 'a & bb';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- AND between '@@' ops
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ 'a' and v @@ 'bb';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- INTERSECT between '@@' selects
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ 'a' INTERSECT SELECT * FROM vectors WHERE v @@ 'bb';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 --
 -- Three ways to query tsvectors containing at least one of two specific words.
@@ -162,17 +162,17 @@ $$ AS query \gset
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ 'a | c';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- OR between '@@' ops
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ 'a' or v @@ 'c';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- UNION between '@@' selects
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ 'a' UNION SELECT * FROM vectors WHERE v @@ 'c';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 --
 -- Complicated query
@@ -182,12 +182,12 @@ $$ AS query \gset
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ '((a & e) | (ccc & ccd)) & o';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- Top-level disjunction where the last item is complex
 SELECT $$
 :P SELECT * FROM vectors WHERE v @@ 'o & ((a & e) | (ccc & ccd))';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- TODO(jason): add top-level conjunction tests
 
 --
@@ -250,7 +250,7 @@ INSERT INTO garrays (a) VALUES ('{22, 33}'), ('{33, 11}');
 SELECT $$
 :P SELECT * FROM garrays WHERE a && '{11}';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 -- Cleanup
 DROP TABLE garrays;
 DROP TABLEGROUP g;

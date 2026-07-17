@@ -26,7 +26,7 @@ properties:
     example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
   table_type:
     description: Type of tables being replicated.
-    $ref: "./TableType.yaml"
+    $ref: "./XClusterTableType.yaml"
   type:
     description: DR config type.
     type: string

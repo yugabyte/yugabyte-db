@@ -939,14 +939,12 @@ INSERT INTO pk_nn VALUES (5, 10, 20), (105, 110, 120);
 -- All plans should USE single-row.  Setting NOT NULL column b to NULL should
 -- fail on either partition; updating only 'a' should succeed without checking
 -- the unmodified column b.
-\set Pnext :iter_Q2
 \set Q1 'b = NULL'
 \set Q2 'a = 11'
-\set Qnext :iter_R2
 \set R1 '5'
 \set R2 '105'
 \set query ':P UPDATE pk_nn SET :Q WHERE k = :R;'
-\i :iter_P2
+\i :run_query
 SELECT * FROM pk_nn ORDER BY k;
 -- Same misfire via dropped columns: CREATE TABLE ... PARTITION OF does not
 -- materialize the parent's dropped columns, so the leaf's attribute numbers
@@ -956,10 +954,8 @@ CREATE TABLE pk_nn_drop (k int, dropme int, a int, b int NOT NULL,
 ALTER TABLE pk_nn_drop DROP COLUMN dropme;
 CREATE TABLE pk_nn_drop1 PARTITION OF pk_nn_drop FOR VALUES FROM (1) TO (100);
 INSERT INTO pk_nn_drop VALUES (5, 10, 20);
-\set Qnext :iter_query
 \set query ':P UPDATE pk_nn_drop SET :Q WHERE k = 5;'
-\i :iter_P2
-\set Pnext :iter_query
+\i :run_query
 SELECT * FROM pk_nn_drop ORDER BY k;
 
 -- Test single-shard transactions in a partition table.

@@ -1,0 +1,7 @@
+title: RestoreKeyspacePagedQuerySpec
+description: |
+  Paged list of keyspaces for a universe restore.
+  Rows are ordered by create time. The order is descending by default.
+type: object
+allOf:
+  - $ref: "./PaginationSpec.yaml"

@@ -15,32 +15,32 @@ INSERT INTO t (SELECT 10, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 -- Start with CROSS/INNER/LEFT/RIGHT/FULL joins.
 -- CROSS JOIN
 \set query ':P SELECT DISTINCT t1.r1, t2.r1 FROM t t1 CROSS JOIN t t2;'
-\i :iter_P2
+\i :run_query
 -- INNER JOIN
 \set query ':P SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 USING (r1);'
-\i :iter_P2
+\i :run_query
 -- In the Distinct Index Scan of t2, there are 7 rows, not 6, because the tablet split ends up with 1, 1 represented in two tablets.
 \set query ':P SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 ON t1.r1 = t2.r2;'
-\i :iter_P2
+\i :run_query
 -- LEFT JOIN
 \set query ':P SELECT DISTINCT t1.r1 FROM t t1 LEFT JOIN t t2 ON t1.r1 = t2.r2;'
-\i :iter_P2
+\i :run_query
 -- RIGHT JOIN
 \set query ':P SELECT DISTINCT t1.r1 FROM t t1 RIGHT JOIN t t2 ON t1.r1 = t2.r2;'
-\i :iter_P2
+\i :run_query
 -- FULL JOIN
 \set query ':P SELECT DISTINCT t1.r1, t2.r2 FROM t t1 FULL JOIN t t2 ON t1.r1 = t2.r2;'
-\i :iter_P2
+\i :run_query
 
 -- Now, let's test various join predicate types.
 -- Range predicates.
 \set query ':P SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT DISTINCT t2.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;'
-\i :iter_P2
+\i :run_query
 -- "DISTINCT" Semijoin. These queries could be optimized by extending our distinctness analysis.
 \set query ':P SELECT DISTINCT r1 FROM t WHERE r2 IN (SELECT r1 FROM t);'
-\i :iter_P2
+\i :run_query
 -- Join clauses have volatile functions. Do not use a Distinct Index Scan in this case.
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 + RANDOM() < t2.r1 + RANDOM();
 SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 + RANDOM() < t2.r1 + RANDOM();
@@ -52,39 +52,37 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 \set Q2 '/*+HashJoin(t1 t2)*/'
 \set Q3 '/*+Nestloop(t1 t2)*/'
 \set query ':P :Q SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);'
-\set Pnext :iter_Q3
-\i :iter_P2
+\i :run_query
 
 -- Test queries for whether they need a HashAggregate or a Unique node on top of the join plan.
 -- Pushdown distinct only into the relation which has no volatile clause.
 -- Require additional distinctification on top when distinct is pushed down to only one of the relations.
 \set query ':P SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 = t2.r2 WHERE t1.r1 + RANDOM() < 5;'
-\set Pnext :iter_query
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) JOIN t t3 USING (r1) WHERE t3.r1 + RANDOM() < 5;'
-\i :iter_P2
+\i :run_query
 -- Target list order does not matter.
 -- In vanilla postgres, the order of the target list matters, i.e. SELECT DISTINCT t1.r1, t2.r1 does not generate the same plan as SELECT DISTINCT t2.r1, t1.r1.
 -- Original order.
 \set query ':P SELECT DISTINCT t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);'
-\i :iter_P2
+\i :run_query
 -- Permuted order.
 \set query ':P SELECT DISTINCT t2.r1, t1.r1 FROM t t1 JOIN t t2 USING (r1);'
-\i :iter_P2
+\i :run_query
 -- Original order.
 \set query ':P SELECT DISTINCT t1.r1, t2.r1, t2.r2 FROM t t1 JOIN t t2 USING (r1);'
-\i :iter_P2
+\i :run_query
 -- Permuted order.
 \set query ':P SELECT DISTINCT t2.r2, t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);'
-\i :iter_P2
+\i :run_query
 -- t1.r2 = t2.r2 and t2.r2 = 2 => t1.r2 = 2.
 -- Moreover, constants are excluded from the prefix, so r2 is not in either distinct index scan prefix.
 \set query ':P SELECT DISTINCT t1.r2 FROM t t1 JOIN t t2 USING (r2) WHERE t2.r2 = 2;'
-\i :iter_P2
+\i :run_query
 -- Check constants for distinctness as well.
 \set Q1 '/*+ Seqscan(t1) */'
 \set query ':P :Q1 SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) WHERE t2.r1 = 1;'
-\i :iter_P2
+\i :run_query
 
 -- Try a hash partitioned table now.
 CREATE TABLE th(h1 INT, h2 INT, r1 INT, r2 INT, v INT, PRIMARY KEY((h1, h2) HASH, r1 ASC, r2 ASC)) SPLIT INTO 16 TABLETS;
@@ -96,15 +94,14 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
 \set Q2 '/*+HashJoin(t1 t2)*/'
 \set Q3 '/*+Nestloop(t1 t2)*/'
 \set query ':P :Q SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);'
-\set Pnext :iter_Q3
-\i :iter_P2
+\i :run_query
 
 -- Try join across hash and range partitioned tables.
 \set Q1 '/*+MergeJoin(th t)*/'
 \set Q2 '/*+HashJoin(th t)*/'
 \set Q3 '/*+Nestloop(th t)*/'
 \set query ':P :Q SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;'
-\i :iter_P2
+\i :run_query
 
 DROP TABLE th;
 
@@ -213,8 +210,7 @@ ANALYZE t2;
 
 \set Q1 '/*+ Set(enable_mergejoin off) Set(enable_hashjoin off) Set(enable_material off) */'
 \set query ':P :Q1 SELECT DISTINCT t2.pk FROM t1 JOIN t2 ON t1.col_int_key = t2.col_int WHERE t2.pk < 5;'
-\set Pnext :iter_query
-\i :iter_P2
+\i :run_query
 
 DROP TABLE t1;
 DROP TABLE t2;
