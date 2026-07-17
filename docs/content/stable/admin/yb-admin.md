@@ -47,7 +47,7 @@ yb-admin \
 * `certs_dir_name`: The directory with certificates to use for secure server connections. Default is `""`.
 
   To connect to a cluster with TLS enabled, you must include the `-certs_dir_name` flag with the directory location where the root certificate is located.
-* `flagfile`: The path to a file containing flags to pass to yb-admin. Use this flag with the YB-Master's `server.conf` configuration file to automatically pick up `master_addresses` and `certs_dir`, avoiding manual flag entry. For example:
+* `flagfile`: The path to a file containing flags to pass to yb-admin. Use this flag with the YB-Master's `server.conf` configuration file to automatically pick up `master_addresses` and `certs_dir_name`, avoiding manual flag entry. For example:
 
   ```sh
   ./bin/yb-admin --flagfile master/conf/server.conf list_all_masters
