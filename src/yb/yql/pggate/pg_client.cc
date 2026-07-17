@@ -282,9 +282,23 @@ struct ResponseReadyTraits;
 std::string_view GetSharedMemSpanName(tserver::PgSharedExchangeReqType req_type) {
   switch (req_type) {
     case tserver::PgSharedExchangeReqType::PERFORM:
-      return "shmem req yb.tserver.PgClientService.Perform";
+      return "shmem yb.tserver.PgClientService.Perform";
     case tserver::PgSharedExchangeReqType::ACQUIRE_OBJECT_LOCK:
-      return "shmem req yb.tserver.PgClientService.AcquireObjectLock";
+      return "shmem yb.tserver.PgClientService.AcquireObjectLock";
+    case tserver::PgSharedExchangeReqType_INT_MIN_SENTINEL_DO_NOT_USE_: [[fallthrough]];
+    case tserver::PgSharedExchangeReqType_INT_MAX_SENTINEL_DO_NOT_USE_: break;
+  }
+  FATAL_INVALID_ENUM_VALUE(tserver::PgSharedExchangeReqType, req_type);
+}
+
+// Method name attribute for the outbound shared-memory span, mirroring rpc.method on RPC spans (the
+// service is always PgClientService). Paired with the tserver's SharedMemMethodName.
+const char* GetSharedMemMethodName(tserver::PgSharedExchangeReqType req_type) {
+  switch (req_type) {
+    case tserver::PgSharedExchangeReqType::PERFORM:
+      return "Perform";
+    case tserver::PgSharedExchangeReqType::ACQUIRE_OBJECT_LOCK:
+      return "AcquireObjectLock";
     case tserver::PgSharedExchangeReqType_INT_MIN_SENTINEL_DO_NOT_USE_: [[fallthrough]];
     case tserver::PgSharedExchangeReqType_INT_MAX_SENTINEL_DO_NOT_USE_: break;
   }
@@ -428,14 +442,19 @@ struct PgClientData : public FetchBigDataCallback {
   rpc::CallData big_call_data GUARDED_BY(exchange_mutex);
   // Only the owning future accesses this span while starting or finishing the shared-memory
   // request. Exchange callbacks do not touch it, so it does not need exchange_mutex protection.
-  opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> otel_span;
+  dist_trace::SpanWithScopePtr otel_span;
 
   PgClientData(const LWReqPB& req_, ThreadSafeArena* arena_) : req(req_), resp(arena_) {}
 
   void StartSharedMemorySpan() {
-    if (dist_trace::HasActiveContext()) {
-      otel_span = dist_trace::StartSpan(
-          GetSharedMemSpanName(kSharedExchangeRequestType), dist_trace::GetPendingRpcAttrPairs());
+    otel_span = dist_trace::StartClientSpanWithScope(
+        GetSharedMemSpanName(kSharedExchangeRequestType));
+    if (otel_span) {
+      // Mirror the attributes the RPC outbound span carries (outbound_call.cc).
+      otel_span->SetAttribute("rpc.system", "outbound_shmem");
+      otel_span->SetAttribute("rpc.service", "yb.tserver.PgClientService");
+      otel_span->SetAttribute("rpc.method", GetSharedMemMethodName(kSharedExchangeRequestType));
+      otel_span->DropScope();
     }
   }
 
@@ -1106,9 +1125,16 @@ class PgClient::Impl : public BigDataFetcher {
   ResultFuture<Data> PrepareAndSend(Method method, Args&&... args) {
     auto data = std::make_shared<Data>(std::forward<Args>(args)...);
     if (session_shared_mem_ && session_shared_mem_->exchange().ReadyToSend()) {
+      // Start the outbound shared-memory span before sizing the request.
+      data->StartSharedMemorySpan();
       ash::MetadataSerializer metadata(rpc::MetadataSerializationMode::kWriteOnZero);
+      ash::TraceContextSerializer trace_context;
+      if (data->otel_span) {
+        trace_context.SetTraceContext(data->otel_span->GetContext());
+      }
       constexpr size_t kHeaderSize = sizeof(uint8_t) + sizeof(uint64_t);
       const size_t kMetadataSize = metadata.SerializedSize();
+      const size_t kTraceContextSize = trace_context.SerializedSize();
       auto& exchange = session_shared_mem_->exchange();
       // Sanity check: the exchange must not be reused while a big shared memory response from a
       // previous request has been announced but not yet loaded and released. Otherwise the tserver
@@ -1116,9 +1142,9 @@ class PgClient::Impl : public BigDataFetcher {
       // still intend to load it (see PgClientSession::ReleaseAbandonedBigSharedMemSegment).
       LOG_IF(DFATAL, big_shared_memory_response_pending_)
           << "Reusing shared exchange while a big shared memory response is still pending";
-      auto out = exchange.Obtain(kHeaderSize + kMetadataSize + data->req.SerializedSize());
+      auto out = exchange.Obtain(
+          kHeaderSize + kMetadataSize + kTraceContextSize + data->req.SerializedSize());
       if (out) {
-        data->StartSharedMemorySpan();
         const auto [rpc_deadline, rpc_timeout] =
             timeouts_.GetDeadlineAndTimeoutForRPC<typename Data::RequestType>();
         *reinterpret_cast<uint8_t *>(out) = Data::kSharedExchangeRequestType;
@@ -1126,6 +1152,7 @@ class PgClient::Impl : public BigDataFetcher {
         LittleEndian::Store64(out, rpc_timeout.ToMilliseconds());
         out += sizeof(uint64_t);
         out = pointer_cast<std::byte*>(metadata.SerializeToArray(to_uchar_ptr(out)));
+        out = pointer_cast<std::byte*>(trace_context.SerializeToArray(to_uchar_ptr(out)));
         const auto size = data->req.SerializedSize();
         auto* end = pointer_cast<std::byte*>(
             data->req.SerializeToArray(pointer_cast<uint8_t*>(out)));
@@ -1145,6 +1172,8 @@ class PgClient::Impl : public BigDataFetcher {
         data->SetupExchange(&exchange, this, rpc_deadline);
         return ExchangeFuture<Data>(std::move(data));
       }
+      // End the shared-memory span started above so it is not leaked.
+      data->EndSharedMemorySpan(Status::OK());
     }
     data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
     method(
@@ -1197,8 +1226,30 @@ class PgClient::Impl : public BigDataFetcher {
     if (tablespace_oid) {
       lock_oid.set_tablespace_oid(*tablespace_oid);
     }
-    req.set_lock_type(static_cast<tserver::ObjectLockMode>(mode));
+    const auto lock_type = static_cast<tserver::ObjectLockMode>(mode);
+    req.set_lock_type(lock_type);
     req.set_is_session_lock(is_session_lock);
+
+    // Publish the details of AcquireObjectLock.
+    if (dist_trace::HasActiveContext()) {
+      dist_trace::AddPendingRpcStringAttr(
+          "rpc.object_lock.database_oid", std::to_string(lock_id.db_oid));
+      dist_trace::AddPendingRpcStringAttr(
+          "rpc.object_lock.relation_oid", std::to_string(lock_id.relation_oid));
+      dist_trace::AddPendingRpcStringAttr(
+          "rpc.object_lock.object_oid", std::to_string(lock_id.object_oid));
+      dist_trace::AddPendingRpcStringAttr(
+          "rpc.object_lock.object_sub_oid", std::to_string(lock_id.object_sub_oid));
+      dist_trace::AddPendingRpcStringAttr(
+          "rpc.object_lock.lock_mode", tserver::ObjectLockMode_Name(lock_type));
+      dist_trace::AddPendingRpcStringAttr(
+          "rpc.object_lock.is_session_lock", is_session_lock ? "true" : "false");
+      if (tablespace_oid) {
+        dist_trace::AddPendingRpcStringAttr(
+            "rpc.object_lock.tablespace_oid", std::to_string(*tablespace_oid));
+      }
+    }
+
     auto method = [](auto* proxy, const auto& req, auto* resp, auto* controller, auto callback) {
       proxy->AcquireObjectLockAsync(req, resp, controller, std::move(callback));
     };

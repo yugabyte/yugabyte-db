@@ -96,6 +96,7 @@ OperationDriver::OperationDriver(OperationTracker *operation_tracker,
       preparer_(preparer),
       trace_(Trace::MaybeGetNewTraceForParent(Trace::CurrentTrace())),
       wait_state_(ash::WaitStateInfo::CurrentWaitState()),
+      otel_parent_(dist_trace::GetActiveSpanContext()),
       start_time_(MonoTime::Now()),
       replication_state_(NOT_REPLICATING),
       prepare_state_(NOT_PREPARED) {
@@ -406,6 +407,10 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
   ADOPT_TRACE(trace());
   ADOPT_WAIT_STATE(wait_state());
   SCOPED_WAIT_STATUS(OnCpu_Active);
+
+  // Re-activate the submitting thread's trace on this apply thread so RPCs the operation issues
+  // during apply (e.g. APPLYING/APPLIED UpdateTransaction RPCs) nest under it.
+  auto otel_scope = dist_trace::ActivateParentScope(otel_parent_);
 
 #ifndef NDEBUG
   {

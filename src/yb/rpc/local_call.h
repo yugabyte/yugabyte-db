@@ -50,6 +50,16 @@ class LocalOutboundCall : public OutboundCall {
     return req_;
   }
 
+  // Span context of this outbound call's trace span, to parent the matching local inbound span
+  // (local calls carry no wire header). nullopt when tracing is off. Safe after the scope is
+  // dropped.
+  std::optional<opentelemetry::trace::SpanContext> otel_span_context() const {
+    if (const auto& span = otel_span(); span) {
+      return span->GetContext();
+    }
+    return std::nullopt;
+  }
+
   bool is_local() const override { return true; }
 
   ThreadPoolTag pool_tag() const;
@@ -134,6 +144,7 @@ auto HandleCall(InboundCallPtr call, F f) {
       f(req, resp, std::move(rpc_context));
     }
   }
+  yb_call->DropServerSpanScope();
 }
 
 class LocalYBInboundCallTracker : public InboundCall::CallProcessedListener {

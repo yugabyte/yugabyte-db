@@ -114,7 +114,9 @@ RetryingRpcTask::RetryingRpcTask(
     : master_(master),
       callback_pool_(callback_pool),
       async_task_throttler_(async_task_throttler),
-      deadline_(UnresponsiveDeadline()) {}
+      deadline_(UnresponsiveDeadline()),
+      // Snapshot the active trace context on the creating thread.
+      trace_parent_(dist_trace::GetActiveSpanContext()) {}
 
 RetryingRpcTask::~RetryingRpcTask() {
   auto state = state_.load(std::memory_order_acquire);
@@ -130,6 +132,9 @@ std::string RetryingRpcTask::LogPrefix() const {
 // Send the subclass RPC request.
 Status RetryingRpcTask::Run() {
   VLOG_WITH_PREFIX(1) << "Start Running";
+  // Re-establish the creating thread's trace context.
+  auto trace_scope = dist_trace::ActivateParentScope(trace_parent_);
+
   attempt_start_ts_ = MonoTime::Now();
   ++attempt_;
   VLOG_WITH_PREFIX(1) << "Start Running, attempt: " << attempt_;

@@ -109,12 +109,23 @@ void Erase(Container* container, const Key& key) {
 }
 
 void PublishPendingRpcTableInfo(
+    const PgsqlOps& operations,
     const std::vector<yb::PgObjectId>& relations,
     const std::unordered_map<yb::PgObjectId, PgTableDescPtr, yb::PgObjectIdHash>& table_cache) {
   if (!dist_trace::HasActiveContext() || relations.empty()) {
     return;
   }
-  dist_trace::ClearPendingRpcAttrs();
+
+  // Publish the details of Perform RPC.
+  size_t reads = 0;
+  size_t writes = 0;
+  for (const auto& op : operations) {
+    (op->is_read() ? reads : writes)++;
+  }
+  dist_trace::AddPendingRpcStringAttr("rpc.perform.op_count", std::to_string(operations.size()));
+  dist_trace::AddPendingRpcStringAttr("rpc.perform.reads", std::to_string(reads));
+  dist_trace::AddPendingRpcStringAttr("rpc.perform.writes", std::to_string(writes));
+
   std::set<PgObjectId> unique_relations(relations.begin(), relations.end());
   std::string joined_names;
   for (const auto& relation : unique_relations) {
@@ -995,7 +1006,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   std::move(ops).MoveTo(operations, relations);
   // Must run before `relations` is moved into PerformFuture below; otherwise the vector is
   // empty and no table info gets published for the upcoming RPC client span.
-  PublishPendingRpcTableInfo(relations, table_cache_);
+  PublishPendingRpcTableInfo(operations, relations, table_cache_);
   return PerformFuture(
       pg_client_.PerformAsync(&options, std::move(operations), metrics_),
       std::move(relations));
