@@ -2285,6 +2285,20 @@ class PgVectorIndexSingleServerTest
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexSingleServerTest);
 
+// Graceful restart without explicit flushes. The index is created on an empty table, so all
+// vectors live in the vector LSM mutable chunk at shutdown time. See issue #32691.
+TEST_P(PgVectorIndexSingleServerTest, GracefulRestart) {
+  constexpr size_t kNumRows = 64;
+  constexpr size_t kQueryLimit = 5;
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+}
+
 // Reproduces a failure seen in pgvector stress tests: an ANN query whose read time precedes
 // a concurrent DELETE fails with "Vector not found". PgsqlVectorFilter checks reverse
 // mappings at the statement read time and accepts the deleted row, while

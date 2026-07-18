@@ -23,7 +23,7 @@ class TServerMetricsHeartbeatDataProvider : public PeriodicalHeartbeatDataProvid
   explicit TServerMetricsHeartbeatDataProvider(TabletServer* server);
 
  private:
-  void DoAddData(bool needs_full_tablet_report, master::TSHeartbeatRequestPB* req) override;
+  Status DoAddData(bool needs_full_tablet_report, master::TSHeartbeatRequestPB* req) override;
   MonoDelta Period() const override;
 
   uint64_t CalculateUptime();
