@@ -55,10 +55,20 @@ namespace {
 
 int CompareDecimalEncoding(const Slice& lhs, const Slice& rhs) {
   // Specials use reserved sentinels that are not byte-ordered relative to finite encodings.
-  // Decode and use numerical CompareTo (PostgreSQL order).
-  if (Decimal::IsComparableSpecialEncoding(lhs) ||
-      Decimal::IsComparableSpecialEncoding(rhs)) {
-    return util::DecimalFromComparable(lhs).CompareTo(util::DecimalFromComparable(rhs));
+  // Compare sentinels directly so we never decode a finite decimal on this hot path.
+  // Sentinel order ('A' < 'N' < 'P') matches PostgreSQL: -Infinity < Infinity < NaN.
+  const bool lhs_special = Decimal::IsComparableSpecialEncoding(lhs);
+  const bool rhs_special = Decimal::IsComparableSpecialEncoding(rhs);
+
+  if (lhs_special && rhs_special) {
+    return OrderingToInt(static_cast<uint8_t>(lhs[0]) <=> static_cast<uint8_t>(rhs[0]));
+  }
+  if (lhs_special) {
+    // -Infinity is less than any finite; Infinity and NaN are greater.
+    return lhs[0] == util::kDecimalNegInfinitySentinel ? -1 : 1;
+  }
+  if (rhs_special) {
+    return rhs[0] == util::kDecimalNegInfinitySentinel ? 1 : -1;
   }
   // Finite comparable encodings are byte-ordered.
   return lhs.compare(rhs);
