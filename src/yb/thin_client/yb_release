@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+#
+# Copyright (c) YugabyteDB, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.  You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied.  See the License for the specific language governing permissions and limitations
+# under the License.
+#
+# yb_release for the yb_thin_client library.
+#
+# Builds a SINGLE self-contained libyb_thin_client.so via full-LTO whole-program linking -- the same
+# mechanism yb_release uses to produce the self-contained server binaries -- then packages it, the
+# C ABI header, and the version file into a tarball placed next to yb_release's release tarballs
+# ($YB_SRC_ROOT/build), named with the version/commit/architecture. Tarball layout:
+#   libyb_thin_client-<version>-<commit>-<build_type>-<system>-<arch>/
+#     lib/libyb_thin_client.so    include/yb_thin_client.h    version.txt
+#
+# The .so statically links the entire PgClientServiceProxy closure and depends only on system
+# libraries (libc, libpthread, ...); it exports only the ybthin_* C ABI and uses the standard C
+# library allocator (tcmalloc is disabled -- see --no-tcmalloc below) so it does not interpose the
+# allocator of the process that loads it.
+#
+# Note: the whole-program LTO link requires ~13 GiB of free RAM (same gate as yb_release's server
+# link); the script waits for it before linking.
+#
+# usage: src/yb/thin_client/yb_release [build_type]     (build_type defaults to "release")
+#        --destination <dir>   also copy the tarball into <dir> (like yb_release --destination)
+
+set -euo pipefail
+
+script_dir=$( cd "${BASH_SOURCE%/*}" && pwd )
+yb_src_root=$( cd "$script_dir/../../.." && pwd )
+# shellcheck source=build-support/common-build-env.sh
+. "$yb_src_root/build-support/common-build-env.sh"
+
+build_type="release"
+destination=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --destination) destination=$2; shift 2 ;;
+    --destination=*) destination=${1#*=}; shift ;;
+    -h|--help) grep '^#' "$BASH_SOURCE" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) build_type=$1; shift ;;
+  esac
+done
+validate_build_type "$build_type"
+
+activate_virtualenv
+set_pythonpath
+
+readonly lib_name="libyb_thin_client.so"
+readonly cmake_target="yb_thin_client"
+
+# Configure the full-LTO tree, then build and link ONLY the client's real link closure. We do NOT
+# build the yb_thin_client .so *target*: in ninja that target carries order-only edges onto the
+# whole YugabyteDB server (master/tablet/docdb) and the PostgreSQL backend, which drags in ~14000
+# files never linked into the client. Instead we ask the whole-program linker which object files
+# the client actually links, and compile just those (compiling an object never triggers the
+# order-only .so edges), cutting the build to a few hundred objects plus PostgreSQL's libpgcommon.
+#
+# --no-tcmalloc: YugabyteDB servers link Google tcmalloc as the process allocator, but this .so is
+# loaded into a foreign process (which owns its allocator), so we build the closure with tcmalloc
+# disabled -- the code is #ifdef-guarded to fall back to the standard C library malloc/free.
+# --force-run-cmake so --no-tcmalloc is (re)applied even if the tree was configured with it enabled.
+# --cmake-only: just configure here; we compile the closure below.
+log "Configuring the full-LTO tree (no tcmalloc, $build_type)"
+build_log=$( mktemp )
+YB_LINKING_TYPE=full-lto YB_BUILD_TESTS=false \
+  "$yb_src_root/yb_build.sh" "$build_type" --no-tcmalloc --force-run-cmake --cmake-only \
+  --skip-java 2>&1 | tee "$build_log"
+build_root=$( grep -E '^Build directory' "$build_log" | tail -1 | sed -E 's/^[^:]*:[[:space:]]*//' )
+[[ -d "$build_root" ]] || fatal "Could not determine the full-LTO build root from the build output"
+log "Full-LTO build root: $build_root"
+
+lto_out="$build_root/lib/$lib_name"
+
+# Emit the whole-program link command (bitcode objects + static libraries, engine libs excluded)
+# without running the linker. This needs only the configured build graph, not built objects
+# (--incomplete-build), and its output names every object the client links -- our build work-list.
+log "Computing the whole-program link command (and the real object closure) for $lib_name"
+"$YB_SCRIPT_PATH_DEPENDENCY_GRAPH" \
+  --build-root="$build_root" \
+  --file-regex="^.*/libyb_thin_client[.]so\$" \
+  --incomplete-build \
+  --never-run-build \
+  --run-linker=false \
+  --lto-output-path="$lto_out" \
+  link-whole-program
+
+link_args_file="${lto_out}_lto_link_cmd_args.txt"
+[[ -f "$link_args_file" ]] || fatal "Whole-program link did not emit args file: $link_args_file"
+
+# Compile just the closure: every object named in the link command, plus the PostgreSQL static libs
+# whose members the client links (libpgcommon/libpgport are byproducts of the monolithic postgres
+# target, so we request the archives, not the individual objects). -k 0 keeps going if a non-closure
+# byproduct trips the --no-undefined check that --no-tcmalloc turns on.
+log "Building the client's real link closure only (not the full server/PG tree)"
+mapfile -t closure_objs < <(
+  grep -oE '[^ ]+\.cc\.o' "$link_args_file" | grep -F "$build_root/" |
+    sed "s#${build_root}/##" | sort -u )
+[[ ${#closure_objs[@]} -gt 0 ]] || fatal "Could not extract the object closure from $link_args_file"
+pg_targets=()
+grep -qE 'postgres_build/src/common/' "$link_args_file" && \
+  pg_targets+=( "postgres_build/src/common/libpgcommon.a" )
+grep -qE 'postgres_build/src/port/' "$link_args_file" && \
+  pg_targets+=( "postgres_build/src/port/libpgport.a" )
+log "Closure: ${#closure_objs[@]} objects + ${#pg_targets[@]} PostgreSQL static lib(s)"
+( cd "$build_root" && ninja -k 0 "${closure_objs[@]}" "${pg_targets[@]}" ) || \
+  log "note: a non-closure byproduct failed to link (expected with --no-tcmalloc); continuing"
+
+# Export only the ybthin_* ABI; everything else (protobuf/absl/OpenSSL/... symbols) is localized so
+# the shim never interposes or collides with symbols in the host process.
+version_script=$( mktemp )
+cat >"$version_script" <<'VS'
+YBTHIN {
+  global:
+    ybthin_*;
+  local:
+    *;
+};
+VS
+
+log "Linking $lib_name (single self-contained object)"
+# The link args use paths relative to the build root, so run from there.
+mapfile -t link_args < "$link_args_file"
+( cd "$build_root" &&
+  "${link_args[@]}" -Wl,--gc-sections -Wl,--version-script="$version_script" -o "$lto_out" )
+strip --strip-all "$lto_out"
+
+# Package the .so, the C ABI header, and the version file into a tarball named like a yb_release
+# tar, and drop it where yb_release drops its tars ($YB_SRC_ROOT/build).
+version=$( tr -d '[:space:]' < "$yb_src_root/version.txt" 2>/dev/null || echo "0.0.0.0" )
+commit=$( cd "$yb_src_root" && git rev-parse --short HEAD 2>/dev/null || echo unknown )
+arch=$( uname -m )
+system=$( uname -s | tr '[:upper:]' '[:lower:]' )
+pkg_name="libyb_thin_client-${version}-${commit}-${build_type}-${system}-${arch}"
+
+stage=$( mktemp -d )
+pkg_dir="$stage/$pkg_name"
+mkdir -p "$pkg_dir/lib" "$pkg_dir/include"
+cp "$lto_out" "$pkg_dir/lib/$lib_name"
+cp "$script_dir/yb_thin_client.h" "$pkg_dir/include/yb_thin_client.h"
+cp "$yb_src_root/version.txt" "$pkg_dir/version.txt"
+
+release_dir="$yb_src_root/build"
+mkdir -p "$release_dir"
+tarball="$release_dir/${pkg_name}.tar.gz"
+tar -czf "$tarball" -C "$stage" "$pkg_name"
+rm -rf "$stage"
+log "Packaged: $tarball ($( du -h "$tarball" | cut -f1 ))"
+
+if [[ -n "$destination" ]]; then
+  [[ -d "$destination" ]] || fatal "Destination $destination is not a directory"
+  cp "$tarball" "$destination/"
+  log "Copied to $destination/${pkg_name}.tar.gz"
+fi

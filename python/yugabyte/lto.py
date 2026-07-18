@@ -676,7 +676,10 @@ def link_whole_program(
                          'have been invoked. Perhaps yb_build.sh should be invoked with '
                          'the --force-run-cmake argument.')
 
-    wait_for_free_memory(required_mem_gib=13, timeout_minutes=20)
+    # Only the actual link consumes the large amount of memory LTO requires; merely emitting the
+    # link command (run_linker=False) does not, so don't gate that on free memory.
+    if run_linker:
+        wait_for_free_memory(required_mem_gib=13, timeout_minutes=20)
 
     initial_node_list = list(initial_nodes)
     if len(initial_node_list) != 1:
