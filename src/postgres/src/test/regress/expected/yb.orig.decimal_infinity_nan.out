@@ -3,19 +3,19 @@
 --
 -- Hash codes for specials (ASC DocDB / yb_hash_code payload sentinels).
 SELECT yb_hash_code('-Infinity'::numeric) AS neg_inf_hash;
- neg_inf_hash
+ neg_inf_hash 
 --------------
         44013
 (1 row)
 
 SELECT yb_hash_code('Infinity'::numeric) AS pos_inf_hash;
- pos_inf_hash
+ pos_inf_hash 
 --------------
         12479
 (1 row)
 
 SELECT yb_hash_code('NaN'::numeric) AS nan_hash;
- nan_hash
+ nan_hash 
 ----------
      4717
 (1 row)
@@ -30,7 +30,7 @@ INSERT INTO dec_special_pk VALUES
   ('Infinity', 5),
   ('NaN', 6);
 SELECT k, v FROM dec_special_pk ORDER BY k;
-     k     | v
+     k     | v 
 -----------+---
  -Infinity | 1
         -1 | 2
@@ -44,13 +44,13 @@ SELECT k, v FROM dec_special_pk ORDER BY k;
 INSERT INTO dec_special_pk VALUES ('NaN', 7); -- error
 ERROR:  duplicate key value violates unique constraint "dec_special_pk_pkey"
 SELECT k, v FROM dec_special_pk WHERE k = 'NaN';
-  k  | v
+  k  | v 
 -----+---
  NaN | 6
 (1 row)
 
 SELECT k, v FROM dec_special_pk WHERE yb_hash_code(k) = yb_hash_code('NaN'::numeric);
-  k  | v
+  k  | v 
 -----+---
  NaN | 6
 (1 row)
@@ -64,7 +64,7 @@ INSERT INTO dec_special_idx VALUES
   (3, 0),
   (4, '-Infinity');
 SELECT k, d FROM dec_special_idx ORDER BY d DESC, k;
- k |     d
+ k |     d     
 ---+-----------
  1 |       NaN
  2 |  Infinity
