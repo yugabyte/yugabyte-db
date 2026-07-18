@@ -11,6 +11,9 @@ import api.v2.models.RestoreKeyspacePagedResp;
 import api.v2.models.RestorePagedQuerySpec;
 import api.v2.models.RestorePagedResp;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import java.util.List;
 import java.util.UUID;
 import play.mvc.Http;
@@ -20,7 +23,12 @@ public class BackupAndRestoreApiControllerImp extends BackupAndRestoreApiControl
   private final BackupAndRestoreHandler handler;
 
   @Inject
-  public BackupAndRestoreApiControllerImp(BackupAndRestoreHandler handler) {
+  public BackupAndRestoreApiControllerImp(
+      AuditService auditService,
+      Config config,
+      GFlagsAuditHandler gFlagsAuditHandler,
+      BackupAndRestoreHandler handler) {
+    super(auditService, config, gFlagsAuditHandler);
     this.handler = handler;
   }
 

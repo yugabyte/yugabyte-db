@@ -10,19 +10,26 @@ import com.yugabyte.yw.commissioner.tasks.CreateYbaBackup;
 import com.yugabyte.yw.commissioner.tasks.RestoreYbaBackup;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.UUID;
-import play.mvc.Http;
 
 public class IsolatedBackupHandler extends ApiControllerUtils {
 
-  @Inject private Commissioner commissioner;
-  @Inject private ConfigHelper configHelper;
+  private final Commissioner commissioner;
+  private final ConfigHelper configHelper;
 
-  public YBATask createYbaBackup(Http.Request request, UUID cUUID, IsolatedBackupCreateSpec spec)
-      throws Exception {
+  @Inject
+  public IsolatedBackupHandler(
+      AuditService auditService, Commissioner commissioner, ConfigHelper configHelper) {
+    super(auditService);
+    this.commissioner = commissioner;
+    this.configHelper = configHelper;
+  }
+
+  public YBATask createYbaBackup(UUID cUUID, IsolatedBackupCreateSpec spec) {
     Customer customer = Customer.getOrBadRequest(cUUID);
     CreateYbaBackup.Params taskParams = new CreateYbaBackup.Params();
     taskParams.localPath = spec.getLocalDir();
@@ -38,8 +45,7 @@ public class IsolatedBackupHandler extends ApiControllerUtils {
     return new YBATask().taskUuid(taskUUID);
   }
 
-  public YBATask restoreYbaBackup(Http.Request request, UUID cUUID, IsolatedBackupRestoreSpec spec)
-      throws Exception {
+  public YBATask restoreYbaBackup(UUID cUUID, IsolatedBackupRestoreSpec spec) {
     Customer customer = Customer.getOrBadRequest(cUUID);
     RestoreYbaBackup.Params taskParams = new RestoreYbaBackup.Params();
     taskParams.localPath = spec.getLocalPath();

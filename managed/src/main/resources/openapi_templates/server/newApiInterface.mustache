@@ -3,6 +3,7 @@ package {{package}};
 {{#imports}}import {{import}};
 {{/imports}}
 
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.models.Audit;
 import api.v2.models.UniverseEditGFlags;
@@ -37,9 +38,27 @@ import {{javaxPackage}}.validation.Valid;
 {{! Yugabyte modification: extends ApiControllerUtils to inherit utility methods }}
 public abstract class {{classname}}ControllerImpInterface extends ApiControllerUtils {
   {{#useBeanValidation}}
-  @Inject private Config configuration;
+  private final Config configuration;
   {{/useBeanValidation}}
-  @Inject GFlagsAuditHandler gFlagsAuditHandler;
+  {{! Yugabyte modification: GFlagsAuditHandler is injected into every generated interface (matching the
+      previous unconditional field injection). The additionalDetails audit flag is only visible in
+      per-operation scope, so it cannot gate a class-level constructor param. }}
+  private final GFlagsAuditHandler gFlagsAuditHandler;
+
+  @Inject
+  {{#useBeanValidation}}
+  protected {{classname}}ControllerImpInterface(AuditService auditService, Config configuration, GFlagsAuditHandler gFlagsAuditHandler) {
+    super(auditService);
+    this.configuration = configuration;
+    this.gFlagsAuditHandler = gFlagsAuditHandler;
+  }
+  {{/useBeanValidation}}
+  {{^useBeanValidation}}
+  protected {{classname}}ControllerImpInterface(AuditService auditService, GFlagsAuditHandler gFlagsAuditHandler) {
+    super(auditService);
+    this.gFlagsAuditHandler = gFlagsAuditHandler;
+  }
+  {{/useBeanValidation}}
 
 {{#operation}}
   public {{#supportAsync}}CompletionStage<{{/supportAsync}}Result{{#supportAsync}}>{{/supportAsync}} {{operationId}}Http(

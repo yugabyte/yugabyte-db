@@ -44,10 +44,9 @@ import api.v2.utils.ApiControllerUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -94,11 +93,21 @@ import play.mvc.Http.Request;
 @Singleton
 @Slf4j
 public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
-  @Inject public UpgradeUniverseHandler v1Handler;
-  @Inject public Commissioner commissioner;
-  @Inject private RuntimeConfGetter confGetter;
-  @Inject private TelemetryProviderService telemetryProviderService;
-  @Inject private SoftwareUpgradeHelper softwareUpgradeHelper;
+  private final UpgradeUniverseHandler v1Handler;
+  private final RuntimeConfGetter confGetter;
+  private final TelemetryProviderService telemetryProviderService;
+
+  @Inject
+  public UniverseUpgradesManagementHandler(
+      AuditService auditService,
+      UpgradeUniverseHandler v1Handler,
+      RuntimeConfGetter confGetter,
+      TelemetryProviderService telemetryProviderService) {
+    super(auditService);
+    this.v1Handler = v1Handler;
+    this.confGetter = confGetter;
+    this.telemetryProviderService = telemetryProviderService;
+  }
 
   public YBATask editGFlags(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags editGFlags)
@@ -108,7 +117,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     // get universe from db
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
-    GFlagsUpgradeParams v1Params = null;
+    GFlagsUpgradeParams v1Params;
     if (Util.isKubernetesBasedUniverse(universe)) {
       v1Params =
           UniverseDefinitionTaskParamsMapper.INSTANCE.toKubernetesGFlagsUpgradeParams(
@@ -142,7 +151,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     UniverseSoftwareUpgradeStartMapper.INSTANCE.copyToV1SoftwareUpgradeParams(
         upgradeStart, v1Params);
 
-    UUID taskUuid = null;
+    UUID taskUuid;
     if (upgradeStart.getAllowRollback()) {
       taskUuid = v1Handler.upgradeDBVersion(v1Params, customer, universe);
     } else {
@@ -180,10 +189,8 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     Universe.getOrBadRequest(uniUUID, customer);
 
     FinalizeUpgradeInfoResponse v1Resp = v1Handler.finalizeUpgradeInfo(cUUID, uniUUID);
-    UniverseSoftwareUpgradeFinalizeInfo info =
-        UniverseSoftwareFinalizeRespMapper.INSTANCE.toV2UniverseSoftwareFinalizeInfo(v1Resp);
 
-    return info;
+    return UniverseSoftwareFinalizeRespMapper.INSTANCE.toV2UniverseSoftwareFinalizeInfo(v1Resp);
   }
 
   public YBATask startThirdPartySoftwareUpgrade(
@@ -232,8 +239,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     UUID taskUuid = v1Handler.resumeCanarySoftwareUpgrade(cUUID, uniUUID, req.getTaskUuid());
-    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
-    return ybaTask;
+    return new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
   }
 
   public UniverseSoftwareUpgradePrecheckResp precheckSoftwareUpgrade(
@@ -253,7 +259,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
       throws JsonProcessingException {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
-    UUID taskUuid = null;
+    UUID taskUuid;
     if (uniRestart == null) {
       uniRestart = new UniverseRestart();
     }
