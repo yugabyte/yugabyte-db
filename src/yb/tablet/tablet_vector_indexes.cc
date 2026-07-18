@@ -138,7 +138,9 @@ class IndexedTableReader {
 
   void Restart(Slice start_key) {
     iter_->Refresh(docdb::SeekFilter::kAll);
-    iter_->Seek(start_key);
+    // SeekTuple prepends the cotable / colocation prefix to the key, while Seek would use it as
+    // is and miss the whole colocated table region.
+    iter_->SeekTuple(start_key, docdb::UpdateFilterKey::kFalse);
   }
 
   Result<bool> FetchNext() {
@@ -556,7 +558,7 @@ Status TabletVectorIndexes::Backfill(
 }
 
 void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
-  auto list = VectorIndexesList();
+  auto list = List();
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "list: " << AsString(list);
   if (!list) {
     return;
@@ -641,10 +643,6 @@ void TabletVectorIndexes::StartShutdown() {
     return;
   }
 
-  if (!has_vector_indexes_.exchange(false)) {
-    return;
-  }
-
   {
     std::lock_guard lock(vector_indexes_mutex_);
     vector_indexes_cleanup_list_.swap(vector_indexes_list_);
@@ -723,16 +721,30 @@ VectorIndexList TabletVectorIndexes::Collect(const std::vector<TableId>& table_i
   return VectorIndexList(std::move(result));
 }
 
-VectorIndexList TabletVectorIndexes::List() const {
+Result<VectorIndexList> TabletVectorIndexes::CheckedList() const {
   if (!has_vector_indexes_.load(std::memory_order_acquire)) {
     return VectorIndexList();
   }
   SharedLock lock(vector_indexes_mutex_);
+  // StartShutdown changes the controller state before detaching the list under the mutex, so
+  // a running controller here implies an intact list.
+  if (IsShuttingDown()) {
+    return STATUS_FORMAT(ShutdownInProgress, "$0Vector indexes are shutting down", LogPrefix());
+  }
   return VectorIndexList(vector_indexes_list_);
 }
 
-bool TabletVectorIndexes::HasActiveBackfill() const {
-  auto list = List();
+VectorIndexList TabletVectorIndexes::List() const {
+  auto list = CheckedList();
+  if (!list.ok()) {
+    LOG_WITH_PREFIX(DFATAL) << "Query vector index list failed: " << list.status();
+    return VectorIndexList();
+  }
+  return std::move(*list);
+}
+
+Result<bool> TabletVectorIndexes::HasActiveBackfill() const {
+  auto list = VERIFY_RESULT(CheckedList());
   if (!list) {
     return false;
   }
@@ -883,7 +895,6 @@ void VectorIndexList::Flush() {
   if (!list_) {
     return;
   }
-  // TODO(vector_index) Check flush order between vector indexes and intents db
   for (const auto& index : *list_) {
     WARN_NOT_OK(index->Flush(), "Flush vector index");
   }

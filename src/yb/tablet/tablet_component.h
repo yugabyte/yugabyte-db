@@ -88,7 +88,7 @@ class TabletComponent {
 
   void RefreshYBMetaDataCache();
 
-  VectorIndexList VectorIndexesList() const;
+  Result<VectorIndexList> VectorIndexesList() const;
 
  private:
   Tablet& tablet_;

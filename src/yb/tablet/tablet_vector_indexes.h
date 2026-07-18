@@ -99,11 +99,21 @@ class TabletVectorIndexes :
   VectorIndexList Collect(
       const std::vector<TableId>& table_ids) EXCLUDES(vector_indexes_mutex_);
 
+  // Fails with ShutdownInProgress after shutdown was started. Should be used by callers that
+  // could legitimately race with shutdown.
+  Result<VectorIndexList> CheckedList() const EXCLUDES(vector_indexes_mutex_);
+
+  // Same as CheckedList, but shutdown is not expected by the caller, so failure triggers a
+  // DFATAL and an empty list is returned.
   VectorIndexList List() const EXCLUDES(vector_indexes_mutex_);
+
+  bool IsShuttingDown() const {
+    return !shutdown_controller_.IsRunning();
+  }
 
   // Returns true if at least one vector index on this tablet has not finished backfilling. Used to
   // postpone tablet splitting until the backfill completes (see GH#32321).
-  bool HasActiveBackfill() const EXCLUDES(vector_indexes_mutex_);
+  Result<bool> HasActiveBackfill() const EXCLUDES(vector_indexes_mutex_);
 
   void LaunchBackfillsIfNecessary();
   void StartShutdown();

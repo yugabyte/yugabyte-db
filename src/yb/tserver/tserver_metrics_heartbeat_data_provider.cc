@@ -57,7 +57,7 @@ MonoDelta TServerMetricsHeartbeatDataProvider::Period() const {
   return MonoDelta::FromMilliseconds(FLAGS_tserver_heartbeat_metrics_interval_ms);
 }
 
-void TServerMetricsHeartbeatDataProvider::DoAddData(
+Status TServerMetricsHeartbeatDataProvider::DoAddData(
     bool needs_full_tablet_report, master::TSHeartbeatRequestPB* req) {
   // Get the total memory used.
   size_t mem_usage = MemTracker::GetRootTracker()->GetUpdatedConsumption(true /* force */);
@@ -94,7 +94,7 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
           storage_metadata->set_total_size(on_disk_size_info.total_on_disk_size);
           storage_metadata->set_vector_index_size(on_disk_size_info.vector_index_disk_size);
           storage_metadata->set_has_active_vector_index_backfill(
-              tablet->vector_indexes().HasActiveBackfill());
+              VERIFY_RESULT(tablet->vector_indexes().HasActiveBackfill()));
           if (FLAGS_tserver_heartbeat_metrics_add_leader_info) {
             auto consensus_result = tablet_peer->GetRaftConsensus();
             if (consensus_result) {
@@ -185,6 +185,7 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
       path_metric->set_total_space(stat->total_space);
     }
   }
+  return Status::OK();
 }
 
 uint64_t TServerMetricsHeartbeatDataProvider::CalculateUptime() {

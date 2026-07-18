@@ -1063,6 +1063,10 @@ class Tablet : public AbstractTablet,
     TEST_sleep_before_delete_intents_file_ = value;
   }
 
+  void TEST_SetDisableFlushOnShutdown(bool value) {
+    TEST_disable_flush_on_shutdown_ = value;
+  }
+
   // Reads the current value of FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and
   // updates both regular db and intents db rate limiter speed.
   void RefreshCompactFlushRateLimitBytesPerSec();
@@ -1466,6 +1470,7 @@ class Tablet : public AbstractTablet,
 
   MonoDelta TEST_sleep_before_apply_intents_;
   MonoDelta TEST_sleep_before_delete_intents_file_;
+  std::atomic<bool> TEST_disable_flush_on_shutdown_{false};
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

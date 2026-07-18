@@ -182,8 +182,8 @@ class DBImpl : public DB {
       const std::unordered_map<std::string, std::string>& options_map,
       bool dump_options = true) override;
 
-  // Set whether DB should be flushed on shutdown.
-  void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) override;
+  // Disable memtable flush on shutdown.
+  void SetDisableFlushOnShutdown() override;
   void StartShutdown() override;
 
   using DB::NumberLevels;

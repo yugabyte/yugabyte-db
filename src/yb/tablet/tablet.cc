@@ -334,6 +334,7 @@ DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
 
 DECLARE_bool(cdc_immediate_transaction_cleanup);
 DECLARE_bool(consistent_restore);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
@@ -957,7 +958,16 @@ Result<bool> Tablet::IntentsDbFlushFilter(
   VLOG_WITH_PREFIX(4) << __func__;
 
   if (state->flush_ability.empty() && state->largest_flushed_index.empty()) {
-    state->vector_indexes = vector_indexes_->List();
+    auto vector_indexes = vector_indexes_->CheckedList();
+    if (!vector_indexes.ok()) {
+      // Vector indexes are already detached, so there is no way to check that the memtable
+      // content is covered by their flushed state. Skip the flush, unflushed intents are
+      // recovered from the WAL during bootstrap (GH #32691).
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1)
+          << "Skipping intents flush: " << vector_indexes.status();
+      return false;
+    }
+    state->vector_indexes = std::move(*vector_indexes);
   }
 
   auto frontiers = memtable.Frontiers();
@@ -1513,7 +1523,8 @@ void Tablet::DoCleanupIntentFiles() {
         FlushFlags::kRegular | FlushFlags::kVectorIndexes | FlushFlags::kNoScopedOperation,
         rocksdb::FlushReason::kIntentFilesCleanup);
     if (!flush_status.ok()) {
-      LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Failed to flush regular db: " << flush_status;
+      LOG_WITH_PREFIX_AND_FUNC(WARNING)
+          << "Failed to flush regular db or vector indexes: " << flush_status;
       break;
     }
     auto delete_status = intents_db_->DeleteFile(best_file->Name());
@@ -1725,8 +1736,17 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
     DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops, Stop stop) {
   TabletScopedRWOperationPauses op_pauses;
 
-  auto pause = [this,
-                stop](const BlockingRocksDbShutdownStart is_blocking) -> ScopedRWOperationPause {
+  // For graceful shutdown flush all storages while they are fully operational, so the intents DB
+  // flush filter keeps the intents DB flushed OpId behind the vector index flushed OpIds.
+  // Entries applied after this flush are recovered from the WAL during bootstrap (GH #32691).
+  if (!disable_flush_on_shutdown && !TEST_disable_flush_on_shutdown_ &&
+      FLAGS_flush_rocksdb_on_shutdown) {
+    WARN_NOT_OK(
+        Flush(FlushMode::kSync, FlushFlags::kAllDbs, rocksdb::FlushReason::kShutdown),
+        LogPrefix() + "Failed to flush storages before shutdown");
+  }
+
+  auto pause = [this, stop](const BlockingRocksDbShutdownStart is_blocking) {
     auto op_pause = PauseReadWriteOperations(is_blocking, stop);
     if (!op_pause.ok()) {
       LOG(FATAL) << "Failed to stop read/write operations: " << op_pause.status();
@@ -1734,11 +1754,11 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
     return op_pause;
   };
 
+  op_pauses.blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kTrue);
+
   // Triggering vector indexes shutting down before RocksDB to let vector indexes release
   // ScopedRWOperation instances if any.
   vector_indexes_->StartShutdown();
-
-  op_pauses.blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kTrue);
 
   bool expected = false;
   // If shutdown has been already requested, we still might need to wait for all pending read/write
@@ -1746,7 +1766,9 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
   if (rocksdb_shutdown_requested_.compare_exchange_strong(expected, true)) {
     for (auto* db : {regular_db_.get(), intents_db_.get()}) {
       if (db) {
-        db->SetDisableFlushOnShutdown(disable_flush_on_shutdown);
+        // Flushes are either already done above or not desired at all. Also at this point the
+        // intents DB flush filter cannot check the vector index flushed state anymore.
+        db->SetDisableFlushOnShutdown();
         db->StartShutdown();
       }
     }
@@ -2502,7 +2524,7 @@ Status Tablet::Flush(
 
   VectorIndexList vector_indexes_list;
   if (HasFlags(flags, FlushFlags::kVectorIndexes)) {
-    vector_indexes_list = vector_indexes_->List();
+    vector_indexes_list = VERIFY_RESULT(vector_indexes_->CheckedList());
     vector_indexes_list.Flush();
   }
 
@@ -5381,8 +5403,9 @@ docdb::CompactionHybridTimeConstraints Tablet::CompactionHybridTimeConstraints(
   for (const auto& file : inputs) {
     input_names.push_back(file->fd.GetNumber());
     if (!file->smallest.user_frontier) {
-      // This should not happen, so consider input range as a full range.
-      LOG(DFATAL) << "Input file without frontier: " << file->ToString();
+      // Frontiers are reset on files imported by bulk load, otherwise it should not happen.
+      // In both cases consider input range as a full range.
+      LOG_IF(DFATAL, !file->imported) << "Input file without frontier: " << file->ToString();
       result.input_min = HybridTime::kMin;
       result.input_max = HybridTime::kMax;
       continue;

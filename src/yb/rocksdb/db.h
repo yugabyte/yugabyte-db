@@ -646,7 +646,7 @@ class DB {
     return SetOptions(DefaultColumnFamily(), new_options, dump_options);
   }
 
-  virtual void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {}
+  virtual void SetDisableFlushOnShutdown() {}
   virtual void StartShutdown() {}
 
   // CompactFiles() inputs a list of files specified by file numbers and
