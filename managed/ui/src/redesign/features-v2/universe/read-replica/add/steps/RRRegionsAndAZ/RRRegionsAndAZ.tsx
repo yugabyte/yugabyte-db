@@ -47,6 +47,7 @@ import { RRRegionsAndAZValidationSchema } from './ValidationSchema';
 import { RRRegionCard } from './RRRegionCard';
 import { NodeInstanceDetails } from '@app/redesign/features-v2/universe/geo-partition/add/NodeInstanceDetails';
 import { sumReadReplicaNodeCounts } from '../../addReadReplicaClusterPayload';
+import { useSubmitReadReplica } from '../../useSubmitReadReplica';
 
 const { Box, styled, Typography } = mui;
 
@@ -205,15 +206,23 @@ function RRPlacementMap({
 }
 
 export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
-  const [
-    { regionsAndAZ, regionsAndAZBaseline, readReplicaPlacementFromUniverse, universeData, activeStep },
-    {
-      moveToNextPage,
-      moveToPreviousPage,
-      saveRegionsAndAZSettings,
-      spliceRegionsAndAZBaseline
-    }
-  ] = (useContext(AddRRContext) as unknown) as AddRRContextMethods;
+  const [rrContext, rrMethods] = (useContext(AddRRContext) as unknown) as AddRRContextMethods;
+  const {
+    regionsAndAZ,
+    regionsAndAZBaseline,
+    readReplicaPlacementFromUniverse,
+    universeData,
+    activeStep,
+    isEditPlacementOnly
+  } = rrContext;
+  const {
+    moveToNextPage,
+    moveToPreviousPage,
+    saveRegionsAndAZSettings,
+    spliceRegionsAndAZBaseline
+  } = rrMethods;
+
+  const { submit } = useSubmitReadReplica();
 
   const { t } = useTranslation('translation', { keyPrefix: 'readReplica.addRR' });
   const { t: tc } = useTranslation('translation', { keyPrefix: 'common' });
@@ -273,14 +282,28 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
       onNext: () => {
         return handleSubmit((data) => {
           saveRegionsAndAZSettings(data);
+          if (isEditPlacementOnly) {
+            // Placement-only edit: submit from this page using fresh form data (context update is async).
+            return submit({ ...rrContext, regionsAndAZ: data }, regionsList as Region[]);
+          }
           moveToNextPage();
+          return undefined;
         })();
       },
       onPrev: () => {
         moveToPreviousPage();
       }
     }),
-    [handleSubmit, saveRegionsAndAZSettings, moveToNextPage, moveToPreviousPage]
+    [
+      handleSubmit,
+      saveRegionsAndAZSettings,
+      moveToNextPage,
+      moveToPreviousPage,
+      isEditPlacementOnly,
+      submit,
+      rrContext,
+      regionsList
+    ]
   );
 
   return (

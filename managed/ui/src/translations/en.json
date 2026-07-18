@@ -4692,6 +4692,8 @@
     "readReplica": {
       "addRR": {
         "title": "Add Read Replica",
+        "editPlacementTitle": "Edit Read Replica Placement",
+        "confirmAndApply": "Apply Changes",
         "placement": "Placement",
         "regionsAndAZ": "Regions and Availability Zones",
         "hardware": "Hardware",

@@ -1,6 +1,5 @@
-import { forwardRef, useCallback, useContext, useImperativeHandle, useMemo } from 'react';
+import { forwardRef, useContext, useImperativeHandle, useMemo } from 'react';
 import { useQuery } from 'react-query';
-import { toast } from 'react-toastify';
 import { useTranslation } from 'react-i18next';
 import { mui } from '@yugabyte-ui-library/core';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
@@ -9,8 +8,7 @@ import { ClusterSpecClusterType, NodeDetailsDedicatedTo } from '@app/v2/api/yuga
 import { CloudType, InstanceType, Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
 import type { UniverseResourceDetails, Universe, ClusterSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { getUniverseResources, useAddCluster, useEditUniverse } from '@app/v2/api/universe/universe';
-import { getReadOnlyCluster } from '@app/redesign/utils/universeUtils';
+import { getUniverseResources } from '@app/v2/api/universe/universe';
 import { RRBreadCrumbs } from '../../ReadReplicaBreadCrumbs';
 import {
   StepsRef,
@@ -22,11 +20,7 @@ import {
   countMasterAndTServerNodes,
   getClusterByType
 } from '../../../../edit-universe/EditUniverseUtils';
-import {
-  mapAddReadReplicaClusterPayload,
-  mapEditReadReplicaClusterSpec,
-  sumReadReplicaNodeCounts
-} from '../../addReadReplicaClusterPayload';
+import { sumReadReplicaNodeCounts } from '../../addReadReplicaClusterPayload';
 import {
   buildUniverseSpecCurrentStatePricing,
   buildUniverseSpecForReadReplicaPricing,
@@ -43,9 +37,7 @@ import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/creat
 import ReplicaIcon from '@app/redesign/assets/copy.svg';
 import ClusterIcon from '@app/redesign/assets/clusters.svg';
 
-import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
-import { getReadReplicaExitRoute } from '../../../readReplicaUtils';
-import { EditUniverseTabs } from '../../../../edit-universe/EditUniverseContext';
+import { useSubmitReadReplica } from '../../useSubmitReadReplica';
 
 const { Box } = mui;
 
@@ -221,13 +213,7 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     }
   );
 
-  const addCluster = useAddCluster();
-  const editUniverse = useEditUniverse();
-
-  const existingReadReplicaCluster = useMemo(
-    () => getReadOnlyCluster(universeData?.spec?.clusters ?? []),
-    [universeData?.spec?.clusters]
-  );
+  const { submit } = useSubmitReadReplica();
 
   const mapPins = useMemo(() => {
     const list = regionsList as Region[];
@@ -278,37 +264,11 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
 
   const instanceTypes: InstanceType[] = instanceTypesData ?? [];
 
-  const buildAddPayload = useCallback(() => {
-    return mapAddReadReplicaClusterPayload(
-      {
-        universeUuid,
-        universeData,
-        regionsAndAZ,
-        instanceSettings,
-        databaseSettings,
-        activeStep
-      },
-      regionsList as Region[]
-    );
-  }, [
-    universeUuid,
-    universeData,
-    regionsAndAZ,
-    instanceSettings,
-    databaseSettings,
-    activeStep,
-    regionsList
-  ]);
-
-  const buildEditPayload = useCallback(() => {
-    if (!existingReadReplicaCluster?.uuid) {
-      throw new Error('READ_REPLICA_CLUSTER_MISSING');
-    }
-    return {
-      expected_universe_version: -1,
-      clusters: [
-        mapEditReadReplicaClusterSpec(
-          existingReadReplicaCluster.uuid,
+  useImperativeHandle(
+    forwardRef,
+    () => ({
+      onNext: () =>
+        submit(
           {
             universeUuid,
             universeData,
@@ -317,95 +277,22 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
             databaseSettings,
             activeStep
           },
-          regionsList as Region[],
-          { enforceNumNodesFloor: true }
-        )
-      ]
-    };
-  }, [
-    existingReadReplicaCluster?.uuid,
-    universeUuid,
-    universeData,
-    regionsAndAZ,
-    instanceSettings,
-    databaseSettings,
-    activeStep,
-    regionsList
-  ]);
-
-  const redirectToUniverse = useCallback(() => {
-    window.location.href = getReadReplicaExitRoute(universeUuid, EditUniverseTabs.PLACEMENT);
-  }, [universeUuid]);
-
-  const runSubmitMutation = useCallback(
-    (mutationPromise: Promise<unknown>, errorPrefix: string) =>
-      mutationPromise.then(redirectToUniverse).catch((error) => {
-        console.error(errorPrefix, error);
-      }),
-    [redirectToUniverse]
-  );
-
-  useImperativeHandle(
-    forwardRef,
-    () => ({
-      onNext: () => {
-        if (!universeUuid) {
-          toast.error(t('validation.universeUuidMissing'));
-          return Promise.resolve();
-        }
-        let addPayload;
-        let editPayload;
-        try {
-          if (existingReadReplicaCluster?.uuid) {
-            editPayload = buildEditPayload();
-          } else {
-            addPayload = buildAddPayload();
-          }
-        } catch (e) {
-          toast.error(createErrorMessage(e));
-          return Promise.resolve();
-        }
-
-        if (existingReadReplicaCluster?.uuid && editPayload) {
-          return runSubmitMutation(
-            editUniverse.mutateAsync(
-              { uniUUID: universeUuid, data: editPayload },
-              {
-                onError(error: any) {
-                  toast.error(error?.response?.data?.error ?? t('toast.updateRRFailed'));
-                }
-              }
-            ),
-            'Update read replica failed:'
-          );
-        }
-
-        return runSubmitMutation(
-          addCluster.mutateAsync(
-            { uniUUID: universeUuid, data: addPayload! },
-            {
-              onError(error: any) {
-                toast.error(error?.response?.data?.error ?? t('toast.addRRFailed'));
-              }
-            }
-          ),
-          'Add read replica failed:'
-        );
-      },
+          regionsList as Region[]
+        ),
       onPrev: () => {
         moveToPreviousPage();
       }
     }),
     [
-      addCluster,
-      editUniverse,
-      existingReadReplicaCluster?.uuid,
-      buildAddPayload,
-      buildEditPayload,
-      moveToPreviousPage,
-      runSubmitMutation,
-      t,
-      universeUuid
+      submit,
+      universeUuid,
+      universeData,
+      regionsAndAZ,
+      instanceSettings,
+      databaseSettings,
+      activeStep,
+      regionsList,
+      moveToPreviousPage
     ]
   );
 
