@@ -154,9 +154,10 @@ yb_report_query_termination(char *message, int pid)
 			SUB_SET(userid, beentry->st_userid);
 #undef SUB_SET
 
-			strlcpy(curr_entry->query_string, beentry->st_activity_raw,
+			strlcpy(curr_entry->query_string,
+					beentry->st_activity_raw ? beentry->st_activity_raw : "",
 					sizeof(curr_entry->query_string));
-			strlcpy(curr_entry->termination_reason, message,
+			strlcpy(curr_entry->termination_reason, message ? message : "",
 					sizeof(curr_entry->termination_reason));
 
 			yb_terminated_queries->curr++;
