@@ -2678,15 +2678,10 @@ void DBImpl::NotifyOnNoOpCompactionCompleted(
   mutex_.Lock();
 }
 
-void DBImpl::SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {
-  // disable_flush_on_shutdown_ can only transition from false to true. This location
-  // can be called multiple times with arg as false. It is only called once with arg
-  // as true. Subsequently, the destructor reads this flag. Setting this flag
-  // to true and the destructor are expected to run on the same thread and hence
-  // it is not required for disable_flush_on_shutdown_ to be atomic.
-  if (disable_flush_on_shutdown) {
-    disable_flush_on_shutdown_ = disable_flush_on_shutdown;
-  }
+void DBImpl::SetDisableFlushOnShutdown() {
+  // Setting this flag and the destructor that reads it are expected to run on the same thread,
+  // hence it is not required for disable_flush_on_shutdown_ to be atomic.
+  disable_flush_on_shutdown_ = true;
 }
 
 Status DBImpl::SetOptions(

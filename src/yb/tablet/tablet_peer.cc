@@ -1685,7 +1685,12 @@ TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfoUnlocked() const {
     info.sst_files_disk_size = tablet_->GetCurrentVersionSstFilesSize();
     info.uncompressed_sst_files_disk_size =
         tablet_->GetCurrentVersionSstFilesUncompressedSize();
-    info.vector_index_disk_size = tablet_->vector_indexes().List().OnDiskSize();
+    auto vector_indexes = tablet_->vector_indexes().CheckedList();
+    if (vector_indexes.ok()) {
+      info.vector_index_disk_size = vector_indexes->OnDiskSize();
+    } else {
+      WARN_NOT_OK(vector_indexes.status(), "Vector index on disk size");
+    }
   }
 
   auto log = log_atomic_.load(std::memory_order_acquire);

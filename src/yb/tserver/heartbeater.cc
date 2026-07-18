@@ -239,16 +239,17 @@ const std::string& HeartbeatDataProvider::LogPrefix() const {
   return server_.LogPrefix();
 }
 
-void PeriodicalHeartbeatDataProvider::AddData(
+Status PeriodicalHeartbeatDataProvider::AddData(
     const master::TSHeartbeatResponsePB& last_resp, master::TSHeartbeatRequestPB* req) {
   // Save that fact that we will need to send a full report the next time we run.
   needs_full_tablet_report_ |= last_resp.needs_full_tablet_report();
 
   if (prev_run_time_ + Period() < CoarseMonoClock::Now()) {
-    DoAddData(needs_full_tablet_report_, req);
+    RETURN_NOT_OK(DoAddData(needs_full_tablet_report_, req));
     prev_run_time_ = CoarseMonoClock::Now();
     needs_full_tablet_report_ = false;
   }
+  return Status::OK();
 }
 
 ////////////////////////////////////////////////////////////
@@ -360,7 +361,7 @@ Status HeartbeatPoller::TryHeartbeat() {
       req, last_hb_response_.needs_full_tablet_report()));
 
   for (auto& data_provider : data_providers_) {
-    data_provider->AddData(last_hb_response_, &req);
+    RETURN_NOT_OK(data_provider->AddData(last_hb_response_, &req));
   }
 
   RpcController rpc;
