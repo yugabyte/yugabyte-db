@@ -301,6 +301,9 @@ template <bool kConsumeGroupEnd, bool kMatchedId, bool kLastColumn, SortOrder kS
 UnsafeStatus DecodeDecimalColumn(
     const char* input, const char* end, PgTableRow* row, size_t index, void* const* chain) {
   CONSUME_GROUP_END();
+  if (PREDICT_FALSE(input >= end)) {
+    return STATUS(Corruption, "Not enough bytes to decode decimal column").UnsafeRelease();
+  }
   auto entry_type = static_cast<KeyEntryType>(*input++);
   constexpr auto kFinite =
       kSortOrder == SortOrder::kAscending ? KeyEntryType::kDecimal
