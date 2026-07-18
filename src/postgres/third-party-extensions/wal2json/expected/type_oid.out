@@ -1,0 +1,68 @@
+\set VERBOSITY terse
+-- predictability
+SET synchronous_commit = on;
+DROP TABLE IF EXISTS w2j_type_oid;
+NOTICE:  table "w2j_type_oid" does not exist, skipping
+CREATE TABLE w2j_type_oid (a integer, b boolean, primary key(a));
+SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2json');
+ ?column? 
+----------
+ init
+(1 row)
+
+INSERT INTO w2j_type_oid (a, b) VALUES(1, true);
+UPDATE w2j_type_oid SET a = 3;
+DELETE FROM w2j_type_oid WHERE a = 3;
+-- without include-type-oids parameter
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1');
+                                                                                                              data                                                                                                               
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"change":[{"kind":"insert","schema":"public","table":"w2j_type_oid","columnnames":["a","b"],"columntypes":["integer","boolean"],"columnvalues":[1,true]}]}
+ {"change":[{"kind":"update","schema":"public","table":"w2j_type_oid","columnnames":["a","b"],"columntypes":["integer","boolean"],"columnvalues":[3,true],"oldkeys":{"keynames":["a"],"keytypes":["integer"],"keyvalues":[1]}}]}
+ {"change":[{"kind":"delete","schema":"public","table":"w2j_type_oid","oldkeys":{"keynames":["a"],"keytypes":["integer"],"keyvalues":[3]}}]}
+(3 rows)
+
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2');
+                                                                                                    data                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"w2j_type_oid","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"boolean","value":true}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"U","schema":"public","table":"w2j_type_oid","columns":[{"name":"a","type":"integer","value":3},{"name":"b","type":"boolean","value":true}],"identity":[{"name":"a","type":"integer","value":1}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"D","schema":"public","table":"w2j_type_oid","identity":[{"name":"a","type":"integer","value":3}]}
+ {"action":"C"}
+(9 rows)
+
+-- with include-type-oids parameter
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'include-type-oids', '1');
+                                                                                                                                    data                                                                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"change":[{"kind":"insert","schema":"public","table":"w2j_type_oid","columnnames":["a","b"],"columntypes":["integer","boolean"],"columntypeoids":[23,16],"columnvalues":[1,true]}]}
+ {"change":[{"kind":"update","schema":"public","table":"w2j_type_oid","columnnames":["a","b"],"columntypes":["integer","boolean"],"columntypeoids":[23,16],"columnvalues":[3,true],"oldkeys":{"keynames":["a"],"keytypes":["integer"],"keytypeoids":[23],"keyvalues":[1]}}]}
+ {"change":[{"kind":"delete","schema":"public","table":"w2j_type_oid","oldkeys":{"keynames":["a"],"keytypes":["integer"],"keytypeoids":[23],"keyvalues":[3]}}]}
+(3 rows)
+
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2', 'include-type-oids', '1');
+                                                                                                                        data                                                                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"w2j_type_oid","columns":[{"name":"a","type":"integer","typeoid":23,"value":1},{"name":"b","type":"boolean","typeoid":16,"value":true}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"U","schema":"public","table":"w2j_type_oid","columns":[{"name":"a","type":"integer","typeoid":23,"value":3},{"name":"b","type":"boolean","typeoid":16,"value":true}],"identity":[{"name":"a","type":"integer","typeoid":23,"value":1}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"D","schema":"public","table":"w2j_type_oid","identity":[{"name":"a","type":"integer","typeoid":23,"value":3}]}
+ {"action":"C"}
+(9 rows)
+
+SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
+ ?column? 
+----------
+ stop
+(1 row)
+
+DROP TABLE w2j_type_oid;

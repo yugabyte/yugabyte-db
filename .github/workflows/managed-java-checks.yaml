@@ -1,0 +1,38 @@
+name: Lint java code under managed
+
+on:
+  push:
+    branches:
+      - master
+      - '2.6'
+    paths:
+      - .github/workflows/managed-java-checks.yaml
+      - managed/**/*.java
+
+  pull_request:
+    branches:
+      - master
+      - '2.6'
+    paths:
+      - .github/workflows/managed-java-checks.yaml
+      - managed/**/*.java
+
+
+jobs:
+  lint-checks:
+    name: Lint checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Install Java
+        uses: actions/setup-java@v2
+        with:
+          distribution: adopt
+          java-version: 17
+
+      - name: Check formatting
+        run: sbt javafmtCheckAll
+        working-directory: managed/
+

@@ -1,0 +1,17 @@
+group ysql{
+  perm{
+    task{
+      uid=yugabyte;
+      gid=yugabyte;
+    }
+    admin{
+      uid=yugabyte;
+      gid=yugabyte;
+    }
+  }
+  memory{
+    cgroup.clone_children=1;
+    memory.limit_in_bytes={{ pg_max_mem_mb }}M;
+    memory.memsw.limit_in_bytes={{ pg_max_mem_mb }}M;
+  }
+}

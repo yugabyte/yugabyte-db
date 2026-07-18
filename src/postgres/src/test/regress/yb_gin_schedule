@@ -1,0 +1,16 @@
+# src/test/regress/yb_gin_schedule
+#
+################################################################################
+# YB GIN Testsuite: Yugabyte-owned (non-ported) gin index tests.
+################################################################################
+# Upstream postgres ported tests.
+test: yb.port.gin
+
+test: yb.orig.gin
+test: yb.orig.ybgin
+test: yb.orig.ybgin_nulls
+test: yb.orig.ybgin_search_modes
+test: yb.orig.ybgin_misc
+test: yb.orig.ybgin_cost_estimate
+test: yb.orig.ybgin_operators
+test: yb.orig.ybgin_pushdown

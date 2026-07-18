@@ -1,0 +1,24 @@
+in_memory:
+{SubDocKey(DocKey([], []), []), [kStrongRead, kStrongWrite]}
+{SubDocKey(DocKey([], ["1"]), []), [kStrongRead, kStrongWrite]}
+
+
+intent_check:
+{SubDocKey(DocKey([], []), []), [kStrongRead, kStrongWrite]}
+{SubDocKey(DocKey([], ["1"]), []), [kStrongRead, kStrongWrite]}
+
+
+intent_write:
+Wrote 9 key/value pairs to kIntents RocksDB:
+ 1. PutCF: TXN META ********-****-****-****-************ => { transaction_id: ********-****-****-****-************ isolation: SERIALIZABLE_ISOLATION status_tablet: 0 priority: 0 start_time: { days: 0 time: 0 } using_table_locks: 1 locality: GLOBAL old_status_tablet:  skip_prefix_locks: 1 }
+ 2. PutCF: SubDocKey(DocKey([], []), []) [kStrongWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(0) none
+ 4. PutCF: SubDocKey(DocKey([], ["1"]), []) [kStrongWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(1) { 1: "b" }
+ 6. PutCF: SubDocKey(DocKey([], []), []) [kStrongRead] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(2) none
+ 8. PutCF: SubDocKey(DocKey([], ["1"]), []) [kStrongRead] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(3) null
+
+
+regular_write:
+Wrote 1 key/value pairs to kRegular RocksDB:
+ 1. PutCF: SubDocKey(DocKey([], ["1"]), [HT{ days: 0 time: 0 }]) => { 1: "b" }
+
+

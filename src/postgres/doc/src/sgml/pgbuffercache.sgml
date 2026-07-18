@@ -1,0 +1,781 @@
+<!-- doc/src/sgml/pgbuffercache.sgml -->
+
+<sect1 id="pgbuffercache" xreflabel="pg_buffercache">
+ <title>pg_buffercache &mdash; inspect <productname>PostgreSQL</productname>
+    buffer cache state</title>
+
+ <indexterm zone="pgbuffercache">
+  <primary>pg_buffercache</primary>
+ </indexterm>
+
+ <para>
+  The <filename>pg_buffercache</filename> module provides a means for
+  examining what's happening in the shared buffer cache in real time.
+  It also offers a low-level way to evict data from it, for testing
+  purposes.
+ </para>
+
+ <indexterm>
+  <primary>pg_buffercache_pages</primary>
+ </indexterm>
+
+ <indexterm>
+  <primary>pg_buffercache_numa</primary>
+ </indexterm>
+
+ <indexterm>
+  <primary>pg_buffercache_summary</primary>
+ </indexterm>
+
+ <indexterm>
+  <primary>pg_buffercache_usage_counts</primary>
+ </indexterm>
+
+ <indexterm>
+  <primary>pg_buffercache_evict</primary>
+ </indexterm>
+
+ <indexterm>
+  <primary>pg_buffercache_evict_relation</primary>
+ </indexterm>
+
+ <indexterm>
+  <primary>pg_buffercache_evict_all</primary>
+ </indexterm>
+
+ <indexterm>
+  <primary>pg_buffercache_mark_dirty</primary>
+ </indexterm>
+
+ <indexterm>
+  <primary>pg_buffercache_mark_dirty_relation</primary>
+ </indexterm>
+
+ <indexterm>
+  <primary>pg_buffercache_mark_dirty_all</primary>
+ </indexterm>
+
+ <para>
+  This module provides the <function>pg_buffercache_pages()</function>
+  function (wrapped in the <structname>pg_buffercache</structname> view), the
+  <function>pg_buffercache_os_pages()</function> function (wrapped in the
+  <structname>pg_buffercache_os_pages</structname> and
+  <structname>pg_buffercache_numa</structname> views), the
+  <function>pg_buffercache_summary()</function> function, the
+  <function>pg_buffercache_usage_counts()</function> function, the
+  <function>pg_buffercache_evict()</function> function, the
+  <function>pg_buffercache_evict_relation()</function> function, the
+  <function>pg_buffercache_evict_all()</function> function, the
+  <function>pg_buffercache_mark_dirty()</function> function, the
+  <function>pg_buffercache_mark_dirty_relation()</function> function and the
+  <function>pg_buffercache_mark_dirty_all()</function> function.
+ </para>
+
+ <para>
+  The <function>pg_buffercache_pages()</function> function returns a set of
+  records, each row describing the state of one shared buffer entry. The
+  <structname>pg_buffercache</structname> view wraps the function for
+  convenient use.
+ </para>
+
+ <para>
+  The <function>pg_buffercache_os_pages()</function> function provides OS
+  pages mappings for shared buffer entries. When its argument is
+  <literal>true</literal>, it also provides <acronym>NUMA</acronym> node
+  mappings for shared buffer entries (this information is not part of
+  <function>pg_buffercache_pages()</function> itself, as it is much
+  slower to retrieve).
+  The <structname>pg_buffercache_os_pages</structname> and
+  <structname>pg_buffercache_numa</structname> views wrap the function for
+  convenient use, with its argument set to <literal>false</literal> and
+  <literal>true</literal> respectively.
+ </para>
+
+ <para>
+  The <function>pg_buffercache_summary()</function> function returns a single
+  row summarizing the state of the shared buffer cache.
+ </para>
+
+ <para>
+  The <function>pg_buffercache_usage_counts()</function> function returns a set
+  of records, each row describing the number of buffers with a given usage
+  count.
+ </para>
+
+ <para>
+  By default, use of the above functions is restricted to superusers and roles
+  with privileges of the <literal>pg_monitor</literal> role. Access may be
+  granted to others using <command>GRANT</command>.
+ </para>
+
+ <para>
+  The <function>pg_buffercache_evict()</function> function allows a block to
+  be evicted from the buffer pool given a buffer identifier.  Use of this
+  function is restricted to superusers only.
+ </para>
+
+ <para>
+  The <function>pg_buffercache_evict_relation()</function> function allows all
+  unpinned shared buffers in the relation to be evicted from the buffer pool
+  given a relation identifier.  Use of this function is restricted to
+  superusers only.
+ </para>
+
+ <para>
+  The <function>pg_buffercache_evict_all()</function> function allows all
+  unpinned shared buffers to be evicted in the buffer pool.  Use of this
+  function is restricted to superusers only.
+ </para>
+
+ <para>
+  The <function>pg_buffercache_mark_dirty()</function> function allows a block
+  to be marked as dirty in the buffer pool given a buffer identifier.  Use of
+  this function is restricted to superusers only.
+ </para>
+
+<para>
+  The <function>pg_buffercache_mark_dirty_relation()</function> function
+  allows all unpinned shared buffers in the relation to be marked as dirty in
+  the buffer pool given a relation identifier.  Use of this function is
+  restricted to superusers only.
+</para>
+
+ <para>
+  The <function>pg_buffercache_mark_dirty_all()</function> function allows all
+  unpinned shared buffers to be marked as dirty in the buffer pool. Use of
+  this function is restricted to superusers only.
+ </para>
+
+ <sect2 id="pgbuffercache-pg-buffercache">
+  <title>The <structname>pg_buffercache</structname> View</title>
+
+  <para>
+   The definitions of the columns exposed by the view are shown in <xref linkend="pgbuffercache-columns"/>.
+  </para>
+
+  <table id="pgbuffercache-columns">
+   <title><structname>pg_buffercache</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>bufferid</structfield> <type>integer</type>
+      </para>
+      <para>
+       ID, in the range 1..<varname>shared_buffers</varname>
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>relfilenode</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-class"><structname>pg_class</structname></link>.<structfield>relfilenode</structfield>)
+      </para>
+      <para>
+       Filenode number of the relation
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>reltablespace</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-tablespace"><structname>pg_tablespace</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       Tablespace OID of the relation
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>reldatabase</structfield> <type>oid</type>
+       (references <link linkend="catalog-pg-database"><structname>pg_database</structname></link>.<structfield>oid</structfield>)
+      </para>
+      <para>
+       Database OID of the relation
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>relforknumber</structfield> <type>smallint</type>
+      </para>
+      <para>
+       Fork number within the relation;  see
+       <filename>common/relpath.h</filename>
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>relblocknumber</structfield> <type>bigint</type>
+      </para>
+      <para>
+       Page number within the relation
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>isdirty</structfield> <type>boolean</type>
+      </para>
+      <para>
+       Is the page dirty?
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>usagecount</structfield> <type>smallint</type>
+      </para>
+      <para>
+       Clock-sweep access count
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pinning_backends</structfield> <type>integer</type>
+      </para>
+      <para>
+       Number of backends pinning this buffer
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <para>
+   There is one row for each buffer in the shared cache. Unused buffers are
+   shown with all fields null except <structfield>bufferid</structfield>.  Shared system
+   catalogs are shown as belonging to database zero.
+  </para>
+
+  <para>
+   Because the cache is shared by all the databases, there will normally be
+   pages from relations not belonging to the current database.  This means
+   that there may not be matching join rows in <structname>pg_class</structname> for
+   some rows, or that there could even be incorrect joins.  If you are
+   trying to join against <structname>pg_class</structname>, it's a good idea to
+   restrict the join to rows having <structfield>reldatabase</structfield> equal to
+   the current database's OID or zero.
+  </para>
+
+  <para>
+   Since buffer manager locks are not taken to copy the buffer state data that
+   the view will display, accessing <structname>pg_buffercache</structname> view
+   has less impact on normal buffer activity but it doesn't provide a consistent
+   set of results across all buffers.  However, we ensure that the information of
+   each buffer is self-consistent.
+  </para>
+ </sect2>
+
+ <sect2 id="pgbuffercache-pg-buffercache-os-pages">
+  <title>The <structname>pg_buffercache_os_pages</structname> View</title>
+
+  <para>
+   The definitions of the columns exposed by the view are shown in
+   <xref linkend="pgbuffercache-os-pages-columns"/>.
+  </para>
+
+  <table id="pgbuffercache-os-pages-columns">
+   <title><structname>pg_buffercache_os_pages</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>bufferid</structfield> <type>integer</type>
+      </para>
+      <para>
+       ID, in the range 1..<varname>shared_buffers</varname>
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>os_page_num</structfield> <type>bigint</type>
+      </para>
+      <para>
+       Number of OS memory page for this buffer
+      </para></entry>
+     </row>
+
+    </tbody>
+   </tgroup>
+  </table>
+
+ </sect2>
+
+ <sect2 id="pgbuffercache-pg-buffercache-numa">
+  <title>The <structname>pg_buffercache_numa</structname> View</title>
+
+  <para>
+   The definitions of the columns exposed by the view are shown in <xref linkend="pgbuffercache-numa-columns"/>.
+  </para>
+
+  <table id="pgbuffercache-numa-columns">
+   <title><structname>pg_buffercache_numa</structname> Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>bufferid</structfield> <type>integer</type>
+      </para>
+      <para>
+       ID, in the range 1..<varname>shared_buffers</varname>
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>os_page_num</structfield> <type>bigint</type>
+      </para>
+      <para>
+       Number of OS memory page for this buffer
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>numa_node</structfield> <type>int</type>
+      </para>
+      <para>
+       ID of <acronym>NUMA</acronym> node
+      </para></entry>
+     </row>
+
+    </tbody>
+   </tgroup>
+  </table>
+
+  <para>
+   As <acronym>NUMA</acronym> node ID inquiry for each page requires memory pages
+   to be paged-in, the first execution of this function can take a noticeable
+   amount of time. In all the cases (first execution or not), retrieving this
+   information is costly and querying the view at a high frequency is not recommended.
+  </para>
+
+  <warning>
+    <para>
+      When determining the <acronym>NUMA</acronym> node, the view touches
+      all memory pages for the shared memory segment. This will force
+      allocation of the shared memory, if it wasn't allocated already,
+      and the memory may get allocated in a single <acronym>NUMA</acronym>
+      node (depending on system configuration).
+    </para>
+  </warning>
+
+ </sect2>
+
+ <sect2 id="pgbuffercache-summary">
+  <title>The <function>pg_buffercache_summary()</function> Function</title>
+
+  <para>
+   The definitions of the columns exposed by the function are shown in <xref linkend="pgbuffercache-summary-columns"/>.
+  </para>
+
+  <table id="pgbuffercache-summary-columns">
+   <title><function>pg_buffercache_summary()</function> Output Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>buffers_used</structfield> <type>int4</type>
+      </para>
+      <para>
+       Number of used shared buffers
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>buffers_unused</structfield> <type>int4</type>
+      </para>
+      <para>
+       Number of unused shared buffers
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>buffers_dirty</structfield> <type>int4</type>
+      </para>
+      <para>
+       Number of dirty shared buffers
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>buffers_pinned</structfield> <type>int4</type>
+      </para>
+      <para>
+       Number of pinned shared buffers
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>usagecount_avg</structfield> <type>float8</type>
+      </para>
+      <para>
+       Average usage count of used shared buffers
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <para>
+   The <function>pg_buffercache_summary()</function> function returns a
+   single row summarizing the state of all shared buffers. Similar and more
+   detailed information is provided by the
+   <structname>pg_buffercache</structname> view, but
+   <function>pg_buffercache_summary()</function> is significantly cheaper.
+  </para>
+
+  <para>
+   Like the <structname>pg_buffercache</structname> view,
+   <function>pg_buffercache_summary()</function> does not acquire buffer
+   manager locks. Therefore concurrent activity can lead to minor inaccuracies
+   in the result.
+  </para>
+ </sect2>
+
+ <sect2 id="pgbuffercache-usage-counts">
+  <title>The <function>pg_buffercache_usage_counts()</function> Function</title>
+
+  <para>
+   The definitions of the columns exposed by the function are shown in
+   <xref linkend="pgbuffercache_usage_counts-columns"/>.
+  </para>
+
+  <table id="pgbuffercache_usage_counts-columns">
+   <title><function>pg_buffercache_usage_counts()</function> Output Columns</title>
+   <tgroup cols="1">
+    <thead>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       Column Type
+      </para>
+      <para>
+       Description
+      </para></entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>usage_count</structfield> <type>int4</type>
+      </para>
+      <para>
+       A possible buffer usage count
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>buffers</structfield> <type>int4</type>
+      </para>
+      <para>
+       Number of buffers with the usage count
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>dirty</structfield> <type>int4</type>
+      </para>
+      <para>
+       Number of dirty buffers with the usage count
+      </para></entry>
+     </row>
+
+     <row>
+      <entry role="catalog_table_entry"><para role="column_definition">
+       <structfield>pinned</structfield> <type>int4</type>
+      </para>
+      <para>
+       Number of pinned buffers with the usage count
+      </para></entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <para>
+   The <function>pg_buffercache_usage_counts()</function> function returns a
+   set of rows summarizing the states of all shared buffers, aggregated over
+   the possible usage count values.  Similar and more detailed information is
+   provided by the <structname>pg_buffercache</structname> view, but
+   <function>pg_buffercache_usage_counts()</function> is significantly cheaper.
+  </para>
+
+  <para>
+   Like the <structname>pg_buffercache</structname> view,
+   <function>pg_buffercache_usage_counts()</function> does not acquire buffer
+   manager locks. Therefore concurrent activity can lead to minor inaccuracies
+   in the result.
+  </para>
+ </sect2>
+
+ <sect2 id="pgbuffercache-pg-buffercache-evict">
+  <title>The <function>pg_buffercache_evict()</function> Function</title>
+  <para>
+   The <function>pg_buffercache_evict()</function> function takes a buffer
+   identifier, as shown in the <structfield>bufferid</structfield> column of
+   the <structname>pg_buffercache</structname> view.  It returns information
+   about whether the buffer was evicted and flushed.
+   The <structfield>buffer_evicted</structfield>
+   column is true on success, and false if the buffer wasn't valid, if it
+   couldn't be evicted because it was pinned, or if it became dirty again
+   after an attempt to write it out.
+   The <structfield>buffer_flushed</structfield> column is true if the
+   buffer was flushed.  This does not necessarily mean that buffer was flushed
+   by us, it might be flushed by someone else.  The result is immediately out
+   of date upon return, as the buffer might become valid again at any time due
+   to concurrent activity. The function is intended for developer testing
+   only.
+  </para>
+ </sect2>
+
+ <sect2 id="pgbuffercache-pg-buffercache-evict-relation">
+  <title>The <function>pg_buffercache_evict_relation()</function> Function</title>
+  <para>
+   The <function>pg_buffercache_evict_relation()</function> function is very
+   similar to the <function>pg_buffercache_evict()</function> function.  The
+   difference is that the <function>pg_buffercache_evict_relation()</function>
+   takes a relation identifier instead of buffer identifier.  It tries to
+   evict all buffers for all forks in that relation.
+
+   It returns the number of evicted buffers, flushed buffers and the number of
+   buffers that could not be evicted.  Flushed buffers haven't necessarily
+   been flushed by us, they might have been flushed by someone else.  The
+   result is immediately out of date upon return, as buffers might immediately
+   be read back in due to concurrent activity.  The function is intended for
+   developer testing only.
+  </para>
+ </sect2>
+
+ <sect2 id="pgbuffercache-pg-buffercache-evict-all">
+  <title>The <function>pg_buffercache_evict_all()</function> Function</title>
+  <para>
+   The <function>pg_buffercache_evict_all()</function> function is very
+   similar to the <function>pg_buffercache_evict()</function> function.  The
+   difference is, the <function>pg_buffercache_evict_all()</function> function
+   does not take an argument; instead it tries to evict all buffers in the
+   buffer pool.  It returns the number of evicted buffers, flushed buffers and
+   the number of buffers that could not be evicted.  Flushed buffers haven't
+   necessarily been flushed by us, they might have been flushed by someone
+   else.  The result is immediately out of date upon return, as buffers might
+   immediately be read back in due to concurrent activity.  The function is
+   intended for developer testing only.
+  </para>
+ </sect2>
+
+ <sect2 id="pgbuffercache-pg-buffercache-mark-dirty">
+  <title>The <function>pg_buffercache_mark_dirty()</function> Function</title>
+  <para>
+   The <function>pg_buffercache_mark_dirty()</function> function takes a
+   buffer identifier, as shown in the <structfield>bufferid</structfield>
+   column of the <structname>pg_buffercache</structname> view.  It returns
+   information about whether the buffer was marked as dirty.
+   The <structfield>buffer_dirtied</structfield> column is true on success,
+   and false if the buffer was already dirty if the buffer was not valid or
+   if it could not be marked as dirty because it was pinned.
+   The <structfield>buffer_already_dirty</structfield> column is true if
+   the buffer couldn't be marked as dirty because it was already dirty. The
+   result is immediately out of date upon return, as the buffer might become
+   valid again at any time due to concurrent activity. The function is
+   intended for developer testing only.
+  </para>
+ </sect2>
+
+ <sect2 id="pgbuffercache-pg-buffercache-mark-dirty-relation">
+  <title>The <function>pg_buffercache_mark_dirty_relation()</function> Function</title>
+  <para>
+   The <function>pg_buffercache_mark_dirty_relation()</function> function is
+   very similar to the
+   <function>pg_buffercache_mark_dirty()</function> function.
+   The difference is that the
+   <function>pg_buffercache_mark_dirty_relation()</function> function takes a
+   relation identifier instead of buffer identifier. It tries to mark all
+   buffers dirty for all forks in that relation.
+   It returns the number of buffers marked as dirty, the number of buffers
+   already dirty and the number of buffers skipped because already pinned or
+   invalid.
+   The result is immediately out of date upon return, as the buffer might
+   become valid again at any time due to concurrent activity. The function is
+   intended for developer testing only.
+  </para>
+ </sect2>
+
+ <sect2 id="pgbuffercache-pg-buffercache-mark-dirty-all">
+  <title>The <function>pg_buffercache_mark_dirty_all()</function> Function</title>
+  <para>
+   The <function>pg_buffercache_mark_dirty_all()</function> function is
+   very similar to the <function>pg_buffercache_mark_dirty()</function>
+   function.
+   The difference is that the
+   <function>pg_buffercache_mark_dirty_all()</function> tries to mark all
+   buffers dirty in the buffer pool.
+   It returns the number of buffers marked as dirty, the number of buffers
+   already dirty and the number of buffers skipped because already pinned or
+   invalid.
+   The result is immediately out of date upon return, as the buffer might
+   become valid again at any time due to concurrent activity. The function is
+   intended for developer testing only.
+  </para>
+ </sect2>
+
+<sect2 id="pgbuffercache-sample-output">
+  <title>Sample Output</title>
+
+<screen>
+regression=# SELECT n.nspname, c.relname, count(*) AS buffers
+             FROM pg_buffercache b JOIN pg_class c
+             ON b.relfilenode = pg_relation_filenode(c.oid) AND
+                b.reldatabase IN (0, (SELECT oid FROM pg_database
+                                      WHERE datname = current_database()))
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+             GROUP BY n.nspname, c.relname
+             ORDER BY 3 DESC
+             LIMIT 10;
+
+  nspname   |        relname         | buffers
+------------+------------------------+---------
+ public     | delete_test_table      |     593
+ public     | delete_test_table_pkey |     494
+ pg_catalog | pg_attribute           |     472
+ public     | quad_poly_tbl          |     353
+ public     | tenk2                  |     349
+ public     | tenk1                  |     349
+ public     | gin_test_idx           |     306
+ pg_catalog | pg_largeobject         |     206
+ public     | gin_test_tbl           |     188
+ public     | spgist_text_tbl        |     182
+(10 rows)
+
+regression=# SELECT pages_per_buffer, COUNT(*) as buffer_count
+             FROM (
+                   SELECT bufferid, COUNT(*) as pages_per_buffer
+                   FROM pg_buffercache_os_pages
+                   GROUP BY bufferid
+                  )
+             GROUP BY pages_per_buffer
+             ORDER BY pages_per_buffer;
+
+ pages_per_buffer | buffer_count
+------------------+--------------
+                1 |       261120
+                2 |         1024
+(2 rows)
+
+regression=# SELECT n.nspname, c.relname, count(*) AS buffers_on_multiple_pages
+             FROM pg_buffercache b JOIN pg_class c
+             ON b.relfilenode = pg_relation_filenode(c.oid) AND
+                b.reldatabase IN (0, (SELECT oid FROM pg_database
+                                      WHERE datname = current_database()))
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+             JOIN (SELECT bufferid FROM pg_buffercache_os_pages
+                   GROUP BY bufferid HAVING count(*) > 1) m on m.bufferid = b.bufferid
+             GROUP BY n.nspname, c.relname
+             ORDER BY 3 DESC
+             LIMIT 10;
+
+  nspname   |           relname            | buffers_on_multiple_pages
+------------+------------------------------+---------------------------
+ public     | delete_test_table            |                         3
+ public     | gin_test_idx                 |                         2
+ pg_catalog | pg_depend                    |                         2
+ public     | quad_poly_tbl                |                         2
+ pg_catalog | pg_depend_reference_index    |                         1
+ pg_catalog | pg_index_indexrelid_index    |                         1
+ pg_catalog | pg_constraint_contypid_index |                         1
+ pg_catalog | pg_statistic                 |                         1
+ pg_catalog | pg_depend_depender_index     |                         1
+ pg_catalog | pg_operator                  |                         1
+(10 rows)
+
+regression=# SELECT * FROM pg_buffercache_summary();
+ buffers_used | buffers_unused | buffers_dirty | buffers_pinned | usagecount_avg
+--------------+----------------+---------------+----------------+----------------
+          248 |        2096904 |            39 |              0 |       3.141129
+(1 row)
+
+
+regression=# SELECT * FROM pg_buffercache_usage_counts();
+ usage_count | buffers | dirty | pinned
+-------------+---------+-------+--------
+           0 |   14650 |     0 |      0
+           1 |    1436 |   671 |      0
+           2 |     102 |    88 |      0
+           3 |      23 |    21 |      0
+           4 |       9 |     7 |      0
+           5 |     164 |   106 |      0
+(6 rows)
+</screen>
+ </sect2>
+
+ <sect2 id="pgbuffercache-authors">
+  <title>Authors</title>
+
+  <para>
+   Mark Kirkwood <email>markir@paradise.net.nz</email>
+  </para>
+
+  <para>
+   Design suggestions: Neil Conway <email>neilc@samurai.com</email>
+  </para>
+
+  <para>
+   Debugging advice: Tom Lane <email>tgl@sss.pgh.pa.us</email>
+  </para>
+ </sect2>
+
+</sect1>

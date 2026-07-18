@@ -1,0 +1,105 @@
+# Detect cgroup layout, create v1 CPU cgroup leaf (world-writable per policy), persist cgroup type only.
+set -euo pipefail
+
+YB_HOME="{{ yb_home_dir }}"
+YB_USER="{{ yb_user }}"
+STATE_DIR="${YB_HOME}/.yugabyte"
+CGROUP_V1_NAME="yugabyte-db"
+
+detect_cgroup_mode() {
+  if [ -f /sys/fs/cgroup/cgroup.controllers ]; then
+    printf '%s' "v2"
+    return
+  fi
+{% raw %}
+  if [ -d /sys/fs/cgroup/cpu ] || [ -d "/sys/fs/cgroup/cpu,cpuacct" ]; then
+    printf '%s' "v1"
+    return
+  fi
+  printf '%s' "unknown"
+{% endraw %}
+}
+
+write_cgroup_type() {
+  local mode="$1"
+  umask 022
+  if [ "$SUDO_ACCESS" = "true" ]; then
+    install -d -o "$YB_USER" -g "$YB_USER" -m 0755 "$STATE_DIR"
+    printf '%s\n' "$mode" > "${STATE_DIR}/cgroup_type"
+    chown "$YB_USER:$YB_USER" "${STATE_DIR}/cgroup_type"
+    chmod 0644 "${STATE_DIR}/cgroup_type"
+  else
+    mkdir -p "$STATE_DIR"
+    printf '%s\n' "$mode" > "${STATE_DIR}/cgroup_type"
+    chmod 0644 "${STATE_DIR}/cgroup_type" 2>/dev/null || true
+  fi
+}
+
+# Persist v1 CPU controller mount path for ConfigureSystemd (single line, no file when not v1).
+write_cgroup_v1_cpu() {
+  local cpu_root="$1"
+  if [ -z "$cpu_root" ]; then
+    rm -f "${STATE_DIR}/cgroup_v1_cpu"
+    return 0
+  fi
+  if [ "$SUDO_ACCESS" = "true" ]; then
+    install -d -o "$YB_USER" -g "$YB_USER" -m 0755 "$STATE_DIR"
+    printf '%s\n' "$cpu_root" > "${STATE_DIR}/cgroup_v1_cpu"
+    chown "$YB_USER:$YB_USER" "${STATE_DIR}/cgroup_v1_cpu"
+    chmod 0644 "${STATE_DIR}/cgroup_v1_cpu"
+  else
+    mkdir -p "$STATE_DIR"
+    printf '%s\n' "$cpu_root" > "${STATE_DIR}/cgroup_v1_cpu"
+    chmod 0644 "${STATE_DIR}/cgroup_v1_cpu" 2>/dev/null || true
+  fi
+}
+
+cgroup_v1_cpu_root() {
+{% raw %}
+  if [ -d /sys/fs/cgroup/cpu ]; then
+    printf '%s' "/sys/fs/cgroup/cpu"
+  elif [ -d "/sys/fs/cgroup/cpu,cpuacct" ]; then
+    printf '%s' "/sys/fs/cgroup/cpu,cpuacct"
+  else
+    printf '%s' ""
+  fi
+{% endraw %}
+}
+
+# One-time mkdir/chmod during this provision run so yb-tserver can be patched in the same run.
+# Reboot persistence is handled by yb-cgroup-v1-setup.service (written in ConfigureSystemd).
+setup_v1_cpu_cgroup() {
+  local cpu_root="$1"
+  local leaf="${cpu_root}/${CGROUP_V1_NAME}"
+  if [ "$SUDO_ACCESS" != "true" ]; then
+    echo "WARN: v1 cgroup setup requires root (mkdir/chmod); yb-cgroup-v1-setup.service will still apply on boot if enabled"
+    return 0
+  fi
+  install -d -m 0755 "$leaf"
+  chmod -R a+rw "$leaf" || true
+  echo "Created v1 cgroup at ${leaf} with a+rw"
+}
+
+CGROUP_MODE="$(detect_cgroup_mode)"
+echo "Detected cgroup mode: ${CGROUP_MODE}"
+
+cpu_root=""
+if [ "$CGROUP_MODE" = "v1" ]; then
+  cpu_root="$(cgroup_v1_cpu_root)"
+  if [ -n "$cpu_root" ]; then
+    setup_v1_cpu_cgroup "$cpu_root"
+  else
+    echo "WARN: v1 cpu controller path not found"
+  fi
+fi
+
+write_cgroup_type "$CGROUP_MODE"
+if [ "$CGROUP_MODE" = "v1" ] && [ -n "$cpu_root" ]; then
+  write_cgroup_v1_cpu "$cpu_root"
+else
+  write_cgroup_v1_cpu ""
+fi
+
+if [ "$CGROUP_MODE" = "unknown" ]; then
+  echo "WARN: could not classify cgroup layout; persisted unknown cgroup type"
+fi

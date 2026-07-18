@@ -1,0 +1,189 @@
+<!--
+doc/src/sgml/ref/create_conversion.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-createconversion">
+ <indexterm zone="sql-createconversion">
+  <primary>CREATE CONVERSION</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE CONVERSION</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE CONVERSION</refname>
+  <refpurpose>define a new encoding conversion</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CREATE [ DEFAULT ] CONVERSION <replaceable>name</replaceable>
+    FOR <replaceable>source_encoding</replaceable> TO <replaceable>dest_encoding</replaceable> FROM <replaceable>function_name</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1 id="sql-createconversion-description">
+  <title>Description</title>
+
+  <para>
+   <command>CREATE CONVERSION</command> defines a new conversion between
+   two character set encodings.
+  </para>
+
+  <para>
+   Conversions that are marked <literal>DEFAULT</literal> can be used for
+   automatic encoding conversion between client and server.  To support that
+   usage, two conversions, from encoding A to B <emphasis>and</emphasis>
+   from encoding B to A, must be defined.
+  </para>
+
+  <para>
+   To be able to create a conversion, you must have <literal>EXECUTE</literal> privilege
+   on the function and <literal>CREATE</literal> privilege on the destination schema.
+  </para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>Parameters</title>
+
+   <variablelist>
+    <varlistentry>
+     <term><literal>DEFAULT</literal></term>
+
+     <listitem>
+      <para>
+       The <literal>DEFAULT</literal> clause indicates that this conversion
+       is the default for this particular source to destination
+       encoding. There should be only one default encoding in a schema
+       for the encoding pair.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>name</replaceable></term>
+
+     <listitem>
+      <para>
+       The name of the conversion. The conversion name can be
+       schema-qualified. If it is not, the conversion is defined in the
+       current schema. The conversion name must be unique within a
+       schema.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>source_encoding</replaceable></term>
+
+     <listitem>
+      <para>
+       The source encoding name.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>dest_encoding</replaceable></term>
+
+     <listitem>
+      <para>
+       The destination encoding name.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>function_name</replaceable></term>
+
+     <listitem>
+      <para>
+       The function used to perform the conversion.  The function name can
+       be schema-qualified.  If it is not, the function will be looked
+       up in the path.
+      </para>
+
+      <para>
+       The function must have the following signature:
+
+<programlisting>
+conv_proc(
+    integer,  -- source encoding ID
+    integer,  -- destination encoding ID
+    cstring,  -- source string (null terminated C string)
+    internal, -- destination (fill with a null terminated C string)
+    integer,  -- source string length
+    boolean   -- if true, don't throw an error if conversion fails
+) RETURNS integer;
+</programlisting>
+       The return value is the number of source bytes that were successfully
+       converted. If the last argument is false, the function must throw an
+       error on invalid input, and the return value is always equal to the
+       source string length.
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+ </refsect1>
+
+ <refsect1 id="sql-createconversion-notes">
+  <title>Notes</title>
+
+  <para>
+   Neither the source nor the destination encoding can
+   be <literal>SQL_ASCII</literal>, as the server's behavior for cases
+   involving the <literal>SQL_ASCII</literal> <quote>encoding</quote> is
+   hard-wired.
+  </para>
+
+  <para>
+   Use <command>DROP CONVERSION</command> to remove user-defined conversions.
+  </para>
+
+  <para>
+   The privileges required to create a conversion might be changed in a future
+   release.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-createconversion-examples">
+  <title>Examples</title>
+
+  <para>
+   To create a conversion from encoding <literal>UTF8</literal> to
+   <literal>LATIN1</literal> using <function>myfunc</function>:
+<programlisting>
+CREATE CONVERSION myconv FOR 'UTF8' TO 'LATIN1' FROM myfunc;
+</programlisting></para>
+ </refsect1>
+
+
+ <refsect1 id="sql-createconversion-compat">
+  <title>Compatibility</title>
+
+  <para>
+    <command>CREATE CONVERSION</command>
+    is a <productname>PostgreSQL</productname> extension.
+    There is no <command>CREATE CONVERSION</command>
+    statement in the SQL standard, but a <command>CREATE TRANSLATION</command>
+    statement that is very similar in purpose and syntax.
+  </para>
+ </refsect1>
+
+
+ <refsect1 id="sql-createconversion-seealso">
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-alterconversion"/></member>
+   <member><xref linkend="sql-createfunction"/></member>
+   <member><xref linkend="sql-dropconversion"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

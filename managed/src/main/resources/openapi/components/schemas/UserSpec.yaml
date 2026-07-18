@@ -1,0 +1,19 @@
+title: UserSpec
+description: A user associated with a customer
+type: object
+required:
+  - email
+properties:
+  email:
+    description: User email address
+    type: string
+    example: username1@example.com
+  role:
+    description: User role
+    type: string
+    enum:
+      - ConnectOnly
+      - ReadOnly
+      - BackupAdmin
+      - Admin
+      - SuperAdmin

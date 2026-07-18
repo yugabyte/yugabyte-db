@@ -1,0 +1,146 @@
+BEGIN;
+CREATE EXTENSION IF NOT EXISTS anon CASCADE;
+SELECT anon.is_initialized() IS FALSE;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- 2 event triggers are defined
+SELECT evtname IN ('anon_trg_check_trusted_schemas','anon_trg_mask_update')
+FROM pg_event_trigger;
+ ?column? 
+----------
+ t
+ t
+(2 rows)
+
+-- basic usage
+SELECT anon.init();
+ init 
+------
+ t
+(1 row)
+
+SELECT anon.is_initialized();
+ is_initialized 
+----------------
+ t
+(1 row)
+
+SELECT anon.reset();
+NOTICE:  truncate cascades to table "identifier"
+ reset 
+-------
+ t
+(1 row)
+
+-- returns a WARNING and FALSE
+SELECT anon.init('./does/not/exists/cd2ks3s/') IS FALSE;
+NOTICE:  Data file './does/not/exists/cd2ks3s//identifiers_category.csv' is not present. Skipping.
+NOTICE:  Data file './does/not/exists/cd2ks3s//identifier.csv' is not present. Skipping.
+NOTICE:  Data file './does/not/exists/cd2ks3s//address.csv' is not present. Skipping.
+NOTICE:  Data file './does/not/exists/cd2ks3s//city.csv' is not present. Skipping.
+NOTICE:  Data file './does/not/exists/cd2ks3s//company.csv' is not present. Skipping.
+NOTICE:  Data file './does/not/exists/cd2ks3s//country.csv' is not present. Skipping.
+NOTICE:  Data file './does/not/exists/cd2ks3s//email.csv' is not present. Skipping.
+NOTICE:  Data file './does/not/exists/cd2ks3s//first_name.csv' is not present. Skipping.
+NOTICE:  Data file './does/not/exists/cd2ks3s//iban.csv' is not present. Skipping.
+NOTICE:  Data file './does/not/exists/cd2ks3s//last_name.csv' is not present. Skipping.
+NOTICE:  Data file './does/not/exists/cd2ks3s//postcode.csv' is not present. Skipping.
+NOTICE:  Data file './does/not/exists/cd2ks3s//siret.csv' is not present. Skipping.
+NOTICE:  Data file './does/not/exists/cd2ks3s//lorem_ipsum.csv' is not present. Skipping.
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.is_initialized() IS FALSE;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- load alternate data dir
+\! mkdir -p /tmp/tmp_anon_alternate_data
+\! cp -pr data/*.csv /tmp/tmp_anon_alternate_data
+\! cp -pr data/fr_FR/fake/*.csv /tmp/tmp_anon_alternate_data
+SELECT anon.init('/tmp/tmp_anon_alternate_data');
+ init 
+------
+ t
+(1 row)
+
+-- Load bad data
+\! echo '1\t too \t many \t tabs' > /tmp/tmp_anon_alternate_data/bad.csv
+SELECT anon.load_csv('anon.city','/tmp/tmp_anon_alternate_data/bad.csv') IS FALSE;
+NOTICE:  Data file '/tmp/tmp_anon_alternate_data/bad.csv' has a bad CSV format. Skipping.
+ ?column? 
+----------
+ t
+(1 row)
+
+\! rm -fr /tmp/tmp_anon_alternate_data
+SELECT anon.reset();
+NOTICE:  truncate cascades to table "identifier"
+ reset 
+-------
+ t
+(1 row)
+
+-- strict mode
+SELECT anon.init(NULL) IS NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- backward compatibility with v0.6 and below
+SELECT anon.load();
+NOTICE:  anon.load() will be deprecated in future versions.
+HINT:  you should use anon.init() instead.
+ load 
+------
+ t
+(1 row)
+
+-- Returns a NOTICE and TRUE
+SELECT anon.init();
+NOTICE:  The anon extension is already initialized.
+ init 
+------
+ t
+(1 row)
+
+SELECT anon.is_initialized() IS TRUE;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.reset();
+NOTICE:  truncate cascades to table "identifier"
+ reset 
+-------
+ t
+(1 row)
+
+SELECT anon.is_initialized() IS FALSE;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.start_dynamic_masking( autoload := FALSE );
+ start_dynamic_masking 
+-----------------------
+ t
+(1 row)
+
+SELECT anon.is_initialized() IS FALSE;
+ ?column? 
+----------
+ t
+(1 row)
+
+ROLLBACK;

@@ -1,0 +1,57 @@
+-- ================================================================
+-- Setup the table
+--
+SELECT hll_set_output_version(1);
+ hll_set_output_version 
+------------------------
+                      1
+(1 row)
+
+DROP TABLE IF EXISTS test_lunfjncl;
+NOTICE:  table "test_lunfjncl" does not exist, skipping
+CREATE TABLE test_lunfjncl (
+    recno                       SERIAL,
+    cardinality                 double precision,
+    raw_value                   bigint,
+    union_compressed_multiset   hll
+);
+-- Copy the CSV data into the table
+--
+\copy test_lunfjncl (cardinality, raw_value, union_compressed_multiset)  from sql/data/cumulative_add_sparse_step.csv with csv header
+SELECT COUNT(*) FROM test_lunfjncl;
+ count 
+-------
+   513
+(1 row)
+
+--  Test incremental adding.
+SELECT curr.recno,
+       curr.union_compressed_multiset,
+       hll_add(prev.union_compressed_multiset, hll_hashval(curr.raw_value))
+  FROM test_lunfjncl prev, test_lunfjncl curr
+ WHERE curr.recno > 1
+   AND curr.recno = prev.recno + 1
+   AND curr.union_compressed_multiset != 
+       hll_add(prev.union_compressed_multiset, hll_hashval(curr.raw_value))
+ ORDER BY curr.recno;
+ recno | union_compressed_multiset | hll_add 
+-------+---------------------------+---------
+(0 rows)
+
+--  Test cardinality of incremental adds.
+SELECT curr.recno,
+       curr.cardinality,
+       hll_cardinality(hll_add(prev.union_compressed_multiset,
+                       hll_hashval(curr.raw_value)))
+  FROM test_lunfjncl prev, test_lunfjncl curr
+ WHERE curr.recno > 1
+   AND curr.recno = prev.recno + 1
+   AND curr.cardinality != 
+       hll_cardinality(hll_add(prev.union_compressed_multiset,
+                       hll_hashval(curr.raw_value)))
+ ORDER BY curr.recno;
+ recno | cardinality | hll_cardinality 
+-------+-------------+-----------------
+(0 rows)
+
+DROP TABLE test_lunfjncl;

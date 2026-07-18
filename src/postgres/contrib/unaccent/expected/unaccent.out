@@ -1,0 +1,181 @@
+/*
+ * This test must be run in a database with UTF-8 encoding,
+ * because other encodings don't support all the characters used.
+ */
+SELECT getdatabaseencoding() <> 'UTF8'
+       AS skip_test \gset
+\if :skip_test
+\quit
+\endif
+CREATE EXTENSION unaccent;
+SET client_encoding TO 'UTF8';
+SELECT unaccent('foobar');
+ unaccent 
+----------
+ foobar
+(1 row)
+
+SELECT unaccent('ёлка');
+ unaccent 
+----------
+ елка
+(1 row)
+
+SELECT unaccent('ЁЖИК');
+ unaccent 
+----------
+ ЕЖИК
+(1 row)
+
+SELECT unaccent('˃˖˗˜');
+ unaccent 
+----------
+ >+-~
+(1 row)
+
+SELECT unaccent('À');  -- Remove combining diacritical 0x0300
+ unaccent 
+----------
+ A
+(1 row)
+
+SELECT unaccent('℃℉'); -- degree signs
+ unaccent 
+----------
+ °C°F
+(1 row)
+
+SELECT unaccent('℗'); -- sound recording copyright
+ unaccent 
+----------
+ (P)
+(1 row)
+
+SELECT unaccent('1½'); -- math expression with whitespace
+ unaccent 
+----------
+ 1 1/2
+(1 row)
+
+SELECT unaccent('〝'); -- quote
+ unaccent 
+----------
+ "
+(1 row)
+
+SELECT unaccent('unaccent', 'foobar');
+ unaccent 
+----------
+ foobar
+(1 row)
+
+SELECT unaccent('unaccent', 'ёлка');
+ unaccent 
+----------
+ елка
+(1 row)
+
+SELECT unaccent('unaccent', 'ЁЖИК');
+ unaccent 
+----------
+ ЕЖИК
+(1 row)
+
+SELECT unaccent('unaccent', '˃˖˗˜');
+ unaccent 
+----------
+ >+-~
+(1 row)
+
+SELECT unaccent('unaccent', 'À');
+ unaccent 
+----------
+ A
+(1 row)
+
+SELECT unaccent('unaccent', '℃℉');
+ unaccent 
+----------
+ °C°F
+(1 row)
+
+SELECT unaccent('unaccent', '℗');
+ unaccent 
+----------
+ (P)
+(1 row)
+
+SELECT unaccent('unaccent', '1½');
+ unaccent 
+----------
+ 1 1/2
+(1 row)
+
+SELECT unaccent('unaccent', '〝');
+ unaccent 
+----------
+ "
+(1 row)
+
+SELECT ts_lexize('unaccent', 'foobar');
+ ts_lexize 
+-----------
+ 
+(1 row)
+
+SELECT ts_lexize('unaccent', 'ёлка');
+ ts_lexize 
+-----------
+ {елка}
+(1 row)
+
+SELECT ts_lexize('unaccent', 'ЁЖИК');
+ ts_lexize 
+-----------
+ {ЕЖИК}
+(1 row)
+
+SELECT ts_lexize('unaccent', '˃˖˗˜');
+ ts_lexize 
+-----------
+ {>+-~}
+(1 row)
+
+SELECT ts_lexize('unaccent', 'À');
+ ts_lexize 
+-----------
+ {A}
+(1 row)
+
+SELECT ts_lexize('unaccent', '℃℉');
+ ts_lexize 
+-----------
+ {°C°F}
+(1 row)
+
+SELECT ts_lexize('unaccent', '℗');
+ ts_lexize 
+-----------
+ {(P)}
+(1 row)
+
+SELECT ts_lexize('unaccent', '1½');
+ ts_lexize 
+-----------
+ {"1 1/2"}
+(1 row)
+
+SELECT ts_lexize('unaccent', '〝');
+ ts_lexize 
+-----------
+ {"\""}
+(1 row)
+
+-- Controversial case.  Black-Letter Capital H (U+210C) is translated by
+-- Latin-ASCII.xml as 'x', but it should be 'H'.
+SELECT unaccent('ℌ');
+ unaccent 
+----------
+ H
+(1 row)
+

@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+
+# Wrapper that places the tserver process into the yugabyte-db CPU cgroup
+# before exec on the real binary for cgroup v1 and cgroup v2 systemd version < 254.
+# Installed only when configure_cgroup is enabled; the systemd unit's ExecStart
+# points here instead of yb-tserver directly.
+
+set -euo pipefail
+
+YB_HOME="{{ yb_home_dir }}"
+STATE_DIR="${YB_HOME}/.yugabyte"
+CG_NAME="yugabyte-db"
+
+# Read cgroup type from state file
+CGROUP_TYPE="unknown"
+[ -f "${STATE_DIR}/cgroup_type" ] && CGROUP_TYPE=$(tr -d '\r\n' < "${STATE_DIR}/cgroup_type")
+
+setup_v1() {
+  # Read cpu cgroup path from state file
+  local cpu="/sys/fs/cgroup/cpu"
+  [ -f "${STATE_DIR}/cgroup_v1_cpu" ] && cpu=$(tr -d '\r\n' < "${STATE_DIR}/cgroup_v1_cpu")
+  # Move process into yugabyte-db cgroup
+  local leaf="${cpu}/${CG_NAME}"
+  for f in "${leaf}/tasks" "${leaf}/cgroup.procs"; do
+    [ -f "$f" ] && echo $$ > "$f"
+  done
+}
+
+setup_v2() {
+  local self_cg
+  self_cg=$(grep -m1 '^0:' /proc/$$/cgroup | cut -d: -f3)
+
+  # DelegateSubgroup=yugabyte-db (systemd >= 254) handles process placement
+  # inside the sub-cgroup — nothing to do.
+  [ "${self_cg##*/}" = "$CG_NAME" ] && return 0
+
+  local fs="/sys/fs/cgroup"
+  local subgroup="${self_cg}/${CG_NAME}"
+  mkdir -p "${fs}${subgroup}"
+  echo $$ > "${fs}${subgroup}/cgroup.procs"
+  echo "+cpu" > "${fs}${self_cg}/cgroup.subtree_control" 2>/dev/null || true
+}
+
+case "$CGROUP_TYPE" in
+  v1) setup_v1 ;;
+  v2) setup_v2 ;;
+esac
+
+exec "$@"

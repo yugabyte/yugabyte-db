@@ -1,0 +1,63 @@
+title: JobScheduleInfo
+description: Job schedule info which is a part of JobSchedule.
+type: object
+properties:
+  created_at:
+    description: Creation time
+    type: string
+    format: date-time
+    example: '2024-07-25T13:07:18Z'
+    readOnly: true
+  customer_uuid:
+    description: Customer UUID
+    type: string
+    format: uuid
+    readOnly: true
+  execution_count:
+    description: Total execution count
+    type: integer
+    format: int64
+    readOnly: true
+  failed_count:
+    description: Total failed count
+    type: integer
+    format: int64
+    readOnly: true
+  last_end_time:
+    description: Last end time
+    type: string
+    format: date-time
+    example: '2024-07-25T13:07:18Z'
+    readOnly: true
+  last_job_instance_uuid:
+    description: Last job instance UUID
+    type: string
+    format: uuid
+    readOnly: true
+  last_start_time:
+    description: Last start time
+    type: string
+    format: date-time
+    example: '2024-07-25T13:07:18Z'
+    readOnly: true
+  next_start_time:
+    description: Next start time
+    type: string
+    format: date-time
+    example: '2024-07-25T13:07:18Z'
+    readOnly: true
+  state:
+    description: Job schedule state
+    $ref: "./JobScheduleState.yaml"
+    readOnly: true
+  updated_at:
+    description: Updated time
+    type: string
+    format: date-time
+    example: '2024-07-25T13:07:18Z'
+    readOnly: true
+  uuid:
+    description: Job schedule UUID
+    type: string
+    format: uuid
+    readOnly: true

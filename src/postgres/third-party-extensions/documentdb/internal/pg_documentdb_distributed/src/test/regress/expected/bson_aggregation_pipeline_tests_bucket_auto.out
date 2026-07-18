@@ -1,0 +1,620 @@
+SET search_path TO documentdb_api_catalog;
+SET citus.next_shard_id TO 5110000;
+SET documentdb.next_collection_id TO 51100;
+SET documentdb.next_collection_index_id TO 51100;
+/* Insert data */
+SELECT documentdb_api.insert_one('db','dollarBucketAuto',' { "_id" : 1, "product" : "apple", "price" : 1, "year": 2021 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAuto','{ "_id" : 2, "product" : "peach", "price" : 2, "year": 2021 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAuto',' { "_id" : 3, "product" : "melon", "price" : 5, "year": 2021}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAuto',' { "_id" : 4, "product" : "melon", "price" : 7, "year": 2021}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAuto','{ "_id" : 5, "product" : "melon", "price" : 20, "year": 2021 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAuto','{ "_id" : 6, "product" : "apple", "price" : 30, "year": 2022 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAuto','{ "_id" : 7, "product" : "melon", "price" : 60, "year": 2022 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAuto','{ "_id" : 8, "product" : "peach", "price" : 62, "year": 2022 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAuto','{ "_id" : 9, "product" : "banana", "price" : 170, "year": 2023 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAuto','{ "_id" : 10, "product" : "banana", "price" : 300, "year": 2023 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAuto','{ "_id" : 11, "product" : "peach", "price" : 320, "year": 2023 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAuto','{ "_id" : 12, "product" : "peach", "price" : 350, "year": 2024 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* positive cases: */
+-- $bucketAuto with only required fields
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 3 } } ] }');
+                                                       document                                                       
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "1" }, "max" : { "$numberInt" : "20" } }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : { "$numberInt" : "20" }, "max" : { "$numberInt" : "170" } }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : { "$numberInt" : "170" }, "max" : { "$numberInt" : "350" } }, "count" : { "$numberInt" : "4" } }
+(3 rows)
+
+-- $bucketAuto with diferent num of buckets
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 4 } } ] }');
+                                                       document                                                       
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "1" }, "max" : { "$numberInt" : "7" } }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "min" : { "$numberInt" : "7" }, "max" : { "$numberInt" : "60" } }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "min" : { "$numberInt" : "60" }, "max" : { "$numberInt" : "300" } }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "min" : { "$numberInt" : "300" }, "max" : { "$numberInt" : "350" } }, "count" : { "$numberInt" : "3" } }
+(4 rows)
+
+-- $bucketAuto with output fields
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 3, "output": { "count": { "$sum": 1 }, "averageAmount": { "$avg": "$price" } } } } ] }');
+                                                                               document                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "1" }, "max" : { "$numberInt" : "20" } }, "count" : { "$numberInt" : "4" }, "averageAmount" : { "$numberDouble" : "3.75" } }
+ { "_id" : { "min" : { "$numberInt" : "20" }, "max" : { "$numberInt" : "170" } }, "count" : { "$numberInt" : "4" }, "averageAmount" : { "$numberDouble" : "43.0" } }
+ { "_id" : { "min" : { "$numberInt" : "170" }, "max" : { "$numberInt" : "350" } }, "count" : { "$numberInt" : "4" }, "averageAmount" : { "$numberDouble" : "285.0" } }
+(3 rows)
+
+-- $bucketAuto without count in output fields
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 3, "output": { "averageAmount": { "$avg": "$price" } } } } ] }');
+                                                              document                                                               
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "1" }, "max" : { "$numberInt" : "20" } }, "averageAmount" : { "$numberDouble" : "3.75" } }
+ { "_id" : { "min" : { "$numberInt" : "20" }, "max" : { "$numberInt" : "170" } }, "averageAmount" : { "$numberDouble" : "43.0" } }
+ { "_id" : { "min" : { "$numberInt" : "170" }, "max" : { "$numberInt" : "350" } }, "averageAmount" : { "$numberDouble" : "285.0" } }
+(3 rows)
+
+-- $bucketAuto with expression in groupBy field
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": { "$subtract": ["$price", 1] }, "buckets": 3 } } ] }');
+                                                       document                                                       
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "0" }, "max" : { "$numberInt" : "19" } }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : { "$numberInt" : "19" }, "max" : { "$numberInt" : "169" } }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : { "$numberInt" : "169" }, "max" : { "$numberInt" : "349" } }, "count" : { "$numberInt" : "4" } }
+(3 rows)
+
+-- $bucketAuto with another stage before it
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$match": { "product": "melon" } }, { "$bucketAuto": { "groupBy": "$price", "buckets": 2 } } ] }');
+                                                      document                                                      
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "5" }, "max" : { "$numberInt" : "20" } }, "count" : { "$numberInt" : "2" } }
+ { "_id" : { "min" : { "$numberInt" : "20" }, "max" : { "$numberInt" : "60" } }, "count" : { "$numberInt" : "2" } }
+(2 rows)
+
+-- groupBy non-integar field
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$product", "buckets": 3 } } ] }');
+                                      document                                      
+---------------------------------------------------------------------
+ { "_id" : { "min" : "apple", "max" : "melon" }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : "melon", "max" : "peach" }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : "peach", "max" : "peach" }, "count" : { "$numberInt" : "4" } }
+(3 rows)
+
+-- unevenly distributed data
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 5 } } ] }');
+                                                       document                                                       
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "1" }, "max" : { "$numberInt" : "7" } }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "min" : { "$numberInt" : "7" }, "max" : { "$numberInt" : "60" } }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "min" : { "$numberInt" : "60" }, "max" : { "$numberInt" : "170" } }, "count" : { "$numberInt" : "2" } }
+ { "_id" : { "min" : { "$numberInt" : "170" }, "max" : { "$numberInt" : "320" } }, "count" : { "$numberInt" : "2" } }
+ { "_id" : { "min" : { "$numberInt" : "320" }, "max" : { "$numberInt" : "350" } }, "count" : { "$numberInt" : "2" } }
+(5 rows)
+
+-- try granularity
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 3, "granularity": "R5" } } ] }');
+                                                                    document                                                                    
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberDouble" : "0.63000000000000000444" }, "max" : { "$numberDouble" : "10.0" } }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : { "$numberDouble" : "10.0" }, "max" : { "$numberDouble" : "63.0" } }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : { "$numberDouble" : "63.0" }, "max" : { "$numberDouble" : "400.0" } }, "count" : { "$numberInt" : "4" } }
+(3 rows)
+
+-- $bucketAuto with $let
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": { "$let": { "vars": { "adjustedAmount": { "$multiply": ["$price", 10] } }, "in": "$$adjustedAmount" }}, "buckets": 3 } } ] }');
+                                                        document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "10" }, "max" : { "$numberInt" : "200" } }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : { "$numberInt" : "200" }, "max" : { "$numberInt" : "1700" } }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : { "$numberInt" : "1700" }, "max" : { "$numberInt" : "3500" } }, "count" : { "$numberInt" : "4" } }
+(3 rows)
+
+-- With let at aggregation level
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "let": { "multiplier": 10 }, "pipeline": [ { "$bucketAuto": { "groupBy": { "$multiply": ["$price", "$$multiplier"] }, "buckets": 3 } } ] }');
+                                                        document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "10" }, "max" : { "$numberInt" : "200" } }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : { "$numberInt" : "200" }, "max" : { "$numberInt" : "1700" } }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : { "$numberInt" : "1700" }, "max" : { "$numberInt" : "3500" } }, "count" : { "$numberInt" : "4" } }
+(3 rows)
+
+-- less buckets will be returned if the unique values are less than the buckets specified
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$product", "buckets": 8 } } ] }');
+                                      document                                       
+---------------------------------------------------------------------
+ { "_id" : { "min" : "apple", "max" : "banana" }, "count" : { "$numberInt" : "2" } }
+ { "_id" : { "min" : "banana", "max" : "melon" }, "count" : { "$numberInt" : "2" } }
+ { "_id" : { "min" : "melon", "max" : "peach" }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : "peach", "max" : "peach" }, "count" : { "$numberInt" : "4" } }
+(4 rows)
+
+-- Expand bucket: same value should go to the same bucket, even if this makes the buckets uneven
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$year", "buckets": 3 } } ] }');
+                                                        document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "2021" }, "max" : { "$numberInt" : "2022" } }, "count" : { "$numberInt" : "5" } }
+ { "_id" : { "min" : { "$numberInt" : "2022" }, "max" : { "$numberInt" : "2024" } }, "count" : { "$numberInt" : "6" } }
+ { "_id" : { "min" : { "$numberInt" : "2024" }, "max" : { "$numberInt" : "2024" } }, "count" : { "$numberInt" : "1" } }
+(3 rows)
+
+/* all granularity types */
+DO $$
+DECLARE i int;
+BEGIN
+FOR i IN 0..99 LOOP
+PERFORM documentdb_api.insert_one('db', 'bucketAutoGranularity', FORMAT('{ "_id": %s, "amount": %s }', i + 1, i)::documentdb_core.bson);
+END LOOP;
+END;
+$$;
+NOTICE:  creating collection
+-- POWERSOF2
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "bucketAutoGranularity", "pipeline": [ { "$bucketAuto": { "groupBy": "$amount", "buckets": 5, "granularity": "POWERSOF2" } } ] }');
+                                                            document                                                            
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberDouble" : "0.0" }, "max" : { "$numberDouble" : "32.0" } }, "count" : { "$numberInt" : "32" } }
+ { "_id" : { "min" : { "$numberDouble" : "32.0" }, "max" : { "$numberDouble" : "64.0" } }, "count" : { "$numberInt" : "32" } }
+ { "_id" : { "min" : { "$numberDouble" : "64.0" }, "max" : { "$numberDouble" : "128.0" } }, "count" : { "$numberInt" : "36" } }
+(3 rows)
+
+-- 1-2-5
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "bucketAutoGranularity", "pipeline": [ { "$bucketAuto": { "groupBy": "$amount", "buckets": 5, "granularity": "1-2-5" } } ] }');
+                                                            document                                                            
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberDouble" : "0.0" }, "max" : { "$numberDouble" : "20.0" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "20.0" }, "max" : { "$numberDouble" : "50.0" } }, "count" : { "$numberInt" : "30" } }
+ { "_id" : { "min" : { "$numberDouble" : "50.0" }, "max" : { "$numberDouble" : "100.0" } }, "count" : { "$numberInt" : "50" } }
+(3 rows)
+
+-- R5
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "bucketAutoGranularity", "pipeline": [ { "$bucketAuto": { "groupBy": "$amount", "buckets": 5, "granularity": "R5" } } ] }');
+                                                            document                                                            
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberDouble" : "0.0" }, "max" : { "$numberDouble" : "25.0" } }, "count" : { "$numberInt" : "25" } }
+ { "_id" : { "min" : { "$numberDouble" : "25.0" }, "max" : { "$numberDouble" : "63.0" } }, "count" : { "$numberInt" : "38" } }
+ { "_id" : { "min" : { "$numberDouble" : "63.0" }, "max" : { "$numberDouble" : "100.0" } }, "count" : { "$numberInt" : "37" } }
+(3 rows)
+
+-- R10
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "bucketAutoGranularity", "pipeline": [ { "$bucketAuto": { "groupBy": "$amount", "buckets": 5, "granularity": "R10" } } ] }');
+                                                            document                                                            
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberDouble" : "0.0" }, "max" : { "$numberDouble" : "20.0" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "20.0" }, "max" : { "$numberDouble" : "40.0" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "40.0" }, "max" : { "$numberDouble" : "63.0" } }, "count" : { "$numberInt" : "23" } }
+ { "_id" : { "min" : { "$numberDouble" : "63.0" }, "max" : { "$numberDouble" : "100.0" } }, "count" : { "$numberInt" : "37" } }
+(4 rows)
+
+-- R20
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "bucketAutoGranularity", "pipeline": [ { "$bucketAuto": { "groupBy": "$amount", "buckets": 5, "granularity": "R20" } } ] }');
+                                                            document                                                            
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberDouble" : "0.0" }, "max" : { "$numberDouble" : "20.0" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "20.0" }, "max" : { "$numberDouble" : "40.0" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "40.0" }, "max" : { "$numberDouble" : "63.0" } }, "count" : { "$numberInt" : "23" } }
+ { "_id" : { "min" : { "$numberDouble" : "63.0" }, "max" : { "$numberDouble" : "90.0" } }, "count" : { "$numberInt" : "27" } }
+ { "_id" : { "min" : { "$numberDouble" : "90.0" }, "max" : { "$numberDouble" : "100.0" } }, "count" : { "$numberInt" : "10" } }
+(5 rows)
+
+-- R40
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "bucketAutoGranularity", "pipeline": [ { "$bucketAuto": { "groupBy": "$amount", "buckets": 5, "granularity": "R40" } } ] }');
+                                                            document                                                            
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberDouble" : "0.0" }, "max" : { "$numberDouble" : "20.0" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "20.0" }, "max" : { "$numberDouble" : "40.0" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "40.0" }, "max" : { "$numberDouble" : "60.0" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "60.0" }, "max" : { "$numberDouble" : "80.0" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "80.0" }, "max" : { "$numberDouble" : "100.0" } }, "count" : { "$numberInt" : "20" } }
+(5 rows)
+
+-- R80
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "bucketAutoGranularity", "pipeline": [ { "$bucketAuto": { "groupBy": "$amount", "buckets": 5, "granularity": "R80" } } ] }');
+                                                                            document                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberDouble" : "0.0" }, "max" : { "$numberDouble" : "19.300000000000000711" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "19.300000000000000711" }, "max" : { "$numberDouble" : "40.0" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "40.0" }, "max" : { "$numberDouble" : "59.100000000000001421" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "59.100000000000001421" }, "max" : { "$numberDouble" : "79.400000000000005684" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "79.400000000000005684" }, "max" : { "$numberDouble" : "100.0" } }, "count" : { "$numberInt" : "20" } }
+(5 rows)
+
+-- E6
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "bucketAutoGranularity", "pipeline": [ { "$bucketAuto": { "groupBy": "$amount", "buckets": 5, "granularity": "E6" } } ] }');
+                                                            document                                                            
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberDouble" : "0.0" }, "max" : { "$numberDouble" : "22.0" } }, "count" : { "$numberInt" : "22" } }
+ { "_id" : { "min" : { "$numberDouble" : "22.0" }, "max" : { "$numberDouble" : "47.0" } }, "count" : { "$numberInt" : "25" } }
+ { "_id" : { "min" : { "$numberDouble" : "47.0" }, "max" : { "$numberDouble" : "68.0" } }, "count" : { "$numberInt" : "21" } }
+ { "_id" : { "min" : { "$numberDouble" : "68.0" }, "max" : { "$numberDouble" : "100.0" } }, "count" : { "$numberInt" : "32" } }
+(4 rows)
+
+-- E12
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "bucketAutoGranularity", "pipeline": [ { "$bucketAuto": { "groupBy": "$amount", "buckets": 5, "granularity": "E12" } } ] }');
+                                                            document                                                            
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberDouble" : "0.0" }, "max" : { "$numberDouble" : "22.0" } }, "count" : { "$numberInt" : "22" } }
+ { "_id" : { "min" : { "$numberDouble" : "22.0" }, "max" : { "$numberDouble" : "47.0" } }, "count" : { "$numberInt" : "25" } }
+ { "_id" : { "min" : { "$numberDouble" : "47.0" }, "max" : { "$numberDouble" : "68.0" } }, "count" : { "$numberInt" : "21" } }
+ { "_id" : { "min" : { "$numberDouble" : "68.0" }, "max" : { "$numberDouble" : "100.0" } }, "count" : { "$numberInt" : "32" } }
+(4 rows)
+
+-- E24
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "bucketAutoGranularity", "pipeline": [ { "$bucketAuto": { "groupBy": "$amount", "buckets": 5, "granularity": "E24" } } ] }');
+                                                           document                                                            
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberDouble" : "0.0" }, "max" : { "$numberDouble" : "20.0" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "20.0" }, "max" : { "$numberDouble" : "43.0" } }, "count" : { "$numberInt" : "23" } }
+ { "_id" : { "min" : { "$numberDouble" : "43.0" }, "max" : { "$numberDouble" : "68.0" } }, "count" : { "$numberInt" : "25" } }
+ { "_id" : { "min" : { "$numberDouble" : "68.0" }, "max" : { "$numberDouble" : "91.0" } }, "count" : { "$numberInt" : "23" } }
+ { "_id" : { "min" : { "$numberDouble" : "91.0" }, "max" : { "$numberDouble" : "100.0" } }, "count" : { "$numberInt" : "9" } }
+(5 rows)
+
+-- E48
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "bucketAutoGranularity", "pipeline": [ { "$bucketAuto": { "groupBy": "$amount", "buckets": 5, "granularity": "E48" } } ] }');
+                                                                            document                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberDouble" : "0.0" }, "max" : { "$numberDouble" : "19.600000000000001421" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "19.600000000000001421" }, "max" : { "$numberDouble" : "40.199999999999995737" } }, "count" : { "$numberInt" : "21" } }
+ { "_id" : { "min" : { "$numberDouble" : "40.199999999999995737" }, "max" : { "$numberDouble" : "61.900000000000005684" } }, "count" : { "$numberInt" : "21" } }
+ { "_id" : { "min" : { "$numberDouble" : "61.900000000000005684" }, "max" : { "$numberDouble" : "82.5" } }, "count" : { "$numberInt" : "21" } }
+ { "_id" : { "min" : { "$numberDouble" : "82.5" }, "max" : { "$numberDouble" : "100.0" } }, "count" : { "$numberInt" : "17" } }
+(5 rows)
+
+-- E96
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "bucketAutoGranularity", "pipeline": [ { "$bucketAuto": { "groupBy": "$amount", "buckets": 5, "granularity": "E96" } } ] }');
+                                                                            document                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberDouble" : "0.0" }, "max" : { "$numberDouble" : "19.099999999999997868" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "19.099999999999997868" }, "max" : { "$numberDouble" : "39.200000000000002842" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "39.200000000000002842" }, "max" : { "$numberDouble" : "60.399999999999998579" } }, "count" : { "$numberInt" : "21" } }
+ { "_id" : { "min" : { "$numberDouble" : "60.399999999999998579" }, "max" : { "$numberDouble" : "80.600000000000008527" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "80.600000000000008527" }, "max" : { "$numberDouble" : "100.0" } }, "count" : { "$numberInt" : "19" } }
+(5 rows)
+
+-- E192
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "bucketAutoGranularity", "pipeline": [ { "$bucketAuto": { "groupBy": "$amount", "buckets": 5, "granularity": "E192" } } ] }');
+                                                                            document                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberDouble" : "0.0" }, "max" : { "$numberDouble" : "19.099999999999997868" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "19.099999999999997868" }, "max" : { "$numberDouble" : "39.200000000000002842" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "39.200000000000002842" }, "max" : { "$numberDouble" : "59.699999999999995737" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "59.699999999999995737" }, "max" : { "$numberDouble" : "79.599999999999994316" } }, "count" : { "$numberInt" : "20" } }
+ { "_id" : { "min" : { "$numberDouble" : "79.599999999999994316" }, "max" : { "$numberDouble" : "100.0" } }, "count" : { "$numberInt" : "20" } }
+(5 rows)
+
+/* groupBy array or document field */
+SELECT documentdb_api.insert_one('db','dollarBucketAutoGroupBy', '{ "_id" : 1, "valueArray" : [1, 2, 3], "valueDocument" : { "a": 1, "b": 2 } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAutoGroupBy', '{ "_id" : 2, "valueArray" : [4, 5, 6], "valueDocument" : { "a": 3, "b": 4 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAutoGroupBy', '{ "_id" : 3, "valueArray" : [9, 8], "valueDocument" : { "a": 5, "b": 6 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAutoGroupBy', '{ "_id" : 4, "valueArray" : [10, 11, 12], "valueDocument" : { "a": 4, "b": 8 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAutoGroupBy', '{ "_id" : 5, "valueArray" : [3, 14, 15], "valueDocument" : { "a": 2, "b": 10 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAutoGroupBy', '{ "_id" : 6, "valueArray" : [6, 17, 18], "valueDocument" : { "a": 11, "b": 12 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAutoGroupBy", "pipeline": [ { "$bucketAuto": { "groupBy": "$valueArray", "buckets": 3, "output": { "Ids" : { "$push": "$_id" } } } } ] }');
+                                                                                                                      document                                                                                                                      
+---------------------------------------------------------------------
+ { "_id" : { "min" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "max" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" } ] }, "Ids" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" } ] }
+ { "_id" : { "min" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" } ], "max" : [ { "$numberInt" : "9" }, { "$numberInt" : "8" } ] }, "Ids" : [ { "$numberInt" : "2" }, { "$numberInt" : "6" } ] }
+ { "_id" : { "min" : [ { "$numberInt" : "9" }, { "$numberInt" : "8" } ], "max" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" }, { "$numberInt" : "12" } ] }, "Ids" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+(3 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAutoGroupBy", "pipeline": [ { "$bucketAuto": { "groupBy": "$valueDocument", "buckets": 3, "output": { "Ids" : { "$push": "$_id" } } } } ] }');
+                                                                                                           document                                                                                                           
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "2" } }, "max" : { "a" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "4" } } }, "Ids" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" } ] }
+ { "_id" : { "min" : { "a" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "4" } }, "max" : { "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "6" } } }, "Ids" : [ { "$numberInt" : "2" }, { "$numberInt" : "4" } ] }
+ { "_id" : { "min" : { "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "6" } }, "max" : { "a" : { "$numberInt" : "11" }, "b" : { "$numberInt" : "12" } } }, "Ids" : [ { "$numberInt" : "3" }, { "$numberInt" : "6" } ] }
+(3 rows)
+
+/* negative cases, validations: */
+-- required fields
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "buckets": 3 } } ] }');
+ERROR:  The $bucketAuto stage must include both 'groupBy' and 'buckets' parameters.
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price" } } ] }');
+ERROR:  The $bucketAuto stage must include both 'groupBy' and 'buckets' parameters.
+-- groupBy must be a path with prefix $ or expression
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "price", "buckets": 3 } } ] }');
+ERROR:  The $bucketAuto 'groupBy' field must be specified using either a $-prefixed path or a valid expression object, but instead received: "price"
+-- buckets must be a positive integer
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": "abc" } } ] }');
+ERROR:  The 'buckets' field in $bucketAuto must contain a numeric value, but a different type was detected: string
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 3.1 } } ] }');
+ERROR:  The 'buckets' setting in $bucketAuto must fit within a 32-bit integer range, but was given: 3.1, type: double
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": -3 } } ] }');
+ERROR:  The 'buckets' field in the $bucketAuto operator must have a value greater than zero, but the provided value was: -3
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 0 } } ] }');
+ERROR:  The 'buckets' field in the $bucketAuto operator must have a value greater than zero, but the provided value was: 0
+-- output must be document
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 3, "output": 1 } } ] }');
+ERROR:  The 'output' field in $bucketAuto must be an object, but a different type was provided: int
+-- unknown argument of $bucketAuto
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 3, "unknown": 1 } } ] }');
+ERROR:  Unrecognized option to $bucketAuto: unknown
+-- granularity must be a string
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 3, "granularity": 1 } } ] }');
+ERROR:  Expected 'string' for 'granularity' field for $bucketAuto but found 'int' type
+-- unsupported granularity
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 3, "granularity": "abc" } } ] }');
+ERROR:  Rounding granularity not recognized: abc
+-- when has granularity, groupby value must be a non-negative number
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$product", "buckets": 3, "granularity": "POWERSOF2" } } ] }');
+ERROR:  $bucketAuto only allows specifying a 'granularity' with numeric boundaries, but encountered a value of type: string
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": { "$subtract": ["$price", 100] }, "buckets": 3, "granularity": "POWERSOF2" } } ] }');
+ERROR:   $bucketAuto only allows specifying a 'granularity' with numeric boundaries, but a negative value was provided: -99.000000
+/* Explain */
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 3 } } ] }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_core.bson_repath_and_build(c1, c2, c3, c4) AS document FROM (SELECT '_id'::text AS c1, documentdb_api_internal.bson_expression_get(documentdb_api_catalog.bson_dollar_add_fields(agg_stage_0_1.document, agg_stage_0_1.bucket_id), '{ "" : "$bucket_id" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS c2, 'count'::text AS c3, documentdb_api_catalog.bsonsum(documentdb_api_internal.bson_expression_get('{ }'::documentdb_core.bson, '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)) AS c4 FROM (SELECT agg_stage_0_2.document, documentdb_api_internal.bson_dollar_bucket_auto(documentdb_api_internal.bson_expression_get(agg_stage_0_2.document, '{ "" : "$price" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), '{ "groupBy" : "$price", "buckets" : { "$numberInt" : "3" } }'::documentdb_core.bson) OVER (ORDER BY (documentdb_api_internal.bson_expression_get(agg_stage_0_2.document, '{ "" : "$price" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)) ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS bucket_id FROM (SELECT collection.document FROM documentdb_data.documents_51100_5110001 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '51100'::bigint)) agg_stage_0_2) agg_stage_0_1 GROUP BY (documentdb_api_internal.bson_expression_get(documentdb_api_catalog.bson_dollar_add_fields(agg_stage_0_1.document, agg_stage_0_1.bucket_id), '{ "" : "$bucket_id" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+               ->  GroupAggregate
+                     Output: '_id'::text, (documentdb_api_internal.bson_expression_get(documentdb_api_catalog.bson_dollar_add_fields(agg_stage_0_1.document, agg_stage_0_1.bucket_id), '{ "" : "$bucket_id" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'count'::text, documentdb_api_catalog.bsonsum('{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                     Group Key: (documentdb_api_internal.bson_expression_get(documentdb_api_catalog.bson_dollar_add_fields(agg_stage_0_1.document, agg_stage_0_1.bucket_id), '{ "" : "$bucket_id" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     ->  Sort
+                           Output: (documentdb_api_internal.bson_expression_get(documentdb_api_catalog.bson_dollar_add_fields(agg_stage_0_1.document, agg_stage_0_1.bucket_id), '{ "" : "$bucket_id" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                           Sort Key: (documentdb_api_internal.bson_expression_get(documentdb_api_catalog.bson_dollar_add_fields(agg_stage_0_1.document, agg_stage_0_1.bucket_id), '{ "" : "$bucket_id" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                           ->  Subquery Scan on agg_stage_0_1
+                                 Output: documentdb_api_internal.bson_expression_get(documentdb_api_catalog.bson_dollar_add_fields(agg_stage_0_1.document, agg_stage_0_1.bucket_id), '{ "" : "$bucket_id" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+                                 ->  WindowAgg
+                                       Output: collection.document, documentdb_api_internal.bson_dollar_bucket_auto((documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$price" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), '{ "groupBy" : "$price", "buckets" : { "$numberInt" : "3" } }'::documentdb_core.bson) OVER (?), (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$price" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                                       ->  Sort
+                                             Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$price" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), collection.document
+                                             Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$price" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                                             ->  Bitmap Heap Scan on documentdb_data.documents_51100_5110001 collection
+                                                   Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$price" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), collection.document
+                                                   Recheck Cond: (collection.shard_key_value = '51100'::bigint)
+                                                   ->  Bitmap Index Scan on _id_
+                                                         Index Cond: (collection.shard_key_value = '51100'::bigint)
+(27 rows)
+
+/* running $bucketAuto with intermediate size of more than 100mb */
+DO $$
+DECLARE i int;
+BEGIN
+-- each doc is "%s": 5 MB - ~5.5 MB & there's 60 of them
+FOR i IN 1..60 LOOP
+PERFORM documentdb_api.insert_one('db', 'bucketAuto_sizes_test', FORMAT('{ "_id": %s, "groupName": "ABC", "tag": { "%s": [ %s "d" ] } }', i, i, repeat('"' || i || repeat('a', 1000) || '", ', 5000))::documentdb_core.bson);
+END LOOP;
+END;
+$$;
+NOTICE:  creating collection
+/* should fail with intermediate size error */
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "bucketAuto_sizes_test", "pipeline": [ { "$bucketAuto": { "groupBy": "$_id", "buckets": 2, "output": { "allTags" : { "$push" : "$tag" } } } } ] }');
+ERROR:  Size 106297374 is larger than maximum size allowed for an intermediate document 104857600
+/* sharded collection */
+SELECT documentdb_api.shard_collection('db', 'dollarBucketAuto', '{ "price": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+/* positive cases: */
+-- $bucketAuto with only required fields
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 3 } } ] }');
+                                                       document                                                       
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "20" }, "max" : { "$numberInt" : "170" } }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : { "$numberInt" : "170" }, "max" : { "$numberInt" : "350" } }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : { "$numberInt" : "1" }, "max" : { "$numberInt" : "20" } }, "count" : { "$numberInt" : "4" } }
+(3 rows)
+
+-- $bucketAuto with diferent num of buckets
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 4 } } ] }');
+                                                       document                                                       
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "60" }, "max" : { "$numberInt" : "300" } }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "min" : { "$numberInt" : "1" }, "max" : { "$numberInt" : "7" } }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "min" : { "$numberInt" : "7" }, "max" : { "$numberInt" : "60" } }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "min" : { "$numberInt" : "300" }, "max" : { "$numberInt" : "350" } }, "count" : { "$numberInt" : "3" } }
+(4 rows)
+
+-- $bucketAuto with output fields
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 3, "output": { "count": { "$sum": 1 }, "averageAmount": { "$avg": "$price" } } } } ] }');
+                                                                               document                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "20" }, "max" : { "$numberInt" : "170" } }, "count" : { "$numberInt" : "4" }, "averageAmount" : { "$numberDouble" : "43.0" } }
+ { "_id" : { "min" : { "$numberInt" : "170" }, "max" : { "$numberInt" : "350" } }, "count" : { "$numberInt" : "4" }, "averageAmount" : { "$numberDouble" : "285.0" } }
+ { "_id" : { "min" : { "$numberInt" : "1" }, "max" : { "$numberInt" : "20" } }, "count" : { "$numberInt" : "4" }, "averageAmount" : { "$numberDouble" : "3.75" } }
+(3 rows)
+
+-- $bucketAuto without count in output fields
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 3, "output": { "averageAmount": { "$avg": "$price" } } } } ] }');
+                                                              document                                                               
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "20" }, "max" : { "$numberInt" : "170" } }, "averageAmount" : { "$numberDouble" : "43.0" } }
+ { "_id" : { "min" : { "$numberInt" : "170" }, "max" : { "$numberInt" : "350" } }, "averageAmount" : { "$numberDouble" : "285.0" } }
+ { "_id" : { "min" : { "$numberInt" : "1" }, "max" : { "$numberInt" : "20" } }, "averageAmount" : { "$numberDouble" : "3.75" } }
+(3 rows)
+
+-- $bucketAuto with expression in groupBy field
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": { "$subtract": ["$price", 1] }, "buckets": 3 } } ] }');
+                                                       document                                                       
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "19" }, "max" : { "$numberInt" : "169" } }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : { "$numberInt" : "169" }, "max" : { "$numberInt" : "349" } }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : { "$numberInt" : "0" }, "max" : { "$numberInt" : "19" } }, "count" : { "$numberInt" : "4" } }
+(3 rows)
+
+-- $bucketAuto with another stage before it
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$match": { "product": "banana" } }, { "$bucketAuto": { "groupBy": "$price", "buckets": 2 } } ] }');
+                                                       document                                                       
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "300" }, "max" : { "$numberInt" : "300" } }, "count" : { "$numberInt" : "1" } }
+ { "_id" : { "min" : { "$numberInt" : "170" }, "max" : { "$numberInt" : "300" } }, "count" : { "$numberInt" : "1" } }
+(2 rows)
+
+-- groupBy non-integar field
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$product", "buckets": 3 } } ] }');
+                                      document                                      
+---------------------------------------------------------------------
+ { "_id" : { "min" : "melon", "max" : "peach" }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : "apple", "max" : "melon" }, "count" : { "$numberInt" : "4" } }
+ { "_id" : { "min" : "peach", "max" : "peach" }, "count" : { "$numberInt" : "4" } }
+(3 rows)
+
+-- unevenly distributed data
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 5 } } ] }');
+                                                       document                                                       
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "1" }, "max" : { "$numberInt" : "7" } }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "min" : { "$numberInt" : "7" }, "max" : { "$numberInt" : "60" } }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "min" : { "$numberInt" : "320" }, "max" : { "$numberInt" : "350" } }, "count" : { "$numberInt" : "2" } }
+ { "_id" : { "min" : { "$numberInt" : "170" }, "max" : { "$numberInt" : "320" } }, "count" : { "$numberInt" : "2" } }
+ { "_id" : { "min" : { "$numberInt" : "60" }, "max" : { "$numberInt" : "170" } }, "count" : { "$numberInt" : "2" } }
+(5 rows)
+
+-- test with null values
+SELECT documentdb_api.insert_one('db','dollarBucketAuto','{ "_id" : 13, "product" : "peach", "price" : null, "year": 2024 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','dollarBucketAuto','{ "_id" : 14, "product" : "peach", "price" : null, "year": 2024 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 5 } } ] }');
+                                                       document                                                       
+---------------------------------------------------------------------
+ { "_id" : { "min" : { "$numberInt" : "2" }, "max" : { "$numberInt" : "20" } }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "min" : { "$numberInt" : "320" }, "max" : { "$numberInt" : "350" } }, "count" : { "$numberInt" : "2" } }
+ { "_id" : { "min" : { "$numberInt" : "62" }, "max" : { "$numberInt" : "320" } }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "min" : { "$numberInt" : "20" }, "max" : { "$numberInt" : "62" } }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "min" : null, "max" : { "$numberInt" : "2" } }, "count" : { "$numberInt" : "3" } }
+(5 rows)
+
+/* Explain */
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketAuto", "pipeline": [ { "$bucketAuto": { "groupBy": "$price", "buckets": 3 } } ] }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   ->  Distributed Subplan 280_1
+         ->  WindowAgg
+               Output: remote_scan.document, documentdb_api_internal.bson_dollar_bucket_auto(documentdb_api_internal.bson_expression_get(remote_scan.bucket_id, '{ "" : "$price" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), '{ "groupBy" : "$price", "buckets" : { "$numberInt" : "3" } }'::documentdb_core.bson) OVER (?), remote_scan.worker_column_3
+               ->  Sort
+                     Output: remote_scan.worker_column_3, remote_scan.document, remote_scan.bucket_id
+                     Sort Key: remote_scan.worker_column_3
+                     ->  Custom Scan (Citus Adaptive)
+                           Output: remote_scan.worker_column_3, remote_scan.document, remote_scan.bucket_id
+                           Task Count: 8
+                           Tasks Shown: One of 8
+                           ->  Task
+                                 Query: SELECT document, document AS bucket_id, documentdb_api_internal.bson_expression_get(document, '{ "" : "$price" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS worker_column_3 FROM documentdb_data.documents_51100_5110064 collection WHERE true
+                                 Node: host=localhost port=58070 dbname=regression
+                                 ->  Seq Scan on documentdb_data.documents_51100_5110064 collection
+                                       Output: document, document, documentdb_api_internal.bson_expression_get(document, '{ "" : "$price" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_core.bson_repath_and_build(c1, c2, c3, c4) AS document FROM (SELECT '_id'::text AS c1, documentdb_api_internal.bson_expression_get(documentdb_api_catalog.bson_dollar_add_fields(agg_stage_0_1.document, agg_stage_0_1.bucket_id), '{ "" : "$bucket_id" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS c2, 'count'::text AS c3, documentdb_api_catalog.bsonsum(documentdb_api_internal.bson_expression_get('{ }'::documentdb_core.bson, '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)) AS c4 FROM (SELECT intermediate_result.document, intermediate_result.bucket_id FROM read_intermediate_result('280_1'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson, bucket_id documentdb_core.bson)) agg_stage_0_1 GROUP BY (documentdb_api_internal.bson_expression_get(documentdb_api_catalog.bson_dollar_add_fields(agg_stage_0_1.document, agg_stage_0_1.bucket_id), '{ "" : "$bucket_id" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+               ->  HashAggregate
+                     Output: '_id'::text, (documentdb_api_internal.bson_expression_get(documentdb_api_catalog.bson_dollar_add_fields(intermediate_result.document, intermediate_result.bucket_id), '{ "" : "$bucket_id" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'count'::text, documentdb_api_catalog.bsonsum('{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                     Group Key: documentdb_api_internal.bson_expression_get(documentdb_api_catalog.bson_dollar_add_fields(intermediate_result.document, intermediate_result.bucket_id), '{ "" : "$bucket_id" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+                     ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
+                           Output: documentdb_api_internal.bson_expression_get(documentdb_api_catalog.bson_dollar_add_fields(intermediate_result.document, intermediate_result.bucket_id), '{ "" : "$bucket_id" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+                           Function Call: read_intermediate_result('280_1'::text, 'binary'::citus_copy_format)
+(30 rows)
+

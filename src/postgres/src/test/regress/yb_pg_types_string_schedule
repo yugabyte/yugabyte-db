@@ -1,0 +1,24 @@
+# src/test/regress/yb_pg_types_string_schedule
+# This schedule is for ported tests only.
+
+# Dependency for char, yb.port.varchar, yb.port.text, yb.port.strings.
+test: yb.port.test_setup
+
+test: char
+test: name
+test: yb.port.varchar
+test: yb.port.text
+test: bit
+test: yb.port.uuid
+test: yb.port.strings
+test: tstypes
+
+test: unicode
+
+test: yb.port.collate
+test: yb.port.collate.icu.utf8
+
+test: yb.port.tsearch
+test: yb.port.tsdicts
+
+test: yb.port.compression

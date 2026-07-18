@@ -1,0 +1,77 @@
+{{- if .productsMenu -}}
+  {{- $anchorLink := "" -}}
+  {{- $pageUrl := .pageUrl -}}
+  {{- $versionDir := .versionDir -}}
+
+  <div class="products-dropdown">
+    {{- range .productsMenu.ByWeight.Reverse -}}
+      {{ $anchorLink = "" }}
+      {{- if eq .URL "/" -}}
+        {{ $anchorLink = "/" }}
+        {{- if not .Params.excludeVersion }}
+          {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
+        {{- end -}}
+      {{- else -}}
+        {{- if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) -}}
+          {{ $anchorLink = .URL }}
+        {{- else -}}
+          {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
+        {{- end -}}
+      {{- end -}}
+
+      {{- if strings.Contains $pageUrl $anchorLink -}}
+        <div class="selected">
+          <div>
+            {{- if .Params.imageUrl -}}
+              <div class="icon">
+                <img src="{{- .Params.imageUrl -}}" alt="{{.Name}}" title="{{.Name}}" width="24" height="24">
+              </div>
+            {{- end -}}
+            <div class="title">
+              <span>{{.Name}}</span>
+              {{- if .Params.description -}}
+                <span class="desc">{{- .Params.description -}}</span>
+              {{- end -}}
+            </div>
+            <span class="drop-down"></span>
+          </div>
+        </div>
+        {{- break -}}
+      {{- end -}}
+    {{- end -}}
+
+    <ul class="dropdown-submenu">
+      {{- range .productsMenu.ByWeight -}}
+        {{ $anchorLink = "" }}
+        {{- if eq .URL "/" -}}
+          {{ $anchorLink = "/" }}
+          {{- if not .Params.excludeVersion }}
+            {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
+          {{- end -}}
+        {{- else -}}
+          {{- if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) -}}
+            {{ $anchorLink = .URL }}
+          {{- else -}}
+            {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
+          {{- end -}}
+        {{- end -}}
+
+        <li>
+          <a {{- if ne $anchorLink "" }} href="{{ $anchorLink }}" {{- if .Params.newTab }} target="_blank" rel="noopener"{{ end }}{{- else }} role="button"{{- end }} title="{{.Name}}">
+            {{- if .Params.imageUrl -}}
+              <div class="icon">
+                <img src="{{- .Params.imageUrl -}}" alt="{{.Name}}" title="{{.Name}}" width="24" height="24">
+              </div>
+            {{- end -}}
+            <div class="title">
+              <span>{{.Name}}</span>
+              {{- if .Params.description -}}
+                <span class="desc">{{- .Params.description -}}</span>
+              {{- end -}}
+            </div>
+          </a>
+        </li>
+      {{- end -}}
+    </ul>
+  </div>
+{{- end -}}

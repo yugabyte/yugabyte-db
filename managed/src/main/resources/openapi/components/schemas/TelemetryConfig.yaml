@@ -1,0 +1,16 @@
+x-yba-api-visibility: internal
+title: TelemetryConfig
+type: object
+description: |
+  Telemetry config. Each property is optional.
+  Set to null or omit to disable that config. Empty object = disable all.
+properties:
+  audit_logs:
+    description: YSQL/YCQL audit logging. null = disabled.
+    $ref: "./AuditLogsTelemetrySpec.yaml"
+  query_logs:
+    description: YSQL query logs. null = disabled.
+    $ref: "./QueryLogsTelemetrySpec.yaml"
+  metrics:
+    description: Metrics export. null = disabled.
+    $ref: "./MetricsTelemetrySpec.yaml"

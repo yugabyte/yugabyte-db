@@ -1,0 +1,21 @@
+title: UniverseQueryLogsExport
+description: |
+  UniverseQueryLogsExport
+
+  Payload to configure export of query logs. Part of
+  UniverseQueryLogsExportReq
+type: object
+allOf:
+  - $ref: "./SleepAfterRestartSchema.yaml"
+  - $ref: "./UniverseUpgradeOptionRolling.yaml"
+  - type: object
+    required:
+      - install_otel_collector
+      - query_log_config
+    properties:
+      install_otel_collector:
+        description: Flag to install OpenTelemetry Collector
+        type: boolean
+      query_log_config:
+        description: Query Log Configuration
+        $ref: "./QueryLogConfig.yaml"

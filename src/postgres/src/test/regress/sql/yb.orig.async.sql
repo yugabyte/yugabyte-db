@@ -1,0 +1,12 @@
+--
+-- YB LISTEN/NOTIFY tests
+--
+
+-- LISTEN should not depend on yugabyte role
+\c - postgres;
+ALTER ROLE yugabyte RENAME TO yugabyte_async_test;
+LISTEN c;
+-- reset
+ALTER ROLE yugabyte_async_test RENAME TO yugabyte;
+
+-- Add new tests before the above test.

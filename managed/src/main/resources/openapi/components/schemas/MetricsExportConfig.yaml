@@ -1,0 +1,13 @@
+title: MetricsExportConfig
+description: Metrics Export Configuration Specification for the Universe. Part of Clusterspec.
+allOf:
+  - $ref: "./MetricsExportConfigBase.yaml"
+  - type: object
+    required:
+      - universe_metrics_exporter_config
+    properties:
+      universe_metrics_exporter_config:
+        description: 'List of universe metrics exporter configurations. If empty, no metrics will be sent anywhere.'
+        type: array
+        items:
+          $ref: "./UniverseMetricsExporterConfig.yaml"

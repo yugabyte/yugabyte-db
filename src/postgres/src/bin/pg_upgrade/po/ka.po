@@ -1,0 +1,2300 @@
+# Georgian message translation file for pg_upgrade
+# Copyright (C) 2022 PostgreSQL Global Development Group
+# This file is distributed under the same license as the pg_upgrade (PostgreSQL) package.
+# Temuri Doghonadze <temuri.doghonadze@gmail.com>, 2022.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: pg_upgrade (PostgreSQL) 18\n"
+"Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
+"POT-Creation-Date: 2025-05-02 22:20+0000\n"
+"PO-Revision-Date: 2025-05-03 01:23+0200\n"
+"Last-Translator: Temuri Doghonadze <temuri.doghonadze@gmail.com>\n"
+"Language-Team: Georgian <nothing>\n"
+"Language: ka\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 3.5\n"
+
+#: ../../common/fe_memutils.c:35 ../../common/fe_memutils.c:75
+#: ../../common/fe_memutils.c:98 ../../common/fe_memutils.c:161
+#, c-format
+msgid "out of memory\n"
+msgstr "არასაკმარისი მეხსიერება\n"
+
+#: ../../common/fe_memutils.c:92 ../../common/fe_memutils.c:153
+#, c-format
+msgid "cannot duplicate null pointer (internal error)\n"
+msgstr "ნულოვანი მაჩვენებლის დუბლირება შეუძლებელია (შიდა შეცდომა)\n"
+
+#: ../../common/restricted_token.c:168
+#, c-format
+msgid "could not get exit code from subprocess: error code %lu"
+msgstr "ქვეპროცესიდან გასასვლელი კოდი ვერ მივიღე: შეცდომის კოდი %lu"
+
+#: ../../common/username.c:43
+#, c-format
+msgid "could not look up effective user ID %ld: %s"
+msgstr "მომხმარებლის ეფექტური ID-ის (%ld) ამოხსნა შეუძლებელია: %s"
+
+#: ../../common/username.c:45
+msgid "user does not exist"
+msgstr "მომხმარებელი არ არსებობს"
+
+#: ../../common/username.c:60
+#, c-format
+msgid "user name lookup failure: error code %lu"
+msgstr "მომხარებლის სახელის ამოხსნის პრობლემა: შეცდომის კოდი: %lu"
+
+#: ../../fe_utils/string_utils.c:587
+#, c-format
+msgid "shell command argument contains a newline or carriage return: \"%s\"\n"
+msgstr "გარსის ბრძანების არგუმენტი ხაზის გადატანას ან კარეტის დაბრუნებას შეიცავს: \"%s\"\n"
+
+#: ../../fe_utils/string_utils.c:760
+#, c-format
+msgid "database name contains a newline or carriage return: \"%s\"\n"
+msgstr "მონაცემთა ბაზის სახელი ხაზის გადატანას ან კარეტის დაბრუნებას შეიცავს: \"%s\"\n"
+
+#: check.c:111
+msgid "Checking for system-defined composite types in user tables"
+msgstr "მომხმარებლის ცხრილებში სისტემის მიერ განსაზღვრული კომპოზიტური ტიპების შემოწმება"
+
+#: check.c:118
+msgid ""
+"Your installation contains system-defined composite types in user tables.\n"
+"These type OIDs are not stable across PostgreSQL versions,\n"
+"so this cluster cannot currently be upgraded.  You can drop the\n"
+"problem columns and restart the upgrade.\n"
+msgstr ""
+"პროგრამის თქვენი ვერსია მომხმარებლის ცხრილებში სისტემის მიერ აღწერილ კომპოზიტურ ტიპებს შეიცავს.\n"
+"ამ ტიპის OID-ები PostgreSQL-ის ვერსიებს შორის მუდმივი არაა, ამიტომ,\n"
+"ამ კლასტერის განახლება ამჟამად შეუძლებელია  შეგიძლიათ\n"
+"წაშალოთ პრობლემური სვეტები და განახლება თავიდან გაუშვათ.\n"
+
+#: check.c:132
+msgid "Checking for incompatible \"line\" data type"
+msgstr "შეუთავსებელი \"line\" მონაცემთა ტიპის შემოწმება"
+
+#: check.c:137
+msgid ""
+"Your installation contains the \"line\" data type in user tables.\n"
+"This data type changed its internal and input/output format\n"
+"between your old and new versions so this\n"
+"cluster cannot currently be upgraded.  You can\n"
+"drop the problem columns and restart the upgrade.\n"
+msgstr ""
+"თქვენი პაკეტი მომხმარებლის ცხრილებში \"line\" მონაცემის ტიპს შეიცავს.\n"
+"ეს მონაცემის ტიპი შეიცვალა შიგნიდან. ასევე შეიცვალა მისი \n"
+"შეყვანა/გამოყვანის ფორმატი თქვენს ძველსა და ახალ ვერსიას შორის. ამიტომ, თქვენი\n"
+"კლასტერის ძველი ვერსიის განახლება ამჟამად შეუძლებელია.  შეგიძლიათ\n"
+"წაშალოთ ეს სვეტები და თავიდან გაუშვათ განახლება.\n"
+
+#: check.c:154
+msgid "Checking for reg* data types in user tables"
+msgstr "მომხმარებლის ცხრილებში reg* მონაცემის ტიპების შემოწმება"
+
+#: check.c:181
+msgid ""
+"Your installation contains one of the reg* data types in user tables.\n"
+"These data types reference system OIDs that are not preserved by\n"
+"pg_upgrade, so this cluster cannot currently be upgraded.  You can\n"
+"drop the problem columns and restart the upgrade.\n"
+msgstr ""
+"პროგრამის თქვენი ვერსია მომხმარებლის ცხრილებში reg* მონაცემების ტიპს შეიცავს\n"
+"ამ მონაცემების ტიპის სისტემური OID-ები pg_upgrade-ის მიერ არ ნარჩუნდება, ამიტომ კლასტერის \n"
+"განახლება შეუძლებელია.  პრობლემის მოსაგვარებლად,\n"
+"შეგიძლიათ წაშალოთ შესაბამისის სვეტები და განახლება თავიდან გაუშვათ.\n"
+
+#: check.c:193
+msgid "Checking for incompatible \"aclitem\" data type"
+msgstr "შეუთავსებელი \"aclitem\" მონაცემთა ტიპის შემოწმება"
+
+#: check.c:198
+msgid ""
+"Your installation contains the \"aclitem\" data type in user tables.\n"
+"The internal format of \"aclitem\" changed in PostgreSQL version 16\n"
+"so this cluster cannot currently be upgraded.  You can drop the\n"
+"problem columns and restart the upgrade.\n"
+msgstr ""
+"პროგრამის თქვენი ვერსია მოხმარებლის ცხრილებში მონაცემების \"jsonb\" ტიპს შეიცავს.\n"
+"\"jsonb\"-ის შიდა ფორმატი შეიცვალა 9.4 ბეტას დროს, ასე, რომ ამ კლასტერის განახლება ამჟამად\n"
+"შეუძლებელია  შეგიძლიათ წაშალოთ პრობლემური\n"
+"სვეტები და განახლება თავიდან გაუშვათ.\n"
+
+#: check.c:217
+msgid "Checking for invalid \"unknown\" user columns"
+msgstr "არასწორი \"unknown\" მომხმარებლის სვეტების შემოწმება"
+
+#: check.c:222
+msgid ""
+"Your installation contains the \"unknown\" data type in user tables.\n"
+"This data type is no longer allowed in tables, so this cluster\n"
+"cannot currently be upgraded.  You can drop the problem columns\n"
+"and restart the upgrade.\n"
+msgstr ""
+"პროგრამის თქვენი ვერსია მოხმარებლის ცხრილებში მონაცემების \"unknown\" ტიპს შეიცავს.\n"
+"ეს მონაცემის ტიპი ცხრილებში დაშვებული აღარაა, ასე, რომ ამ კლასტერის განახლება ამჟამად\n"
+"შეუძლებელია  შეგიძლიათ წაშალოთ პრობლემური\n"
+"სვეტები და განახლება თავიდან გაუშვათ.\n"
+
+#: check.c:239
+msgid "Checking for invalid \"sql_identifier\" user columns"
+msgstr "არასწორი \"sql_identifier\" მომხმარებლის სვეტების შემოწმება"
+
+#: check.c:244
+msgid ""
+"Your installation contains the \"sql_identifier\" data type in user tables.\n"
+"The on-disk format for this data type has changed, so this\n"
+"cluster cannot currently be upgraded.  You can drop the problem\n"
+"columns and restart the upgrade.\n"
+msgstr ""
+"პროგრამის თქვენი ვერსია მომხმარებლის ცხრილებში \"sql_identifier\" მონაცემების ტიპს შეიცავს.\n"
+"მონაცემის ამ ტიპის დისკზე შენახვის ფორმატი შეიცვალა, ასე რომ,\n"
+"ამჟამად ამ კლასტერის განახლება შეუძლებელია.\n"
+"შეგიძლიათ,   წაშალოთ პრობლემური სვეტები და თავიდან გაუშვათ განახლება.\n"
+
+#: check.c:255
+msgid "Checking for incompatible \"jsonb\" data type in user tables"
+msgstr "მომხმარებლის ცხრილებში შეუთავსებელი \"jsonb\" მონაცემების ტიპის შემოწმება"
+
+#: check.c:260
+msgid ""
+"Your installation contains the \"jsonb\" data type in user tables.\n"
+"The internal format of \"jsonb\" changed during 9.4 beta so this\n"
+"cluster cannot currently be upgraded.  You can drop the problem \n"
+"columns and restart the upgrade.\n"
+msgstr ""
+"პროგრამის თქვენი ვერსია მოხმარებლის ცხრილებში მონაცემების \"jsonb\" ტიპს შეიცავს.\n"
+"\"jsonb\"-ის შიდა ფორმატი შეიცვალა 9.4 ბეტას დროს, ასე, რომ ამ კლასტერის განახლება ამჟამად\n"
+"შეუძლებელია  შეგიძლიათ წაშალოთ პრობლემური\n"
+"სვეტები და განახლება თავიდან გაუშვათ.\n"
+
+#: check.c:272
+msgid "Checking for removed \"abstime\" data type in user tables"
+msgstr "მომხმარებლის ცხრილებში წაშლილი \"abstime\" მონაცემის ტიპების შემოწმება"
+
+#: check.c:277
+msgid ""
+"Your installation contains the \"abstime\" data type in user tables.\n"
+"The \"abstime\" type has been removed in PostgreSQL version 12,\n"
+"so this cluster cannot currently be upgraded.  You can drop the\n"
+"problem columns, or change them to another data type, and restart\n"
+"the upgrade.\n"
+msgstr ""
+"პროგრამის თქვენი ვერსია მოხმარებლის ცხრილებში მონაცემების \"%s\" ტიპს შეიცავს.\n"
+"ტიპი \"%s\" გაუქმდა PostgreSQL-ის %s-ე ვერსიაში\n"
+"ასე, რომ ამ კლასტერის განახლება ამჟამად\n"
+"შეუძლებელია  შეგიძლიათ წაშალოთ პრობლემური სვეტები,\n"
+"ან შეცვალოთ მათი ტიპი და განახლება თავიდან გაუშვათ.\n"
+
+#: check.c:285
+msgid "Checking for removed \"reltime\" data type in user tables"
+msgstr "მომხმარებლის ცხრილებში წაშლილი \"reltime\" მონაცემის ტიპების შემოწმება"
+
+#: check.c:290
+msgid ""
+"Your installation contains the \"reltime\" data type in user tables.\n"
+"The \"reltime\" type has been removed in PostgreSQL version 12,\n"
+"so this cluster cannot currently be upgraded.  You can drop the\n"
+"problem columns, or change them to another data type, and restart\n"
+"the upgrade.\n"
+msgstr ""
+"პროგრამის თქვენი ვერსია მოხმარებლის ცხრილებში მონაცემების \"%s\" ტიპს შეიცავს.\n"
+"ტიპი \"%s\" გაუქმდა PostgreSQL-ის %s-ე ვერსიაში\n"
+"ასე, რომ ამ კლასტერის განახლება ამჟამად\n"
+"შეუძლებელია  შეგიძლიათ წაშალოთ პრობლემური სვეტები,\n"
+"ან შეცვალოთ მათი ტიპი და განახლება თავიდან გაუშვათ.\n"
+
+#: check.c:298
+msgid "Checking for removed \"tinterval\" data type in user tables"
+msgstr "მომხმარებლის ცხრილებში წაშლილი \"tinterval\" მონაცემის ტიპების შემოწმება"
+
+#: check.c:303
+msgid ""
+"Your installation contains the \"tinterval\" data type in user tables.\n"
+"The \"tinterval\" type has been removed in PostgreSQL version 12,\n"
+"so this cluster cannot currently be upgraded.  You can drop the\n"
+"problem columns, or change them to another data type, and restart\n"
+"the upgrade.\n"
+msgstr ""
+"პროგრამის თქვენი ვერსია მოხმარებლის ცხრილებში მონაცემების \"%s\" ტიპს შეიცავს.\n"
+"ტიპი \"%s\" გაუქმდა PostgreSQL-ის %s-ე ვერსიაში\n"
+"ასე, რომ ამ კლასტერის განახლება ამჟამად\n"
+"შეუძლებელია  შეგიძლიათ წაშალოთ პრობლემური სვეტები,\n"
+"ან შეცვალოთ მათი ტიპი და განახლება თავიდან გაუშვათ.\n"
+
+#: check.c:421
+#, c-format
+msgid "failed check: %s"
+msgstr "ჩავარდა შემოწმება: %s"
+
+#: check.c:424
+msgid "A list of the problem columns is in the file:"
+msgstr "პრობლემური სვეტების სია არის ფაილში:"
+
+#: check.c:430 check.c:1029 check.c:1180 check.c:1263 check.c:1352 check.c:1443
+#: check.c:1575 check.c:1660 check.c:1707 check.c:1787 check.c:2092
+#: check.c:2111 check.c:2157 check.c:2210 file.c:378 file.c:415 function.c:208
+#: option.c:519 version.c:79 version.c:162
+#, c-format
+msgid "could not open file \"%s\": %m"
+msgstr "ფაილის (%s) გახსნის შეცდომა: %m"
+
+#: check.c:472
+#, c-format
+msgid "Checking data type usage"
+msgstr "მონაცემის ტიპის გამოყენების შემოწმება"
+
+#: check.c:526
+#, c-format
+msgid "Data type checks failed: %s"
+msgstr "მონაცემის ტიპის შემოწმებები ჩავარდა: %s"
+
+#: check.c:575
+#, c-format
+msgid ""
+"Performing Consistency Checks on Old Live Server\n"
+"------------------------------------------------"
+msgstr ""
+"თანმიმდევრულობის შემოწმების შესრულება ძველ ცოცხალ სერვერზე\n"
+"------------------------------------------------"
+
+#: check.c:581
+#, c-format
+msgid ""
+"Performing Consistency Checks\n"
+"-----------------------------"
+msgstr ""
+"თანმიმდევრულობის შემოწმების ჩატარება\n"
+"-----------------------------"
+
+#: check.c:745
+#, c-format
+msgid "Swap mode can only upgrade clusters from PostgreSQL version %s and later."
+msgstr "რეჟიმის 'swap' გამოყენება კლასტერის ვერსიის ასაწევად შესაძლებელია PostgreSQL-ის ვერსიაში %s და შემდეგ."
+
+#: check.c:768
+#, c-format
+msgid ""
+"\n"
+"*Clusters are compatible*"
+msgstr ""
+"\n"
+"*კლასტერები თავსებადია *"
+
+#: check.c:776
+#, c-format
+msgid ""
+"\n"
+"If pg_upgrade fails after this point, you must re-initdb the\n"
+"new cluster before continuing."
+msgstr ""
+"\n"
+"თუ ამ წერტილის შემდეგ pg_upgrade ავარიულად დასრულდება, გაგრძელებამდე\n"
+"ახალი კლასტერის init-db-ის გაკეთება შეიძლება თავიდან მოგიწიოთ."
+
+#: check.c:817
+#, c-format
+msgid ""
+"Some statistics are not transferred by pg_upgrade.\n"
+"Once you start the new server, consider running these two commands:\n"
+"    %s/vacuumdb %s--all --analyze-in-stages --missing-stats-only\n"
+"    %s/vacuumdb %s--all --analyze-only"
+msgstr ""
+"ზოგიერთი სტატისტიკის გადატანა pg_upgrade-ის მიერ, შეიძლება, არ მოხდეს.\n"
+"როცა ახალ სერვერს გაუშვებთ, შეასრულეთ ეს ორი ბრძანება:\n"
+"    %s/vacuumdb %s--all --analyze-in-stages --missing-stats-only\n"
+"    %s/vacuumdb %s--all --analyze-only"
+
+#: check.c:826
+#, c-format
+msgid ""
+"Running this script will delete the old cluster's data files:\n"
+"    %s"
+msgstr ""
+"ამ სკრიპტის გაშვება ძველი კლასტერის მონაცემების ფაილებს წაშლის:\n"
+"   %s"
+
+#: check.c:831
+#, c-format
+msgid ""
+"Could not create a script to delete the old cluster's data files\n"
+"because user-defined tablespaces or the new cluster's data directory\n"
+"exist in the old cluster directory.  The old cluster's contents must\n"
+"be deleted manually."
+msgstr ""
+"მომხმარებლის მიერ აღწერილი ცხრილის სივრცეების ან ახალი კლასტერის \n"
+"მონაცემების საქაღალდის ძველი კლასტერის საქაღადლდეში არსებობის გამო\n"
+"ძველი კლასტერის მონაცემების წაშლის სკრიპტის შექმნა შეუძლებელია.  ძველი კლასტერის\n"
+" შემცველობა ხელით უნდა წაშალოთ."
+
+#: check.c:843
+#, c-format
+msgid "Checking cluster versions"
+msgstr "კლასტერის ვერსიების შემოწმება"
+
+#: check.c:855
+#, c-format
+msgid "This utility can only upgrade from PostgreSQL version %s and later."
+msgstr "ამ პროგრამას განახლება PostgreSQL-ის ვერსიის %s-დან და ზემოთ შეუძლია."
+
+#: check.c:860
+#, c-format
+msgid "This utility can only upgrade to PostgreSQL version %s."
+msgstr "ამ პროგრამას შეუძლია მხოლოდ PostgreSQL ვერსიაზე გადასვლა %s."
+
+#: check.c:869
+#, c-format
+msgid "This utility cannot be used to downgrade to older major PostgreSQL versions."
+msgstr "ეს პროგრამა არ შეიძლება გამოყენებულ იქნას უფრო ძველი ძირითადი PostgreSQL ვერსიების ჩამოსაწევად."
+
+#: check.c:874
+#, c-format
+msgid "Old cluster data and binary directories are from different major versions."
+msgstr "ძველი კლასტერის მონაცემები და გამშვები ფაილის საქაღალდეები სხვადასხვა ძირითადი ვერსიიდანაა."
+
+#: check.c:877
+#, c-format
+msgid "New cluster data and binary directories are from different major versions."
+msgstr "ახალი კლასტერის მონაცემებისა და გამშვები ფაილების საქაღალდეები სხვადასხვა ძირითად ვერსიებს მიეკუთვნება."
+
+#: check.c:888
+#, c-format
+msgid "%s option cannot be used to upgrade from PostgreSQL %s and later."
+msgstr "პარამეტრს %s ვერ გამოიყენებთ PostgreSQL %s-დან და უფრო ახლიდან განახლებისას."
+
+#: check.c:904
+#, c-format
+msgid "When checking a live server, the old and new port numbers must be different."
+msgstr "ცოცხალი სერვერის შემოწმებისას ძველი და ახალი პორტის ნომრები სხვადასხვა უნდა იყოს."
+
+#: check.c:924
+#, c-format
+msgid "New cluster database \"%s\" is not empty: found relation \"%s.%s\""
+msgstr "ახალი კლასტერული მონაცემთა ბაზა \"%s\" ცარიელი არაა: ნაპოვნია ურთიერთობა \"%s.%s\""
+
+#: check.c:947
+#, c-format
+msgid "Checking for new cluster tablespace directories"
+msgstr "ახალი კლასტერის ცხრილების სივრცის საქაღალდეების შემოწმება"
+
+#: check.c:958
+#, c-format
+msgid "new cluster tablespace directory already exists: \"%s\""
+msgstr "ახალი კლასტერის ცხრილების სივრცის საქაღალდე უკვე არსებობს: \"%s\""
+
+#: check.c:992
+#, c-format
+msgid ""
+"\n"
+"WARNING:  new data directory should not be inside the old data directory, i.e. %s"
+msgstr ""
+"\n"
+"გაფრთხილება:  ახალი მონაცემების საქაღალდე ძველი მონაცემების საქაღალდის შიგნით არ უნდა იყოს. მაგ: %s"
+
+#: check.c:1016
+#, c-format
+msgid ""
+"\n"
+"WARNING:  user-defined tablespace locations should not be inside the data directory, i.e. %s"
+msgstr ""
+"\n"
+"გაფრთხილება:  მომხმარებლის მიერ აღწერილი ცხრილის სივრცეების მდებარეობები მონაცემების საქაღალდის შიგნით არ უნდა იყოს. მაგ: %s"
+
+#: check.c:1026
+#, c-format
+msgid "Creating script to delete old cluster"
+msgstr "ძველი კლასტერის წასაშლელად სკრიპტის შექმნა"
+
+#: check.c:1054
+#, c-format
+msgid "could not add execute permission to file \"%s\": %m"
+msgstr "ფაილზე \"%s\" გაშვების წვდომის დამატების შეცდომა: %m"
+
+#: check.c:1074
+#, c-format
+msgid "Checking database user is the install user"
+msgstr "შემოწმება, დამყენებელი მომხმარებელი დაყენების მომხმარებელს თუ უდრის"
+
+#: check.c:1090
+#, c-format
+msgid "database user \"%s\" is not the install user"
+msgstr "მონაცემთა ბაზის მომხმარებელი \"%s\" არ არის დაყენების მომხმარებელი"
+
+#: check.c:1101
+#, c-format
+msgid "could not determine the number of users"
+msgstr "ვერ დადგინდა მომხმარებელთა რაოდენობა"
+
+#: check.c:1109
+#, c-format
+msgid "Only the install user can be defined in the new cluster."
+msgstr "ახალი კლასტერისთვის მხოლოდ დაყენების მომხმარებლის მითითებაა შესაძლებელი."
+
+#: check.c:1139
+#, c-format
+msgid "Checking database connection settings"
+msgstr "მონაცემთა ბაზის კავშირის პარამეტრების შემოწმება"
+
+#: check.c:1167
+#, c-format
+msgid "template0 must not allow connections, i.e. its pg_database.datallowconn must be false"
+msgstr "template0-თან დაკავშირება შეუძლებელი უნდა იყოს. ანუ, მისი pg_database.datallowconn პარამეტრი false უნდა იყოს"
+
+#: check.c:1194 check.c:1315 check.c:1411 check.c:1539 check.c:1615
+#: check.c:1673 check.c:1756 check.c:2124 check.c:2266 function.c:229
+#, c-format
+msgid "fatal"
+msgstr "ფატალური"
+
+#: check.c:1195
+#, c-format
+msgid ""
+"All non-template0 databases must allow connections, i.e. their\n"
+"pg_database.datallowconn must be true and pg_database.datconnlimit\n"
+"must not be -2.  Your installation contains non-template0 databases\n"
+"which cannot be connected to.  Consider allowing connection for all\n"
+"non-template0 databases or drop the databases which do not allow\n"
+"connections.  A list of databases with the problem is in the file:\n"
+"    %s"
+msgstr ""
+"ყველა არა-template0 მონაცემთა ბაზა უნდა უშვებდეს მიერთებას, ანუ მათი\n"
+"pg_database.datallowconn ჭეშმარიტი უნდა იყოს და pg_database.datconnlimit არ\n"
+"უნდა იყოს -2.  ბაზის თქვენი ვარიანტი შეიცავს არა-template0 მონაცემთა ბაზებს,\n"
+"რომლებთანაც მიერთება შეუძლებელია.  იფიქრეთ, რომ დაუშვათ მიერთება ყველა\n"
+"არა-template0 მონაცემთა ბაზებთან, ან წაშალეთ ბაზები, რომლებიც არ უშვებენ კავშირს.\n"
+"ამ პრობლემის მქონე მონაცემთა ბაზების შენახულია ფაილში:\n"
+"     %s"
+
+#: check.c:1220
+#, c-format
+msgid "Checking for prepared transactions"
+msgstr "მომზადებული ტრანზაქციების შემოწმება"
+
+#: check.c:1229
+#, c-format
+msgid "The source cluster contains prepared transactions"
+msgstr "საწყისი კლასტერი მომზადებულ ტრანზაქციებს შეიცავს"
+
+#: check.c:1231
+#, c-format
+msgid "The target cluster contains prepared transactions"
+msgstr "სამიზნე კლასტერი მომზადებულ ტრანზაქციებს შეიცავს"
+
+#: check.c:1291
+#, c-format
+msgid "Checking for contrib/isn with bigint-passing mismatch"
+msgstr "\"contrib/isn\"-ის bgint-passing-ის არ-დამთხვევაზე შემოწმება"
+
+#: check.c:1316
+#, c-format
+msgid ""
+"Your installation contains \"contrib/isn\" functions which rely on the\n"
+"bigint data type.  Your old and new clusters pass bigint values\n"
+"differently so this cluster cannot currently be upgraded.  You can\n"
+"manually dump databases in the old cluster that use \"contrib/isn\"\n"
+"facilities, drop them, perform the upgrade, and then restore them.  A\n"
+"list of the problem functions is in the file:\n"
+"    %s"
+msgstr ""
+"პროგრამის თქვენი ვერსისა შეიცავს \"contrib/isn\" ფუნქციებს, რომლებიც bigint მონაცემების ტიპს ეყრდნობა.  თქვენი ძველი \n"
+"და ახალი კლასტერები bigint მნიშვნელობებს სხვადასხვანაირად ამუშავებენ, ამიტომ თქვენი კლასტერის განახლება ამჟამად \n"
+"შეუძლებელია.  შეგიძლიათ, თქვენს ძველ კლასტერში, ბაზები, რომლებიც \"contrib/isn\" ფუნქციებს იყენებს, წაშალოთ\n"
+", განაახლოთ ბაზა და აღადგინოთ ფუნქციები.  პრობლემური ფუნქციების სია შეგიძლიათ იხილოთ ფაილში:\n"
+"   %s"
+
+#: check.c:1396
+#, c-format
+msgid "Checking for user-defined postfix operators"
+msgstr "მომხმარებლის მიერ აღწერილი postfix ოპერატორების არსებობის შემოწმება"
+
+#: check.c:1412
+#, c-format
+msgid ""
+"Your installation contains user-defined postfix operators, which are not\n"
+"supported anymore.  Consider dropping the postfix operators and replacing\n"
+"them with prefix operators or function calls.\n"
+"A list of user-defined postfix operators is in the file:\n"
+"    %s"
+msgstr ""
+"პროგრამის თქვენი ვერსია შეიცავს მომხმარებლის მიერ აღწერილ postfix ოპერატორებს,\n"
+"რომლებიც მხარდაჭერილი აღარაა.  საჭირო იქნება postfix ოპერატორების წაშლა და მათი \n"
+"prefix ოპერატორებით ან ფუნქციების გამოძახებებით ჩანაცვლება.\n"
+"მომხმარებლის მიერ აღწერილი postfix ოპერატორების სიის ნახვა შეგიძლიათ ფაილში:\n"
+"   %s"
+
+#: check.c:1467
+#, c-format
+msgid "Checking for incompatible polymorphic functions"
+msgstr "შეუთავსებელი პოლიმორფული ფუნქციების არსებობის შემოწმება"
+
+#: check.c:1540
+#, c-format
+msgid ""
+"Your installation contains user-defined objects that refer to internal\n"
+"polymorphic functions with arguments of type \"anyarray\" or \"anyelement\".\n"
+"These user-defined objects must be dropped before upgrading and restored\n"
+"afterwards, changing them to refer to the new corresponding functions with\n"
+"arguments of type \"anycompatiblearray\" and \"anycompatible\".\n"
+"A list of the problematic objects is in the file:\n"
+"    %s"
+msgstr ""
+"პროგრამის თქვენი ვერსია შეიცავს მომხმარებლის მიერ აღწერილ ობიექტებს, რომლებიც\n"
+"შიდა პოლიმორფულ ფუნქციებს იძახებენ არგუმენტების ტიპით \"anyarray\" ან \"anyelement\".\n"
+"ეს მომხმარებლის მერ აღწერილი ობიექტები უნდა მოაცილოთ ვერსიის აწევამდე და\n"
+"შემდეგ აღადგინოთ, რათა მათ ახალ შესაბამის ფუნქციებს მიმართონ, არგუმენტების ტიპით\n"
+"\"anycompatiblearray\" და \"anycompatible\".\n"
+"ფაილში არსებული პრობლემური ობიექტები:\n"
+"  %s"
+
+#: check.c:1600
+#, c-format
+msgid "Checking for tables WITH OIDS"
+msgstr "WITH OIDS ცხრილების შემოწმება"
+
+#: check.c:1616
+#, c-format
+msgid ""
+"Your installation contains tables declared WITH OIDS, which is not\n"
+"supported anymore.  Consider removing the oid column using\n"
+"    ALTER TABLE ... SET WITHOUT OIDS;\n"
+"A list of tables with the problem is in the file:\n"
+"    %s"
+msgstr ""
+"პროგრამის თქვენი ვერსია შეიცავს ცხრილებს, რომლებიც WITH OIDS-ითაა\n"
+"აღწერილი, რაც მხარდაჭერილი აღარაა.  საჭიროა წაშალოთ oid ცხრილები ბრძანებით\n"
+"    ALTER TABLE ... SET WITHOUT OIDS;\n"
+"ცხრილების სია, რომელსაც ეს პრობლემა გააჩნიათ, შეგიძლიათ იხილოთ ფაილში:\n"
+"    %s"
+
+#: check.c:1643
+#, c-format
+msgid "Checking for roles starting with \"pg_\""
+msgstr "როლების შემოწმება, რომლებიც \"pg_\"-ით იწყება"
+
+#: check.c:1674
+#, c-format
+msgid ""
+"Your installation contains roles starting with \"pg_\".\n"
+"\"pg_\" is a reserved prefix for system roles.  The cluster\n"
+"cannot be upgraded until these roles are renamed.\n"
+"A list of roles starting with \"pg_\" is in the file:\n"
+"    %s"
+msgstr ""
+"პროგრამის თქვენი ვერსია შეიცავს როლებს, რომლებიც\n"
+"\"pg_\" სუფიქსით იწყება. ეს კი სისტემური როლებისთვის შემონახული როლებია.\n"
+"კლასტერის განახლება შეუძლებელია მანამდე, სანამ ამ როლებს სახელს არ გადაარქმევთ.\n"
+"როლების სია, რომლებიც \"pg_\"-ით იწყებიან, შეგიძლიათ იპოვოთ ფაილში:\n"
+"    %s"
+
+#: check.c:1728
+#, c-format
+msgid "Checking for user-defined encoding conversions"
+msgstr "მომხმარებლის მიერ განსაზღვრული კოდირების კონვერტაციის შემოწმება"
+
+#: check.c:1757
+#, c-format
+msgid ""
+"Your installation contains user-defined encoding conversions.\n"
+"The conversion function parameters changed in PostgreSQL version 14\n"
+"so this cluster cannot currently be upgraded.  You can remove the\n"
+"encoding conversions in the old cluster and restart the upgrade.\n"
+"A list of user-defined encoding conversions is in the file:\n"
+"    %s"
+msgstr ""
+"პროგრამის თქვენი ვერსია მოხმარებლის მიერ აღწერილ გადაყვანებს შეიცავს.\n"
+"\"jsonb\"-ის შიდა ფორმატი შეიცვალა 14-ე ვერსიაში, ასე, რომ ამ კლასტერის განახლება ამჟამად\n"
+"შეუძლებელია  შეგიძლიათ წაშალოთ პრობლემური სვეტები და განახლება თავიდან გაუშვათ.\n"
+"მომხმარებლის მიერ აღწერილი გადაყვანების ნახვა შეგიძლიათ ფაილში:\n"
+"    %s"
+
+#: check.c:1842
+#, c-format
+msgid "Checking for objects affected by Unicode update"
+msgstr "უნიკოდის განახლების გავლენის ქვეშ მოქცეული ობიექტების შემოწმება"
+
+#: check.c:1936 version.c:121
+#, c-format
+msgid "warning"
+msgstr "გაფრთხილება"
+
+#: check.c:1937
+#, c-format
+msgid ""
+"Your installation contains relations that may be affected by a new version of Unicode.\n"
+"A list of potentially-affected relations is in the file:\n"
+"    %s"
+msgstr ""
+"პროგრამის თქვენი ვერსია შეიცავს ურთიერთობას, რომელზეც, შეიძლება, უნიკოდის ახალ ვერსიას ჰქონდეს გავლენა.\n"
+"პოტენციურად გავლენის ქვეშ მოქცეული ურთიერთობები შენახულია ფაილში:\n"
+"    %s"
+
+#: check.c:1973
+#, c-format
+msgid "Checking for new cluster logical replication slots"
+msgstr "ახალი კლასტერის ლოგიკური რეპლიკაციის სლოტების შემოწმება"
+
+#: check.c:1981
+#, c-format
+msgid "could not count the number of logical replication slots"
+msgstr "ლოგიკური რეპლიკაციის სლოტების რაოდენობის დათვლა შეუძლებელია"
+
+#: check.c:1986
+#, c-format
+msgid "expected 0 logical replication slots but found %d"
+msgstr "მოველოდი 0 ლოგიკური რეპლიკაციის სლოტს, მაგრამ, მივიღე %d"
+
+#: check.c:1996 check.c:2047
+#, c-format
+msgid "could not determine parameter settings on new cluster"
+msgstr "ახალ კლასტერზე პარამეტრის მნიშვნელობების დადგენა შეუძლებელია"
+
+#: check.c:2001
+#, c-format
+msgid "\"wal_level\" must be \"logical\" but is set to \"%s\""
+msgstr "\"wal_level\" უნდა იყოს \"logical\", მაგრამ მნიშვნელობაა \"%s\""
+
+#: check.c:2007
+#, c-format
+msgid "\"max_replication_slots\" (%d) must be greater than or equal to the number of logical replication slots (%d) on the old cluster"
+msgstr "\"max_replication_slots\" (%d) ძველი კლასტერის ლოგიკური რეპლიკაციების სლოტების რაოდენობაზე (%d) მეტი ან ტოლი უნდა იყოს"
+
+#: check.c:2039
+#, c-format
+msgid "Checking for new cluster configuration for subscriptions"
+msgstr "ახალი კლასტერის კონფიგურაციის გამოწერებზე შემოწმება"
+
+#: check.c:2051
+#, c-format
+msgid "\"max_active_replication_origins\" (%d) must be greater than or equal to the number of subscriptions (%d) on the old cluster"
+msgstr "\"max_active_replication_origins\" (%d) ძველი კლასტერის გამოწერების რაოდენობაზე (%d) მეტი ან ტოლი უნდა იყოს"
+
+#: check.c:2073
+#, c-format
+msgid "Checking for valid logical replication slots"
+msgstr "სწორ ლოგიკური რეპლიკაციის სლოტებზე შემოწმება"
+
+#: check.c:2125
+#, c-format
+msgid ""
+"Your installation contains logical replication slots that cannot be upgraded.\n"
+"You can remove invalid slots and/or consume the pending WAL for other slots,\n"
+"and then restart the upgrade.\n"
+"A list of the problematic slots is in the file:\n"
+"    %s"
+msgstr ""
+"პროგრამის თქვენი ვერსია ლოგიკური რეპლიკაციის სლოტებს შეიცავს, რომლის ვერსიის აწევაც შეუძლებელია.\n"
+"შეგიძლიათ, წაშალოთ არასწორი სლოტები ან/და დაამუშაოთ დარჩენილი WAL სხვა სლოტებისთვის\n"
+"და განახლება თავიდან გაუშვათ.\n"
+"პრობლემური სლოტების ნახვა შეგიძლიათ ფაილში:\n"
+"    %s"
+
+#: check.c:2185
+#, c-format
+msgid "Checking for subscription state"
+msgstr "გამოწერის მდგომარეობის შემოწმება"
+
+#: check.c:2267
+#, c-format
+msgid ""
+"Your installation contains subscriptions without origin or having relations not in i (initialize) or r (ready) state.\n"
+"You can allow the initial sync to finish for all relations and then restart the upgrade.\n"
+"A list of the problematic subscriptions is in the file:\n"
+"    %s"
+msgstr ""
+"პროგრამის თქვენი ვერსიაშეიცავს გამოწერებს წყაროს გარეშე ან აქვს ურთიერთობები არც i (ინიციალიზაციის) და არც r (მზადაა) მდგომარეობაში.\n"
+"შეგიძლიათ დაუშვათ საწყისი სინქრონიზაციის დასრულება ყველა ურთიერთობისთვის და შემდეგ ვერსიის განახლება თავიდან გაუშვათ\n"
+"პრობლემური სვეტების ნახვა შეგიძლიათ ფაილში:\n"
+"    %s"
+
+#: controldata.c:133 controldata.c:203
+#, c-format
+msgid "could not get control data using %s: %m"
+msgstr "%s-ის გამოყენებით საკონტროლო მონაცემების მიღება შეუძლებელია: %m"
+
+#: controldata.c:143
+#, c-format
+msgid "%d: database cluster state problem"
+msgstr "%d: ბაზის კლასტერის მდგომარეობის პრობლემა"
+
+#: controldata.c:162
+#, c-format
+msgid "The source cluster was shut down while in recovery mode.  To upgrade, use \"rsync\" as documented or shut it down as a primary."
+msgstr "საწყისი კლასტერი აღდგენის რეჟიმში იყო, როცა გაითიშა.  განსაახლებლად გამოიყენეთ \"rsync\", როგორც ეს დოკუმენტაციაშია, ან გამორთეთ, როგორც ძირითადი."
+
+#: controldata.c:164
+#, c-format
+msgid "The target cluster was shut down while in recovery mode.  To upgrade, use \"rsync\" as documented or shut it down as a primary."
+msgstr "სამიზნე კლასტერი აღდგენის რეჟიმში იყო, როცა გაითიშა.  განსაახლებლად, გამოიყენეთ \"rsync\", როგორც ეს დოკუმენტაციაშია, ან გამორთეთ, როგორც ძირითადი."
+
+#: controldata.c:169
+#, c-format
+msgid "The source cluster was not shut down cleanly, state reported as: \"%s\""
+msgstr "წყარო კლასტერი წესების დაცვით არ გამორთულა. მიღებული მდგომარეობაა: \"%s\""
+
+#: controldata.c:171
+#, c-format
+msgid "The target cluster was not shut down cleanly, state reported as: \"%s\""
+msgstr "სამიზნე კლასტერი წესების დაცვით არ გამორთულა. მიღებული მდგომარეობაა: \"%s\""
+
+#: controldata.c:179 controldata.c:530
+#, c-format
+msgid "could not get control data using %s: %s"
+msgstr "%s-სთვის საკონტროლო მონაცემების მიღების შეცდომა: %s"
+
+#: controldata.c:185
+#, c-format
+msgid "The source cluster lacks cluster state information:"
+msgstr "საწყის კლასტერს მდგომარეობის ინფორმაცია არ გააჩნია:"
+
+#: controldata.c:187
+#, c-format
+msgid "The target cluster lacks cluster state information:"
+msgstr "სამიზნე კლასტერს მდგომარეობის ინფორმაცია არ გააჩნია:"
+
+#: controldata.c:217 dump.c:50 exec.c:118 pg_upgrade.c:606 pg_upgrade.c:646
+#: pg_upgrade.c:995 relfilenumber.c:610 server.c:34 util.c:337
+#, c-format
+msgid "%s"
+msgstr "%s"
+
+#: controldata.c:224
+#, c-format
+msgid "%d: pg_resetwal problem"
+msgstr "%d: pg_resetwal -ის პრობლემა"
+
+#: controldata.c:234 controldata.c:244 controldata.c:255 controldata.c:266
+#: controldata.c:277 controldata.c:296 controldata.c:307 controldata.c:318
+#: controldata.c:329 controldata.c:340 controldata.c:351 controldata.c:362
+#: controldata.c:365 controldata.c:369 controldata.c:379 controldata.c:391
+#: controldata.c:402 controldata.c:413 controldata.c:424 controldata.c:435
+#: controldata.c:446 controldata.c:457 controldata.c:468 controldata.c:479
+#: controldata.c:490 controldata.c:501 controldata.c:512 controldata.c:521
+#, c-format
+msgid "%d: controldata retrieval problem"
+msgstr "%d: controldata -ის მიღების შეცდომა"
+
+#: controldata.c:618
+#, c-format
+msgid "The source cluster lacks some required control information:"
+msgstr "საწყის კლასტერს ზოგიერთი საჭირო კონტროლის ინფორმაცია არ გააჩნია:"
+
+#: controldata.c:621
+#, c-format
+msgid "The target cluster lacks some required control information:"
+msgstr "სამიზნე კლასტერს ზოგიერთი საჭირო კონტროლის ინფორმაცია არ გააჩნია:"
+
+#: controldata.c:624
+#, c-format
+msgid "  checkpoint next XID"
+msgstr "  საკონტროლო წერტილის შემდეგი XID"
+
+#: controldata.c:627
+#, c-format
+msgid "  latest checkpoint next OID"
+msgstr "  უახლესი საკონტროლო წერტილის შემდეგი OID"
+
+#: controldata.c:630
+#, c-format
+msgid "  latest checkpoint next MultiXactId"
+msgstr "  უახლესი საკონტროლო წერტილის შემდეგი MultiXactId"
+
+#: controldata.c:634
+#, c-format
+msgid "  latest checkpoint oldest MultiXactId"
+msgstr "  უახლესი საკონტროლო წერტილის უძველესი MultiXactId"
+
+#: controldata.c:637
+#, c-format
+msgid "  latest checkpoint oldestXID"
+msgstr "  უახლესი საკონტროლო წერტილის უძველესი XID"
+
+#: controldata.c:640
+#, c-format
+msgid "  latest checkpoint next MultiXactOffset"
+msgstr "  უახლესი საკონტროლო წერტილის შემდეგი MultiXactOffset"
+
+#: controldata.c:643
+#, c-format
+msgid "  first WAL segment after reset"
+msgstr "  პირველი WAL სეგმენტი გადატვირთვის შემდეგ"
+
+#: controldata.c:646
+#, c-format
+msgid "  float8 argument passing method"
+msgstr "  float8 არგუმენტი გავლის მეთოდი"
+
+#: controldata.c:649
+#, c-format
+msgid "  maximum alignment"
+msgstr "  მაქსიმალური სწორება"
+
+#: controldata.c:652
+#, c-format
+msgid "  block size"
+msgstr " ბლოკის ზომა"
+
+#: controldata.c:655
+#, c-format
+msgid "  large relation segment size"
+msgstr "  დიდი ურთიერთობის სეგმენტის ზომა"
+
+#: controldata.c:658
+#, c-format
+msgid "  WAL block size"
+msgstr "  WAL ბლოკის ზომა"
+
+#: controldata.c:661
+#, c-format
+msgid "  WAL segment size"
+msgstr "  WAL-ის სეგმენტის ზომა"
+
+#: controldata.c:664
+#, c-format
+msgid "  maximum identifier length"
+msgstr "  იდენტიფიკატორის მაქსიმალური სიგრძე"
+
+#: controldata.c:667
+#, c-format
+msgid "  maximum number of indexed columns"
+msgstr "  ინდექსირებული სვეტების მაქსიმალური რაოდენობა"
+
+#: controldata.c:670
+#, c-format
+msgid "  maximum TOAST chunk size"
+msgstr "  TOAST ნაგლეჯის მაქსიმალური ზომა"
+
+#: controldata.c:674
+#, c-format
+msgid "  large-object chunk size"
+msgstr "  დიდი ობიექტის ნაგლეჯის ზომა"
+
+#: controldata.c:677
+#, c-format
+msgid "  dates/times are integers?"
+msgstr "  დროები და თარიღები მთელი რიცხვებია?"
+
+#: controldata.c:681
+#, c-format
+msgid "  data checksum version"
+msgstr "  მონაცემების საკონტროლო ჯამის ვერსია"
+
+#: controldata.c:685
+#, c-format
+msgid "  default char signedness"
+msgstr "  ნაგულისხმევი სიმბოლოს ნიშნიანობა"
+
+#: controldata.c:687
+#, c-format
+msgid "Cannot continue without required control information, terminating"
+msgstr "ვერ გაგრძელდება საჭირო კონტროლის ინფორმაციის გარეშე, დასრულება"
+
+#: controldata.c:702
+#, c-format
+msgid ""
+"old and new pg_controldata alignments are invalid or do not match.\n"
+"Likely one cluster is a 32-bit install, the other 64-bit"
+msgstr ""
+"ძველი და ახალი pg_controldata სწორებები ბათილია ან არ ემთხვევა\n"
+"სავარაუდოდ, ერთი კლასტერი 32-ბიტიანია, დანარჩენი კი 64"
+
+#: controldata.c:706
+#, c-format
+msgid "old and new pg_controldata block sizes are invalid or do not match"
+msgstr "ძველი და ახალი pg_controldata ბლოკის ზომები ბათილია ან არ ემთხვევა"
+
+#: controldata.c:709
+#, c-format
+msgid "old and new pg_controldata maximum relation segment sizes are invalid or do not match"
+msgstr "ძველი და ახალი pg_controldata მაქსიმალური ურთიერთობის სეგმენტის ზომები ბათილია ან არ ემთხვევა"
+
+#: controldata.c:712
+#, c-format
+msgid "old and new pg_controldata WAL block sizes are invalid or do not match"
+msgstr "ძველი და ახალი pg_controldata-ის WAL-ის ბლოკის ზომები არასწორია ან არ ემთხვევა"
+
+#: controldata.c:715
+#, c-format
+msgid "old and new pg_controldata WAL segment sizes are invalid or do not match"
+msgstr "ძველი და ახალი pg_controldata-ის WAL-ის სეგმენტის ზომები არასწორია ან არ ემთხვევა"
+
+#: controldata.c:718
+#, c-format
+msgid "old and new pg_controldata maximum identifier lengths are invalid or do not match"
+msgstr "ძველი და ახალი pg_controldata-ის იდენტიფიკატორის მაქსიმალური სიგრძეები არასწორია ან არ ემთხვევა"
+
+#: controldata.c:721
+#, c-format
+msgid "old and new pg_controldata maximum indexed columns are invalid or do not match"
+msgstr "ძველი და ახალი pg_controldata-ის მაქსიმალური ინდექსირებული სვეტები არასწორია ან არ ემთხვევა"
+
+#: controldata.c:724
+#, c-format
+msgid "old and new pg_controldata maximum TOAST chunk sizes are invalid or do not match"
+msgstr "ძველი და ახალი pg_controldata-ის TOAST-ის მაქსიმალური ნაგლეჯის ზომები არასწორია ან არ ემთხვევა"
+
+#: controldata.c:729
+#, c-format
+msgid "old and new pg_controldata large-object chunk sizes are invalid or do not match"
+msgstr "ძველი და ახალი pg_controldata-ის დიდი ობიექტის ნაგლეჯის ზომები არასწორია ან არ ემთხვევა"
+
+#: controldata.c:732
+#, c-format
+msgid "old and new pg_controldata date/time storage types do not match"
+msgstr "ძველი და ახალი pg_controldata-ის თარიღი/დროის შენახვის ტიპები არ ემთხვევა"
+
+#: controldata.c:745
+#, c-format
+msgid "old cluster does not use data checksums but the new one does"
+msgstr "ძველი კლასტერი არ იყენებს მონაცემთა შემოწმებას, მაგრამ ახალი აკეთებს"
+
+#: controldata.c:748
+#, c-format
+msgid "old cluster uses data checksums but the new one does not"
+msgstr "ძველი კლასტერი იყენებს მონაცემთა შემოწმებას, ახალი კი არა"
+
+#: controldata.c:750
+#, c-format
+msgid "old and new cluster pg_controldata checksum versions do not match"
+msgstr "ძველი და ახალი კლასტერების pg_controldata -ის საკონტროლო ჯამის ვერსიები არ ემთხვევა"
+
+#. translator: %s is the file path of the control file
+#: controldata.c:762
+#, c-format
+msgid "Adding \".old\" suffix to old \"%s\""
+msgstr "'.old\" სუფიქსის დამატება ძველ \"%s\"-ზე"
+
+#: controldata.c:767
+#, c-format
+msgid "could not rename file \"%s\" to \"%s\": %m"
+msgstr "გადარქმევის შეცდომა %s - %s: %m"
+
+#. translator: %s/%s is the file path of the control file
+#: controldata.c:773
+#, c-format
+msgid ""
+"\n"
+"If you want to start the old cluster, you will need to remove\n"
+"the \".old\" suffix from \"%s/%s.old\".\n"
+"Because \"link\" mode was used, the old cluster cannot be safely\n"
+"started once the new cluster has been started."
+msgstr ""
+"\n"
+"თუ გნებავთ, გაუშვათ ძველი კლასტერი, საჭიროა\n"
+"წაშალოთ .old სუფიქსი %s/%s.old-დან.\n"
+"იმის გამო, რომ გამოყენებული იყო \"ბმულის\" რეჟიმი, ძველი კლასტერის გაშვება მას შემდეგ, რაც\n"
+"ახალი სერვერი გაეშვა, ძველის გაშვება უსაფრთხო აღარაა."
+
+#: controldata.c:780
+#, c-format
+msgid ""
+"\n"
+"Because \"swap\" mode was used, the old cluster can no longer be\n"
+"safely started."
+msgstr ""
+"\n"
+"იმიტოს გამო, რომ გამოყენებული იყო რეჟიმი 'swap', ძველი კლასტერის გაშვება\n"
+"უსაფრთხო აღარაა."
+
+#: controldata.c:784 file.c:455
+#, c-format
+msgid "unrecognized transfer mode"
+msgstr "უცნობი გადაცემის რეჟიმი"
+
+#: dump.c:20
+#, c-format
+msgid "Creating dump of global objects"
+msgstr "გლობალური ობიექტების დამპის შექმნა"
+
+#: dump.c:32
+#, c-format
+msgid "Creating dump of database schemas"
+msgstr "მონაცემთა ბაზის სქემების დამპის შექმნა"
+
+#: exec.c:47
+#, c-format
+msgid "could not get pg_ctl version data using %s: %m"
+msgstr "%s გამოყენებით pg_ctl ვერსიის მონაცემები ვერ მივიღე: %m"
+
+#: exec.c:51
+#, c-format
+msgid "could not get pg_ctl version data using %s: %s"
+msgstr "%s გამოყენებით pg_ctl ვერსიის მონაცემები ვერ მივიღე: %s"
+
+#: exec.c:55
+#, c-format
+msgid "could not get pg_ctl version output from %s"
+msgstr "%s გამოყენებით pg_ctl ვერსია ვერ მივიღე"
+
+#: exec.c:112 exec.c:116
+#, c-format
+msgid "command too long"
+msgstr "ბრძანება ძალიან გრძელია"
+
+#: exec.c:160 pg_upgrade.c:315
+#, c-format
+msgid "could not open log file \"%s\": %m"
+msgstr "ჟურნალის ფაილის გახსნის შეცდომა \"%s\": %m"
+
+#: exec.c:192
+#, c-format
+msgid ""
+"\n"
+"*failure*"
+msgstr ""
+"\n"
+"*შეცდომა"
+
+#: exec.c:195
+#, c-format
+msgid "There were problems executing \"%s\""
+msgstr "%s-ის შესრულების პრობლემა"
+
+#: exec.c:198
+#, c-format
+msgid ""
+"Consult the last few lines of \"%s\" or \"%s\" for\n"
+"the probable cause of the failure."
+msgstr ""
+"ავარიის მიზეზის გამოსავლენად გადაავლეთ თვალი \n"
+"\"%s\"-ის ან \"%s\"-ის ბოლო რამდენიმე ფაილს."
+
+#: exec.c:203
+#, c-format
+msgid ""
+"Consult the last few lines of \"%s\" for\n"
+"the probable cause of the failure."
+msgstr ""
+"ავარიის მიზეზის გამოსავლენად გადაავლეთ თვალი\n"
+"\"%s\"-ის ბოლო რამდენიმე ხაზს."
+
+#: exec.c:218 pg_upgrade.c:325
+#, c-format
+msgid "could not write to log file \"%s\": %m"
+msgstr "ჟურნალის ფაილში (%s) ჩაწერის შეცდომა: %m"
+
+#: exec.c:244
+#, c-format
+msgid "could not open file \"%s\" for reading: %m"
+msgstr "ფაილის (%s) გახსნის შეცდომა: %m"
+
+#: exec.c:270
+#, c-format
+msgid "You must have read and write access in the current directory."
+msgstr "მიმდინარე საქაღალდეში ჩაწერა/წაკითხვის წვდომები აუცილებელია."
+
+#: exec.c:323 exec.c:389 exec.c:439
+#, c-format
+msgid "check for \"%s\" failed: %m"
+msgstr "\"%s\" შემოწმების შეცდომა: %m"
+
+#: exec.c:326 exec.c:392
+#, c-format
+msgid "\"%s\" is not a directory"
+msgstr "%s საქაღალდეს არ წარმოადგენს"
+
+#: exec.c:444
+#, c-format
+msgid "check for \"%s\" failed: cannot execute"
+msgstr "\"%s\" შემოწმების შეცდომა: გაშვების შეცდომა"
+
+#: exec.c:454
+#, c-format
+msgid "check for \"%s\" failed: incorrect version: found \"%s\", expected \"%s\""
+msgstr "\"%s\" შემოწმების შეცდომა: არასწორი ვერსია: ვიპოვე \"%s\" მოველოდი \"%s\""
+
+#: file.c:44
+#, c-format
+msgid "error while cloning relation \"%s.%s\" (\"%s\" to \"%s\"): %m"
+msgstr "შეცდომა ურთიერთობის (%s.%s) დაკლონვისას (\"%s\"-დან \"%s\"-მდე): %m"
+
+#: file.c:51
+#, c-format
+msgid "error while cloning relation \"%s.%s\": could not open file \"%s\": %m"
+msgstr "შეცდომა ურთიერთობის (%s.%s) დაკლონვისას: ფაილის (\"%s\") გახსნის შეცდომა: %m"
+
+#: file.c:56
+#, c-format
+msgid "error while cloning relation \"%s.%s\": could not create file \"%s\": %m"
+msgstr "შეცდომა ურთიერთობის (%s.%s) დაკლონვისას: ფაილის (\"%s\") შექმნის შეცდომა: %m"
+
+#: file.c:65
+#, c-format
+msgid "error while cloning relation \"%s.%s\" (\"%s\" to \"%s\"): %s"
+msgstr "შეცდომა ურთიერთობის (%s.%s) კლონირებისას (\"%s\"-დან \"%s\"-მდე): %s"
+
+#: file.c:91 file.c:160 file.c:233
+#, c-format
+msgid "error while copying relation \"%s.%s\": could not open file \"%s\": %m"
+msgstr "შეცდომა ურთიერთობის (%s.%s) კოპირებისას : ფაილის (\"%s\") გახსნის შეცდომა: %m"
+
+#: file.c:96 file.c:165 file.c:242
+#, c-format
+msgid "error while copying relation \"%s.%s\": could not create file \"%s\": %m"
+msgstr "შეცდომა ურთიერთობის (%s.%s) კოპირებისას: ფაილის (\"%s\") შექმნის შეცდომა: %m"
+
+#: file.c:110 file.c:266
+#, c-format
+msgid "error while copying relation \"%s.%s\": could not read file \"%s\": %m"
+msgstr "შეცდომა ურთიერთობის (%s.%s) კოპირებისას: ფაილის (\"%s\") წაკითხვის შეცდომა: %m"
+
+#: file.c:122 file.c:344
+#, c-format
+msgid "error while copying relation \"%s.%s\": could not write file \"%s\": %m"
+msgstr "შეცდომა ურთიერთობის (%s.%s) კოპირებისას: ფაილში (\"%s\") ჩაწერის შეცდომა: %m"
+
+#: file.c:136
+#, c-format
+msgid "error while copying relation \"%s.%s\" (\"%s\" to \"%s\"): %m"
+msgstr "შეცდომა ურთიერთობის (%s.%s) კოპირებისას (\"%s\"-დან \"%s\"-მდე): %m"
+
+#: file.c:172
+#, c-format
+msgid "error while copying relation \"%s.%s\": could not copy file range from \"%s\" to \"%s\": %m"
+msgstr "შეცდომა ურთიერთობის (%s.%s) კოპირებისას: ფაილის შუალედის კოპირება \"%s\"-დან \"%s\"-მდე შეუძლებელია: %m"
+
+#: file.c:194
+#, c-format
+msgid "error while creating link for relation \"%s.%s\" (\"%s\" to \"%s\"): %m"
+msgstr "შეცდომა ურთიერთობის (%s.%s) ბმულის შექმნისას (\"%s\"-დან \"%s\"-მდე): %m"
+
+#: file.c:237
+#, c-format
+msgid "error while copying relation \"%s.%s\": could not stat file \"%s\": %m"
+msgstr "შეცდომა ურთიერთობის (%s.%s) კოპირებისას: ფაილის (\"%s\") აღმოჩენის შეცდომა: %m"
+
+#: file.c:269
+#, c-format
+msgid "error while copying relation \"%s.%s\": partial page found in file \"%s\""
+msgstr "შეცდომა ურთიერთობის \"%s.%s\" კოპირებისას: ფაილში \"%s\" ნაპოვნია ნაწილობრივი გვერდი"
+
+#: file.c:371 file.c:387
+#, c-format
+msgid "could not clone file between old and new data directories: %m"
+msgstr "მონაცემების ძველ და ახალ საქაღალდეებს შორის ფაილის დაკლონვის შეცდომა: %m"
+
+#: file.c:383 file.c:420
+#, c-format
+msgid "could not create file \"%s\": %m"
+msgstr "ფაილის (%s) შექმნის შეცდომა: %m"
+
+#: file.c:393
+#, c-format
+msgid "file cloning not supported on this platform"
+msgstr "ამ პლატფორმაზე კლონირება მხარდაჭერილი არაა"
+
+#: file.c:424
+#, c-format
+msgid "could not copy file range between old and new data directories: %m"
+msgstr "მონაცემების ძველ და ახალ საქაღალდეებს შორის ფაილის შუალედის კოპირება შეუძლებელია: %m"
+
+#: file.c:430
+#, c-format
+msgid "copy_file_range not supported on this platform"
+msgstr "ამ პლატფორმაზე copy_file_range მხარდაჭერილი არაა"
+
+#: file.c:449
+#, c-format
+msgid ""
+"could not create hard link between old and new data directories: %m\n"
+"In link mode the old and new data directories must be on the same file system."
+msgstr ""
+"ძველი და ახალი მონაცემების საქაღალდეებს შუა მყარი ბმულის შექმნა შეუძლებელია: %m\n"
+"ბმულის რეჟიმში ძველი და ახალი მონაცემების საქაღალდეები ერთი და იგივე ფაილურ სისტემაზე უნდა იყოს."
+
+#: file.c:452
+#, c-format
+msgid ""
+"could not create hard link between old and new data directories: %m\n"
+"In swap mode the old and new data directories must be on the same file system."
+msgstr ""
+"ძველი და ახალი მონაცემების საქაღალდეებს შუა მყარი ბმულის შექმნა შეუძლებელია: %m\n"
+"რეჟიმში 'swap' ძველი და ახალი მონაცემების საქაღალდეები ერთი და იგივე ფაილურ სისტემაზე უნდა იყოს."
+
+#: function.c:173
+#, c-format
+msgid "Checking for presence of required libraries"
+msgstr "საჭირო ბიბლიოთეკების არსებობის შემოწმება"
+
+#: function.c:209
+#, c-format
+msgid "could not load library \"%s\": %s"
+msgstr "ბიბლიოთეკის (\"%s\") ჩატვირთვის შეცდომა: %s"
+
+#: function.c:220
+#, c-format
+msgid "In database: %s\n"
+msgstr "მონაცემთა ბაზაში: %s\n"
+
+#: function.c:230
+#, c-format
+msgid ""
+"Your installation references loadable libraries that are missing from the\n"
+"new installation.  You can add these libraries to the new installation,\n"
+"or remove the functions using them from the old installation.  A list of\n"
+"problem libraries is in the file:\n"
+"    %s"
+msgstr ""
+"პროგრამის თქვენი ვერსია მიმართავს ჩატვირთვად ბიბლიოთეკები, რომლებიც თქვენს სისტემაში\n"
+"აღმოჩენილი არაა.   შეგიძლიათ დაამატოთ ეს ბიბლიოთეკები ახალ ვარიანტში,\n"
+"ან წაშალოთ ფუნქციები, რომლებიც მათ იყენებენ, ძველი ვერსიიდან.\n"
+"პრობლემური ბიბლიოთეკების სიის ნახვა შეგიძლიათ ფაილში:\n"
+"    %s"
+
+#: info.c:131
+#, c-format
+msgid "Relation names for OID %u in database \"%s\" do not match: old name \"%s.%s\", new name \"%s.%s\""
+msgstr "ურთიერთობის სახელები OID-ით %u ბაზაში \"%s\" არ ემთხვევა: ძველი სახელი \"%s.%s.\", ახალი კი \"%s.%s\""
+
+#: info.c:151
+#, c-format
+msgid "Failed to match up old and new tables in database \"%s\""
+msgstr "შეცდომა ძველ და ახალ ცხრილებს შორის დამთხვევისას ბაზაში \"%s\""
+
+#: info.c:232
+#, c-format
+msgid " which is an index on \"%s.%s\""
+msgstr " რომელიც ინდექსია \"%s.%s\""
+
+#: info.c:242
+#, c-format
+msgid " which is an index on OID %u"
+msgstr " რაც არის ინდექსი OID-ზე %u"
+
+#: info.c:254
+#, c-format
+msgid " which is the TOAST table for \"%s.%s\""
+msgstr " რომელიც TOAST ცხრილია \"%s.%s\"-სთვის"
+
+#: info.c:262
+#, c-format
+msgid " which is the TOAST table for OID %u"
+msgstr " რომელიც TOAST ცხრილია %u-ე OID-სთვის"
+
+#: info.c:266
+#, c-format
+msgid "No match found in old cluster for new relation with OID %u in database \"%s\": %s"
+msgstr "ძველ კლასტერში ახალი ურთიერთობისთვის OID -ით %u ბაზაში \"%s\" დამთხვევა ვერ ვიპოვე: %s"
+
+#: info.c:269
+#, c-format
+msgid "No match found in new cluster for old relation with OID %u in database \"%s\": %s"
+msgstr "ახალ კლასტერში ძველი ურთიერთობისთვის OID -ით %u ბაზაში \"%s\" დამთხვევა ვერ ვიპოვე: %s"
+
+#: info.c:325
+#, c-format
+msgid ""
+"\n"
+"source databases:"
+msgstr ""
+"\n"
+"საწყისი ბაზები:"
+
+#: info.c:327
+#, c-format
+msgid ""
+"\n"
+"target databases:"
+msgstr ""
+"\n"
+"სამიზნე ბაზები:"
+
+#: info.c:371
+#, c-format
+msgid "template0 not found"
+msgstr "template0 ნაპოვნი არაა"
+
+#: info.c:817
+#, c-format
+msgid "Database: \"%s\""
+msgstr "მონაცემთა ბაზაში: \"%s\""
+
+#: info.c:830
+#, c-format
+msgid "relname: \"%s.%s\", reloid: %u, reltblspace: \"%s\""
+msgstr "relname: \"%s.%s\", reloid: %u, reltblspace: \"%s\""
+
+#: info.c:844
+#, c-format
+msgid "Logical replication slots in the database:"
+msgstr "ლოგიკური რეპლიკაციის სლოტები მონაცემთა ბაზაში:"
+
+#: info.c:850
+#, c-format
+msgid "slot name: \"%s\", output plugin: \"%s\", two_phase: %s"
+msgstr "სლოტი სახელი: \"%s\", გამოტანის დამატება: \"%s\", two_phase: %s"
+
+#: option.c:110
+#, c-format
+msgid "%s: cannot be run as root"
+msgstr "%s: root-ით ვერ გაუშვებთ"
+
+#: option.c:177
+#, c-format
+msgid "invalid old port number"
+msgstr "არასწორი ძველი პორტის ნომერი"
+
+#: option.c:182
+#, c-format
+msgid "invalid new port number"
+msgstr "ახალი პორტის არასწორი ნომერი"
+
+#: option.c:230
+#, c-format
+msgid "invalid argument for option %s"
+msgstr "არასწორი არგუმენტი პარამეტრისთვის: %s"
+
+#: option.c:238
+#, c-format
+msgid "Try \"%s --help\" for more information.\n"
+msgstr "მეტი ინფორმაციისთვის სცადეთ '%s --help'.\n"
+
+#: option.c:245
+#, c-format
+msgid "too many command-line arguments (first is \"%s\")"
+msgstr "მეტისმეტად ბევრი ბრძანების-სტრიქონის არგუმენტი (პირველია \"%s\")"
+
+#: option.c:251
+#, c-format
+msgid "Running in verbose mode"
+msgstr "დამატებითი შეტყობინებების ჩართვა"
+
+#: option.c:269
+msgid "old cluster binaries reside"
+msgstr "ძველი კლასტერის გამშვები ფაილები მდებარეობს"
+
+#: option.c:271
+msgid "new cluster binaries reside"
+msgstr "ახალი კლასტერის გამშვები ფაილები მდებარეობს"
+
+#: option.c:273
+msgid "old cluster data resides"
+msgstr "ძველი კლასტერის მონაცემები მდებარეობს"
+
+#: option.c:275
+msgid "new cluster data resides"
+msgstr "ახალი კლასტერის მონაცემები მდებარეობს"
+
+#: option.c:277
+msgid "sockets will be created"
+msgstr "სოკეტები შეიქმნება"
+
+#: option.c:294 option.c:400
+#, c-format
+msgid "could not determine current directory"
+msgstr "მიმდინარე საქაღალდის იდენტიფიკაციის პრობლემა"
+
+#: option.c:297
+#, c-format
+msgid "cannot run pg_upgrade from inside the new cluster data directory on Windows"
+msgstr "pg_upgrade-ის გაშვება Windows-ზე ახალი კლასტერის მონაცემების საქაღალდიდან შეუძლებელია"
+
+#: option.c:306
+#, c-format
+msgid ""
+"pg_upgrade upgrades a PostgreSQL cluster to a different major version.\n"
+"\n"
+msgstr ""
+"pg_upgrade -ი PostgreSQL კლასტერს სხვა მთავარ ვერსიაზე განაახლებს.\n"
+"\n"
+
+#: option.c:307
+#, c-format
+msgid "Usage:\n"
+msgstr "გამოყენება:\n"
+
+#: option.c:308
+#, c-format
+msgid ""
+"  pg_upgrade [OPTION]...\n"
+"\n"
+msgstr ""
+"  pg_upgrade [პარამეტრი]...\n"
+"\n"
+
+#: option.c:309
+#, c-format
+msgid "Options:\n"
+msgstr "პარამეტრები:\n"
+
+#: option.c:310
+#, c-format
+msgid "  -b, --old-bindir=BINDIR       old cluster executable directory\n"
+msgstr "  -b, --old-bindir=BINDIR ძველი კლასტერის გამშვები ფაილების საქაღალდე\n"
+
+#: option.c:311
+#, c-format
+msgid ""
+"  -B, --new-bindir=BINDIR       new cluster executable directory (default\n"
+"                                same directory as pg_upgrade)\n"
+msgstr ""
+"  -B, --new-bindir=BINDIR ახალი კლასტერის გამშვები ფაილების საქაღალდე (ნაგულისხმები\n"
+"                                იგივე საქაღლდე, რაც pg_upgrade)\n"
+
+#: option.c:313
+#, c-format
+msgid "  -c, --check                   check clusters only, don't change any data\n"
+msgstr "  -c, --check კლასტერების მხოლოდ შემოწმება. მონაცემები არ შეიცვლება\n"
+
+#: option.c:314
+#, c-format
+msgid "  -d, --old-datadir=DATADIR     old cluster data directory\n"
+msgstr "  -d, --old-datadir=DATADIR ძველი კლასტერის მონაცემთა საქაღალდე\n"
+
+#: option.c:315
+#, c-format
+msgid "  -D, --new-datadir=DATADIR     new cluster data directory\n"
+msgstr "  -D, --new-datadir=DATADIR ახალი კლასტერის მონაცემთა საქაღალდე\n"
+
+#: option.c:316
+#, c-format
+msgid "  -j, --jobs=NUM                number of simultaneous processes or threads to use\n"
+msgstr "  -j, --jobs=NUM                ერთდროულად გასაშვები პროცესების ან ნაკადების რიცხვი\n"
+
+#: option.c:317
+#, c-format
+msgid "  -k, --link                    link instead of copying files to new cluster\n"
+msgstr "  -k, --link                    ახალ კლასტერში ფაილების გადაბმა, კოპირების ნაცვლად\n"
+
+#: option.c:318
+#, c-format
+msgid "  -N, --no-sync                 do not wait for changes to be written safely to disk\n"
+msgstr "  -N, --no-sync             არ დაველოდო ცვლილებების დისკზე უსაფრთხოდ ჩაწერას\n"
+
+#: option.c:319
+#, c-format
+msgid "  -o, --old-options=OPTIONS     old cluster options to pass to the server\n"
+msgstr "  -o, -old-options=OPTIONS       სერვერზე გადასაცემი ძველი კლასტერის პარამეტრები\n"
+
+#: option.c:320
+#, c-format
+msgid "  -O, --new-options=OPTIONS     new cluster options to pass to the server\n"
+msgstr "  -O, -new-options=OPTIONS       სერვერზე გადასაცემი ახალი კლასტერის პარამეტრები\n"
+
+#: option.c:321
+#, c-format
+msgid "  -p, --old-port=PORT           old cluster port number (default %d)\n"
+msgstr "  -p, -old-port=PORT             ძველი კლასტერის პორტის ნომერი (ნაგულისხმები %d)\n"
+
+#: option.c:322
+#, c-format
+msgid "  -P, --new-port=PORT           new cluster port number (default %d)\n"
+msgstr "  -P, --new-port=PORT              ახალი კლასტერის პორტის ნომერი (ნაგულისხმები %d)\n"
+
+#: option.c:323
+#, c-format
+msgid "  -r, --retain                  retain SQL and log files after success\n"
+msgstr "  -r, --retain                  SQL და ჟურნალის ფაილებს დატოვება წარმატების შემდეგ \n"
+
+#: option.c:324
+#, c-format
+msgid "  -s, --socketdir=DIR           socket directory to use (default current dir.)\n"
+msgstr "  -s, --socketdir=DIR სოკეტის საქაღალდე (ნაგულისხმებია მიმდინარე.)\n"
+
+#: option.c:325
+#, c-format
+msgid "  -U, --username=NAME           cluster superuser (default \"%s\")\n"
+msgstr "  -U, --username=მომხმარებელი      კლასტერის ზემომხმარებლის სახელი (ნაგულისხმები: \"%s\")\n"
+
+#: option.c:326
+#, c-format
+msgid "  -v, --verbose                 enable verbose internal logging\n"
+msgstr "  -v, --verbose                 შიდა დამატებითი ჟურნალის ჩართვა\n"
+
+#: option.c:327
+#, c-format
+msgid "  -V, --version                 display version information, then exit\n"
+msgstr "  -V, --version                 ვერსიის ინფორმაციის ჩვენება და გასვლა\n"
+
+#: option.c:328
+#, c-format
+msgid "  --clone                       clone instead of copying files to new cluster\n"
+msgstr "  --clone                ახალ კლასტერში ფაილების კლონირება კოპირების ნაცვლად \n"
+
+#: option.c:329
+#, c-format
+msgid "  --copy                        copy files to new cluster (default)\n"
+msgstr "  --clone                ახალ კლასტერში ფაილების კლონირება კოპირების ნაცვლად (ნაგულისხმები)\n"
+
+#: option.c:330
+#, c-format
+msgid "  --copy-file-range             copy files to new cluster with copy_file_range\n"
+msgstr "  --copy-file-range             ფაილების კოპირება ახალ კლასტერში copy_file_range-ით\n"
+
+#: option.c:331
+#, c-format
+msgid "  --no-statistics               do not import statistics from old cluster\n"
+msgstr "  --no-statistics               ძველი კლასტერიდან სტატისტიკა შემოტანილი არ იქნება\n"
+
+#: option.c:332
+#, c-format
+msgid ""
+"  --set-char-signedness=OPTION  set new cluster char signedness to \"signed\" or\n"
+"                                \"unsigned\"\n"
+msgstr ""
+"  --set-char-signedness=OPTION  ახალი კლასტერის სიმბოლოს ნიშნანობის დაყენება \"signed\"-ზე ან\n"
+"                                \"unsigned\"-ზე\n"
+
+#: option.c:334
+#, c-format
+msgid "  --swap                        move data directories to new cluster\n"
+msgstr "  --swap                        მონაცემებთა საქაღალდეების გადატანა ახალ კლასტერში\n"
+
+#: option.c:335
+#, c-format
+msgid "  --sync-method=METHOD          set method for syncing files to disk\n"
+msgstr "  --sync-method=მეთოდი          ფაილების დისკზე სინქრონიზაციის მეთოდის დაყენება\n"
+
+#: option.c:336
+#, c-format
+msgid "  -?, --help                    show this help, then exit\n"
+msgstr "  -?, --help                   ამ დახმარების ჩვენება და გასვლა\n"
+
+#: option.c:337
+#, c-format
+msgid ""
+"\n"
+"Before running pg_upgrade you must:\n"
+"  create a new database cluster (using the new version of initdb)\n"
+"  shutdown the postmaster servicing the old cluster\n"
+"  shutdown the postmaster servicing the new cluster\n"
+msgstr ""
+"\n"
+"pg_upgrade-ის გაშვებამდე აუცილებელია:\n"
+"  შექმნათ ახალი ბაზის კლასტერი (initdb-ის ახალი ვერსიით)\n"
+"  გამორთოთ postmaster სერვისი ძველ კლასტერზე\n"
+"  გამორთოთ postmaster სერვისი ახალ კლასტერზე\n"
+
+#: option.c:342
+#, c-format
+msgid ""
+"\n"
+"When you run pg_upgrade, you must provide the following information:\n"
+"  the data directory for the old cluster  (-d DATADIR)\n"
+"  the data directory for the new cluster  (-D DATADIR)\n"
+"  the \"bin\" directory for the old version (-b BINDIR)\n"
+"  the \"bin\" directory for the new version (-B BINDIR)\n"
+msgstr ""
+"\n"
+"pg_upgrade-ის გაშვებისას საჭიროა შემდეგი ინფორმაციის გადაცემა:\n"
+"  ძველი კლასტერის მონაცემების საქაღალდე  (-d DATADIR)\n"
+"  ახალი კლასტერის მონაცემების საქაღალდე  (-D DATADIR)\n"
+"  ძველი ვერსიის \"bin\" საქაღალდე (-b BINDIR)\n"
+"  ახალი ვერსიის \"bin\" საქაღალდე (-B BINDIR)\n"
+
+#: option.c:348
+#, c-format
+msgid ""
+"\n"
+"For example:\n"
+"  pg_upgrade -d oldCluster/data -D newCluster/data -b oldCluster/bin -B newCluster/bin\n"
+"or\n"
+msgstr ""
+"\n"
+"მაგალითად:\n"
+"  pg_upgrade -d oldCluster/data -D newCluster/data -b oldCluster/bin -B newCluster/bin\n"
+"ან\n"
+
+#: option.c:353
+#, c-format
+msgid ""
+"  $ export PGDATAOLD=oldCluster/data\n"
+"  $ export PGDATANEW=newCluster/data\n"
+"  $ export PGBINOLD=oldCluster/bin\n"
+"  $ export PGBINNEW=newCluster/bin\n"
+"  $ pg_upgrade\n"
+msgstr ""
+"  $ export PGDATAOLD=oldCluster/data\n"
+"  $ export PGDATANEW=newCluster/data\n"
+"  $ export PGBINOLD=oldCluster/bin\n"
+"  $ export PGBINNEW=newCluster/bin\n"
+"  $ pg_upgrade\n"
+
+#: option.c:359
+#, c-format
+msgid ""
+"  C:\\> set PGDATAOLD=oldCluster/data\n"
+"  C:\\> set PGDATANEW=newCluster/data\n"
+"  C:\\> set PGBINOLD=oldCluster/bin\n"
+"  C:\\> set PGBINNEW=newCluster/bin\n"
+"  C:\\> pg_upgrade\n"
+msgstr ""
+"  C:\\> set PGDATAOLD=oldCluster/data\n"
+"  C:\\> set PGDATANEW=newCluster/data\n"
+"  C:\\> set PGBINOLD=oldCluster/bin\n"
+"  C:\\> set PGBINNEW=newCluster/bin\n"
+"  C:\\> pg_upgrade\n"
+
+#: option.c:365
+#, c-format
+msgid ""
+"\n"
+"Report bugs to <%s>.\n"
+msgstr ""
+"\n"
+"შეცდომების შესახებ მიწერეთ: %s\n"
+
+#: option.c:366
+#, c-format
+msgid "%s home page: <%s>\n"
+msgstr "%s-ის საწყისი გვერდია: <%s>\n"
+
+#: option.c:406
+#, c-format
+msgid ""
+"You must identify the directory where the %s.\n"
+"Please use the %s command-line option or the %s environment variable."
+msgstr ""
+"%s-ის საქაღალდის იდენტიფიკაცია აუცილებელია.\n"
+"გამოიყენეთ ბრძანების სტრიქონის %s პარამეტრი ან გარემოს ცვლადი %s."
+
+#: option.c:459
+#, c-format
+msgid "Finding the real data directory for the source cluster"
+msgstr "საწყისი კლასტერის რეალური მონაცემთა საქაღალდის პოვნა"
+
+#: option.c:461
+#, c-format
+msgid "Finding the real data directory for the target cluster"
+msgstr "სამიზნე კლასტერის რეალური მონაცემთა საქაღალდის პოვნა"
+
+#: option.c:474
+#, c-format
+msgid "could not get data directory using %s: %m"
+msgstr "ვერ მივიღე მონაცემთა საქაღალდე %s გამოყენებით: %m"
+
+#: option.c:478
+#, c-format
+msgid "could not get data directory using %s: %s"
+msgstr "ვერ მივიღე მონაცემთა საქაღალდე %s გამოყენებით: %s"
+
+#: option.c:526
+#, c-format
+msgid "could not read line %d from file \"%s\": %m"
+msgstr "ფაილიდან (%2$s) %1$d-ე ხაზის წაკითხვა შეუძლებელია: %3$m"
+
+#: option.c:543
+#, c-format
+msgid "user-supplied old port number %hu corrected to %hu"
+msgstr "მომხმარებლის მიერ მოწოდებული ძველი პორტის ნომერი %hu შესწორებულია %hu"
+
+#: parallel.c:127 parallel.c:235
+#, c-format
+msgid "could not create worker process: %m"
+msgstr "დამხმარე პროცესის შექმნა შეუძლებელია: %m"
+
+#: parallel.c:143 parallel.c:253
+#, c-format
+msgid "could not create worker thread: %m"
+msgstr "დამხმარე ნაკადის შექმნა შეუძლებელია: %m"
+
+#: parallel.c:294
+#, c-format
+msgid "%s() failed: %m"
+msgstr "%s()-ის შეცდომა: %m"
+
+#: parallel.c:298
+#, c-format
+msgid "child process exited abnormally: status %d"
+msgstr "შვილი პროცესი არანორმალურად დასრულდა სტატუსით %d"
+
+#: parallel.c:313
+#, c-format
+msgid "child worker exited abnormally: %m"
+msgstr "შვილი დამხმარე პროცესი არანორმალურად დასრულდა სტატუსით %m"
+
+#: pg_upgrade.c:114
+#, c-format
+msgid "could not read permissions of directory \"%s\": %m"
+msgstr "საქაღალდის წვდომების წაკითხვა შეუძლებელია \"%s\": %m"
+
+#: pg_upgrade.c:146
+#, c-format
+msgid ""
+"\n"
+"Performing Upgrade\n"
+"------------------"
+msgstr ""
+"\n"
+"მიმდინარეობს განახლება\n"
+"------------------"
+
+#: pg_upgrade.c:194
+#, c-format
+msgid "Setting next OID for new cluster"
+msgstr "ახალი კლასტერისთვის შემდეგი OID დაყენება"
+
+#: pg_upgrade.c:218
+#, c-format
+msgid "Sync data directory to disk"
+msgstr "მონაცემების საქაღალდის დისკთან სინქრონიზაცია"
+
+#: pg_upgrade.c:234
+#, c-format
+msgid ""
+"\n"
+"Upgrade Complete\n"
+"----------------"
+msgstr ""
+"\n"
+"განახლება დასრულებულია\n"
+"----------------"
+
+#: pg_upgrade.c:267 pg_upgrade.c:280 pg_upgrade.c:287 pg_upgrade.c:294
+#: pg_upgrade.c:312 pg_upgrade.c:323
+#, c-format
+msgid "directory path for new cluster is too long"
+msgstr "ახალი კლასტერის საქაღალდის ბილიკი ძალიან გრძელია"
+
+#: pg_upgrade.c:301 pg_upgrade.c:303 pg_upgrade.c:305 pg_upgrade.c:307
+#, c-format
+msgid "could not create directory \"%s\": %m"
+msgstr "საქაღალდის (%s) შექმნის შეცდომა: %m"
+
+#: pg_upgrade.c:356
+#, c-format
+msgid "%s: could not find own program executable"
+msgstr "%s: საკუთარი პროგრამის გამშვები ფაილის პოვნა შეუძლებელია"
+
+#: pg_upgrade.c:382
+#, c-format
+msgid ""
+"There seems to be a postmaster servicing the old cluster.\n"
+"Please shutdown that postmaster and try again."
+msgstr ""
+"როგორც ჩანს, ძველ კლასტერს postmaster ჯერ კიდევ ემსახურება.\n"
+"გამორთეთ postmaster და თავიდან სცადეთ."
+
+#: pg_upgrade.c:395
+#, c-format
+msgid ""
+"There seems to be a postmaster servicing the new cluster.\n"
+"Please shutdown that postmaster and try again."
+msgstr ""
+"როგორც ჩანს, ახალ კლასტერს postmaster ემსახურება.\n"
+"გამორთეთ postmaster და თავიდან სცადეთ."
+
+#: pg_upgrade.c:421
+#, c-format
+msgid "Setting the default char signedness for new cluster"
+msgstr "ნაგულისხმევი სიმბოლოს ნიშნიანობის დაყენება ახალი კლასტერისთვის"
+
+#: pg_upgrade.c:449
+#, c-format
+msgid "Setting locale and encoding for new cluster"
+msgstr "ახალი კლასტერის ლოკალის და კოდირების დაყენება"
+
+#: pg_upgrade.c:527
+#, c-format
+msgid "Analyzing all rows in the new cluster"
+msgstr "ახალ კლასტერში ყველა მწკრივის ანალიზი"
+
+#: pg_upgrade.c:540
+#, c-format
+msgid "Freezing all rows in the new cluster"
+msgstr "ახალ კლასტერში ყველა მწკრივის გაყინვა"
+
+#: pg_upgrade.c:560
+#, c-format
+msgid "Restoring global objects in the new cluster"
+msgstr "ახალი კლასტერში გლობალური ობიექტების აღდგენა"
+
+#: pg_upgrade.c:577
+#, c-format
+msgid "Restoring database schemas in the new cluster"
+msgstr "ახალ კლასტერში ბაზის სქემების აღდგენა"
+
+#: pg_upgrade.c:712
+#, c-format
+msgid "Deleting files from new %s"
+msgstr "ფაილების წაშლა ახალი %s-დან"
+
+#: pg_upgrade.c:716
+#, c-format
+msgid "could not delete directory \"%s\""
+msgstr "საქაღალდის (\"%s\") წაშლის შეცდომა"
+
+#: pg_upgrade.c:735
+#, c-format
+msgid "Copying old %s to new server"
+msgstr "ძველი %s -ის კოპირება ახალ სერვერზე"
+
+#: pg_upgrade.c:761
+#, c-format
+msgid "Setting oldest XID for new cluster"
+msgstr "უძველესი XID დაყენება ახალი კლასტერისთვის"
+
+#: pg_upgrade.c:769
+#, c-format
+msgid "Setting next transaction ID and epoch for new cluster"
+msgstr "ახალი კლასტერისთვის შემდეგი ტრანზაქციის ეპოქისა და ID-ის დაყენება"
+
+#: pg_upgrade.c:799
+#, c-format
+msgid "Setting next multixact ID and offset for new cluster"
+msgstr "ახალი კლასტერისთვის შემდეგი მულტიტრანზაქციის წანაცვლებისა და ID-ის დაყენება"
+
+#: pg_upgrade.c:823
+#, c-format
+msgid "Setting oldest multixact ID in new cluster"
+msgstr "ახალ კლასტერში უძველესი მულტიტრანზაქციის ID-ის დაყენება"
+
+#: pg_upgrade.c:843
+#, c-format
+msgid "Resetting WAL archives"
+msgstr "WAL არქივების გადატვირთვა"
+
+#: pg_upgrade.c:886
+#, c-format
+msgid "Setting frozenxid and minmxid counters in new cluster"
+msgstr "ახალ კლასტერში frozenxid და minmxid მთვლელების დაყენება"
+
+#: pg_upgrade.c:888
+#, c-format
+msgid "Setting minmxid counter in new cluster"
+msgstr "ახალ კლასტერში minmxid მთვლელის დაყენება"
+
+#: pg_upgrade.c:979
+#, c-format
+msgid "Restoring logical replication slots in the new cluster"
+msgstr "ახალი კლასტერში ლოგიკური რეპლიკაციის სლოტების აღდგენა"
+
+#: relfilenumber.c:68
+#, c-format
+msgid "could not synchronize file \"%s\": %m"
+msgstr "ფაილის (%s) სინქრონიზაციის შეცდომა: %m"
+
+#: relfilenumber.c:114
+#, c-format
+msgid "Cloning user relation files"
+msgstr "მომხმარებლის ურთიერთობის ფაილების კლონირება"
+
+#: relfilenumber.c:117
+#, c-format
+msgid "Copying user relation files"
+msgstr "მომხმარებლის ურთიერთობის ფაილების კოპირება"
+
+#: relfilenumber.c:120
+#, c-format
+msgid "Copying user relation files with copy_file_range"
+msgstr "მომხმარებლის ურთიერთობის ფაილების კოპირება copy_file_range-ით"
+
+#: relfilenumber.c:123
+#, c-format
+msgid "Linking user relation files"
+msgstr "მომხმარებლის ურთიერთობის ფაილების გადაბმა"
+
+#: relfilenumber.c:126
+#, c-format
+msgid "Swapping data directories"
+msgstr "მონაცემების საქაღალდის შეცვლა"
+
+#: relfilenumber.c:200
+#, c-format
+msgid "old database \"%s\" not found in the new cluster"
+msgstr "ძველი მონაცემთა ბაზა \"%s\" ახალ კლასტერში არ არის ნაპოვნი"
+
+#: relfilenumber.c:287
+#, c-format
+msgid "could not stat file \"%s\": %m"
+msgstr "ფაილი \"%s\" არ არსებობს: %m"
+
+#: relfilenumber.c:293 relfilenumber.c:297
+#, c-format
+msgid "could not create directory \"%s\""
+msgstr "საქაღალდის (%s) შექმნის შეცდომა"
+
+#: relfilenumber.c:301 relfilenumber.c:305
+#, c-format
+msgid "could not rename \"%s\" to \"%s\""
+msgstr "სახელის გადარქმევის შეცდომა \"%s\"-დან \"%s\"-ზე"
+
+#: relfilenumber.c:375 relfilenumber.c:402
+#, c-format
+msgid "could not open directory \"%s\": %m"
+msgstr "საქაღალდის (%s) გახსნის შეცდომა: %m"
+
+#: relfilenumber.c:393 relfilenumber.c:420
+#, c-format
+msgid "could not rename \"%s\" to \"%s\": %m"
+msgstr "სახელის გადარქმევის შეცდომა \"%s\"-დან \"%s\"-ზე: %m"
+
+#: relfilenumber.c:396 relfilenumber.c:434
+#, c-format
+msgid "could not read directory \"%s\": %m"
+msgstr "საქაღალდის (%s) წაკითხვის შეცდომა: %m"
+
+#: relfilenumber.c:439
+#, c-format
+msgid "could not synchronize directory \"%s\": %m"
+msgstr "საქაღალდის \"%s\" სინქრონიზაცია შეუძლებელია: %m"
+
+#: relfilenumber.c:441
+#, c-format
+msgid "could not synchronize parent directory of \"%s\": %m"
+msgstr "\"%s\"-ის მშობელი საქაღალდის სინქრონიზაცია შეუძლებელია: %m"
+
+#: relfilenumber.c:598
+#, c-format
+msgid "error while checking for file existence \"%s.%s\" (\"%s\" to \"%s\"): %m"
+msgstr "შეცდომა ფაილის არსებობის შემოწმებისას \"%s.%s\" (\"%s\" \"%s\"): %m"
+
+#: relfilenumber.c:615
+#, c-format
+msgid "rewriting \"%s\" to \"%s\""
+msgstr "გადაწერა \"%s\"-დან \"%s\"-მდე"
+
+#: relfilenumber.c:623
+#, c-format
+msgid "cloning \"%s\" to \"%s\""
+msgstr "კლონირება \"%s\"-დან \"%s\"-მდე"
+
+#: relfilenumber.c:628
+#, c-format
+msgid "copying \"%s\" to \"%s\""
+msgstr "კოპირება \"%s\"-დან \"%s\"-მდე"
+
+#: relfilenumber.c:633
+#, c-format
+msgid "copying \"%s\" to \"%s\" with copy_file_range"
+msgstr "კოპირება \"%s\"-დან \"%s\"-მდე copy_file_range-ით"
+
+#: relfilenumber.c:638
+#, c-format
+msgid "linking \"%s\" to \"%s\""
+msgstr "ბმა \"%s\"-დან \"%s\"-მდე"
+
+#: relfilenumber.c:644
+#, c-format
+msgid "should never happen"
+msgstr "არასდროს უნდა მომხდარიყო"
+
+#: server.c:39 server.c:143 util.c:248 util.c:278
+#, c-format
+msgid "Failure, exiting\n"
+msgstr "შეცდომა. დასრულება\n"
+
+#: server.c:133
+#, c-format
+msgid "executing: %s"
+msgstr "შესრულება: %s"
+
+#: server.c:139
+#, c-format
+msgid ""
+"SQL command failed\n"
+"%s\n"
+"%s"
+msgstr ""
+"SQL ბრძანებსი შეცდომა\n"
+"%s\n"
+"%s"
+
+#: server.c:169
+#, c-format
+msgid "could not open version file \"%s\": %m"
+msgstr "ვერსიის ფაილის გახსნის შეცდომა \"%s\": %m"
+
+#: server.c:173
+#, c-format
+msgid "could not parse version file \"%s\""
+msgstr "ვერსიის ფაილის დამუშავების შეცდომა \"%s\""
+
+#: server.c:317
+#, c-format
+msgid ""
+"\n"
+"%s"
+msgstr ""
+"\n"
+"%s"
+
+#: server.c:321
+#, c-format
+msgid ""
+"could not connect to source postmaster started with the command:\n"
+"%s"
+msgstr ""
+"ვერ ვუკავშირდები საწყის postmaster-ს, რომელიც შემდეგი ბრძანებით გაეშვა:\n"
+"%s"
+
+#: server.c:325
+#, c-format
+msgid ""
+"could not connect to target postmaster started with the command:\n"
+"%s"
+msgstr ""
+"ვერ ვუკავშირდები სამიზნე postmaster-ს, რომელიც შემდეგი ბრძანებით გაეშვა:\n"
+"%s"
+
+#: server.c:339
+#, c-format
+msgid "pg_ctl failed to start the source server, or connection failed"
+msgstr "pg_ctl-ის შეცდომა საწყისი სერვერის გაშვებისას ან შეერთების შეცდომა"
+
+#: server.c:341
+#, c-format
+msgid "pg_ctl failed to start the target server, or connection failed"
+msgstr "pg_ctl-ის შეცდომა სამიზნე სერვერის გაშვებისას ან შეერთების შეცდომა"
+
+#: server.c:386
+#, c-format
+msgid "out of memory"
+msgstr "არასაკმარისი მეხსიერება"
+
+#: server.c:399
+#, c-format
+msgid "libpq environment variable %s has a non-local server value: %s"
+msgstr "libpq-ის გარემოს ცვლად %s-ს არალოკალური სერვერის მნიშვნელობა: %s გააჩნია"
+
+#: tablespace.c:28
+#, c-format
+msgid ""
+"Cannot upgrade to/from the same system catalog version when\n"
+"using tablespaces."
+msgstr ""
+"ცხრილის სივრცეების გამოყენებისას იგივე სისტემური კატალოგის \n"
+"ვერსიის მქონეზე/მქონემდე განახლება შეუძლებელია."
+
+#: tablespace.c:83
+#, c-format
+msgid "tablespace directory \"%s\" does not exist"
+msgstr "ცხრილების სივრცის საქაღალდე \"%s\" არ არსებობს"
+
+#: tablespace.c:87
+#, c-format
+msgid "could not stat tablespace directory \"%s\": %m"
+msgstr "ცხრილების სივრცის საქაღალდის \"%s\" აღმოჩენის შეცდომა: %m"
+
+#: tablespace.c:92
+#, c-format
+msgid "tablespace path \"%s\" is not a directory"
+msgstr "ცხრილების სივრცის ბილიკი %s საქაღალდეს არ წარმოადგენს"
+
+#: task.c:195
+#, c-format
+msgid "failed to create connection with connection string: \"%s\""
+msgstr "ჩავარდა მიერთების შექმნა მიერთების სტრიქონით: \"%s\""
+
+#: task.c:217 task.c:268 task.c:283 task.c:294
+#, c-format
+msgid "connection failure: %s"
+msgstr "მიერთების შეცდომა: %s"
+
+#: task.c:396
+#, c-format
+msgid "invalid socket"
+msgstr "არასწორი სოკეტი"
+
+#: task.c:405
+#, c-format
+msgid "select() failed: %m"
+msgstr "select() ჩავარდა: %m"
+
+#: util.c:53 util.c:56 util.c:139 util.c:170 util.c:172
+#, c-format
+msgid "%-*s"
+msgstr "%-*s"
+
+#: util.c:107
+#, c-format
+msgid "could not access directory \"%s\": %m"
+msgstr "საქაღალდის (%s) წვდომის შეცდომა: %m"
+
+#: util.c:287
+#, c-format
+msgid "ok"
+msgstr "დიახ"
+
+#: version.c:44
+#, c-format
+msgid "Checking for hash indexes"
+msgstr "ჰეშის ინდექსების შემოწმება"
+
+#: version.c:123
+#, c-format
+msgid ""
+"\n"
+"Your installation contains hash indexes.  These indexes have different\n"
+"internal formats between your old and new clusters, so they must be\n"
+"reindexed with the REINDEX command.  After upgrading, you will be given\n"
+"REINDEX instructions."
+msgstr ""
+"\n"
+"პროგრამის თქვენი ვერსია ჰეშ ინდექსებს შეიცავს  ამ ინდექსებს განსხვავებული\n"
+"შიდა ფორმატები გააჩნიათ ძველ და ახალ კლასტერებს შორის, ასე რომ, საჭიროა მათი\n"
+"რეინდექსი REINDEX ბრძანების საშუალებით.  განახლების შემდეგ\n"
+"REINDEX-ის ინსტრუქციებიც გადმოგეცემათ."
+
+#: version.c:129
+#, c-format
+msgid ""
+"\n"
+"Your installation contains hash indexes.  These indexes have different\n"
+"internal formats between your old and new clusters, so they must be\n"
+"reindexed with the REINDEX command.  The file\n"
+"    %s\n"
+"when executed by psql by the database superuser will recreate all invalid\n"
+"indexes; until then, none of these indexes will be used."
+msgstr ""
+"\n"
+"პროგრამის თქვენი ვერსია ჰეშ ინდექსებშ შეიცავს. ამ ინდექსებს თქვენს ძველ\n"
+"და ახალ კლასტერებში განსხვავებული შიდა ფორმატი გააჩნია, ასე რომ, საჭიროა მათი\n"
+"რეინდექსი REINDEX ბრძანების საშუალებით.  ფაილი\n"
+"   %s\n"
+", შესრულებული psql-ით მონაცემთა ბაზის ზემომხმარებლის მიერ, თავიდან შექნის ყველა\n"
+"არასწორ ინდექსს. მანამდე კი, ამ ინდექსებიდან არც ერთი გამოყენებული არ იქნება."
+
+#: version.c:187
+#, c-format
+msgid "Checking for extension updates"
+msgstr "გაფართოების განახლებების შემოწმება"
+
+#: version.c:201
+#, c-format
+msgid "notice"
+msgstr "გაფრთხილება"
+
+#: version.c:202
+#, c-format
+msgid ""
+"\n"
+"Your installation contains extensions that should be updated\n"
+"with the ALTER EXTENSION command.  The file\n"
+"    %s\n"
+"when executed by psql by the database superuser will update\n"
+"these extensions."
+msgstr ""
+"\n"
+"პროგრამის თქვენი ვერსია შეიცავს გაფართოებას, რომელიც უნდა განახლდეს\n"
+"ALTER EXTENSION ბრძანებით.    ფაილი\n"
+"    %s\n"
+", როცა ის შესრულდება psql-ით ზემომხმარებლის მიერ, განაახლებს ამ\n"
+"გაფართოებებს."
+
+#, c-format
+#~ msgid ""
+#~ "\n"
+#~ "\n"
+#~ msgstr ""
+#~ "\n"
+#~ "\n"
+
+#, c-format
+#~ msgid "%-*s\n"
+#~ msgstr "%-*s\n"
+
+#, c-format
+#~ msgid "%s\n"
+#~ msgstr "%s\n"
+
+#, c-format
+#~ msgid "%s() failed: %s"
+#~ msgstr "%s()-ის შეცდომა: %s"
+
+#, c-format
+#~ msgid "Checking for incompatible \"jsonb\" data type"
+#~ msgstr "შეუთავსებელი \"jsonb\" მონაცემთა ტიპის შემოწმება"
+
+#, c-format
+#~ msgid "ICU locale values for database \"%s\" do not match:  old \"%s\", new \"%s\"\n"
+#~ msgstr "ICU-ს ენის მნიშვნელობები მონაცემთა ბაზისთვის \"%s\" არ ემთხვევა: ძველი \"%s\", ახალი \"%s\"\n"
+
+#, c-format
+#~ msgid "The source cluster contains roles starting with \"pg_\"\n"
+#~ msgstr "საწყისი კლასტერი შეიცავს როლებს, რომლებიც \"pg_\"-ით იწყება\n"
+
+#, c-format
+#~ msgid "The target cluster contains roles starting with \"pg_\"\n"
+#~ msgstr "სამიზნე კლასტერი შეიცავს როლებს, რომლებიც \"pg_\"-ით იწყება\n"
+
+#, c-format
+#~ msgid "Unable to rename %s to %s.\n"
+#~ msgstr "%s-ის %s-ად გადარქმევის შეცდომა.\n"
+
+#, c-format
+#~ msgid "check for \"%s\" failed: %s"
+#~ msgstr "\"%s\" შემოწმების შეცდომა: %s"
+
+#, c-format
+#~ msgid "check for \"%s\" failed: cannot execute (permission denied)\n"
+#~ msgstr "\"%s\" შემოწმების შეცდომა: გაშვების შეცდომა (წვდომა აკრძალულია)\n"
+
+#, c-format
+#~ msgid "check for \"%s\" failed: not a regular file\n"
+#~ msgstr "\"%s\" შემოწმება ვერ მოხერხდა: რეგულარული ფაილი არაა\n"
+
+#, c-format
+#~ msgid "could not access directory \"%s\": %m\n"
+#~ msgstr "საქაღალდის (%s) წვდომის შეცდომა: %m\n"
+
+#, c-format
+#~ msgid "could not create directory \"%s\": %m\n"
+#~ msgstr "საქაღალდის (%s) შექმნის შეცდომა: %m\n"
+
+#, c-format
+#~ msgid "could not create file \"%s\": %s"
+#~ msgstr "ფაილის (%s) შექმნის შეცდომა: %s"
+
+#, c-format
+#~ msgid "could not create worker process: %s"
+#~ msgstr "დამხმარე პროცესის შექმნა შეუძლებელია: %s"
+
+#, c-format
+#~ msgid "could not get control data directory using %s: %s"
+#~ msgstr "ვერ მივიღე მონაცემთა საქაღალდე %s გამოყენებით: %s"
+
+#, c-format
+#~ msgid "could not open file \"%s\" for reading: %s"
+#~ msgstr "შეცდომა %s-ის წასაკითხად გახსნისას: %s"
+
+#, c-format
+#~ msgid "could not open file \"%s\": %s"
+#~ msgstr "ფაილის გახსნის შეცდომა \"%s\": %s"
+
+#, c-format
+#~ msgid "could not open file \"%s\": %s\n"
+#~ msgstr "ფაილის გახსნის შეცდომა \"%s\": %s\n"
+
+#, c-format
+#~ msgid "could not open log file \"%s\": %m\n"
+#~ msgstr "ჟურნალის ფაილის გახსნის შეცდომა \"%s\": %m\n"
+
+#, c-format
+#~ msgid "could not read permissions of directory \"%s\": %s"
+#~ msgstr "საქაღალდის წვდომების წაკითხვა შეუძლებელია \"%s\": %s"
+
+#, c-format
+#~ msgid "encodings for database \"%s\" do not match:  old \"%s\", new \"%s\"\n"
+#~ msgstr "მონაცემთა ბაზის კოდირება \"%s\" არ ემთხვევა: ძველი \"%s\", ახალი \"%s\"\n"
+
+#, c-format
+#~ msgid "failed to get system locale name for \"%s\"\n"
+#~ msgstr "%s-სთვის სისტემური ენის მიღების შეცდომა\n"
+
+#, c-format
+#~ msgid "failed to get the current locale\n"
+#~ msgstr "მიმდინარე ენის მიღების პრობლემა\n"
+
+#, c-format
+#~ msgid "failed to restore old locale \"%s\"\n"
+#~ msgstr "ძველი ენის (\"%s\") აღდგენის პრობლემა\n"
+
+#, c-format
+#~ msgid "lc_collate values for database \"%s\" do not match:  old \"%s\", new \"%s\"\n"
+#~ msgstr "მონაცემთა ბაზის lc_collate მნიშვნელობები \"%s\" არ ემთხვევა: ძველი \"%s\", ახალი \"%s\"\n"
+
+#, c-format
+#~ msgid "lc_ctype values for database \"%s\" do not match:  old \"%s\", new \"%s\"\n"
+#~ msgstr "მონაცემთა ბაზის lc_ctype მნიშვნელობები \"%s\" არ ემთხვევა: ძველი \"%s\", ახალი \"%s\"\n"
+
+#, c-format
+#~ msgid "locale providers for database \"%s\" do not match:  old \"%s\", new \"%s\"\n"
+#~ msgstr "მონაცემთა ბაზის \"%s\" ენის მომწოდებლები არ ემთხვევა: ძველი \"%s\", ახალი \"%s\"\n"
+
+#, c-format
+#~ msgid "too many command-line arguments (first is \"%s\")\n"
+#~ msgstr "მეტისმეტად ბევრი ბრძანების-სტრიქონის არგუმენტი (პირველია \"%s\")\n"

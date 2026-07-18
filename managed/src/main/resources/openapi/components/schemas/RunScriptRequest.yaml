@@ -1,0 +1,11 @@
+title: RunScriptRequest
+description: Request body for running a script on database nodes
+x-yba-api-visibility: internal
+type: object
+properties:
+  script_options:
+    $ref: "./ScriptOptions.yaml"
+  nodes:
+    $ref: "./NodeSelection.yaml"
+required:
+  - script_options

@@ -1,0 +1,8 @@
+\unset ECHO
+# Subtest: whatever.testthis()
+    1..0
+    # No tests run!
+not ok 1 - whatever.testthis
+# Failed test 1: "whatever.testthis"
+1..1
+# Looks like you failed 1 test of 1

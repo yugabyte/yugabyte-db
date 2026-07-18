@@ -1,0 +1,123 @@
+<!--
+doc/src/sgml/ref/drop_rule.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-droprule">
+ <indexterm zone="sql-droprule">
+  <primary>DROP RULE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP RULE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP RULE</refname>
+  <refpurpose>remove a rewrite rule</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP RULE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> ON <replaceable class="parameter">table_name</replaceable> [ CASCADE | RESTRICT ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DROP RULE</command> drops a rewrite rule.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+
+   <varlistentry>
+    <term><literal>IF EXISTS</literal></term>
+    <listitem>
+     <para>
+      Do not throw an error if the rule does not exist. A notice is issued
+      in this case.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of the rule to drop.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">table_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of the table or view that
+      the rule applies to.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>CASCADE</literal></term>
+    <listitem>
+     <para>
+      Automatically drop objects that depend on the rule,
+      and in turn all objects that depend on those objects
+      (see <xref linkend="ddl-depend"/>).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RESTRICT</literal></term>
+    <listitem>
+     <para>
+      Refuse to drop the rule if any objects depend on it.  This is
+      the default.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To drop the rewrite rule <literal>newrule</literal>:
+
+<programlisting>
+DROP RULE newrule ON mytable;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>DROP RULE</command> is a
+   <productname>PostgreSQL</productname> language extension, as is the
+   entire query rewrite system.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createrule"/></member>
+   <member><xref linkend="sql-alterrule"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

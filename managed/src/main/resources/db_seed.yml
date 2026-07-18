@@ -1,0 +1,21 @@
+# Test Customer
+- &customer1 !!com.yugabyte.yw.models.Customer
+    name: admin
+    code: admin
+    uuid: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+
+- &user1 !!com.yugabyte.yw.models.Users
+    email: admin
+    passwordHash: $2a$10$EIEMY/qXEH197zYn3K.4HOYMIIkBRBtNQ4AktpztQRegzIoJxK65W
+    customerUUID: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+    uuid: a9190fe6-1067-409f-95cf-dbd96893c9c9
+    role: SuperAdmin
+    primary: True
+
+- &user2 !!com.yugabyte.yw.models.Users
+    email: insecure
+    passwordHash: $2a$10$OUXWHmQTEgC33L7ZHnvI5OiRjIPWYJg9fQuvGske.Nx3rninfKxKi
+    customerUUID: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+    uuid: f3dd807e-3950-4cd1-860f-548bb581dc05
+    role: ReadOnly
+    primary: False

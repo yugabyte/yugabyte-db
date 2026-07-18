@@ -1,0 +1,120 @@
+# List of ports to check
+# Note: this precheck only checks this node,
+#       if there are any other firewalls,configured this will need to be
+#       verified from Yugabyte Anywhere or outside the universe from the client side.
+#
+ports=({{node_exporter_port}} {{master_http_port}} {{master_rpc_port}} {{tserver_http_port}} \
+{{tserver_rpc_port}} {{yb_controller_http_port}} {{yb_controller_rpc_port}} {{redis_server_http_port}} \
+{{redis_server_rpc_port}} {{ycql_server_http_port}} {{ycql_server_rpc_port}} {{ysql_server_http_port}} \
+{{ysql_server_rpc_port}})
+
+
+# IP address of the VM (assuming localhost)
+vm_ip="{{ ip_address }}"
+
+is_cloud={{ is_cloud | default(false) }}
+
+# Function to start a server on a specific port using Python
+start_server() {
+    local port=$1
+    python3 -m http.server $port >/dev/null 2>&1 &
+    echo $!  # Return the PID of the background server process
+}
+
+# Function to check if a port is open
+check_port() {
+    local ip=$1
+    local port=$2
+    count=0
+    # Start checking the port to respond faster for reachable ports.
+    until "echo > /dev/tcp/$ip/$port" >/dev/null 2>&1; do
+        count=$((count + 1))
+        if [ $count -gt 5 ]; then
+            break
+        fi
+        sleep 0.5
+    done
+    if [ $count -le 5 ]; then
+        echo "Port $port is open on $ip"
+        add_result "Port $port Check" "PASS" "Port $port is open on $ip"
+    else
+        echo "Port $port is closed or filtered on $ip"
+        add_result "Port $port Check" "FAIL" "Port $port is closed or filtered on $ip"
+    fi
+}
+
+# Function to forcefully kill a process
+force_kill() {
+    local pid=$1
+    kill $pid 2>/dev/null
+    sleep 2
+    if ps -p $pid > /dev/null; then
+        kill -9 $pid 2>/dev/null
+    fi
+}
+
+force_kill_on_exit() {
+    local pid=$1
+    # Check if the process is still running and kill it.
+    if ps -fp $pid | grep "http.server" > /dev/null; then
+        kill -9 $pid 2>/dev/null
+    fi
+}
+
+check_port_available() {
+  ip=$1
+  port=$2
+  if ss -lntu | grep -q ":$port\s" >/dev/null 2>&1; then
+    echo "Port $port is unavailable on $ip"
+    add_result "Port $port Check" "FAIL" "Port $port is unavailable on $ip"
+  else
+    echo "Port $port is available on $ip"
+    add_result "Port $port Check" "PASS" "Port $port is available on $ip"
+  fi
+}
+
+# Check for internet access.
+if [[ "{{ is_airgap }}" == "False" && "$cloud_type" == "onprem" ]]; then
+    # Attempt to run "/dev/tcp" 3 times with a 3 second timeout and return success if any succeed.
+    # --preserve-status flag will maintain the exit code of the "/dev/tcp" command.
+    HOST="yugabyte.com"
+    PORT=443
+
+    for i in 1 2 3; do
+      timeout 5 bash -c "cat < /dev/null > /dev/tcp/${HOST}/${PORT}" --preserve-status && break
+    done
+    if [[ $? -ne 0 ]]; then
+        add_result "Internet Connection" "FAIL" "Internet connection check failed for non-airgap environment"
+    else
+        add_result "Internet Connection" "PASS" "Internet connection check passed for non-airgap environment"
+    fi
+fi
+
+# Optional check for available ports. Cannot be run if the services are expected to be up.
+if [ "{{ check_available_ports }}" == "True" ]; then
+    for port in "${ports[@]}"; do
+        # Node exporter is already running. Skip its port.
+        [ "$port" -ne "{{node_exporter_port}}" ] && check_port_available "$vm_ip" "$port"
+    done
+fi
+
+# Iterate through the list of ports, start server, check port, and stop server
+if [ "$cloud_type" == "onprem" ]; then
+    for port in "${ports[@]}"; do
+        # Start the server and get its PID
+        server_pid=$(start_server $port)
+        if [ -n "$server_pid" ]; then
+            trap "force_kill_on_exit $server_pid" EXIT
+        fi
+        # Check if the port is open
+        check_port "$vm_ip" "$port"
+
+        # Stop the server if the PID exists
+        if ps -p $server_pid > /dev/null; then
+            force_kill $server_pid
+        fi
+    done
+fi
+
+
+

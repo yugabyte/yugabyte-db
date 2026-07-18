@@ -1,0 +1,4054 @@
+<!-- doc/src/sgml/installation.sgml -->
+
+<chapter id="installation">
+ <title>Installation from Source Code</title>
+
+ <indexterm zone="installation">
+  <primary>installation</primary>
+ </indexterm>
+
+ <para>
+  This chapter describes the installation of
+  <productname>PostgreSQL</productname> using the source code
+  distribution.  If you are installing a pre-packaged distribution,
+  such as an RPM or Debian package, ignore this chapter
+  and see <xref linkend="install-binaries" /> instead.
+ </para>
+
+ <sect1 id="install-requirements">
+  <title>Requirements</title>
+
+  <para>
+   In general, a modern Unix-compatible platform should be able to run
+   <productname>PostgreSQL</productname>.
+   The platforms that had received specific testing at the
+   time of release are described in <xref linkend="supported-platforms"/>
+   below.
+  </para>
+
+  <para>
+   The following software packages are required for building
+   <productname>PostgreSQL</productname>:
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      <indexterm>
+       <primary>make</primary>
+      </indexterm>
+
+      <acronym>GNU</acronym> <application>make</application> version 3.81 or newer is required; other
+      <application>make</application> programs or older <acronym>GNU</acronym> <application>make</application> versions will <emphasis>not</emphasis> work.
+      (<acronym>GNU</acronym> <application>make</application> is sometimes installed under
+      the name <filename>gmake</filename>.)  To test for <acronym>GNU</acronym>
+      <application>make</application> enter:
+<screen>
+<userinput>make --version</userinput>
+</screen>
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <indexterm>
+       <primary>Meson</primary>
+      </indexterm>
+
+      Alternatively, <productname>PostgreSQL</productname> can be built using
+      <ulink url="https://mesonbuild.com/">Meson</ulink>.  This is the only
+      option for building <productname>PostgreSQL</productname> on Windows
+      using <productname>Visual Studio</productname>.  For other platforms,
+      using <application>Meson</application> is currently experimental.  If
+      you choose to use <application>Meson</application>, then you don't need
+      <acronym>GNU</acronym> <application>make</application>, but the other
+      requirements below still apply.
+     </para>
+
+     <para>
+      The minimum required version of <application>Meson</application> is 0.57.2.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      You need a C compiler that supports at least C11.  Recent versions of
+      <productname>GCC</productname> are recommended, but
+      <productname>PostgreSQL</productname> is known to build using a variety
+      of compilers from different vendors.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <application>tar</application> is required to unpack the source
+      distribution, in addition to either
+      <application>gzip</application> or <application>bzip2</application>.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <indexterm>
+       <primary>flex</primary>
+      </indexterm>
+      <indexterm>
+       <primary>lex</primary>
+      </indexterm>
+      <indexterm>
+       <primary>bison</primary>
+      </indexterm>
+      <indexterm>
+       <primary>yacc</primary>
+      </indexterm>
+
+      <application>Flex</application> and <application>Bison</application> are
+      required.  Other <application>lex</application> and
+      <application>yacc</application> programs cannot be used.
+      <application>Bison</application> needs to be at least version 2.3.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <indexterm>
+       <primary>perl</primary>
+      </indexterm>
+
+      <application>Perl</application> 5.14 or later is needed during the build
+      process and to run some test suites.  (This requirement is separate from
+      the requirements for building <application>PL/Perl</application>; see
+      below.)
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <indexterm>
+       <primary>readline</primary>
+      </indexterm>
+      <indexterm>
+       <primary>libedit</primary>
+      </indexterm>
+
+      The <acronym>GNU</acronym> <productname>Readline</productname> library is used by
+      default.  It allows <application>psql</application> (the
+      PostgreSQL command line SQL interpreter) to remember each
+      command you type, and allows you to use arrow keys to recall and
+      edit previous commands.  This is very helpful and is strongly
+      recommended.  If you don't want to use it then you must specify
+      the <option>--without-readline</option> option to
+      <filename>configure</filename>. As an alternative, you can often use the
+      BSD-licensed <filename>libedit</filename> library, originally
+      developed on <productname>NetBSD</productname>. The
+      <filename>libedit</filename> library is
+      GNU <productname>Readline</productname>-compatible and is used if
+      <filename>libreadline</filename> is not found, or if
+      <option>--with-libedit-preferred</option> is used as an
+      option to <filename>configure</filename>. If you are using a package-based
+      Linux distribution, be aware that you need both the
+      <literal>readline</literal> and <literal>readline-devel</literal> packages, if
+      those are separate in your distribution.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      <indexterm>
+       <primary>zlib</primary>
+      </indexterm>
+
+      The <productname>zlib</productname> compression library is
+      used by default. If you don't want to use it then you must
+      specify the <option>--without-zlib</option> option to
+      <filename>configure</filename>. Using this option disables
+      support for compressed archives in <application>pg_dump</application> and
+      <application>pg_restore</application>.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      The ICU library is used by default. If you don't want to use it then you must specify the <option>--without-icu</option> option to <filename>configure</filename>. Using this option disables support for ICU collation features (see <xref linkend="collation"/>).
+     </para>
+     <para>
+      ICU support requires the <productname>ICU4C</productname> package to be
+      installed.  The minimum required version of
+      <productname>ICU4C</productname> is currently 4.2.
+     </para>
+
+     <para>
+      By default,
+      <productname>pkg-config</productname><indexterm><primary>pkg-config</primary></indexterm>
+      will be used to find the required compilation options.  This is
+      supported for <productname>ICU4C</productname> version 4.6 and later.
+      For older versions, or if <productname>pkg-config</productname> is not
+      available, the variables <envar>ICU_CFLAGS</envar> and
+      <envar>ICU_LIBS</envar> can be specified to
+      <filename>configure</filename>, like in this example:
+<programlisting>
+./configure ... ICU_CFLAGS='-I/some/where/include' ICU_LIBS='-L/some/where/lib -licui18n -licuuc -licudata'
+</programlisting>
+      (If <productname>ICU4C</productname> is in the default search path
+      for the compiler, then you still need to specify nonempty strings in
+      order to avoid use of <productname>pkg-config</productname>, for
+      example, <literal>ICU_CFLAGS=' '</literal>.)
+     </para>
+    </listitem>
+   </itemizedlist>
+  </para>
+
+  <para>
+   The following packages are optional.  They are not required in the
+   default configuration, but they are needed when certain build
+   options are enabled, as explained below:
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      To build the server programming language
+      <application>PL/Perl</application> you need a full
+      <productname>Perl</productname> installation, including the
+      <filename>libperl</filename> library and the header files.
+      The minimum required version is <productname>Perl</productname> 5.14.
+      Since <application>PL/Perl</application> will be a shared
+      library, the <indexterm><primary>libperl</primary></indexterm>
+      <filename>libperl</filename> library must be a shared library
+      also on most platforms.  This appears to be the default in
+      recent <productname>Perl</productname> versions, but it was not
+      in earlier versions, and in any case it is the choice of whomever
+      installed Perl at your site.  <filename>configure</filename> will fail
+      if building <application>PL/Perl</application> is selected but it cannot
+      find a shared <filename>libperl</filename>.  In that case, you will have
+      to rebuild and install <productname>Perl</productname> manually to be
+      able to build <application>PL/Perl</application>.  During the
+      configuration process for <productname>Perl</productname>, request a
+      shared library.
+     </para>
+
+     <para>
+      If you intend to make more than incidental use of
+      <application>PL/Perl</application>, you should ensure that the
+      <productname>Perl</productname> installation was built with the
+      <literal>usemultiplicity</literal> option enabled (<literal>perl -V</literal>
+      will show whether this is the case).
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      To build the <application>PL/Python</application> server programming
+      language, you need a <productname>Python</productname>
+      installation with the header files and
+      the <application>sysconfig</application> module.  The minimum
+      supported version is <productname>Python</productname> 3.6.8.
+     </para>
+
+     <para>
+      Since <application>PL/Python</application> will be a shared
+      library, the <indexterm><primary>libpython</primary></indexterm>
+      <filename>libpython</filename> library must be a shared library
+      also on most platforms.  This is not the case in a default
+      <productname>Python</productname> installation built from source, but a
+      shared library is available in many operating system
+      distributions.  <filename>configure</filename> will fail if
+      building <application>PL/Python</application> is selected but it cannot
+      find a shared <filename>libpython</filename>.  That might mean that you
+      either have to install additional packages or rebuild (part of) your
+      <productname>Python</productname> installation to provide this shared
+      library.  When building from source, run <productname>Python</productname>'s
+      configure with the <literal>--enable-shared</literal> flag.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      To build the <application>PL/Tcl</application>
+      procedural language, you of course need a <productname>Tcl</productname>
+      installation.  The minimum required version is
+      <productname>Tcl</productname> 8.4.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      To enable Native Language Support (<acronym>NLS</acronym>), that
+      is, the ability to display a program's messages in a language
+      other than English, you need an implementation of the
+      <application>Gettext</application> <acronym>API</acronym>.  Some operating
+      systems have this built-in (e.g., <systemitem
+      class="osname">Linux</systemitem>, <systemitem class="osname">NetBSD</systemitem>,
+      <systemitem class="osname">Solaris</systemitem>), for other systems you
+      can download an add-on package from <ulink
+      url="https://www.gnu.org/software/gettext/"></ulink>.
+      If you are using the <application>Gettext</application> implementation in
+      the <acronym>GNU</acronym> C library, then you will additionally
+      need the <productname>GNU Gettext</productname> package for some
+      utility programs.  For any of the other implementations you will
+      not need it.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      You need <productname>OpenSSL</productname>, if you want to support
+      encrypted client connections.  <productname>OpenSSL</productname> is
+      also required for random number generation on platforms that do not
+      have <filename>/dev/urandom</filename> (except Windows).  The minimum
+      required version is 1.1.1.
+     </para>
+     <para>
+      Additionally, <productname>LibreSSL</productname> is supported using the
+      <productname>OpenSSL</productname> compatibility layer.  The minimum
+      required version is 3.4 (from <systemitem class="osname">OpenBSD</systemitem>
+      version 7.0).
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      You need <application>MIT Kerberos</application> (for GSSAPI),
+      <productname>OpenLDAP</productname>, and/or <application>PAM</application>,
+      if you want to support authentication using those services.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      You need <productname>Curl</productname> to build an optional module
+      which implements the <link linkend="libpq-oauth">OAuth Device
+      Authorization flow</link> for client applications.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      You need <productname>LZ4</productname>, if you want to support
+      compression of data with that method; see
+      <xref linkend="guc-default-toast-compression"/> and
+      <xref linkend="guc-wal-compression"/>.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      You need <productname>Zstandard</productname>, if you want to support
+      compression of data with that method; see
+      <xref linkend="guc-wal-compression"/>.
+      The minimum required version is 1.4.0.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      To build the <productname>PostgreSQL</productname> documentation,
+      there is a separate set of requirements; see
+      <xref linkend="docguide-toolsets"/>.
+     </para>
+    </listitem>
+   </itemizedlist>
+  </para>
+
+  <para>
+   If you need to get a <acronym>GNU</acronym> package, you can find
+   it at your local <acronym>GNU</acronym> mirror site (see <ulink
+   url="https://www.gnu.org/prep/ftp"></ulink>
+   for a list) or at <ulink
+   url="ftp://ftp.gnu.org/gnu/"></ulink>.
+  </para>
+ </sect1>
+
+ <sect1 id="install-getsource">
+  <title>Getting the Source</title>
+
+  <para>
+   The <productname>PostgreSQL</productname> source code for released versions
+   can be obtained from the download section of our website:
+   <ulink url="https://www.postgresql.org/ftp/source/"></ulink>.
+   Download the
+   <filename>postgresql-<replaceable>version</replaceable>.tar.gz</filename>
+   or <filename>postgresql-<replaceable>version</replaceable>.tar.bz2</filename>
+   file you're interested in, then unpack it:
+<screen>
+<userinput>tar xf postgresql-<replaceable>version</replaceable>.tar.bz2</userinput>
+</screen>
+   This will create a directory
+   <filename>postgresql-<replaceable>version</replaceable></filename> under
+   the current directory with the <productname>PostgreSQL</productname> sources.
+   Change into that directory for the rest of the installation procedure.
+  </para>
+
+  <para>
+   Alternatively, you can use the Git version control system; see
+   <xref linkend="git"/> for more information.
+  </para>
+ </sect1>
+
+ <sect1 id="install-make">
+  <title>Building and Installation with Autoconf and Make</title>
+
+ <sect2 id="install-short-make">
+  <title>Short Version</title>
+
+  <para>
+<synopsis>
+./configure
+make
+su
+make install
+adduser postgres
+mkdir -p /usr/local/pgsql/data
+chown postgres /usr/local/pgsql/data
+su - postgres
+/usr/local/pgsql/bin/initdb -D /usr/local/pgsql/data
+/usr/local/pgsql/bin/pg_ctl -D /usr/local/pgsql/data -l logfile start
+/usr/local/pgsql/bin/createdb test
+/usr/local/pgsql/bin/psql test
+</synopsis>
+   The long version is the rest of this
+   <phrase>section</phrase>.
+  </para>
+ </sect2>
+
+
+ <sect2 id="install-procedure-make">
+  <title>Installation Procedure</title>
+
+  <procedure>
+
+  <step id="configure">
+   <title>Configuration</title>
+
+   <indexterm zone="configure">
+    <primary>configure</primary>
+   </indexterm>
+
+   <para>
+    The first step of the installation procedure is to configure the
+    source tree for your system and choose the options you would like.
+    This is done by running the <filename>configure</filename> script. For a
+    default installation simply enter:
+<screen>
+<userinput>./configure</userinput>
+</screen>
+    This script will run a number of tests to determine values for various
+    system dependent variables and detect any quirks of your
+    operating system, and finally will create several files in the
+    build tree to record what it found.
+   </para>
+
+   <para>
+    You can also run <filename>configure</filename> in a directory outside
+    the source tree, and then build there, if you want to keep the build
+    directory separate from the original source files.  This procedure is
+    called a
+    <indexterm><primary>VPATH</primary></indexterm><firstterm>VPATH</firstterm>
+    build.  Here's how:
+<screen>
+<userinput>mkdir build_dir</userinput>
+<userinput>cd build_dir</userinput>
+<userinput>/path/to/source/tree/configure [options go here]</userinput>
+<userinput>make</userinput>
+</screen>
+   </para>
+
+   <para>
+    The default configuration will build the server and utilities, as
+    well as all client applications and interfaces that require only a
+    C compiler. All files will be installed under
+    <filename>/usr/local/pgsql</filename> by default.
+   </para>
+
+   <para>
+    You can customize the build and installation process by supplying one
+    or more command line options to <filename>configure</filename>.
+    Typically you would customize the install location, or the set of
+    optional features that are built.  <filename>configure</filename>
+    has a large number of options, which are described in
+    <xref linkend="configure-options"/>.
+   </para>
+
+   <para>
+    Also, <filename>configure</filename> responds to certain environment
+    variables, as described in <xref linkend="configure-envvars"/>.
+    These provide additional ways to customize the configuration.
+   </para>
+  </step>
+
+  <step id="build">
+   <title>Build</title>
+
+   <para>
+    To start the build, type either of:
+<screen>
+<userinput>make</userinput>
+<userinput>make all</userinput>
+</screen>
+    (Remember to use <acronym>GNU</acronym> <application>make</application>.)
+    The build will take a few minutes depending on your
+    hardware.
+   </para>
+
+  <para>
+   If you want to build everything that can be built, including the
+   documentation (HTML and man pages), and the additional modules
+   (<filename>contrib</filename>), type instead:
+<screen>
+<userinput>make world</userinput>
+</screen>
+  </para>
+
+  <para>
+   If you want to build everything that can be built, including the
+   additional modules (<filename>contrib</filename>), but without
+   the documentation, type instead:
+<screen>
+<userinput>make world-bin</userinput>
+</screen>
+   </para>
+
+   <para>
+    If you want to invoke the build from another makefile rather than
+    manually, you must unset <varname>MAKELEVEL</varname> or set it to zero,
+    for instance like this:
+<programlisting>
+build-postgresql:
+        $(MAKE) -C postgresql MAKELEVEL=0 all
+</programlisting>
+    Failure to do that can lead to strange error messages, typically about
+    missing header files.
+   </para>
+  </step>
+
+  <step>
+   <title>Regression Tests</title>
+
+   <indexterm>
+    <primary>regression test</primary>
+   </indexterm>
+
+   <para>
+    If you want to test the newly built server before you install it,
+    you can run the regression tests at this point. The regression
+    tests are a test suite to verify that <productname>PostgreSQL</productname>
+    runs on your machine in the way the developers expected it
+    to. Type:
+<screen>
+<userinput>make check</userinput>
+</screen>
+    (This won't work as root; do it as an unprivileged user.)
+    See <xref linkend="regress"/> for
+    detailed information about interpreting the test results. You can
+    repeat this test at any later time by issuing the same command.
+   </para>
+  </step>
+
+  <step id="install">
+   <title>Installing the Files</title>
+
+   <note>
+    <para>
+     If you are upgrading an existing system be sure to read
+     <xref linkend="upgrading"/>,
+     which has instructions about upgrading a
+     cluster.
+    </para>
+   </note>
+
+   <para>
+    To install <productname>PostgreSQL</productname> enter:
+<screen>
+<userinput>make install</userinput>
+</screen>
+    This will install files into the directories that were specified
+    in <xref linkend="configure"/>. Make sure that you have appropriate
+    permissions to write into that area. Normally you need to do this
+    step as root. Alternatively, you can create the target
+    directories in advance and arrange for appropriate permissions to
+    be granted.
+   </para>
+
+   <para>
+    To install the documentation (HTML and man pages), enter:
+<screen>
+<userinput>make install-docs</userinput>
+</screen>
+   </para>
+
+   <para>
+    If you built the world above, type instead:
+<screen>
+<userinput>make install-world</userinput>
+</screen>
+    This also installs the documentation.
+   </para>
+
+   <para>
+    If you built the world without the documentation above, type instead:
+<screen>
+<userinput>make install-world-bin</userinput>
+</screen>
+   </para>
+
+   <para>
+    You can use <literal>make install-strip</literal> instead of
+    <literal>make install</literal> to strip the executable files and
+    libraries as they are installed.  This will save some space.  If
+    you built with debugging support, stripping will effectively
+    remove the debugging support, so it should only be done if
+    debugging is no longer needed.  <literal>install-strip</literal>
+    tries to do a reasonable job saving space, but it does not have
+    perfect knowledge of how to strip every unneeded byte from an
+    executable file, so if you want to save all the disk space you
+    possibly can, you will have to do manual work.
+   </para>
+
+   <para>
+    The standard installation provides all the header files needed for client
+    application development as well as for server-side program
+    development, such as custom functions or data types written in C.
+   </para>
+
+   <formalpara>
+    <title>Client-only installation:</title>
+    <para>
+     If you want to install only the client applications and
+     interface libraries, then you can use these commands:
+<screen>
+<userinput>make -C src/bin install</userinput>
+<userinput>make -C src/include install</userinput>
+<userinput>make -C src/interfaces install</userinput>
+<userinput>make -C doc install</userinput>
+</screen>
+    <filename>src/bin</filename> has a few binaries for server-only use,
+    but they are small.
+    </para>
+   </formalpara>
+  </step>
+  </procedure>
+
+  <formalpara>
+   <title>Uninstallation:</title>
+   <para>
+    To undo the installation use the command <command>make
+    uninstall</command>. However, this will not remove any created directories.
+   </para>
+  </formalpara>
+
+  <formalpara>
+   <title>Cleaning:</title>
+
+   <para>
+    After the installation you can free disk space by removing the built
+    files from the source tree with the command <command>make
+    clean</command>. This will preserve the files made by the <command>configure</command>
+    program, so that you can rebuild everything with <command>make</command>
+    later on. To reset the source tree to the state in which it was
+    distributed, use <command>make distclean</command>. If you are going to
+    build for several platforms within the same source tree you must do
+    this and re-configure for each platform.  (Alternatively, use
+    a separate build tree for each platform, so that the source tree
+    remains unmodified.)
+   </para>
+  </formalpara>
+
+  <para>
+   If you perform a build and then discover that your <command>configure</command>
+   options were wrong, or if you change anything that <command>configure</command>
+   investigates (for example, software upgrades), then it's a good
+   idea to do <command>make distclean</command> before reconfiguring and
+   rebuilding.  Without this, your changes in configuration choices
+   might not propagate everywhere they need to.
+  </para>
+  </sect2>
+
+  <sect2 id="configure-options">
+   <title><filename>configure</filename> Options</title>
+
+   <indexterm zone="configure-options">
+    <primary>configure options</primary>
+   </indexterm>
+
+   <para>
+    <command>configure</command>'s command line options are explained below.
+    This list is not exhaustive (use <literal>./configure --help</literal>
+    to get one that is).  The options not covered here are meant for
+    advanced use-cases such as cross-compilation, and are documented in
+    the standard Autoconf documentation.
+   </para>
+
+   <sect3 id="configure-options-locations">
+    <title>Installation Locations</title>
+
+     <para>
+      These options control where <literal>make install</literal> will put
+      the files.  The <option>--prefix</option> option is sufficient for
+      most cases.  If you have special needs, you can customize the
+      installation subdirectories with the other options described in this
+      section.  Beware however that changing the relative locations of the
+      different subdirectories may render the installation non-relocatable,
+      meaning you won't be able to move it after installation.
+      (The <literal>man</literal> and <literal>doc</literal> locations are
+      not affected by this restriction.)  For relocatable installs, you
+      might want to use the <literal>--disable-rpath</literal> option
+      described later.
+     </para>
+
+     <variablelist>
+      <varlistentry id="configure-option-prefix">
+       <term><option>--prefix=<replaceable>PREFIX</replaceable></option></term>
+       <listitem>
+        <para>
+         Install all files under the directory <replaceable>PREFIX</replaceable>
+         instead of <filename>/usr/local/pgsql</filename>. The actual
+         files will be installed into various subdirectories; no files
+         will ever be installed directly into the
+         <replaceable>PREFIX</replaceable> directory.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-exec-prefix">
+       <term><option>--exec-prefix=<replaceable>EXEC-PREFIX</replaceable></option></term>
+       <listitem>
+        <para>
+         You can install architecture-dependent files under a
+         different prefix, <replaceable>EXEC-PREFIX</replaceable>, than what
+         <replaceable>PREFIX</replaceable> was set to. This can be useful to
+         share architecture-independent files between hosts. If you
+         omit this, then <replaceable>EXEC-PREFIX</replaceable> is set equal to
+         <replaceable>PREFIX</replaceable> and both architecture-dependent and
+         independent files will be installed under the same tree,
+         which is probably what you want.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-bindir">
+       <term><option>--bindir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         Specifies the directory for executable programs. The default
+         is <filename><replaceable>EXEC-PREFIX</replaceable>/bin</filename>, which
+         normally means <filename>/usr/local/pgsql/bin</filename>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-sysconfdir">
+       <term><option>--sysconfdir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         Sets the directory for various configuration files,
+         <filename><replaceable>PREFIX</replaceable>/etc</filename> by default.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-libdir">
+       <term><option>--libdir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         Sets the location to install libraries and dynamically loadable
+         modules. The default is
+         <filename><replaceable>EXEC-PREFIX</replaceable>/lib</filename>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-includedir">
+       <term><option>--includedir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         Sets the directory for installing C and C++ header files. The
+         default is <filename><replaceable>PREFIX</replaceable>/include</filename>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-datarootdir">
+       <term><option>--datarootdir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         Sets the root directory for various types of read-only data
+         files.  This only sets the default for some of the following
+         options.  The default is
+         <filename><replaceable>PREFIX</replaceable>/share</filename>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-datadir">
+       <term><option>--datadir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         Sets the directory for read-only data files used by the
+         installed programs. The default is
+         <filename><replaceable>DATAROOTDIR</replaceable></filename>. Note that this has
+         nothing to do with where your database files will be placed.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-localedir">
+       <term><option>--localedir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         Sets the directory for installing locale data, in particular
+         message translation catalog files.  The default is
+         <filename><replaceable>DATAROOTDIR</replaceable>/locale</filename>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-mandir">
+       <term><option>--mandir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         The man pages that come with <productname>PostgreSQL</productname> will be installed under
+         this directory, in their respective
+         <filename>man<replaceable>x</replaceable></filename> subdirectories.
+         The default is <filename><replaceable>DATAROOTDIR</replaceable>/man</filename>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-docdir">
+       <term><option>--docdir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         Sets the root directory for installing documentation files,
+         except <quote>man</quote> pages.  This only sets the default for
+         the following options.  The default value for this option is
+         <filename><replaceable>DATAROOTDIR</replaceable>/doc/postgresql</filename>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-htmldir">
+       <term><option>--htmldir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         The HTML-formatted documentation for
+         <productname>PostgreSQL</productname> will be installed under
+         this directory.  The default is
+         <filename><replaceable>DATAROOTDIR</replaceable></filename>.
+        </para>
+       </listitem>
+      </varlistentry>
+     </variablelist>
+
+     <note>
+      <para>
+       Care has been taken to make it possible to install
+       <productname>PostgreSQL</productname> into shared installation locations
+       (such as <filename>/usr/local/include</filename>) without
+       interfering with the namespace of the rest of the system. First,
+       the string <quote><literal>/postgresql</literal></quote> is
+       automatically appended to <varname>datadir</varname>,
+       <varname>sysconfdir</varname>, and <varname>docdir</varname>,
+       unless the fully expanded directory name already contains the
+       string <quote><literal>postgres</literal></quote> or
+       <quote><literal>pgsql</literal></quote>. For example, if you choose
+       <filename>/usr/local</filename> as prefix, the documentation will
+       be installed in <filename>/usr/local/doc/postgresql</filename>,
+       but if the prefix is <filename>/opt/postgres</filename>, then it
+       will be in <filename>/opt/postgres/doc</filename>. The public C
+       header files of the client interfaces are installed into
+       <varname>includedir</varname> and are namespace-clean. The
+       internal header files and the server header files are installed
+       into private directories under <varname>includedir</varname>. See
+       the documentation of each interface for information about how to
+       access its header files. Finally, a private subdirectory will
+       also be created, if appropriate, under <varname>libdir</varname>
+       for dynamically loadable modules.
+      </para>
+     </note>
+
+   </sect3>
+
+   <sect3 id="configure-options-features">
+    <title><productname>PostgreSQL</productname> Features</title>
+
+    <para>
+     The options described in this section enable building of
+     various <productname>PostgreSQL</productname> features that are not
+     built by default.  Most of these are non-default only because they
+     require additional software, as described in
+     <xref linkend="install-requirements"/>.
+    </para>
+
+     <variablelist>
+
+      <varlistentry id="configure-option-enable-nls">
+       <term><option>--enable-nls<optional>=<replaceable>LANGUAGES</replaceable></optional></option></term>
+       <listitem>
+        <para>
+         Enables Native Language Support (<acronym>NLS</acronym>),
+         that is, the ability to display a program's messages in a
+         language other than English.
+         <replaceable>LANGUAGES</replaceable> is an optional space-separated
+         list of codes of the languages that you want supported, for
+         example <literal>--enable-nls='de fr'</literal>.  (The intersection
+         between your list and the set of actually provided
+         translations will be computed automatically.)  If you do not
+         specify a list, then all available translations are
+         installed.
+        </para>
+
+        <para>
+         To use this option, you will need an implementation of the
+         <application>Gettext</application> API.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-perl">
+       <term><option>--with-perl</option></term>
+       <listitem>
+        <para>
+         Build the <application>PL/Perl</application> server-side language.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-python">
+       <term><option>--with-python</option></term>
+       <listitem>
+        <para>
+         Build the <application>PL/Python</application> server-side language.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-tcl">
+       <term><option>--with-tcl</option></term>
+       <listitem>
+        <para>
+         Build the <application>PL/Tcl</application> server-side language.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-tclconfig">
+       <term><option>--with-tclconfig=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         Tcl installs the file <filename>tclConfig.sh</filename>, which
+         contains configuration information needed to build modules
+         interfacing to Tcl. This file is normally found automatically
+         at a well-known location, but if you want to use a different
+         version of Tcl you can specify the directory in which to look
+         for <filename>tclConfig.sh</filename>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-with-llvm">
+       <term><option>--with-llvm</option></term>
+       <listitem>
+        <para>
+         Build with support for <productname>LLVM</productname> based
+         <acronym>JIT</acronym> compilation (see <xref linkend="jit"/>).  This
+         requires the <productname>LLVM</productname> library to be installed.
+         The minimum required version of <productname>LLVM</productname> is
+         currently 14.
+        </para>
+        <para>
+         <command>llvm-config</command><indexterm><primary>llvm-config</primary></indexterm>
+         will be used to find the required compilation options.
+         <command>llvm-config</command> will be searched for in your
+         <envar>PATH</envar>.  If that would not yield the desired program,
+         use <envar>LLVM_CONFIG</envar> to specify a path to the correct
+         <command>llvm-config</command>. For example
+<programlisting>
+./configure ... --with-llvm LLVM_CONFIG='/path/to/llvm/bin/llvm-config'
+</programlisting>
+        </para>
+
+        <para>
+         <productname>LLVM</productname> support requires a compatible
+         <command>clang</command> compiler (specified, if necessary, using the
+         <envar>CLANG</envar> environment variable), and a working C++
+         compiler (specified, if necessary, using the <envar>CXX</envar>
+         environment variable).
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-lz4">
+       <term><option>--with-lz4</option></term>
+       <listitem>
+        <para>
+         Build with <productname>LZ4</productname> compression support.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-zstd">
+       <term><option>--with-zstd</option></term>
+       <listitem>
+        <para>
+         Build with <productname>Zstandard</productname> compression support.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-ssl">
+       <term><option>--with-ssl=<replaceable>LIBRARY</replaceable></option>
+       <indexterm>
+        <primary>OpenSSL</primary>
+        <seealso>SSL</seealso>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         Build with support for <acronym>SSL</acronym> (encrypted)
+         connections. The only <replaceable>LIBRARY</replaceable>
+         supported is <option>openssl</option>, which is used for both
+         <productname>OpenSSL</productname>
+         and <productname>LibreSSL</productname>. This requires the
+         <productname>OpenSSL</productname> package to be installed.
+         <filename>configure</filename> will check for the required
+         header files and libraries to make sure that your
+         <productname>OpenSSL</productname> installation is sufficient
+         before proceeding.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-openssl">
+       <term><option>--with-openssl</option></term>
+       <listitem>
+        <para>
+         Obsolete equivalent of <literal>--with-ssl=openssl</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-gssapi">
+       <term><option>--with-gssapi</option></term>
+       <listitem>
+        <para>
+         Build with support for GSSAPI authentication. MIT Kerberos is required
+         to be installed for GSSAPI.  On many systems, the GSSAPI system (a part
+         of the MIT Kerberos installation) is not installed in a location
+         that is searched by default (e.g., <filename>/usr/include</filename>,
+         <filename>/usr/lib</filename>), so you must use the options
+         <option>--with-includes</option> and <option>--with-libraries</option> in
+         addition to this option.  <filename>configure</filename> will check
+         for the required header files and libraries to make sure that
+         your GSSAPI installation is sufficient before proceeding.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-ldap">
+       <term><option>--with-ldap</option></term>
+       <listitem>
+        <para>
+         Build with <acronym>LDAP</acronym><indexterm><primary>LDAP</primary></indexterm>
+         support for authentication and connection parameter lookup (see
+         <phrase id="install-ldap-links"><xref linkend="libpq-ldap"/> and
+         <xref linkend="auth-ldap"/></phrase> for more information). On Unix,
+         this requires the <productname>OpenLDAP</productname> package to be
+         installed. On Windows, the default <productname>WinLDAP</productname>
+         library is used.  <filename>configure</filename> will check for the required
+         header files and libraries to make sure that your
+         <productname>OpenLDAP</productname> installation is sufficient before
+         proceeding.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-pam">
+       <term><option>--with-pam</option></term>
+       <listitem>
+        <para>
+         Build with <acronym>PAM</acronym><indexterm><primary>PAM</primary></indexterm>
+         (Pluggable Authentication Modules) support.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-bsd-auth">
+       <term><option>--with-bsd-auth</option></term>
+       <listitem>
+        <para>
+         Build with BSD Authentication support.
+         (The BSD Authentication framework is
+         currently only available on OpenBSD.)
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-systemd">
+       <term><option>--with-systemd</option></term>
+       <listitem>
+        <para>
+         Build with support
+         for <application>systemd</application><indexterm><primary>systemd</primary></indexterm>
+         service notifications.  This improves integration if the server
+         is started under <application>systemd</application> but has no impact
+         otherwise; see <xref linkend="server-start"/> for more
+         information.  <application>libsystemd</application> and the
+         associated header files need to be installed to use this option.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-bonjour">
+       <term><option>--with-bonjour</option></term>
+       <listitem>
+        <para>
+         Build with support for Bonjour automatic service discovery.
+         This requires Bonjour support in your operating system.
+         Recommended on macOS.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-uuid">
+       <term><option>--with-uuid=<replaceable>LIBRARY</replaceable></option></term>
+       <listitem>
+        <para>
+         Build the <xref linkend="uuid-ossp"/> module
+         (which provides functions to generate UUIDs), using the specified
+         UUID library.<indexterm><primary>UUID</primary></indexterm>
+         <replaceable>LIBRARY</replaceable> must be one of:
+        </para>
+        <itemizedlist>
+         <listitem>
+          <para>
+           <option>bsd</option> to use the UUID functions found in FreeBSD
+           and some other BSD-derived systems
+          </para>
+         </listitem>
+         <listitem>
+          <para>
+           <option>e2fs</option> to use the UUID library created by
+           the <literal>e2fsprogs</literal> project; this library is present in most
+           Linux systems and in macOS, and can be obtained for other
+           platforms as well
+          </para>
+         </listitem>
+         <listitem>
+          <para>
+           <option>ossp</option> to use the <ulink
+           url="http://www.ossp.org/pkg/lib/uuid/">OSSP UUID library</ulink>
+          </para>
+         </listitem>
+        </itemizedlist>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-ossp-uuid">
+       <term><option>--with-ossp-uuid</option></term>
+       <listitem>
+        <para>
+         Obsolete equivalent of <literal>--with-uuid=ossp</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-libcurl">
+       <term><option>--with-libcurl</option></term>
+       <listitem>
+        <para>
+         Build with libcurl support for OAuth 2.0 client flows.
+         Libcurl version 7.61.0 or later is required for this feature.
+         Building with this will check for the required header files
+         and libraries to make sure that your <productname>curl</productname>
+         installation is sufficient before proceeding.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-libnuma">
+       <term><option>--with-libnuma</option></term>
+       <listitem>
+        <para>
+         Build with libnuma support for basic NUMA support.
+         Only supported on platforms for which the <productname>libnuma</productname>
+         library is implemented.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-liburing">
+       <term><option>--with-liburing</option></term>
+       <listitem>
+        <para>
+        Build with liburing, enabling io_uring support for asynchronous I/O.
+        </para>
+        <para>
+         To detect the required compiler and linker options, PostgreSQL will
+         query <command>pkg-config</command>.
+        </para>
+        <para>
+         To use a liburing installation that is in an unusual location, you
+         can set <command>pkg-config</command>-related environment
+         variables (see its documentation).
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-libxml">
+       <term><option>--with-libxml</option></term>
+       <listitem>
+        <para>
+         Build with libxml2, enabling SQL/XML support.  Libxml2 version 2.6.23 or
+         later is required for this feature.
+        </para>
+
+        <para>
+         To detect the required compiler and linker options, PostgreSQL will
+         query <command>pkg-config</command>, if that is installed and knows
+         about libxml2.  Otherwise the program <command>xml2-config</command>,
+         which is installed by libxml2, will be used if it is found.  Use
+         of <command>pkg-config</command> is preferred, because it can deal
+         with multi-architecture installations better.
+        </para>
+
+        <para>
+         To use a libxml2 installation that is in an unusual location, you
+         can set <command>pkg-config</command>-related environment
+         variables (see its documentation), or set the environment variable
+         <envar>XML2_CONFIG</envar> to point to
+         the <command>xml2-config</command> program belonging to the libxml2
+         installation, or set the variables <envar>XML2_CFLAGS</envar>
+         and <envar>XML2_LIBS</envar>.  (If <command>pkg-config</command> is
+         installed, then to override its idea of where libxml2 is you must
+         either set <envar>XML2_CONFIG</envar> or set
+         both <envar>XML2_CFLAGS</envar> and <envar>XML2_LIBS</envar> to
+         nonempty strings.)
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-libxslt">
+       <term><option>--with-libxslt</option></term>
+       <listitem>
+        <para>
+         Build with libxslt, enabling the
+         <xref linkend="xml2"/>
+         module to perform XSL transformations of XML.
+         <option>--with-libxml</option> must be specified as well.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-sepgsql">
+       <term><option>--with-selinux</option></term>
+       <listitem>
+        <para>
+         Build with SElinux support, enabling the <xref linkend="sepgsql"/>
+         extension.
+        </para>
+       </listitem>
+      </varlistentry>
+
+     </variablelist>
+
+   </sect3>
+
+   <sect3 id="configure-options-anti-features">
+    <title>Anti-Features</title>
+
+    <para>
+     The options described in this section allow disabling
+     certain <productname>PostgreSQL</productname> features that are built
+     by default, but which might need to be turned off if the required
+     software or system features are not available.  Using these options is
+     not recommended unless really necessary.
+    </para>
+
+     <variablelist>
+
+      <varlistentry id="configure-option-without-icu">
+       <term><option>--without-icu</option></term>
+       <listitem>
+        <para>
+         Build without support for the
+         <productname>ICU</productname><indexterm><primary>ICU</primary></indexterm>
+         library, disabling the use of ICU collation features (see <xref
+         linkend="collation"/>).
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-without-readline">
+       <term><option>--without-readline</option></term>
+       <listitem>
+        <para>
+         Prevents use of the <application>Readline</application> library
+         (and <application>libedit</application> as well).  This option disables
+         command-line editing and history in
+         <application>psql</application>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-libedit-preferred">
+       <term><option>--with-libedit-preferred</option></term>
+       <listitem>
+        <para>
+         Favors the use of the BSD-licensed <application>libedit</application> library
+         rather than GPL-licensed <application>Readline</application>.  This option
+         is significant only if you have both libraries installed; the
+         default in that case is to use <application>Readline</application>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-without-zlib">
+       <term><option>--without-zlib</option></term>
+       <listitem>
+        <para>
+         <indexterm>
+          <primary>zlib</primary>
+         </indexterm>
+         Prevents use of the <application>Zlib</application> library.
+         This disables
+         support for compressed archives in <application>pg_dump</application>
+         and <application>pg_restore</application>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+     </variablelist>
+
+   </sect3>
+
+   <sect3 id="configure-options-build-process">
+    <title>Build Process Details</title>
+
+     <variablelist>
+
+      <varlistentry id="configure-option-with-includes">
+       <term><option>--with-includes=<replaceable>DIRECTORIES</replaceable></option></term>
+       <listitem>
+        <para>
+         <replaceable>DIRECTORIES</replaceable> is a colon-separated list of
+         directories that will be added to the list the compiler
+         searches for header files. If you have optional packages
+         (such as GNU <application>Readline</application>) installed in a non-standard
+         location,
+         you have to use this option and probably also the corresponding
+         <option>--with-libraries</option> option.
+        </para>
+        <para>
+         Example: <literal>--with-includes=/opt/gnu/include:/usr/sup/include</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-libraries">
+       <term><option>--with-libraries=<replaceable>DIRECTORIES</replaceable></option></term>
+       <listitem>
+        <para>
+         <replaceable>DIRECTORIES</replaceable> is a colon-separated list of
+         directories to search for libraries. You will probably have
+         to use this option (and the corresponding
+         <option>--with-includes</option> option) if you have packages
+         installed in non-standard locations.
+        </para>
+        <para>
+         Example: <literal>--with-libraries=/opt/gnu/lib:/usr/sup/lib</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-system-tzdata">
+       <term><option>--with-system-tzdata=<replaceable>DIRECTORY</replaceable></option>
+       <indexterm>
+        <primary>time zone data</primary>
+       </indexterm>
+       </term>
+       <listitem>
+        <para>
+         <productname>PostgreSQL</productname> includes its own time zone database,
+         which it requires for date and time operations.  This time zone
+         database is in fact compatible with the IANA time zone
+         database provided by many operating systems such as FreeBSD,
+         Linux, and Solaris, so it would be redundant to install it again.
+         When this option is used, the system-supplied time zone database
+         in <replaceable>DIRECTORY</replaceable> is used instead of the one
+         included in the PostgreSQL source distribution.
+         <replaceable>DIRECTORY</replaceable> must be specified as an
+         absolute path.  <filename>/usr/share/zoneinfo</filename> is a
+         likely directory on some operating systems.  Note that the
+         installation routine will not detect mismatching or erroneous time
+         zone data.  If you use this option, you are advised to run the
+         regression tests to verify that the time zone data you have
+         pointed to works correctly with <productname>PostgreSQL</productname>.
+        </para>
+
+        <indexterm><primary>cross compilation</primary></indexterm>
+
+        <para>
+         This option is mainly aimed at binary package distributors
+         who know their target operating system well.  The main
+         advantage of using this option is that the PostgreSQL package
+         won't need to be upgraded whenever any of the many local
+         daylight-saving time rules change.  Another advantage is that
+         PostgreSQL can be cross-compiled more straightforwardly if the
+         time zone database files do not need to be built during the
+         installation.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-extra-version">
+       <term><option>--with-extra-version=<replaceable>STRING</replaceable></option></term>
+       <listitem>
+        <para>
+         Append <replaceable>STRING</replaceable> to the PostgreSQL version number.  You
+         can use this, for example, to mark binaries built from unreleased Git
+         snapshots or containing custom patches with an extra version string,
+         such as a <command>git describe</command> identifier or a
+         distribution package release number.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-disable-rpath">
+       <term><option>--disable-rpath</option></term>
+       <listitem>
+        <para>
+         Do not mark <productname>PostgreSQL</productname>'s executables
+         to indicate that they should search for shared libraries in the
+         installation's library directory (see <option>--libdir</option>).
+         On most platforms, this marking uses an absolute path to the
+         library directory, so that it will be unhelpful if you relocate
+         the installation later.  However, you will then need to provide
+         some other way for the executables to find the shared libraries.
+         Typically this requires configuring the operating system's
+         dynamic linker to search the library directory; see
+         <xref linkend="install-post-shlibs"/> for more detail.
+        </para>
+       </listitem>
+      </varlistentry>
+
+     </variablelist>
+
+   </sect3>
+
+   <sect3 id="configure-options-misc">
+    <title>Miscellaneous</title>
+
+    <para>
+     It's fairly common, particularly for test builds, to adjust the
+     default port number with <option>--with-pgport</option>.
+     The other options in this section are recommended only for advanced
+     users.
+    </para>
+
+     <variablelist>
+
+      <varlistentry id="configure-option-with-pgport">
+       <term><option>--with-pgport=<replaceable>NUMBER</replaceable></option></term>
+       <listitem>
+        <para>
+         Set <replaceable>NUMBER</replaceable> as the default port number for
+         server and clients. The default is 5432. The port can always
+         be changed later on, but if you specify it here then both
+         server and clients will have the same default compiled in,
+         which can be very convenient.  Usually the only good reason
+         to select a non-default value is if you intend to run multiple
+         <productname>PostgreSQL</productname> servers on the same machine.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-krb-srvnam">
+       <term><option>--with-krb-srvnam=<replaceable>NAME</replaceable></option></term>
+       <listitem>
+        <para>
+         The default name of the Kerberos service principal used
+         by GSSAPI.
+         <literal>postgres</literal> is the default. There's usually no
+         reason to change this unless you are building for a Windows
+         environment, in which case it must be set to upper case
+         <literal>POSTGRES</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-segsize">
+       <term><option>--with-segsize=<replaceable>SEGSIZE</replaceable></option></term>
+       <listitem>
+        <para>
+         Set the <firstterm>segment size</firstterm>, in gigabytes.  Large tables are
+         divided into multiple operating-system files, each of size equal
+         to the segment size.  This avoids problems with file size limits
+         that exist on many platforms.  The default segment size, 1 gigabyte,
+         is safe on all supported platforms.  If your operating system has
+         <quote>largefile</quote> support (which most do, nowadays), you can use
+         a larger segment size.  This can be helpful to reduce the number of
+         file descriptors consumed when working with very large tables.
+         But be careful not to select a value larger than is supported
+         by your platform and the file systems you intend to use.  Other
+         tools you might wish to use, such as <application>tar</application>, could
+         also set limits on the usable file size.
+         It is recommended, though not absolutely required, that this value
+         be a power of 2.
+         Note that changing this value breaks on-disk database compatibility,
+         meaning you cannot use <command>pg_upgrade</command> to upgrade to
+         a build with a different segment size.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-blocksize">
+       <term><option>--with-blocksize=<replaceable>BLOCKSIZE</replaceable></option></term>
+       <listitem>
+        <para>
+         Set the <firstterm>block size</firstterm>, in kilobytes.  This is the unit
+         of storage and I/O within tables.  The default, 8 kilobytes,
+         is suitable for most situations; but other values may be useful
+         in special cases.
+         The value must be a power of 2 between 1 and 32 (kilobytes).
+         Note that changing this value breaks on-disk database compatibility,
+         meaning you cannot use <command>pg_upgrade</command> to upgrade to
+         a build with a different block size.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-wal-blocksize">
+       <term><option>--with-wal-blocksize=<replaceable>BLOCKSIZE</replaceable></option></term>
+       <listitem>
+        <para>
+         Set the <firstterm>WAL block size</firstterm>, in kilobytes.  This is the unit
+         of storage and I/O within the WAL log.  The default, 8 kilobytes,
+         is suitable for most situations; but other values may be useful
+         in special cases.
+         The value must be a power of 2 between 1 and 64 (kilobytes).
+         Note that changing this value breaks on-disk database compatibility,
+         meaning you cannot use <command>pg_upgrade</command> to upgrade to
+         a build with a different WAL block size.
+        </para>
+       </listitem>
+      </varlistentry>
+
+     </variablelist>
+
+   </sect3>
+
+   <sect3 id="configure-options-devel">
+    <title>Developer Options</title>
+
+    <para>
+     Most of the options in this section are only of interest for
+     developing or debugging <productname>PostgreSQL</productname>.
+     They are not recommended for production builds, except
+     for <option>--enable-debug</option>, which can be useful to enable
+     detailed bug reports in the unlucky event that you encounter a bug.
+     On platforms supporting DTrace, <option>--enable-dtrace</option>
+     may also be reasonable to use in production.
+    </para>
+
+    <para>
+     When building an installation that will be used to develop code inside
+     the server, it is recommended to use at least the
+     options <option>--enable-debug</option>
+     and <option>--enable-cassert</option>.
+    </para>
+
+     <variablelist>
+
+      <varlistentry id="configure-option-enable-debug">
+       <term><option>--enable-debug</option></term>
+       <listitem>
+        <para>
+         Compiles all programs and libraries with debugging symbols.
+         This means that you can run the programs in a debugger
+         to analyze problems. This enlarges the size of the installed
+         executables considerably, and on non-GCC compilers it usually
+         also disables compiler optimization, causing slowdowns. However,
+         having the symbols available is extremely helpful for dealing
+         with any problems that might arise.  Currently, this option is
+         recommended for production installations only if you use GCC.
+         But you should always have it on if you are doing development work
+         or running a beta version.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-enable-cassert">
+       <term><option>--enable-cassert</option></term>
+       <listitem>
+        <para>
+         Enables <firstterm>assertion</firstterm> checks in the server, which test for
+         many <quote>cannot happen</quote> conditions.  This is invaluable for
+         code development purposes, but the tests can slow down the
+         server significantly.
+         Also, having the tests turned on won't necessarily enhance the
+         stability of your server!  The assertion checks are not categorized
+         for severity, and so what might be a relatively harmless bug will
+         still lead to server restarts if it triggers an assertion
+         failure.  This option is not recommended for production use, but
+         you should have it on for development work or when running a beta
+         version.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-enable-tap-tests">
+       <term><option>--enable-tap-tests</option></term>
+       <listitem>
+        <para>
+         Enable tests using the Perl TAP tools.  This requires a Perl
+         installation and the Perl module <literal>IPC::Run</literal>.
+         See <xref linkend="regress-tap"/> for more information.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-enable-depend">
+       <term><option>--enable-depend</option></term>
+       <listitem>
+        <para>
+         Enables automatic dependency tracking.  With this option, the
+         makefiles are set up so that all affected object files will
+         be rebuilt when any header file is changed.  This is useful
+         if you are doing development work, but is just wasted overhead
+         if you intend only to compile once and install.  At present,
+         this option only works with GCC.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-enable-coverage">
+       <term><option>--enable-coverage</option></term>
+       <listitem>
+        <para>
+         If using GCC, all programs and libraries are compiled with
+         code coverage testing instrumentation.  When run, they
+         generate files in the build directory with code coverage
+         metrics.
+         See <xref linkend="regress-coverage"/>
+         for more information. This option is for use only with GCC
+         and when doing development work.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-enable-profiling">
+       <term><option>--enable-profiling</option></term>
+       <listitem>
+        <para>
+         If using GCC, all programs and libraries are compiled so they
+         can be profiled.  On backend exit, a subdirectory will be created
+         that contains the <filename>gmon.out</filename> file containing
+         profile data.
+         This option is for use only with GCC and when doing development work.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-enable-dtrace">
+       <term><option>--enable-dtrace</option></term>
+       <listitem>
+        <para>
+         <indexterm>
+          <primary>DTrace</primary>
+         </indexterm>
+         Compiles <productname>PostgreSQL</productname> with support for the
+         dynamic tracing tool DTrace.
+         See <xref linkend="dynamic-trace"/> for more information.
+        </para>
+
+        <para>
+         To point to the <command>dtrace</command> program, the
+         environment variable <envar>DTRACE</envar> can be set.  This
+         will often be necessary because <command>dtrace</command> is
+         typically installed under <filename>/usr/sbin</filename>,
+         which might not be in your <envar>PATH</envar>.
+        </para>
+
+        <para>
+         Extra command-line options for the <command>dtrace</command> program
+         can be specified in the environment variable
+         <envar>DTRACEFLAGS</envar>.  On Solaris,
+         to include DTrace support in a 64-bit binary, you must specify
+         <literal>DTRACEFLAGS="-64"</literal>.  For example,
+         using the GCC compiler:
+<screen>
+./configure CC='gcc -m64' --enable-dtrace DTRACEFLAGS='-64' ...
+</screen>
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-enable-injection-points">
+       <term><option>--enable-injection-points</option></term>
+       <listitem>
+        <para>
+         Compiles <productname>PostgreSQL</productname> with support for
+         injection points in the server. Injection points allow to run
+         user-defined code from within the server in pre-defined code paths.
+         This helps in testing and in the investigation of concurrency scenarios
+         in a controlled fashion. This option is disabled by default.  See
+         <xref linkend="xfunc-addin-injection-points"/> for more details.  This
+         option is intended to be used only by developers for testing.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-option-with-segsize-blocks">
+       <term><option>--with-segsize-blocks=SEGSIZE_BLOCKS</option></term>
+       <listitem>
+        <para>
+         Specify the relation segment size in blocks. If both
+         <option>--with-segsize</option> and this option are specified, this
+         option wins.
+
+         This option is only for developers, to test segment related code.
+        </para>
+       </listitem>
+      </varlistentry>
+
+     </variablelist>
+
+   </sect3>
+
+  </sect2>
+
+  <sect2 id="configure-envvars">
+   <title><filename>configure</filename> Environment Variables</title>
+
+   <indexterm zone="configure-envvars">
+    <primary>configure environment variables</primary>
+   </indexterm>
+
+    <para>
+     In addition to the ordinary command-line options described above,
+     <filename>configure</filename> responds to a number of environment
+     variables.
+     You can specify environment variables on the
+     <filename>configure</filename> command line, for example:
+<screen>
+<userinput>./configure CC=/opt/bin/gcc CFLAGS='-O2 -pipe'</userinput>
+</screen>
+     In this usage an environment variable is little different from a
+     command-line option.
+     You can also set such variables beforehand:
+<screen>
+<userinput>export CC=/opt/bin/gcc</userinput>
+<userinput>export CFLAGS='-O2 -pipe'</userinput>
+<userinput>./configure</userinput>
+</screen>
+     This usage can be convenient because many programs' configuration
+     scripts respond to these variables in similar ways.
+    </para>
+
+    <para>
+     The most commonly used of these environment variables are
+     <envar>CC</envar> and <envar>CFLAGS</envar>.
+     If you prefer a C compiler different from the one
+     <filename>configure</filename> picks, you can set the
+     variable <envar>CC</envar> to the program of your choice.
+     By default, <filename>configure</filename> will pick
+     <filename>gcc</filename> if available, else the platform's
+     default (usually <filename>cc</filename>).  Similarly, you can override the
+     default compiler flags if needed with the <envar>CFLAGS</envar> variable.
+    </para>
+
+    <para>
+     Here is a list of the significant variables that can be set in
+     this manner:
+
+     <variablelist>
+      <varlistentry id="configure-envvars-bison">
+       <term><envar>BISON</envar></term>
+       <listitem>
+        <para>
+         Bison program
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-cc">
+       <term><envar>CC</envar></term>
+       <listitem>
+        <para>
+         C compiler
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-cflags">
+       <term><envar>CFLAGS</envar></term>
+       <listitem>
+        <para>
+         options to pass to the C compiler
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-clang">
+       <term><envar>CLANG</envar></term>
+       <listitem>
+        <para>
+         path to <command>clang</command> program used to process source code
+         for inlining when compiling with <literal>--with-llvm</literal>
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-cpp">
+       <term><envar>CPP</envar></term>
+       <listitem>
+        <para>
+         C preprocessor
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-cppflags">
+       <term><envar>CPPFLAGS</envar></term>
+       <listitem>
+        <para>
+         options to pass to the C preprocessor
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-cxx">
+       <term><envar>CXX</envar></term>
+       <listitem>
+        <para>
+         C++ compiler
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-cxxflags">
+       <term><envar>CXXFLAGS</envar></term>
+       <listitem>
+        <para>
+         options to pass to the C++ compiler
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-dtrace">
+       <term><envar>DTRACE</envar></term>
+       <listitem>
+        <para>
+         location of the <command>dtrace</command> program
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-dtraceflags">
+       <term><envar>DTRACEFLAGS</envar></term>
+       <listitem>
+        <para>
+         options to pass to the <command>dtrace</command> program
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-flex">
+       <term><envar>FLEX</envar></term>
+       <listitem>
+        <para>
+         Flex program
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-ldflags">
+       <term><envar>LDFLAGS</envar></term>
+       <listitem>
+        <para>
+         options to use when linking either executables or shared libraries
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-ldflags-ex">
+       <term><envar>LDFLAGS_EX</envar></term>
+       <listitem>
+        <para>
+         additional options for linking executables only
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-ldflags-sl">
+       <term><envar>LDFLAGS_SL</envar></term>
+       <listitem>
+        <para>
+         additional options for linking shared libraries only
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-llvm-config">
+       <term><envar>LLVM_CONFIG</envar></term>
+       <listitem>
+        <para>
+         <command>llvm-config</command> program used to locate the
+         <productname>LLVM</productname> installation
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-msgfmt">
+       <term><envar>MSGFMT</envar></term>
+       <listitem>
+        <para>
+         <command>msgfmt</command> program for native language support
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-perl">
+       <term><envar>PERL</envar></term>
+       <listitem>
+        <para>
+         Perl interpreter program.  This will be used to determine the
+         dependencies for building PL/Perl.  The default is
+         <command>perl</command>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-python">
+       <term><envar>PYTHON</envar></term>
+       <listitem>
+        <para>
+         Python interpreter program.  This will be used to determine the
+         dependencies for building PL/Python.  If this is not set, the
+         following are probed in this order:
+         <literal>python3 python</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-tclsh">
+       <term><envar>TCLSH</envar></term>
+       <listitem>
+        <para>
+         Tcl interpreter program.  This will be used to
+         determine the dependencies for building PL/Tcl.
+         If this is not set, the following are probed in this
+         order: <literal>tclsh tcl tclsh8.6 tclsh86 tclsh8.5 tclsh85
+         tclsh8.4 tclsh84</literal>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-envvars-xml2-config">
+       <term><envar>XML2_CONFIG</envar></term>
+       <listitem>
+        <para>
+         <command>xml2-config</command> program used to locate the
+         libxml2 installation
+        </para>
+       </listitem>
+      </varlistentry>
+     </variablelist>
+    </para>
+
+    <para>
+     Sometimes it is useful to add compiler flags after-the-fact to the set
+     that were chosen by <filename>configure</filename>.  An important example is
+     that <application>gcc</application>'s <option>-Werror</option> option cannot be included
+     in the <envar>CFLAGS</envar> passed to <filename>configure</filename>, because
+     it will break many of <filename>configure</filename>'s built-in tests.  To add
+     such flags, include them in the <envar>COPT</envar> environment variable
+     while running <filename>make</filename>.  The contents of <envar>COPT</envar>
+     are added to the <envar>CFLAGS</envar>, <envar>CXXFLAGS</envar>, and <envar>LDFLAGS</envar>
+     options set up by <filename>configure</filename>.  For example, you could do
+<screen>
+<userinput>make COPT='-Werror'</userinput>
+</screen>
+     or
+<screen>
+<userinput>export COPT='-Werror'</userinput>
+<userinput>make</userinput>
+</screen>
+    </para>
+
+    <note>
+     <para>
+      If using GCC, it is best to build with an optimization level of
+      at least <option>-O1</option>, because using no optimization
+      (<option>-O0</option>) disables some important compiler warnings (such
+      as the use of uninitialized variables).  However, non-zero
+      optimization levels can complicate debugging because stepping
+      through compiled code will usually not match up one-to-one with
+      source code lines.  If you get confused while trying to debug
+      optimized code, recompile the specific files of interest with
+      <option>-O0</option>.  An easy way to do this is by passing an option
+      to <application>make</application>: <command>make PROFILE=-O0 file.o</command>.
+     </para>
+
+     <para>
+      The <envar>COPT</envar> and <envar>PROFILE</envar> environment variables are
+      actually handled identically by the <productname>PostgreSQL</productname>
+      makefiles.  Which to use is a matter of preference, but a common habit
+      among developers is to use <envar>PROFILE</envar> for one-time flag
+      adjustments, while <envar>COPT</envar> might be kept set all the time.
+     </para>
+    </note>
+  </sect2>
+ </sect1>
+
+ <sect1 id="install-meson">
+  <title>Building and Installation with Meson</title>
+
+ <sect2 id="install-short-meson">
+  <title>Short Version</title>
+
+  <para>
+<synopsis>
+meson setup build --prefix=/usr/local/pgsql
+cd build
+ninja
+su
+ninja install
+adduser postgres
+mkdir -p /usr/local/pgsql/data
+chown postgres /usr/local/pgsql/data
+su - postgres
+/usr/local/pgsql/bin/initdb -D /usr/local/pgsql/data
+/usr/local/pgsql/bin/pg_ctl -D /usr/local/pgsql/data -l logfile start
+/usr/local/pgsql/bin/createdb test
+/usr/local/pgsql/bin/psql test
+</synopsis>
+   The long version is the rest of this
+   <phrase>section</phrase>.
+  </para>
+ </sect2>
+
+ <sect2 id="install-procedure-meson">
+  <title>Installation Procedure</title>
+
+  <procedure>
+
+  <step id="meson-configure">
+   <title>Configuration</title>
+
+   <para>
+    The first step of the installation procedure is to configure the
+    build tree for your system and choose the options you would like. To
+    create and configure the build directory, you can start with the
+    <literal>meson setup</literal> command.
+<screen>
+<userinput>meson setup build</userinput>
+</screen>
+    The setup command takes a <literal>builddir</literal> and a <literal>srcdir</literal>
+    argument. If no <literal>srcdir</literal> is given, Meson will deduce the
+    <literal>srcdir</literal> based on the current directory and the location
+    of <literal>meson.build</literal>. The <literal>builddir</literal> is mandatory.
+   </para>
+
+   <para>
+    Running <literal>meson setup</literal> loads the build configuration file and sets up the build directory.
+    Additionally, you can also pass several build options to Meson. Some commonly
+    used options are mentioned in the subsequent sections. For example:
+
+<screen>
+# configure with a different installation prefix
+meson setup build --prefix=/home/user/pg-install
+
+# configure to generate a debug build
+meson setup build --buildtype=debug
+
+# configure to build with OpenSSL support
+meson setup build -Dssl=openssl
+</screen>
+   </para>
+
+   <para>
+    Setting up the build directory is a one-time step. To reconfigure before a
+    new build, you can simply use the <literal>meson configure</literal> command
+<screen>
+meson configure -Dcassert=true
+</screen>
+    <command>meson configure</command>'s commonly used command-line options
+    are explained in <xref linkend="meson-options"/>.
+   </para>
+  </step>
+
+  <step id="meson-build">
+   <title>Build</title>
+
+   <para>
+    By default, <productname>Meson</productname> uses the <ulink
+    url="https://ninja-build.org/">Ninja</ulink> build tool.  To build
+    <productname>PostgreSQL</productname> from source using Meson, you can
+    simply use the <literal>ninja</literal> command in the build directory.
+<screen>
+ninja
+</screen>
+    Ninja will automatically detect the number of CPUs in your computer and
+    parallelize itself accordingly. You can override the number of parallel
+    processes used with the command line argument <literal>-j</literal>.
+   </para>
+
+   <para>
+    It should be noted that after the initial configure step,
+    <command>ninja</command> is the only command you ever need to type to
+    compile. No matter how you alter your source tree (short of moving it to a
+    completely new location), Meson will detect the changes and regenerate
+    itself accordingly. This is especially handy if you have multiple build
+    directories. Often one of them is used for development (the "debug" build)
+    and others only every now and then (such as a "static analysis" build).
+    Any configuration can be built just by cd'ing to the corresponding
+    directory and running Ninja.
+   </para>
+
+   <para>
+    If you'd like to build with a backend other than ninja, you can use
+    configure with the <option>--backend</option> option to select the one you
+    want to use and then build using <literal>meson compile</literal>. To
+    learn more about these backends and other arguments you can provide to
+    ninja, you can refer to the <ulink
+    url="https://mesonbuild.com/Running-Meson.html#building-from-the-source">
+    Meson documentation</ulink>.
+   </para>
+  </step>
+
+  <step>
+   <title>Regression Tests</title>
+
+   <indexterm>
+    <primary>regression test</primary>
+   </indexterm>
+
+   <para>
+    If you want to test the newly built server before you install it,
+    you can run the regression tests at this point. The regression
+    tests are a test suite to verify that <productname>PostgreSQL</productname>
+    runs on your machine in the way the developers expected it
+    to. Type:
+<screen>
+<userinput>meson test</userinput>
+</screen>
+    (This won't work as root; do it as an unprivileged user.)
+    See <xref linkend="regress"/> for
+    detailed information about interpreting the test results. You can
+    repeat this test at any later time by issuing the same command.
+   </para>
+
+   <para>
+    To run pg_regress and pg_isolation_regress tests against a running
+    postgres instance, specify <userinput>--setup running</userinput> as an
+    argument to <userinput>meson test</userinput>.
+   </para>
+  </step>
+
+  <step id="meson-install">
+   <title>Installing the Files</title>
+
+   <note>
+    <para>
+     If you are upgrading an existing system be sure to read
+     <xref linkend="upgrading"/>,
+     which has instructions about upgrading a
+     cluster.
+    </para>
+   </note>
+
+   <para>
+    Once PostgreSQL is built, you can install it by simply running the
+    <literal>ninja install</literal> command.
+<screen>
+ninja install
+</screen>
+   </para>
+
+   <para>
+    This will install files into the directories that were specified
+    in <xref linkend="meson-configure"/>. Make sure that you have appropriate
+    permissions to write into that area. You might need to do this
+    step as root. Alternatively, you can create the target directories
+    in advance and arrange for appropriate permissions to be granted.
+    The standard installation provides all the header files needed for client
+    application development as well as for server-side program
+    development, such as custom functions or data types written in C.
+   </para>
+
+   <para>
+    <literal>ninja install</literal> should work for most cases, but if you'd
+    like to use more options (such as <option>--quiet</option> to suppress
+    extra output), you could also use <literal>meson install</literal>
+    instead. You can learn more about <ulink
+    url="https://mesonbuild.com/Commands.html#install">meson install</ulink>
+    and its options in the Meson documentation.
+   </para>
+  </step>
+  </procedure>
+
+  <formalpara>
+   <title>Uninstallation:</title>
+   <para>
+    To undo the installation, you can use the <command>ninja
+    uninstall</command> command.
+   </para>
+  </formalpara>
+
+  <formalpara>
+   <title>Cleaning:</title>
+   <para>
+    After the installation, you can free disk space by removing the built
+    files from the source tree with the <command>ninja clean</command>
+    command.
+   </para>
+  </formalpara>
+  </sect2>
+
+  <sect2 id="meson-options">
+   <title><literal>meson setup</literal> Options</title>
+
+   <para>
+    <command>meson setup</command>'s command-line options are explained below.
+    This list is not exhaustive (use <literal>meson configure --help</literal>
+    to get one that is).  The options not covered here are meant for advanced
+    use-cases, and are documented in the standard <ulink
+    url="https://mesonbuild.com/Commands.html#configure">Meson
+    documentation</ulink>.  These arguments can be used with <command>meson
+    setup</command> as well.
+   </para>
+
+   <sect3 id="meson-options-locations">
+    <title>Installation Locations</title>
+
+     <para>
+      These options control where <literal>ninja install</literal> (or <literal>meson install</literal>) will put
+      the files.  The <option>--prefix</option> option (example
+      <xref linkend="install-short-meson"/>) is sufficient for
+      most cases.  If you have special needs, you can customize the
+      installation subdirectories with the other options described in this
+      section.  Beware however that changing the relative locations of the
+      different subdirectories may render the installation non-relocatable,
+      meaning you won't be able to move it after installation.
+      (The <literal>man</literal> and <literal>doc</literal> locations are
+      not affected by this restriction.)  For relocatable installs, you
+      might want to use the <literal>-Drpath=false</literal> option
+      described later.
+     </para>
+
+     <variablelist>
+      <varlistentry id="configure-prefix-meson">
+       <term><option>--prefix=<replaceable>PREFIX</replaceable></option></term>
+       <listitem>
+        <para>
+         Install all files under the directory <replaceable>PREFIX</replaceable>
+         instead of <filename>/usr/local/pgsql</filename> (on Unix based systems) or
+         <filename><replaceable>current drive letter</replaceable>:/usr/local/pgsql</filename> (on Windows).
+         The actual files will be installed into various subdirectories; no files
+         will ever be installed directly into the
+         <replaceable>PREFIX</replaceable> directory.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-bindir-meson">
+       <term><option>--bindir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         Specifies the directory for executable programs. The default
+         is <filename><replaceable>PREFIX</replaceable>/bin</filename>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-sysconfdir-meson">
+       <term><option>--sysconfdir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         Sets the directory for various configuration files,
+         <filename><replaceable>PREFIX</replaceable>/etc</filename> by default.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-libdir-meson">
+       <term><option>--libdir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         Sets the location to install libraries and dynamically loadable
+         modules. The default is
+         <filename><replaceable>PREFIX</replaceable>/lib</filename>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-includedir-meson">
+       <term><option>--includedir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         Sets the directory for installing C and C++ header files. The
+         default is <filename><replaceable>PREFIX</replaceable>/include</filename>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-datadir-meson">
+       <term><option>--datadir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         Sets the directory for read-only data files used by the
+         installed programs. The default is
+         <filename><replaceable>PREFIX</replaceable>/share</filename>. Note that this has
+         nothing to do with where your database files will be placed.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-localedir-meson">
+       <term><option>--localedir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         Sets the directory for installing locale data, in particular
+         message translation catalog files.  The default is
+         <filename><replaceable>DATADIR</replaceable>/locale</filename>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+      <varlistentry id="configure-mandir-meson">
+       <term><option>--mandir=<replaceable>DIRECTORY</replaceable></option></term>
+       <listitem>
+        <para>
+         The man pages that come with <productname>PostgreSQL</productname> will be installed under
+         this directory, in their respective
+         <filename>man<replaceable>x</replaceable></filename> subdirectories.
+         The default is <filename><replaceable>DATADIR</replaceable>/man</filename>.
+        </para>
+       </listitem>
+      </varlistentry>
+
+     </variablelist>
+
+     <note>
+      <para>
+       Care has been taken to make it possible to install
+       <productname>PostgreSQL</productname> into shared installation locations
+       (such as <filename>/usr/local/include</filename>) without
+       interfering with the namespace of the rest of the system. First,
+       the string <quote><literal>/postgresql</literal></quote> is
+       automatically appended to <varname>datadir</varname>,
+       <varname>sysconfdir</varname>, and <varname>docdir</varname>,
+       unless the fully expanded directory name already contains the
+       string <quote><literal>postgres</literal></quote> or
+       <quote><literal>pgsql</literal></quote>. For example, if you choose
+       <filename>/usr/local</filename> as prefix, the documentation will
+       be installed in <filename>/usr/local/doc/postgresql</filename>,
+       but if the prefix is <filename>/opt/postgres</filename>, then it
+       will be in <filename>/opt/postgres/doc</filename>. The public C
+       header files of the client interfaces are installed into
+       <varname>includedir</varname> and are namespace-clean. The
+       internal header files and the server header files are installed
+       into private directories under <varname>includedir</varname>. See
+       the documentation of each interface for information about how to
+       access its header files. Finally, a private subdirectory will
+       also be created, if appropriate, under <varname>libdir</varname>
+       for dynamically loadable modules.
+      </para>
+     </note>
+    </sect3>
+
+   <sect3 id="meson-options-features">
+    <title><productname>PostgreSQL</productname> Features</title>
+
+    <para>
+     The options described in this section enable building of
+     various optional <productname>PostgreSQL</productname> features.
+     Most of these require additional software, as described in
+     <xref linkend="install-requirements"/>, and will be automatically enabled if the
+     required software is found. You can change this behavior by manually
+     setting these features to <literal>enabled</literal> to require them
+     or <literal>disabled</literal> to not build with them.
+    </para>
+
+    <para>
+     To specify PostgreSQL-specific options, the name of the option
+     must be prefixed by <literal>-D</literal>.
+    </para>
+
+    <variablelist>
+     <varlistentry id="configure-with-nls-meson">
+      <term><option>-Dnls={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Enables or disables Native Language Support (<acronym>NLS</acronym>),
+        that is, the ability to display a program's messages in a language
+        other than English.  Defaults to auto and will be enabled
+        automatically if an implementation of the <application>Gettext
+        API</application> is found.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-plperl-meson">
+      <term><option>-Dplperl={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build the <application>PL/Perl</application> server-side language.
+        Defaults to auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-plpython-meson">
+      <term><option>-Dplpython={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build the <application>PL/Python</application> server-side language.
+        Defaults to auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-pltcl-meson">
+      <term><option>-Dpltcl={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build the <application>PL/Tcl</application> server-side language.
+        Defaults to auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-tcl-version-meson">
+      <term><option>-Dtcl_version=<replaceable>TCL_VERSION</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the Tcl version to use when building PL/Tcl.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-icu-meson">
+      <term><option>-Dicu={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with support for the
+        <productname>ICU</productname><indexterm><primary>ICU</primary></indexterm>
+        library, enabling use of ICU collation features (see <xref
+        linkend="collation"/>).  Defaults to auto and requires the
+        <productname>ICU4C</productname> package to be installed.  The minimum
+        required version of <productname>ICU4C</productname> is currently 4.2.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-llvm-meson">
+      <term><option>-Dllvm={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with support for <productname>LLVM</productname> based
+        <acronym>JIT</acronym> compilation (see <xref linkend="jit"/>).
+        This requires the <productname>LLVM</productname> library to be
+        installed.  The minimum required version of
+        <productname>LLVM</productname> is currently 14.  Disabled by
+        default.
+       </para>
+
+       <para>
+        <command>llvm-config</command><indexterm><primary>llvm-config</primary></indexterm>
+        will be used to find the required compilation options.
+        <command>llvm-config</command>, and then
+        <command>llvm-config-$version</command> for all supported versions,
+        will be searched for in your <envar>PATH</envar>.  If that would not
+        yield the desired program, use <envar>LLVM_CONFIG</envar> to specify a
+        path to the correct <command>llvm-config</command>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-lz4-meson">
+      <term><option>-Dlz4={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with <productname>LZ4</productname> compression support.
+        Defaults to auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-zstd-meson">
+      <term><option>-Dzstd={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with <productname>Zstandard</productname> compression support.
+        Defaults to auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-ssl-meson">
+      <term><option>-Dssl={ auto | <replaceable>LIBRARY</replaceable> }</option>
+      <indexterm>
+       <primary>OpenSSL</primary>
+       <seealso>SSL</seealso>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        Build with support for <acronym>SSL</acronym> (encrypted) connections.
+        The only <replaceable>LIBRARY</replaceable> supported is
+        <option>openssl</option>. This requires the
+        <productname>OpenSSL</productname> package to be installed.  Building
+        with this will check for the required header files and libraries to
+        make sure that your <productname>OpenSSL</productname> installation is
+        sufficient before proceeding.  The default for this option is auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-gssapi-meson">
+      <term><option>-Dgssapi={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with support for GSSAPI authentication. MIT Kerberos is required
+        to be installed for GSSAPI.  On many systems, the GSSAPI system (a part
+        of the MIT Kerberos installation) is not installed in a location
+        that is searched by default (e.g., <filename>/usr/include</filename>,
+        <filename>/usr/lib</filename>).  In
+        those cases, PostgreSQL will query <command>pkg-config</command> to
+        detect the required compiler and linker options.  Defaults to auto.
+        <filename>meson configure</filename> will check for the required
+        header files and libraries to make sure that your GSSAPI installation
+        is sufficient before proceeding.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-ldap-meson">
+      <term><option>-Dldap={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with
+        <acronym>LDAP</acronym><indexterm><primary>LDAP</primary></indexterm>
+        support for authentication and connection parameter lookup (see
+        <phrase id="install-ldap-links-meson"><xref linkend="libpq-ldap"/> and
+        <xref linkend="auth-ldap"/></phrase> for more information).  On Unix,
+        this requires the <productname>OpenLDAP</productname> package to be
+        installed. On Windows, the default <productname>WinLDAP</productname>
+        library is used.  Defaults to auto.  <filename>meson
+        configure</filename> will check for the required header files and
+        libraries to make sure that your <productname>OpenLDAP</productname>
+        installation is sufficient before proceeding.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-pam-meson">
+      <term><option>-Dpam={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with
+        <acronym>PAM</acronym><indexterm><primary>PAM</primary></indexterm>
+        (Pluggable Authentication Modules) support.  Defaults to auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-bsd-auth-meson">
+      <term><option>-Dbsd_auth={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with BSD Authentication support.  (The BSD Authentication
+        framework is currently only available on OpenBSD.)  Defaults to auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-systemd-meson">
+      <term><option>-Dsystemd={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with support for
+        <application>systemd</application><indexterm><primary>systemd</primary></indexterm>
+        service notifications.  This improves integration if the server is
+        started under <application>systemd</application> but has no impact
+        otherwise; see <xref
+        linkend="server-start"/> for more information.  Defaults to
+        auto.  <application>libsystemd</application> and the associated header
+        files need to be installed to use this option.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-bonjour-meson">
+      <term><option>-Dbonjour={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with support for Bonjour automatic service discovery.  Defaults
+        to auto and requires Bonjour support in your operating system.
+        Recommended on macOS.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-uuid-meson">
+      <term><option>-Duuid=<replaceable>LIBRARY</replaceable></option></term>
+      <listitem>
+       <para>
+        Build the <xref linkend="uuid-ossp"/> module
+        (which provides functions to generate UUIDs), using the specified
+        UUID library.<indexterm><primary>UUID</primary></indexterm>
+        <replaceable>LIBRARY</replaceable> must be one of:
+       </para>
+       <itemizedlist>
+        <listitem>
+         <para>
+          <option>none</option> to not build the uuid module. This is the default.
+         </para>
+        </listitem>
+        <listitem>
+         <para>
+          <option>bsd</option> to use the UUID functions found in FreeBSD,
+          and some other BSD-derived systems
+         </para>
+        </listitem>
+        <listitem>
+         <para>
+          <option>e2fs</option> to use the UUID library created by
+          the <literal>e2fsprogs</literal> project; this library is present in most
+          Linux systems and in macOS, and can be obtained for other
+          platforms as well
+         </para>
+        </listitem>
+        <listitem>
+         <para>
+          <option>ossp</option> to use the <ulink
+          url="http://www.ossp.org/pkg/lib/uuid/">OSSP UUID library</ulink>
+         </para>
+        </listitem>
+       </itemizedlist>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-libcurl-meson">
+      <term><option>-Dlibcurl={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with libcurl support for OAuth 2.0 client flows.
+        Libcurl version 7.61.0 or later is required for this feature.
+        Building with this will check for the required header files
+        and libraries to make sure that your <productname>Curl</productname>
+        installation is sufficient before proceeding. The default for this
+        option is auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-liburing-meson">
+      <term><option>-Dliburing={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with liburing, enabling io_uring support for asynchronous I/O.
+        Defaults to auto.
+       </para>
+
+       <para>
+        To use a liburing installation that is in an unusual location, you
+        can set <command>pkg-config</command>-related environment
+        variables (see its documentation).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-libnuma-meson">
+      <term><option>-Dlibnuma={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with libnuma support for basic NUMA support.
+        Only supported on platforms for which the <productname>libnuma</productname>
+        library is implemented. The default for this option is auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-libxml-meson">
+      <term><option>-Dlibxml={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with libxml2, enabling SQL/XML support.  Defaults to
+        auto. Libxml2 version 2.6.23 or later is required for this feature.
+       </para>
+
+       <para>
+        To use a libxml2 installation that is in an unusual location, you
+        can set <command>pkg-config</command>-related environment
+        variables (see its documentation).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-libxslt-meson">
+      <term><option>-Dlibxslt={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with libxslt, enabling the
+        <xref linkend="xml2"/>
+        module to perform XSL transformations of XML.
+        <option>-Dlibxml</option> must be specified as well.  Defaults to
+        auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-with-sepgsql-meson">
+      <term><option>-Dselinux={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Build with SElinux support, enabling the <xref linkend="sepgsql"/>
+        extension.  Defaults to auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
+    </variablelist>
+   </sect3>
+
+   <sect3 id="meson-options-anti-features">
+    <title>Anti-Features</title>
+
+    <variablelist>
+     <varlistentry id="configure-readline-meson">
+      <term><option>-Dreadline={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Allows use of the <application>Readline</application> library (and
+        <application>libedit</application> as well).  This option defaults to
+        auto and enables command-line editing and history in
+        <application>psql</application> and is strongly recommended.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-libedit-preferred-meson">
+      <term><option>-Dlibedit_preferred={ true | false }</option></term>
+      <listitem>
+       <para>
+        Setting this to true favors the use of the BSD-licensed
+        <application>libedit</application> library rather than GPL-licensed
+        <application>Readline</application>.  This option is significant only
+        if you have both libraries installed; the default is false, that is to
+        use <application>Readline</application>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-zlib-meson">
+      <term><option>-Dzlib={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        <indexterm>
+         <primary>zlib</primary>
+        </indexterm>
+        Enables use of the <application>Zlib</application> library.
+        It defaults to auto and enables
+        support for compressed archives in <application>pg_dump</application>,
+        <application>pg_restore</application> and <application>pg_basebackup</application> and is recommended.
+       </para>
+      </listitem>
+     </varlistentry>
+
+    </variablelist>
+   </sect3>
+
+   <sect3 id="meson-options-build-process">
+    <title>Build Process Details</title>
+
+    <variablelist>
+     <varlistentry id="configure-auto-features-meson">
+      <term><option>--auto-features={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Setting this option allows you to override the value of all
+        <quote>auto</quote> features (features that are enabled automatically
+        if the required software is found).  This can be useful when you want
+        to disable or enable all the <quote>optional</quote> features at once
+        without having to set each of them manually. The default value for
+        this parameter is auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-backend-meson">
+      <term><option>--backend=<replaceable>BACKEND</replaceable></option></term>
+      <listitem>
+       <para>
+        The default backend Meson uses is ninja and that should suffice for
+        most use cases.  However, if you'd like to fully integrate with Visual
+        Studio, you can set the <replaceable>BACKEND</replaceable> to
+        <literal>vs</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-c-args-meson">
+      <term><option>-Dc_args=<replaceable>OPTIONS</replaceable></option></term>
+      <listitem>
+       <para>
+        This option can be used to pass extra options to the C compiler.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-c-link-args-meson">
+      <term><option>-Dc_link_args=<replaceable>OPTIONS</replaceable></option></term>
+      <listitem>
+       <para>
+        This option can be used to pass extra options to the C linker.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-default-library-meson">
+      <term><option>-Ddefault_library={ both | shared }</option></term>
+      <listitem>
+       <para>
+        This option selects whether both shared and static libraries are built
+        (the default), or only shared libraries.  (The third variant of only
+        building static libraries is currently not supported.)
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-extra-include-dirs-meson">
+      <term><option>-Dextra_include_dirs=<replaceable>DIRECTORIES</replaceable></option></term>
+      <listitem>
+       <para>
+        <replaceable>DIRECTORIES</replaceable> is a comma-separated list of
+        directories that will be added to the list the compiler searches for
+        header files. If you have optional packages (such as GNU
+        <application>Readline</application>) installed in a non-standard
+        location, you have to use this option and probably also the
+        corresponding <option>-Dextra_lib_dirs</option> option.
+       </para>
+
+       <para>
+        Example: <literal>-Dextra_include_dirs=/opt/gnu/include,/usr/sup/include</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-extra-lib-dirs-meson">
+      <term><option>-Dextra_lib_dirs=<replaceable>DIRECTORIES</replaceable></option></term>
+      <listitem>
+       <para>
+        <replaceable>DIRECTORIES</replaceable> is a comma-separated list of
+        directories to search for libraries. You will probably have to use
+        this option (and the corresponding
+        <option>-Dextra_include_dirs</option> option) if you have packages
+        installed in non-standard locations.
+       </para>
+       <para>
+        Example: <literal>-Dextra_lib_dirs=/opt/gnu/lib,/usr/sup/lib</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-system-tzdata-meson">
+      <term><option>-Dsystem_tzdata=<replaceable>DIRECTORY</replaceable></option>
+      <indexterm>
+       <primary>time zone data</primary>
+      </indexterm>
+      </term>
+      <listitem>
+       <para>
+        <productname>PostgreSQL</productname> includes its own time zone
+        database, which it requires for date and time operations.  This time
+        zone database is in fact compatible with the IANA time zone database
+        provided by many operating systems such as FreeBSD, Linux, and
+        Solaris, so it would be redundant to install it again.  When this
+        option is used, the system-supplied time zone database in
+        <replaceable>DIRECTORY</replaceable> is used instead of the one
+        included in the PostgreSQL source distribution.
+        <replaceable>DIRECTORY</replaceable> must be specified as an absolute
+        path.  <filename>/usr/share/zoneinfo</filename> is a likely directory
+        on some operating systems.  Note that the installation routine will
+        not detect mismatching or erroneous time zone data.  If you use this
+        option, you are advised to run the regression tests to verify that the
+        time zone data you have pointed to works correctly with
+        <productname>PostgreSQL</productname>.
+       </para>
+
+       <indexterm><primary>cross compilation</primary></indexterm>
+
+       <para>
+        This option is mainly aimed at binary package distributors who know
+        their target operating system well.  The main advantage of using this
+        option is that the PostgreSQL package won't need to be upgraded
+        whenever any of the many local daylight-saving time rules change.
+        Another advantage is that PostgreSQL can be cross-compiled more
+        straightforwardly if the time zone database files do not need to be
+        built during the installation.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-extra-version-meson">
+      <term><option>-Dextra_version=<replaceable>STRING</replaceable></option></term>
+      <listitem>
+       <para>
+        Append <replaceable>STRING</replaceable> to the PostgreSQL version
+        number.  You can use this, for example, to mark binaries built from
+        unreleased <productname>Git</productname> snapshots or containing
+        custom patches with an extra version string, such as a <command>git
+        describe</command> identifier or a distribution package release
+        number.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-rpath-meson">
+      <term><option>-Drpath={ true | false }</option></term>
+      <listitem>
+       <para>
+        This option is set to true by default.  If set to false,
+        do not mark <productname>PostgreSQL</productname>'s executables
+        to indicate that they should search for shared libraries in the
+        installation's library directory (see <option>--libdir</option>).
+        On most platforms, this marking uses an absolute path to the
+        library directory, so that it will be unhelpful if you relocate
+        the installation later.  However, you will then need to provide
+        some other way for the executables to find the shared libraries.
+        Typically this requires configuring the operating system's
+        dynamic linker to search the library directory; see
+        <xref linkend="install-post-shlibs"/> for more detail.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-binary-name-meson">
+      <term><option>-D<replaceable>BINARY_NAME</replaceable>=<replaceable>PATH</replaceable></option></term>
+      <listitem>
+       <para>
+        If a program required to build PostgreSQL (with or without optional
+        flags) is stored at a non-standard path, you can specify it manually
+        to <literal>meson configure</literal>.  The complete list of programs
+        for which this is supported can be found by running <literal>meson
+        configure</literal>.  Example:
+<programlisting>meson configure -DBISON=PATH_TO_BISON</programlisting>
+       </para>
+      </listitem>
+     </varlistentry>
+    </variablelist>
+   </sect3>
+
+   <sect3 id="meson-options-docs">
+    <title>Documentation</title>
+
+    <para>
+     See <xref linkend="docguide-toolsets"/> for the tools needed for building
+     the documentation.
+    </para>
+
+    <variablelist>
+
+     <varlistentry id="configure-docs-meson">
+      <term><option>-Ddocs={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Enables building the documentation in <acronym>HTML</acronym> and
+        <acronym>man</acronym> format. It defaults to auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-docs-pdf-meson">
+      <term><option>-Ddocs_pdf={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Enables building the documentation in <acronym>PDF</acronym>
+        format. It defaults to auto.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-docs-html-style">
+      <term><option>-Ddocs_html_style={ simple | website }</option></term>
+      <listitem>
+       <para>
+        Controls which <acronym>CSS</acronym> stylesheet is used.  The default
+        is <literal>simple</literal>.  If set to <literal>website</literal>,
+        the HTML documentation will reference the stylesheet for <ulink
+        url="https://www.postgresql.org/docs/current/">postgresql.org</ulink>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+    </variablelist>
+   </sect3>
+
+   <sect3 id="meson-options-misc">
+    <title>Miscellaneous</title>
+
+    <variablelist>
+     <varlistentry id="configure-pgport-meson">
+      <term><option>-Dpgport=<replaceable>NUMBER</replaceable></option></term>
+      <listitem>
+       <para>
+        Set <replaceable>NUMBER</replaceable> as the default port number for
+        server and clients. The default is 5432. The port can always
+        be changed later on, but if you specify it here then both
+        server and clients will have the same default compiled in,
+        which can be very convenient.  Usually the only good reason
+        to select a non-default value is if you intend to run multiple
+        <productname>PostgreSQL</productname> servers on the same machine.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-krb-srvnam-meson">
+      <term><option>-Dkrb_srvnam=<replaceable>NAME</replaceable></option></term>
+      <listitem>
+       <para>
+        The default name of the Kerberos service principal used
+        by GSSAPI.
+        <literal>postgres</literal> is the default. There's usually no
+        reason to change this unless you are building for a Windows
+        environment, in which case it must be set to upper case
+        <literal>POSTGRES</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-segsize-meson">
+      <term><option>-Dsegsize=<replaceable>SEGSIZE</replaceable></option></term>
+      <listitem>
+       <para>
+        Set the <firstterm>segment size</firstterm>, in gigabytes.  Large tables are
+        divided into multiple operating-system files, each of size equal
+        to the segment size.  This avoids problems with file size limits
+        that exist on many platforms.  The default segment size, 1 gigabyte,
+        is safe on all supported platforms.  If your operating system has
+        <quote>largefile</quote> support (which most do, nowadays), you can use
+        a larger segment size.  This can be helpful to reduce the number of
+        file descriptors consumed when working with very large tables.
+        But be careful not to select a value larger than is supported
+        by your platform and the file systems you intend to use.  Other
+        tools you might wish to use, such as <application>tar</application>, could
+        also set limits on the usable file size.
+        It is recommended, though not absolutely required, that this value
+        be a power of 2.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-blocksize-meson">
+      <term><option>-Dblocksize=<replaceable>BLOCKSIZE</replaceable></option></term>
+      <listitem>
+       <para>
+        Set the <firstterm>block size</firstterm>, in kilobytes.  This is the unit
+        of storage and I/O within tables.  The default, 8 kilobytes,
+        is suitable for most situations; but other values may be useful
+        in special cases.
+        The value must be a power of 2 between 1 and 32 (kilobytes).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-wal-blocksize-meson">
+      <term><option>-Dwal_blocksize=<replaceable>BLOCKSIZE</replaceable></option></term>
+      <listitem>
+       <para>
+        Set the <firstterm>WAL block size</firstterm>, in kilobytes.  This is the unit
+        of storage and I/O within the WAL log.  The default, 8 kilobytes,
+        is suitable for most situations; but other values may be useful
+        in special cases.
+        The value must be a power of 2 between 1 and 64 (kilobytes).
+       </para>
+      </listitem>
+     </varlistentry>
+    </variablelist>
+   </sect3>
+
+   <sect3 id="meson-options-devel">
+    <title>Developer Options</title>
+
+    <para>
+     Most of the options in this section are only of interest for
+     developing or debugging <productname>PostgreSQL</productname>.
+     They are not recommended for production builds, except
+     for <option>--debug</option>, which can be useful to enable
+     detailed bug reports in the unlucky event that you encounter a bug.
+     On platforms supporting DTrace, <option>-Ddtrace</option>
+     may also be reasonable to use in production.
+    </para>
+
+    <para>
+     When building an installation that will be used to develop code inside
+     the server, it is recommended to use at least the <option>--buildtype=debug</option>
+     and <option>-Dcassert</option> options.
+    </para>
+
+    <variablelist>
+     <varlistentry id="configure-buildtype-meson">
+      <term><option>--buildtype=<replaceable>BUILDTYPE</replaceable></option></term>
+      <listitem>
+       <para>
+        This option can be used to specify the buildtype to use; defaults to
+        <option>debugoptimized</option>.  If you'd like finer control on the debug
+        symbols and optimization levels than what this option provides, you
+        can refer to the <option>--debug</option> and
+        <option>--optimization</option> flags.
+       </para>
+
+       <para>
+        The following build types are generally used: <option>plain</option>,
+        <option>debug</option>, <option>debugoptimized</option> and
+        <option>release</option>.  More information about them can be found in
+        the <ulink
+        url="https://mesonbuild.com/Running-Meson.html#configuring-the-build-directory">Meson
+        documentation</ulink>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-debug-meson">
+      <term><option>--debug</option></term>
+      <listitem>
+       <para>
+        Compiles all programs and libraries with debugging symbols.  This
+        means that you can run the programs in a debugger to analyze
+        problems. This enlarges the size of the installed executables
+        considerably, and on non-GCC compilers it usually also disables
+        compiler optimization, causing slowdowns. However, having the symbols
+        available is extremely helpful for dealing with any problems that
+        might arise.  Currently, this option is recommended for production
+        installations only if you use GCC.  But you should always have it on
+        if you are doing development work or running a beta version.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-optimization-meson">
+      <term><option>--optimization</option>=<replaceable>LEVEL</replaceable></term>
+      <listitem>
+       <para>
+        Specify the optimization level. <option>LEVEL</option> can be set to any of {0,g,1,2,3,s}.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-werror-meson">
+      <term><option>--werror</option></term>
+      <listitem>
+       <para>
+        Setting this option asks the compiler to treat warnings as
+        errors. This can be useful for code development.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-cassert-meson">
+      <term><option>-Dcassert={ true | false }</option></term>
+      <listitem>
+       <para>
+        Enables <firstterm>assertion</firstterm> checks in the server, which
+        test for many <quote>cannot happen</quote> conditions.  This is
+        invaluable for code development purposes, but the tests slow down the
+        server significantly.  Also, having the tests turned on won't
+        necessarily enhance the stability of your server!  The assertion
+        checks are not categorized for severity, and so what might be a
+        relatively harmless bug will still lead to server restarts if it
+        triggers an assertion failure.  This option is not recommended for
+        production use, but you should have it on for development work or when
+        running a beta version.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-tap-tests-meson">
+      <term><option>-Dtap_tests={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        Enable tests using the Perl TAP tools.  Defaults to auto and requires
+        a Perl installation and the Perl module <literal>IPC::Run</literal>.
+        See <xref linkend="regress-tap"/> for more information.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-pg-test-extra-meson">
+      <term><option>-DPG_TEST_EXTRA=<replaceable>TEST_SUITES</replaceable></option></term>
+      <listitem>
+       <para>
+        Enable additional test suites, which are not run by default because
+        they are not secure to run on a multiuser system, require special
+        software to run, or are resource-intensive.  The argument is a
+        whitespace-separated list of tests to enable. See
+        <xref linkend="regress-additional"/> for details. If the
+        <envar>PG_TEST_EXTRA</envar> environment variable is set when the
+        tests are run, it overrides this setup-time option.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-b-coverage-meson">
+      <term><option>-Db_coverage={ true | false }</option></term>
+      <listitem>
+       <para>
+        If using GCC, all programs and libraries are compiled with
+        code coverage testing instrumentation.  When run, they
+        generate files in the build directory with code coverage
+        metrics.
+        See <xref linkend="regress-coverage"/>
+        for more information. This option is for use only with GCC
+        and when doing development work.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-dtrace-meson">
+      <term><option>-Ddtrace={ auto | enabled | disabled }</option></term>
+      <listitem>
+       <para>
+        <indexterm>
+         <primary>DTrace</primary>
+        </indexterm>
+        Enabling this compiles <productname>PostgreSQL</productname> with support for the
+        dynamic tracing tool DTrace.
+        See <xref linkend="dynamic-trace"/> for more information.
+       </para>
+
+       <para>
+        To point to the <command>dtrace</command> program, the
+        <option>DTRACE</option> option can be set.  This
+        will often be necessary because <command>dtrace</command> is
+        typically installed under <filename>/usr/sbin</filename>,
+        which might not be in your <envar>PATH</envar>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry id="configure-injection-points-meson">
+      <term><option>-Dinjection_points={ true | false }</option></term>
+      <listitem>
+       <para>
+        Compiles <productname>PostgreSQL</productname> with support for
+        injection points in the server. Injection points allow to run
+        user-defined code from within the server in pre-defined code paths.
+        This helps in testing and in the investigation of concurrency scenarios
+        in a controlled fashion. This option is disabled by default.  See
+        <xref linkend="xfunc-addin-injection-points"/> for more details.  This
+        option is intended to be used only by developers for testing.
+       </para>
+      </listitem>
+     </varlistentry>
+
+      <varlistentry id="configure-segsize-blocks-meson">
+       <term><option>-Dsegsize_blocks=SEGSIZE_BLOCKS</option></term>
+       <listitem>
+        <para>
+         Specify the relation segment size in blocks. If both
+         <option>-Dsegsize</option> and this option are specified, this option
+         wins.
+
+         This option is only for developers, to test segment related code.
+        </para>
+       </listitem>
+      </varlistentry>
+
+    </variablelist>
+   </sect3>
+  </sect2>
+
+  <sect2 id="targets-meson">
+   <title><literal>meson</literal> Build Targets</title>
+
+   <para>
+    Individual build targets can be built using <command>ninja</command> <replaceable>target</replaceable>.
+
+    When no target is specified, everything except documentation is
+    built. Individual build products can be built using the path/filename as
+    <replaceable>target</replaceable>.
+   </para>
+
+   &targets-meson;
+  </sect2>
+
+ </sect1>
+
+ <sect1 id="install-post">
+  <title>Post-Installation Setup</title>
+
+  <sect2 id="install-post-shlibs">
+   <title>Shared Libraries</title>
+
+   <indexterm>
+    <primary>shared library</primary>
+   </indexterm>
+
+   <para>
+    On some systems with shared libraries
+    you need to tell the system how to find the newly installed
+    shared libraries.  The systems on which this is
+    <emphasis>not</emphasis> necessary include
+    <systemitem class="osname">FreeBSD</systemitem>,
+    <systemitem class="osname">Linux</systemitem>,
+    <systemitem class="osname">NetBSD</systemitem>, <systemitem
+    class="osname">OpenBSD</systemitem>, and
+    <systemitem class="osname">Solaris</systemitem>.
+   </para>
+
+   <para>
+    The method to set the shared library search path varies between
+    platforms, but the most widely-used method is to set the
+    environment variable <envar>LD_LIBRARY_PATH</envar> like so: In Bourne
+    shells (<command>sh</command>, <command>ksh</command>, <command>bash</command>, <command>zsh</command>):
+<programlisting>
+LD_LIBRARY_PATH=/usr/local/pgsql/lib
+export LD_LIBRARY_PATH
+</programlisting>
+    or in <command>csh</command> or <command>tcsh</command>:
+<programlisting>
+setenv LD_LIBRARY_PATH /usr/local/pgsql/lib
+</programlisting>
+    Replace <literal>/usr/local/pgsql/lib</literal> with whatever you set
+    <option><literal>--libdir</literal></option> to in <xref linkend="configure"/>.
+    You should put these commands into a shell start-up file such as
+    <filename>/etc/profile</filename> or <filename>~/.bash_profile</filename>.  Some
+    good information about the caveats associated with this method can
+    be found at <ulink
+    url="http://xahlee.info/UnixResource_dir/_/ldpath.html"></ulink>.
+   </para>
+
+   <para>
+    On some systems it might be preferable to set the environment
+    variable <envar>LD_RUN_PATH</envar> <emphasis>before</emphasis>
+    building.
+   </para>
+
+   <para>
+    On <systemitem class="osname">Cygwin</systemitem>, put the library
+    directory in the <envar>PATH</envar> or move the
+    <filename>.dll</filename> files into the <filename>bin</filename>
+    directory.
+   </para>
+
+   <para>
+    If in doubt, refer to the manual pages of your system (perhaps
+    <command>ld.so</command> or <command>rld</command>). If you later
+    get a message like:
+<screen>
+psql: error in loading shared libraries
+libpq.so.2.1: cannot open shared object file: No such file or directory
+</screen>
+    then this step was necessary.  Simply take care of it then.
+   </para>
+
+   <para>
+    <indexterm>
+     <primary>ldconfig</primary>
+    </indexterm>
+    If you are on <systemitem class="osname">Linux</systemitem> and you have root
+    access, you can run:
+<programlisting>
+/sbin/ldconfig /usr/local/pgsql/lib
+</programlisting>
+    (or equivalent directory) after installation to enable the
+    run-time linker to find the shared libraries faster.  Refer to the
+    manual page of <command>ldconfig</command> for more information.  On
+    <systemitem class="osname">FreeBSD</systemitem>, <systemitem
+    class="osname">NetBSD</systemitem>, and <systemitem
+    class="osname">OpenBSD</systemitem> the command is:
+<programlisting>
+/sbin/ldconfig -m /usr/local/pgsql/lib
+</programlisting>
+    instead.  Other systems are not known to have an equivalent
+    command.
+   </para>
+  </sect2>
+
+  <sect2 id="install-post-env-vars">
+   <title>Environment Variables</title>
+
+   <indexterm>
+    <primary><envar>PATH</envar></primary>
+   </indexterm>
+
+   <para>
+    If you installed into <filename>/usr/local/pgsql</filename> or some other
+    location that is not searched for programs by default, you should
+    add <filename>/usr/local/pgsql/bin</filename> (or whatever you set
+    <option><literal>--bindir</literal></option> to in <xref linkend="configure"/>)
+    into your <envar>PATH</envar>.  Strictly speaking, this is not
+    necessary, but it will make the use of <productname>PostgreSQL</productname>
+    much more convenient.
+   </para>
+
+   <para>
+    To do this, add the following to your shell start-up file, such as
+    <filename>~/.bash_profile</filename> (or <filename>/etc/profile</filename>, if you
+    want it to affect all users):
+<programlisting>
+PATH=/usr/local/pgsql/bin:$PATH
+export PATH
+</programlisting>
+    If you are using <command>csh</command> or <command>tcsh</command>, then use this command:
+<programlisting>
+set path = ( /usr/local/pgsql/bin $path )
+</programlisting>
+   </para>
+
+   <para>
+    <indexterm>
+     <primary><envar>MANPATH</envar></primary>
+    </indexterm>
+    To enable your system to find the <application>man</application>
+    documentation, you need to add lines like the following to a
+    shell start-up file unless you installed into a location that is
+    searched by default:
+<programlisting>
+MANPATH=/usr/local/pgsql/share/man:$MANPATH
+export MANPATH
+</programlisting>
+   </para>
+
+   <para>
+    The environment variables <envar>PGHOST</envar> and <envar>PGPORT</envar>
+    specify to client applications the host and port of the database
+    server, overriding the compiled-in defaults. If you are going to
+    run client applications remotely then it is convenient if every
+    user that plans to use the database sets <envar>PGHOST</envar>.  This
+    is not required, however; the settings can be communicated via command
+    line options to most client programs.
+   </para>
+  </sect2>
+ </sect1>
+
+ <sect1 id="supported-platforms">
+  <title>Supported Platforms</title>
+
+  <para>
+   A platform (that is, a CPU architecture and operating system combination)
+   is considered supported by the <productname>PostgreSQL</productname> development
+   community if the code contains provisions to work on that platform and
+   it has recently been verified to build and pass its regression tests
+   on that platform.  Currently, most testing of platform compatibility
+   is done automatically by test machines in the
+   <ulink url="https://buildfarm.postgresql.org/">PostgreSQL Build Farm</ulink>.
+   If you are interested in using <productname>PostgreSQL</productname> on a platform
+   that is not represented in the build farm, but on which the code works
+   or can be made to work, you are strongly encouraged to set up a build
+   farm member machine so that continued compatibility can be assured.
+  </para>
+
+  <para>
+   In general, <productname>PostgreSQL</productname> can be expected to work on
+   these CPU architectures: x86, PowerPC, S/390, SPARC, ARM, MIPS,
+   and RISC-V, including
+   big-endian, little-endian, 32-bit, and 64-bit variants where applicable.
+  </para>
+
+  <para>
+   <productname>PostgreSQL</productname> can be expected to work on current
+   versions of these operating systems: Linux, Windows,
+   FreeBSD, OpenBSD, NetBSD, DragonFlyBSD, macOS, AIX, Solaris, and illumos.
+   Other Unix-like systems may also work but are not currently
+   being tested.  In most cases, all CPU architectures supported by
+   a given operating system will work.  Look in
+   <xref linkend="installation-platform-notes"/> below to see if
+   there is information
+   specific to your operating system, particularly if using an older system.
+  </para>
+
+  <para>
+   If you have installation problems on a platform that is known
+   to be supported according to recent build farm results, please report
+   it to <email>pgsql-bugs@lists.postgresql.org</email>.  If you are interested
+   in porting <productname>PostgreSQL</productname> to a new platform,
+   <email>pgsql-hackers@lists.postgresql.org</email> is the appropriate place
+   to discuss that.
+  </para>
+
+  <para>
+   Historical versions of <productname>PostgreSQL</productname> or POSTGRES
+   also ran on CPU architectures including Alpha, Itanium, M32R, M68K,
+   M88K, NS32K, PA-RISC, SuperH, and VAX,
+   and operating systems including 4.3BSD, BEOS,
+   BSD/OS, DG/UX, Dynix, HP-UX, IRIX, NeXTSTEP, QNX, SCO, SINIX, Sprite, SunOS,
+   Tru64 UNIX, and ULTRIX.
+  </para>
+ </sect1>
+
+ <sect1 id="installation-platform-notes">
+  <title>Platform-Specific Notes</title>
+
+  <para>
+   This section documents additional platform-specific issues
+   regarding the installation and setup of PostgreSQL.  Be sure to
+   read the installation instructions, and in
+   particular <xref linkend="install-requirements"/> as well.  Also,
+   check <xref linkend="regress"/> regarding the
+   interpretation of regression test results.
+  </para>
+
+  <para>
+   Platforms that are not covered here have no known platform-specific
+   installation issues.
+  </para>
+
+  <sect2 id="installation-notes-aix">
+   <title>AIX</title>
+
+   <indexterm zone="installation-notes-aix">
+    <primary>AIX</primary>
+    <secondary>installation on</secondary>
+   </indexterm>
+
+   <para>
+    You must use GCC
+    to build <productname>PostgreSQL</productname>
+    on <productname>AIX</productname>.
+    The native IBM compiler <command>xlc</command> is not supported.
+   </para>
+
+   <para>
+    Also, only 64-bit builds are supported.  While the make-based build
+    system will automatically create 64-bit executables and libraries,
+    the meson build system requires you to
+    set <varname>OBJECT_MODE</varname> before building:
+<programlisting>
+export OBJECT_MODE=64
+meson setup ...
+</programlisting>
+    Failure to do that will usually manifest as complaints
+    from <application>ar</application> about files having the wrong
+    object file mode.
+   </para>
+
+   <para>
+    <productname>AIX</productname> versions before 7.2 are no longer
+    tested nor supported by the <productname>PostgreSQL</productname>
+    community.
+   </para>
+  </sect2>
+
+  <sect2 id="installation-notes-cygwin">
+   <title>Cygwin</title>
+
+   <indexterm zone="installation-notes-cygwin">
+    <primary>Cygwin</primary>
+    <secondary>installation on</secondary>
+   </indexterm>
+
+   <para>
+    PostgreSQL can be built using Cygwin, a Linux-like environment for
+    Windows, but that method is inferior to the native Windows build
+    and running a server under Cygwin is no longer recommended.
+   </para>
+
+   <para>
+    When building from source, proceed according to the Unix-style
+    installation procedure (i.e., <literal>./configure;
+    make</literal>; etc.), noting the following Cygwin-specific
+    differences:
+
+    <itemizedlist>
+     <listitem>
+      <para>
+       Set your path to use the Cygwin bin directory before the
+       Windows utilities.  This will help prevent problems with
+       compilation.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       The <command>adduser</command> command is not supported; use
+       the appropriate user management application on Windows.
+       Otherwise, skip this step.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       The <command>su</command> command is not supported; use ssh to
+       simulate su on Windows. Otherwise, skip this step.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       <productname>OpenSSL</productname> is not supported.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       Start <command>cygserver</command> for shared memory support.
+       To do this, enter the command <literal>/usr/sbin/cygserver
+       &amp;</literal>.  This program needs to be running anytime you
+       start the PostgreSQL server or initialize a database cluster
+       (<command>initdb</command>).  The
+       default <command>cygserver</command> configuration may need to
+       be changed (e.g., increase <symbol>SEMMNS</symbol>) to prevent
+       PostgreSQL from failing due to a lack of system resources.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+        Building might fail on some systems where a locale other than
+        C is in use. To fix this, set the locale to C by doing
+        <command>export LANG=C.utf8</command> before building, and then
+        setting it back to the previous setting after you have installed
+        PostgreSQL.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       The parallel regression tests (<literal>make check</literal>)
+       can generate spurious regression test failures due to
+       overflowing the <function>listen()</function> backlog queue
+       which causes connection refused errors or hangs.  You can limit
+       the number of connections using the make
+       variable <varname>MAX_CONNECTIONS</varname> thus:
+<programlisting>
+make MAX_CONNECTIONS=5 check
+</programlisting>
+       (On some systems you can have up to about 10 simultaneous
+       connections.)
+      </para>
+     </listitem>
+    </itemizedlist>
+   </para>
+
+   <para>
+    It is possible to install <command>cygserver</command> and the
+    PostgreSQL server as Windows NT services.  For information on how
+    to do this, please refer to the <filename>README</filename>
+    document included with the PostgreSQL binary package on Cygwin.
+    It is installed in the
+    directory <filename>/usr/share/doc/Cygwin</filename>.
+   </para>
+  </sect2>
+
+  <sect2 id="installation-notes-macos">
+   <title>macOS</title>
+
+   <indexterm zone="installation-notes-macos">
+    <primary>macOS</primary>
+    <secondary>installation on</secondary>
+   </indexterm>
+
+   <para>
+    To build <productname>PostgreSQL</productname> from source
+    on <productname>macOS</productname>, you will need to install Apple's
+    command line developer tools, which can be done by issuing
+<programlisting>
+xcode-select --install
+</programlisting>
+    (note that this will pop up a GUI dialog window for confirmation).
+    You may or may not wish to also install Xcode.
+   </para>
+
+   <para>
+    On recent <productname>macOS</productname> releases, it's necessary to
+    embed the <quote>sysroot</quote> path in the include switches used to
+    find some system header files.  This results in the outputs of
+    the <application>configure</application> script varying depending on
+    which SDK version was used during <application>configure</application>.
+    That shouldn't pose any problem in simple scenarios, but if you are
+    trying to do something like building an extension on a different machine
+    than the server code was built on, you may need to force use of a
+    different sysroot path.  To do that, set <varname>PG_SYSROOT</varname>,
+    for example
+<programlisting>
+make PG_SYSROOT=<replaceable>/desired/path</replaceable> all
+</programlisting>
+    To find out the appropriate path on your machine, run
+<programlisting>
+xcrun --show-sdk-path
+</programlisting>
+    Note that building an extension using a different sysroot version than
+    was used to build the core server is not really recommended; in the
+    worst case it could result in hard-to-debug ABI inconsistencies.
+   </para>
+
+   <para>
+    You can also select a non-default sysroot path when configuring, by
+    specifying <varname>PG_SYSROOT</varname>
+    to <application>configure</application>:
+<programlisting>
+./configure ... PG_SYSROOT=<replaceable>/desired/path</replaceable>
+</programlisting>
+    This would primarily be useful to cross-compile for some other
+    macOS version.  There is no guarantee that the resulting executables
+    will run on the current host.
+   </para>
+
+   <para>
+    To suppress the <option>-isysroot</option> options altogether, use
+<programlisting>
+./configure ... PG_SYSROOT=none
+</programlisting>
+    (any nonexistent pathname will work).  This might be useful if you wish
+    to build with a non-Apple compiler, but beware that that case is not
+    tested or supported by the PostgreSQL developers.
+   </para>
+
+   <para>
+    <productname>macOS</productname>'s <quote>System Integrity
+    Protection</quote> (SIP) feature breaks <literal>make check</literal>,
+    because it prevents passing the needed setting
+    of <literal>DYLD_LIBRARY_PATH</literal> down to the executables being
+    tested.  You can work around that by doing <literal>make
+    install</literal> before <literal>make check</literal>.
+    Most PostgreSQL developers just turn off SIP, though.
+   </para>
+  </sect2>
+
+  <sect2 id="installation-notes-mingw">
+   <title>MinGW</title>
+
+   <indexterm zone="installation-notes-mingw">
+    <primary>MinGW</primary>
+    <secondary>installation on</secondary>
+   </indexterm>
+
+   <para>
+    PostgreSQL for Windows can be built using MinGW, a Unix-like build
+    environment for Windows.  It is recommended to use the <ulink
+    url="https://www.msys2.org/">MSYS2</ulink> environment for this and also
+    to install any prerequisite packages.
+   </para>
+
+   <sect3 id="mingw-crash-dumps">
+    <title>Collecting Crash Dumps</title>
+
+    <para>
+     If PostgreSQL on Windows crashes, it has the ability to generate
+     <productname>minidumps</productname> that can be used to track down the cause
+     for the crash, similar to core dumps on Unix. These dumps can be
+     read using the <productname>Windows Debugger Tools</productname> or using
+     <productname>Visual Studio</productname>. To enable the generation of dumps
+     on Windows, create a subdirectory named <filename>crashdumps</filename>
+     inside the cluster data directory. The dumps will then be written
+     into this directory with a unique name based on the identifier of
+     the crashing process and the current time of the crash.
+    </para>
+   </sect3>
+  </sect2>
+
+  <sect2 id="installation-notes-solaris">
+   <title>Solaris</title>
+
+   <indexterm zone="installation-notes-solaris">
+    <primary>Solaris</primary>
+    <secondary>installation on</secondary>
+   </indexterm>
+
+   <para>
+    PostgreSQL is well-supported on Solaris.  The more up to date your
+    operating system, the fewer issues you will experience.
+   </para>
+
+   <sect3 id="installation-notes-solaris-req-tools">
+    <title>Required Tools</title>
+
+    <para>
+     Only GCC is supported as the compiler.  Sun's compiler suite is no longer
+     supported.
+    </para>
+
+    <para>
+     Many additional dependencies can be installed via the package management
+     system.
+    </para>
+   </sect3>
+
+   <sect3 id="installation-notes-solaris-configure-complains">
+    <title>configure Complains About a Failed Test Program</title>
+
+    <para>
+     If <command>configure</command> complains about a failed test
+     program, this is probably a case of the run-time linker being
+     unable to find some library, probably libz, libreadline or some
+     other non-standard library such as libssl.  To point it to the
+     right location, set the <envar>LDFLAGS</envar> environment
+     variable on the <command>configure</command> command line, e.g.,
+<programlisting>
+configure ... LDFLAGS="-R /usr/sfw/lib:/opt/sfw/lib:/usr/local/lib"
+</programlisting>
+     See
+     the <citerefentry><refentrytitle>ld</refentrytitle><manvolnum>1</manvolnum></citerefentry>
+     man page for more information.
+    </para>
+   </sect3>
+
+   <sect3 id="installation-notes-solaris-using-dtrace">
+    <title>Using DTrace for Tracing PostgreSQL</title>
+
+    <para>
+     Yes, using DTrace is possible.  See <xref linkend="dynamic-trace"/> for
+     further information.
+    </para>
+   </sect3>
+  </sect2>
+
+  <sect2 id="installation-notes-visual-studio">
+   <title>Visual Studio</title>
+
+   <indexterm zone="installation-notes-visual-studio">
+    <primary>Visual Studio</primary>
+    <secondary>installation on</secondary>
+   </indexterm>
+
+   <para>
+    It is recommended that most users download the binary distribution for
+    Windows, available as a graphical installer package from the
+    <productname>PostgreSQL</productname> website at
+    <ulink url="https://www.postgresql.org/download/"></ulink>. Building from
+    source is only intended for people developing
+    <productname>PostgreSQL</productname> or extensions.
+   </para>
+
+   <para>
+    PostgreSQL for Windows with Visual Studio can be built using Meson, as
+    described in <xref linkend="install-meson"/>.
+    The native Windows port requires a 32 or 64-bit version of Windows
+    10 or later.
+   </para>
+
+   <para>
+    Native builds of <application>psql</application> don't support command
+    line editing. The <productname>Cygwin</productname> build does support
+    command line editing, so it should be used where psql is needed for
+    interactive use on <productname>Windows</productname>.
+   </para>
+
+   <para>
+    PostgreSQL can be built using the Visual C++ compiler suite from Microsoft.
+    These compilers can be either from <productname>Visual Studio</productname>,
+    <productname>Visual Studio Express</productname> or some versions of the
+    <productname>Microsoft Windows SDK</productname>. If you do not already have a
+    <productname>Visual Studio</productname> environment set up, the easiest
+    ways are to use the compilers from
+    <productname>Visual Studio 2022</productname> or those in the
+    <productname>Windows SDK 10</productname>, which are both free downloads
+    from Microsoft.
+   </para>
+
+   <para>
+    Both 32-bit and 64-bit builds are possible with the Microsoft Compiler suite.
+    32-bit PostgreSQL builds are possible with
+    <productname>Visual Studio 2019</productname> to
+    <productname>Visual Studio 2022</productname>,
+    as well as standalone Windows SDK releases 10 and above.
+    64-bit PostgreSQL builds are supported with
+    <productname>Microsoft Windows SDK</productname> version 10 and above or
+    <productname>Visual Studio 2019</productname> and above.
+    <!--
+        For 2019 requirements:
+        https://docs.microsoft.com/en-us/visualstudio/releases/2019/system-requirements
+        For 2022 requirements:
+        https://docs.microsoft.com/en-us/visualstudio/releases/2022/system-requirements
+    -->
+   </para>
+
+   <para>
+    If your build environment doesn't ship with a supported version of the
+    <productname>Microsoft Windows SDK</productname> it is recommended
+    that you upgrade to the latest version (currently version 10), available
+    for download from <ulink url="https://www.microsoft.com/download"></ulink>.
+   </para>
+
+   <para>
+    You must always include the
+    <application>Windows Headers and Libraries</application> part of the SDK.
+    If you install a <productname>Windows SDK</productname>
+    including the <application>Visual C++ Compilers</application>,
+    you don't need <productname>Visual Studio</productname> to build.
+    Note that as of Version 8.0a the Windows SDK no longer ships with a
+    complete command-line build environment.
+   </para>
+
+   <sect3 id="windows-requirements">
+    <title>Requirements</title>
+    <para>
+     The following additional products are required to build
+     <productname>PostgreSQL</productname> on Windows.
+
+     <variablelist>
+      <varlistentry>
+       <term><productname>Strawberry Perl</productname></term>
+       <listitem><para>
+        Strawberry Perl is required to run the build generation scripts. MinGW
+        or Cygwin Perl will not work. It must also be present in the PATH.
+        Binaries can be downloaded from
+        <ulink url="https://strawberryperl.com"></ulink>.
+       </para></listitem>
+      </varlistentry>
+
+      <varlistentry>
+       <term><productname>Bison</productname> and
+        <productname>Flex</productname></term>
+       <listitem>
+       <para>
+        Binaries for <productname>Bison</productname> and
+        <productname>Flex</productname> can be downloaded from <ulink
+        url="https://github.com/lexxmark/winflexbison"></ulink>.
+       </para>
+       </listitem>
+      </varlistentry>
+     </variablelist>
+    </para>
+
+    <para>
+     The following additional products are not required to get started,
+     but are required to build the complete package.
+
+     <variablelist>
+      <varlistentry>
+       <term><productname>Magicsplat Tcl</productname></term>
+       <listitem><para>
+        Required for building <application>PL/Tcl</application>.
+        Binaries can be downloaded from
+        <ulink url="https://www.magicsplat.com/tcl-installer/index.html"></ulink>.
+       </para></listitem>
+      </varlistentry>
+
+      <varlistentry>
+       <term><productname>Diff</productname></term>
+       <listitem><para>
+        Diff is required to run the regression tests, and can be downloaded
+        from <ulink url="http://gnuwin32.sourceforge.net"></ulink>.
+       </para></listitem>
+      </varlistentry>
+
+      <varlistentry>
+       <term><productname>Gettext</productname></term>
+       <listitem><para>
+        Gettext is required to build with NLS support, and can be downloaded
+        from <ulink url="http://gnuwin32.sourceforge.net"></ulink>. Note that binaries,
+        dependencies and developer files are all needed.
+       </para></listitem>
+      </varlistentry>
+
+      <varlistentry>
+       <term><productname>MIT Kerberos</productname></term>
+       <listitem><para>
+        Required for GSSAPI authentication support. MIT Kerberos can be
+        downloaded from
+        <ulink url="https://web.mit.edu/Kerberos/dist/index.html"></ulink>.
+       </para></listitem>
+      </varlistentry>
+
+      <varlistentry>
+       <term><productname>libxml2</productname> and
+        <productname>libxslt</productname></term>
+       <listitem><para>
+        Required for XML support. Binaries can be downloaded from
+        <ulink url="https://zlatkovic.com/pub/libxml"></ulink> or source from
+        <ulink url="http://xmlsoft.org"></ulink>. Note that libxml2 requires iconv,
+        which is available from the same download location.
+       </para></listitem>
+      </varlistentry>
+
+      <varlistentry>
+       <term><productname>LZ4</productname></term>
+       <listitem><para>
+        Required for supporting <productname>LZ4</productname> compression.
+        Binaries and source can be downloaded from
+        <ulink url="https://github.com/lz4/lz4/releases"></ulink>.
+       </para></listitem>
+      </varlistentry>
+
+      <varlistentry>
+       <term><productname>Zstandard</productname></term>
+       <listitem><para>
+        Required for supporting <productname>Zstandard</productname> compression.
+        Binaries and source can be downloaded from
+        <ulink url="https://github.com/facebook/zstd/releases"></ulink>.
+       </para></listitem>
+      </varlistentry>
+
+      <varlistentry>
+       <term><productname>OpenSSL</productname></term>
+       <listitem><para>
+        Required for SSL support. Binaries can be downloaded from
+        <ulink url="https://slproweb.com/products/Win32OpenSSL.html"></ulink>
+        or source from <ulink url="https://www.openssl.org"></ulink>.
+       </para></listitem>
+      </varlistentry>
+
+      <varlistentry>
+       <term><productname>ossp-uuid</productname></term>
+       <listitem><para>
+        Required for UUID-OSSP support (contrib only). Source can be
+        downloaded from
+        <ulink url="http://www.ossp.org/pkg/lib/uuid/"></ulink>.
+       </para></listitem>
+      </varlistentry>
+
+      <varlistentry>
+       <term><productname>Python</productname></term>
+       <listitem><para>
+        Required for building <application>PL/Python</application>. Binaries can
+        be downloaded from <ulink url="https://www.python.org"></ulink>.
+       </para></listitem>
+      </varlistentry>
+
+      <varlistentry>
+       <term><productname>zlib</productname></term>
+       <listitem><para>
+        Required for compression support in <application>pg_dump</application>
+        and <application>pg_restore</application>. Binaries can be downloaded
+        from <ulink url="https://www.zlib.net"></ulink>.
+       </para></listitem>
+      </varlistentry>
+
+     </variablelist>
+    </para>
+   </sect3>
+
+   <sect3 id="install-windows-full-64-bit">
+    <title>Special Considerations for 64-Bit Windows</title>
+    <para>
+     PostgreSQL will only build for the x64 and AArch64 architectures on 64-bit
+     Windows.
+    </para>
+    <para>
+     Mixing 32- and 64-bit versions in the same build tree is not supported.
+     The build system will automatically detect if it's running in a 32- or
+     64-bit environment, and build PostgreSQL accordingly. For this reason, it
+     is important to start the correct command prompt before building.
+    </para>
+    <para>
+     To use a server-side third party library such as <productname>Python</productname> or
+     <productname>OpenSSL</productname>, this library <emphasis>must</emphasis> also be
+     64-bit. There is no support for loading a 32-bit library in a 64-bit
+     server. Several of the third party libraries that PostgreSQL supports may
+     only be available in 32-bit versions, in which case they cannot be used with
+     64-bit PostgreSQL.
+    </para>
+   </sect3>
+
+   <sect3 id="windows-crash-dumps">
+    <title>Collecting Crash Dumps</title>
+
+    <para>
+     If PostgreSQL on Windows crashes, it has the ability to generate
+     <productname>minidumps</productname> that can be used to track down the cause
+     for the crash, similar to core dumps on Unix. These dumps can be
+     read using the <productname>Windows Debugger Tools</productname> or using
+     <productname>Visual Studio</productname>. To enable the generation of dumps
+     on Windows, create a subdirectory named <filename>crashdumps</filename>
+     inside the cluster data directory. The dumps will then be written
+     into this directory with a unique name based on the identifier of
+     the crashing process and the current time of the crash.
+    </para>
+   </sect3>
+  </sect2>
+ </sect1>
+
+</chapter>

@@ -1,0 +1,101 @@
+# MkDocs configuration for Netlify builds
+
+site_name: pg_stat_monitor Documentation
+site_description: Documentation
+site_author: Percona LLC
+copyright: Percona LLC, &#169; 2022
+  
+repo_name: percona/pg_stat_monitor
+repo_url: https://github.com/percona/pg_stat_monitor
+edit_uri: edit/master/docs/
+
+use_directory_urls: false
+
+# Theme for netlify testing
+theme:
+  name: material
+  logo: _images/percona-logo.svg
+  favicon: _images/percona-favicon.ico
+  custom_dir: docs/overrides
+
+  palette:
+
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: percona-light
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to dark mode
+
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to light mode
+
+# Theme features
+
+  features:
+    - search.highlight
+    - navigation.top
+
+
+extra_css:
+  - https://unicons.iconscout.com/release/v3.0.3/css/line.css
+  - https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.4.0/css/font-awesome.min.css
+  - css/version-select.css
+  - css/toctree.css
+  - css/percona.css
+
+extra_javascript:
+  - js/version-select.js
+
+markdown_extensions:
+  - attr_list
+  - toc:
+      permalink: True
+  - admonition
+  - footnotes
+  - def_list   # https://michelf.ca/projects/php-markdown/extra/#def-list
+  - meta
+  - smarty:
+        smart_angled_quotes: true
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.tabbed
+  - pymdownx.tilde
+  - pymdownx.superfences
+  - pymdownx.highlight:
+        linenums: false
+  - pymdownx.emoji:
+       emoji_index: !!python/name:materialx.emoji.twemoji
+       emoji_generator: !!python/name:materialx.emoji.to_svg
+  #- plantuml_markdown
+
+plugins:
+  - search
+  - git-revision-date
+  - section-index # Adds links to nodes - comment out when creating PDF
+#  - htmlproofer # Uncomment to check links - but extends build time significantly
+  - mike:
+      version_selector: true
+      css_dir: css
+      javascript_dir: js
+      canonical_version: null   
+
+
+extra:
+  version:
+    provider: mike
+
+nav:
+  - index.md
+  - setup.md
+  - User guide:
+    - USER_GUIDE.md
+  - REFERENCE.md
+  - COMPARISON.md
+  - Release notes:
+    - RELEASE_NOTES.md
+# - Version Selector: "../"

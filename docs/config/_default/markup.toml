@@ -1,0 +1,13 @@
+defaultMarkdownHandler = "goldmark"
+
+[goldmark]
+  [goldmark.extensions]
+    typographer = false
+  [goldmark.parser]
+    autoHeadingIDType = "blackfriday"
+  [goldmark.renderer]
+    unsafe = true
+[tableOfContents]
+  endLevel = 4
+  ordered = false
+  startLevel = 2

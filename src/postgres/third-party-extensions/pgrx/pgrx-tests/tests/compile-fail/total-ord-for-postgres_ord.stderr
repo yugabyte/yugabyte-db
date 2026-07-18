@@ -1,0 +1,12 @@
+error[E0277]: the trait bound `BrokenType: std::cmp::Ord` is not satisfied
+ --> tests/compile-fail/total-ord-for-postgres_ord.rs:4:71
+  |
+4 | #[derive(Serialize, Deserialize, PartialEq, PartialOrd, PostgresType, PostgresOrd)]
+  |                                                                       ^^^^^^^^^^^ the trait `std::cmp::Ord` is not implemented for `BrokenType`
+  |
+  = note: this error originates in the derive macro `PostgresOrd` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider annotating `BrokenType` with `#[derive(Ord)]`
+  |
+5 + #[derive(Ord)]
+6 | pub struct BrokenType {
+  |

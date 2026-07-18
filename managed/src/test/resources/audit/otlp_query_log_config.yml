@@ -1,0 +1,91 @@
+!!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat
+exporters:
+  otlp/query_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$OTLPExporter
+    compression: gzip
+    endpoint: http://otlp:3100
+    retry_on_failure: {enabled: true, initial_interval: 30s, max_elapsed_time: 60m,
+      max_interval: 10m}
+    timeout: 10s
+    tls: {insecure_skip_verify: true}
+extensions:
+  file_storage/queue: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$StorageExtension
+    compaction: {directory: /mnt/d0/otel-collector/queue, on_rebound: true, on_start: true,
+      rebound_needed_threshold_mib: 100, rebound_trigger_threshold_mib: 10}
+    directory: /mnt/d0/otel-collector/queue
+processors:
+  attributes/query_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
+    actions:
+    - {action: upsert, key: host, value: test-node}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
+    - {action: upsert, key: yugabyte.cloud, value: ''}
+    - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
+    - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
+    - {action: upsert, key: yugabyte.region, value: ''}
+    - {action: upsert, key: yugabyte.zone, value: ''}
+    - {action: upsert, key: yugabyte.purpose, value: OTLP_QUERY_LOG_EXPORT}
+    - {action: upsert, from_attribute: log.file.name, key: yugabyte.log.file.name}
+    - {action: delete, key: log.file.name}
+    - {action: upsert, from_attribute: log_level, key: yugabyte.log_level}
+    - {action: delete, key: log_level}
+    - {action: upsert, from_attribute: statement_id, key: yugabyte.statement_id}
+    - {action: delete, key: statement_id}
+    - {action: upsert, from_attribute: substatement_id, key: yugabyte.substatement_id}
+    - {action: delete, key: substatement_id}
+    - {action: upsert, from_attribute: class, key: yugabyte.class}
+    - {action: delete, key: class}
+    - {action: upsert, from_attribute: command, key: yugabyte.command}
+    - {action: delete, key: command}
+    - {action: upsert, from_attribute: object_type, key: yugabyte.object_type}
+    - {action: delete, key: object_type}
+    - {action: upsert, from_attribute: object_name, key: yugabyte.object_name}
+    - {action: delete, key: object_name}
+    - {action: upsert, from_attribute: statement, key: yugabyte.statement}
+    - {action: delete, key: statement}
+    - {action: upsert, from_attribute: timestamp_without_ms, key: yugabyte.timestamp_without_ms}
+    - {action: delete, key: timestamp_without_ms}
+    - {action: upsert, key: tag, value: value}
+    - {action: upsert, key: additionalTag, value: otherValue}
+  batch/query_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {
+    send_batch_max_size: 1000, send_batch_size: 100, timeout: 10s}
+  memory_limiter/query_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$MemoryLimiterProcessor {
+    check_interval: 10s, limit_mib: 2048}
+  transform/replace: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$TransformProcessor
+    log_statements:
+    - context: log
+      statements: ['replace_pattern(body, "^otho8Aut", "")']
+receivers:
+  filelog/query_logs_ysql: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FileLogReceiver
+    attributes: {yugabyte.query_log_type: ysql}
+    exclude: [/home/yugabyte/tserver/logs/*.gz]
+    include: [/home/yugabyte/tserver/logs/postgresql-*.log]
+    multiline: {line_start_pattern: '.*([A-Z]\d{4})|((?P<timestamp_without_ms>\d{4}-\d{2}-\d{2}
+        \d{2}:\d{2}:\d{2} \w{3})[ ][|][ ]([^ ]+)[ ][:][ ])'}
+    operators:
+    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
+      expr: 'body matches "^.*\\w+:  AUDIT:(.|\\n|\\r|\\s)*$"', type: filter}
+    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
+      expr: body matches "unable to find pgstat entry for abnormally terminated PID",
+      type: filter}
+    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
+      expr: 'body matches "^[IWEF]\\d{4} \\d{2}:\\d{2}:\\d{2}\\.\\d{6} \\d+ .*\\.cc:\\d+"',
+      type: filter}
+    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$RegexOperator
+      on_error: drop
+      regex: (?P<timestamp_without_ms>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \w{3})[
+        ][|][ ]([^ ]+)[ ][:][ ](?P<log_level>\w+):[ ](?P<message>(.|\n|\r|\s)*)
+      timestamp: {layout: '%Y-%m-%d %H:%M:%S %Z', parse_from: attributes.timestamp_without_ms}
+      type: regex_parser
+    start_at: beginning
+    storage: file_storage/queue
+service:
+  extensions: [file_storage/queue]
+  pipelines:
+    logs/query_logs_00000000-0000-0000-0000-000000000000:
+      exporters: [otlp/query_logs_00000000-0000-0000-0000-000000000000]
+      processors: [attributes/query_logs_00000000-0000-0000-0000-000000000000, batch/query_logs_00000000-0000-0000-0000-000000000000,
+        memory_limiter/query_logs_00000000-0000-0000-0000-000000000000, transform/replace]
+      receivers: [filelog/query_logs_ysql]
+  telemetry:
+    logs:
+      output_paths: [/home/yugabyte/otel-collector/logs/otel-collector.logs]
+    metrics: {address: '0.0.0.0:8889'}

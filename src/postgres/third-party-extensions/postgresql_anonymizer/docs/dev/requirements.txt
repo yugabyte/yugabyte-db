@@ -1,0 +1,4 @@
+ipython-sql
+jupyter
+psycopg2
+sqlalchemy

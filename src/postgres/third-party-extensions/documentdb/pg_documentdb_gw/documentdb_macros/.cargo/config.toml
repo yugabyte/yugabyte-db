@@ -1,0 +1,11 @@
+[unstable]
+registry-auth = false
+
+[registries]
+crates_io = { index = "https://github.com/rust-lang/crates.io-index" }
+
+[source.crates-io]
+replace-with = "crates_io"
+
+[target.'cfg(target_arch = "x86_64")']
+rustflags = ["-C", "target-cpu=x86-64-v3", "-C", "force-frame-pointers=yes"]

@@ -1,0 +1,56 @@
+BEGIN;
+CREATE EXTENSION IF NOT EXISTS anon CASCADE;
+SELECT anon.start_dynamic_masking();
+ start_dynamic_masking 
+-----------------------
+ t
+(1 row)
+
+CREATE ROLE "WOPR";
+SECURITY LABEL FOR anon ON ROLE "WOPR" IS 'MASKED';
+CREATE ROLE hal LOGIN;
+SECURITY LABEL FOR anon ON ROLE hal IS 'MASKED';
+CREATE ROLE jarvis;
+-- FORCE update because COMMENT doesn't trigger the Event Trigger
+SELECT anon.mask_update();
+ mask_update 
+-------------
+ t
+(1 row)
+
+SELECT anon.hasmask('"WOPR"') IS TRUE;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.hasmask('hal') IS TRUE;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.hasmask('jarvis') IS FALSE;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.hasmask('postgres') IS FALSE;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.hasmask(NULL) IS FALSE;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Must return an error
+SELECT anon.hasmask('does_not_exist');
+ERROR:  role "does_not_exist" does not exist
+LINE 1: SELECT anon.hasmask('does_not_exist');
+                            ^
+ROLLBACK;

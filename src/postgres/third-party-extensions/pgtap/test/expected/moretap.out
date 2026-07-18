@@ -1,0 +1,56 @@
+\unset ECHO
+1..54
+ok 1 - Modify internal plan value
+ok 2 - My pass() passed, w00t!
+ok 3 - Testing fail()
+ok 4 - We should get the proper output from fail()
+ok 5 - The output of finish() should reflect the test failure
+ok 6 - Increase internal plan value after testing finish
+ok 7 - The output of finish(false) should reflect the test failure
+ok 8 - Increase internal plan value after testing finish
+ok 9 - The output of finish(NULL) should reflect the test failure
+ok 10 - Increase internal plan value after testing finish
+ok 11 - finish(true) should throw an exception
+ok 12 - We should have one failure
+ok 13 - Reset internal failure count
+ok 14 - We should now have no failures
+ok 15 - diag() should work properly
+ok 16 - multiline diag() should work properly
+ok 17 - multiline diag() should work properly with existing comments
+ok 18 - diag(int)
+ok 19 - diag(numeric)
+ok 20 - diag(timestamptz)
+ok 21 - variadic text
+ok 22 - variadic int
+ok 23 - variadic unknown
+ok 24 - no_plan() should have stored a plan of 0
+ok 25 - Set the plan to 4000
+ok 26 - The output of finish() should reflect a high test plan
+ok 27 - Set the plan to 4
+ok 28 - The output of finish() should reflect a low test plan
+ok 29 - Reset the plan
+ok 30 - plan() should have stored the test count
+ok 31 - ok(true) should pass
+ok 32 - ok(true) should have the proper description
+ok 33 - ok(true) should have the proper diagnostics
+ok 34 - ok(true, '') should pass
+ok 35 - ok(true, '') should have the proper description
+ok 36 - ok(true, '') should have the proper diagnostics
+ok 37 - ok(true, 'foo') should pass
+ok 38 - ok(true, 'foo') should have the proper description
+ok 39 - ok(true, 'foo') should have the proper diagnostics
+ok 40 - ok(false) should fail
+ok 41 - ok(false) should have the proper description
+ok 42 - ok(false) should have the proper diagnostics
+ok 43 - ok(false, '') should fail
+ok 44 - ok(false, '') should have the proper description
+ok 45 - ok(false, '') should have the proper diagnostics
+ok 46 - ok(false, 'foo') should fail
+ok 47 - ok(false, 'foo') should have the proper description
+ok 48 - ok(false, 'foo') should have the proper diagnostics
+ok 49 - ok(NULL, 'null') should fail
+ok 50 - ok(NULL, 'null') should have the proper description
+ok 51 - ok(NULL, 'null') should have the proper diagnostics
+ok 52 - multiline desc should pass
+ok 53 - multiline desc should have the proper description
+ok 54 - multiline desc should have the proper diagnostics

@@ -1,0 +1,116 @@
+<!--
+doc/src/sgml/ref/drop_type.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-droptype">
+ <indexterm zone="sql-droptype">
+  <primary>DROP TYPE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP TYPE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP TYPE</refname>
+  <refpurpose>remove a data type</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP TYPE [ IF EXISTS ] <replaceable class="parameter">name</replaceable> [, ...] [ CASCADE | RESTRICT ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DROP TYPE</command> removes a user-defined data type.
+   Only the owner of a type can remove it.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>IF EXISTS</literal></term>
+    <listitem>
+     <para>
+      Do not throw an error if the type does not exist. A notice is issued
+      in this case.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of the data type to remove.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>CASCADE</literal></term>
+    <listitem>
+     <para>
+      Automatically drop objects that depend on the type (such as
+      table columns, functions, and operators),
+      and in turn all objects that depend on those objects
+      (see <xref linkend="ddl-depend"/>).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RESTRICT</literal></term>
+    <listitem>
+     <para>
+      Refuse to drop the type if any objects depend on it.  This is
+      the default.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1 id="sql-droptype-examples">
+  <title>Examples</title>
+
+  <para>
+   To remove the data type <type>box</type>:
+<programlisting>
+DROP TYPE box;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1 id="sql-droptype-compatibility">
+  <title>Compatibility</title>
+
+  <para>
+   This command is similar to the corresponding command in the SQL
+   standard, apart from the <literal>IF EXISTS</literal>
+   option, which is a <productname>PostgreSQL</productname> extension.
+   But note that much of the <command>CREATE TYPE</command> command
+   and the data type extension mechanisms in
+   <productname>PostgreSQL</productname> differ from the SQL standard.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-droptype-see-also">
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-altertype"/></member>
+   <member><xref linkend="sql-createtype"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

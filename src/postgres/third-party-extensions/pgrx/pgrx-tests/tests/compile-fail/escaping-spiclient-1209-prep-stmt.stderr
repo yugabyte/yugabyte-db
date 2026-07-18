@@ -1,0 +1,8 @@
+error: lifetime may not live long enough
+ --> tests/compile-fail/escaping-spiclient-1209-prep-stmt.rs:8:39
+  |
+8 |     let prepared = { Spi::connect(|c| c.prepare(q, &[]))? };
+  |                                    -- ^^^^^^^^^^^^^^^^^ returning this value requires that `'1` must outlive `'2`
+  |                                    ||
+  |                                    |return type of closure is std::result::Result<pgrx::spi::PreparedStatement<'2>, pgrx::spi::SpiError>
+  |                                    has type `&SpiClient<'1>`

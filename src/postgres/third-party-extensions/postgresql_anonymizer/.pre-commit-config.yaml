@@ -1,0 +1,10 @@
+---
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^tests/expected/
+      - id: end-of-file-fixer
+        exclude: ^tests/expected/
+      - id: check-added-large-files

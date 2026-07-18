@@ -1,0 +1,139 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+LOAD 'age';
+SET search_path TO ag_catalog;
+SELECT create_graph('drop');
+NOTICE:  graph "drop" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+DROP EXTENSION age;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table drop._ag_label_vertex
+drop cascades to table drop._ag_label_edge
+NOTICE:  graph "drop" has been dropped
+SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname = 'drop';
+ nspname 
+---------
+(0 rows)
+
+SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'ag_catalog';
+ tablename 
+-----------
+(0 rows)
+
+-- Recreate the extension and validate we can recreate a graph
+CREATE EXTENSION age;
+SELECT create_graph('drop');
+NOTICE:  graph "drop" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- Create a schema that uses the agtype, so we can't just drop age.
+CREATE SCHEMA other_schema;
+CREATE TABLE other_schema.tbl (id agtype);
+-- Should Fail because agtype can't be dropped
+DROP EXTENSION age;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table drop._ag_label_vertex
+drop cascades to table drop._ag_label_edge
+NOTICE:  graph "drop" has been dropped
+ERROR:  cannot drop extension age because other objects depend on it
+DETAIL:  column id of table other_schema.tbl depends on type agtype
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+-- Check the graph still exist, because the DROP command failed
+SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname = 'drop';
+ nspname 
+---------
+ drop
+(1 row)
+
+-- Should succeed, delete the 'drop' schema and leave 'other_schema'
+DROP EXTENSION age CASCADE;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table drop._ag_label_vertex
+drop cascades to table drop._ag_label_edge
+NOTICE:  graph "drop" has been dropped
+NOTICE:  drop cascades to column id of table other_schema.tbl
+-- 'other_schema' should exist, 'drop' should be deleted
+SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname IN ('other_schema', 'drop');
+   nspname    
+--------------
+ other_schema
+(1 row)
+
+-- issue 1305
+CREATE EXTENSION age;
+LOAD 'age';
+SET search_path TO ag_catalog;
+SELECT create_graph('issue_1305');
+NOTICE:  graph "issue_1305" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT create_vlabel('issue_1305', 'n');
+NOTICE:  VLabel "n" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT create_elabel('issue_1305', 'r');
+NOTICE:  ELabel "r" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+SELECT drop_label('issue_1305', 'r', false);
+NOTICE:  label "issue_1305"."r" has been dropped
+ drop_label 
+------------
+ 
+(1 row)
+
+SELECT drop_label('issue_1305', 'r');
+ERROR:  rel_name not found for label "r"
+SELECT drop_label('issue_1305', 'n', false);
+NOTICE:  label "issue_1305"."n" has been dropped
+ drop_label 
+------------
+ 
+(1 row)
+
+SELECT drop_label('issue_1305', 'n');
+ERROR:  rel_name not found for label "n"
+SELECT * FROM drop_graph('issue_1305', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table issue_1305._ag_label_vertex
+drop cascades to table issue_1305._ag_label_edge
+NOTICE:  graph "issue_1305" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+-- END
+DROP EXTENSION age CASCADE;

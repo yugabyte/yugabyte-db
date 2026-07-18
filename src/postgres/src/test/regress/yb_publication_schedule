@@ -1,0 +1,7 @@
+# src/test/regress/yb_publication_schedule
+#
+####################################################################################################
+# Postgres Testsuites: This suite includes tests on publication statements.
+####################################################################################################
+test: yb.port.publication
+test: yb.orig.publication

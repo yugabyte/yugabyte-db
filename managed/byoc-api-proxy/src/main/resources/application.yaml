@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: ByocApiProxy
+
+yba:
+  uuid: ${YBA_UUID:e55a0e4c-3987-4e1b-89f2-28839e32c5b7}
+  base_url: ${YBA_BASE_URL:http://localhost:9001/api}
+proxied_app:
+  base_url: ${PROXIED_APP_BASE_URL:http://localhost:9000/api}
+#  auth:
+#    # a permanent API token is currently used to authenticate to task runners
+#    api_token:
+#    # API server private endpoints are authenticated using a 'service account'
+#    # and admin tokens valid for 12 hours
+#    service_account:
+#      email:
+#      password:

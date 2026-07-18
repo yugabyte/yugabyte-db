@@ -1,0 +1,1 @@
+CREATE EXTENSION vector VERSION '0.8.0-yb-1.0';

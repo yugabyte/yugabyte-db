@@ -1,0 +1,186 @@
+<!--
+doc/src/sgml/ref/cluster.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-cluster">
+ <indexterm zone="sql-cluster">
+  <primary>CLUSTER</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CLUSTER</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CLUSTER</refname>
+  <refpurpose>cluster a table according to an index</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CLUSTER [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] [ <replaceable class="parameter">table_name</replaceable> [ USING <replaceable class="parameter">index_name</replaceable> ] ]
+
+<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
+
+    VERBOSE [ <replaceable class="parameter">boolean</replaceable> ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   The <command>CLUSTER</command> command is equivalent to
+   <xref linkend="sql-repack"/> with an <literal>USING INDEX</literal>
+   clause.  See there for more details.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">table_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (possibly schema-qualified) of a table.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">index_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of an index.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>VERBOSE</literal></term>
+    <listitem>
+     <para>
+      Prints a progress report as each table is clustered
+      at <literal>INFO</literal> level.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">boolean</replaceable></term>
+    <listitem>
+     <para>
+      Specifies whether the selected option should be turned on or off.
+      You can write <literal>TRUE</literal>, <literal>ON</literal>, or
+      <literal>1</literal> to enable the option, and <literal>FALSE</literal>,
+      <literal>OFF</literal>, or <literal>0</literal> to disable it.  The
+      <replaceable class="parameter">boolean</replaceable> value can also
+      be omitted, in which case <literal>TRUE</literal> is assumed.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+   <para>
+    To cluster a table, one must have the <literal>MAINTAIN</literal> privilege
+    on the table.
+   </para>
+
+   <para>
+    While <command>CLUSTER</command> is running, the <xref
+    linkend="guc-search-path"/> is temporarily changed to <literal>pg_catalog,
+    pg_temp</literal>.
+   </para>
+
+   <para>
+    Because <command>CLUSTER</command> remembers which indexes are clustered,
+    one can cluster the tables one wants clustered manually the first time,
+    then set up a periodic maintenance script that executes
+    <command>CLUSTER</command> without any parameters, so that the desired tables
+    are periodically reclustered.
+   </para>
+
+  <para>
+    Each backend running <command>CLUSTER</command> will report its progress
+    in the <structname>pg_stat_progress_cluster</structname> view. See
+    <xref linkend="cluster-progress-reporting"/> for details.
+  </para>
+
+   <para>
+    Clustering a partitioned table clusters each of its partitions using the
+    partition of the specified partitioned index.  When clustering a partitioned
+    table, the index may not be omitted.  <command>CLUSTER</command> on a
+    partitioned table cannot be executed inside a transaction block.
+   </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Cluster the table <structname>employees</structname> on the basis of
+   its index <literal>employees_ind</literal>:
+<programlisting>
+CLUSTER employees USING employees_ind;
+</programlisting>
+  </para>
+
+  <para>
+   Cluster the <structname>employees</structname> table using the same
+   index that was used before:
+<programlisting>
+CLUSTER employees;
+</programlisting>
+  </para>
+
+  <para>
+   Cluster all tables in the database that have previously been clustered:
+<programlisting>
+CLUSTER;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>CLUSTER</command> statement in the SQL standard.
+  </para>
+
+  <para>
+   The following syntax was used before <productname>PostgreSQL</productname>
+   17 and is still supported:
+<synopsis>
+CLUSTER [ VERBOSE ] [ <replaceable class="parameter">table_name</replaceable> [ USING <replaceable class="parameter">index_name</replaceable> ] ]
+</synopsis>
+  </para>
+
+  <para>
+   The following syntax was used before <productname>PostgreSQL</productname>
+   8.3 and is still supported:
+<synopsis>
+CLUSTER <replaceable class="parameter">index_name</replaceable> ON <replaceable class="parameter">table_name</replaceable>
+</synopsis>
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-repack"/></member>
+   <member><xref linkend="app-clusterdb"/></member>
+   <member><xref linkend="cluster-progress-reporting"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

@@ -1,0 +1,14 @@
+.formField {
+  display: flex;
+
+  min-height: 46px;
+  margin-top: 10px;
+
+  &:first-child {
+    margin-top: 0;
+  }
+
+  &.providerNameField {
+    margin: 17px 34px;
+  }
+}

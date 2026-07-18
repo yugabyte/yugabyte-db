@@ -1,0 +1,24 @@
+# Stuff shipped in tarballs
+/html/
+/html-stamp
+/man1/
+/man3/
+/man7/
+/man-stamp
+# Other popular build targets
+/postgres-US.pdf
+/postgres-A4.pdf
+/postgres.html
+/postgres.txt
+# GENERATED_SGML
+/features-supported.sgml
+/features-unsupported.sgml
+/errcodes-table.sgml
+/keywords-table.sgml
+/targets-meson.sgml
+/version.sgml
+/wait_event_types.sgml
+# Assorted byproducts from building the above
+/postgres-full.xml
+/postgres-US.fo
+/postgres-A4.fo

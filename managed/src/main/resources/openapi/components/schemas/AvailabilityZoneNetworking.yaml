@@ -1,0 +1,12 @@
+title: AvailabilityZoneNetworking
+description: Networking properties for each node in the cluster. The settings can be configured at top-level for uniform node settings for both tserver and master nodes. Granular settings for tserver and master will be honored if provided (and dedicated_nodes is true or this is k8s cluster). Part of ClusterNetworkingSpec.
+type: object
+properties:
+  tserver:
+    description: Network properties overridden for tserver nodes of cluster.
+    $ref: "./PerProcessNetworking.yaml"
+  master:
+    description: Network properties overridden for master nodes of cluster.
+    $ref: "./PerProcessNetworking.yaml"
+  proxy_config:
+    $ref: "./NodeProxyConfig.yaml"

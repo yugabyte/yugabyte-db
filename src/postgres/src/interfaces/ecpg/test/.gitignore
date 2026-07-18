@@ -1,0 +1,5 @@
+/pg_regress
+# Exclude subdirectories
+/log/
+/results/
+/tmp_check/

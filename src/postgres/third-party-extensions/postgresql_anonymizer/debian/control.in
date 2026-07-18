@@ -1,0 +1,22 @@
+Source: postgresql-anonymizer
+Section: database
+Priority: optional
+Maintainer: DALIBO SCOP <contact@dalibo.com>
+Standards-Version: 1.1.1
+Rules-Requires-Root: no
+Build-Depends:  debhelper-compat (= 13), postgresql-all (>= 217~)
+Homepage: https://labs.dalibo.com/postgresql_anonymizer
+Vcs-Browser: https://gitlab.com/dalibo/postgresql_anonymizer
+Vcs-Git: https://gitlab.com/dalibo/postgresql_anonymizer.git
+
+Package: postgresql-PGVERSION-anonymizer
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, postgresql-PGVERSION,
+ postgresql-contrib-PGVERSION
+Description: PostgreSQL extension to anonymize data
+ postgresql_anonymizer is an extension to mask or replace personally
+ identifiable information (PII) or commercially sensitive data from
+ a PostgreSQL database.
+ The project relies on a declarative approach of anonymization. This means
+ we're using the PostgreSQL Data Definition Language (DDL) in order to specify
+ the anonymization strategy inside the table definition itself.

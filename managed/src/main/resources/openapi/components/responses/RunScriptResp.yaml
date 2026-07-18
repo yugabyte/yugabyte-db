@@ -1,0 +1,6 @@
+x-yba-api-visibility: internal
+description: Script execution results from all targeted nodes
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/RunScriptResponse.yaml"

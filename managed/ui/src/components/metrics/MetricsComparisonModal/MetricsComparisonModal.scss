@@ -1,0 +1,201 @@
+@use '../../../_style/colors.scss';
+
+.metrics-comparison-modal {
+  width: auto;
+  height: auto;
+
+  .comparison-modal-header-title {
+    font-size: 20px;
+    font-weight: bold;
+    margin-top: 7px;
+    display: inline-block;
+  }
+
+  .modal-body {
+    padding: 15px 30px;
+  }
+
+  .metrics-container {
+    background-color: colors.$YB_BG_WHITE_2;
+  }
+
+  .metrics-comparison-form {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 100%;
+  }
+
+  .modal-content {
+    height: 100%;
+  }
+
+  .modal-body {
+    height: 100%;
+    overflow-y: auto;
+  }
+
+  .metrics-comparison-panel-container {
+    width: 50%;
+    height: 350px;
+    padding: 0 20px;
+    box-sizing: border-box;
+    display: inline-block;
+
+    &.right {
+      border-left: 2px solid colors.$YB_GRAY_HOVER;
+    }
+
+    &.left {
+      border-right: 2px solid colors.$YB_GRAY_HOVER;
+    }
+
+    .metrics-comparison-panel {
+      width: 100%;
+      height: 100%;
+      padding: 20px;
+      box-sizing: border-box;
+      display: inline-block;
+      border: 1px solid colors.$YB_GRAY_BORDER;
+      border-radius: 5px;
+      background-color: white;
+
+      .recharts-legend-wrapper {
+        margin-left: 25px;
+      }
+
+      .recharts-default-tooltip {
+        border-radius: 5px;
+      }
+    }
+  }
+
+  .metrics-comparison-panel-header {
+    font-weight: bold;
+
+    &:hover {
+      cursor: pointer;
+    }
+
+    .open-icon {
+      padding: 15px;
+    }
+
+    .metrics-comparison-panel-dropdown {
+      float: right;
+
+      button {
+        border: none;
+        background-color: transparent;
+      }
+    }
+  }
+}
+
+.modal-90w {
+  width: calc(100vw - 50px);
+  height: calc(100vh - 50px);
+}
+
+.node-selector-header {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  margin-bottom: 10px;
+
+  .node-picker {
+    width: 50%;
+    padding: 0 130px;
+    //display: inline-block;
+    //margin: 0 auto;
+  }
+
+  .node-compare {
+    width: 40px;
+    height: 40px;
+    margin-top: 5px;
+    text-align: center;
+    border: 1px solid rgba(200, 200, 200, 0.5);
+    border-radius: 100%;
+    font-size: 17px;
+    font-weight: bold;
+    line-height: 2.2;
+  }
+
+}
+
+.metrics-filter-header {
+  padding: 15px 20px;
+  border-bottom: 1px solid rgba(200, 200, 200, 0.5);
+
+  .metrics-filter-item {
+    display: inline-block;
+    margin-right: 10px;
+
+    .chip {
+      font-size: 12px;
+      line-height: 14px;
+      padding: 7px;
+      margin: 0 3px;
+      display: inline-block;
+      color: colors.$YB_TEXT_BLACK;
+      background-color: rgba(0, 0, 0, 0.08);
+      border-radius: 8px;
+    }
+
+    .dropdown-toggle-button {
+      padding: 6px 11px;
+      font-size: 14px;
+    }
+  }
+
+  .metrics-filter-title {
+    font-size: 18px;
+  }
+}
+
+.metrics-selector-modal {
+  height: calc(100% - 100px);
+  margin: 50px auto;
+
+  .metrics-selector-form {
+    height: 100%;
+
+    .metrics-options-title {
+      margin: 0 0 10px 5px
+    }
+
+    .metrics-options-panel {
+      height: 100%;
+      overflow-y: auto;
+      padding: 15px;
+
+      .metrics-selector-search-bar {
+        margin-bottom: 10px;
+      }
+    }
+  }
+
+  .modal-content {
+    height: 100%;
+
+    .modal-body {
+      height: 100%;
+
+    }
+  }
+
+  .metrics-group-container {
+    padding: 10px 0;
+
+    .row {
+      margin: 10px 0;
+    }
+
+    .checkbox-label {
+      font-weight: normal !important;
+    }
+  }
+
+}

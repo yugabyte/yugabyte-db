@@ -1,0 +1,43 @@
+\unset ECHO
+1..29
+ok 1 - findfuncs(public, ^test, this) should work
+ok 2 - findfuncs(public, ^test) should work
+ok 3 - findfuncs(^test, this) should work
+ok 4 - findfuncs(^test) should work
+ok 5 - findfuncs(unknown) should find no tests
+# public."test ident"()
+ok 6 - ident
+ok 7 - ident 2
+# public.testplpgsql()
+ok 8 - plpgsql simple
+ok 9 - plpgsql simple 2
+# public.testthis()
+ok 10 - simple pass
+ok 11 - another simple pass
+# public."test ident"()
+ok 12 - ident
+ok 13 - ident 2
+# public.testplpgsql()
+ok 14 - plpgsql simple
+ok 15 - plpgsql simple 2
+# public.testthis()
+ok 16 - simple pass
+ok 17 - another simple pass
+# public."test ident"()
+ok 18 - ident
+ok 19 - ident 2
+# public.testplpgsql()
+ok 20 - plpgsql simple
+ok 21 - plpgsql simple 2
+# public.testthis()
+ok 22 - simple pass
+ok 23 - another simple pass
+# public."test ident"()
+ok 24 - ident
+ok 25 - ident 2
+# public.testplpgsql()
+ok 26 - plpgsql simple
+ok 27 - plpgsql simple 2
+# public.testthis()
+ok 28 - simple pass
+ok 29 - another simple pass

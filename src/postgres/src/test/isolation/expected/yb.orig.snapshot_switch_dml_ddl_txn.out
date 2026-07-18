@@ -1,0 +1,12 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin_rr s1_select s2_insert s1_drop_table_test2 s1_commit
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_select: SELECT * FROM test;
+k|v
+-+-
+(0 rows)
+
+step s2_insert: INSERT INTO test VALUES (1, 1);
+step s1_drop_table_test2: DROP TABLE test2;
+step s1_commit: COMMIT;

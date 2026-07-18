@@ -1,0 +1,58 @@
+--
+-- DES cipher
+--
+-- no official test vectors atm
+-- from blowfish.sql
+SELECT encrypt('\x0123456789abcdef', '\xfedcba9876543210', 'des-ecb/pad:none');
+      encrypt       
+--------------------
+ \xed39d950fa74bcc4
+(1 row)
+
+-- empty data
+select encrypt('', 'foo', 'des');
+      encrypt       
+--------------------
+ \x752111e37a2d7ac3
+(1 row)
+
+-- 8 bytes key
+select encrypt('foo', '01234589', 'des');
+      encrypt       
+--------------------
+ \xdec0f9c602b647a8
+(1 row)
+
+-- decrypt
+select encode(decrypt(encrypt('foo', '0123456', 'des'), '0123456', 'des'), 'escape');
+ encode 
+--------
+ foo
+(1 row)
+
+-- iv
+select encrypt_iv('foo', '0123456', 'abcd', 'des');
+     encrypt_iv     
+--------------------
+ \x50735067b073bb93
+(1 row)
+
+select encode(decrypt_iv('\x50735067b073bb93', '0123456', 'abcd', 'des'), 'escape');
+ encode 
+--------
+ foo
+(1 row)
+
+-- long message
+select encrypt('Lets try a longer message.', '01234567', 'des');
+                              encrypt                               
+--------------------------------------------------------------------
+ \x5ad146043e5f30967e06a0fcbae602daf4ff2a5fd0ed12d6c5913cf85f1e36ca
+(1 row)
+
+select encode(decrypt(encrypt('Lets try a longer message.', '01234567', 'des'), '01234567', 'des'), 'escape');
+           encode           
+----------------------------
+ Lets try a longer message.
+(1 row)
+

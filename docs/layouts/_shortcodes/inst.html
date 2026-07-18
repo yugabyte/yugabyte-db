@@ -1,0 +1,9 @@
+{{- $instance := .Get 0 -}}
+{{- $cloud := "aws" -}}
+{{- if strings.Contains $instance "-" -}}
+    {{- $cloud = "gcp" -}}
+{{- else if strings.Contains $instance "_" -}}
+    {{- $cloud = "azure" -}}
+{{- end -}}
+{{- $query := printf "%s %s" $cloud $instance}}
+<a href="https://www.google.com/search?btnI=1&q={{$query}}#:~:text={{$instance}}" style="white-space: nowrap">{{$instance}}</a>

@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: yb-sample-apps
+spec:
+  containers:
+    - name : yb-sample-apps
+      image: yugabytedb/yb-sample-apps
+      args:
+        - --workload
+        - CassandraKeyValue
+        - --nodes
+        - <nodes>
+        - --ssl_cert
+        - /home/root.crt
+      volumeMounts:
+        - name: config
+          mountPath: /home
+          readOnly: true
+  volumes:
+    - name: config
+      secret:
+        secretName: secret

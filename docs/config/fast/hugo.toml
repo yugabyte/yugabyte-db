@@ -1,0 +1,17 @@
+# Settings to start hugo faster
+# ------------------------------
+
+# This will make sure that versions other than preview/stable are not processed
+
+[[module.mounts]]
+  source = 'content'
+  target = 'content'
+  # build preview and stable
+  excludeFiles = ["/v{2.12,2.14,2.16,2.8}/*"]
+
+  # for preview only
+  # excludeFiles = ["/{stable}/*", "/v{2.12,2.14,2.16,2.8}/*"]
+
+
+[params]
+  ebnfDiagrams = 'disabled'

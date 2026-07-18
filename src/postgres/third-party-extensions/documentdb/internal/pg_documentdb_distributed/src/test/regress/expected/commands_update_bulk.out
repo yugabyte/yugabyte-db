@@ -1,0 +1,1875 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 849000;
+SET documentdb.next_collection_id TO 8490;
+SET documentdb.next_collection_index_id TO 8490;
+SET documentdb.EnableVariablesSupportForWriteCommands TO on;
+select 1 from documentdb_api.insert_one('bulkdb', 'updateme', '{"a":1,"_id":1,"b":1}');
+NOTICE:  creating collection
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('bulkdb', 'updateme', '{"a":2,"_id":2,"b":2}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('bulkdb', 'updateme', '{"a":3,"_id":3,"b":3}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('bulkdb', 'updateme', '{"a":4,"_id":4,"b":4}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('bulkdb', 'updateme', '{"a":5,"_id":5,"b":5}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('bulkdb', 'updateme', '{"a":6,"_id":6,"b":6}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('bulkdb', 'updateme', '{"a":7,"_id":7,"b":7}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('bulkdb', 'updateme', '{"a":8,"_id":8,"b":8}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('bulkdb', 'updateme', '{"a":9,"_id":9,"b":9}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+select 1 from documentdb_api.insert_one('bulkdb', 'updateme', '{"a":10,"_id":10,"b":10}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+-- exercise invalid update syntax errors
+CALL documentdb_api.update_bulk('bulkdb', NULL);
+ERROR:  update document cannot be NULL
+CALL documentdb_api.update_bulk(NULL, '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}]}');
+ERROR:  database name must not be NULL
+CALL documentdb_api.update_bulk('bulkdb', '{"updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}]}');
+ERROR:  Required field 'update.update' is missing
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme"}');
+ERROR:  Required field 'update.updates' is missing
+CALL documentdb_api.update_bulk('bulkdb', '{"update":["updateme"], "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}]}');
+ERROR:  collection name has invalid type array
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":{"q":{},"u":{"$set":{"b":0}},"multi":true}}');
+ERROR:  The BSON field 'update.updates' has an incorrect type 'object'; it should be of type 'array'.
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}], "extra":1}');
+ERROR:  The BSON field 'update.extra' is not recognized as a valid field
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{}}]}');
+ERROR:  The required field 'update.updates.u' is missing
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{},"multi":true}]}');
+ERROR:  The required field 'update.updates.u' is missing
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"multi":true}]}');
+ERROR:  The required field 'update.updates.q' is missing
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"u":{"$set":{"b":0}}}]}');
+ERROR:  The required field 'update.updates.q' is missing
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{},"u":"text"}]}');
+ERROR:  BSON field 'update.updates.u' is the wrong type 'string', expected type 'object' or 'array'
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":[],"u":{"$set":{"b":0}},"multi":true}]}');
+ERROR:  The BSON field 'update.updates.q' has an incorrect type 'array'; it should be of type 'object'.
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":1}]}');
+ERROR:  The BSON field 'update.updates.multi' has an incorrect type 'int'; it should be of type 'bool'.
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true,"extra":1}]}');
+ERROR:  The field 'update.updates.extra' specified is not recognized as a valid field
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}],"ordered":1}');
+ERROR:  The BSON field 'update.ordered' has an incorrect type 'int'; it should be of type 'bool'.
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{},"u":{"$bork":{"b":0}},"multi":true}]}');
+                                                                                                                                                               p_result                                                                                                                                                                | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "50331677" }, "errmsg" : "Unknown modifier: $bork. Please use a valid update modifier or pipeline-style update specified as an array" } ] } | f
+(1 row)
+
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"upsert":[]}]}');
+ERROR:  The BSON field 'update.updates.upsert' has an incorrect type 'array'; it should be of type 'bool'.
+-- Disallow writes to system.views
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"system.views", "updates":[{"q":{},"u":{"$set":{"b":0}}}]}');
+ERROR:  Unable to write data to specified location bulkdb.system.views
+-- update all
+set search_path TO '';
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}]}');
+                                                   p_result                                                   | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "10" }, "n" : { "$numberInt" : "10" } } | t
+(1 row)
+
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document OPERATOR(documentdb_api_catalog.@@) '{"b":0}';
+ count 
+---------------------------------------------------------------------
+    10
+(1 row)
+
+-- update some
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":{"$lte":3}},"u":{"$set":{"b":1}},"multi":true}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "3" }, "n" : { "$numberInt" : "3" } } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"b":1}';
+ count 
+---------------------------------------------------------------------
+     3
+(1 row)
+
+-- update multi with a replace is not supported
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":{"$lte":3}},"u":{"b":0},"multi":true}]}');
+                                                                                                                                         p_result                                                                                                                                         | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "50331677" }, "errmsg" : "multi=true and replace-style updates cannot be used together." } ] } | f
+(1 row)
+
+-- update multi with an aggregation pipeline is supported
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":{"$lte":3}},"u":[{"$unset":["b"]}],"multi":true}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "3" }, "n" : { "$numberInt" : "3" } } | t
+(1 row)
+
+-- update all from non-existent collection
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"notexists", "updates":[{"q":{},"u":{"$set":{"b":0}}}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+-- query syntax errors are added the response
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":{"$ltr":5}},"u":{"$set":{"b":0}},"multi":true}]}');
+                                                                                                                             p_result                                                                                                                             | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "Unrecognized operator specified: $ltr" } ] } | f
+(1 row)
+
+-- when ordered, expect only first update to be executed
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$set":{"b":2}}},{"q":{"$a":2},"u":{"$set":{"b":2}}},{"q":{"a":3},"u":{"$set":{"b":2}}}]}');
+                                                                                                                                                                         p_result                                                                                                                                                                          | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" }, "writeErrors" : [ { "index" : { "$numberInt" : "1" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." } ] } | f
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"b":2}';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$set":{"b":3}}},{"q":{"$a":2},"u":{"$set":{"b":3}}},{"q":{"a":3},"u":{"$set":{"b":3}}}],"ordered":true}');
+                                                                                                                                                                         p_result                                                                                                                                                                          | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" }, "writeErrors" : [ { "index" : { "$numberInt" : "1" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." } ] } | f
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"b":3}';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+-- when not ordered, expect first and last update to be executed
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$set":{"b":0}}},{"q":{"$a":2},"u":{"$set":{"b":0}}},{"q":{"a":3},"u":{"$set":{"b":0}}}],"ordered":false}');
+                                                                                                                                                                         p_result                                                                                                                                                                          | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "2" }, "n" : { "$numberInt" : "2" }, "writeErrors" : [ { "index" : { "$numberInt" : "1" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." } ] } | f
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme');
+ count 
+---------------------------------------------------------------------
+    10
+(1 row)
+
+-- update 1 without filters is supported for unsharded collections
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":5}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"b":5}';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+-- update 1 with a replace that preserves the _id
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":3},"u":{"b":6},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select document from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"b":6}';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "6" } }
+(1 row)
+
+-- update 1 with a replace that tries to change the _id
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":3},"u":{"_id":0,"b":7},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+-- update 1 is retryable on unsharded collection (second call is a noop)
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$inc":{"b":8}},"multi":false}]}', NULL, 'xact-1');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$inc":{"b":8}},"multi":false}]}', NULL, 'xact-1');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select document from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"a":1}';
+                                            document                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "8" } }
+(1 row)
+
+-- third call is considered a new try
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$inc":{"b":8}},"multi":false}]}', NULL, 'xact-1');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select document from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"a":1}';
+                                            document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "16" } }
+(1 row)
+
+-- update 1 is supported in the _id case
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":6},"u":{"$set":{"b":9}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select document from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":6}';
+                                            document                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "6" }, "b" : { "$numberInt" : "9" } }
+(1 row)
+
+-- update 1 is supported in the multiple identical _id case
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"$and":[{"_id":6},{"_id":6}]},"u":{"$set":{"b":10}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select document from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":6}';
+                                            document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "6" }, "b" : { "$numberInt" : "10" } }
+(1 row)
+
+-- update 1 is supported in the multiple distinct _id case
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"$and":[{"_id":6},{"_id":5}]},"u":{"$set":{"b":11}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+select document from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":6}';
+                                            document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "6" }, "b" : { "$numberInt" : "10" } }
+(1 row)
+
+-- update some with range filter that excludes all rows
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":{"$lt":0}},"u":{"$set":{"b":12,"_id":11}},"multi":true,"upsert":true}]}');
+                                                                                              p_result                                                                                              | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "11" } } ] } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"b":12}';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+-- upsert 1 with range filter is supported for unsharded collections
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"b":{"$lt":0}},"u":{"$set":{"b":0,"_id":11}},"multi":false,"upsert":true}]}');
+                                                                                                                                           p_result                                                                                                                                            | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] } | f
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"b":0}';
+ count 
+---------------------------------------------------------------------
+     5
+(1 row)
+
+-- upsert 1 with a replace that preserves the _id
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":11},"u":{"b":13},"multi":false,"upsert":true}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"b":13}';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+-- upsert 1 with a replace that set the _id
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":33},"u":{"_id":0,"b":14},"multi":false,"upsert":true}]}');
+                                                                                             p_result                                                                                              | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "0" } } ] } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":0}';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+-- upsert 1 is retryable on unsharded collection (second call is a noop)
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+                                                                                                                                           p_result                                                                                                                                            | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] } | f
+(1 row)
+
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+                                                                                                                                           p_result                                                                                                                                            | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] } | f
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"c":33}';
+ count 
+---------------------------------------------------------------------
+     0
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"c":66}';
+ count 
+---------------------------------------------------------------------
+     0
+(1 row)
+
+-- third call is considered a new try
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+                                                                                                                                           p_result                                                                                                                                            | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] } | f
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"c":33}';
+ count 
+---------------------------------------------------------------------
+     0
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"c":66}';
+ count 
+---------------------------------------------------------------------
+     0
+(1 row)
+
+-- upsert 1 is supported in the _id case
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":0}},"multi":false,"upsert":true}]}');
+                                                                                              p_result                                                                                              | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "33" } } ] } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":33}';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+-- test _id extraction from update
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":3}},"multi":false,"upsert":true}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":33, "b":3}';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+set citus.log_remote_commands to on;
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":4}},"multi":false,"upsert":true}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+reset citus.log_remote_commands;
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":33, "b":4}';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":0}},"multi":false,"upsert":true}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":33, "b":0}';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+set citus.log_remote_commands to on;
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":1}},"multi":true,"upsert":true}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+reset citus.log_remote_commands;
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":33, "b":1}';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+-- shard the collection
+select documentdb_api.shard_collection('bulkdb', 'updateme', '{"a":"hashed"}', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- make sure we get the expected results after sharding a collection
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":{"$lte":5}},"u":{"$set":{"b":0}},"multi":true}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "3" }, "n" : { "$numberInt" : "4" } } | t
+(1 row)
+
+select document from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"a":1}';
+                                            document                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+select document from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"a":10}';
+                                             document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "10" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"b":0}';
+ count 
+---------------------------------------------------------------------
+     8
+(1 row)
+
+-- test pruning logic in update
+set citus.log_remote_commands to on;
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":5}},"u":{"$set":{"b":0}},"multi":true}]}');
+NOTICE:  executing the command locally: WITH u AS (UPDATE documentdb_data.documents_8491_849010 documents_8491 SET document = COALESCE(documentdb_api_internal.update_bson_document(documents_8491.document, ($1)::documentdb_core.bson, $2::documentdb_core.bson, ($3)::documentdb_core.bson, $4::documentdb_core.bson, NULL::text), documents_8491.document) WHERE ((documents_8491.document OPERATOR(documentdb_api_catalog.#=) '{ "a" : { "$numberInt" : "5" } }'::documentdb_core.bsonquery) AND (documents_8491.shard_key_value OPERATOR(pg_catalog.=) $6)) RETURNING documentdb_api_internal.bson_update_returned_value(documents_8491.shard_key_value) AS updated) SELECT count(*) AS count, sum(updated) AS sum FROM u WHERE true
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+reset citus.log_remote_commands;
+select document from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"a":5}';
+                                            document                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"b":0}';
+ count 
+---------------------------------------------------------------------
+     8
+(1 row)
+
+set citus.log_remote_commands to on;
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"$and":[{"a":5},{"a":{"$gt":0}}]},"u":{"$set":{"b":0}},"multi":true}]}');
+NOTICE:  executing the command locally: WITH u AS (UPDATE documentdb_data.documents_8491_849010 documents_8491 SET document = COALESCE(documentdb_api_internal.update_bson_document(documents_8491.document, ($1)::documentdb_core.bson, $2::documentdb_core.bson, ($3)::documentdb_core.bson, $4::documentdb_core.bson, NULL::text), documents_8491.document) WHERE (((documents_8491.document OPERATOR(documentdb_api_catalog.#=) '{ "a" : { "$numberInt" : "5" } }'::documentdb_core.bsonquery) AND (documents_8491.document OPERATOR(documentdb_api_catalog.#>) '{ "a" : { "$numberInt" : "0" } }'::documentdb_core.bsonquery)) AND (documents_8491.shard_key_value OPERATOR(pg_catalog.=) $6)) RETURNING documentdb_api_internal.bson_update_returned_value(documents_8491.shard_key_value) AS updated) SELECT count(*) AS count, sum(updated) AS sum FROM u WHERE true
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+reset citus.log_remote_commands;
+select document from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"a":5}';
+                                            document                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"b":0}';
+ count 
+---------------------------------------------------------------------
+     8
+(1 row)
+
+-- update 1 without filters is unsupported for sharded collections
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                                                                                                                               p_result                                                                                                                                                                | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "50856066" }, "errmsg" : "A {multi:false} update on a sharded collection must contain an exact match on _id or target a single shard" } ] } | f
+(1 row)
+
+-- update 1 with shard key filters is supported for sharded collections
+set citus.log_remote_commands to on;
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":5}},"u":{"$set":{"b":0}},"multi":false}]}');
+NOTICE:  executing the command locally: SELECT documentdb_api_internal.update_worker($1, $2, $3, ($4)::documentdb_core.bson, ($5)::documentdb_core.bsonsequence, $6) AS update_worker FROM documentdb_data.documents_8491_849010 documents_8491 WHERE (shard_key_value OPERATOR(pg_catalog.=) '1786987034919379147'::bigint)
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+reset citus.log_remote_commands;
+select document from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"a":5}';
+                                            document                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"b":0}';
+ count 
+---------------------------------------------------------------------
+     8
+(1 row)
+
+-- update 1 with shard key filters is retryable
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":10}},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-2');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":10}},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-2');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select document from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"a":10}';
+                                             document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "10" }, "b" : { "$numberInt" : "1" } }
+(1 row)
+
+-- upsert 1 with shard key filters is retryable
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+                                                                                              p_result                                                                                              | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "11" } } ] } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+                                                                                              p_result                                                                                              | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "11" } } ] } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"c":33}';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"c":66}';
+ count 
+---------------------------------------------------------------------
+     0
+(1 row)
+
+-- third call is considered a new try
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"c":33}';
+ count 
+---------------------------------------------------------------------
+     0
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"c":66}';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+-- update 1 that does not match any rows is still retryable
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":15}},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-3');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+select 1 from documentdb_api.insert_one('bulkdb', 'updateme', '{"a":15,"_id":15}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":15}},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-3');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+-- update 1 is supported in the _id case even on sharded collections
+-- add an additional _id 10
+select 1 from documentdb_api.insert_one('bulkdb', 'updateme', '{"a":11,"_id":10}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+-- update first row where _id = 10
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":10,"b":{"$ne":0}},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":10}';
+ count 
+---------------------------------------------------------------------
+     2
+(1 row)
+
+-- update second row where _id = 10
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":10,"b":{"$ne":0}},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"b":0}';
+ count 
+---------------------------------------------------------------------
+     9
+(1 row)
+
+-- no more row where _id = 10 and b != 0
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":10,"b":{"$ne":0}},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+-- update 1 with with _id filter on a sharded collection is retryable
+-- add an additional _id 10
+select 1 from documentdb_api.insert_one('bulkdb', 'updateme', '{"a":11,"_id":10}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+-- update first row where _id = 10
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":10},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-4');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+-- second time is a noop
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":10},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-4');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select document from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":10}' ORDER BY object_id;
+                                             document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "11" }, "b" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "10" }, "b" : { "$numberInt" : "0" } }
+(2 rows)
+
+-- upsert on sharded collection with multi:true
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"b":33},"u":{"$set":{"b":33,"_id":11}},"multi":true,"upsert":true}]}');
+                                                                                                                                           p_result                                                                                                                                            | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] } | f
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"b":33}';
+ count 
+---------------------------------------------------------------------
+     0
+(1 row)
+
+-- updating shard key is disallowed when using multi:true
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"b":1},"u":{"$inc":{"a":1}},"multi":true}]}');
+                                                                                                                                                       p_result                                                                                                                                                       | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Invalid write detected. Please validate the collection and/or shard key being written to" } ] } | f
+(1 row)
+
+-- updating shard key is disallowed when using multi:true, even with a shard key filter
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$inc":{"a":1}},"multi":true}]}');
+                                                                                                                                                       p_result                                                                                                                                                       | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Invalid write detected. Please validate the collection and/or shard key being written to" } ] } | f
+(1 row)
+
+-- updating shard key is disallowed without a shard key filter
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"b":1},"u":{"$inc":{"a":1}},"multi":false}]}');
+                                                                                                                                                               p_result                                                                                                                                                                | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "50856066" }, "errmsg" : "A {multi:false} update on a sharded collection must contain an exact match on _id or target a single shard" } ] } | f
+(1 row)
+
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":1},"u":{"$inc":{"a":1}},"multi":false}]}');
+                                                                                                                                                            p_result                                                                                                                                                             | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "shard key value update is only supported when filtering by the full shard key and specifying multi:false" } ] } | f
+(1 row)
+
+-- updating shard key is allowed when multi:false and shard key filter is specified
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$inc":{"a":1}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"a":2}';
+ count 
+---------------------------------------------------------------------
+     2
+(1 row)
+
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":10},"u":{"$set":{"a":20}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"a":20}';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+-- empty shard key value is allowed (hash becomes 0)
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$unset":{"a":1}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+select document from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"b":1}';
+                                             document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "33" }, "b" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "11" }, "b" : { "$numberInt" : "1" } }
+(2 rows)
+
+-- update 1 is supported in the multiple identical _id case
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"$and":[{"_id":6},{"_id":6}]},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select document from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":6}';
+                                            document                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "6" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+-- update 1 is unsupported in the multiple distinct _id case
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"$and":[{"_id":6},{"_id":5}]},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                                                                                                                               p_result                                                                                                                                                                | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "50856066" }, "errmsg" : "A {multi:false} update on a sharded collection must contain an exact match on _id or target a single shard" } ] } | f
+(1 row)
+
+select document from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":6}';
+                                            document                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "6" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+-- test _id extraction from update
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":3}},"multi":false,"upsert":true}]}');
+                                                                                              p_result                                                                                              | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "33" } } ] } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":33, "b":3 }';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+set citus.log_remote_commands to on;
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":4}},"multi":false,"upsert":true}]}');
+NOTICE:  executing the command locally: SELECT documentdb_api_internal.update_worker($1, $2, $3, ($4)::documentdb_core.bson, ($5)::documentdb_core.bsonsequence, $6) AS update_worker FROM documentdb_data.documents_8491_849011 documents_8491 WHERE (shard_key_value OPERATOR(pg_catalog.=) '5243071450131145979'::bigint)
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+reset citus.log_remote_commands;
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":33, "b":4 }';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":1}},"multi":false,"upsert":true}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":33, "b":1 }';
+ count 
+---------------------------------------------------------------------
+     2
+(1 row)
+
+set citus.log_remote_commands to on;
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme", "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":2}},"multi":true,"upsert":true}]}');
+NOTICE:  executing the command locally: WITH u AS (UPDATE documentdb_data.documents_8491_849011 documents_8491 SET document = COALESCE(documentdb_api_internal.update_bson_document(documents_8491.document, ($1)::documentdb_core.bson, $2::documentdb_core.bson, ($3)::documentdb_core.bson, $4::documentdb_core.bson, NULL::text), documents_8491.document) WHERE (((documents_8491.document OPERATOR(documentdb_api_catalog.#=) '{ "_id" : { "$numberInt" : "33" } }'::documentdb_core.bsonquery) AND (documents_8491.document OPERATOR(documentdb_api_catalog.#=) '{ "a" : { "$numberInt" : "10" } }'::documentdb_core.bsonquery)) AND (documents_8491.shard_key_value OPERATOR(pg_catalog.=) $6) AND (documents_8491.object_id OPERATOR(documentdb_core.=) ($7)::documentdb_core.bson)) RETURNING documentdb_api_internal.bson_update_returned_value(documents_8491.shard_key_value) AS updated) SELECT count(*) AS count, sum(updated) AS sum FROM u WHERE true
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+reset citus.log_remote_commands;
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{"_id":33, "b":2 }';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+-- update with docs specified on special section
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme"}', '{ "":[{"q":{"_id":36, "a": 10 },"u":{"$set":{"bz":1}},"multi":false,"upsert":true}] }');
+                                                                                              p_result                                                                                              | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "36" } } ] } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{ "bz":1 }';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme"}', '{ "":[{"q":{"_id":37, "a": 10 },"u":{"$set":{"bz":1}},"multi":false,"upsert":true}] }');
+                                                                                              p_result                                                                                              | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "37" } } ] } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{ "bz":1 }';
+ count 
+---------------------------------------------------------------------
+     2
+(1 row)
+
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme"}', '{ "":[{"q":{"_id":36, "a": 10 },"u":{"$set":{"bz":2}},"multi":false }, {"q":{"_id":37, "a": 10 },"u":{"$set":{"bz":2}},"multi":false}] }');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "2" }, "n" : { "$numberInt" : "2" } } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('bulkdb', 'updateme') where document @@ '{ "bz":2 }';
+ count 
+---------------------------------------------------------------------
+     2
+(1 row)
+
+-- update with docs specified on both
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"updateme",  "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":2}},"multi":true,"upsert":true}]}', '{ "":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":1}},"multi":false,"upsert":true}] }');
+ERROR:  Unexpected further updates required
+select documentdb_api.drop_collection('bulkdb','updateme');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('update_bulk', 'test_sort_returning', '{"_id":1,"a":3,"b":7}');
+NOTICE:  creating collection
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('update_bulk', 'test_sort_returning', '{"_id":2,"a":2,"b":5}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('update_bulk', 'test_sort_returning', '{"_id":3,"a":1,"b":6}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+-- show that we validate "update" document even if collection doesn't exist
+-- i) ordered=true
+CALL documentdb_api.update_bulk(
+    'update_bulk',
+    '{
+        "update": "dne",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"b": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"d": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": true
+     }'
+);
+                                                                                                                                           p_result                                                                                                                                            | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "1" }, "code" : { "$numberInt" : "335544349" }, "errmsg" : "Modifying the path 'p' will result in a conflict occurring at 'p'" } ] } | f
+(1 row)
+
+-- ii) ordered=false
+CALL documentdb_api.update_bulk(
+    'update_bulk',
+    '{
+        "update": "dne",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"b": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"d": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": false
+     }'
+);
+                                                                                                                                                                                                                           p_result                                                                                                                                                                                                                           | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "1" }, "code" : { "$numberInt" : "335544349" }, "errmsg" : "Modifying the path 'p' will result in a conflict occurring at 'p'" }, { "index" : { "$numberInt" : "3" }, "code" : { "$numberInt" : "335544349" }, "errmsg" : "Modifying the path 'p' will result in a conflict occurring at 'p'" } ] } | f
+(1 row)
+
+-- show that we validate "query" document even if collection doesn't exist
+-- i) ordered=true
+CALL documentdb_api.update_bulk(
+    'update_bulk',
+    '{
+        "update": "dne",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$b": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$d": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": true
+     }'
+);
+                                                                                                                                                                         p_result                                                                                                                                                                          | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "1" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." } ] } | f
+(1 row)
+
+-- ii) ordered=false
+CALL documentdb_api.update_bulk(
+    'update_bulk',
+    '{
+        "update": "dne",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$b": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$d": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": false
+     }'
+);
+                                                                                                                                                                                                                                                                                       p_result                                                                                                                                                                                                                                                                                       | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "1" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." }, { "index" : { "$numberInt" : "3" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $d. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." } ] } | f
+(1 row)
+
+SELECT documentdb_api.create_collection('update_bulk', 'no_match');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- show that we validate "update" document even if we can't match any documents
+-- i) ordered=true
+CALL documentdb_api.update_bulk(
+    'update_bulk',
+    '{
+        "update": "no_match",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"b": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"d": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": true
+     }'
+);
+                                                                                                                                           p_result                                                                                                                                            | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "1" }, "code" : { "$numberInt" : "335544349" }, "errmsg" : "Modifying the path 'p' will result in a conflict occurring at 'p'" } ] } | f
+(1 row)
+
+-- ii) ordered=false
+CALL documentdb_api.update_bulk(
+    'update_bulk',
+    '{
+        "update": "no_match",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"b": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"d": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": false
+     }'
+);
+                                                                                                                                                                                                                           p_result                                                                                                                                                                                                                           | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "1" }, "code" : { "$numberInt" : "335544349" }, "errmsg" : "Modifying the path 'p' will result in a conflict occurring at 'p'" }, { "index" : { "$numberInt" : "3" }, "code" : { "$numberInt" : "335544349" }, "errmsg" : "Modifying the path 'p' will result in a conflict occurring at 'p'" } ] } | f
+(1 row)
+
+-- show that we validate "query" document even if we can't match any documents
+-- i) ordered=true
+CALL documentdb_api.update_bulk(
+    'update_bulk',
+    '{
+        "update": "no_match",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$b": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$d": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": true
+     }'
+);
+                                                                                                                                                                         p_result                                                                                                                                                                          | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "1" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." } ] } | f
+(1 row)
+
+-- ii) ordered=false
+CALL documentdb_api.update_bulk(
+    'update_bulk',
+    '{
+        "update": "no_match",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$b": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$d": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": false
+     }'
+);
+                                                                                                                                                                                                                                                                                       p_result                                                                                                                                                                                                                                                                                       | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "1" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." }, { "index" : { "$numberInt" : "3" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $d. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." } ] } | f
+(1 row)
+
+-- Validate multi and single updates with no-op return matched and updated as expected
+SELECT 1 FROM documentdb_api.insert_one('update_bulk', 'multi', '{"_id":1,"a":1,"b":1}');
+NOTICE:  creating collection
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('update_bulk', 'multi', '{"_id":2,"a":2,"b":1}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('update_bulk', 'multi', '{"_id":3,"a":3,"b":1}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('update_bulk', 'multi', '{"_id":4,"a":100,"b":1}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('update_bulk', 'multi', '{"_id":5,"a":200,"b":1}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('update_bulk', 'multi', '{"_id":6,"a":6,"b":1}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":3}},"multi":true,"upsert":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "2" }, "n" : { "$numberInt" : "6" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":7}},"multi":true,"upsert":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "4" }, "n" : { "$numberInt" : "6" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$min":{"a":150}},"multi":true,"upsert":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "6" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$min":{"a":99}},"multi":true,"upsert":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "2" }, "n" : { "$numberInt" : "6" } } | t
+(1 row)
+
+-- no match
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"multi", "updates":[{"q":{"b": 50 },"u":{"$min":{"a":99}},"multi":true,"upsert":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+-- all updated
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":500}},"multi":true,"upsert":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "6" }, "n" : { "$numberInt" : "6" } } | t
+(1 row)
+
+-- all match, no-op update
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":100}},"multi":true,"upsert":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "6" } } | t
+(1 row)
+
+-- single update
+SELECT 1 FROM documentdb_api.insert_one('update_bulk', 'single', '{"_id":1,"a":1,"b":1}');
+NOTICE:  creating collection
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":100}},"multi":false,"upsert":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"b": 1 },"u":{"$min":{"a":50}},"multi":false,"upsert":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+-- no-op update single
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"b": 1 },"u":{"$min":{"a":50}},"multi":false,"upsert":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":50}},"multi":false,"upsert":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+-- no match
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"b": 50 },"u":{"$max":{"a":50}},"multi":false,"upsert":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+--upsert with same field in querySpec 
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"_id":1234, "$and" : [{"x" : {"$eq": 1}}, {"x": 2}]},"u":{},"upsert":true}]}');
+                                                                                               p_result                                                                                               | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "1234" } } ] } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"_id":2345, "x": 1, "x.x": 1},"u":{},"upsert":true}]}');
+                                                                                               p_result                                                                                               | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "2345" } } ] } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"_id":3456, "x": {}, "x.x": 1},"u":{},"upsert":true}]}');
+                                                                                               p_result                                                                                               | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "3456" } } ] } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"_id":4567, "x": {"x": 1}, "x.x": 1},"u":{},"upsert":true}]}');
+                                                                                               p_result                                                                                               | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "4567" } } ] } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"_id":5678, "x": {"x": 1}, "x.y": 1},"u":{},"upsert":true}]}');
+                                                                                               p_result                                                                                               | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "5678" } } ] } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"_id":6789, "x": [1, {"x": 1}], "x.x": 1},"u":{},"upsert":true}]}');
+                                                                                               p_result                                                                                               | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "6789" } } ] } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"_id": 1, "_id": 2},"u":{},"upsert":true}]}');
+                                                                                                                                                      p_result                                                                                                                                                       | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "419430429" }, "errmsg" : "Unable to determine which query fields to set, as the path '_id' has been matched twice" } ] } | f
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"x": 1, "x": 5},"u":{"$set" : {"x":10}},"upsert":true}]}');
+                                                                                                                                                     p_result                                                                                                                                                      | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "419430429" }, "errmsg" : "Unable to determine which query fields to set, as the path 'x' has been matched twice" } ] } | f
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"_id": 1, "_id.b": 2},"u":{"_id":3, "a":4},"upsert":true}]}');
+                                                                                                                                                     p_result                                                                                                                                                      | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "603979805" }, "errmsg" : "Invalid path '_id.b'. Please specify the full '_id' field value instead of a sub-path" } ] } | f
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"_idab.b": 2},"u":{"_id":3, "a":4},"upsert":true}]}');
+                                                                                             p_result                                                                                              | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "3" } } ] } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"_id.c": 2},"u":{"_id":3, "a":4},"upsert":true}]}');
+                                                                                                                                                     p_result                                                                                                                                                      | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "603979805" }, "errmsg" : "Invalid path '_id.c'. Please specify the full '_id' field value instead of a sub-path" } ] } | f
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"_id": 1, "_id": 2},"u":{"_id":3},"upsert":true}]}');
+                                                                                                                                                      p_result                                                                                                                                                       | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "419430429" }, "errmsg" : "Unable to determine which query fields to set, as the path '_id' has been matched twice" } ] } | f
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"_id": 1, "_id": 2},"u":{"$set" : {"_id":3} },"upsert":true}]}');
+                                                                                                                                                      p_result                                                                                                                                                       | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "419430429" }, "errmsg" : "Unable to determine which query fields to set, as the path '_id' has been matched twice" } ] } | f
+(1 row)
+
+-- array filters sent to final update command.
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"_id": 134111, "b": [ 5, 2, 4 ] },"u":{"$set" : {"b.$[a]":3} },"upsert":true, "arrayFilters": [ { "a": 2 } ]}]}');
+                                                                                                p_result                                                                                                | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "134111" } } ] } | t
+(1 row)
+
+SELECT documentdb_api.insert_one('update_bulk', 'multi', '{ "_id": 134112, "blah": [ 5, 1, 4 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('update_bulk', 'multi', '{ "_id": 134113, "blah": [ 6, 3, 1 ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"multi", "updates":[{"q":{"blah": 1 },"u":{"$max":{"blah.$[a]":99}},"multi":true,"upsert":false, "arrayFilters": [ { "a": 1 } ]}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "2" }, "n" : { "$numberInt" : "2" } } | t
+(1 row)
+
+-- no match here.
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"multi", "updates":[{"q":{"blah": 1 },"u":{"$max":{"blah.$[a]":99}},"multi":false,"upsert":false, "arrayFilters": [ { "a": 1 } ]}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+-- updates one of the two.
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"multi", "updates":[{"q":{"blah": 99 },"u":{"$max":{"blah.$[a]":109}},"multi":false,"upsert":false, "arrayFilters": [ { "a": 99 } ]}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+-- test replace with upsert
+CALL documentdb_api.update_bulk('bulktest@', '{ "update" : "shell_wc_a", "ordered" : true, "updates" : [ { "q" : { "_id" : 1.0 }, "u" : { "_id" : 1.0 }, "multi" : false, "upsert" : true } ] }');
+NOTICE:  creating collection
+                                                                                                p_result                                                                                                | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberDouble" : "1.0" } } ] } | t
+(1 row)
+
+--upsert with $expr
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"$and" : [{"$expr" : {"$eq": ["$a",1]}}]},"u":{},"upsert":true}]}');
+                                                                                                                                                         p_result                                                                                                                                                          | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "50593821" }, "errmsg" : "Use of the $expr operator is not permitted within the query predicate for an upsert operation." } ] } | f
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"$or" : [{"$expr" : {"$gt": ["$b",1]}}, {"x": 2}]},"u":{"$set" : {"a": 10}},"upsert":true}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"$or" : [{"$expr" : {"$gte": ["$c", 100]}}]},"u":{"$set": {"a" :10}},"upsert":true}]}');
+                                                                                                                                                         p_result                                                                                                                                                          | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "50593821" }, "errmsg" : "Use of the $expr operator is not permitted within the query predicate for an upsert operation." } ] } | f
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"$or" : [{"$or" : [{"$expr" : {"$gte": ["$c", 100]}}]}]},"u":{"$set": {"a" :10}},"upsert":true}]}');
+                                                                                                                                                         p_result                                                                                                                                                          | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "50593821" }, "errmsg" : "Use of the $expr operator is not permitted within the query predicate for an upsert operation." } ] } | f
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"$and" : [{"$or" : [{"x": 10},{"$expr" : {"$gte": ["$c", 100]}}, {"y": 10}]}]},"u":{"$set": {"a" :10}},"upsert":true}]}');
+                                                                                                                                                         p_result                                                                                                                                                          | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "50593821" }, "errmsg" : "Use of the $expr operator is not permitted within the query predicate for an upsert operation." } ] } | f
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"$expr": {"$gt" : ["$x",10]}},"u":{},"upsert":true}]}');
+                                                                                                                                                         p_result                                                                                                                                                          | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "50593821" }, "errmsg" : "Use of the $expr operator is not permitted within the query predicate for an upsert operation." } ] } | f
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"single", "updates":[{"q":{"$and" : [{"a": 10}, {"$or" : [{"x": 10},{"$expr" : {"$gte": ["$c", 100]}}, {"y": 10}]}, {"b":11} ]},"u":{"$set": {"a" :10}},"upsert":true}]}');
+                                                                                                                                                         p_result                                                                                                                                                          | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "50593821" }, "errmsg" : "Use of the $expr operator is not permitted within the query predicate for an upsert operation." } ] } | f
+(1 row)
+
+-- below query will be updating document although we don't have @@ in query match but for below query only object id filter is sufficient.
+SELECT documentdb_api.insert_one('update_bulk','NonID',' { "_id" :  1, "b" : 1 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+set citus.log_remote_commands to on;
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"a":{"$eq":1}},"u":{"$set":{"b":0 }},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"a":{"$eq":1}, "_id" : 1},"u":{"$set":{"b":0 }},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"_id":{"$eq":1}, "a" : 1},"u":{"$set":{"b":0 }},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"_id":{"$gt":1}},"u":{"$set":{"b":0 }},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"_id":{"$lt":1}},"u":{"$set":{"b":0 }},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"_id":{"$in": []}},"u":{"$set":{"b":0 }},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"_id":{"$in": [2]}},"u":{"$set":{"b":0 }},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"_id":{"$in": [2,3,4]}},"u":{"$set":{"b":0 }},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"_id":{"$all": [1,2]}},"u":{"$set":{"b":0 }},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"$expr":{"$gt": ["$_id",1]}},"u":{"$set":{"b":0 }},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"$and":[{"_id":1},{"_id":2}]},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"$or":[{"_id":2}, {"a" : 1}]},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"$or":[{"b":2}]},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" } } | t
+(1 row)
+
+SELECT document from documentdb_api.collection('update_bulk', 'NonID');
+NOTICE:  executing the command locally: SELECT document FROM documentdb_data.documents_8499_849026 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '8499'::bigint)
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }
+(1 row)
+
+-- below query will be updating document although we don't have @@ in query match but for below query only object id filter is sufficient.
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"_id":{"$eq":1}},"u":{"$inc":{"b": 1 }},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"$and":[{"_id":1}]},"u":{"$inc":{"b":1}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"$or":[{"_id":1}, {"b" : 1}]},"u":{"$inc":{"b":1}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"$or":[{"_id":1}]},"u":{"$inc":{"b":1}},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"_id":{"$all": [1]}},"u":{"$inc":{"b":1 }},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{"update":"NonID", "updates":[{"q":{"_id":{"$all": [1,1]}},"u":{"$inc":{"b":1 }},"multi":false}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+SELECT document from documentdb_api.collection('update_bulk', 'NonID');
+NOTICE:  executing the command locally: SELECT document FROM documentdb_data.documents_8499_849026 collection WHERE (shard_key_value OPERATOR(pg_catalog.=) '8499'::bigint)
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "7" } }
+(1 row)
+
+-- regex operator and update
+RESET citus.log_remote_commands;
+RESET citus.log_local_commands;
+SELECT documentdb_api.insert_one('bulkdb', 'regexColl', '{ "_id" : 1, "Login": "robert.bean@networkrail.co.uk", "RefreshTokens": [ ] }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('bulkdb', 'regexColl', '{ "_id" : 2, "Login": "peter.ramesh@networkrail.co.uk", "RefreshTokens": [ ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('bulkdb', 'regexColl', '{ "_id" : 3, "Login": "picop1@test.co.uk", "RefreshTokens": [ ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('bulkdb', 'regexColl', '{ "_id" : 4, "Login": "peter.claxton@networkrail.co.uk", "RefreshTokens": [ ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+CALL documentdb_api.update_bulk('bulkdb', '{"update":"regexColl", "updates":[{ "q" : { "Login" : { "$regularExpression" : { "pattern" : "^picop1@test\\.co\\.uk$", "options" : "i" } } },"u":{"$addToSet": { "RefreshTokens": { "RefreshToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImYxNDNhY2ZmMzNjODQ" } }}}]}');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+SELECT document from documentdb_api.collection('bulkdb', 'regexColl');
+                                                                            document                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "Login" : "robert.bean@networkrail.co.uk", "RefreshTokens" : [  ] }
+ { "_id" : { "$numberInt" : "2" }, "Login" : "peter.ramesh@networkrail.co.uk", "RefreshTokens" : [  ] }
+ { "_id" : { "$numberInt" : "3" }, "Login" : "picop1@test.co.uk", "RefreshTokens" : [ { "RefreshToken" : "eyJhbGciOiJSUzI1NiIsImtpZCI6ImYxNDNhY2ZmMzNjODQ" } ] }
+ { "_id" : { "$numberInt" : "4" }, "Login" : "peter.claxton@networkrail.co.uk", "RefreshTokens" : [  ] }
+(4 rows)
+
+-- test update with upsert
+set documentdb.useLocalExecutionShardQueries to off;
+CALL documentdb_api.update_bulk('update_bulk', '{ "update": "single", "updates": [ { "q": { "_id":8010 }, "u": { "value": "1" }, "upsert": true }] }');
+                                                                                               p_result                                                                                               | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "8010" } } ] } | t
+(1 row)
+
+SELECT documentdb_api.shard_collection('update_bulk', 'single', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', '{ "update": "single", "updates": [ { "q": { "_id":8011 }, "u": { "value": "1" }, "upsert": true }] }');
+                                                                                               p_result                                                                                               | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" }, "upserted" : [ { "index" : { "$numberInt" : "0" }, "_id" : { "$numberInt" : "8011" } } ] } | t
+(1 row)
+
+-- test update for upsert error cases
+-- this inserts the document
+CALL documentdb_api.update_bulk('update_bulk', '{ "update": "single", "updates": [ { "q": { "_id":8010 }, "u": { "value": "1" }, "upsert": true }] }');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+-- this will collide and produce a unique conflict.
+CALL documentdb_api.update_bulk('update_bulk', '{ "update": "single", "updates": [ { "q": { "value": "1123" }, "u": { "_id": 8010 }, "upsert": true }] }');
+                                                                                                                                               p_result                                                                                                                                                | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "50856066" }, "errmsg" : "An {upsert:true} update on a sharded collection must target a single shard" } ] } | f
+(1 row)
+
+-- test update for upsert error cases
+-- this inserts the document
+CALL documentdb_api.update_bulk('update_bulk', '{ "update": "single", "updates": [ { "q": { "_id":8010 }, "u": { "value": "1" }, "upsert": true }] }');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+-- this will collide and produce a unique conflict.
+CALL documentdb_api.update_bulk('update_bulk', '{ "update": "single", "updates": [ { "q": { "value": "21020" }, "u": { "$set": { "_id": 8010 } }, "upsert": true, "multi": true }] }');
+                                                                                                                                           p_result                                                                                                                                            | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] } | f
+(1 row)
+
+-- test update for upsert error cases
+-- this inserts the document
+CALL documentdb_api.update_bulk('update_bulk', '{ "update": "single", "updates": [ { "q": { "_id":8010 }, "u": { "value": "1" }, "upsert": true }] }');
+                                                  p_result                                                  | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "1" } } | t
+(1 row)
+
+-- this will collide and produce a unique conflict.
+CALL documentdb_api.update_bulk('update_bulk', '{ "update": "single", "updates": [ { "q": { "_id": 8010, "a": 5 }, "u": { "$set": { "c": 8010 } }, "upsert": true, "multi": true }] }');
+                                                                                                                                           p_result                                                                                                                                            | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "0" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] } | f
+(1 row)
+
+reset documentdb.useLocalExecutionShardQueries;
+-- update bulk transaction testing
+SELECT documentdb_api.insert_one('update_bulk', 'test_update_batch', '{ "_id": 1, "a": 1, "b": 1 }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('update_bulk', 'test_update_batch', '{ "_id": 2, "a": 1, "b": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('update_bulk', 'test_update_batch', '{ "_id": 3, "a": 1, "b": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT FORMAT('{ "update": "test_update_batch", "updates": [ %s ]}', string_agg('{ "q": { "_id": 1 }, "u": { "$inc": { "b": 1 } }}', ',' )) AS update_query FROM generate_series(1, 10) \gset
+-- update query with an invalid query in the middle
+SELECT FORMAT('{ "update": "test_update_batch", "updates": [ %s, { "q": { "$a": 1 }, "u": { "$inc": { "b": 1 } } }, %s ]}',
+    string_agg('{ "q": { "_id": 2 }, "u": { "$inc": { "b": 1 } }}', ',' ),
+    string_agg('{ "q": { "_id": 2 }, "u": { "$inc": { "b": 1 } }}', ',' )) AS update_query2 FROM generate_series(1, 5) \gset
+SELECT FORMAT('{ "update": "test_update_batch", "updates": [ %s, { "q": { "$a": 1 }, "u": { "$inc": { "b": 1 } } }, %s ], "ordered": false }',
+    string_agg('{ "q": { "_id": 3 }, "u": { "$inc": { "b": 1 } }}', ',' ),
+    string_agg('{ "q": { "_id": 3 }, "u": { "$inc": { "b": 1 } }}', ',' )) AS update_query3 FROM generate_series(1, 5) \gset
+SET client_min_messages TO DEBUG1;
+-- this one should have no commits logged here
+CALL documentdb_api.update_bulk('update_bulk', :'update_query');
+                                                   p_result                                                   | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "10" }, "n" : { "$numberInt" : "10" } } | t
+(1 row)
+
+-- this should have 5 messages (1 try for the batch + rollback, and then 5 individual updates and stops).
+CALL documentdb_api.update_bulk('update_bulk', :'update_query2');
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+                                                                                                                                                                         p_result                                                                                                                                                                          | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "5" }, "n" : { "$numberInt" : "5" }, "writeErrors" : [ { "index" : { "$numberInt" : "5" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." } ] } | f
+(1 row)
+
+-- This should have 10 messages (1 try for the batch + rollback, and retry 9 more)
+CALL documentdb_api.update_bulk('update_bulk', :'update_query3');
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+                                                                                                                                                                          p_result                                                                                                                                                                           | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "10" }, "n" : { "$numberInt" : "10" }, "writeErrors" : [ { "index" : { "$numberInt" : "5" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." } ] } | f
+(1 row)
+
+-- should have updated 10 times
+SELECT document FROM documentdb_api.collection('update_bulk', 'test_update_batch') ORDER BY object_id;
+                                            document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "11" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "11" } }
+(3 rows)
+
+-- reduce batch to 8
+set documentdb.batchWriteSubTransactionCount to 8;
+-- This should have 1 commit message (1 for batchsize of 8 )
+CALL documentdb_api.update_bulk('update_bulk', :'update_query');
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+                                                   p_result                                                   | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "10" }, "n" : { "$numberInt" : "10" } } | t
+(1 row)
+
+-- this should have 5 messages (1 try for the batch + rollback, and then 5 individual updates and stops).
+CALL documentdb_api.update_bulk('update_bulk', :'update_query2');
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+                                                                                                                                                                         p_result                                                                                                                                                                          | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "5" }, "n" : { "$numberInt" : "5" }, "writeErrors" : [ { "index" : { "$numberInt" : "5" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." } ] } | f
+(1 row)
+
+-- This should have 9 messages (1 try for the batch + rollback, and retry 8 more)
+CALL documentdb_api.update_bulk('update_bulk', :'update_query3');
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+                                                                                                                                                                          p_result                                                                                                                                                                           | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "10" }, "n" : { "$numberInt" : "10" }, "writeErrors" : [ { "index" : { "$numberInt" : "5" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." } ] } | f
+(1 row)
+
+-- still increments
+SELECT document FROM documentdb_api.collection('update_bulk', 'test_update_batch') ORDER BY object_id;
+                                            document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "21" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "11" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "21" } }
+(3 rows)
+
+-- now reduce to 3
+set documentdb.batchWriteSubTransactionCount to 3;
+-- This should have 3 commit message (1 for each batchsize of 3)
+CALL documentdb_api.update_bulk('update_bulk', :'update_query');
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+                                                   p_result                                                   | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "10" }, "n" : { "$numberInt" : "10" } } | t
+(1 row)
+
+-- this should have 4 messages (1 for success, 1 try for the batch + rollback, and then 2 individual updates and stops).
+CALL documentdb_api.update_bulk('update_bulk', :'update_query2');
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+                                                                                                                                                                         p_result                                                                                                                                                                          | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "5" }, "n" : { "$numberInt" : "5" }, "writeErrors" : [ { "index" : { "$numberInt" : "5" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." } ] } | f
+(1 row)
+
+-- this should have 7 messages (1 for success, 1 try for batch and rollback, and 5 more tries).
+CALL documentdb_api.update_bulk('update_bulk', :'update_query3');
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+                                                                                                                                                                          p_result                                                                                                                                                                           | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "10" }, "n" : { "$numberInt" : "10" }, "writeErrors" : [ { "index" : { "$numberInt" : "5" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." } ] } | f
+(1 row)
+
+-- still increments
+SELECT document FROM documentdb_api.collection('update_bulk', 'test_update_batch') ORDER BY object_id;
+                                            document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "31" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "16" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "31" } }
+(3 rows)
+
+-- disable local writes
+set documentdb.useLocalExecutionShardQueries to off;
+-- These should all have 4 commit message (1 for each batchsize of 3, and 1 for the last one)
+CALL documentdb_api.update_bulk('update_bulk', :'update_query');
+DEBUG:  executing " SELECT documentdb_api_internal.update_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_8501 WHERE shard_key_value = 8501" via SPI
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  executing " SELECT documentdb_api_internal.update_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_8501 WHERE shard_key_value = 8501" via SPI
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  executing " SELECT documentdb_api_internal.update_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_8501 WHERE shard_key_value = 8501" via SPI
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  executing " SELECT documentdb_api_internal.update_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_8501 WHERE shard_key_value = 8501" via SPI
+                                                   p_result                                                   | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "10" }, "n" : { "$numberInt" : "10" } } | t
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', :'update_query2');
+DEBUG:  executing " SELECT documentdb_api_internal.update_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_8501 WHERE shard_key_value = 8501" via SPI
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  executing " SELECT documentdb_api_internal.update_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_8501 WHERE shard_key_value = 8501" via SPI
+                                                                                                                                                                         p_result                                                                                                                                                                          | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "5" }, "n" : { "$numberInt" : "5" }, "writeErrors" : [ { "index" : { "$numberInt" : "5" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." } ] } | f
+(1 row)
+
+CALL documentdb_api.update_bulk('update_bulk', :'update_query3');
+DEBUG:  executing " SELECT documentdb_api_internal.update_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_8501 WHERE shard_key_value = 8501" via SPI
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  executing " SELECT documentdb_api_internal.update_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_8501 WHERE shard_key_value = 8501" via SPI
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  executing " SELECT documentdb_api_internal.update_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_8501 WHERE shard_key_value = 8501" via SPI
+DEBUG:  Commiting intermediate state and reacquiring collection lock
+DEBUG:  executing " SELECT documentdb_api_internal.update_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_8501 WHERE shard_key_value = 8501" via SPI
+                                                                                                                                                                          p_result                                                                                                                                                                           | p_success 
+---------------------------------------------------------------------
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "10" }, "n" : { "$numberInt" : "10" }, "writeErrors" : [ { "index" : { "$numberInt" : "5" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField." } ] } | f
+(1 row)
+
+-- still increments
+SELECT document FROM documentdb_api.collection('update_bulk', 'test_update_batch') ORDER BY object_id;
+                                            document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "41" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "21" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "41" } }
+(3 rows)
+

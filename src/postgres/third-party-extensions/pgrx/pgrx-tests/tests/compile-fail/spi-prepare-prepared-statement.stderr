@@ -1,0 +1,18 @@
+error[E0277]: the trait bound `PreparedStatement<'_>: spi::query::PreparableQuery<'_>` is not satisfied
+  --> tests/compile-fail/spi-prepare-prepared-statement.rs:10:24
+   |
+10 |         client.prepare(stmt, None);
+   |                ------- ^^^^ the trait `spi::query::PreparableQuery<'_>` is not implemented for `PreparedStatement<'_>`
+   |                |
+   |                required by a bound introduced by this call
+   |
+   = help: the following other types implement trait `spi::query::PreparableQuery<'conn>`:
+             &CStr
+             &CString
+             &std::string::String
+             &str
+note: required by a bound in `SpiClient::<'conn>::prepare`
+  --> $WORKSPACE/pgrx/src/spi/client.rs
+   |
+   |     pub fn prepare<Q: PreparableQuery<'conn>>(
+   |                       ^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `SpiClient::<'conn>::prepare`

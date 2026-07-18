@@ -1,0 +1,20 @@
+# Function to check if the marker file exists
+check_marker_file() {
+    MARKER_FILE="{{tmp_directory}}/.reboot-required"
+
+    if [ -f "$MARKER_FILE" ]; then
+        echo "Marker file exists: $MARKER_FILE"
+        return 0  # Success, file exists
+    else
+        echo "Marker file does not exist: $MARKER_FILE"
+        return 1  # Failure, file does not exist
+    fi
+}
+
+if check_marker_file; then
+    echo "[FAIL] Reboot is still scheduled."
+    add_result "REBOOT REQUIRED" "FAIL" "Marker file still present"
+else
+    echo "Reboot requirement cleared."
+    add_result "REBOOT REQUIRED" "PASS" "No Marker file present"
+fi

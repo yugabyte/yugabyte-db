@@ -1,0 +1,863 @@
+-- directory paths and dlsuffix are passed to us in environment variables
+\getenv libdir PG_LIBDIR
+\getenv dlsuffix PG_DLSUFFIX
+\set regresslib :libdir '/regress' :dlsuffix
+--
+-- num_nulls()
+--
+SELECT num_nonnulls(NULL);
+ num_nonnulls 
+--------------
+            0
+(1 row)
+
+SELECT num_nonnulls('1');
+ num_nonnulls 
+--------------
+            1
+(1 row)
+
+SELECT num_nonnulls(NULL::text);
+ num_nonnulls 
+--------------
+            0
+(1 row)
+
+SELECT num_nonnulls(NULL::text, NULL::int);
+ num_nonnulls 
+--------------
+            0
+(1 row)
+
+SELECT num_nonnulls(1, 2, NULL::text, NULL::point, '', int8 '9', 1.0 / NULL);
+ num_nonnulls 
+--------------
+            4
+(1 row)
+
+SELECT num_nonnulls(VARIADIC '{1,2,NULL,3}'::int[]);
+ num_nonnulls 
+--------------
+            3
+(1 row)
+
+SELECT num_nonnulls(VARIADIC '{"1","2","3","4"}'::text[]);
+ num_nonnulls 
+--------------
+            4
+(1 row)
+
+SELECT num_nonnulls(VARIADIC ARRAY(SELECT CASE WHEN i <> 40 THEN i END FROM generate_series(1, 100) i));
+ num_nonnulls 
+--------------
+           99
+(1 row)
+
+SELECT num_nulls(NULL);
+ num_nulls 
+-----------
+         1
+(1 row)
+
+SELECT num_nulls('1');
+ num_nulls 
+-----------
+         0
+(1 row)
+
+SELECT num_nulls(NULL::text);
+ num_nulls 
+-----------
+         1
+(1 row)
+
+SELECT num_nulls(NULL::text, NULL::int);
+ num_nulls 
+-----------
+         2
+(1 row)
+
+SELECT num_nulls(1, 2, NULL::text, NULL::point, '', int8 '9', 1.0 / NULL);
+ num_nulls 
+-----------
+         3
+(1 row)
+
+SELECT num_nulls(VARIADIC '{1,2,NULL,3}'::int[]);
+ num_nulls 
+-----------
+         1
+(1 row)
+
+SELECT num_nulls(VARIADIC '{"1","2","3","4"}'::text[]);
+ num_nulls 
+-----------
+         0
+(1 row)
+
+SELECT num_nulls(VARIADIC ARRAY(SELECT CASE WHEN i <> 40 THEN i END FROM generate_series(1, 100) i));
+ num_nulls 
+-----------
+         1
+(1 row)
+
+-- special cases
+SELECT num_nonnulls(VARIADIC NULL::text[]);
+ num_nonnulls 
+--------------
+             
+(1 row)
+
+SELECT num_nonnulls(VARIADIC '{}'::int[]);
+ num_nonnulls 
+--------------
+            0
+(1 row)
+
+SELECT num_nulls(VARIADIC NULL::text[]);
+ num_nulls 
+-----------
+          
+(1 row)
+
+SELECT num_nulls(VARIADIC '{}'::int[]);
+ num_nulls 
+-----------
+         0
+(1 row)
+
+-- should fail, one or more arguments is required
+SELECT num_nonnulls();
+ERROR:  function num_nonnulls() does not exist
+LINE 1: SELECT num_nonnulls();
+               ^
+DETAIL:  No function of that name accepts the given number of arguments.
+SELECT num_nulls();
+ERROR:  function num_nulls() does not exist
+LINE 1: SELECT num_nulls();
+               ^
+DETAIL:  No function of that name accepts the given number of arguments.
+--
+-- error_on_null()
+--
+SELECT error_on_null(1);
+ error_on_null 
+---------------
+             1
+(1 row)
+
+SELECT error_on_null(NULL::int);
+ERROR:  null value not allowed
+SELECT error_on_null(NULL::int[]);
+ERROR:  null value not allowed
+SELECT error_on_null('{1,2,NULL,3}'::int[]);
+ error_on_null 
+---------------
+ {1,2,NULL,3}
+(1 row)
+
+SELECT error_on_null(ROW(1,NULL::int));
+ error_on_null 
+---------------
+ (1,)
+(1 row)
+
+SELECT error_on_null(ROW(NULL,NULL));
+ error_on_null 
+---------------
+ (,)
+(1 row)
+
+--
+-- canonicalize_path()
+--
+CREATE FUNCTION test_canonicalize_path(text)
+   RETURNS text
+   AS :'regresslib'
+   LANGUAGE C STRICT IMMUTABLE;
+SELECT test_canonicalize_path('/');
+ test_canonicalize_path 
+------------------------
+ /
+(1 row)
+
+SELECT test_canonicalize_path('/./abc/def/');
+ test_canonicalize_path 
+------------------------
+ /abc/def
+(1 row)
+
+SELECT test_canonicalize_path('/./../abc/def');
+ test_canonicalize_path 
+------------------------
+ /abc/def
+(1 row)
+
+SELECT test_canonicalize_path('/./../../abc/def/');
+ test_canonicalize_path 
+------------------------
+ /abc/def
+(1 row)
+
+SELECT test_canonicalize_path('/abc/.././def/ghi');
+ test_canonicalize_path 
+------------------------
+ /def/ghi
+(1 row)
+
+SELECT test_canonicalize_path('/abc/./../def/ghi//');
+ test_canonicalize_path 
+------------------------
+ /def/ghi
+(1 row)
+
+SELECT test_canonicalize_path('/abc/def/../..');
+ test_canonicalize_path 
+------------------------
+ /
+(1 row)
+
+SELECT test_canonicalize_path('/abc/def/../../..');
+ test_canonicalize_path 
+------------------------
+ /
+(1 row)
+
+SELECT test_canonicalize_path('/abc/def/../../../../ghi/jkl');
+ test_canonicalize_path 
+------------------------
+ /ghi/jkl
+(1 row)
+
+SELECT test_canonicalize_path('.');
+ test_canonicalize_path 
+------------------------
+ .
+(1 row)
+
+SELECT test_canonicalize_path('./');
+ test_canonicalize_path 
+------------------------
+ .
+(1 row)
+
+SELECT test_canonicalize_path('./abc/..');
+ test_canonicalize_path 
+------------------------
+ .
+(1 row)
+
+SELECT test_canonicalize_path('abc/../');
+ test_canonicalize_path 
+------------------------
+ .
+(1 row)
+
+SELECT test_canonicalize_path('abc/../def');
+ test_canonicalize_path 
+------------------------
+ def
+(1 row)
+
+SELECT test_canonicalize_path('..');
+ test_canonicalize_path 
+------------------------
+ ..
+(1 row)
+
+SELECT test_canonicalize_path('../abc/def');
+ test_canonicalize_path 
+------------------------
+ ../abc/def
+(1 row)
+
+SELECT test_canonicalize_path('../abc/..');
+ test_canonicalize_path 
+------------------------
+ ..
+(1 row)
+
+SELECT test_canonicalize_path('../abc/../def');
+ test_canonicalize_path 
+------------------------
+ ../def
+(1 row)
+
+SELECT test_canonicalize_path('../abc/../../def/ghi');
+ test_canonicalize_path 
+------------------------
+ ../../def/ghi
+(1 row)
+
+SELECT test_canonicalize_path('./abc/./def/.');
+ test_canonicalize_path 
+------------------------
+ abc/def
+(1 row)
+
+SELECT test_canonicalize_path('./abc/././def/.');
+ test_canonicalize_path 
+------------------------
+ abc/def
+(1 row)
+
+SELECT test_canonicalize_path('./abc/./def/.././ghi/../../../jkl/mno');
+ test_canonicalize_path 
+------------------------
+ ../jkl/mno
+(1 row)
+
+--
+-- pg_log_backend_memory_contexts()
+--
+-- Memory contexts are logged and they are not returned to the function.
+-- Furthermore, their contents can vary depending on the timing. However,
+-- we can at least verify that the code doesn't fail, and that the
+-- permissions are set properly.
+--
+SELECT pg_log_backend_memory_contexts(pg_backend_pid());
+ pg_log_backend_memory_contexts 
+--------------------------------
+ t
+(1 row)
+
+SELECT pg_log_backend_memory_contexts(pid) FROM pg_stat_activity
+  WHERE backend_type = 'checkpointer';
+ pg_log_backend_memory_contexts 
+--------------------------------
+ t
+(1 row)
+
+CREATE ROLE regress_log_memory;
+SELECT has_function_privilege('regress_log_memory',
+  'pg_log_backend_memory_contexts(integer)', 'EXECUTE'); -- no
+ has_function_privilege 
+------------------------
+ f
+(1 row)
+
+GRANT EXECUTE ON FUNCTION pg_log_backend_memory_contexts(integer)
+  TO regress_log_memory;
+SELECT has_function_privilege('regress_log_memory',
+  'pg_log_backend_memory_contexts(integer)', 'EXECUTE'); -- yes
+ has_function_privilege 
+------------------------
+ t
+(1 row)
+
+SET ROLE regress_log_memory;
+SELECT pg_log_backend_memory_contexts(pg_backend_pid());
+ pg_log_backend_memory_contexts 
+--------------------------------
+ t
+(1 row)
+
+RESET ROLE;
+REVOKE EXECUTE ON FUNCTION pg_log_backend_memory_contexts(integer)
+  FROM regress_log_memory;
+DROP ROLE regress_log_memory;
+--
+-- Test some built-in SRFs
+--
+-- The outputs of these are variable, so we can't just print their results
+-- directly, but we can at least verify that the code doesn't fail.
+--
+select setting as segsize
+from pg_settings where name = 'wal_segment_size'
+\gset
+select count(*) > 0 as ok from pg_ls_waldir();
+ ok 
+----
+ t
+(1 row)
+
+-- Test ProjectSet as well as FunctionScan
+select count(*) > 0 as ok from (select pg_ls_waldir()) ss;
+ ok 
+----
+ t
+(1 row)
+
+-- Test not-run-to-completion cases.
+select * from pg_ls_waldir() limit 0;
+ name | size | modification 
+------+------+--------------
+(0 rows)
+
+select count(*) > 0 as ok from (select * from pg_ls_waldir() limit 1) ss;
+ ok 
+----
+ t
+(1 row)
+
+select (w).size = :segsize as ok
+from (select pg_ls_waldir() w) ss where length((w).name) = 24 limit 1;
+ ok 
+----
+ t
+(1 row)
+
+select count(*) >= 0 as ok from pg_ls_archive_statusdir();
+ ok 
+----
+ t
+(1 row)
+
+select count(*) >= 0 as ok from pg_ls_summariesdir();
+ ok 
+----
+ t
+(1 row)
+
+-- pg_read_file()
+select length(pg_read_file('postmaster.pid')) > 20;
+ ?column? 
+----------
+ t
+(1 row)
+
+select length(pg_read_file('postmaster.pid', 1, 20));
+ length 
+--------
+     20
+(1 row)
+
+-- Test missing_ok
+select pg_read_file('does not exist'); -- error
+ERROR:  could not open file "does not exist" for reading: No such file or directory
+select pg_read_file('does not exist', true) IS NULL; -- ok
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Test invalid argument
+select pg_read_file('does not exist', 0, -1); -- error
+ERROR:  requested length cannot be negative
+select pg_read_file('does not exist', 0, -1, true); -- error
+ERROR:  requested length cannot be negative
+-- pg_read_binary_file()
+select length(pg_read_binary_file('postmaster.pid')) > 20;
+ ?column? 
+----------
+ t
+(1 row)
+
+select length(pg_read_binary_file('postmaster.pid', 1, 20));
+ length 
+--------
+     20
+(1 row)
+
+-- Test missing_ok
+select pg_read_binary_file('does not exist'); -- error
+ERROR:  could not open file "does not exist" for reading: No such file or directory
+select pg_read_binary_file('does not exist', true) IS NULL; -- ok
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Test invalid argument
+select pg_read_binary_file('does not exist', 0, -1); -- error
+ERROR:  requested length cannot be negative
+select pg_read_binary_file('does not exist', 0, -1, true); -- error
+ERROR:  requested length cannot be negative
+-- pg_stat_file()
+select size > 20, isdir from pg_stat_file('postmaster.pid');
+ ?column? | isdir 
+----------+-------
+ t        | f
+(1 row)
+
+-- pg_ls_dir()
+select * from (select pg_ls_dir('.') a) a where a = 'base' limit 1;
+  a   
+------
+ base
+(1 row)
+
+-- Test missing_ok (second argument)
+select pg_ls_dir('does not exist', false, false); -- error
+ERROR:  could not open directory "does not exist": No such file or directory
+select pg_ls_dir('does not exist', true, false); -- ok
+ pg_ls_dir 
+-----------
+(0 rows)
+
+-- Test include_dot_dirs (third argument)
+select count(*) = 1 as dot_found
+  from pg_ls_dir('.', false, true) as ls where ls = '.';
+ dot_found 
+-----------
+ t
+(1 row)
+
+select count(*) = 1 as dot_found
+  from pg_ls_dir('.', false, false) as ls where ls = '.';
+ dot_found 
+-----------
+ f
+(1 row)
+
+-- pg_timezone_names()
+select * from (select (pg_timezone_names()).name) ptn where name='UTC' limit 1;
+ name 
+------
+ UTC
+(1 row)
+
+-- pg_tablespace_databases()
+select count(*) > 0 from
+  (select pg_tablespace_databases(oid) as pts from pg_tablespace
+   where spcname = 'pg_default') pts
+  join pg_database db on pts.pts = db.oid;
+ ?column? 
+----------
+ t
+(1 row)
+
+--
+-- Test replication slot directory functions
+--
+CREATE ROLE regress_slot_dir_funcs;
+-- Not available by default.
+SELECT has_function_privilege('regress_slot_dir_funcs',
+  'pg_ls_logicalsnapdir()', 'EXECUTE');
+ has_function_privilege 
+------------------------
+ f
+(1 row)
+
+SELECT has_function_privilege('regress_slot_dir_funcs',
+  'pg_ls_logicalmapdir()', 'EXECUTE');
+ has_function_privilege 
+------------------------
+ f
+(1 row)
+
+SELECT has_function_privilege('regress_slot_dir_funcs',
+  'pg_ls_replslotdir(text)', 'EXECUTE');
+ has_function_privilege 
+------------------------
+ f
+(1 row)
+
+GRANT pg_monitor TO regress_slot_dir_funcs;
+-- Role is now part of pg_monitor, so these are available.
+SELECT has_function_privilege('regress_slot_dir_funcs',
+  'pg_ls_logicalsnapdir()', 'EXECUTE');
+ has_function_privilege 
+------------------------
+ t
+(1 row)
+
+SELECT has_function_privilege('regress_slot_dir_funcs',
+  'pg_ls_logicalmapdir()', 'EXECUTE');
+ has_function_privilege 
+------------------------
+ t
+(1 row)
+
+SELECT has_function_privilege('regress_slot_dir_funcs',
+  'pg_ls_replslotdir(text)', 'EXECUTE');
+ has_function_privilege 
+------------------------
+ t
+(1 row)
+
+DROP ROLE regress_slot_dir_funcs;
+--
+-- Test adding a support function to a subject function
+--
+CREATE FUNCTION my_int_eq(int, int) RETURNS bool
+  LANGUAGE internal STRICT IMMUTABLE PARALLEL SAFE
+  AS $$int4eq$$;
+-- By default, planner does not think that's selective
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1 a JOIN tenk1 b ON a.unique1 = b.unique1
+WHERE my_int_eq(a.unique2, 42);
+                  QUERY PLAN                  
+----------------------------------------------
+ Hash Join
+   Hash Cond: (b.unique1 = a.unique1)
+   ->  Seq Scan on tenk1 b
+   ->  Hash
+         ->  Seq Scan on tenk1 a
+               Filter: my_int_eq(unique2, 42)
+(6 rows)
+
+-- With support function that knows it's int4eq, we get a different plan
+CREATE FUNCTION test_support_func(internal)
+    RETURNS internal
+    AS :'regresslib', 'test_support_func'
+    LANGUAGE C STRICT;
+ALTER FUNCTION my_int_eq(int, int) SUPPORT test_support_func;
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1 a JOIN tenk1 b ON a.unique1 = b.unique1
+WHERE my_int_eq(a.unique2, 42);
+                   QUERY PLAN                    
+-------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on tenk1 a
+         Filter: my_int_eq(unique2, 42)
+   ->  Index Scan using tenk1_unique1 on tenk1 b
+         Index Cond: (unique1 = a.unique1)
+(5 rows)
+
+-- Also test non-default rowcount estimate
+CREATE FUNCTION my_gen_series(int, int) RETURNS SETOF integer
+  LANGUAGE internal STRICT IMMUTABLE PARALLEL SAFE
+  AS $$generate_series_int4$$
+  SUPPORT test_support_func;
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1 a JOIN my_gen_series(1,1000) g ON a.unique1 = g;
+               QUERY PLAN               
+----------------------------------------
+ Hash Join
+   Hash Cond: (g.g = a.unique1)
+   ->  Function Scan on my_gen_series g
+   ->  Hash
+         ->  Seq Scan on tenk1 a
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM tenk1 a JOIN my_gen_series(1,10) g ON a.unique1 = g;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Nested Loop
+   ->  Function Scan on my_gen_series g
+   ->  Index Scan using tenk1_unique1 on tenk1 a
+         Index Cond: (unique1 = g.g)
+(4 rows)
+
+--
+-- Test SupportRequestInlineInFrom request
+--
+CREATE FUNCTION test_inline_in_from_support_func(internal)
+    RETURNS internal
+    AS :'regresslib', 'test_inline_in_from_support_func'
+    LANGUAGE C STRICT;
+CREATE FUNCTION foo_from_bar(colname TEXT, tablename TEXT, filter TEXT)
+RETURNS SETOF TEXT
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+  sql TEXT;
+BEGIN
+  sql := format('SELECT %I::text FROM %I', colname, tablename);
+  IF filter IS NOT NULL THEN
+    sql := CONCAT(sql, format(' WHERE %I::text = $1', colname));
+  END IF;
+  RETURN QUERY EXECUTE sql USING filter;
+END;
+$function$ STABLE;
+ALTER FUNCTION foo_from_bar(TEXT, TEXT, TEXT)
+  SUPPORT test_inline_in_from_support_func;
+SELECT * FROM foo_from_bar('f1', 'text_tbl', NULL);
+   foo_from_bar    
+-------------------
+ doh!
+ hi de ho neighbor
+(2 rows)
+
+SELECT * FROM foo_from_bar('f1', 'text_tbl', 'doh!');
+ foo_from_bar 
+--------------
+ doh!
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM foo_from_bar('f1', 'text_tbl', NULL);
+      QUERY PLAN      
+----------------------
+ Seq Scan on text_tbl
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM foo_from_bar('f1', 'text_tbl', 'doh!');
+          QUERY PLAN           
+-------------------------------
+ Seq Scan on text_tbl
+   Filter: (f1 = 'doh!'::text)
+(2 rows)
+
+DROP FUNCTION foo_from_bar;
+-- Test functions for control data
+SELECT count(*) > 0 AS ok FROM pg_control_checkpoint();
+ ok 
+----
+ t
+(1 row)
+
+SELECT count(*) > 0 AS ok FROM pg_control_init();
+ ok 
+----
+ t
+(1 row)
+
+SELECT count(*) > 0 AS ok FROM pg_control_recovery();
+ ok 
+----
+ t
+(1 row)
+
+SELECT count(*) > 0 AS ok FROM pg_control_system();
+ ok 
+----
+ t
+(1 row)
+
+-- pg_split_walfile_name, pg_walfile_name & pg_walfile_name_offset
+SELECT * FROM pg_split_walfile_name(NULL);
+ segment_number | timeline_id 
+----------------+-------------
+                |            
+(1 row)
+
+SELECT * FROM pg_split_walfile_name('invalid');
+ERROR:  invalid WAL file name "invalid"
+SELECT segment_number > 0 AS ok_segment_number, timeline_id
+  FROM pg_split_walfile_name('000000010000000100000000');
+ ok_segment_number | timeline_id 
+-------------------+-------------
+ t                 |           1
+(1 row)
+
+SELECT segment_number > 0 AS ok_segment_number, timeline_id
+  FROM pg_split_walfile_name('ffffffFF00000001000000af');
+ ok_segment_number | timeline_id 
+-------------------+-------------
+ t                 |  4294967295
+(1 row)
+
+SELECT setting::int8 AS segment_size
+FROM pg_settings
+WHERE name = 'wal_segment_size'
+\gset
+SELECT segment_number, file_offset
+FROM pg_walfile_name_offset('0/0'::pg_lsn + :segment_size),
+     pg_split_walfile_name(file_name);
+ segment_number | file_offset 
+----------------+-------------
+              1 |           0
+(1 row)
+
+SELECT segment_number, file_offset
+FROM pg_walfile_name_offset('0/0'::pg_lsn + :segment_size + 1),
+     pg_split_walfile_name(file_name);
+ segment_number | file_offset 
+----------------+-------------
+              1 |           1
+(1 row)
+
+SELECT segment_number, file_offset = :segment_size - 1
+FROM pg_walfile_name_offset('0/0'::pg_lsn + :segment_size - 1),
+     pg_split_walfile_name(file_name);
+ segment_number | ?column? 
+----------------+----------
+              0 | t
+(1 row)
+
+-- pg_current_logfile
+CREATE ROLE regress_current_logfile;
+-- not available by default
+SELECT has_function_privilege('regress_current_logfile',
+  'pg_current_logfile()', 'EXECUTE');
+ has_function_privilege 
+------------------------
+ f
+(1 row)
+
+GRANT pg_monitor TO regress_current_logfile;
+-- role has privileges of pg_monitor and can execute the function
+SELECT has_function_privilege('regress_current_logfile',
+  'pg_current_logfile()', 'EXECUTE');
+ has_function_privilege 
+------------------------
+ t
+(1 row)
+
+DROP ROLE regress_current_logfile;
+-- pg_column_toast_chunk_id
+CREATE TABLE test_chunk_id (a TEXT, b TEXT STORAGE EXTERNAL);
+INSERT INTO test_chunk_id VALUES ('x', repeat('x', 8192));
+SELECT t.relname AS toastrel FROM pg_class c
+  LEFT JOIN pg_class t ON c.reltoastrelid = t.oid
+  WHERE c.relname = 'test_chunk_id'
+\gset
+SELECT pg_column_toast_chunk_id(a) IS NULL,
+  pg_column_toast_chunk_id(b) IN (SELECT chunk_id FROM pg_toast.:toastrel)
+  FROM test_chunk_id;
+ ?column? | ?column? 
+----------+----------
+ t        | t
+(1 row)
+
+DROP TABLE test_chunk_id;
+-- test stratnum translation support functions
+SELECT gist_translate_cmptype_common(7);
+ gist_translate_cmptype_common 
+-------------------------------
+                             3
+(1 row)
+
+SELECT gist_translate_cmptype_common(3);
+ gist_translate_cmptype_common 
+-------------------------------
+                            18
+(1 row)
+
+-- relpath tests
+CREATE FUNCTION test_relpath()
+    RETURNS void
+    AS :'regresslib'
+    LANGUAGE C;
+SELECT test_relpath();
+ test_relpath 
+--------------
+ 
+(1 row)
+
+-- pg_replication_origin.roname limit
+SELECT pg_replication_origin_create('regress_' || repeat('a', 505));
+ERROR:  replication origin name is too long
+DETAIL:  Replication origin names must be no longer than 512 bytes.
+-- pg_get_multixact_stats tests
+CREATE ROLE regress_multixact_funcs;
+-- Access granted for superusers.
+SELECT oldest_multixact IS NULL AS null_result FROM pg_get_multixact_stats();
+ null_result 
+-------------
+ f
+(1 row)
+
+-- Access revoked.
+SET ROLE regress_multixact_funcs;
+SELECT oldest_multixact IS NULL AS null_result FROM pg_get_multixact_stats();
+ null_result 
+-------------
+ t
+(1 row)
+
+RESET ROLE;
+-- Access granted for users with pg_monitor rights.
+GRANT pg_monitor TO regress_multixact_funcs;
+SET ROLE regress_multixact_funcs;
+SELECT oldest_multixact IS NULL AS null_result FROM pg_get_multixact_stats();
+ null_result 
+-------------
+ f
+(1 row)
+
+RESET ROLE;
+DROP ROLE regress_multixact_funcs;
+-- test instr_time nanosecond<->ticks conversion
+CREATE FUNCTION test_instr_time()
+    RETURNS bool
+    AS :'regresslib'
+    LANGUAGE C;
+SELECT test_instr_time();
+ test_instr_time 
+-----------------
+ t
+(1 row)
+

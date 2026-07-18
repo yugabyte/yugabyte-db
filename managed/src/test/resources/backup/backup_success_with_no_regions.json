@@ -1,0 +1,4 @@
+{
+    "snapshot_url":"s3://backups.yugabyte.com/test/common",
+    "backup_size_in_bytes":"124325"
+}

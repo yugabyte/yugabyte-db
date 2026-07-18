@@ -1,0 +1,46 @@
+{
+   "name": "PostgreSQL_Anonymizer",
+   "abstract": "Data Anonymization for Postgres",
+   "description": "Mask or replace sensitive data with Postgres.",
+   "version": "1.3.1",
+   "maintainer": [
+      "Damien Clochard <daamien@gmail.com>"
+   ],
+   "license": {
+      "PostgreSQL": "https://gitlab.com/dalibo/postgresql_anonymizer/blob/master/LICENSE.md"
+   },
+   "prereqs": {
+      "runtime": {
+         "requires": {
+            "PostgreSQL": "9.6.0"
+         }
+      }
+   },
+   "provides": {
+     "anon": {
+       "file": "anon.sql",
+       "docfile": "README.md",
+       "version": "1.3.1",
+       "abstract": "Data Anonymization for Postgres"
+     }
+   },
+   "resources": {
+      "homepage": "https://gitlab.com/dalibo/postgresql_anonymizer",
+      "bugtracker": {
+         "web": "https://gitlab.com/dalibo/postgresql_anonymizer/issues"
+      },
+      "repository": {
+        "url":  "https://gitlab.com/dalibo/postgresql_anonymizer.git",
+        "web":  "https://gitlab.com/dalibo/postgresql_anonymizer",
+        "type": "git"
+      }
+   },
+   "generated_by": "Damien Clochard",
+   "meta-spec": {
+      "version": "1.0.0",
+      "url": "http://pgxn.org/meta/spec.txt"
+   },
+   "tags": [
+      "Data Anonymization, Masking, GDPR"
+   ]
+}

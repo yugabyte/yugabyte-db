@@ -1,0 +1,5 @@
+description: Job schedule
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/JobSchedule.yaml"

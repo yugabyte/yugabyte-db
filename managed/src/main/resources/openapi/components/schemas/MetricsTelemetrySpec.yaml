@@ -1,0 +1,12 @@
+x-yba-api-visibility: internal
+title: MetricsTelemetrySpec
+description: Metrics export. Omit or set to null to disable.
+allOf:
+  - $ref: "./MetricsExportConfigBase.yaml"
+  - type: object
+    properties:
+      exporters:
+        description: List of exporters. Empty = no export.
+        type: array
+        items:
+          $ref: "./TelemetryExporterEntry.yaml"

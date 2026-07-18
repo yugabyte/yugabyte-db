@@ -1,0 +1,168 @@
+SET search_path TO documentdb_api_catalog, documentdb_core, public;
+SET documentdb.next_collection_id TO 900;
+SET documentdb.next_collection_index_id TO 900;
+SELECT documentdb_api.drop_collection('p_ixscan', 'parallel_scan');
+ drop_collection 
+-----------------
+ f
+(1 row)
+
+SELECT documentdb_api.create_collection('p_ixscan', 'parallel_scan');
+NOTICE:  creating collection
+ create_collection 
+-------------------
+ t
+(1 row)
+
+SELECT collection_id AS p_col FROM documentdb_api_catalog.collections WHERE database_name = 'p_ixscan' AND collection_name = 'parallel_scan' \gset
+-- disable autovacuum to have predicatability
+SELECT FORMAT('ALTER TABLE documentdb_data.documents_%s set (autovacuum_enabled = off, parallel_workers = 2)', :p_col) \gexec
+ALTER TABLE documentdb_data.documents_901 set (autovacuum_enabled = off, parallel_workers = 2)
+SELECT COUNT(documentdb_api.insert_one('p_ixscan', 'parallel_scan',  FORMAT('{ "_id": %s, "a": %s, "b": %s }', i, i, i)::bson)) FROM generate_series(1, 1000) AS i;
+ count 
+-------
+  1000
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'p_ixscan',
+    '{ "createIndexes": "parallel_scan", "indexes": [ { "key": { "a": 1 }, "name": "a_1", "enableCompositeTerm": true } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'p_ixscan',
+    '{ "createIndexes": "parallel_scan", "indexes": [ { "key": { "b": 1 }, "name": "b_1", "enableCompositeTerm": false } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+set documentdb.enableExtendedExplainPlans to on;
+set documentdb.enableIndexOrderbyPushdown to on;
+set enable_bitmapscan to off;
+SELECT documentdb_test_helpers.run_explain_and_trim(
+    $cmd$ EXPLAIN (COSTS OFF, ANALYZE ON, VERBOSE OFF, BUFFERS OFF, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('p_ixscan',
+        '{ "find": "parallel_scan", "filter": { "a": { "$gt": 10 } } }') $cmd$);
+                            run_explain_and_trim                             
+-----------------------------------------------------------------------------
+ Index Scan using _id_ on documents_901 collection (actual rows=990 loops=1)
+   Index Cond: (shard_key_value = '901'::bigint)
+   Filter: (document @> '{ "a" : { "$numberInt" : "10" } }'::bson)
+   Rows Removed by Filter: 10
+(4 rows)
+
+set parallel_tuple_cost to 0;
+set parallel_setup_cost to 0;
+set documentdb.enableCompositeParallelIndexScan to on;
+set documentdb.enableIndexOrderbyPushdown to on;
+set parallel_leader_participation to off;
+set enable_seqscan to off;
+set documentdb.forceParallelScanIfAvailable to on;
+SELECT documentdb_test_helpers.run_explain_and_trim(
+    $cmd$ EXPLAIN (COSTS OFF, ANALYZE ON, VERBOSE OFF, BUFFERS OFF, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('p_ixscan',
+        '{ "find": "parallel_scan", "filter": { "a": { "$gt": 10, "$lt": 50 } } }') $cmd$);
+                                                           run_explain_and_trim                                                            
+-------------------------------------------------------------------------------------------------------------------------------------------
+ Gather (actual rows=39 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Parallel Index Scan using a_1 on documents_901 collection (actual rows=xyz loops=2)
+         Index Cond: ((document @> '{ "a" : { "$numberInt" : "10" } }'::bson) AND (document @< '{ "a" : { "$numberInt" : "50" } }'::bson))
+(5 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim(
+    $cmd$ EXPLAIN (COSTS OFF, ANALYZE ON, VERBOSE OFF, BUFFERS OFF, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('p_ixscan',
+        '{ "find": "parallel_scan", "filter": { "a": { "$gt": 10, "$lt": 50 } }, "sort": { "a": -1 } }') $cmd$);
+                                                              run_explain_and_trim                                                               
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort (actual rows=39 loops=1)
+   Sort Key: (bson_orderby(document, '{ "a" : { "$numberInt" : "-1" } }'::bson)) USING >>> NULLS LAST
+   Sort Method: quicksort  Memory: xxxkB
+   ->  Gather (actual rows=39 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         ->  Parallel Index Scan using a_1 on documents_901 collection (actual rows=xyz loops=2)
+               Index Cond: ((document @> '{ "a" : { "$numberInt" : "10" } }'::bson) AND (document @< '{ "a" : { "$numberInt" : "50" } }'::bson))
+(8 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim(
+    $cmd$ EXPLAIN (COSTS OFF, ANALYZE ON, VERBOSE OFF, BUFFERS OFF, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('p_ixscan',
+        '{ "find": "parallel_scan", "filter": { "a": { "$gt": 10, "$lt": 50 } }, "sort": { "a": 1 } }') $cmd$);
+                                                              run_explain_and_trim                                                               
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort (actual rows=39 loops=1)
+   Sort Key: (bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
+   Sort Method: quicksort  Memory: xxxkB
+   ->  Gather (actual rows=39 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         ->  Parallel Index Scan using a_1 on documents_901 collection (actual rows=xyz loops=2)
+               Index Cond: ((document @> '{ "a" : { "$numberInt" : "10" } }'::bson) AND (document @< '{ "a" : { "$numberInt" : "50" } }'::bson))
+(8 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim(
+    $cmd$ EXPLAIN (COSTS OFF, ANALYZE ON, VERBOSE OFF, BUFFERS OFF, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('p_ixscan',
+        '{ "find": "parallel_scan", "sort": { "a": 1 } }') $cmd$);
+                                       run_explain_and_trim                                       
+--------------------------------------------------------------------------------------------------
+ Sort (actual rows=1000 loops=1)
+   Sort Key: (bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
+   Sort Method: quicksort  Memory: xxxkB
+   ->  Gather (actual rows=1000 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         ->  Parallel Index Scan using _id_ on documents_901 collection (actual rows=xyz loops=2)
+               Index Cond: (shard_key_value = '901'::bigint)
+(8 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim(
+    $cmd$ EXPLAIN (COSTS OFF, ANALYZE ON, VERBOSE OFF, BUFFERS OFF, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('p_ixscan',
+        '{ "find": "parallel_scan", "filter": { "b": { "$gt": 10, "$lt": 50 } } }') $cmd$);
+                                                                                                                                                       run_explain_and_trim                                                                                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Gather (actual rows=39 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Parallel Index Scan using _id_ on documents_901 collection (actual rows=xyz loops=2)
+         Index Cond: (shard_key_value = '901'::bigint)
+         Filter: ((document @<> '{ "b" : { "min" : { "$numberInt" : "10" }, "max" : { "$numberInt" : "50" }, "minInclusive" : false, "maxInclusive" : false } }'::bson) AND (document @<> '{ "b" : { "min" : { "$numberInt" : "10" }, "max" : { "$numberInt" : "50" }, "minInclusive" : false, "maxInclusive" : false } }'::bson))
+         Rows Removed by Filter: 480
+(7 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim(
+    $cmd$ EXPLAIN (COSTS OFF, ANALYZE ON, VERBOSE OFF, BUFFERS OFF, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('p_ixscan',
+        '{ "find": "parallel_scan", "filter": { "b": { "$gt": 10, "$lt": 50 } }, "sort": { "b": -1 } }') $cmd$);
+                                                                                                                                                          run_explain_and_trim                                                                                                                                                           
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort (actual rows=39 loops=1)
+   Sort Key: (bson_orderby(document, '{ "b" : { "$numberInt" : "-1" } }'::bson)) USING >>> NULLS LAST
+   Sort Method: quicksort  Memory: xxxkB
+   ->  Gather (actual rows=39 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         ->  Parallel Index Scan using _id_ on documents_901 collection (actual rows=xyz loops=2)
+               Index Cond: (shard_key_value = '901'::bigint)
+               Filter: ((document @<> '{ "b" : { "min" : { "$numberInt" : "10" }, "max" : { "$numberInt" : "50" }, "minInclusive" : false, "maxInclusive" : false } }'::bson) AND (document @<> '{ "b" : { "min" : { "$numberInt" : "10" }, "max" : { "$numberInt" : "50" }, "minInclusive" : false, "maxInclusive" : false } }'::bson))
+               Rows Removed by Filter: 480
+(10 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim(
+    $cmd$ EXPLAIN (COSTS OFF, ANALYZE ON, VERBOSE OFF, BUFFERS OFF, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('p_ixscan',
+        '{ "find": "parallel_scan", "filter": { "b": { "$gt": 10, "$lt": 50 } }, "sort": { "b": 1 } }') $cmd$);
+                                                                                                                                                          run_explain_and_trim                                                                                                                                                           
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort (actual rows=39 loops=1)
+   Sort Key: (bson_orderby(document, '{ "b" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
+   Sort Method: quicksort  Memory: xxxkB
+   ->  Gather (actual rows=39 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         ->  Parallel Index Scan using _id_ on documents_901 collection (actual rows=xyz loops=2)
+               Index Cond: (shard_key_value = '901'::bigint)
+               Filter: ((document @<> '{ "b" : { "min" : { "$numberInt" : "10" }, "max" : { "$numberInt" : "50" }, "minInclusive" : false, "maxInclusive" : false } }'::bson) AND (document @<> '{ "b" : { "min" : { "$numberInt" : "10" }, "max" : { "$numberInt" : "50" }, "minInclusive" : false, "maxInclusive" : false } }'::bson))
+               Rows Removed by Filter: 480
+(10 rows)
+

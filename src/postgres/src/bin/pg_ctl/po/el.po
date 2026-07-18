@@ -1,0 +1,869 @@
+# Greek message translation file for pg_ctl
+# Copyright (C) 2021 PostgreSQL Global Development Group
+# This file is distributed under the same license as the pg_ctl (PostgreSQL) package.
+# Georgios Kokolatos <gkokolatos@pm.me>, 2021
+#
+#
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: pg_ctl (PostgreSQL) 15\n"
+"Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
+"POT-Creation-Date: 2023-08-14 23:18+0000\n"
+"PO-Revision-Date: 2023-08-15 13:37+0200\n"
+"Last-Translator: Georgios Kokolatos <gkokolatos@pm.me>\n"
+"Language-Team: \n"
+"Language: el\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 3.3.2\n"
+
+#: ../../common/exec.c:172
+#, c-format
+msgid "invalid binary \"%s\": %m"
+msgstr "μη έγκυρο δυαδικό αρχείο «%s»: %m"
+
+#: ../../common/exec.c:215
+#, c-format
+msgid "could not read binary \"%s\": %m"
+msgstr "δεν ήταν δυνατή η ανάγνωση του δυαδικού αρχείου «%s»: %m"
+
+#: ../../common/exec.c:223
+#, c-format
+msgid "could not find a \"%s\" to execute"
+msgstr "δεν βρέθηκε το αρχείο «%s» για να εκτελεστεί"
+
+#: ../../common/exec.c:250
+#, c-format
+msgid "could not resolve path \"%s\" to absolute form: %m"
+msgstr "δεν δύναται η επίλυση διαδρομής «%s» σε απόλυτη μορφή: %m"
+
+#: ../../common/exec.c:412
+#, c-format
+msgid "%s() failed: %m"
+msgstr "%s() απέτυχε: %m"
+
+#: ../../common/exec.c:550 ../../common/exec.c:595 ../../common/exec.c:687
+msgid "out of memory"
+msgstr "έλλειψη μνήμης"
+
+#: ../../common/fe_memutils.c:35 ../../common/fe_memutils.c:75
+#: ../../common/fe_memutils.c:98 ../../common/fe_memutils.c:161
+#: ../../port/path.c:753 ../../port/path.c:791 ../../port/path.c:808
+#, c-format
+msgid "out of memory\n"
+msgstr "έλλειψη μνήμης\n"
+
+#: ../../common/fe_memutils.c:92 ../../common/fe_memutils.c:153
+#, c-format
+msgid "cannot duplicate null pointer (internal error)\n"
+msgstr "δεν ήταν δυνατή η αντιγραφή δείκτη null (εσωτερικό σφάλμα)\n"
+
+#: ../../common/wait_error.c:55
+#, c-format
+msgid "command not executable"
+msgstr "εντολή μη εκτελέσιμη"
+
+#: ../../common/wait_error.c:59
+#, c-format
+msgid "command not found"
+msgstr "εντολή δεν βρέθηκε"
+
+#: ../../common/wait_error.c:64
+#, c-format
+msgid "child process exited with exit code %d"
+msgstr "απόγονος διεργασίας τερμάτισε με κωδικό εξόδου %d"
+
+#: ../../common/wait_error.c:72
+#, c-format
+msgid "child process was terminated by exception 0x%X"
+msgstr "απόγονος διεργασίας τερματίστηκε με εξαίρεση 0x%X"
+
+#: ../../common/wait_error.c:76
+#, c-format
+msgid "child process was terminated by signal %d: %s"
+msgstr "απόγονος διεργασίας τερματίστηκε με σήμα %d: %s"
+
+#: ../../common/wait_error.c:82
+#, c-format
+msgid "child process exited with unrecognized status %d"
+msgstr "απόγονος διεργασίας τερμάτισε με μη αναγνωρίσιμη κατάσταση %d"
+
+#: ../../port/path.c:775
+#, c-format
+msgid "could not get current working directory: %s\n"
+msgstr "δεν ήταν δυνατή η επεξεργασία του τρέχοντος καταλόγου εργασίας: %s\n"
+
+#: pg_ctl.c:255
+#, c-format
+msgid "%s: directory \"%s\" does not exist\n"
+msgstr "%s: ο κατάλογος «%s» δεν υπάρχει\n"
+
+#: pg_ctl.c:258
+#, c-format
+msgid "%s: could not access directory \"%s\": %s\n"
+msgstr "%s: δεν ήταν δυνατή η πρόσβαση στον κατάλογο «%s»: %s\n"
+
+#: pg_ctl.c:271
+#, c-format
+msgid "%s: directory \"%s\" is not a database cluster directory\n"
+msgstr "%s: ο κατάλογος «%s» δεν είναι κατάλογος συστάδας βάσης δεδομένων\n"
+
+#: pg_ctl.c:284
+#, c-format
+msgid "%s: could not open PID file \"%s\": %s\n"
+msgstr "%s: δεν ήταν δυνατό το άνοιγμα αρχείου PID «%s»: %s\n"
+
+#: pg_ctl.c:293
+#, c-format
+msgid "%s: the PID file \"%s\" is empty\n"
+msgstr "%s: το αρχείο PID «%s» είναι άδειο\n"
+
+#: pg_ctl.c:296
+#, c-format
+msgid "%s: invalid data in PID file \"%s\"\n"
+msgstr "%s: μη έγκυρα δεδομένα στο αρχείο PID «%s»\n"
+
+#: pg_ctl.c:458 pg_ctl.c:500
+#, c-format
+msgid "%s: could not start server: %s\n"
+msgstr "%s:  δεν μπόρεσε να εκκινήσει τον διακομιστή: %s\n"
+
+#: pg_ctl.c:478
+#, c-format
+msgid "%s: could not start server due to setsid() failure: %s\n"
+msgstr "%s: δεν ήταν δυνατή η εκκίνηση του διακομιστή λόγω αποτυχίας του setsid(): %s\n"
+
+#: pg_ctl.c:548
+#, c-format
+msgid "%s: could not open log file \"%s\": %s\n"
+msgstr "%s: δεν ήταν δυνατό το άνοιγμα του αρχείου καταγραφής «%s»: %s\n"
+
+#: pg_ctl.c:565
+#, c-format
+msgid "%s: could not start server: error code %lu\n"
+msgstr "%s: δεν ήταν δυνατή η εκκίνηση διακομιστή: κωδικός σφάλματος %lu\n"
+
+#: pg_ctl.c:782
+#, c-format
+msgid "%s: cannot set core file size limit; disallowed by hard limit\n"
+msgstr "%s: δεν είναι δυνατός ο ορισμός ορίου μεγέθους αρχείου πυρήνα· απαγορεύεται από το σκληρό όριο\n"
+
+#: pg_ctl.c:808
+#, c-format
+msgid "%s: could not read file \"%s\"\n"
+msgstr "%s: δεν ήταν δυνατή η ανάγνωση αρχείου «%s»\n"
+
+#: pg_ctl.c:813
+#, c-format
+msgid "%s: option file \"%s\" must have exactly one line\n"
+msgstr "%s: το αρχείο επιλογής «%s» πρέπει να έχει ακριβώς μία γραμμή\n"
+
+#: pg_ctl.c:855 pg_ctl.c:1039 pg_ctl.c:1107
+#, c-format
+msgid "%s: could not send stop signal (PID: %d): %s\n"
+msgstr "%s: δεν ήταν δυνατή η αποστολή σήματος διακοπής (PID: %d): %s\n"
+
+#: pg_ctl.c:883
+#, c-format
+msgid "program \"%s\" is needed by %s but was not found in the same directory as \"%s\"\n"
+msgstr "το πρόγραμμα «%s» χρειάζεται από %s αλλά δεν βρέθηκε στον ίδιο κατάλογο με το «%s»\n"
+
+#: pg_ctl.c:886
+#, c-format
+msgid "program \"%s\" was found by \"%s\" but was not the same version as %s\n"
+msgstr "το πρόγραμμα «%s» βρέθηκε από το «%s» αλλά δεν ήταν η ίδια έκδοση με το %s\n"
+
+#: pg_ctl.c:918
+#, c-format
+msgid "%s: database system initialization failed\n"
+msgstr "%s: αρχικοποίηση του συστήματος βάσης δεδομένων απέτυχε\n"
+
+#: pg_ctl.c:933
+#, c-format
+msgid "%s: another server might be running; trying to start server anyway\n"
+msgstr "%s: ενδέχεται να εκτελείται ένας άλλος διακομιστής· γίνεται προσπάθεια εκκίνησης του διακομιστή ούτως ή άλλως\n"
+
+#: pg_ctl.c:981
+msgid "waiting for server to start..."
+msgstr "αναμονή για την εκκίνηση του διακομιστή..."
+
+#: pg_ctl.c:986 pg_ctl.c:1063 pg_ctl.c:1126 pg_ctl.c:1238
+msgid " done\n"
+msgstr " ολοκλήρωση\n"
+
+#: pg_ctl.c:987
+msgid "server started\n"
+msgstr "ο διακομιστής ξεκίνησε\n"
+
+#: pg_ctl.c:990 pg_ctl.c:996 pg_ctl.c:1243
+msgid " stopped waiting\n"
+msgstr " διακοπή αναμονής\n"
+
+#: pg_ctl.c:991
+#, c-format
+msgid "%s: server did not start in time\n"
+msgstr "%s: ο διακομιστής δεν ξεκίνησε εγκαίρως\n"
+
+#: pg_ctl.c:997
+#, c-format
+msgid ""
+"%s: could not start server\n"
+"Examine the log output.\n"
+msgstr ""
+"%s: δεν ήταν δυνατή η εκκίνηση του διακομιστή\n"
+"Εξετάστε την έξοδο του αρχείου καταγραφής.\n"
+
+#: pg_ctl.c:1005
+msgid "server starting\n"
+msgstr "εκκίνηση διακομιστή\n"
+
+#: pg_ctl.c:1024 pg_ctl.c:1083 pg_ctl.c:1147 pg_ctl.c:1186 pg_ctl.c:1267
+#, c-format
+msgid "%s: PID file \"%s\" does not exist\n"
+msgstr "%s: το αρχείο PID «%s» δεν υπάρχει\n"
+
+#: pg_ctl.c:1025 pg_ctl.c:1085 pg_ctl.c:1148 pg_ctl.c:1187 pg_ctl.c:1268
+msgid "Is server running?\n"
+msgstr "Εκτελείται ο διακομιστής;\n"
+
+#: pg_ctl.c:1031
+#, c-format
+msgid "%s: cannot stop server; single-user server is running (PID: %d)\n"
+msgstr "%s: δεν είναι δυνατή η διακοπή του διακομιστή· εκτελείται διακομιστής μοναδικού-χρήστη (PID: %d)\n"
+
+#: pg_ctl.c:1046
+msgid "server shutting down\n"
+msgstr "τερματισμός λειτουργίας διακομιστή\n"
+
+#: pg_ctl.c:1051 pg_ctl.c:1112
+msgid "waiting for server to shut down..."
+msgstr "αναμονή για τερματισμό λειτουργίας του διακομιστή..."
+
+#: pg_ctl.c:1055 pg_ctl.c:1117
+msgid " failed\n"
+msgstr " απέτυχε.\n"
+
+#: pg_ctl.c:1057 pg_ctl.c:1119
+#, c-format
+msgid "%s: server does not shut down\n"
+msgstr "%s: ο διακομιστής δεν τερματίζεται\n"
+
+#: pg_ctl.c:1059 pg_ctl.c:1121
+msgid ""
+"HINT: The \"-m fast\" option immediately disconnects sessions rather than\n"
+"waiting for session-initiated disconnection.\n"
+msgstr ""
+"HINT: Η επιλογή \"-m fast\" αποσυνδέει αμέσως τις συνεδρίες αντί\n"
+"να αναμένει για εκ’ συνεδρίας εκκινούμενη αποσύνδεση.\n"
+
+#: pg_ctl.c:1065 pg_ctl.c:1127
+msgid "server stopped\n"
+msgstr "ο διακομιστής διακόπηκε\n"
+
+#: pg_ctl.c:1086
+msgid "trying to start server anyway\n"
+msgstr "προσπάθεια εκκίνησης του διακομιστή ούτως ή άλλως\n"
+
+#: pg_ctl.c:1095
+#, c-format
+msgid "%s: cannot restart server; single-user server is running (PID: %d)\n"
+msgstr "%s: δεν είναι δυνατή η επανεκκίνηση του διακομιστή· εκτελείται διακομιστής μοναδικού-χρήστη (PID: %d)\n"
+
+#: pg_ctl.c:1098 pg_ctl.c:1157
+msgid "Please terminate the single-user server and try again.\n"
+msgstr "Τερματίστε το διακομιστή μοναδικού-χρήστη και προσπαθήστε ξανά.\n"
+
+#: pg_ctl.c:1131
+#, c-format
+msgid "%s: old server process (PID: %d) seems to be gone\n"
+msgstr "%s: παλεά διαδικασία διακομιστή (PID: %d) φαίνεται να έχει χαθεί\n"
+
+#: pg_ctl.c:1133
+msgid "starting server anyway\n"
+msgstr "εκκίνηση του διακομιστή ούτως ή άλλως\n"
+
+#: pg_ctl.c:1154
+#, c-format
+msgid "%s: cannot reload server; single-user server is running (PID: %d)\n"
+msgstr "%s: δεν είναι δυνατή η επαναφόρτωση του διακομιστή· εκτελείται διακομιστής μοναδικού-χρήστη (PID: %d)\n"
+
+#: pg_ctl.c:1163
+#, c-format
+msgid "%s: could not send reload signal (PID: %d): %s\n"
+msgstr "%s: δεν ήταν δυνατή η αποστολή σήματος επαναφόρτωσης (PID: %d): %s\n"
+
+#: pg_ctl.c:1168
+msgid "server signaled\n"
+msgstr "στάλθηκε σήμα στον διακομιστή\n"
+
+#: pg_ctl.c:1193
+#, c-format
+msgid "%s: cannot promote server; single-user server is running (PID: %d)\n"
+msgstr "%s: δεν είναι δυνατή η προβίβαση του διακομιστή· εκτελείται διακομιστής μοναδικού-χρήστη (PID: %d)\n"
+
+#: pg_ctl.c:1201
+#, c-format
+msgid "%s: cannot promote server; server is not in standby mode\n"
+msgstr "%s: δεν είναι δυνατή η προβίβαση του διακομιστή· ο διακομιστής δεν βρίσκεται σε κατάσταση αναμονής\n"
+
+#: pg_ctl.c:1211
+#, c-format
+msgid "%s: could not create promote signal file \"%s\": %s\n"
+msgstr "%s: δεν ήταν δυνατή η δημιουργία του αρχείου σήματος προβιβασμού «%s»: %s\n"
+
+#: pg_ctl.c:1217
+#, c-format
+msgid "%s: could not write promote signal file \"%s\": %s\n"
+msgstr "%s: δεν ήταν δυνατή η εγγραφή του αρχείου σήματος προβιβασμού «%s»: %s\n"
+
+#: pg_ctl.c:1225
+#, c-format
+msgid "%s: could not send promote signal (PID: %d): %s\n"
+msgstr "%s: δεν ήταν δυνατή η αποστολή σήματος προβιβασμού (PID: %d): %s\n"
+
+#: pg_ctl.c:1228
+#, c-format
+msgid "%s: could not remove promote signal file \"%s\": %s\n"
+msgstr "%s: δεν ήταν δυνατή η κατάργηση του αρχείου σήματος προβιβασμού «%s»: %s\n"
+
+#: pg_ctl.c:1235
+msgid "waiting for server to promote..."
+msgstr "αναμονή για την προβίβαση του διακομιστή..."
+
+#: pg_ctl.c:1239
+msgid "server promoted\n"
+msgstr "ο διακομιστής προβιβάστηκε\n"
+
+#: pg_ctl.c:1244
+#, c-format
+msgid "%s: server did not promote in time\n"
+msgstr "%s: ο διακομιστής δεν προβιβάστηκε εγκαίρως\n"
+
+#: pg_ctl.c:1250
+msgid "server promoting\n"
+msgstr "προβίβαση διακομιστή\n"
+
+#: pg_ctl.c:1274
+#, c-format
+msgid "%s: cannot rotate log file; single-user server is running (PID: %d)\n"
+msgstr "%s: δεν είναι δυνατή η περιστροφή του αρχείου καταγραφής· εκτελείται διακομιστής μοναδικού-χρήστη (PID: %d)\n"
+
+#: pg_ctl.c:1284
+#, c-format
+msgid "%s: could not create log rotation signal file \"%s\": %s\n"
+msgstr "%s: δεν ήταν δυνατή η δημιουργία αρχείου σήματος περιστροφής αρχείου καταγραφής «%s»: %s\n"
+
+#: pg_ctl.c:1290
+#, c-format
+msgid "%s: could not write log rotation signal file \"%s\": %s\n"
+msgstr "%s: δεν ήταν δυνατή η εγγραφή του αρχείου σήματος περιστροφής αρχείου καταγραφής «%s»: %s\n"
+
+#: pg_ctl.c:1298
+#, c-format
+msgid "%s: could not send log rotation signal (PID: %d): %s\n"
+msgstr "%s: δεν ήταν δυνατή η αποστολή σήματος περιστροφής αρχείου καταγραφής (PID: %d): %s\n"
+
+#: pg_ctl.c:1301
+#, c-format
+msgid "%s: could not remove log rotation signal file \"%s\": %s\n"
+msgstr "%s: δεν ήταν δυνατή η κατάργηση του αρχείου σήματος περιστροφής αρχείου καταγραφής «%s»: %s\n"
+
+#: pg_ctl.c:1306
+msgid "server signaled to rotate log file\n"
+msgstr "ο διακομιστής έλαβε σήμα για την περιστροφή του αρχείου καταγραφής\n"
+
+#: pg_ctl.c:1353
+#, c-format
+msgid "%s: single-user server is running (PID: %d)\n"
+msgstr "%s: εκτελείται διακομιστής μοναδικού-χρήστη (PID: %d)\n"
+
+#: pg_ctl.c:1367
+#, c-format
+msgid "%s: server is running (PID: %d)\n"
+msgstr "%s: εκτελείται διακομιστής (PID: %d)\n"
+
+#: pg_ctl.c:1383
+#, c-format
+msgid "%s: no server running\n"
+msgstr "%s: δεν εκτελείται κανένας διακομιστής\n"
+
+#: pg_ctl.c:1400
+#, c-format
+msgid "%s: could not send signal %d (PID: %d): %s\n"
+msgstr "%s: δεν ήταν δυνατή η αποστολή %d σήματος (PID: %d): %s\n"
+
+#: pg_ctl.c:1431
+#, c-format
+msgid "%s: could not find own program executable\n"
+msgstr "%s: δεν ήταν δυνατή η εύρεση του ιδίου εκτελέσιμου προγράμματος\n"
+
+#: pg_ctl.c:1441
+#, c-format
+msgid "%s: could not find postgres program executable\n"
+msgstr "%s:  δεν ήταν δυνατή η εύρεση του εκτελέσιμου προγράμματος postgres\n"
+
+#: pg_ctl.c:1511 pg_ctl.c:1545
+#, c-format
+msgid "%s: could not open service manager\n"
+msgstr "%s: δεν ήταν δυνατό το άνοιγμα του διαχειριστή υπηρεσιών\n"
+
+#: pg_ctl.c:1517
+#, c-format
+msgid "%s: service \"%s\" already registered\n"
+msgstr "%s: η υπηρεσία «%s» έχει ήδη καταχωρηθεί\n"
+
+#: pg_ctl.c:1528
+#, c-format
+msgid "%s: could not register service \"%s\": error code %lu\n"
+msgstr "%s: δεν ήταν δυνατή η καταχώρηση της υπηρεσίας «%s»: κωδικός σφάλματος %lu\n"
+
+#: pg_ctl.c:1551
+#, c-format
+msgid "%s: service \"%s\" not registered\n"
+msgstr "%s: η υπηρεσία «%s» δεν έχει καταχωρηθεί\n"
+
+#: pg_ctl.c:1558
+#, c-format
+msgid "%s: could not open service \"%s\": error code %lu\n"
+msgstr "%s: δεν ήταν δυνατό το άνοιγμα της υπηρεσίας «%s»: κωδικός σφάλματος %lu\n"
+
+#: pg_ctl.c:1567
+#, c-format
+msgid "%s: could not unregister service \"%s\": error code %lu\n"
+msgstr "%s: δεν ήταν δυνατή η διαγραφή καταχώρησης της υπηρεσίας «%s»: κωδικός σφάλματος %lu\n"
+
+#: pg_ctl.c:1654
+msgid "Waiting for server startup...\n"
+msgstr "Αναμονή για εκκίνηση διακομιστή...\n"
+
+#: pg_ctl.c:1657
+msgid "Timed out waiting for server startup\n"
+msgstr "Λήξη χρονικού ορίου αναμονής για εκκίνηση διακομιστή\n"
+
+#: pg_ctl.c:1661
+msgid "Server started and accepting connections\n"
+msgstr "Ο διακομιστής ξεκίνησε και αποδέχτηκε συνδέσεις\n"
+
+#: pg_ctl.c:1716
+#, c-format
+msgid "%s: could not start service \"%s\": error code %lu\n"
+msgstr "%s: δεν ήταν δυνατή η εκκίνηση της υπηρεσίας «%s»: κωδικός σφάλματος %lu\n"
+
+#: pg_ctl.c:1789
+#, c-format
+msgid "%s: could not open process token: error code %lu\n"
+msgstr "%s: δεν ήταν δυνατό το άνοιγμα διακριτικού διεργασίας: κωδικός σφάλματος %lu\n"
+
+#: pg_ctl.c:1803
+#, c-format
+msgid "%s: could not allocate SIDs: error code %lu\n"
+msgstr "%s: δεν ήταν δυνατή η εκχώρηση SIDs: κωδικός σφάλματος %lu\n"
+
+#: pg_ctl.c:1829
+#, c-format
+msgid "%s: could not create restricted token: error code %lu\n"
+msgstr "%s: δεν ήταν δυνατή η δημιουργία περιορισμένου διακριτικού: κωδικός σφάλματος %lu\n"
+
+#: pg_ctl.c:1911
+#, c-format
+msgid "%s: could not get LUIDs for privileges: error code %lu\n"
+msgstr "%s: δεν ήταν δυνατή η ανάκτηση LUIDs για δικαιώματα: κωδικός σφάλματος %lu\n"
+
+#: pg_ctl.c:1919 pg_ctl.c:1934
+#, c-format
+msgid "%s: could not get token information: error code %lu\n"
+msgstr "%s: δεν ήταν δυνατή η ανάκτηση πληροφοριών διακριτικού: κωδικός σφάλματος %lu\n"
+
+#: pg_ctl.c:1928
+#, c-format
+msgid "%s: out of memory\n"
+msgstr "%s: έλλειψη μνήμης\n"
+
+#: pg_ctl.c:1958
+#, c-format
+msgid "Try \"%s --help\" for more information.\n"
+msgstr "Δοκιμάστε «%s --help» για περισσότερες πληροφορίες.\n"
+
+#: pg_ctl.c:1966
+#, c-format
+msgid ""
+"%s is a utility to initialize, start, stop, or control a PostgreSQL server.\n"
+"\n"
+msgstr ""
+"%s είναι ένα βοηθητικό πρόγραμμα για την αρχικοποίηση, την εκκίνηση, τη διακοπή ή τον έλεγχο ενός διακομιστή PostgreSQL.\n"
+"\n"
+
+#: pg_ctl.c:1967
+#, c-format
+msgid "Usage:\n"
+msgstr "Χρήση:\n"
+
+#: pg_ctl.c:1968
+#, c-format
+msgid "  %s init[db]   [-D DATADIR] [-s] [-o OPTIONS]\n"
+msgstr "  %s init[db]   [-D DATADIR] [-s] [-o OPTIONS]\n"
+
+#: pg_ctl.c:1969
+#, c-format
+msgid ""
+"  %s start      [-D DATADIR] [-l FILENAME] [-W] [-t SECS] [-s]\n"
+"                    [-o OPTIONS] [-p PATH] [-c]\n"
+msgstr ""
+"  %s start      [-D DATADIR] [-l FILENAME] [-W] [-t SECS] [-s]\n"
+"                    [-o OPTIONS] [-p PATH] [-c]\n"
+"\n"
+
+#: pg_ctl.c:1971
+#, c-format
+msgid "  %s stop       [-D DATADIR] [-m SHUTDOWN-MODE] [-W] [-t SECS] [-s]\n"
+msgstr ""
+"  %s stop       [-D DATADIR] [-m SHUTDOWN-MODE] [-W] [-t SECS] [-s]\n"
+"\n"
+
+#: pg_ctl.c:1972
+#, c-format
+msgid ""
+"  %s restart    [-D DATADIR] [-m SHUTDOWN-MODE] [-W] [-t SECS] [-s]\n"
+"                    [-o OPTIONS] [-c]\n"
+msgstr ""
+"  %s restart    [-D DATADIR] [-m SHUTDOWN-MODE] [-W] [-t SECS] [-s]\n"
+"                    [-o OPTIONS] [-c]\n"
+
+#: pg_ctl.c:1974
+#, c-format
+msgid "  %s reload     [-D DATADIR] [-s]\n"
+msgstr "  %s reload     [-D DATADIR] [-s]\n"
+
+#: pg_ctl.c:1975
+#, c-format
+msgid "  %s status     [-D DATADIR]\n"
+msgstr "  %s status     [-D DATADIR]\n"
+
+#: pg_ctl.c:1976
+#, c-format
+msgid "  %s promote    [-D DATADIR] [-W] [-t SECS] [-s]\n"
+msgstr "  %s promote    [-D DATADIR] [-W] [-t SECS] [-s]\n"
+
+#: pg_ctl.c:1977
+#, c-format
+msgid "  %s logrotate  [-D DATADIR] [-s]\n"
+msgstr "  %s logrotate  [-D DATADIR] [-s]\n"
+
+#: pg_ctl.c:1978
+#, c-format
+msgid "  %s kill       SIGNALNAME PID\n"
+msgstr "  %s kill       SIGNALNAME PID\n"
+
+#: pg_ctl.c:1980
+#, c-format
+msgid ""
+"  %s register   [-D DATADIR] [-N SERVICENAME] [-U USERNAME] [-P PASSWORD]\n"
+"                    [-S START-TYPE] [-e SOURCE] [-W] [-t SECS] [-s] [-o OPTIONS]\n"
+msgstr ""
+"  %s register   [-D DATADIR] [-N SERVICENAME] [-U USERNAME] [-P PASSWORD]\n"
+"                    [-S START-TYPE] [-e SOURCE] [-W] [-t SECS] [-s] [-o OPTIONS]\n"
+
+#: pg_ctl.c:1982
+#, c-format
+msgid "  %s unregister [-N SERVICENAME]\n"
+msgstr "  %s unregister [-N SERVICENAME]\n"
+
+#: pg_ctl.c:1985
+#, c-format
+msgid ""
+"\n"
+"Common options:\n"
+msgstr ""
+"\n"
+"Κοινές επιλογές:\n"
+
+#: pg_ctl.c:1986
+#, c-format
+msgid "  -D, --pgdata=DATADIR   location of the database storage area\n"
+msgstr " [-D, --pgdata=]DATADIR  τοποθεσία για τη περιοχή αποθήκευσης της βάσης δεδομένων\n"
+
+#: pg_ctl.c:1988
+#, c-format
+msgid "  -e SOURCE              event source for logging when running as a service\n"
+msgstr "  -e SOURCE              πηγή προέλευσης συμβάντων για καταγραφή κατά την εκτέλεση ως υπηρεσία\n"
+
+#: pg_ctl.c:1990
+#, c-format
+msgid "  -s, --silent           only print errors, no informational messages\n"
+msgstr "  -s, --silent           εκτύπωση μόνο σφαλμάτων, χωρίς ενημερωτικά μηνύματα\n"
+
+#: pg_ctl.c:1991
+#, c-format
+msgid "  -t, --timeout=SECS     seconds to wait when using -w option\n"
+msgstr "  -t, --timeout=SECS     δευτερόλεπτα αναμονής κατά τη χρήση της επιλογής -w\n"
+
+#: pg_ctl.c:1992
+#, c-format
+msgid "  -V, --version          output version information, then exit\n"
+msgstr "  -V, --version          εμφάνισε πληροφορίες έκδοσης, στη συνέχεια έξοδος\n"
+
+#: pg_ctl.c:1993
+#, c-format
+msgid "  -w, --wait             wait until operation completes (default)\n"
+msgstr "  -w, --wait             περίμενε μέχρι να ολοκληρωθεί η λειτουργία (προεπιλογή)\n"
+
+#: pg_ctl.c:1994
+#, c-format
+msgid "  -W, --no-wait          do not wait until operation completes\n"
+msgstr "  -W, --no-wait          να μην περιμένει μέχρι να ολοκληρωθεί η λειτουργία\n"
+
+#: pg_ctl.c:1995
+#, c-format
+msgid "  -?, --help             show this help, then exit\n"
+msgstr "  -?, --help             εμφάνισε αυτό το μήνυμα βοήθειας, στη συνέχεια έξοδος\n"
+
+#: pg_ctl.c:1996
+#, c-format
+msgid "If the -D option is omitted, the environment variable PGDATA is used.\n"
+msgstr "Εάν παραλειφθεί η επιλογή -D, χρησιμοποιείται η μεταβλητή περιβάλλοντος PGDATA.\n"
+
+#: pg_ctl.c:1998
+#, c-format
+msgid ""
+"\n"
+"Options for start or restart:\n"
+msgstr ""
+"\n"
+"Επιλογές για έναρξη ή επανεκκίνηση:\n"
+
+#: pg_ctl.c:2000
+#, c-format
+msgid "  -c, --core-files       allow postgres to produce core files\n"
+msgstr "  -c, --core-files       επίτρεψε στην postgres να παράγει αρχεία αποτύπωσης μνήμης\n"
+
+#: pg_ctl.c:2002
+#, c-format
+msgid "  -c, --core-files       not applicable on this platform\n"
+msgstr "  -c, --core-files       ανεφάρμοστο σε αυτήν την πλατφόρμα\n"
+
+#: pg_ctl.c:2004
+#, c-format
+msgid "  -l, --log=FILENAME     write (or append) server log to FILENAME\n"
+msgstr "  -l, --log=FILENAME     ενέγραψε (ή προσάρτησε) το αρχείο καταγραφής διακομιστή στο FILENAME\n"
+
+#: pg_ctl.c:2005
+#, c-format
+msgid ""
+"  -o, --options=OPTIONS  command line options to pass to postgres\n"
+"                         (PostgreSQL server executable) or initdb\n"
+msgstr ""
+"  -o, --options=OPTIONS  επιλογές γραμμής εντολών που θα διαβιστούν στη postgres\n"
+"                         (εκτελέσιμο αρχείο διακομιστή PostgreSQL) ή initdb\n"
+
+#: pg_ctl.c:2007
+#, c-format
+msgid "  -p PATH-TO-POSTGRES    normally not necessary\n"
+msgstr "  -p PATH-TO-POSTGRES    κανονικά δεν είναι απαραίτητο\n"
+
+#: pg_ctl.c:2008
+#, c-format
+msgid ""
+"\n"
+"Options for stop or restart:\n"
+msgstr ""
+"\n"
+"Επιλογές διακοπής ή επανεκκίνησης:\n"
+
+#: pg_ctl.c:2009
+#, c-format
+msgid "  -m, --mode=MODE        MODE can be \"smart\", \"fast\", or \"immediate\"\n"
+msgstr "  -m, --mode=MODE        MODE μπορεί να είνα «smart», «fast», ή «immediate»\n"
+
+#: pg_ctl.c:2011
+#, c-format
+msgid ""
+"\n"
+"Shutdown modes are:\n"
+msgstr ""
+"\n"
+"Οι λειτουργίες τερματισμού λειτουργίας είναι:\n"
+
+#: pg_ctl.c:2012
+#, c-format
+msgid "  smart       quit after all clients have disconnected\n"
+msgstr "  smart       διάκοψε μετά την αποσύνδεση όλων των πελατών\n"
+
+#: pg_ctl.c:2013
+#, c-format
+msgid "  fast        quit directly, with proper shutdown (default)\n"
+msgstr "  fast        διάκοψε απευθείας, με σωστό τερματισμό (προεπιλογή)\n"
+
+#: pg_ctl.c:2014
+#, c-format
+msgid "  immediate   quit without complete shutdown; will lead to recovery on restart\n"
+msgstr "  immediate   διάκοψε άμεσα χωρίς πλήρη τερματισμό· Θα οδηγήσει σε αποκατάσταση κατά την επανεκκίνηση\n"
+
+#: pg_ctl.c:2016
+#, c-format
+msgid ""
+"\n"
+"Allowed signal names for kill:\n"
+msgstr ""
+"\n"
+"Επιτρεπόμενα ονόματα σημάτων για θανάτωση:\n"
+
+#: pg_ctl.c:2020
+#, c-format
+msgid ""
+"\n"
+"Options for register and unregister:\n"
+msgstr ""
+"\n"
+"Επιλογές καταχώρησης και διαγραφής καταχώρησης:\n"
+
+#: pg_ctl.c:2021
+#, c-format
+msgid "  -N SERVICENAME  service name with which to register PostgreSQL server\n"
+msgstr "  -N SERVICENAME  όνομα υπηρεσίας με το οποίο θα καταχωρηθεί ο διακομιστής PostgreSQL\n"
+
+#: pg_ctl.c:2022
+#, c-format
+msgid "  -P PASSWORD     password of account to register PostgreSQL server\n"
+msgstr "  -P PASSWORD     κωδικός πρόσβασης του λογαριασμού για την καταγραφή του διακομιστή PostgreSQL\n"
+
+#: pg_ctl.c:2023
+#, c-format
+msgid "  -U USERNAME     user name of account to register PostgreSQL server\n"
+msgstr "  -U USERNAME     όνομα χρήστη του λογαριασμού για την καταγραφή του διακομιστή PostgreSQL\n"
+
+#: pg_ctl.c:2024
+#, c-format
+msgid "  -S START-TYPE   service start type to register PostgreSQL server\n"
+msgstr "  -S START-TYPE   τύπος έναρξης υπηρεσίας για την καταχώρηση διακομιστή PostgreSQL\n"
+
+#: pg_ctl.c:2026
+#, c-format
+msgid ""
+"\n"
+"Start types are:\n"
+msgstr ""
+"\n"
+"Οι τύποι έναρξης είναι:\n"
+
+#: pg_ctl.c:2027
+#, c-format
+msgid "  auto       start service automatically during system startup (default)\n"
+msgstr "  auto       αυτόματη εκκίνηση της υπηρεσίας κατά την εκκίνηση του συστήματος (προεπιλογή)\n"
+
+#: pg_ctl.c:2028
+#, c-format
+msgid "  demand     start service on demand\n"
+msgstr "  demand     έναρξη υπηρεσίας κατ' απαίτηση\n"
+
+#: pg_ctl.c:2031
+#, c-format
+msgid ""
+"\n"
+"Report bugs to <%s>.\n"
+msgstr ""
+"\n"
+"Υποβάλετε αναφορές σφάλματων σε <%s>.\n"
+
+#: pg_ctl.c:2032
+#, c-format
+msgid "%s home page: <%s>\n"
+msgstr "%s αρχική σελίδα: <%s>\n"
+
+#: pg_ctl.c:2057
+#, c-format
+msgid "%s: unrecognized shutdown mode \"%s\"\n"
+msgstr "%s: μη αναγνωρισμένη λειτουργία τερματισμού λειτουργίας «%s»\n"
+
+#: pg_ctl.c:2086
+#, c-format
+msgid "%s: unrecognized signal name \"%s\"\n"
+msgstr "%s: μη αναγνωρισμένο όνομα σήματος «%s»\n"
+
+#: pg_ctl.c:2103
+#, c-format
+msgid "%s: unrecognized start type \"%s\"\n"
+msgstr "%s: μη αναγνωρίσιμος τύπος έναρξης «%s»\n"
+
+#: pg_ctl.c:2159
+#, c-format
+msgid "%s: could not determine the data directory using command \"%s\"\n"
+msgstr "%s: δεν ήταν δυνατός ο προσδιορισμός του καταλόγου δεδομένων με χρήση της εντολής «%s»\n"
+
+#: pg_ctl.c:2182
+#, c-format
+msgid "%s: control file appears to be corrupt\n"
+msgstr "%s: το αρχείο ελέγχου φαίνεται να είναι αλλοιωμένο\n"
+
+#: pg_ctl.c:2250
+#, c-format
+msgid ""
+"%s: cannot be run as root\n"
+"Please log in (using, e.g., \"su\") as the (unprivileged) user that will\n"
+"own the server process.\n"
+msgstr ""
+"%s: δεν είναι δυνατή η εκτέλεση ως υπερχρήστης\n"
+"Συνδεθείτε (χρησιμοποιώντας, π.χ. \"su\") ως (μη προνομιούχο) χρήστη που θα\n"
+"να είναι στην κατοχή της η διαδικασία διακομιστή.\n"
+
+#: pg_ctl.c:2333
+#, c-format
+msgid "%s: -S option not supported on this platform\n"
+msgstr "%s: επιλογή -S δεν υποστηρίζεται σε αυτήν την πλατφόρμα\n"
+
+#: pg_ctl.c:2370
+#, c-format
+msgid "%s: too many command-line arguments (first is \"%s\")\n"
+msgstr "%s: πάρα πολλές παράμετροι εισόδου από την γραμμή εντολών (η πρώτη είναι η «%s»)\n"
+
+#: pg_ctl.c:2396
+#, c-format
+msgid "%s: missing arguments for kill mode\n"
+msgstr "%s: λείπουν παράμετροι για τη λειτουργία kill\n"
+
+#: pg_ctl.c:2414
+#, c-format
+msgid "%s: unrecognized operation mode \"%s\"\n"
+msgstr "%s: μη αναγνωρισμένη λειτουργία «%s»\n"
+
+#: pg_ctl.c:2424
+#, c-format
+msgid "%s: no operation specified\n"
+msgstr "%s: δεν καθορίστηκε καμία λειτουργία\n"
+
+#: pg_ctl.c:2445
+#, c-format
+msgid "%s: no database directory specified and environment variable PGDATA unset\n"
+msgstr "%s: δεν έχει καθοριστεί κατάλογος βάσης δεδομένων και δεν έχει καθοριστεί μεταβλητή περιβάλλοντος PGDATA\n"
+
+#~ msgid ""
+#~ "The program \"%s\" is needed by %s but was not found in the\n"
+#~ "same directory as \"%s\".\n"
+#~ "Check your installation.\n"
+#~ msgstr ""
+#~ "Το πρόγραμμα «%s» απαιτείται από %s αλλά δεν βρέθηκε στον\n"
+#~ "ίδιο κατάλογο με το «%s».\n"
+#~ "Ελέγξτε την εγκατάστασή σας.\n"
+
+#~ msgid ""
+#~ "The program \"%s\" was found by \"%s\"\n"
+#~ "but was not the same version as %s.\n"
+#~ "Check your installation.\n"
+#~ msgstr ""
+#~ "Το πρόγραμμα «%s» βρέθηκε από το \"%s\"\n"
+#~ "αλλά δεν ήταν στην ίδια έκδοση με %s.\n"
+#~ "Ελέγξτε την εγκατάστασή σας.\n"
+
+#~ msgid ""
+#~ "WARNING: online backup mode is active\n"
+#~ "Shutdown will not complete until pg_stop_backup() is called.\n"
+#~ "\n"
+#~ msgstr ""
+#~ "WARNING: Η λειτουργία δημιουργίας αντιγράφων ασφαλείας σε απευθείας σύνδεση είναι ενεργή\n"
+#~ "Ο τερματισμός λειτουργίας δεν θα ολοκληρωθεί μέχρι να κληθεί pg_stop_backup().\n"
+#~ "\n"
+
+#~ msgid "pclose failed: %m"
+#~ msgstr "απέτυχε η εντολή pclose:  %m"

@@ -1,0 +1,832 @@
+// Copyright (c) YugabyteDB, Inc.
+
+package com.yugabyte.yw.models;
+
+import static com.yugabyte.yw.models.Backup.BackupState.Failed;
+import static com.yugabyte.yw.models.Backup.BackupState.InProgress;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RegexMatcher;
+import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.backuprestore.BackupPointInTimeRestoreWindow;
+import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.Backup.BackupVersion;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.TaskType;
+import io.ebean.DB;
+import io.ebean.SqlUpdate;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import lombok.extern.slf4j.Slf4j;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.yb.CommonTypes.TableType;
+import play.libs.Json;
+
+@RunWith(JUnitParamsRunner.class)
+@Slf4j
+public class BackupTest extends FakeDBApplication {
+  private Customer defaultCustomer;
+  private CustomerConfig s3StorageConfig;
+  private final String timestampRegex = "\\d{4}-[0-1]\\d-[0-3]\\dT[0-2]\\d:[0-5]\\d:[0-5]\\d";
+
+  @Before
+  public void setUp() {
+    defaultCustomer = ModelFactory.testCustomer();
+    s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST26");
+  }
+
+  @Test
+  public void testCreate() {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    Backup b =
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            s3StorageConfig.getConfigUUID());
+    assertNotNull(b);
+    String storageRegex =
+        "s3://foo/univ-"
+            + defaultUniverse.getName()
+            + "-"
+            + defaultUniverse.getUniverseUUID()
+            + "/foo"
+            + "/backup-[a-zA-Z0-9]+?/full/"
+            + timestampRegex
+            + "/table-foo.bar-[a-zA-Z0-9]*";
+    assertThat(b.getBackupInfo().storageLocation, RegexMatcher.matchesRegex(storageRegex));
+    assertEquals(s3StorageConfig.getConfigUUID(), b.getBackupInfo().storageConfigUUID);
+    assertEquals(InProgress, b.getState());
+  }
+
+  @Test
+  public void testCreateWithoutTableUUID() {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams params = new BackupTableParams();
+    params.storageConfigUUID = s3StorageConfig.getConfigUUID();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.setKeyspace("foo");
+    params.setTableName("bar");
+    Backup b = Backup.create(defaultCustomer.getUuid(), params);
+    String storageRegex =
+        "s3://foo/univ-"
+            + defaultUniverse.getName()
+            + "-"
+            + defaultUniverse.getUniverseUUID()
+            + "/foo"
+            + "/backup-[a-zA-Z0-9]+?/full/"
+            + timestampRegex
+            + "/table-foo.bar";
+    assertThat(b.getBackupInfo().storageLocation, RegexMatcher.matchesRegex(storageRegex));
+    assertEquals(s3StorageConfig.getConfigUUID(), b.getBackupInfo().storageConfigUUID);
+    assertEquals(InProgress, b.getState());
+  }
+
+  @Test
+  public void testCreateWithNonS3StorageUUID() {
+    JsonNode formData =
+        Json.parse(
+            "{\"name\": \"NFS\", \"configName\": \"Test\", \"type\": \"STORAGE\", \"data\": {}}");
+    CustomerConfig customerConfig =
+        CustomerConfig.createWithFormData(defaultCustomer.getUuid(), formData);
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams params = new BackupTableParams();
+    params.storageConfigUUID = customerConfig.getConfigUUID();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.setKeyspace("foo");
+    params.setTableName("bar");
+    Backup b = Backup.create(defaultCustomer.getUuid(), params);
+    String storageRegex =
+        "univ-"
+            + defaultUniverse.getName()
+            + "-"
+            + defaultUniverse.getUniverseUUID()
+            + "/foo"
+            + "/backup-[a-zA-Z0-9]+?/full/"
+            + timestampRegex
+            + "/table-foo.bar";
+    assertThat(b.getBackupInfo().storageLocation, RegexMatcher.matchesRegex(storageRegex));
+    assertEquals(customerConfig.getConfigUUID(), b.getBackupInfo().storageConfigUUID);
+    assertEquals(InProgress, b.getState());
+  }
+
+  @Test
+  public void testCreateWithInvalidConfigName() throws Exception {
+    JsonNode formData =
+        Json.parse(
+            "{\"name\": \"TEST\", \"configName\": \"Test\", \"type\": \"STORAGE\", \"data\": {}}");
+    CustomerConfig customerConfig =
+        CustomerConfig.createWithFormData(defaultCustomer.getUuid(), formData);
+    UUID universeUUID = UUID.randomUUID();
+    BackupTableParams params = new BackupTableParams();
+    params.storageConfigUUID = customerConfig.getConfigUUID();
+    params.setUniverseUUID(universeUUID);
+    params.setKeyspace("foo");
+    params.setTableName("bar");
+    assertThrows(
+        "Unknown data type in configuration data. Type STORAGE, name TEST.",
+        PlatformServiceException.class,
+        () -> Backup.create(defaultCustomer.getUuid(), params));
+  }
+
+  @Test
+  public void testFetchByUniverseWithValidUUID() {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    ModelFactory.createBackup(
+        defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    List<Backup> backupList =
+        Backup.fetchByUniverseUUID(defaultCustomer.getUuid(), u.getUniverseUUID());
+    assertEquals(1, backupList.size());
+  }
+
+  @Test
+  public void testFetchByUniverseWithInvalidUUID() {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    ModelFactory.createBackup(
+        defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    List<Backup> backupList =
+        Backup.fetchByUniverseUUID(defaultCustomer.getUuid(), UUID.randomUUID());
+    assertEquals(0, backupList.size());
+  }
+
+  @Test
+  public void testFetchByTaskWithValidUUID() {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    Backup b =
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    UUID taskUUID = UUID.randomUUID();
+    b.setTaskUUID(taskUUID);
+    b.save();
+    Backup fb = Backup.fetchAllBackupsByTaskUUID(taskUUID).get(0);
+    assertNotNull(fb);
+    assertEquals(fb, b);
+  }
+
+  @Test
+  public void testFetchByTaskWithInvalidBackupUUID() {
+    UUID taskUUID = buildTaskInfo(null, TaskType.CreateUniverse);
+    CustomerTask ct =
+        CustomerTask.create(
+            defaultCustomer,
+            UUID.randomUUID(),
+            taskUUID,
+            CustomerTask.TargetType.Backup,
+            CustomerTask.TaskType.Create,
+            "Demo Backup");
+    List<Backup> fb = Backup.fetchAllBackupsByTaskUUID(ct.getTaskUUID());
+    assertEquals(0, fb.size());
+  }
+
+  @Test
+  public void testFetchByTaskWithTargetType() {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    Backup b =
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    UUID taskUUID = buildTaskInfo(null, TaskType.CreateUniverse);
+    CustomerTask ct =
+        CustomerTask.create(
+            defaultCustomer,
+            b.getBackupUUID(),
+            taskUUID,
+            CustomerTask.TargetType.Table,
+            CustomerTask.TaskType.Create,
+            "Demo Backup");
+    List<Backup> fb = Backup.fetchAllBackupsByTaskUUID(ct.getTaskUUID());
+    assertEquals(0, fb.size());
+  }
+
+  @Test
+  public void testGetWithValidCustomerUUID() {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    Backup b =
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    Backup fb = Backup.get(defaultCustomer.getUuid(), b.getBackupUUID());
+    assertEquals(fb, b);
+  }
+
+  @Test
+  public void testGetWithInvalidCustomerUUID() {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    Backup b =
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    Backup fb = Backup.get(UUID.randomUUID(), b.getBackupUUID());
+    assertNull(fb);
+  }
+
+  @Test
+  @Parameters({"InProgress, Completed", "Completed, Deleted", "Completed, FailedToDelete"})
+  public void testTransitionStateValid(Backup.BackupState from, Backup.BackupState to) {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    Backup b =
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    b.transitionState(from);
+    assertEquals(from, b.getState());
+    b.transitionState(to);
+    assertEquals(to, b.getState());
+  }
+
+  @Test
+  @Parameters({"Completed, Failed"})
+  public void testTransitionStateInvalid(Backup.BackupState from, Backup.BackupState to)
+      throws InterruptedException {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    Backup b =
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    Date beforeUpdateTime = b.getUpdateTime();
+    assertNotNull(b.getUpdateTime());
+    Thread.sleep(1);
+    b.transitionState(from);
+    assertNotNull(b.getUpdateTime());
+    assertNotEquals(beforeUpdateTime, b.getUpdateTime());
+    b.transitionState(to);
+    assertNotEquals(Failed, b.getState());
+  }
+
+  @Test
+  public void testSetTaskUUIDWhenNull() {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    Backup b =
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    UUID taskUUID = UUID.randomUUID();
+    assertNull(b.getTaskUUID());
+    b.setTaskUUID(taskUUID);
+    b.save();
+    b.refresh();
+    assertEquals(taskUUID, b.getTaskUUID());
+  }
+
+  @Test
+  public void testSetTaskUUIDWhenNotNull() {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    Backup b =
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    b.setTaskUUID(UUID.randomUUID());
+    b.save();
+    UUID taskUUID = UUID.randomUUID();
+    assertNotNull(b.getTaskUUID());
+    b.setTaskUUID(taskUUID);
+    b.save();
+    b.refresh();
+    assertEquals(taskUUID, b.getTaskUUID());
+  }
+
+  @Test
+  public void testGetAllCompletedBackupsWithExpiryForDelete() {
+    UUID universeUUID = UUID.randomUUID();
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+    Backup backup1 =
+        ModelFactory.createBackupWithExpiry(
+            defaultCustomer.getUuid(), universe.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    Backup backup2 =
+        ModelFactory.createBackupWithExpiry(
+            defaultCustomer.getUuid(), universe.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    Backup backup3 =
+        ModelFactory.createBackupWithExpiry(
+            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.getConfigUUID());
+    Backup backup4 =
+        ModelFactory.createBackupWithExpiry(
+            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.getConfigUUID());
+    Backup backup5 =
+        ModelFactory.createBackupWithExpiry(
+            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.getConfigUUID());
+
+    backup1.transitionState(Backup.BackupState.Completed);
+    backup2.transitionState(Backup.BackupState.Completed);
+    backup3.transitionState(Backup.BackupState.Completed);
+    backup4.transitionState(Backup.BackupState.QueuedForDeletion);
+    backup5.transitionState(Backup.BackupState.FailedToDelete);
+
+    Map<UUID, List<Backup>> expiredBackups = Backup.getCompletedExpiredBackups();
+    // assert to 3 as we are deleting backups even if the universe does not exist.
+    assertEquals(
+        String.valueOf(expiredBackups), 3, expiredBackups.get(defaultCustomer.getUuid()).size());
+  }
+
+  @Test
+  public void testDeserializationJson() {
+    String jsonWithUnknownFields =
+        "{\"errorString\":null,\"deviceInfo\":null,"
+            + "\"universeUUID\":\"2ca2d8aa-2879-41b5-8267-4dccc789e841\",\"expectedUniverseVersion\":0,"
+            + "\"enableEncryptionAtRest\":false,\"disableEncryptionAtRest\":false,\"cmkArn\":n"
+            + "ull,\"encryptionAtRestConfig\":null,\"nodeDetailsSet\":null,"
+            + "\"keyspace\":\"system_redis\",\"tableName\":\"redis\","
+            + "\"tableUUID\":\"33268a1e-33e0-4606-90c6-ff9fb7e8c896\",\"sse\":false,"
+            + "\"storageConfigUUID\":\"c0432198-df18-40cb-a012-83c89ca63573\","
+            + "\"storageLocation\":\"s3://backups.yugabyte.com/por"
+            + "tal/univ-2ca2d8aa-2879-41b5-8267-4dccc789e841/backup-2019-11-19T04:21:48-391451651/table"
+            + "-system_redis.redis-33268a1e33e0460690c6ff9fb7e8c896\",\"actionType\":\"CREATE\","
+            + "\"schedulingFrequency\":30000,\"timeBeforeDelete\":0,\"enableVerboseLogs\":false}";
+    UUID universeUUID = UUID.randomUUID();
+    Backup b =
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.getConfigUUID());
+    assertNotNull(b);
+
+    SqlUpdate sqlUpdate =
+        DB.sqlUpdate(
+            "update public.backup set backup_info = '"
+                + jsonWithUnknownFields
+                + "'  where backup_uuid::text = '"
+                + b.getBackupUUID()
+                + "';");
+    sqlUpdate.execute();
+
+    b = Backup.get(defaultCustomer.getUuid(), b.getBackupUUID());
+    assertNotNull(b);
+  }
+
+  private BackupTableParams createTableParams(int lower, int upper, String keyspace) {
+    List<UUID> tableUUIDs =
+        Arrays.asList(
+            UUID.fromString("00000000-0000-0000-0000-000000000000"),
+            UUID.fromString("00000000-0000-0000-0000-000000000001"),
+            UUID.fromString("00000000-0000-0000-0000-000000000002"),
+            UUID.fromString("00000000-0000-0000-0000-000000000003"));
+    List<String> tableNames = Arrays.asList("t1", "t2", "t3", "t4");
+    BackupTableParams params = new BackupTableParams();
+    params.setKeyspace(keyspace);
+    params.storageConfigUUID = s3StorageConfig.getConfigUUID();
+    params.tableNameList = new ArrayList<>(tableNames.subList(lower, upper));
+    params.tableUUIDList = new ArrayList<>(tableUUIDs.subList(lower, upper));
+    return params;
+  }
+
+  private BackupTableParams createParentParams(Universe universe) {
+    BackupTableParams tableParamsParent = new BackupTableParams();
+    tableParamsParent.setUniverseUUID(universe.getUniverseUUID());
+    tableParamsParent.customerUuid = defaultCustomer.getUuid();
+    tableParamsParent.storageConfigUUID = s3StorageConfig.getConfigUUID();
+    tableParamsParent.backupType = TableType.YQL_TABLE_TYPE;
+    return tableParamsParent;
+  }
+
+  @Test
+  public void testCreateBackupWithPreviousBackupAllOverlap() {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList = new ArrayList<>();
+    BackupTableParams childParam1 = createTableParams(0, 2, "foo");
+    paramsList.add(childParam1);
+    BackupTableParams childParam2 = createTableParams(2, 4, "bar");
+    paramsList.add(childParam2);
+    tableParamsParent.backupList = new ArrayList<>(paramsList);
+    Backup previousBackup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    previousBackup.transitionState(BackupState.Completed);
+    UUID baseIdentifier_1 = previousBackup.getBackupInfo().backupList.get(0).backupParamsIdentifier;
+    UUID baseIdentifier_2 = previousBackup.getBackupInfo().backupList.get(1).backupParamsIdentifier;
+
+    BackupTableParams tableParamsParentIncrement = createParentParams(defaultUniverse);
+    tableParamsParentIncrement.baseBackupUUID = tableParamsParent.backupUuid;
+
+    List<BackupTableParams> paramsListIncrement = new ArrayList<>();
+    BackupTableParams childParam1Increment = createTableParams(0, 2, "foo");
+    childParam1Increment.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    paramsListIncrement.add(childParam1Increment);
+
+    BackupTableParams childParam2Increment = createTableParams(2, 4, "bar");
+    childParam2Increment.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    paramsListIncrement.add(childParam2Increment);
+    tableParamsParentIncrement.backupList = new ArrayList<>(paramsListIncrement);
+    // Incremental backup type 1 - same tableParams
+    Backup increment1 =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParentIncrement,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    UUID increment1_identifier_1 =
+        increment1.getBackupInfo().backupList.get(0).backupParamsIdentifier;
+    UUID increment1_identifier_2 =
+        increment1.getBackupInfo().backupList.get(1).backupParamsIdentifier;
+    assertEquals(increment1_identifier_1, baseIdentifier_1);
+    assertEquals(increment1_identifier_2, baseIdentifier_2);
+    String storageRegex =
+        "s3://foo/univ-"
+            + defaultUniverse.getName()
+            + "-"
+            + defaultUniverse.getUniverseUUID()
+            + "/foo"
+            + "/ybc_backup-[a-zA-Z0-9]+?/incremental/"
+            + timestampRegex
+            + "/.+";
+    assertThat(
+        increment1.getBackupInfo().backupList.get(0).storageLocation,
+        RegexMatcher.matchesRegex(storageRegex));
+  }
+
+  @Test
+  public void testCreateBackupWithPreviousBackupPartialOverlap() {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList = new ArrayList<>();
+    BackupTableParams childParam1 = createTableParams(0, 2, "foo");
+    paramsList.add(childParam1);
+    BackupTableParams childParam2 = createTableParams(2, 3, "bar");
+    paramsList.add(childParam2);
+    tableParamsParent.backupList = new ArrayList<>(paramsList);
+    Backup previousBackup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    previousBackup.transitionState(BackupState.Completed);
+    UUID baseIdentifier_1 = previousBackup.getBackupInfo().backupList.get(0).backupParamsIdentifier;
+    UUID baseIdentifier_2 = previousBackup.getBackupInfo().backupList.get(1).backupParamsIdentifier;
+
+    BackupTableParams tableParamsParent2 = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList2 = new ArrayList<>();
+    paramsList2.add(childParam1);
+    paramsList2.add(childParam2);
+    BackupTableParams childParam3 = createTableParams(3, 4, "bar");
+    paramsList2.add(childParam3);
+    tableParamsParent2.backupList = paramsList2;
+    tableParamsParent2.baseBackupUUID = previousBackup.getBaseBackupUUID();
+    Backup increment1 =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent2,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    UUID increment1_identifier_1 =
+        increment1.getBackupInfo().backupList.get(0).backupParamsIdentifier;
+    UUID increment1_identifier_2 =
+        increment1.getBackupInfo().backupList.get(1).backupParamsIdentifier;
+    UUID increment1_identifier_3 =
+        increment1.getBackupInfo().backupList.get(2).backupParamsIdentifier;
+
+    assertEquals(increment1_identifier_1, baseIdentifier_1);
+    assertEquals(increment1_identifier_2, baseIdentifier_2);
+    assertNotEquals(increment1_identifier_3, baseIdentifier_2);
+  }
+
+  @Test
+  public void testGetBackupParamsCollectionForRestoreTimestamp() {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList = new ArrayList<>();
+    BackupTableParams childParam1 = createTableParams(0, 1, "foo");
+    childParam1.setBackupPointInTimeRestoreWindow(new BackupPointInTimeRestoreWindow(1000L, 5000L));
+    paramsList.add(childParam1);
+    BackupTableParams childParam2 = createTableParams(1, 2, "bar");
+    childParam2.setBackupPointInTimeRestoreWindow(new BackupPointInTimeRestoreWindow(2000L, 6000L));
+    paramsList.add(childParam2);
+    BackupTableParams childParam3 = createTableParams(2, 3, "bar");
+    childParam3.setBackupPointInTimeRestoreWindow(new BackupPointInTimeRestoreWindow(4000L, 6000L));
+    paramsList.add(childParam3);
+    tableParamsParent.backupList = new ArrayList<>(paramsList);
+    Backup backup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    List<BackupTableParams> paramsInRestoreWindowActual =
+        backup.getBackupParamsCollectionForRestore(3000L);
+    assertEquals(2, paramsInRestoreWindowActual.size());
+    Optional<BackupTableParams> optParamAboveRangeEnd =
+        paramsInRestoreWindowActual.stream()
+            .filter(
+                bP ->
+                    bP.getBackupPointInTimeRestoreWindow().timestampRetentionWindowStartMillis
+                        > 3000L)
+            .findAny();
+    assertTrue(optParamAboveRangeEnd.isEmpty());
+  }
+
+  @Test
+  public void testMaybeFetchBackupWithClosestCreateTimeAfterRestoreTimestampFail()
+      throws InterruptedException {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList = new ArrayList<>();
+    BackupTableParams childParam1 = createTableParams(0, 1, "foo");
+    paramsList.add(childParam1);
+    BackupTableParams childParam2 = createTableParams(2, 3, "foo");
+    paramsList.add(childParam2);
+    tableParamsParent.backupList = new ArrayList<>(paramsList);
+    Backup backup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    backup.setState(BackupState.Completed);
+    backup.setFirstSnapshotTime(backup.backupCreateTimeInMillis());
+    backup.save();
+    tableParamsParent
+        .backupList
+        .get(0)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                backup.backupCreateTimeInMillis() - 1500L,
+                backup.backupCreateTimeInMillis() + 100L));
+    tableParamsParent
+        .backupList
+        .get(1)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                backup.backupCreateTimeInMillis() - 1300L,
+                backup.backupCreateTimeInMillis() + 200L));
+
+    backup.save();
+    Thread.sleep(1000L);
+    tableParamsParent.baseBackupUUID = backup.getBaseBackupUUID();
+    Backup incrementalBackup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    incrementalBackup.setState(BackupState.Completed);
+    incrementalBackup.setFirstSnapshotTime(incrementalBackup.backupCreateTimeInMillis() - 1500L);
+    incrementalBackup.save();
+    // Restore timestamp after earliest snapshot time
+    long restoreTimestampMillis = incrementalBackup.backupCreateTimeInMillis() + 250L;
+    Optional<Backup> optBackup =
+        Backup.maybeGetRestorableBackup(
+            defaultCustomer.getUuid(), backup.getBaseBackupUUID(), restoreTimestampMillis);
+    assertTrue(optBackup.isEmpty());
+  }
+
+  @Test
+  public void testMaybeFetchBackupWithPITRWindowStartAfterRestoreTimestampFail()
+      throws InterruptedException {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList = new ArrayList<>();
+    BackupTableParams childParam1 = createTableParams(0, 1, "foo");
+    paramsList.add(childParam1);
+    BackupTableParams childParam2 = createTableParams(2, 3, "foo");
+    paramsList.add(childParam2);
+    tableParamsParent.backupList = new ArrayList<>(paramsList);
+    Backup backup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    backup.setState(BackupState.Completed);
+    backup.save();
+    tableParamsParent = backup.getBackupInfo();
+    tableParamsParent
+        .backupList
+        .get(0)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                backup.backupCreateTimeInMillis() + 5000L,
+                backup.backupCreateTimeInMillis() + 1500L));
+    tableParamsParent
+        .backupList
+        .get(1)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                backup.backupCreateTimeInMillis() + 3000L,
+                backup.backupCreateTimeInMillis() + 1600L));
+    backup.setFirstSnapshotTime(backup.backupCreateTimeInMillis() + 1500L);
+    backup.save();
+    // Restore timestamp less than earliest snapshot retention start window
+    long restoreTimestampMillis = backup.backupCreateTimeInMillis() - 100L;
+    Optional<Backup> optBackup =
+        Backup.maybeGetRestorableBackup(
+            defaultCustomer.getUuid(), backup.getBaseBackupUUID(), restoreTimestampMillis);
+    assertTrue(optBackup.isEmpty());
+  }
+
+  @Test
+  public void testMaybeFetchBackupWithCreateTimeAfterRestoreTimestamp()
+      throws InterruptedException {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList = new ArrayList<>();
+    BackupTableParams childParam1 = createTableParams(0, 1, "foo");
+    paramsList.add(childParam1);
+    BackupTableParams childParam2 = createTableParams(2, 3, "foo");
+    paramsList.add(childParam2);
+    tableParamsParent.backupList = new ArrayList<>(paramsList);
+    Backup backup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    backup.setState(BackupState.Completed);
+    backup.setFirstSnapshotTime(backup.backupCreateTimeInMillis());
+    backup.save();
+    Thread.sleep(1000L);
+    tableParamsParent.baseBackupUUID = backup.getBaseBackupUUID();
+    Backup incrementalBackup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    incrementalBackup.setState(BackupState.Completed);
+    tableParamsParent = backup.getBackupInfo();
+    tableParamsParent
+        .backupList
+        .get(0)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                incrementalBackup.backupCreateTimeInMillis() - 5000L,
+                incrementalBackup.backupCreateTimeInMillis() + 300L));
+    tableParamsParent
+        .backupList
+        .get(1)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                incrementalBackup.backupCreateTimeInMillis() - 3000L,
+                incrementalBackup.backupCreateTimeInMillis() + 100L));
+    incrementalBackup.setFirstSnapshotTime(incrementalBackup.backupCreateTimeInMillis() + 100L);
+    incrementalBackup.save();
+    // Restore timestamp in the latest backup restorable window
+    long restoreTimestampMillis = incrementalBackup.backupCreateTimeInMillis() - 200L;
+    Optional<Backup> optBackup =
+        Backup.maybeGetRestorableBackup(
+            defaultCustomer.getUuid(), backup.getBaseBackupUUID(), restoreTimestampMillis);
+    assertTrue(optBackup.isPresent());
+    assertEquals(incrementalBackup.getBackupUUID(), optBackup.get().getBackupUUID());
+  }
+
+  @Test
+  public void testMaybeFetchBackupWithClosestCreateTimeAfterRestoreTimestamp()
+      throws InterruptedException {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList = new ArrayList<>();
+    BackupTableParams childParam1 = createTableParams(0, 1, "foo");
+    paramsList.add(childParam1);
+    BackupTableParams childParam2 = createTableParams(2, 3, "foo");
+    paramsList.add(childParam2);
+    tableParamsParent.backupList = new ArrayList<>(paramsList);
+    Backup backup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    tableParamsParent
+        .backupList
+        .get(0)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                backup.backupCreateTimeInMillis() - 5000L,
+                backup.backupCreateTimeInMillis() + 3000L));
+    tableParamsParent
+        .backupList
+        .get(1)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                backup.backupCreateTimeInMillis() - 7000L,
+                backup.backupCreateTimeInMillis() + 1000L));
+    backup.setState(BackupState.Completed);
+    backup.setFirstSnapshotTime(backup.backupCreateTimeInMillis() + 1000L);
+    backup.save();
+    Thread.sleep(1000L);
+    tableParamsParent.baseBackupUUID = backup.getBaseBackupUUID();
+    Backup incrementalBackup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    incrementalBackup.setState(BackupState.Completed);
+    tableParamsParent = backup.getBackupInfo();
+    tableParamsParent
+        .backupList
+        .get(0)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                incrementalBackup.backupCreateTimeInMillis() - 4000L,
+                incrementalBackup.backupCreateTimeInMillis() + 4000L));
+    tableParamsParent
+        .backupList
+        .get(1)
+        .setBackupPointInTimeRestoreWindow(
+            new BackupPointInTimeRestoreWindow(
+                incrementalBackup.backupCreateTimeInMillis() - 3000L,
+                incrementalBackup.backupCreateTimeInMillis() + 5000L));
+    incrementalBackup.setFirstSnapshotTime(incrementalBackup.backupCreateTimeInMillis() + 4000L);
+    incrementalBackup.save();
+    // First backup restorable window closest to restore timestamp
+    long restoreTimestampMillis = backup.backupCreateTimeInMillis() + 200L;
+    Optional<Backup> optBackup =
+        Backup.maybeGetRestorableBackup(
+            defaultCustomer.getUuid(), backup.getBaseBackupUUID(), restoreTimestampMillis);
+    assertTrue(optBackup.isPresent());
+    assertEquals(backup.getBackupUUID(), optBackup.get().getBackupUUID());
+  }
+
+  @Test
+  public void testGetKeyspaceAndTablesBackupLocationMap() {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> paramsList = new ArrayList<>();
+    BackupTableParams childParam1 = createTableParams(0, 2, "foo");
+    paramsList.add(childParam1);
+    BackupTableParams childParam2 = createTableParams(2, 3, "foo");
+    paramsList.add(childParam2);
+    BackupTableParams childParam3 = createTableParams(1, 3, "bar");
+    paramsList.add(childParam3);
+    tableParamsParent.backupList = new ArrayList<>(paramsList);
+    Backup backup =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    Map<String, Map<String, Set<String>>> keyspaceLocationTablesMap =
+        backup.getKeyspaceAndTablesBackupLocationMap(0L);
+    assertEquals(2, keyspaceLocationTablesMap.size());
+    assertEquals(2, keyspaceLocationTablesMap.get("foo").size());
+    Iterator<Entry<String, Set<String>>> iter =
+        keyspaceLocationTablesMap.get("foo").entrySet().iterator();
+    assertNotEquals(iter.next().getKey(), iter.next().getKey());
+    assertEquals(1, keyspaceLocationTablesMap.get("bar").size());
+  }
+
+  @Test
+  public void testFetchBackupWithBaseBackupUUID() {
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupTableParams tableParamsParent = createParentParams(defaultUniverse);
+    List<BackupTableParams> childParams = new ArrayList<>();
+    BackupTableParams childParam = createTableParams(0, 2, "foo");
+    childParams.add(childParam);
+    tableParamsParent.backupList = childParams;
+    tableParamsParent.baseBackupUUID = UUID.randomUUID();
+    Backup backup_1 =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    backup_1.setState(BackupState.Completed);
+    backup_1.save();
+
+    Backup backup_2 =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    backup_2.setState(BackupState.InProgress);
+    backup_2.save();
+
+    Backup backup_3 =
+        Backup.create(
+            defaultCustomer.getUuid(),
+            tableParamsParent,
+            BackupCategory.YB_CONTROLLER,
+            BackupVersion.V2);
+    backup_3.setState(BackupState.Completed);
+    backup_3.save();
+
+    List<Backup> backupListCompleted =
+        Backup.fetchAllBackupsByBaseBackupUUID(
+            defaultCustomer.getUuid(), tableParamsParent.baseBackupUUID, BackupState.Completed);
+    assertEquals(2, backupListCompleted.size());
+    List<Backup> backupListInProgress =
+        Backup.fetchAllBackupsByBaseBackupUUID(
+            defaultCustomer.getUuid(), tableParamsParent.baseBackupUUID, BackupState.InProgress);
+    assertEquals(1, backupListInProgress.size());
+    List<Backup> backupListAll =
+        Backup.fetchAllBackupsByBaseBackupUUID(
+            defaultCustomer.getUuid(), tableParamsParent.baseBackupUUID, null /* state */);
+    assertEquals(3, backupListAll.size());
+  }
+}

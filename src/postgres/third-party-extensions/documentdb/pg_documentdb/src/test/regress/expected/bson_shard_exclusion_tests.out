@@ -1,0 +1,110 @@
+SET search_path TO documentdb_api,documentdb_core;
+SET documentdb.next_collection_id TO 100;
+SET documentdb.next_collection_index_id TO 100;
+-- test up the unique shard document generation 
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": "a", "key2": "1" }', 1, '{ "key1" : 1, "key2" : 1 }'::bson, true);
+                                                                  generate_unique_shard_document                                                                  
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "1" }, "$numTerms" : { "$numberInt" : "2" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ "a" ], "key2" : [ "1" ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": "a", "key2": "2" }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true);
+                                                                  generate_unique_shard_document                                                                  
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "2" }, "$numTerms" : { "$numberInt" : "2" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ "a" ], "key2" : [ "2" ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": "a" }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true);
+                                                         generate_unique_shard_document                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "2" }, "$numTerms" : { "$numberInt" : "1" }, "$numPaths" : { "$numberInt" : "1" }, "key1" : [ "a" ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key2": "2" }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true);
+                                                         generate_unique_shard_document                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "2" }, "$numTerms" : { "$numberInt" : "1" }, "$numPaths" : { "$numberInt" : "1" }, "key2" : [ "2" ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": "a" }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, false);
+                                                                  generate_unique_shard_document                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "2" }, "$numTerms" : { "$numberInt" : "2" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ "a" ], "key2" : [ null ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key2": "2" }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, false);
+                                                                  generate_unique_shard_document                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "2" }, "$numTerms" : { "$numberInt" : "2" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ null ], "key2" : [ "2" ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": "a", "key2": [ "1", "2", "3" ] }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true);
+                                                                                generate_unique_shard_document                                                                                 
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "2" }, "$numTerms" : { "$numberInt" : "5" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ "a" ], "key2" : [ [ "1", "2", "3" ], "1", "2", "3" ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": [ "a", "b", "c" ], "key2": "1" }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true);
+                                                                                generate_unique_shard_document                                                                                 
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "2" }, "$numTerms" : { "$numberInt" : "5" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ "a", "b", "c" ], "a", "b", "c" ], "key2" : [ "1" ] }
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": [ "a", "b", "c" ], "key2": [ "1", "2", "3" ] }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true);
+                                                                                               generate_unique_shard_document                                                                                               
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "$shard_key_value" : { "$numberLong" : "2" }, "$numTerms" : { "$numberInt" : "8" }, "$numPaths" : { "$numberInt" : "2" }, "key1" : [ [ "a", "b", "c" ], "a", "b", "c" ], "key2" : [ [ "1", "2", "3" ], "1", "2", "3" ] }
+(1 row)
+
+-- test the equality operator for the unique equal
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": "a", "key2": "1" }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true)
+       OPERATOR(documentdb_api_internal.=#=) 
+       documentdb_api_internal.generate_unique_shard_document('{ "key1": "a", "key2": "1" }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true);
+ ?column? 
+----------
+ t
+(1 row)
+
+-- with a different shard key becomes not equal
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": "a", "key2": "1" }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true)
+       OPERATOR(documentdb_api_internal.=#=) 
+       documentdb_api_internal.generate_unique_shard_document('{ "key1": "a", "key2": "1" }', 3, '{ "key1" : 1, "key2" : 1 }'::bson, true);
+ ?column? 
+----------
+ f
+(1 row)
+
+-- Array paths handle uniqueness
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": "a", "key2": "1" }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true)
+       OPERATOR(documentdb_api_internal.=#=) 
+       documentdb_api_internal.generate_unique_shard_document('{ "key1": "a", "key2": [ "1", "2" ] }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true);
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": "a", "key2": "1" }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true)
+       OPERATOR(documentdb_api_internal.=#=) 
+       documentdb_api_internal.generate_unique_shard_document('{ "key1": [ "a", "b" ], "key2": "1" }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true);
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": [ [ "a", "b" ] ], "key2": "1" }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true)
+       OPERATOR(documentdb_api_internal.=#=) 
+       documentdb_api_internal.generate_unique_shard_document('{ "key1": [ "a", "b" ], "key2": "1" }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true);
+ ?column? 
+----------
+ t
+(1 row)
+
+-- one key msimatch makes it not mismatched.
+SELECT documentdb_api_internal.generate_unique_shard_document('{ "key1": "a", "key2": "1" }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true)
+       OPERATOR(documentdb_api_internal.=#=) 
+       documentdb_api_internal.generate_unique_shard_document('{ "key1": [ "a", "b" ], "key2": "2" }', 2, '{ "key1" : 1, "key2" : 1 }'::bson, true);
+ ?column? 
+----------
+ f
+(1 row)
+

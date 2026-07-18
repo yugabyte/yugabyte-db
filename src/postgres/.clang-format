@@ -1,0 +1,115 @@
+---
+Language:        Cpp
+# BasedOnStyle:  GNU
+# This clang-format file is intended to use for formatting *new changes* for 
+# Postgres C code base under Yugabyte.
+# Use this file for formatting with your own judgement.
+# The existing PG code base has an inconsistent format with its long history
+# plus Yugabyte's extension.
+# Please update this file if you identify any formats.
+AccessModifierOffset: -2
+AlignAfterOpenBracket: Align
+AlignConsecutiveMacros: true
+AlignConsecutiveAssignments: false
+AlignConsecutiveBitFields: false
+# Leave AlignConsecutiveDeclarations to default as YB team can use either of the
+# styles. Not aligned is preferred in most cases but this is not enforced.
+# AlignConsecutiveDeclarations: false
+AlignEscapedNewlines: DontAlign
+AlignOperands: Align
+AlignTrailingComments: true
+AllowAllArgumentsOnNextLine: true
+AllowAllConstructorInitializersOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+AllowShortEnumsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakAfterReturnType: AllDefinitions
+AlwaysBreakBeforeMultilineStrings: false
+BinPackArguments: true
+BinPackParameters: true
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel:  true
+  AfterControlStatement: Always
+  AfterEnum:       true
+  AfterFunction:   true
+  AfterStruct:     true
+  AfterUnion:      true
+  BeforeElse:      true
+  BeforeWhile:     false
+  IndentBraces:    false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+BreakBeforeBinaryOperators: None
+BreakBeforeInheritanceComma: false
+BreakInheritanceList: BeforeColon
+BreakBeforeTernaryOperators: false
+BreakStringLiterals: true
+ColumnLimit: 80
+ContinuationIndentWidth: 4
+DeriveLineEnding: true
+DerivePointerAlignment: false
+DisableFormat: false
+ExperimentalAutoDetectBinPacking: false
+ForEachMacros:
+  - foreach
+IncludeBlocks: Preserve
+IncludeCategories:
+  - Regex:           '"postgres.h"'
+    Priority:        0
+    SortPriority:    0
+  # system headers
+  - Regex:           '^<.+>$'
+    Priority:        1
+    SortPriority:    0
+  - Regex:           '^"(llvm|llvm-c|clang|clang-c)/'
+    Priority:        1
+    SortPriority:    1
+  # headers for PG
+  - Regex:           '^"[^(yb\/)].*'
+    Priority:        2
+    SortPriority:    0
+  # headers for YB
+  - Regex:           '^"pg_yb_.*'
+    Priority:        2
+    SortPriority:    0
+  - Regex:           '^"yb\/.*'
+    Priority:        2
+    SortPriority:    1
+IndentCaseLabels: true
+IndentCaseBlocks: false
+IndentGotoLabels: false
+IndentPPDirectives: None
+IndentExternBlock: NoIndent
+IndentWidth: 4
+IndentWrappedFunctionNames: false
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+PenaltyBreakAssignment: 10
+PenaltyBreakBeforeFirstCallParameter: 30
+PenaltyBreakComment: 10
+PenaltyBreakString: 10
+PenaltyExcessCharacter: 100
+PointerAlignment: Right
+SortIncludes: true
+SpaceAfterCStyleCast: true
+SpaceAfterLogicalNot: false
+SpaceBeforeAssignmentOperators: true
+# clang-format v12
+#SpaceBeforeCaseColon: false
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyBlock: false
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 1
+SpacesInConditionalStatement: false
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpaceBeforeSquareBrackets: false
+TabWidth: 4
+UseCRLF: false
+UseTab: Always

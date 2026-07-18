@@ -1,0 +1,64 @@
+error[E0521]: borrowed data escapes outside of function
+  --> tests/compile-fail/aggregate-functions-dont-run-forever.rs:10:1
+   |
+10 | #[pg_aggregate]
+   | ^^^^^^^^^^^^^^^
+   | |
+   | `fcinfo` is a reference that is only valid in the function body
+   | `fcinfo` escapes the function body here
+   | lifetime `'fcx` defined here
+   | argument requires that `'fcx` must outlive `'static`
+   |
+   = note: this error originates in the attribute macro `::pgrx::pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0521]: borrowed data escapes outside of function
+  --> tests/compile-fail/aggregate-functions-dont-run-forever.rs:47:1
+   |
+47 | #[pg_aggregate]
+   | ^^^^^^^^^^^^^^^
+   | |
+   | `fcinfo` is a reference that is only valid in the function body
+   | `fcinfo` escapes the function body here
+   | lifetime `'fcx` defined here
+   | argument requires that `'fcx` must outlive `'static`
+   |
+   = note: this error originates in the attribute macro `::pgrx::pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0521]: borrowed data escapes outside of function
+  --> tests/compile-fail/aggregate-functions-dont-run-forever.rs:70:1
+   |
+70 | #[pg_aggregate]
+   | ^^^^^^^^^^^^^^^
+   | |
+   | `fcinfo` is a reference that is only valid in the function body
+   | `fcinfo` escapes the function body here
+   | lifetime `'fcx` defined here
+   | argument requires that `'fcx` must outlive `'static`
+   |
+   = note: this error originates in the attribute macro `::pgrx::pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0521]: borrowed data escapes outside of function
+   --> tests/compile-fail/aggregate-functions-dont-run-forever.rs:113:1
+    |
+113 | #[pg_aggregate]
+    | ^^^^^^^^^^^^^^^
+    | |
+    | `fcinfo` is a reference that is only valid in the function body
+    | `fcinfo` escapes the function body here
+    | lifetime `'fcx` defined here
+    | argument requires that `'fcx` must outlive `'static`
+    |
+    = note: this error originates in the attribute macro `::pgrx::pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0521]: borrowed data escapes outside of function
+   --> tests/compile-fail/aggregate-functions-dont-run-forever.rs:141:1
+    |
+141 | #[pg_aggregate]
+    | ^^^^^^^^^^^^^^^
+    | |
+    | `fcinfo` is a reference that is only valid in the function body
+    | `fcinfo` escapes the function body here
+    | lifetime `'fcx` defined here
+    | argument requires that `'fcx` must outlive `'static`
+    |
+    = note: this error originates in the attribute macro `::pgrx::pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)

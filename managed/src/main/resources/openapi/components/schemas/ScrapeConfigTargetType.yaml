@@ -1,0 +1,13 @@
+title: ScrapeConfigTargetType
+description: |
+  Enum for target types that support metrics export scrape configuration.
+type: string
+enum:
+  - MASTER_EXPORT
+  - TSERVER_EXPORT
+  - YSQL_EXPORT
+  - CQL_EXPORT
+  - NODE_EXPORT
+  - NODE_AGENT_EXPORT
+  - OTEL_EXPORT
+example: MASTER_EXPORT

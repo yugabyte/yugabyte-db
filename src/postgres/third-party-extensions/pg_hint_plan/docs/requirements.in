@@ -1,0 +1,11 @@
+# RTD only supports sphinx up to 5.3.0
+sphinx==5.3.0
+
+# those are sphinx dependencies, but unfortunately RTD doesn't support the
+# latest versions, so we need to explicitly pin them
+sphinxcontrib-applehelp==1.0.2
+sphinxcontrib-htmlhelp==2.0.0
+
+sphinx_rtd_theme
+myst_parser
+sphinx-intl

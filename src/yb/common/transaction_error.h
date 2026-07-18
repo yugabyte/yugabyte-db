@@ -1,0 +1,67 @@
+// Copyright (c) YugabyteDB, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+#pragma once
+
+#include <string>
+#include <string_view>
+
+#include "yb/common/pgsql_error.h"
+
+#include "yb/util/enums.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/tostring.h"
+
+using namespace std::literals;
+
+namespace yb {
+
+YB_DEFINE_ENUM(TransactionErrorCode,
+    // Special value used to indicate no error of this type
+    (kNone)
+    (kAborted)
+    (kReadRestartRequired)
+    (kConflict)
+    (kSnapshotTooOld)
+    (kSkipLocking)
+    (kDeadlock)
+    (kLockNotFound));
+
+struct TransactionErrorTag : IntegralErrorTag<TransactionErrorCode> {
+  // It is part of the wire protocol and should not be changed once released.
+  static constexpr CategoryDescriptor kCategory{7, "transaction error"sv};
+
+  static std::string ToMessage(Value value) {
+    return ToString(value);
+  }
+};
+
+using TransactionError = StatusErrorCodeImpl<TransactionErrorTag>;
+
+template <class... Args>
+Status CreateAbortedStatus(Args&&... args) {
+  return STATUS(
+      TryAgain, Format(std::forward<Args>(args)...), Slice(),
+      PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED)).CloneAndAddErrorCode(
+          TransactionError(TransactionErrorCode::kAborted));
+}
+
+template <class... Args>
+Status CreateExpiredStatus(Args&&... args) {
+  return STATUS(
+      Expired, Format(std::forward<Args>(args)...), Slice(),
+      PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED)).CloneAndAddErrorCode(
+          TransactionError(TransactionErrorCode::kAborted));
+}
+
+} // namespace yb

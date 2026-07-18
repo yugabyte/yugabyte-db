@@ -1,0 +1,101 @@
+src/tools/pginclude/README
+
+This directory contains some scripts and information for managing
+header files and includes in PostgreSQL source code.
+
+
+include-what-you-use
+====================
+
+include-what-you-use (IWYU) (<https://include-what-you-use.org/>) is a
+tool for finding missing or superfluous includes in C source files.
+
+With a compilation database (compile_commands.json, produced by
+meson), it can be run like this, over the whole source tree:
+
+    iwyu_tool.py -p build .
+
+(this will likely be very noisy) or for individual files:
+
+    iwyu_tool.py -p build src/bin/psql/startup.c
+
+Various other invocation options are available.
+
+It is recommended to use at least version 0.23.  Earlier versions give
+advice that is incompatible with the compiler warning option
+-Wmissing-variable-declarations.
+
+clangd (the language server) can automatically give IWYU-style advice;
+see <https://clangd.llvm.org/guides/include-cleaner>.
+
+The source code contains some "IWYU pragma" comments to tell IWYU
+about some PostgreSQL include file conventions (such as that a header
+such as "postgres.h" should always be included, even if it doesn't
+contribute any symbols used by the particular source file) and to
+silence a few warnings that are difficult to fix.  See
+<https://github.com/include-what-you-use/include-what-you-use/blob/master/docs/IWYUPragmas.md>
+for documentation about those.
+
+Of course, any include changes suggested by this or other tools should
+be checked and verified carefully.  Note that some includes are only
+used on some platforms or with some compilation options, so blindly
+following the produced advice is not recommended.
+
+
+headerscheck
+============
+
+This script can be run to verify that all Postgres include files meet
+the project convention that they will compile "standalone", that is
+with no prerequisite headers other than postgres.h (or postgres_fe.h
+or c.h, as appropriate).
+
+A small number of header files are exempted from this requirement,
+and are skipped by the headerscheck script.
+
+The easy way to run the script is to say "make -s headerscheck" in
+the top-level build directory after completing a build.  You should
+have included at least
+
+    --with-llvm --with-perl --with-python
+
+in your configure options, else you're likely to get errors about
+related headers not being found.
+
+When using meson, run "meson compile -C build headerscheck" or "ninja
+-C build headerscheck".
+
+A limitation of the current script is that it doesn't know exactly which
+headers are for frontend or backend; when in doubt it uses postgres.h as
+prerequisite, even if postgres_fe.h or c.h would be more appropriate.
+Also note that the contents of macros are not checked; this is intentional.
+
+
+headerscheck --cplusplus
+========================
+
+The headerscheck in --cplusplus mode can be run to verify that all
+Postgres include files meet the project convention that they will
+compile as C++ code.  Although the project's coding language is C,
+some people write extensions in C++, so it's helpful for include files
+to be C++-clean.
+
+A small number of header files are exempted from this requirement,
+and are skipped by the script in the --cplusplus mode.
+
+The easy way to run the script is to say "make -s cpluspluscheck" in
+the top-level build directory after completing a build.  You should
+have included at least
+
+    --with-llvm --with-perl --with-python
+
+in your configure options, else you're likely to get errors about
+related headers not being found.
+
+When using meson, run "meson compile -C build cpluspluscheck" or
+"ninja -C build cpluspluscheck".
+
+A limitation of the current script is that it doesn't know exactly which
+headers are for frontend or backend; when in doubt it uses postgres.h as
+prerequisite, even if postgres_fe.h or c.h would be more appropriate.
+Also note that the contents of macros are not checked; this is intentional.

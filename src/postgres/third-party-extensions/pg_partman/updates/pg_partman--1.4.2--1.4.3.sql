@@ -1,0 +1,5 @@
+-- Fix "make install" to work in PostgreSQL 9.3.x without throwing an error.
+-- "make install" now installs the python script files to <postgresql_install_prefix>/bin. They are now also executable and have the proper #! line at the top.
+-- Updated the rest of the python scripts to use argparse library for options (thanks to Josh Berkus for the assistance on this).
+  -- Some of the command line options have changed for the scripts. See the --help for each script to ensure you are using the correct parameters.
+-- No code changes to core extension, however this file is required to update to pg_partman 1.4.3 and higher.

@@ -1,0 +1,587 @@
+// Copyright (c) YugabyteDB, Inc.
+package api.v2.handlers;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
+
+import api.v2.mappers.UniverseCertsRotateParamsMapper;
+import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
+import api.v2.mappers.UniverseEditGFlagsMapper;
+import api.v2.mappers.UniverseEditKubernetesOverridesParamsMapper;
+import api.v2.mappers.UniverseMetricsExportConfigParamsMapper;
+import api.v2.mappers.UniverseQueryLogsExportMapper;
+import api.v2.mappers.UniverseResizeNodeParamsMapper;
+import api.v2.mappers.UniverseRestartParamsMapper;
+import api.v2.mappers.UniverseRollbackUpgradeMapper;
+import api.v2.mappers.UniverseSoftwareFinalizeMapper;
+import api.v2.mappers.UniverseSoftwareFinalizeRespMapper;
+import api.v2.mappers.UniverseSoftwareUpgradePrecheckMapper;
+import api.v2.mappers.UniverseSoftwareUpgradeStartMapper;
+import api.v2.mappers.UniverseSystemdUpgradeMapper;
+import api.v2.mappers.UniverseThirdPartySoftwareUpgradeMapper;
+import api.v2.mappers.UniverseTlsToggleParamsMapper;
+import api.v2.models.ConfigureMetricsExportSpec;
+import api.v2.models.ExportTelemetryConfigSpec;
+import api.v2.models.UniverseCertRotateSpec;
+import api.v2.models.UniverseEditEncryptionInTransit;
+import api.v2.models.UniverseEditGFlags;
+import api.v2.models.UniverseEditKubernetesOverrides;
+import api.v2.models.UniverseQueryLogsExport;
+import api.v2.models.UniverseResizeNodes;
+import api.v2.models.UniverseRestart;
+import api.v2.models.UniverseResumeCanaryUpgrade;
+import api.v2.models.UniverseRollbackUpgradeReq;
+import api.v2.models.UniverseSoftwareUpgradeFinalize;
+import api.v2.models.UniverseSoftwareUpgradeFinalizeInfo;
+import api.v2.models.UniverseSoftwareUpgradePrecheckReq;
+import api.v2.models.UniverseSoftwareUpgradePrecheckResp;
+import api.v2.models.UniverseSoftwareUpgradeStart;
+import api.v2.models.UniverseSystemdEnableStart;
+import api.v2.models.UniverseThirdPartySoftwareUpgradeStart;
+import api.v2.models.YBATask;
+import api.v2.utils.ApiControllerUtils;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.google.inject.Inject;
+import com.google.inject.Singleton;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.SoftwareUpgradeHelper;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.export.ExportTelemetryConfigMapper;
+import com.yugabyte.yw.common.export.TelemetryConfig;
+import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
+import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
+import com.yugabyte.yw.forms.FinalizeUpgradeParams;
+import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.MetricsExportConfigParams;
+import com.yugabyte.yw.forms.QueryLogConfigParams;
+import com.yugabyte.yw.forms.ResizeNodeParams;
+import com.yugabyte.yw.forms.RestartTaskParams;
+import com.yugabyte.yw.forms.RollbackUpgradeParams;
+import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.SystemdUpgradeParams;
+import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
+import com.yugabyte.yw.forms.TlsToggleParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Release;
+import com.yugabyte.yw.models.TelemetryProvider;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
+import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoRequest;
+import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
+import com.yugabyte.yw.models.helpers.TelemetryProviderService;
+import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
+import java.util.Collections;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
+import play.mvc.Http.Request;
+
+@Singleton
+@Slf4j
+public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
+  @Inject public UpgradeUniverseHandler v1Handler;
+  @Inject public Commissioner commissioner;
+  @Inject private RuntimeConfGetter confGetter;
+  @Inject private TelemetryProviderService telemetryProviderService;
+  @Inject private SoftwareUpgradeHelper softwareUpgradeHelper;
+
+  public YBATask editGFlags(
+      Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags editGFlags)
+      throws JsonProcessingException {
+    log.info("Starting v2 edit GFlags with {}", editGFlags);
+
+    // get universe from db
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    GFlagsUpgradeParams v1Params = null;
+    if (Util.isKubernetesBasedUniverse(universe)) {
+      v1Params =
+          UniverseDefinitionTaskParamsMapper.INSTANCE.toKubernetesGFlagsUpgradeParams(
+              universe.getUniverseDetails(), request);
+    } else {
+      v1Params =
+          UniverseDefinitionTaskParamsMapper.INSTANCE.toGFlagsUpgradeParams(
+              universe.getUniverseDetails(), request);
+    }
+    // fill in SpecificGFlags from universeGFlags params into v1Params
+    UniverseEditGFlagsMapper.INSTANCE.copyToV1GFlagsUpgradeParams(editGFlags, v1Params);
+    // invoke v1 upgrade api UpgradeUniverseHandler.upgradeGFlags
+    UUID taskUuid = v1Handler.upgradeGFlags(v1Params, customer, universe);
+    // construct a v2 Task to return from here
+    YBATask YBATask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
+
+    log.info("Started gflags upgrade task {}", mapper.writeValueAsString(YBATask));
+    return YBATask;
+  }
+
+  public YBATask startSoftwareUpgrade(
+      Request request, UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradeStart upgradeStart)
+      throws JsonProcessingException {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    SoftwareUpgradeParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toSoftwareUpgradeParams(
+            universe.getUniverseDetails(), request);
+
+    UniverseSoftwareUpgradeStartMapper.INSTANCE.copyToV1SoftwareUpgradeParams(
+        upgradeStart, v1Params);
+
+    UUID taskUuid = null;
+    if (upgradeStart.getAllowRollback()) {
+      taskUuid = v1Handler.upgradeDBVersion(v1Params, customer, universe);
+    } else {
+      taskUuid = v1Handler.upgradeSoftware(v1Params, customer, universe);
+    }
+    // construct a v2 Task to return from here
+    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
+
+    log.info("Started software upgrade task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
+  }
+
+  public YBATask finalizeSoftwareUpgrade(
+      Request request, UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradeFinalize upgradeStart)
+      throws JsonProcessingException {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    FinalizeUpgradeParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toFinalizeUpgradeParams(
+            universe.getUniverseDetails(), request);
+    UniverseSoftwareFinalizeMapper.INSTANCE.copyToV1FinalizeUpgradeParams(upgradeStart, v1Params);
+
+    UUID taskUuid = v1Handler.finalizeUpgrade(v1Params, customer, universe);
+    // construct a v2 Task to return from here
+    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
+
+    log.info("Started finalize software upgrade task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
+  }
+
+  public UniverseSoftwareUpgradeFinalizeInfo getSoftwareUpgradeFinalizeInfo(
+      UUID cUUID, UUID uniUUID) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe.getOrBadRequest(uniUUID, customer);
+
+    FinalizeUpgradeInfoResponse v1Resp = v1Handler.finalizeUpgradeInfo(cUUID, uniUUID);
+    UniverseSoftwareUpgradeFinalizeInfo info =
+        UniverseSoftwareFinalizeRespMapper.INSTANCE.toV2UniverseSoftwareFinalizeInfo(v1Resp);
+
+    return info;
+  }
+
+  public YBATask startThirdPartySoftwareUpgrade(
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UniverseThirdPartySoftwareUpgradeStart upgradeStart)
+      throws JsonProcessingException {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    ThirdpartySoftwareUpgradeParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toThirdpartySoftwareUpgradeParams(
+            universe.getUniverseDetails(), request);
+
+    UniverseThirdPartySoftwareUpgradeMapper.INSTANCE.copyToV1ThirdpartySoftwareUpgradeParams(
+        upgradeStart, v1Params);
+
+    UUID taskUuid = v1Handler.thirdpartySoftwareUpgrade(v1Params, customer, universe);
+    // construct a v2 Task to return from here
+    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
+
+    log.info("Started thirdparty software upgrade task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
+  }
+
+  public YBATask rollbackSoftwareUpgrade(
+      Request request, UUID cUUID, UUID uniUUID, UniverseRollbackUpgradeReq req) throws Exception {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    RollbackUpgradeParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toRollbackUpgradeParams(
+            universe.getUniverseDetails(), request);
+    UniverseRollbackUpgradeMapper.INSTANCE.copyToV1RollbackUpgradeParams(req, v1Params);
+    UUID taskUuid = v1Handler.rollbackUpgrade(v1Params, customer, universe);
+    // construct a v2 Task to return from here
+    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
+
+    log.info("Started software rollback task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
+  }
+
+  public YBATask resumeCanarySoftwareUpgrade(
+      UUID cUUID, UUID uniUUID, UniverseResumeCanaryUpgrade req) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    UUID taskUuid = v1Handler.resumeCanarySoftwareUpgrade(cUUID, uniUUID, req.getTaskUuid());
+    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
+    return ybaTask;
+  }
+
+  public UniverseSoftwareUpgradePrecheckResp precheckSoftwareUpgrade(
+      UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradePrecheckReq precheckReq) throws Exception {
+    if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
+      Release.getByVersionOrBadRequest(precheckReq.getYbSoftwareVersion());
+    }
+    SoftwareUpgradeInfoRequest v1Params =
+        UniverseSoftwareUpgradePrecheckMapper.INSTANCE.toSoftwareUpgradeInfoRequest(precheckReq);
+    SoftwareUpgradeInfoResponse v1Resp = v1Handler.softwareUpgradeInfo(cUUID, uniUUID, v1Params);
+    return UniverseSoftwareUpgradePrecheckMapper.INSTANCE.toUniverseSoftwareUpgradePrecheckResp(
+        v1Resp);
+  }
+
+  public YBATask restartUniverse(
+      Request request, UUID cUUID, UUID uniUUID, UniverseRestart uniRestart)
+      throws JsonProcessingException {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    UUID taskUuid = null;
+    if (uniRestart == null) {
+      uniRestart = new UniverseRestart();
+    }
+    // Kubernetes services only can do a service level restart.
+    if (universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(Common.CloudType.kubernetes)
+        || uniRestart.getRestartType().equals(UniverseRestart.RestartTypeEnum.SERVICE)) {
+      log.debug("performing universe restart (service only)");
+      RestartTaskParams v1Params =
+          UniverseDefinitionTaskParamsMapper.INSTANCE.toRestartTaskParams(
+              universe.getUniverseDetails(), request);
+      UniverseRestartParamsMapper.INSTANCE.copyToV1RestartTaskParams(uniRestart, v1Params);
+      taskUuid = v1Handler.restartUniverse(v1Params, customer, universe);
+    } else if (uniRestart.getRestartType().equals(UniverseRestart.RestartTypeEnum.OS)) {
+      // Soft reboot can use the v1 handler still
+      log.debug("performing universe reboot (SOFT)");
+      UpgradeTaskParams v1Params =
+          UniverseDefinitionTaskParamsMapper.INSTANCE.toUpgradeTaskParams(
+              universe.getUniverseDetails(), request);
+      UniverseRestartParamsMapper.INSTANCE.copyToV1UpgradeTaskParams(uniRestart, v1Params);
+      taskUuid = v1Handler.rebootUniverse(v1Params, customer, universe);
+    } else {
+      log.debug("performing universe reboot (HARD)");
+      throw new UnsupportedOperationException("HARD reboots are not supported in v2");
+    }
+    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
+    log.info("Started universe restart task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
+  }
+
+  public YBATask systemdEnable(
+      Request request, UUID cUUID, UUID uniUUID, UniverseSystemdEnableStart systemd)
+      throws JsonProcessingException {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
+      throw new PlatformServiceException(BAD_REQUEST, "universe already using systemd services");
+    }
+
+    SystemdUpgradeParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toSystemdUpgradeParams(
+            universe.getUniverseDetails(), request);
+    UniverseSystemdUpgradeMapper.INSTANCE.copToV1SystemdUpgradeParams(systemd, v1Params);
+
+    UUID taskUUID = v1Handler.upgradeSystemd(v1Params, customer, universe);
+    YBATask ybaTask = new YBATask().taskUuid(taskUUID).resourceUuid(uniUUID);
+    log.info("Started systemd enable task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
+  }
+
+  public YBATask tlsToggle(
+      Request request, UUID cUUID, UUID uniUUID, UniverseEditEncryptionInTransit spec)
+      throws JsonProcessingException {
+
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    TlsToggleParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toTlsToggleParams(
+            universe.getUniverseDetails(), request);
+    UniverseTlsToggleParamsMapper.INSTANCE.copyToV1TlsToggleParams(spec, v1Params);
+
+    UUID taskUUID = v1Handler.toggleTls(v1Params, customer, universe);
+    YBATask ybaTask = new YBATask().taskUuid(taskUUID).resourceUuid(uniUUID);
+    log.info("Started tls toggle task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
+  }
+
+  public YBATask certRotate(Request request, UUID cUUID, UUID uniUUID, UniverseCertRotateSpec spec)
+      throws JsonProcessingException {
+
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    CertsRotateParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toCertsRotateParams(
+            universe.getUniverseDetails(), request);
+    v1Params = UniverseCertsRotateParamsMapper.INSTANCE.copyToV1CertsRotateParams(spec, v1Params);
+
+    UUID taskUUID = v1Handler.rotateCerts(v1Params, customer, universe);
+    YBATask ybaTask = new YBATask().taskUuid(taskUUID).resourceUuid(uniUUID);
+    log.info("Started cert rotate task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
+  }
+
+  public YBATask editKubernetesOverrides(
+      Request request, UUID cUUID, UUID uniUUID, UniverseEditKubernetesOverrides spec)
+      throws JsonProcessingException {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    KubernetesOverridesUpgradeParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toKubernetesOverridesUpgradeParams(
+            universe.getUniverseDetails(), request);
+    v1Params =
+        UniverseEditKubernetesOverridesParamsMapper.INSTANCE.copyToV1KubernetesOverridesParams(
+            spec, v1Params);
+
+    UUID taskUUID = v1Handler.upgradeKubernetesOverrides(v1Params, customer, universe);
+    YBATask ybaTask = new YBATask().taskUuid(taskUUID).resourceUuid(uniUUID);
+    log.info("Started kubernetes overrides upgrade task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
+  }
+
+  public YBATask configureQueryLogging(
+      Request request, UUID cUUID, UUID uniUUID, UniverseQueryLogsExport req) throws Exception {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    log.info("Configure query log for universe with v2 spec: {}", prettyPrint(req));
+
+    QueryLogConfigParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toQueryLogConfigParams(
+            universe.getUniverseDetails(), request);
+    v1Params = UniverseQueryLogsExportMapper.INSTANCE.copyToV1QueryLogConfigParams(req, v1Params);
+
+    UUID taskUUID = v1Handler.modifyQueryLoggingConfig(v1Params, customer, universe);
+    YBATask ybaTask = new YBATask().taskUuid(taskUUID).resourceUuid(uniUUID);
+    log.info("Started query log configuration task {}", mapper.writeValueAsString(ybaTask));
+
+    return ybaTask;
+  }
+
+  public YBATask configureMetricsExport(
+      Request request, UUID cUUID, UUID uniUUID, ConfigureMetricsExportSpec req) throws Exception {
+    telemetryProviderService.throwExceptionIfMetricsExportRuntimeFlagDisabled();
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+    log.info("Configure metrics export for universe with v2 spec: {}", prettyPrint(req));
+
+    MetricsExportConfigParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toMetricsExportConfigParams(
+            universeDetails, request);
+    v1Params =
+        UniverseMetricsExportConfigParamsMapper.INSTANCE.copyToV1MetricsExportConfigParams(
+            req, v1Params);
+
+    // Verify if the metrics export payload is same as existing metrics export config.
+    if (v1Params.getMetricsExportConfig() != null
+        && v1Params.getMetricsExportConfig().equals(userIntent.metricsExportConfig)) {
+      String errorMessage =
+          String.format(
+              "Metrics export config is same as existing config on universe '%s'.",
+              universe.getUniverseUUID());
+      log.error(errorMessage);
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+    }
+
+    // Block k8s universes from configuring metrics export for now.
+    if (userIntent.providerType.equals(CloudType.kubernetes)) {
+      String errorMessage = "Metrics export is not supported for kubernetes based universes.";
+      log.error(errorMessage);
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+    }
+
+    // Verify if exporter config is set to export active.
+    if (v1Params.getMetricsExportConfig().isExportActive()) {
+      // If exporter config is set to export active, verify if any exporter is configured.
+      if (CollectionUtils.isEmpty(
+          v1Params.getMetricsExportConfig().getUniverseMetricsExporterConfig())) {
+        String errorMessage =
+            String.format(
+                "Metrics export config is set to export active, but no exporter configured on"
+                    + " universe '%s'.",
+                universe.getUniverseUUID());
+        log.error(errorMessage);
+        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      }
+
+      // If exporter config is set to export active, verify if given exporter uuid(s) are empty.
+      for (UniverseMetricsExporterConfig exporterConfig :
+          v1Params.getMetricsExportConfig().getUniverseMetricsExporterConfig()) {
+        UUID exporterUUID = exporterConfig.getExporterUuid();
+        if (exporterUUID == null
+            || !telemetryProviderService.checkIfExists(customer.getUuid(), exporterUUID)) {
+          String errorMessage =
+              String.format(
+                  "Exporter config UUID '%s' is invalid for universe '%s'.",
+                  exporterUUID, universe.getUniverseUUID());
+          log.error(errorMessage);
+          throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+        }
+
+        // Verify if the exporter is allowed for metrics export.
+        TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
+        ProviderType providerType = telemetryProvider.getConfig().getType();
+        if (!providerType.isAllowedForMetrics) {
+          String errorMessage =
+              String.format(
+                  "Exporter config provider type '%s' is not allowed for metrics export on universe"
+                      + " '%s'.",
+                  providerType, universe.getUniverseUUID());
+          log.error(errorMessage);
+          throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+        }
+      }
+
+      // Verify if the exporter credentials are consistent on the universe.
+      // Applies to AWS and GCP TPs since they are exported as environment variables on the DB
+      // nodes.
+      Set<UUID> metricsExportExporterUuids =
+          v1Params.getMetricsExportConfig().getUniverseMetricsExporterConfig().stream()
+              .map(UniverseMetricsExporterConfig::getExporterUuid)
+              .collect(Collectors.toSet());
+      if (!telemetryProviderService.areTPsCredentialsConsistentOnUniverse(
+          universe, null, null, metricsExportExporterUuids)) {
+        String errorMessage =
+            "Exporter credentials are not consistent on universe '"
+                + universe.getUniverseUUID()
+                + "'.";
+        log.error(errorMessage);
+        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      }
+    }
+    v1Params.verifyParams(universe, true);
+
+    ExportTelemetryConfigParams exportParams =
+        v1Handler.buildExportTelemetryConfigParamsFromUniverse(universe);
+    // Override the metrics export config in the export params with the requested config.
+    exportParams.setTelemetryConfig(
+        TelemetryConfig.of(
+            exportParams.getAuditLogConfig(),
+            exportParams.getQueryLogConfig(),
+            v1Params.getMetricsExportConfig()));
+    exportParams.upgradeOption = v1Params.upgradeOption;
+    UUID taskUUID = v1Handler.submitExportTelemetryConfigs(exportParams, customer, universe);
+    log.info(
+        "Submitted ConfigureExportTelemetryConfig (metrics) for {} : {}, task uuid = {}.",
+        uniUUID,
+        universe.getName(),
+        taskUUID);
+    return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
+  }
+
+  /**
+   * Unified API: configure all telemetry export configs (audit logs, query logs, metrics) in one
+   * request.
+   */
+  public YBATask configureExportTelemetryConfig(
+      Request request, UUID cUUID, UUID uniUUID, ExportTelemetryConfigSpec reqBody)
+      throws Exception {
+    log.debug(
+        "Configure export telemetry configs for universe with v2 spec: {}", prettyPrint(reqBody));
+
+    // Verify if the request body is valid.
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    if (reqBody == null || reqBody.getTelemetryConfig() == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Request body is required and must contain 'telemetry_config' (use {} to disable all).");
+    }
+
+    // Fill the params from universe details first and then override with the requested config.
+    api.v2.models.TelemetryConfig telemetryConfig = reqBody.getTelemetryConfig();
+    ExportTelemetryConfigParams params =
+        v1Handler.buildExportTelemetryConfigParamsFromUniverse(universe);
+    ExportTelemetryConfigMapper.fillParams(telemetryConfig, params);
+    ExportTelemetryConfigMapper.applyUpgradeOptions(reqBody.getUpgradeOptions(), params);
+
+    // Verify if the exporter credentials are consistent on the universe.
+    Set<UUID> auditUuids = extractAuditLogExporterUuids(params);
+    Set<UUID> queryUuids = extractQueryLogExporterUuids(params);
+    Set<UUID> metricsUuids = extractMetricsExportExporterUuids(params);
+    if (!telemetryProviderService.areTPsCredentialsConsistentOnUniverse(
+        universe, auditUuids, queryUuids, metricsUuids)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Exporter credentials are not consistent on universe '"
+              + universe.getUniverseUUID()
+              + "'.");
+    }
+
+    // Submit the task to configure the export telemetry configs.
+    UUID taskUUID = v1Handler.submitExportTelemetryConfigs(params, customer, universe);
+    log.info(
+        "Submitted ConfigureExportTelemetryConfig for {} : {}, task uuid = {}.",
+        uniUUID,
+        universe.getName(),
+        taskUUID);
+    return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
+  }
+
+  private Set<UUID> extractAuditLogExporterUuids(ExportTelemetryConfigParams params) {
+    return params.getAuditLogConfig() != null
+            && params.getAuditLogConfig().getUniverseLogsExporterConfig() != null
+        ? params.getAuditLogConfig().getUniverseLogsExporterConfig().stream()
+            .map(UniverseLogsExporterConfig::getExporterUuid)
+            .collect(Collectors.toSet())
+        : Collections.emptySet();
+  }
+
+  private Set<UUID> extractQueryLogExporterUuids(ExportTelemetryConfigParams params) {
+    return params.getQueryLogConfig() != null
+            && params.getQueryLogConfig().getUniverseLogsExporterConfig() != null
+        ? params.getQueryLogConfig().getUniverseLogsExporterConfig().stream()
+            .map(UniverseQueryLogsExporterConfig::getExporterUuid)
+            .collect(Collectors.toSet())
+        : Collections.emptySet();
+  }
+
+  private Set<UUID> extractMetricsExportExporterUuids(ExportTelemetryConfigParams params) {
+    return params.getMetricsExportConfig() != null
+            && params.getMetricsExportConfig().getUniverseMetricsExporterConfig() != null
+        ? params.getMetricsExportConfig().getUniverseMetricsExporterConfig().stream()
+            .map(UniverseMetricsExporterConfig::getExporterUuid)
+            .collect(Collectors.toSet())
+        : Collections.emptySet();
+  }
+
+  public YBATask resizeNodes(Request request, UUID cUUID, UUID uniUUID, UniverseResizeNodes spec)
+      throws JsonProcessingException {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    ResizeNodeParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toResizeNodeParams(
+            universe.getUniverseDetails(), request);
+    UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(spec, v1Params);
+
+    UUID taskUUID = v1Handler.resizeNode(v1Params, customer, universe);
+    YBATask ybaTask = new YBATask().taskUuid(taskUUID).resourceUuid(uniUUID);
+    log.info("Started resize node upgrade task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
+  }
+}

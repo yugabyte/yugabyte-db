@@ -1,0 +1,29 @@
+dist: focal
+language: c
+env:
+  global:
+    - PG_PRELOAD=hll
+matrix:
+  fast_finish: true
+  include:
+    - env: PGVERSION=9.4
+    - env: PGVERSION=9.5
+    - env: PGVERSION=9.6
+    - env: PGVERSION=10
+    - env: PGVERSION=11
+    - env: PGVERSION=12
+    - env: PGVERSION=13
+    - env: PGVERSION=14
+before_install:
+  - git clone -b v0.7.13 --depth 1 https://github.com/citusdata/tools.git
+  - sudo make -C tools install
+  - setup_apt
+  - nuke_pg
+install:
+  - install_uncrustify
+  - install_pg
+before_script:
+  - config_and_start_cluster
+  - echo "extra_float_digits = 0" >> "/etc/postgresql/${PGVERSION}/test/postgresql.conf"
+  - pg_ctlcluster "${PGVERSION}" test restart
+script: pg_travis_test

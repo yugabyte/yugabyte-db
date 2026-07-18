@@ -1,0 +1,956 @@
+--
+-- Tests for predicate handling
+--
+--
+-- Test that restrictions that are always true are ignored, and that are always
+-- false are replaced with constant-FALSE
+--
+-- Currently we only check for NullTest quals and OR clauses that include
+-- NullTest quals.  We may extend it in the future.
+--
+CREATE TABLE pred_tab (a int NOT NULL, b int, c int NOT NULL);
+--
+-- Test restriction clauses
+--
+-- Ensure the IS_NOT_NULL qual is ignored when the column is non-nullable
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t WHERE t.a IS NOT NULL;
+       QUERY PLAN       
+------------------------
+ Seq Scan on pred_tab t
+(1 row)
+
+-- Ensure the IS_NOT_NULL qual is not ignored on a nullable column
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t WHERE t.b IS NOT NULL;
+        QUERY PLAN         
+---------------------------
+ Seq Scan on pred_tab t
+   Filter: (b IS NOT NULL)
+(2 rows)
+
+-- Ensure the IS_NULL qual is reduced to constant-FALSE for non-nullable
+-- columns
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t WHERE t.a IS NULL;
+        QUERY PLAN        
+--------------------------
+ Result
+   Replaces: Scan on t
+   One-Time Filter: false
+(3 rows)
+
+-- Ensure the IS_NULL qual is not reduced to constant-FALSE on nullable
+-- columns
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t WHERE t.b IS NULL;
+       QUERY PLAN       
+------------------------
+ Seq Scan on pred_tab t
+   Filter: (b IS NULL)
+(2 rows)
+
+--
+-- Tests for OR clauses in restriction clauses
+--
+-- Ensure the OR clause is ignored when an OR branch is always true
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t WHERE t.a IS NOT NULL OR t.b = 1;
+       QUERY PLAN       
+------------------------
+ Seq Scan on pred_tab t
+(1 row)
+
+-- Ensure the OR clause is not ignored for NullTests that can't be proven
+-- always true
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t WHERE t.b IS NOT NULL OR t.a = 1;
+               QUERY PLAN               
+----------------------------------------
+ Seq Scan on pred_tab t
+   Filter: ((b IS NOT NULL) OR (a = 1))
+(2 rows)
+
+-- Ensure the OR clause is reduced to constant-FALSE when all branches are
+-- provably false
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t WHERE t.a IS NULL OR t.c IS NULL;
+        QUERY PLAN        
+--------------------------
+ Result
+   Replaces: Scan on t
+   One-Time Filter: false
+(3 rows)
+
+-- Ensure the OR clause is not reduced to constant-FALSE when not all branches
+-- are provably false
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t WHERE t.b IS NULL OR t.c IS NULL;
+       QUERY PLAN       
+------------------------
+ Seq Scan on pred_tab t
+   Filter: (b IS NULL)
+(2 rows)
+
+--
+-- Test join clauses
+--
+-- Ensure the IS_NOT_NULL qual is ignored, since a) it's on a NOT NULL column,
+-- and b) its Var is not nullable by any outer joins
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t1
+    LEFT JOIN pred_tab t2 ON t1.a IS NOT NULL;
+             QUERY PLAN              
+-------------------------------------
+ Nested Loop Left Join
+   ->  Seq Scan on pred_tab t1
+   ->  Materialize
+         ->  Seq Scan on pred_tab t2
+(4 rows)
+
+-- Ensure the IS_NOT_NULL qual is not ignored when columns are made nullable
+-- by an outer join
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t1
+    FULL JOIN pred_tab t2 ON t1.a = t2.a
+    LEFT JOIN pred_tab t3 ON t2.a IS NOT NULL;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop Left Join
+   Join Filter: (t2.a IS NOT NULL)
+   ->  Merge Full Join
+         Merge Cond: (t1.a = t2.a)
+         ->  Sort
+               Sort Key: t1.a
+               ->  Seq Scan on pred_tab t1
+         ->  Sort
+               Sort Key: t2.a
+               ->  Seq Scan on pred_tab t2
+   ->  Materialize
+         ->  Seq Scan on pred_tab t3
+(12 rows)
+
+-- Ensure the IS_NULL qual is reduced to constant-FALSE, since a) it's on a NOT
+-- NULL column, and b) its Var is not nullable by any outer joins
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t1
+    LEFT JOIN pred_tab t2 ON t1.a IS NULL;
+           QUERY PLAN           
+--------------------------------
+ Nested Loop Left Join
+   Join Filter: false
+   ->  Seq Scan on pred_tab t1
+   ->  Result
+         Replaces: Scan on t2
+         One-Time Filter: false
+(6 rows)
+
+-- Ensure the IS_NULL qual is not reduced to constant-FALSE when the column is
+-- nullable by an outer join
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t1
+    LEFT JOIN pred_tab t2 ON t1.a = 1
+    LEFT JOIN pred_tab t3 ON t2.a IS NULL;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop Left Join
+   Join Filter: (t2.a IS NULL)
+   ->  Nested Loop Left Join
+         Join Filter: (t1.a = 1)
+         ->  Seq Scan on pred_tab t1
+         ->  Materialize
+               ->  Seq Scan on pred_tab t2
+   ->  Materialize
+         ->  Seq Scan on pred_tab t3
+(9 rows)
+
+--
+-- Tests for OR clauses in join clauses
+--
+-- Ensure the OR clause is ignored when an OR branch is provably always true
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t1
+    LEFT JOIN pred_tab t2 ON t1.a IS NOT NULL OR t2.b = 1;
+             QUERY PLAN              
+-------------------------------------
+ Nested Loop Left Join
+   ->  Seq Scan on pred_tab t1
+   ->  Materialize
+         ->  Seq Scan on pred_tab t2
+(4 rows)
+
+-- Ensure the NullTest is not ignored when the column is nullable by an outer
+-- join
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t1
+    FULL JOIN pred_tab t2 ON t1.a = t2.a
+    LEFT JOIN pred_tab t3 ON t2.a IS NOT NULL OR t2.b = 1;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Nested Loop Left Join
+   Join Filter: ((t2.a IS NOT NULL) OR (t2.b = 1))
+   ->  Merge Full Join
+         Merge Cond: (t1.a = t2.a)
+         ->  Sort
+               Sort Key: t1.a
+               ->  Seq Scan on pred_tab t1
+         ->  Sort
+               Sort Key: t2.a
+               ->  Seq Scan on pred_tab t2
+   ->  Materialize
+         ->  Seq Scan on pred_tab t3
+(12 rows)
+
+-- Ensure the OR clause is reduced to constant-FALSE when all OR branches are
+-- provably false
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t1
+    LEFT JOIN pred_tab t2 ON (t1.a IS NULL OR t1.c IS NULL);
+           QUERY PLAN           
+--------------------------------
+ Nested Loop Left Join
+   Join Filter: false
+   ->  Seq Scan on pred_tab t1
+   ->  Result
+         Replaces: Scan on t2
+         One-Time Filter: false
+(6 rows)
+
+-- Ensure the OR clause is not reduced to constant-FALSE when a column is
+-- made nullable from an outer join
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t1
+    LEFT JOIN pred_tab t2 ON t1.a = 1
+    LEFT JOIN pred_tab t3 ON t2.a IS NULL OR t2.c IS NULL;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Nested Loop Left Join
+   Join Filter: ((t2.a IS NULL) OR (t2.c IS NULL))
+   ->  Nested Loop Left Join
+         Join Filter: (t1.a = 1)
+         ->  Seq Scan on pred_tab t1
+         ->  Materialize
+               ->  Seq Scan on pred_tab t2
+   ->  Materialize
+         ->  Seq Scan on pred_tab t3
+(9 rows)
+
+--
+-- Tests for NullTest reduction in EXISTS sublink
+--
+-- Ensure the IS_NOT_NULL qual is ignored
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t1
+    LEFT JOIN pred_tab t2 ON EXISTS
+        (SELECT 1 FROM pred_tab t3, pred_tab t4, pred_tab t5, pred_tab t6
+         WHERE t1.a = t3.a AND t6.a IS NOT NULL);
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Nested Loop Left Join
+   Join Filter: EXISTS(SubPlan exists_1)
+   ->  Seq Scan on pred_tab t1
+   ->  Materialize
+         ->  Seq Scan on pred_tab t2
+   SubPlan exists_1
+     ->  Nested Loop
+           ->  Nested Loop
+                 ->  Nested Loop
+                       ->  Seq Scan on pred_tab t4
+                       ->  Materialize
+                             ->  Seq Scan on pred_tab t3
+                                   Filter: (t1.a = a)
+                 ->  Materialize
+                       ->  Seq Scan on pred_tab t5
+           ->  Materialize
+                 ->  Seq Scan on pred_tab t6
+(17 rows)
+
+-- Ensure the IS_NULL qual is reduced to constant-FALSE
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t1
+    LEFT JOIN pred_tab t2 ON EXISTS
+        (SELECT 1 FROM pred_tab t3, pred_tab t4, pred_tab t5, pred_tab t6
+         WHERE t1.a = t3.a AND t6.a IS NULL);
+                 QUERY PLAN                 
+--------------------------------------------
+ Nested Loop Left Join
+   Join Filter: (InitPlan exists_1).col1
+   InitPlan exists_1
+     ->  Result
+           Replaces: Join on t3, t4, t5, t6
+           One-Time Filter: false
+   ->  Seq Scan on pred_tab t1
+   ->  Materialize
+         ->  Seq Scan on pred_tab t2
+(9 rows)
+
+DROP TABLE pred_tab;
+-- Validate we handle IS NULL and IS NOT NULL quals correctly with inheritance
+-- parents.
+CREATE TABLE pred_parent (a int);
+CREATE TABLE pred_child () INHERITS (pred_parent);
+ALTER TABLE ONLY pred_parent ALTER a SET NOT NULL;
+-- Ensure that the scan on pred_child contains the IS NOT NULL qual.
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_parent WHERE a IS NOT NULL;
+                 QUERY PLAN                  
+---------------------------------------------
+ Append
+   ->  Seq Scan on pred_parent pred_parent_1
+   ->  Seq Scan on pred_child pred_parent_2
+         Filter: (a IS NOT NULL)
+(4 rows)
+
+-- Ensure we only scan pred_child and not pred_parent
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_parent WHERE a IS NULL;
+             QUERY PLAN             
+------------------------------------
+ Seq Scan on pred_child pred_parent
+   Filter: (a IS NULL)
+(2 rows)
+
+ALTER TABLE pred_parent ALTER a DROP NOT NULL;
+ALTER TABLE pred_child ALTER a SET NOT NULL;
+-- Ensure the IS NOT NULL qual is removed from the pred_child scan.
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_parent WHERE a IS NOT NULL;
+                 QUERY PLAN                  
+---------------------------------------------
+ Append
+   ->  Seq Scan on pred_parent pred_parent_1
+         Filter: (a IS NOT NULL)
+   ->  Seq Scan on pred_child pred_parent_2
+(4 rows)
+
+-- Ensure we only scan pred_parent and not pred_child
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_parent WHERE a IS NULL;
+       QUERY PLAN        
+-------------------------
+ Seq Scan on pred_parent
+   Filter: (a IS NULL)
+(2 rows)
+
+DROP TABLE pred_parent, pred_child;
+-- Validate we do not reduce a clone clause to a constant true or false
+CREATE TABLE pred_tab (a int, b int);
+CREATE TABLE pred_tab_notnull (a int, b int NOT NULL);
+INSERT INTO pred_tab VALUES (1, 1);
+INSERT INTO pred_tab VALUES (2, 2);
+INSERT INTO pred_tab_notnull VALUES (2, 2);
+INSERT INTO pred_tab_notnull VALUES (3, 3);
+ANALYZE pred_tab;
+ANALYZE pred_tab_notnull;
+-- Ensure the IS_NOT_NULL qual is not reduced to constant true and removed
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t1
+    LEFT JOIN pred_tab t2 ON TRUE
+    LEFT JOIN pred_tab_notnull t3 ON t2.a = t3.a
+    LEFT JOIN pred_tab t4 ON t3.b IS NOT NULL;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Nested Loop Left Join
+   ->  Seq Scan on pred_tab t1
+   ->  Materialize
+         ->  Nested Loop Left Join
+               Join Filter: (t3.b IS NOT NULL)
+               ->  Nested Loop Left Join
+                     Join Filter: (t2.a = t3.a)
+                     ->  Seq Scan on pred_tab t2
+                     ->  Materialize
+                           ->  Seq Scan on pred_tab_notnull t3
+               ->  Materialize
+                     ->  Seq Scan on pred_tab t4
+(12 rows)
+
+SELECT * FROM pred_tab t1
+    LEFT JOIN pred_tab t2 ON TRUE
+    LEFT JOIN pred_tab_notnull t3 ON t2.a = t3.a
+    LEFT JOIN pred_tab t4 ON t3.b IS NOT NULL;
+ a | b | a | b | a | b | a | b 
+---+---+---+---+---+---+---+---
+ 1 | 1 | 1 | 1 |   |   |   |  
+ 1 | 1 | 2 | 2 | 2 | 2 | 1 | 1
+ 1 | 1 | 2 | 2 | 2 | 2 | 2 | 2
+ 2 | 2 | 1 | 1 |   |   |   |  
+ 2 | 2 | 2 | 2 | 2 | 2 | 1 | 1
+ 2 | 2 | 2 | 2 | 2 | 2 | 2 | 2
+(6 rows)
+
+-- Ensure the IS_NULL qual is not reduced to constant false
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab t1
+    LEFT JOIN pred_tab t2 ON TRUE
+    LEFT JOIN pred_tab_notnull t3 ON t2.a = t3.a
+    LEFT JOIN pred_tab t4 ON t3.b IS NULL AND t3.a IS NOT NULL;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Nested Loop Left Join
+   ->  Seq Scan on pred_tab t1
+   ->  Materialize
+         ->  Nested Loop Left Join
+               Join Filter: ((t3.b IS NULL) AND (t3.a IS NOT NULL))
+               ->  Nested Loop Left Join
+                     Join Filter: (t2.a = t3.a)
+                     ->  Seq Scan on pred_tab t2
+                     ->  Materialize
+                           ->  Seq Scan on pred_tab_notnull t3
+               ->  Materialize
+                     ->  Seq Scan on pred_tab t4
+(12 rows)
+
+SELECT * FROM pred_tab t1
+    LEFT JOIN pred_tab t2 ON TRUE
+    LEFT JOIN pred_tab_notnull t3 ON t2.a = t3.a
+    LEFT JOIN pred_tab t4 ON t3.b IS NULL AND t3.a IS NOT NULL;
+ a | b | a | b | a | b | a | b 
+---+---+---+---+---+---+---+---
+ 1 | 1 | 1 | 1 |   |   |   |  
+ 1 | 1 | 2 | 2 | 2 | 2 |   |  
+ 2 | 2 | 1 | 1 |   |   |   |  
+ 2 | 2 | 2 | 2 | 2 | 2 |   |  
+(4 rows)
+
+DROP TABLE pred_tab;
+DROP TABLE pred_tab_notnull;
+-- Validate that NullTest quals in constraint expressions are reduced correctly
+CREATE TABLE pred_tab1 (a int NOT NULL, b int,
+	CONSTRAINT check_tab1 CHECK (a IS NULL OR b > 2));
+CREATE TABLE pred_tab2 (a int, b int,
+	CONSTRAINT check_a CHECK (a IS NOT NULL));
+SET constraint_exclusion TO ON;
+-- Ensure that we get a dummy plan
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab1, pred_tab2 WHERE pred_tab2.a IS NULL;
+                QUERY PLAN                
+------------------------------------------
+ Result
+   Replaces: Join on pred_tab1, pred_tab2
+   One-Time Filter: false
+(3 rows)
+
+-- Ensure that we get a dummy plan
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab2, pred_tab1 WHERE pred_tab1.a IS NULL OR pred_tab1.b < 2;
+                QUERY PLAN                
+------------------------------------------
+ Result
+   Replaces: Join on pred_tab2, pred_tab1
+   One-Time Filter: false
+(3 rows)
+
+RESET constraint_exclusion;
+DROP TABLE pred_tab1;
+DROP TABLE pred_tab2;
+-- Validate that NullTest quals in index expressions and predicate are reduced correctly
+CREATE TABLE pred_tab (a int, b int NOT NULL, c int NOT NULL);
+INSERT INTO pred_tab SELECT i, i, i FROM generate_series(1, 1000) i;
+CREATE INDEX pred_tab_exprs_idx ON pred_tab ((a < 5 AND b IS NOT NULL AND c IS NOT NULL));
+CREATE INDEX pred_tab_pred_idx ON pred_tab (a) WHERE b IS NOT NULL AND c IS NOT NULL;
+ANALYZE pred_tab;
+-- Ensure that index pred_tab_exprs_idx is used
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (a < 5 AND b IS NOT NULL AND c IS NOT NULL) IS TRUE;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Index Scan using pred_tab_exprs_idx on pred_tab
+   Index Cond: ((a < 5) = true)
+(2 rows)
+
+SELECT * FROM pred_tab WHERE (a < 5 AND b IS NOT NULL AND c IS NOT NULL) IS TRUE;
+ a | b | c 
+---+---+---
+ 1 | 1 | 1
+ 2 | 2 | 2
+ 3 | 3 | 3
+ 4 | 4 | 4
+(4 rows)
+
+-- Ensure that index pred_tab_pred_idx is used
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE a < 3 AND b IS NOT NULL AND c IS NOT NULL;
+                   QUERY PLAN                   
+------------------------------------------------
+ Index Scan using pred_tab_pred_idx on pred_tab
+   Index Cond: (a < 3)
+(2 rows)
+
+SELECT * FROM pred_tab WHERE a < 3 AND b IS NOT NULL AND c IS NOT NULL;
+ a | b | c 
+---+---+---
+ 1 | 1 | 1
+ 2 | 2 | 2
+(2 rows)
+
+DROP TABLE pred_tab;
+--
+-- Test that COALESCE expressions in predicates are simplified using
+-- non-nullable arguments.
+--
+CREATE TABLE pred_tab (a int NOT NULL, b int, c int);
+-- Ensure that constant NULL arguments are dropped
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE COALESCE(NULL, b, NULL, a) > 1;
+           QUERY PLAN           
+--------------------------------
+ Seq Scan on pred_tab
+   Filter: (COALESCE(b, a) > 1)
+(2 rows)
+
+-- Ensure that argument "b*a" is dropped
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE COALESCE(b, a, b*a) > 1;
+           QUERY PLAN           
+--------------------------------
+ Seq Scan on pred_tab
+   Filter: (COALESCE(b, a) > 1)
+(2 rows)
+
+-- Ensure that the entire COALESCE expression is replaced by "a"
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE COALESCE(a, b) > 1;
+      QUERY PLAN      
+----------------------
+ Seq Scan on pred_tab
+   Filter: (a > 1)
+(2 rows)
+
+--
+-- Test detection of non-nullable expressions in predicates
+--
+-- CoalesceExpr
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE COALESCE(b, a) IS NULL;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on pred_tab
+   One-Time Filter: false
+(3 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE COALESCE(b, c) IS NULL;
+             QUERY PLAN             
+------------------------------------
+ Seq Scan on pred_tab
+   Filter: (COALESCE(b, c) IS NULL)
+(2 rows)
+
+-- MinMaxExpr
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE GREATEST(b, a) IS NULL;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on pred_tab
+   One-Time Filter: false
+(3 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE GREATEST(b, c) IS NULL;
+             QUERY PLAN             
+------------------------------------
+ Seq Scan on pred_tab
+   Filter: (GREATEST(b, c) IS NULL)
+(2 rows)
+
+-- CaseExpr
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (CASE WHEN c > 0 THEN a ELSE a END) IS NULL;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on pred_tab
+   One-Time Filter: false
+(3 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (CASE WHEN c > 0 THEN b ELSE a END) IS NULL;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Seq Scan on pred_tab
+   Filter: (CASE WHEN (c > 0) THEN b ELSE a END IS NULL)
+(2 rows)
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (CASE WHEN c > 0 THEN a END) IS NULL;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Seq Scan on pred_tab
+   Filter: (CASE WHEN (c > 0) THEN a ELSE NULL::integer END IS NULL)
+(2 rows)
+
+-- ArrayExpr
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE ARRAY[b] IS NULL;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on pred_tab
+   One-Time Filter: false
+(3 rows)
+
+-- NullTest
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (b IS NULL) IS NULL;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on pred_tab
+   One-Time Filter: false
+(3 rows)
+
+-- BooleanTest
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE ((a > 1) IS TRUE) IS NULL;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on pred_tab
+   One-Time Filter: false
+(3 rows)
+
+-- DistinctExpr
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (a IS DISTINCT FROM b) IS NULL;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on pred_tab
+   One-Time Filter: false
+(3 rows)
+
+-- RelabelType
+EXPLAIN (COSTS OFF)
+SELECT * FROM pred_tab WHERE (a::oid) IS NULL;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on pred_tab
+   One-Time Filter: false
+(3 rows)
+
+DROP TABLE pred_tab;
+--
+-- Test optimization of IS [NOT] DISTINCT FROM
+--
+CREATE TYPE dist_row_t AS (a int, b int);
+CREATE TABLE dist_tab (id int, val_nn int NOT NULL, val_null int, row_nn dist_row_t NOT NULL);
+INSERT INTO dist_tab VALUES (1, 10, 10, ROW(1, 1));
+INSERT INTO dist_tab VALUES (2, 20, NULL, ROW(2, 2));
+INSERT INTO dist_tab VALUES (3, 30, 30, ROW(1, NULL));
+CREATE INDEX dist_tab_nn_idx ON dist_tab (val_nn);
+ANALYZE dist_tab;
+-- Ensure that the predicate folds to constant TRUE
+EXPLAIN(COSTS OFF)
+SELECT id FROM dist_tab WHERE val_nn IS DISTINCT FROM NULL::INT;
+      QUERY PLAN      
+----------------------
+ Seq Scan on dist_tab
+(1 row)
+
+SELECT id FROM dist_tab WHERE val_nn IS DISTINCT FROM NULL::INT;
+ id 
+----
+  1
+  2
+  3
+(3 rows)
+
+-- Ensure that the predicate folds to constant FALSE
+EXPLAIN(COSTS OFF)
+SELECT id FROM dist_tab WHERE val_nn IS NOT DISTINCT FROM NULL::INT;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on dist_tab
+   One-Time Filter: false
+(3 rows)
+
+SELECT id FROM dist_tab WHERE val_nn IS NOT DISTINCT FROM NULL::INT;
+ id 
+----
+(0 rows)
+
+-- Ensure that the predicate is converted to an inequality operator
+EXPLAIN (COSTS OFF)
+SELECT id FROM dist_tab WHERE val_nn IS DISTINCT FROM 10;
+        QUERY PLAN        
+--------------------------
+ Seq Scan on dist_tab
+   Filter: (val_nn <> 10)
+(2 rows)
+
+SELECT id FROM dist_tab WHERE val_nn IS DISTINCT FROM 10;
+ id 
+----
+  2
+  3
+(2 rows)
+
+-- Ensure that the predicate is converted to an equality operator, and thus can
+-- use index scan
+SET enable_seqscan TO off;
+EXPLAIN (COSTS OFF)
+SELECT id FROM dist_tab WHERE val_nn IS NOT DISTINCT FROM 10;
+                  QUERY PLAN                  
+----------------------------------------------
+ Index Scan using dist_tab_nn_idx on dist_tab
+   Index Cond: (val_nn = 10)
+(2 rows)
+
+SELECT id FROM dist_tab WHERE val_nn IS NOT DISTINCT FROM 10;
+ id 
+----
+  1
+(1 row)
+
+RESET enable_seqscan;
+-- Ensure that the predicate is preserved as "IS DISTINCT FROM"
+EXPLAIN (COSTS OFF)
+SELECT id FROM dist_tab WHERE val_null IS DISTINCT FROM 20;
+                QUERY PLAN                
+------------------------------------------
+ Seq Scan on dist_tab
+   Filter: (val_null IS DISTINCT FROM 20)
+(2 rows)
+
+SELECT id FROM dist_tab WHERE val_null IS DISTINCT FROM 20;
+ id 
+----
+  1
+  2
+  3
+(3 rows)
+
+-- Safety check for rowtypes
+-- Ensure that the predicate is converted to an inequality operator
+EXPLAIN (COSTS OFF)
+SELECT id FROM dist_tab WHERE row_nn IS DISTINCT FROM ROW(1, 5)::dist_row_t;
+                QUERY PLAN                 
+-------------------------------------------
+ Seq Scan on dist_tab
+   Filter: (row_nn <> '(1,5)'::dist_row_t)
+(2 rows)
+
+-- ... and that all 3 rows are returned
+SELECT id FROM dist_tab WHERE row_nn IS DISTINCT FROM ROW(1, 5)::dist_row_t;
+ id 
+----
+  1
+  2
+  3
+(3 rows)
+
+-- Ensure that the predicate is converted to an equality operator, and thus
+-- mergejoinable or hashjoinable
+SET enable_nestloop TO off;
+EXPLAIN (COSTS OFF)
+SELECT * FROM dist_tab t1 JOIN dist_tab t2 ON t1.val_nn IS NOT DISTINCT FROM t2.val_nn;
+              QUERY PLAN              
+--------------------------------------
+ Hash Join
+   Hash Cond: (t1.val_nn = t2.val_nn)
+   ->  Seq Scan on dist_tab t1
+   ->  Hash
+         ->  Seq Scan on dist_tab t2
+(5 rows)
+
+SELECT * FROM dist_tab t1 JOIN dist_tab t2 ON t1.val_nn IS NOT DISTINCT FROM t2.val_nn;
+ id | val_nn | val_null | row_nn | id | val_nn | val_null | row_nn 
+----+--------+----------+--------+----+--------+----------+--------
+  1 |     10 |       10 | (1,1)  |  1 |     10 |       10 | (1,1)
+  2 |     20 |          | (2,2)  |  2 |     20 |          | (2,2)
+  3 |     30 |       30 | (1,)   |  3 |     30 |       30 | (1,)
+(3 rows)
+
+RESET enable_nestloop;
+-- Ensure that the predicate is converted to IS NOT NULL
+EXPLAIN (COSTS OFF)
+SELECT id FROM dist_tab WHERE val_null IS DISTINCT FROM NULL::INT;
+            QUERY PLAN            
+----------------------------------
+ Seq Scan on dist_tab
+   Filter: (val_null IS NOT NULL)
+(2 rows)
+
+SELECT id FROM dist_tab WHERE val_null IS DISTINCT FROM NULL::INT;
+ id 
+----
+  1
+  3
+(2 rows)
+
+-- Ensure that the predicate is converted to IS NULL
+EXPLAIN (COSTS OFF)
+SELECT id FROM dist_tab WHERE val_null IS NOT DISTINCT FROM NULL::INT;
+          QUERY PLAN          
+------------------------------
+ Seq Scan on dist_tab
+   Filter: (val_null IS NULL)
+(2 rows)
+
+SELECT id FROM dist_tab WHERE val_null IS NOT DISTINCT FROM NULL::INT;
+ id 
+----
+  2
+(1 row)
+
+-- Safety check for rowtypes
+-- The predicate is converted to IS NOT NULL, and get_rule_expr prints it as IS
+-- DISTINCT FROM because argisrow is false, indicating that we're applying a
+-- scalar test
+EXPLAIN (COSTS OFF)
+SELECT id FROM dist_tab WHERE (val_null, val_null) IS DISTINCT FROM NULL::RECORD;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Seq Scan on dist_tab
+   Filter: (ROW(val_null, val_null) IS DISTINCT FROM NULL)
+(2 rows)
+
+SELECT id FROM dist_tab WHERE (val_null, val_null) IS DISTINCT FROM NULL::RECORD;
+ id 
+----
+  1
+  2
+  3
+(3 rows)
+
+-- The predicate is converted to IS NULL, and get_rule_expr prints it as IS NOT
+-- DISTINCT FROM because argisrow is false, indicating that we're applying a
+-- scalar test
+EXPLAIN (COSTS OFF)
+SELECT id FROM dist_tab WHERE (val_null, val_null) IS NOT DISTINCT FROM NULL::RECORD;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Seq Scan on dist_tab
+   Filter: (ROW(val_null, val_null) IS NOT DISTINCT FROM NULL)
+(2 rows)
+
+SELECT id FROM dist_tab WHERE (val_null, val_null) IS NOT DISTINCT FROM NULL::RECORD;
+ id 
+----
+(0 rows)
+
+DROP TABLE dist_tab;
+DROP TYPE dist_row_t;
+--
+-- Test optimization of BooleanTest (IS [NOT] TRUE/FALSE/UNKNOWN) on
+-- non-nullable input
+--
+CREATE TABLE bool_tab (id int, flag_nn boolean NOT NULL, flag_null boolean);
+INSERT INTO bool_tab VALUES (1, true,  true);
+INSERT INTO bool_tab VALUES (2, false, NULL);
+CREATE INDEX bool_tab_nn_idx ON bool_tab (flag_nn);
+ANALYZE bool_tab;
+-- Ensure that the predicate folds to constant FALSE
+EXPLAIN (COSTS OFF)
+SELECT id FROM bool_tab WHERE flag_nn IS UNKNOWN;
+          QUERY PLAN          
+------------------------------
+ Result
+   Replaces: Scan on bool_tab
+   One-Time Filter: false
+(3 rows)
+
+SELECT id FROM bool_tab WHERE flag_nn IS UNKNOWN;
+ id 
+----
+(0 rows)
+
+-- Ensure that the predicate folds to constant TRUE
+EXPLAIN (COSTS OFF)
+SELECT id FROM bool_tab WHERE flag_nn IS NOT UNKNOWN;
+      QUERY PLAN      
+----------------------
+ Seq Scan on bool_tab
+(1 row)
+
+SELECT id FROM bool_tab WHERE flag_nn IS NOT UNKNOWN;
+ id 
+----
+  1
+  2
+(2 rows)
+
+-- Ensure that the predicate folds to flag_nn
+EXPLAIN (COSTS OFF)
+SELECT id FROM bool_tab WHERE flag_nn IS TRUE;
+      QUERY PLAN      
+----------------------
+ Seq Scan on bool_tab
+   Filter: flag_nn
+(2 rows)
+
+SELECT id FROM bool_tab WHERE flag_nn IS TRUE;
+ id 
+----
+  1
+(1 row)
+
+-- Ensure that the predicate folds to flag_nn, and thus can use index scan
+SET enable_seqscan TO off;
+EXPLAIN (COSTS OFF)
+SELECT id FROM bool_tab WHERE flag_nn IS NOT FALSE;
+                  QUERY PLAN                  
+----------------------------------------------
+ Index Scan using bool_tab_nn_idx on bool_tab
+   Index Cond: (flag_nn = true)
+(2 rows)
+
+SELECT id FROM bool_tab WHERE flag_nn IS NOT FALSE;
+ id 
+----
+  1
+(1 row)
+
+RESET enable_seqscan;
+-- Ensure that the predicate folds to not flag_nn
+EXPLAIN (COSTS OFF)
+SELECT id FROM bool_tab WHERE flag_nn IS FALSE;
+       QUERY PLAN        
+-------------------------
+ Seq Scan on bool_tab
+   Filter: (NOT flag_nn)
+(2 rows)
+
+SELECT id FROM bool_tab WHERE flag_nn IS FALSE;
+ id 
+----
+  2
+(1 row)
+
+-- Ensure that the predicate folds to not flag_nn, and thus can use index scan
+SET enable_seqscan TO off;
+EXPLAIN (COSTS OFF)
+SELECT id FROM bool_tab WHERE flag_nn IS NOT TRUE;
+                  QUERY PLAN                  
+----------------------------------------------
+ Index Scan using bool_tab_nn_idx on bool_tab
+   Index Cond: (flag_nn = false)
+(2 rows)
+
+SELECT id FROM bool_tab WHERE flag_nn IS NOT TRUE;
+ id 
+----
+  2
+(1 row)
+
+RESET enable_seqscan;
+-- Ensure that the predicate is preserved as a BooleanTest
+EXPLAIN (COSTS OFF)
+SELECT id FROM bool_tab WHERE flag_null IS UNKNOWN;
+            QUERY PLAN            
+----------------------------------
+ Seq Scan on bool_tab
+   Filter: (flag_null IS UNKNOWN)
+(2 rows)
+
+SELECT id FROM bool_tab WHERE flag_null IS UNKNOWN;
+ id 
+----
+  2
+(1 row)
+
+DROP TABLE bool_tab;

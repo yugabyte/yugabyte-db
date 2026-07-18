@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+. "${BASH_SOURCE%/*}/../build-support/common-build-env.sh"
+
+activate_virtualenv
+set_pythonpath
+
+codecheck "$@"

@@ -1,0 +1,5 @@
+comment = 'schemas:  Created by pgrx'
+default_version = '@CARGO_VERSION@'
+module_pathname = '$libdir/schemas'
+relocatable = false
+superuser = true    # b/c this extension creates objects in "pg_catalog"

@@ -1,0 +1,13 @@
+{
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "rust-analyzer.check.command": "clippy",
+    "rust-analyzer.checkOnSave": true,
+    "editor.inlayHints.enabled": "offUnlessPressed",
+    "files.watcherExclude": {
+        "**/target/**": true
+     },
+     "[sql]": {
+        "editor.formatOnSave": false
+     }
+}

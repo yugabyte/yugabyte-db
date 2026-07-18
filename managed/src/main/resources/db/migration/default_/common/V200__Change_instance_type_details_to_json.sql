@@ -1,0 +1,2 @@
+alter table instance_type alter column instance_type_details_json type json_alias using instance_type_details_json::json_alias;
+alter table instance_type rename column instance_type_details_json to instance_type_details;

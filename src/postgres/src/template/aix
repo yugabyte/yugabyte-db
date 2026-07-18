@@ -1,0 +1,19 @@
+# src/template/aix
+
+# Prefer unnamed POSIX semaphores if available, unless user overrides choice
+if test x"$PREFERRED_SEMAPHORES" = x"" ; then
+  PREFERRED_SEMAPHORES=UNNAMED_POSIX
+fi
+
+# Extra CFLAGS for code that will go into a shared library
+CFLAGS_SL=""
+
+if test "$GCC" = yes; then
+  # We force 64-bit builds, because AIX doesn't play very nice with dynamic
+  # library loading in 32-bit mode: there's not enough address space.
+  CPPFLAGS="$CPPFLAGS -maix64"
+
+  # For large binaries/libraries, there will be TOC overflows in AIX. To
+  # avoid this, pass -bbigtoc linker option to enlarge TOC access range.
+  LDFLAGS="$LDFLAGS -maix64 -Wl,-bbigtoc"
+fi

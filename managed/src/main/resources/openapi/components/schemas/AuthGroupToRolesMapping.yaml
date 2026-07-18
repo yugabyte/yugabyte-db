@@ -1,0 +1,35 @@
+title: AuthGroupToRolesMapping
+description: |
+  AuthGroupToRolesMapping
+
+  Group mapping properties. This is used to map LDAP and OIDC group to YBA roles.
+type: object
+required:
+  - group_identifier
+  - type
+  - role_resource_definitions
+properties:
+  group_identifier:
+    description: Group name incase of OIDC. Group DN incase of LDAP.
+    type: string
+  uuid:
+    description: System generated UUID for this group mapping.
+    type: string
+    format: uuid
+    readOnly: true
+  type:
+    description: The type of group. Can be either LDAP/OIDC.
+    type: string
+    enum:
+      - LDAP
+      - OIDC
+  creation_date:
+    description: Group mapping creation date.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+    readOnly: true
+  role_resource_definitions:
+    type: array
+    items:
+      $ref: "./RoleResourceDefinition.yaml"

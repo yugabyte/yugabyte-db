@@ -1,0 +1,43 @@
+# LANGUAGE message translation file for pg_hint_plan synopsis.
+# Copyright (C) 2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# This file is distributed under the same license as the pg_hint_plan
+# package.
+# Julien Rouhaud <rjuju123@gmail.com>, 2023.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: pg_hint_plan \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2023-03-14 16:08+0800\n"
+"PO-Revision-Date: 2023-03-14 16:08+0800\n"
+"Last-Translator: Julien Rouhaud <rjuju123@gmail.com>\n"
+"Language: ja\n"
+"Language-Team: ja <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.12.1\n"
+
+#: ../../synopsis.md:1 e4272025c14e4646a5c5cdcb7665bff4
+msgid "Synopsis"
+msgstr ""
+
+#: ../../synopsis.md:3 9f7b27654c414d3d86f51b624348fdc6
+msgid ""
+"`pg_hint_plan` makes it possible to tweak PostgreSQL execution plans "
+"using so-called \"hints\" in SQL comments, like `/*+ SeqScan(a) */`."
+msgstr ""
+
+#: ../../synopsis.md:6 f3287da37c6344b39bafb4161a42a897
+msgid ""
+"PostgreSQL uses a cost-based optimizer, which utilizes data statistics, "
+"not static rules. The planner (optimizer) esitimates costs of each "
+"possible execution plans for a SQL statement then the execution plan with"
+" the lowest cost finally be executed. The planner does its best to select"
+" the best best execution plan, but is not always perfect, since it "
+"doesn't count some properties of the data, for example, correlation "
+"between columns."
+msgstr ""
+

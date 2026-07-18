@@ -1,0 +1,16 @@
+# third-party-extensions/pgvector/test/yb_schedule
+#
+####################################################################################################
+# pgvector Extension Testsuite
+# Setup test was added to create the vector extension
+#
+####################################################################################################
+test: yb.orig.setup
+test: bit
+test: cast
+test: yb.port.copy
+test: halfvec
+test: sparsevec
+test: vector_type
+test: yb.orig.order_by
+test: yb.orig.index

@@ -1,0 +1,46 @@
+unit_filename="yb-enable-transparent-huge-pages.service"
+unit_filepath="/etc/systemd/system/"
+unit_file_full_path=${unit_filepath}${unit_filename}
+
+unit_file_definition=$(cat <<EOF
+[Unit]
+Description=YugabyteDB Enable Transparent Hugepages (THP)
+DefaultDependencies=no
+After=local-fs.target
+Before=sysinit.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c '\
+    echo always > /sys/kernel/mm/transparent_hugepage/enabled && \
+    echo defer+madvise > /sys/kernel/mm/transparent_hugepage/defrag && \
+    echo 0 > /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none'
+
+[Install]
+WantedBy=basic.target
+EOF
+)
+
+# Always perform this, because if we update settings, we always apply.
+echo "Configuring ${unit_file_full_path}"
+echo "${unit_file_definition}" > ${unit_file_full_path}
+
+# Load the services
+echo "Loading and enabling service"
+
+systemctl daemon-reload
+systemctl enable ${unit_filename}
+systemctl start ${unit_filename}
+systemctl --no-pager status ${unit_filename}
+
+status=$(systemctl show yb-enable-transparent-huge-pages.service \
+    --property=ExecMainStatus,ActiveState)
+
+exec_main_status=$(echo "$status" | grep ExecMainStatus | cut -d= -f2)
+active_state=$(echo "$status" | grep ActiveState | cut -d= -f2)
+
+if [[ "$exec_main_status" -ne 0 || "$active_state" != "active" ]]; then
+  echo "Service failed: ExecMainStatus=$exec_main_status, ActiveState=$active_state"
+  echo "Check status/logs for ${unit_file_full_path}"
+fi

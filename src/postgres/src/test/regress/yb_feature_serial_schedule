@@ -1,0 +1,17 @@
+# src/test/regress/yb_feature_serial_schedule
+#
+####################################################################################################
+# YB Feature Testsuite: Used for reporting supported and unsupported features.
+#   This testsuite walks through the syntax rules and quickly checks
+#   whether or not a feature is supported.
+####################################################################################################
+test: yb.orig.feature_types
+test: yb.orig.feature_insert
+test: yb.orig.feature_delete
+test: yb.orig.feature_update
+test: yb.orig.feature_select
+test: yb.orig.feature_config
+test: yb.orig.feature_copy
+test: yb.orig.feature_copyselect
+test: yb.orig.feature_alter_table
+test: yb.orig.feature_temp

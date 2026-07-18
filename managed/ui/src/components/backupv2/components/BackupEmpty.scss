@@ -1,0 +1,76 @@
+@use '../../../_style/colors.scss';
+
+.backup-empty {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 250px;
+  background: rgba(229, 229, 233, 0.2);
+  border: 1px dashed rgba(103, 102, 108, 0.5);
+  border-radius: 8px;
+  justify-content: center;
+  gap: 18px;
+  font-family: 'Inter';
+  font-style: normal;
+  position: relative;
+  .sub-text {
+    color: colors.$YB_DARKER_GRAY;
+    font-weight: 400;
+    font-size: 14px;
+    line-height: 17px;
+  }
+
+  .backup-empty-icon {
+    color: colors.$YB_GRAY_HOVER;
+    font-size: 38px;
+  }
+
+  .backup-empty-button {
+    font-weight: 400;
+    font-size: 15px;
+    line-height: 18px;
+    pointer-events: all;
+  }
+
+  &.account-level-backup {
+    text-align: center;
+    .backup-empty-icon {
+      margin-bottom: 24px;
+    }
+    .sub-text {
+      margin-bottom: 8px;
+    }
+  }
+  .backup-disabled-tooltip {
+    position: relative;
+
+    .placeholder {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      cursor: not-allowed;
+      z-index: 2;
+    }
+  }
+
+  &.point-in-time-recovery {
+    gap: 24px;
+  }
+}
+
+#popover-backup-disabled {
+  background: colors.$YB_BG_WHITE_3;
+  color: colors.$YB_TEXT_COLOR;
+
+  .popover-title {
+    background-color: colors.$YB_BG_WHITE_3;
+    border: none;
+  }
+
+  .popover-content {
+    display: none;
+  }
+}

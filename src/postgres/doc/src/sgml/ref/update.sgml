@@ -1,0 +1,657 @@
+<!--
+doc/src/sgml/ref/update.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-update">
+ <indexterm zone="sql-update">
+  <primary>UPDATE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>UPDATE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>UPDATE</refname>
+  <refpurpose>update rows of a table</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+[ WITH [ RECURSIVE ] <replaceable class="parameter">with_query</replaceable> [, ...] ]
+UPDATE [ ONLY ] <replaceable class="parameter">table_name</replaceable> [ * ]
+    [ FOR PORTION OF <replaceable class="parameter">range_column_name</replaceable> <replaceable class="parameter">for_portion_of_target</replaceable> ]
+    [ [ AS ] <replaceable class="parameter">alias</replaceable> ]
+    SET { <replaceable class="parameter">column_name</replaceable> = { <replaceable class="parameter">expression</replaceable> | DEFAULT } |
+          ( <replaceable class="parameter">column_name</replaceable> [, ...] ) = [ ROW ] ( { <replaceable class="parameter">expression</replaceable> | DEFAULT } [, ...] ) |
+          ( <replaceable class="parameter">column_name</replaceable> [, ...] ) = ( <replaceable class="parameter">sub-SELECT</replaceable> )
+        } [, ...]
+    [ FROM <replaceable class="parameter">from_item</replaceable> [, ...] ]
+    [ WHERE <replaceable class="parameter">condition</replaceable> | WHERE CURRENT OF <replaceable class="parameter">cursor_name</replaceable> ]
+    [ RETURNING [ WITH ( { OLD | NEW } AS <replaceable class="parameter">output_alias</replaceable> [, ...] ) ]
+                { * | <replaceable class="parameter">output_expression</replaceable> [ [ AS ] <replaceable class="parameter">output_name</replaceable> ] } [, ...] ]
+
+<phrase>where <replaceable class="parameter">for_portion_of_target</replaceable> is:</phrase>
+
+{ FROM <replaceable class="parameter">start_time</replaceable> TO <replaceable class="parameter">end_time</replaceable> |
+  ( <replaceable class="parameter">portion</replaceable> ) }
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>UPDATE</command> changes the values of the specified
+   columns in all rows that satisfy the condition. Only the columns to
+   be modified need be mentioned in the <literal>SET</literal> clause;
+   columns not explicitly modified retain their previous values.
+  </para>
+
+  <para>
+   There are two ways to modify a table using information contained in
+   other tables in the database: using sub-selects, or specifying
+   additional tables in the <literal>FROM</literal> clause. Which
+   technique is more appropriate depends on the specific
+   circumstances.
+  </para>
+
+  <para>
+   The optional <literal>RETURNING</literal> clause causes <command>UPDATE</command>
+   to compute and return value(s) based on each row actually updated.
+   Any expression using the table's columns, and/or columns of other
+   tables mentioned in <literal>FROM</literal>, can be computed.
+   By default, the new (post-update) values of the table's columns are used,
+   but it is also possible to request the old (pre-update) values.
+   The syntax of the <literal>RETURNING</literal> list is identical to that of the
+   output list of <command>SELECT</command>.
+  </para>
+
+  <para>
+   If the <literal>FOR PORTION OF</literal> clause is used, the update will
+   only affect rows that overlap the given portion.  Furthermore, if a row's
+   application time extends outside the <literal>FOR PORTION OF</literal>
+   bounds, then the update will only change the application time within those
+   bounds.  In effect, only the history targeted by <literal>FOR PORTION
+   OF</literal> is updated, and no moments outside.  Furthermore, after a row
+   is updated, the range or multirange is first shrunk so that its application
+   time no longer extends beyond the targeted <literal>FOR PORTION
+   OF</literal> bounds.  Then, new <glossterm
+   linkend="glossary-temporal-leftovers">temporal leftovers</glossterm> might
+   be inserted: rows whose range or multirange receives the remaining
+   application time outside the targeted
+   <literal>FROM</literal>/<literal>TO</literal> bounds, with the original
+   values in their other columns.  For range columns, there will be zero to
+   two inserted records, depending on whether the original application time
+   was completely updated, extended before/after the change, or both.
+   Multiranges never require two temporal leftovers, because one value can
+   always contain whatever application time remains.
+  </para>
+
+  <para>
+   You must have the <literal>UPDATE</literal> privilege on the table,
+   or at least on the column(s) that are listed to be updated.
+   You must also have the <literal>SELECT</literal>
+   privilege on any column whose values are read in the
+   <replaceable class="parameter">expressions</replaceable> or
+   <replaceable class="parameter">condition</replaceable>.
+   When <literal>FOR PORTION OF</literal> is used, the secondary inserts do
+   not require <literal>INSERT</literal> privilege on the table.  (This is
+   because conceptually no new information is being added; the inserted rows
+   only preserve existing data about the untargeted time period.)
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">with_query</replaceable></term>
+    <listitem>
+     <para>
+      The <literal>WITH</literal> clause allows you to specify one or more
+      subqueries that can be referenced by name in the <command>UPDATE</command>
+      query. See <xref linkend="queries-with"/> and <xref linkend="sql-select"/>
+      for details.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">table_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of the table to update.
+      If <literal>ONLY</literal> is specified before the table name, matching rows
+      are updated in the named table only.  If <literal>ONLY</literal> is not
+      specified, matching rows are also updated in any tables inheriting from
+      the named table.  Optionally, <literal>*</literal> can be specified after the
+      table name to explicitly indicate that descendant tables are included.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">alias</replaceable></term>
+    <listitem>
+     <para>
+      A substitute name for the target table. When an alias is
+      provided, it completely hides the actual name of the table.  For
+      example, given <literal>UPDATE foo AS f</literal>, the remainder of the
+      <command>UPDATE</command> statement must refer to this table as
+      <literal>f</literal> not <literal>foo</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">range_column_name</replaceable></term>
+    <listitem>
+     <para>
+      The range or multirange column to use when performing a temporal update.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">for_portion_of_target</replaceable></term>
+    <listitem>
+     <para>
+      The portion to update.  If targeting a range column, this can be in the
+      form <literal>FROM</literal> <replaceable
+      class="parameter">start_time</replaceable> <literal>TO</literal>
+      <replaceable class="parameter">end_time</replaceable>.  Otherwise, it
+      must be in the form <literal>(</literal><replaceable
+      class="parameter">portion</replaceable><literal>)</literal> where
+      <replaceable class="parameter">portion</replaceable> is an expression
+      that yields a value of the same type as <replaceable
+      class="parameter">range_column_name</replaceable>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">start_time</replaceable></term>
+    <listitem>
+     <para>
+      The earliest time (inclusive) to change in a temporal update.  This must
+      be a value matching the base type of the range from <replaceable
+      class="parameter">range_column_name</replaceable>.  A null value here
+      indicates an update whose beginning is unbounded (as with range types).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">end_time</replaceable></term>
+    <listitem>
+     <para>
+      The latest time (exclusive) to change in a temporal update.  This must
+      be a value matching the base type of the range from <replaceable
+      class="parameter">range_column_name</replaceable>.  A null value here
+      indicates an update whose end is unbounded (as with range types).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">column_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of a column in the table named by <replaceable
+      class="parameter">table_name</replaceable>.
+      The column name can be qualified with a subfield name or array
+      subscript, if needed.  Do not include the table's name in the
+      specification of a target column &mdash; for example,
+      <literal>UPDATE table_name SET table_name.col = 1</literal> is invalid.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">expression</replaceable></term>
+    <listitem>
+     <para>
+      An expression to assign to the column.  The expression can use the
+      old values of this and other columns in the table.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DEFAULT</literal></term>
+    <listitem>
+     <para>
+      Set the column to its default value (which will be NULL if no specific
+      default expression has been assigned to it).  An identity column will be
+      set to a new value generated by the associated sequence.  For a
+      generated column, specifying this is permitted but merely specifies the
+      normal behavior of computing the column from its generation expression.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">sub-SELECT</replaceable></term>
+    <listitem>
+     <para>
+      A <literal>SELECT</literal> sub-query that produces as many output columns
+      as are listed in the parenthesized column list preceding it.  The
+      sub-query must yield no more than one row when executed.  If it
+      yields one row, its column values are assigned to the target columns;
+      if it yields no rows, NULL values are assigned to the target columns.
+      The sub-query can refer to old values of the current row of the table
+      being updated.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">from_item</replaceable></term>
+    <listitem>
+     <para>
+      A table expression allowing columns from other tables to appear in
+      the <literal>WHERE</literal> condition and update expressions. This
+      uses the same syntax as the <link
+      linkend="sql-from"><literal>FROM</literal></link> clause of
+      a <command>SELECT</command> statement;
+      for example, an alias for the table name can be specified.  Do not
+      repeat the target table as a <replaceable>from_item</replaceable>
+      unless you intend a self-join (in which case it must appear with
+      an alias in the <replaceable>from_item</replaceable>).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">condition</replaceable></term>
+    <listitem>
+     <para>
+      An expression that returns a value of type <type>boolean</type>.
+      Only rows for which this expression returns <literal>true</literal>
+      will be updated.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">cursor_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of the cursor to use in a <literal>WHERE CURRENT OF</literal>
+      condition.  The row to be updated is the one most recently fetched
+      from this cursor.  The cursor must be a non-grouping
+      query on the <command>UPDATE</command>'s target table.
+      Note that <literal>WHERE CURRENT OF</literal> cannot be
+      specified together with a Boolean condition.  See
+      <xref linkend="sql-declare"/>
+      for more information about using cursors with
+      <literal>WHERE CURRENT OF</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">output_alias</replaceable></term>
+    <listitem>
+     <para>
+      An optional substitute name for <literal>OLD</literal> or
+      <literal>NEW</literal> rows in the <literal>RETURNING</literal> list.
+     </para>
+
+     <para>
+      By default, old values from the target table can be returned by writing
+      <literal>OLD.<replaceable class="parameter">column_name</replaceable></literal>
+      or <literal>OLD.*</literal>, and new values can be returned by writing
+      <literal>NEW.<replaceable class="parameter">column_name</replaceable></literal>
+      or <literal>NEW.*</literal>.  When an alias is provided, these names are
+      hidden and the old or new rows must be referred to using the alias.
+      For example <literal>RETURNING WITH (OLD AS o, NEW AS n) o.*, n.*</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">output_expression</replaceable></term>
+    <listitem>
+     <para>
+      An expression to be computed and returned by the <command>UPDATE</command>
+      command after each row is updated.  The expression can use any
+      column names of the table named by <replaceable class="parameter">table_name</replaceable>
+      or table(s) listed in <literal>FROM</literal>.
+      Write <literal>*</literal> to return all columns.
+     </para>
+
+     <para>
+      A column name or <literal>*</literal> may be qualified using
+      <literal>OLD</literal> or <literal>NEW</literal>, or the corresponding
+      <replaceable class="parameter">output_alias</replaceable> for
+      <literal>OLD</literal> or <literal>NEW</literal>, to cause old or new
+      values to be returned.  An unqualified column name, or
+      <literal>*</literal>, or a column name or <literal>*</literal> qualified
+      using the target table name or alias will return new values.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">output_name</replaceable></term>
+    <listitem>
+     <para>
+      A name to use for a returned column.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Outputs</title>
+
+  <para>
+   On successful completion, an <command>UPDATE</command> command returns a command
+   tag of the form
+<screen>
+UPDATE <replaceable class="parameter">count</replaceable>
+</screen>
+   The <replaceable class="parameter">count</replaceable> is the number
+   of rows updated, including matched rows whose values did not change.
+   Note that the number may be less than the number of rows that matched
+   the <replaceable class="parameter">condition</replaceable> when
+   updates were suppressed by a <literal>BEFORE UPDATE</literal> trigger.  If
+   <replaceable class="parameter">count</replaceable> is 0, no rows were
+   updated by the query (this is not considered an error).
+   If <literal>FOR PORTION OF</literal> was used, the
+   <replaceable class="parameter">count</replaceable> does not include
+   <glossterm linkend="glossary-temporal-leftovers">temporal leftovers</glossterm>
+   that were inserted.
+  </para>
+
+  <para>
+   If the <command>UPDATE</command> command contains a <literal>RETURNING</literal>
+   clause, the result will be similar to that of a <command>SELECT</command>
+   statement containing the columns and values defined in the
+   <literal>RETURNING</literal> list, computed over the row(s) updated by the
+   command. If <literal>FOR PORTION OF</literal> was used, the
+   <literal>RETURNING</literal> clause gives one result for each updated row,
+   but does not include inserted
+   <glossterm linkend="glossary-temporal-leftovers">temporal leftovers</glossterm>.
+   The value of the application-time column matches the new value of the updated
+   row(s).
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   When a <literal>FROM</literal> clause is present, what essentially happens
+   is that the target table is joined to the tables mentioned in the
+   <replaceable>from_item</replaceable> list, and each output row of the join
+   represents an update operation for the target table.  When using
+   <literal>FROM</literal> you should ensure that the join
+   produces at most one output row for each row to be modified.  In
+   other words, a target row shouldn't join to more than one row from
+   the other table(s).  If it does, then only one of the join rows
+   will be used to update the target row, but which one will be used
+   is not readily predictable.
+  </para>
+
+  <para>
+   Because of this indeterminacy, referencing other tables only within
+   sub-selects is safer, though often harder to read and slower than
+   using a join.
+  </para>
+
+  <para>
+   In the case of a partitioned table, updating a row might cause it to no
+   longer satisfy the partition constraint of the containing partition. In that
+   case, if there is some other partition in the partition tree for which this
+   row satisfies its partition constraint, then the row is moved to that
+   partition. If there is no such partition, an error will occur.  Behind the
+   scenes, the row movement is actually a <command>DELETE</command> and
+   <command>INSERT</command> operation.
+  </para>
+
+  <para>
+   There is a possibility that a concurrent <command>UPDATE</command> or
+   <command>DELETE</command> on the row being moved will get a serialization
+   failure error.  Suppose session 1 is performing an <command>UPDATE</command>
+   on a partition key, and meanwhile a concurrent session 2 for which this
+   row is visible performs an <command>UPDATE</command> or
+   <command>DELETE</command> operation on this row.  In such case,
+   session 2's <command>UPDATE</command> or <command>DELETE</command> will
+   detect the row movement and raise a serialization failure error (which
+   always returns with an SQLSTATE code '40001').  Applications may wish to
+   retry the transaction if this occurs.  In the usual case where the table
+   is not partitioned, or where there is no row movement, session 2 would
+   have identified the newly updated row and carried out the
+   <command>UPDATE</command>/<command>DELETE</command> on this new row
+    version.
+  </para>
+
+  <para>
+   Note that while rows can be moved from local partitions to a foreign-table
+   partition (provided the foreign data wrapper supports tuple routing), they
+   cannot be moved from a foreign-table partition to another partition.
+  </para>
+
+  <para>
+   An attempt of moving a row from one partition to another will fail if a
+   foreign key is found to directly reference an ancestor of the source
+   partition that is not the same as the ancestor that's mentioned in the
+   <command>UPDATE</command> query.
+  </para>
+
+  <para>
+   When <literal>FOR PORTION OF</literal> is used, this can result in users
+   who don't have <literal>INSERT</literal> privileges firing
+   <literal>INSERT</literal> triggers.  This should be considered when
+   using <literal>SECURITY DEFINER</literal> trigger functions.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Change the word <literal>Drama</literal> to <literal>Dramatic</literal> in the
+   column <structfield>kind</structfield> of the table <structname>films</structname>:
+
+<programlisting>
+UPDATE films SET kind = 'Dramatic' WHERE kind = 'Drama';
+</programlisting>
+  </para>
+
+  <para>
+   Adjust temperature entries and reset precipitation to its default
+   value in one row of the table <structname>weather</structname>:
+
+<programlisting>
+UPDATE weather SET temp_lo = temp_lo+1, temp_hi = temp_lo+15, prcp = DEFAULT
+  WHERE city = 'San Francisco' AND date = '2003-07-03';
+</programlisting>
+  </para>
+
+  <para>
+   Perform the same operation and return the updated entries, and the old
+   precipitation value:
+
+<programlisting>
+UPDATE weather SET temp_lo = temp_lo+1, temp_hi = temp_lo+15, prcp = DEFAULT
+  WHERE city = 'San Francisco' AND date = '2003-07-03'
+  RETURNING temp_lo, temp_hi, prcp, old.prcp AS old_prcp;
+</programlisting>
+  </para>
+
+  <para>
+   Use the alternative column-list syntax to do the same update:
+<programlisting>
+UPDATE weather SET (temp_lo, temp_hi, prcp) = (temp_lo+1, temp_lo+15, DEFAULT)
+  WHERE city = 'San Francisco' AND date = '2003-07-03';
+</programlisting>
+  </para>
+
+  <para>
+   Increment the sales count of the salesperson who manages the
+   account for Acme Corporation, using the <literal>FROM</literal>
+   clause syntax:
+<programlisting>
+UPDATE employees SET sales_count = sales_count + 1 FROM accounts
+  WHERE accounts.name = 'Acme Corporation'
+  AND employees.id = accounts.sales_person;
+</programlisting>
+  </para>
+
+  <para>
+   Perform the same operation, using a sub-select in the
+   <literal>WHERE</literal> clause:
+<programlisting>
+UPDATE employees SET sales_count = sales_count + 1 WHERE id =
+  (SELECT sales_person FROM accounts WHERE name = 'Acme Corporation');
+</programlisting>
+  </para>
+
+  <para>
+   Update contact names in an accounts table to match the currently assigned
+   salespeople:
+<programlisting>
+UPDATE accounts SET (contact_first_name, contact_last_name) =
+    (SELECT first_name, last_name FROM employees
+     WHERE employees.id = accounts.sales_person);
+</programlisting>
+   A similar result could be accomplished with a join:
+<programlisting>
+UPDATE accounts SET contact_first_name = first_name,
+                    contact_last_name = last_name
+  FROM employees WHERE employees.id = accounts.sales_person;
+</programlisting>
+   However, the second query may give unexpected results
+   if <structname>employees</structname>.<structfield>id</structfield> is not a unique key, whereas
+   the first query is guaranteed to raise an error if there are multiple
+   <structfield>id</structfield> matches.  Also, if there is no match for a particular
+   <structname>accounts</structname>.<structfield>sales_person</structfield> entry, the first query
+   will set the corresponding name fields to NULL, whereas the second query
+   will not update that row at all.
+  </para>
+
+  <para>
+   Update statistics in a summary table to match the current data:
+<programlisting>
+UPDATE summary s SET (sum_x, sum_y, avg_x, avg_y) =
+    (SELECT sum(x), sum(y), avg(x), avg(y) FROM data d
+     WHERE d.group_id = s.group_id);
+</programlisting>
+  </para>
+
+  <para>
+   Attempt to insert a new stock item along with the quantity of stock. If
+   the item already exists, instead update the stock count of the existing
+   item. To do this without failing the entire transaction, use savepoints:
+<programlisting>
+BEGIN;
+-- other operations
+SAVEPOINT sp1;
+INSERT INTO wines VALUES('Chateau Lafite 2003', '24');
+-- Assume the above fails because of a unique key violation,
+-- so now we issue these commands:
+ROLLBACK TO sp1;
+UPDATE wines SET stock = stock + 24 WHERE winename = 'Chateau Lafite 2003';
+-- continue with other operations, and eventually
+COMMIT;
+</programlisting>
+  </para>
+
+  <para>
+   Change the <structfield>kind</structfield> column of the table
+   <structname>films</structname> in the row on which the cursor
+   <literal>c_films</literal> is currently positioned:
+<programlisting>
+UPDATE films SET kind = 'Dramatic' WHERE CURRENT OF c_films;
+</programlisting>
+  </para>
+
+  <para>
+   An example of a temporal update:
+<programlisting>
+UPDATE products
+  FOR PORTION OF valid_at FROM '2023-09-01' TO '2025-03-01'
+  SET price = 12.00
+  WHERE product_no = 5;
+</programlisting>
+  </para>
+
+  <para id="update-limit">
+   Updates affecting many rows can have negative effects on system
+   performance, such as table bloat, increased replica lag, and increased
+   lock contention.  In such situations it can make sense to perform the
+   operation in smaller batches, possibly with a <command>VACUUM</command>
+   operation on the table between batches.  While there is
+   no <literal>LIMIT</literal> clause for <command>UPDATE</command>, it is
+   possible to get a similar effect through the use of
+   a <link linkend="queries-with">Common Table Expression</link> and a
+   self-join.  With the standard <productname>PostgreSQL</productname>
+   table access method, a self-join on the system
+   column <link linkend="ddl-system-columns-ctid">ctid</link> is very
+   efficient:
+<programlisting>
+WITH exceeded_max_retries AS (
+  SELECT w.ctid FROM work_item AS w
+    WHERE w.status = 'active' AND w.num_retries &gt; 10
+    ORDER BY w.retry_timestamp
+    FOR UPDATE
+    LIMIT 5000
+)
+UPDATE work_item SET status = 'failed'
+  FROM exceeded_max_retries AS emr
+  WHERE work_item.ctid = emr.ctid;
+</programlisting>
+   This command will need to be repeated until no rows remain to be updated.
+   (This use of <structfield>ctid</structfield> is only safe because
+   the query is repeatedly run, avoiding the problem of changed
+   <structfield>ctid</structfield>s.)
+   Use of an <literal>ORDER BY</literal> clause allows the command to
+   prioritize which rows will be updated; it can also prevent deadlock
+   with other update operations if they use the same ordering.
+   If lock contention is a concern, then <literal>SKIP LOCKED</literal>
+   can be added to the <acronym>CTE</acronym> to prevent multiple commands
+   from updating the same row.  However, then a
+   final <command>UPDATE</command> without <literal>SKIP LOCKED</literal>
+   or <literal>LIMIT</literal> will be needed to ensure that no matching
+   rows were overlooked.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   This command conforms to the <acronym>SQL</acronym> standard, except
+   that the <literal>FROM</literal> and <literal>RETURNING</literal> clauses
+   are <productname>PostgreSQL</productname> extensions, as is the ability
+   to use <literal>WITH</literal> with <command>UPDATE</command>.
+  </para>
+
+  <para>
+   Some other database systems offer a <literal>FROM</literal> option in which
+   the target table is supposed to be listed again within <literal>FROM</literal>.
+   That is not how <productname>PostgreSQL</productname> interprets
+   <literal>FROM</literal>.  Be careful when porting applications that use this
+   extension.
+  </para>
+
+  <para>
+   According to the standard, the source value for a parenthesized sub-list of
+   target column names can be any row-valued expression yielding the correct
+   number of columns.  <productname>PostgreSQL</productname> only allows the
+   source value to be a <link linkend="sql-syntax-row-constructors">row
+   constructor</link> or a sub-<literal>SELECT</literal>.  An individual column's
+   updated value can be specified as <literal>DEFAULT</literal> in the
+   row-constructor case, but not inside a sub-<literal>SELECT</literal>.
+  </para>
+ </refsect1>
+</refentry>

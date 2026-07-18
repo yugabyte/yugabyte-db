@@ -1,0 +1,49 @@
+name: OSS Commit Tracker
+
+# Classifies merged PRs as internal vs open-source and adds
+# the "oss_commit" label to OSS contributions.  The existing
+# github-jira-sync integration propagates this label to the
+# corresponding Jira ticket automatically.
+#
+# SECURITY NOTES:
+#
+#   We use pull_request_target so the workflow always runs
+#   from the base branch (master), never from the PR branch.
+#   No PR-supplied code is checked out or executed.
+#
+#   No external secrets are required.  The only credential
+#   is GITHUB_TOKEN (auto-provided) with write access to
+#   pull-request labels, plus a PAT for org membership
+#   checks (read:org scope).
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [master]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  track-oss-commit:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout base branch scripts only
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.base_ref }}
+          sparse-checkout: .github/scripts
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run OSS commit tracker
+        env:
+          GITHUB_TOKEN: ${{ secrets.OSS_TRACKER_PAT }}
+          YB_GITHUB_ORG: yugabyte
+        run: python .github/scripts/oss_commit_tracker.py

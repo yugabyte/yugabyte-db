@@ -1,0 +1,82 @@
+-- ----------------------------------------------------------------
+-- Establish global statement's properties WRT transactions.
+-- ----------------------------------------------------------------
+-- Outside transaction.
+SELECT hll_set_max_sparse(-1);
+ hll_set_max_sparse 
+--------------------
+                 -1
+(1 row)
+
+SELECT hll_set_max_sparse(256);
+ hll_set_max_sparse 
+--------------------
+                 -1
+(1 row)
+
+SELECT hll_set_defaults(11,5,-1,1);
+ hll_set_defaults 
+------------------
+ (11,5,-1,1)
+(1 row)
+
+SELECT hll_set_defaults(10,4,128,0);
+ hll_set_defaults 
+------------------
+ (11,5,-1,1)
+(1 row)
+
+-- Inside transaction - should have an affect later.
+BEGIN;
+SELECT hll_set_max_sparse(-1);
+ hll_set_max_sparse 
+--------------------
+                256
+(1 row)
+
+SELECT hll_set_defaults(11,5,-1,1);
+ hll_set_defaults 
+------------------
+ (10,4,128,0)
+(1 row)
+
+COMMIT;
+SELECT hll_set_max_sparse(256);
+ hll_set_max_sparse 
+--------------------
+                 -1
+(1 row)
+
+SELECT hll_set_defaults(10,4,128,0);
+ hll_set_defaults 
+------------------
+ (11,5,-1,1)
+(1 row)
+
+-- Inside Rolled back transaction, should still have an affect later.
+BEGIN;
+SELECT hll_set_max_sparse(-1);
+ hll_set_max_sparse 
+--------------------
+                256
+(1 row)
+
+SELECT hll_set_defaults(11,5,-1,1);
+ hll_set_defaults 
+------------------
+ (10,4,128,0)
+(1 row)
+
+ROLLBACK;
+SELECT hll_set_max_sparse(256);
+ hll_set_max_sparse 
+--------------------
+                 -1
+(1 row)
+
+SELECT hll_set_defaults(10,4,128,0);
+ hll_set_defaults 
+------------------
+ (11,5,-1,1)
+(1 row)
+

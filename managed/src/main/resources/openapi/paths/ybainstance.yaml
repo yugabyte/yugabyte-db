@@ -1,0 +1,23 @@
+/yba-info:
+  get:
+    operationId: GetYBAInstanceInfo
+    summary: Get YBAInstance info
+    description: Get YBA Instance info
+    tags:
+      - YBA Instance
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/YBAInfoResp.yaml"
+      '400':
+        description: Client Error
+      '500':
+        description: Server Error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      noAuthz: true
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: internal

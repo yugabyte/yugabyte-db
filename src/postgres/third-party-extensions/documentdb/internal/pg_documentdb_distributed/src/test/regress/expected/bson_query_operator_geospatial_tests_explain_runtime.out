@@ -1,0 +1,1557 @@
+SET search_path TO documentdb_api_catalog, postgis_public;
+SET citus.next_shard_id TO 167500;
+SET documentdb.next_collection_id TO 16750;
+SET documentdb.next_collection_index_id TO 16750;
+SELECT documentdb_api.drop_collection('db', 'geoquerytest') IS NOT NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.create_collection('db', 'geoquerytest') IS NOT NULL;
+NOTICE:  creating collection
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- avoid plans that use the primary key index
+SELECT documentdb_distributed_test_helpers.drop_primary_key('db','geoquerytest');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+BEGIN;
+set local enable_seqscan TO off;
+\i sql/bson_query_operator_geospatial_explain_core.sql
+-- Insert multiple items - 2d index
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 1, "a" : { "b": [10, 10] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 2, "a" : { "b": { "long": { "$numberLong": "20" }, "lat": { "$numberInt": "20" } } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 3, "a" : [ {"b": { "long": 25, "lat": 25 }}, [ { "$numberDouble": "30" }, { "$numberDecimal": "30" }], [35, 35]] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 4, "a" : { "b": [ [40, 40], [45, 45], [50, 50], [55, 55] ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Insert multiple items - 2dsphere index
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 101, "geo" : { "loc": [2.1, 2.2] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 102, "geo" : [ { "loc": [3.1, 3.2] }, { "loc": [4.1, 4.2] } ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 103, "geo" : { "loc": {"type": "Point", "coordinates": [5.1, 5.2] } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 104, "geo" : [ { "loc": {"type": "Point", "coordinates": [6.1, 6.2] } }, { "loc": { "type": "Point", "coordinates": [6.3, 6.4]} }] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 105, "geo" : { "loc": { "type": "MultiPoint", "coordinates": [[7.1, 7.2], [7.3, 7.4]] } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 106, "geo" : { "loc": { "type": "LineString", "coordinates": [[8.1, 8.2], [8.3, 8.4]] } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 107, "geo" : { "loc": { "type": "Polygon", "coordinates": [[[10, 10], [10, -10], [-10, -10], [-10, 10], [10, 10]]] } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 108, "geo" : { "loc": { "type": "Polygon", "coordinates": [[[10, 10], [10, -10], [-10, -10], [-10, 10], [10, 10]], [[5, 5], [5, -5], [-5, -5], [-5, 5], [5, 5]]] } } }', NULL);
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 109, "geo" : { "loc": { "type": "MultiLineString", "coordinates": [[[10, 10], [10, -10], [-10, -10], [-10, 10], [10, 10]], [[5, 5], [5, -5], [-5, -5], [-5, 5], [5, 5]]] } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 110, "geo" : { "loc": { "type": "MultiPolygon", "coordinates": [[[[10, 10], [10, -10], [-10, -10], [-10, 10], [10, 10]], [[5, 5], [5, -5], [-5, -5], [-5, 5], [5, 5]]]] } } }', NULL);
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 111, "geo" : { "loc": { "type": "GeometryCollection", "geometries": [ {"type": "Point", "coordinates": [11.1, 11.2]}, {"type": "LineString", "coordinates": [[11.3, 11.4], [11.5, 11.6]]}, {"type": "Polygon", "coordinates": [[[5, 5], [5, -5], [-5, -5], [-5, 5], [5, 5]]]}  ] } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 112, "geo" : { "loc": [120, 89.1 ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 113, "geo" : { "loc": { "x": 50, "y": 50, "z": 51 } } }', NULL); -- Legacy object format
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 114, "geo" : { "loc": [51, 51, 52] } }', NULL); -- Legacy array format
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Insert couple of items for testing index usage with partial filter expression
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 5, "d" : [15, 15], "e": 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 6, "d" : [16, 16], "e": 2 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 7, "d" : [17, 17], "e": 3 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 8, "d" : [18, 18], "e": 4 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 9, "d" : [19, 19], "e": 5 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 10, "d" : [20, 20], "e": 6 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 11, "d" : [21, 21], "e": 7 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 12, "d" : [22, 22], "e": 8 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 13, "d" : [23, 23], "e": 9 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 14, "d" : [24, 24], "e": 10 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Insert couple of items for composite 2dsphere index
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 200, "geoA" : { "type" : "Point", "coordinates": [ 10, 10] }, "geoB": { "type": "Point", "coordinates": [20, 20] } }', NULL); -- Both geoA and geoB
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 201, "geoA" : { "type" : "Point", "coordinates": [ 11, 11] } }', NULL); -- Only geoA
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 202, "geoB" : { "type" : "Point", "coordinates": [ 21, 21] } }', NULL); -- Only geoB
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 203, "geoC" : { "type" : "Point", "coordinates": [ 30, 30] } }', NULL); -- No geoA, no geoB
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Insert some items for composited 2dsphere index with pfe
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 300, "geo1" : { "type" : "Point", "coordinates": [ 10, 10] }, "geo2": { "type": "Point", "coordinates": [20, 20] }, "region": "USA" }', NULL); -- Both geo1 and geo2
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 301, "geo1" : { "type" : "Point", "coordinates": [ 11, 11] }, "region": "USA" }', NULL); -- Only geo1
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 302, "geo2" : { "type" : "Point", "coordinates": [ 21, 21] }, "region": "USA" }', NULL); -- Only geo2
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 303, "geo3" : { "type" : "Point", "coordinates": [ 30, 30] }, "region": "USA" }', NULL); -- No geo1, no geo2
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Insert for large query cap containing all of shapes vertices but not the shape itself.
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 500, "largeGeo" : { "type" : "LineString", "coordinates": [[96.328125, 5.61598581915534], [153.984375, -6.315298538330033]] }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 501, "largeGeo" : { "type" : "Polygon", "coordinates": [[
+                [98.96484375, -11.350796722383672],
+                [135.35156249999997, -11.350796722383672],
+                [135.35156249999997, 0.8788717828324276],
+                [98.96484375, 0.8788717828324276],
+                [98.96484375, -11.350796722383672]
+            ]] }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- 2d index explain
+-- $geoWithin / $within => $box shape operator
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$box": [[10, 10], [10, 10]]}}}';
+                                                                                                                                     QUERY PLAN                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "a.b" : { "$box" : [ [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] ] } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$within": {"$box": [[10, 10], [10, 10]]}}}';
+                                                                                                                                     QUERY PLAN                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "a.b" : { "$box" : [ [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] ] } }'::documentdb_core.bson)
+(7 rows)
+
+-- $geoWithin / $within => Hashes of $center/$centerSphere may vary so skipping those here to avoid flakiness
+-- $geoWithin / $within => $polygon shape operator
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$polygon": [[5, 10], [11, 11], [12, 5]]}}}';
+                                                                                                                                                                 QUERY PLAN                                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "a.b" : { "$polygon" : [ [ { "$numberInt" : "5" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "11" }, { "$numberInt" : "11" } ], [ { "$numberInt" : "12" }, { "$numberInt" : "5" } ] ] } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$within": {"$polygon": [[5, 10], [11, 11], [12, 5]]}}}';
+                                                                                                                                                                 QUERY PLAN                                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "a.b" : { "$polygon" : [ [ { "$numberInt" : "5" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "11" }, { "$numberInt" : "11" } ], [ { "$numberInt" : "12" }, { "$numberInt" : "5" } ] ] } }'::documentdb_core.bson)
+(7 rows)
+
+-- Explain plan with partial filters
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"d": {"$geoWithin": {"$box": [[10, 10], [30, 30]]}}, "e": {"$gte": 5}}';
+                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@>=) '{ "e" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geometry(document, 'd'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "d" : { "$box" : [ [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "30" } ] ] } }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"d": {"$geoWithin": {"$box": [[10, 10], [30, 30]]}}, "e": {"$eq": 5}}';
+                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "e" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geometry(document, 'd'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "d" : { "$box" : [ [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "30" } ] ] } }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"d": {"$geoWithin": {"$box": [[10, 10], [30, 30]]}}, "e": {"$eq": 3}}';
+                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "e" : { "$numberInt" : "3" } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geometry(document, 'd'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "d" : { "$box" : [ [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "30" } ] ] } }'::documentdb_core.bson))
+(7 rows)
+
+-- Check Explain for other non-geo operators are not pushed to geo index but regular index if available
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$eq": [10, 10]}}';
+                                                                     QUERY PLAN                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] }'::documentdb_core.bson)
+(7 rows)
+
+-- 2dSphere index explains
+-- $geoIntersects explain and index pushdown on 2dsphere
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "MultiPoint", "coordinates": [[1.1, 1.2], [2.1, 2.2], [3.1, 3.2]] } }}}';
+                                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "MultiPoint", "coordinates" : [ [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1999999999999999556" } ], [ { "$numberDouble" : "2.1000000000000000888" }, { "$numberDouble" : "2.2000000000000001776" } ], [ { "$numberDouble" : "3.1000000000000000888" }, { "$numberDouble" : "3.2000000000000001776" } ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "Point", "coordinates": {"lon": 3.1, "lat": 3.2} } }}}';
+                                                                                                                                                                QUERY PLAN                                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "Point", "coordinates" : { "lon" : { "$numberDouble" : "3.1000000000000000888" }, "lat" : { "$numberDouble" : "3.2000000000000001776" } } } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "MultiPoint", "coordinates": [[7.1, 7.2], [4.1, 4.2]] } }}}';
+                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "MultiPoint", "coordinates" : [ [ { "$numberDouble" : "7.0999999999999996447" }, { "$numberDouble" : "7.2000000000000001776" } ], [ { "$numberDouble" : "4.0999999999999996447" }, { "$numberDouble" : "4.2000000000000001776" } ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "LineString", "coordinates": [[7.1, 7.2], [4.1, 4.2], [7.3, 7.4], [2.1, 2.2]] } }}}';
+                                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "LineString", "coordinates" : [ [ { "$numberDouble" : "7.0999999999999996447" }, { "$numberDouble" : "7.2000000000000001776" } ], [ { "$numberDouble" : "4.0999999999999996447" }, { "$numberDouble" : "4.2000000000000001776" } ], [ { "$numberDouble" : "7.2999999999999998224" }, { "$numberDouble" : "7.4000000000000003553" } ], [ { "$numberDouble" : "2.1000000000000000888" }, { "$numberDouble" : "2.2000000000000001776" } ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[ [0, 0], [0, 10], [10, 10], [10, 0], [0, 0] ]] } }}}';
+                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[ [0, 0], [0, 10], [10, 10], [10, 0], [0, 0] ], [ [4, 4], [4, 7], [7, 7], [7, 4], [4, 4] ]] } }}}';
+                                                                                                                                                                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ], [ [ { "$numberInt" : "4" }, { "$numberInt" : "4" } ], [ { "$numberInt" : "4" }, { "$numberInt" : "7" } ], [ { "$numberInt" : "7" }, { "$numberInt" : "7" } ], [ { "$numberInt" : "7" }, { "$numberInt" : "4" } ], [ { "$numberInt" : "4" }, { "$numberInt" : "4" } ] ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "LineString", "coordinates": [ [25, 25], [-25, -25] ] } }}}';
+                                                                                                                                                                   QUERY PLAN                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "LineString", "coordinates" : [ [ { "$numberInt" : "25" }, { "$numberInt" : "25" } ], [ { "$numberInt" : "-25" }, { "$numberInt" : "-25" } ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "GeometryCollection", "geometries": [ {"type": "LineString", "coordinates": [[-25, -25], [25, 25]]}, {"type": "Point", "coordinates": [2.1, 2.2]} ] } }}}';
+                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "GeometryCollection", "geometries" : [ { "type" : "LineString", "coordinates" : [ [ { "$numberInt" : "-25" }, { "$numberInt" : "-25" } ], [ { "$numberInt" : "25" }, { "$numberInt" : "25" } ] ] }, { "type" : "Point", "coordinates" : [ { "$numberDouble" : "2.1000000000000000888" }, { "$numberDouble" : "2.2000000000000001776" } ] } ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[-120.0, 89.0], [0.0, 89.0], [120.0, 89.0], [-120.0, 89.0]]] } }}}';
+                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberDouble" : "-120.0" }, { "$numberDouble" : "89.0" } ], [ { "$numberDouble" : "0.0" }, { "$numberDouble" : "89.0" } ], [ { "$numberDouble" : "120.0" }, { "$numberDouble" : "89.0" } ], [ { "$numberDouble" : "-120.0" }, { "$numberDouble" : "89.0" } ] ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+-- With pfe
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"d": {"$geoIntersects": {"$geometry": {"type": "Polygon", "coordinates": [[[10, 10], [10, 30], [30, 30], [30, 10], [10, 10]]]} }}, "e": {"$gte": 5}}';
+                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@>=) '{ "e" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'd'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "d" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] ] ] } } }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"d": {"$geoIntersects": {"$geometry": {"type": "Polygon", "coordinates": [[[10, 10], [10, 30], [30, 30], [30, 10], [10, 10]]]} }}, "e": {"$eq": 5}}';
+                                                                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "e" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'd'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "d" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] ] ] } } }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"d": {"$geoIntersects": {"$geometry": {"type": "Polygon", "coordinates": [[[10, 10], [10, 30], [30, 30], [30, 10], [10, 10]]]} }}, "e": {"$eq": 3}}';
+                                                                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "e" : { "$numberInt" : "3" } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'd'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "d" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] ] ] } } }'::documentdb_core.bson))
+(7 rows)
+
+-- Check Explain for other non-geo operators are not pushed to geo index but regular index if available
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$eq": [2.1, 2.2]}}';
+                                                                                             QUERY PLAN                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "geo.loc" : [ { "$numberDouble" : "2.1000000000000000888" }, { "$numberDouble" : "2.2000000000000001776" } ] }'::documentdb_core.bson)
+(7 rows)
+
+-- $geoWithin explain and index pushdown on 2dsphere
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoWithin": {"$geometry": { "type": "Polygon", "coordinates": [[ [0, 0], [0, 10], [10, 10], [10, 0], [0, 0] ]] } }}}';
+                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "geo.loc" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+-- EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoWithin": {"$geometry": { "type": "Polygon", "coordinates": [[ [0, 0], [0, 10], [10, 10], [10, 0], [0, 0] ], [ [4, 4], [4, 7], [7, 7], [7, 4], [4, 4] ]] } }}}';
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoWithin": {"$geometry": { "type": "Polygon", "coordinates": [[[-120.0, 89.0], [0.0, 89.0], [120.0, 89.0], [-120.0, 89.0]]] } }}}';
+                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "geo.loc" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberDouble" : "-120.0" }, { "$numberDouble" : "89.0" } ], [ { "$numberDouble" : "0.0" }, { "$numberDouble" : "89.0" } ], [ { "$numberDouble" : "120.0" }, { "$numberDouble" : "89.0" } ], [ { "$numberDouble" : "-120.0" }, { "$numberDouble" : "89.0" } ] ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+-- $geometry with legacy formats
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "lon": 50, "lat": 50 } }}}';
+                                                                                                                       QUERY PLAN                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "lon" : { "$numberInt" : "50" }, "lat" : { "$numberInt" : "50" } } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": [51, 51] }}}';
+                                                                                                               QUERY PLAN                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : [ { "$numberInt" : "51" }, { "$numberInt" : "51" } ] } }'::documentdb_core.bson)
+(7 rows)
+
+-- Testing composite 2dsphere index
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geoA": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}}';
+                                                                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geoA'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geoA" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geoB": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}}';
+                                                                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geoB'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geoB" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') 
+    WHERE document @@ '{"geoA": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}, 
+                         "geoB": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}}';
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection
+               Filter: ((documentdb_api_catalog.bson_validate_geography(document, 'geoA'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geoA" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'geoB'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geoB" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson))
+(7 rows)
+
+-- Testing composite 2dsphere with pfe
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo1": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}, "region": {"$eq": "USA" }}' ORDER BY object_id;
+                                                                                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: object_id
+               ->  Seq Scan on documents_16750_167503 collection
+                     Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "region" : "USA" }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'geo1'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo1" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson))
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo2": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}, "region": {"$eq": "USA" }}' ORDER BY object_id;
+                                                                                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: object_id
+               ->  Seq Scan on documents_16750_167503 collection
+                     Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "region" : "USA" }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'geo2'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo2" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson))
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') 
+    WHERE document @@ '{"geo1": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}, 
+                        "geo2": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }},
+                        "region": {"$eq": "USA" }}' ORDER BY object_id;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: object_id
+               ->  Seq Scan on documents_16750_167503 collection
+                     Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "region" : "USA" }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'geo1'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo1" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'geo2'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo2" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson))
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') 
+    WHERE document @@ '{"geo1": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}, 
+                        "geo2": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}}' ORDER BY object_id; -- This one should not use index but should return same values
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort
+               Sort Key: object_id
+               ->  Seq Scan on documents_16750_167503 collection
+                     Filter: ((documentdb_api_catalog.bson_validate_geography(document, 'geo1'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo1" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'geo2'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo2" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson))
+(9 rows)
+
+COMMIT;
+ANALYZE;
+BEGIN;
+set local enable_seqscan TO off;
+-- Testing $center and $centerSphere with infinite radius
+EXPLAIN (ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$center": [[5, 10], {"$numberDecimal": "Infinity"}]}}}';
+                                                                                                                             QUERY PLAN                                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=4 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 332 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 332 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection (actual rows=4 loops=1)
+               Filter: (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "a.b" : { "$center" : [ [ { "$numberInt" : "5" }, { "$numberInt" : "10" } ], { "$numberDecimal" : "Infinity" } ] } }'::documentdb_core.bson)
+               Rows Removed by Filter: 32
+(10 rows)
+
+EXPLAIN (ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoWithin": {"$centerSphere": [[5, 10], {"$numberDecimal": "Infinity"}]}}}';
+                                                                                                                                    QUERY PLAN                                                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=12 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 1765 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 1765 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection (actual rows=12 loops=1)
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "geo.loc" : { "$centerSphere" : [ [ { "$numberInt" : "5" }, { "$numberInt" : "10" } ], { "$numberDecimal" : "Infinity" } ] } }'::documentdb_core.bson)
+               Rows Removed by Filter: 24
+(10 rows)
+
+-- Testing $center and $centerSphere with non-infinite radius
+EXPLAIN (ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$center": [[0, 0], 100]}}}';
+                                                                                                                        QUERY PLAN                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=4 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 332 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 332 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection (actual rows=4 loops=1)
+               Filter: (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "a.b" : { "$center" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], { "$numberInt" : "100" } ] } }'::documentdb_core.bson)
+               Rows Removed by Filter: 32
+(10 rows)
+
+EXPLAIN (ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoWithin": {"$centerSphere": [[0, 0], 1]}}}';
+                                                                                                                              QUERY PLAN                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=9 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 1603 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 1603 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167503 collection (actual rows=9 loops=1)
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "geo.loc" : { "$centerSphere" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], { "$numberInt" : "1" } ] } }'::documentdb_core.bson)
+               Rows Removed by Filter: 27
+(10 rows)
+
+EXPLAIN (ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"largeGeo": {"$geoWithin": {"$centerSphere": [[-59.80246852929814, -2.3633072488322853], 2.768403272464979]}}}' ORDER BY object_id; -- no result
+                                                                                                                                                                      QUERY PLAN                                                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=0 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 0 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 0 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=0 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Seq Scan on documents_16750_167503 collection (actual rows=0 loops=1)
+                     Filter: (documentdb_api_catalog.bson_validate_geography(document, 'largeGeo'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "largeGeo" : { "$centerSphere" : [ [ { "$numberDouble" : "-59.802468529298138833" }, { "$numberDouble" : "-2.3633072488322852678" } ], { "$numberDouble" : "2.7684032724649791923" } ] } }'::documentdb_core.bson)
+                     Rows Removed by Filter: 36
+(13 rows)
+
+EXPLAIN (ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"largeGeo": {"$geoWithin": {"$centerSphere": [[-61.52266094410311, 17.79937981451866], 2.9592242752161573]}}}' ORDER BY object_id; -- big enough for linestring but not for polygon
+                                                                                                                                                                     QUERY PLAN                                                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 128 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 128 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=1 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Seq Scan on documents_16750_167503 collection (actual rows=1 loops=1)
+                     Filter: (documentdb_api_catalog.bson_validate_geography(document, 'largeGeo'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "largeGeo" : { "$centerSphere" : [ [ { "$numberDouble" : "-61.522660944103108704" }, { "$numberDouble" : "17.799379814518658804" } ], { "$numberDouble" : "2.9592242752161572739" } ] } }'::documentdb_core.bson)
+                     Rows Removed by Filter: 35
+(13 rows)
+
+EXPLAIN (ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"largeGeo": {"$geoWithin": {"$centerSphere": [[-61.52266094410311, 17.79937981451866], 3.15]}}}' ORDER BY object_id; -- radius > pi, both docs in result
+                                                                                                                                                                     QUERY PLAN                                                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=2 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 351 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 351 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=2 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Seq Scan on documents_16750_167503 collection (actual rows=2 loops=1)
+                     Filter: (documentdb_api_catalog.bson_validate_geography(document, 'largeGeo'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "largeGeo" : { "$centerSphere" : [ [ { "$numberDouble" : "-61.522660944103108704" }, { "$numberDouble" : "17.799379814518658804" } ], { "$numberDouble" : "3.1499999999999999112" } ] } }'::documentdb_core.bson)
+                     Rows Removed by Filter: 34
+(13 rows)
+
+ROLLBACK;
+SELECT documentdb_api.delete('db', '{"delete":"geoquerytest", "deletes":[{"q":{}, "limit": 0}]}');
+                                         delete                                          
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""36"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- Again testing with shards
+-- Shard the collection and run the tests
+SELECT documentdb_api.shard_collection('db', 'geoquerytest', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+BEGIN;
+set local enable_seqscan TO off;
+\i sql/bson_query_operator_geospatial_explain_core.sql
+-- Insert multiple items - 2d index
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 1, "a" : { "b": [10, 10] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 2, "a" : { "b": { "long": { "$numberLong": "20" }, "lat": { "$numberInt": "20" } } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 3, "a" : [ {"b": { "long": 25, "lat": 25 }}, [ { "$numberDouble": "30" }, { "$numberDecimal": "30" }], [35, 35]] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 4, "a" : { "b": [ [40, 40], [45, 45], [50, 50], [55, 55] ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Insert multiple items - 2dsphere index
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 101, "geo" : { "loc": [2.1, 2.2] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 102, "geo" : [ { "loc": [3.1, 3.2] }, { "loc": [4.1, 4.2] } ] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 103, "geo" : { "loc": {"type": "Point", "coordinates": [5.1, 5.2] } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 104, "geo" : [ { "loc": {"type": "Point", "coordinates": [6.1, 6.2] } }, { "loc": { "type": "Point", "coordinates": [6.3, 6.4]} }] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 105, "geo" : { "loc": { "type": "MultiPoint", "coordinates": [[7.1, 7.2], [7.3, 7.4]] } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 106, "geo" : { "loc": { "type": "LineString", "coordinates": [[8.1, 8.2], [8.3, 8.4]] } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 107, "geo" : { "loc": { "type": "Polygon", "coordinates": [[[10, 10], [10, -10], [-10, -10], [-10, 10], [10, 10]]] } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 108, "geo" : { "loc": { "type": "Polygon", "coordinates": [[[10, 10], [10, -10], [-10, -10], [-10, 10], [10, 10]], [[5, 5], [5, -5], [-5, -5], [-5, 5], [5, 5]]] } } }', NULL);
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 109, "geo" : { "loc": { "type": "MultiLineString", "coordinates": [[[10, 10], [10, -10], [-10, -10], [-10, 10], [10, 10]], [[5, 5], [5, -5], [-5, -5], [-5, 5], [5, 5]]] } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 110, "geo" : { "loc": { "type": "MultiPolygon", "coordinates": [[[[10, 10], [10, -10], [-10, -10], [-10, 10], [10, 10]], [[5, 5], [5, -5], [-5, -5], [-5, 5], [5, 5]]]] } } }', NULL);
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 111, "geo" : { "loc": { "type": "GeometryCollection", "geometries": [ {"type": "Point", "coordinates": [11.1, 11.2]}, {"type": "LineString", "coordinates": [[11.3, 11.4], [11.5, 11.6]]}, {"type": "Polygon", "coordinates": [[[5, 5], [5, -5], [-5, -5], [-5, 5], [5, 5]]]}  ] } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 112, "geo" : { "loc": [120, 89.1 ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 113, "geo" : { "loc": { "x": 50, "y": 50, "z": 51 } } }', NULL); -- Legacy object format
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 114, "geo" : { "loc": [51, 51, 52] } }', NULL); -- Legacy array format
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Insert couple of items for testing index usage with partial filter expression
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 5, "d" : [15, 15], "e": 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 6, "d" : [16, 16], "e": 2 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 7, "d" : [17, 17], "e": 3 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 8, "d" : [18, 18], "e": 4 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 9, "d" : [19, 19], "e": 5 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 10, "d" : [20, 20], "e": 6 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 11, "d" : [21, 21], "e": 7 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 12, "d" : [22, 22], "e": 8 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 13, "d" : [23, 23], "e": 9 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 14, "d" : [24, 24], "e": 10 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Insert couple of items for composite 2dsphere index
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 200, "geoA" : { "type" : "Point", "coordinates": [ 10, 10] }, "geoB": { "type": "Point", "coordinates": [20, 20] } }', NULL); -- Both geoA and geoB
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 201, "geoA" : { "type" : "Point", "coordinates": [ 11, 11] } }', NULL); -- Only geoA
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 202, "geoB" : { "type" : "Point", "coordinates": [ 21, 21] } }', NULL); -- Only geoB
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 203, "geoC" : { "type" : "Point", "coordinates": [ 30, 30] } }', NULL); -- No geoA, no geoB
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Insert some items for composited 2dsphere index with pfe
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 300, "geo1" : { "type" : "Point", "coordinates": [ 10, 10] }, "geo2": { "type": "Point", "coordinates": [20, 20] }, "region": "USA" }', NULL); -- Both geo1 and geo2
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 301, "geo1" : { "type" : "Point", "coordinates": [ 11, 11] }, "region": "USA" }', NULL); -- Only geo1
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 302, "geo2" : { "type" : "Point", "coordinates": [ 21, 21] }, "region": "USA" }', NULL); -- Only geo2
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 303, "geo3" : { "type" : "Point", "coordinates": [ 30, 30] }, "region": "USA" }', NULL); -- No geo1, no geo2
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Insert for large query cap containing all of shapes vertices but not the shape itself.
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 500, "largeGeo" : { "type" : "LineString", "coordinates": [[96.328125, 5.61598581915534], [153.984375, -6.315298538330033]] }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','geoquerytest','{ "_id" : 501, "largeGeo" : { "type" : "Polygon", "coordinates": [[
+                [98.96484375, -11.350796722383672],
+                [135.35156249999997, -11.350796722383672],
+                [135.35156249999997, 0.8788717828324276],
+                [98.96484375, 0.8788717828324276],
+                [98.96484375, -11.350796722383672]
+            ]] }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- 2d index explain
+-- $geoWithin / $within => $box shape operator
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$box": [[10, 10], [10, 10]]}}}';
+                                                                                                                                     QUERY PLAN                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "a.b" : { "$box" : [ [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] ] } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$within": {"$box": [[10, 10], [10, 10]]}}}';
+                                                                                                                                     QUERY PLAN                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "a.b" : { "$box" : [ [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] ] } }'::documentdb_core.bson)
+(7 rows)
+
+-- $geoWithin / $within => Hashes of $center/$centerSphere may vary so skipping those here to avoid flakiness
+-- $geoWithin / $within => $polygon shape operator
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$polygon": [[5, 10], [11, 11], [12, 5]]}}}';
+                                                                                                                                                                 QUERY PLAN                                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "a.b" : { "$polygon" : [ [ { "$numberInt" : "5" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "11" }, { "$numberInt" : "11" } ], [ { "$numberInt" : "12" }, { "$numberInt" : "5" } ] ] } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$within": {"$polygon": [[5, 10], [11, 11], [12, 5]]}}}';
+                                                                                                                                                                 QUERY PLAN                                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "a.b" : { "$polygon" : [ [ { "$numberInt" : "5" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "11" }, { "$numberInt" : "11" } ], [ { "$numberInt" : "12" }, { "$numberInt" : "5" } ] ] } }'::documentdb_core.bson)
+(7 rows)
+
+-- Explain plan with partial filters
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"d": {"$geoWithin": {"$box": [[10, 10], [30, 30]]}}, "e": {"$gte": 5}}';
+                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: ((document OPERATOR(documentdb_api_catalog.@>=) '{ "e" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geometry(document, 'd'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "d" : { "$box" : [ [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "30" } ] ] } }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"d": {"$geoWithin": {"$box": [[10, 10], [30, 30]]}}, "e": {"$eq": 5}}';
+                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "e" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geometry(document, 'd'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "d" : { "$box" : [ [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "30" } ] ] } }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"d": {"$geoWithin": {"$box": [[10, 10], [30, 30]]}}, "e": {"$eq": 3}}';
+                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "e" : { "$numberInt" : "3" } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geometry(document, 'd'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "d" : { "$box" : [ [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "30" } ] ] } }'::documentdb_core.bson))
+(7 rows)
+
+-- Check Explain for other non-geo operators are not pushed to geo index but regular index if available
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$eq": [10, 10]}}';
+                                                                     QUERY PLAN                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] }'::documentdb_core.bson)
+(7 rows)
+
+-- 2dSphere index explains
+-- $geoIntersects explain and index pushdown on 2dsphere
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "MultiPoint", "coordinates": [[1.1, 1.2], [2.1, 2.2], [3.1, 3.2]] } }}}';
+                                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "MultiPoint", "coordinates" : [ [ { "$numberDouble" : "1.1000000000000000888" }, { "$numberDouble" : "1.1999999999999999556" } ], [ { "$numberDouble" : "2.1000000000000000888" }, { "$numberDouble" : "2.2000000000000001776" } ], [ { "$numberDouble" : "3.1000000000000000888" }, { "$numberDouble" : "3.2000000000000001776" } ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "Point", "coordinates": {"lon": 3.1, "lat": 3.2} } }}}';
+                                                                                                                                                                QUERY PLAN                                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "Point", "coordinates" : { "lon" : { "$numberDouble" : "3.1000000000000000888" }, "lat" : { "$numberDouble" : "3.2000000000000001776" } } } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "MultiPoint", "coordinates": [[7.1, 7.2], [4.1, 4.2]] } }}}';
+                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "MultiPoint", "coordinates" : [ [ { "$numberDouble" : "7.0999999999999996447" }, { "$numberDouble" : "7.2000000000000001776" } ], [ { "$numberDouble" : "4.0999999999999996447" }, { "$numberDouble" : "4.2000000000000001776" } ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "LineString", "coordinates": [[7.1, 7.2], [4.1, 4.2], [7.3, 7.4], [2.1, 2.2]] } }}}';
+                                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "LineString", "coordinates" : [ [ { "$numberDouble" : "7.0999999999999996447" }, { "$numberDouble" : "7.2000000000000001776" } ], [ { "$numberDouble" : "4.0999999999999996447" }, { "$numberDouble" : "4.2000000000000001776" } ], [ { "$numberDouble" : "7.2999999999999998224" }, { "$numberDouble" : "7.4000000000000003553" } ], [ { "$numberDouble" : "2.1000000000000000888" }, { "$numberDouble" : "2.2000000000000001776" } ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[ [0, 0], [0, 10], [10, 10], [10, 0], [0, 0] ]] } }}}';
+                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[ [0, 0], [0, 10], [10, 10], [10, 0], [0, 0] ], [ [4, 4], [4, 7], [7, 7], [7, 4], [4, 4] ]] } }}}';
+                                                                                                                                                                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ], [ [ { "$numberInt" : "4" }, { "$numberInt" : "4" } ], [ { "$numberInt" : "4" }, { "$numberInt" : "7" } ], [ { "$numberInt" : "7" }, { "$numberInt" : "7" } ], [ { "$numberInt" : "7" }, { "$numberInt" : "4" } ], [ { "$numberInt" : "4" }, { "$numberInt" : "4" } ] ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "LineString", "coordinates": [ [25, 25], [-25, -25] ] } }}}';
+                                                                                                                                                                   QUERY PLAN                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "LineString", "coordinates" : [ [ { "$numberInt" : "25" }, { "$numberInt" : "25" } ], [ { "$numberInt" : "-25" }, { "$numberInt" : "-25" } ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "GeometryCollection", "geometries": [ {"type": "LineString", "coordinates": [[-25, -25], [25, 25]]}, {"type": "Point", "coordinates": [2.1, 2.2]} ] } }}}';
+                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "GeometryCollection", "geometries" : [ { "type" : "LineString", "coordinates" : [ [ { "$numberInt" : "-25" }, { "$numberInt" : "-25" } ], [ { "$numberInt" : "25" }, { "$numberInt" : "25" } ] ] }, { "type" : "Point", "coordinates" : [ { "$numberDouble" : "2.1000000000000000888" }, { "$numberDouble" : "2.2000000000000001776" } ] } ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[-120.0, 89.0], [0.0, 89.0], [120.0, 89.0], [-120.0, 89.0]]] } }}}';
+                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberDouble" : "-120.0" }, { "$numberDouble" : "89.0" } ], [ { "$numberDouble" : "0.0" }, { "$numberDouble" : "89.0" } ], [ { "$numberDouble" : "120.0" }, { "$numberDouble" : "89.0" } ], [ { "$numberDouble" : "-120.0" }, { "$numberDouble" : "89.0" } ] ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+-- With pfe
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"d": {"$geoIntersects": {"$geometry": {"type": "Polygon", "coordinates": [[[10, 10], [10, 30], [30, 30], [30, 10], [10, 10]]]} }}, "e": {"$gte": 5}}';
+                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: ((document OPERATOR(documentdb_api_catalog.@>=) '{ "e" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'd'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "d" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] ] ] } } }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"d": {"$geoIntersects": {"$geometry": {"type": "Polygon", "coordinates": [[[10, 10], [10, 30], [30, 30], [30, 10], [10, 10]]]} }}, "e": {"$eq": 5}}';
+                                                                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "e" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'd'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "d" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] ] ] } } }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"d": {"$geoIntersects": {"$geometry": {"type": "Polygon", "coordinates": [[[10, 10], [10, 30], [30, 30], [30, 10], [10, 10]]]} }}, "e": {"$eq": 3}}';
+                                                                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "e" : { "$numberInt" : "3" } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'd'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "d" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "30" } ], [ { "$numberInt" : "30" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ] ] ] } } }'::documentdb_core.bson))
+(7 rows)
+
+-- Check Explain for other non-geo operators are not pushed to geo index but regular index if available
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$eq": [2.1, 2.2]}}';
+                                                                                             QUERY PLAN                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "geo.loc" : [ { "$numberDouble" : "2.1000000000000000888" }, { "$numberDouble" : "2.2000000000000001776" } ] }'::documentdb_core.bson)
+(7 rows)
+
+-- $geoWithin explain and index pushdown on 2dsphere
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoWithin": {"$geometry": { "type": "Polygon", "coordinates": [[ [0, 0], [0, 10], [10, 10], [10, 0], [0, 0] ]] } }}}';
+                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "geo.loc" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "10" } ], [ { "$numberInt" : "10" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+-- EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoWithin": {"$geometry": { "type": "Polygon", "coordinates": [[ [0, 0], [0, 10], [10, 10], [10, 0], [0, 0] ], [ [4, 4], [4, 7], [7, 7], [7, 4], [4, 4] ]] } }}}';
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoWithin": {"$geometry": { "type": "Polygon", "coordinates": [[[-120.0, 89.0], [0.0, 89.0], [120.0, 89.0], [-120.0, 89.0]]] } }}}';
+                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "geo.loc" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberDouble" : "-120.0" }, { "$numberDouble" : "89.0" } ], [ { "$numberDouble" : "0.0" }, { "$numberDouble" : "89.0" } ], [ { "$numberDouble" : "120.0" }, { "$numberDouble" : "89.0" } ], [ { "$numberDouble" : "-120.0" }, { "$numberDouble" : "89.0" } ] ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+-- $geometry with legacy formats
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": { "lon": 50, "lat": 50 } }}}';
+                                                                                                                       QUERY PLAN                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : { "lon" : { "$numberInt" : "50" }, "lat" : { "$numberInt" : "50" } } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoIntersects": {"$geometry": [51, 51] }}}';
+                                                                                                               QUERY PLAN                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo.loc" : { "$geometry" : [ { "$numberInt" : "51" }, { "$numberInt" : "51" } ] } }'::documentdb_core.bson)
+(7 rows)
+
+-- Testing composite 2dsphere index
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geoA": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}}';
+                                                                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geoA'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geoA" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geoB": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}}';
+                                                                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geoB'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geoB" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') 
+    WHERE document @@ '{"geoA": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}, 
+                         "geoB": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}}';
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: ((documentdb_api_catalog.bson_validate_geography(document, 'geoA'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geoA" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'geoB'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geoB" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson))
+(7 rows)
+
+-- Testing composite 2dsphere with pfe
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo1": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}, "region": {"$eq": "USA" }}' ORDER BY object_id;
+                                                                                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ Sort
+   Sort Key: remote_scan.worker_column_2
+   ->  Custom Scan (Citus Adaptive)
+         Task Count: 8
+         Tasks Shown: One of 8
+         ->  Task
+               Node: host=localhost port=58070 dbname=regression
+               ->  Seq Scan on documents_16750_167516 documents_16750
+                     Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "region" : "USA" }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'geo1'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo1" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson))
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo2": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}, "region": {"$eq": "USA" }}' ORDER BY object_id;
+                                                                                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ Sort
+   Sort Key: remote_scan.worker_column_2
+   ->  Custom Scan (Citus Adaptive)
+         Task Count: 8
+         Tasks Shown: One of 8
+         ->  Task
+               Node: host=localhost port=58070 dbname=regression
+               ->  Seq Scan on documents_16750_167516 documents_16750
+                     Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "region" : "USA" }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'geo2'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo2" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson))
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') 
+    WHERE document @@ '{"geo1": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}, 
+                        "geo2": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }},
+                        "region": {"$eq": "USA" }}' ORDER BY object_id;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
+---------------------------------------------------------------------
+ Sort
+   Sort Key: remote_scan.worker_column_2
+   ->  Custom Scan (Citus Adaptive)
+         Task Count: 8
+         Tasks Shown: One of 8
+         ->  Task
+               Node: host=localhost port=58070 dbname=regression
+               ->  Seq Scan on documents_16750_167516 documents_16750
+                     Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "region" : "USA" }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'geo1'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo1" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'geo2'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo2" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson))
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') 
+    WHERE document @@ '{"geo1": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}, 
+                        "geo2": {"$geoIntersects": {"$geometry": { "type": "Polygon", "coordinates": [[[0, 0], [0, 50], [50, 50], [50, 0], [0, 0]]]} }}}' ORDER BY object_id; -- This one should not use index but should return same values
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+---------------------------------------------------------------------
+ Sort
+   Sort Key: remote_scan.worker_column_2
+   ->  Custom Scan (Citus Adaptive)
+         Task Count: 8
+         Tasks Shown: One of 8
+         ->  Task
+               Node: host=localhost port=58070 dbname=regression
+               ->  Seq Scan on documents_16750_167516 documents_16750
+                     Filter: ((documentdb_api_catalog.bson_validate_geography(document, 'geo1'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo1" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson) AND (documentdb_api_catalog.bson_validate_geography(document, 'geo2'::text) OPERATOR(documentdb_api_catalog.@|#|) '{ "geo2" : { "$geometry" : { "type" : "Polygon", "coordinates" : [ [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "50" } ], [ { "$numberInt" : "50" }, { "$numberInt" : "0" } ], [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ] ] ] } } }'::documentdb_core.bson))
+(9 rows)
+
+COMMIT;
+ANALYZE;
+BEGIN;
+set local enable_seqscan TO off;
+-- Not running analyze on sharded collections as EXPLAIN returns task from only 1 of the 8 shards so the result can be flaky
+-- Testing $center and $centerSphere with infinite radius
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$center": [[5, 10], {"$numberDecimal": "Infinity"}]}}}';
+                                                                                                                             QUERY PLAN                                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "a.b" : { "$center" : [ [ { "$numberInt" : "5" }, { "$numberInt" : "10" } ], { "$numberDecimal" : "Infinity" } ] } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoWithin": {"$centerSphere": [[5, 10], {"$numberDecimal": "Infinity"}]}}}';
+                                                                                                                                    QUERY PLAN                                                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "geo.loc" : { "$centerSphere" : [ [ { "$numberInt" : "5" }, { "$numberInt" : "10" } ], { "$numberDecimal" : "Infinity" } ] } }'::documentdb_core.bson)
+(7 rows)
+
+-- Testing $center and $centerSphere with non-infinite radius
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"a.b": {"$geoWithin": {"$center": [[0, 0], 100]}}}';
+                                                                                                                        QUERY PLAN                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geometry(document, 'a.b'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "a.b" : { "$center" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], { "$numberInt" : "100" } ] } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"geo.loc": {"$geoWithin": {"$centerSphere": [[0, 0], 1]}}}';
+                                                                                                                              QUERY PLAN                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_16750_167516 documents_16750
+               Filter: (documentdb_api_catalog.bson_validate_geography(document, 'geo.loc'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "geo.loc" : { "$centerSphere" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "0" } ], { "$numberInt" : "1" } ] } }'::documentdb_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"largeGeo": {"$geoWithin": {"$centerSphere": [[-59.80246852929814, -2.3633072488322853], 2.768403272464979]}}}' ORDER BY object_id; -- no result
+                                                                                                                                                                      QUERY PLAN                                                                                                                                                                      
+---------------------------------------------------------------------
+ Sort
+   Sort Key: remote_scan.worker_column_2
+   ->  Custom Scan (Citus Adaptive)
+         Task Count: 8
+         Tasks Shown: One of 8
+         ->  Task
+               Node: host=localhost port=58070 dbname=regression
+               ->  Seq Scan on documents_16750_167516 documents_16750
+                     Filter: (documentdb_api_catalog.bson_validate_geography(document, 'largeGeo'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "largeGeo" : { "$centerSphere" : [ [ { "$numberDouble" : "-59.802468529298138833" }, { "$numberDouble" : "-2.3633072488322852678" } ], { "$numberDouble" : "2.7684032724649791923" } ] } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"largeGeo": {"$geoWithin": {"$centerSphere": [[-61.52266094410311, 17.79937981451866], 2.9592242752161573]}}}' ORDER BY object_id; -- big enough for linestring but not for polygon
+                                                                                                                                                                     QUERY PLAN                                                                                                                                                                      
+---------------------------------------------------------------------
+ Sort
+   Sort Key: remote_scan.worker_column_2
+   ->  Custom Scan (Citus Adaptive)
+         Task Count: 8
+         Tasks Shown: One of 8
+         ->  Task
+               Node: host=localhost port=58070 dbname=regression
+               ->  Seq Scan on documents_16750_167516 documents_16750
+                     Filter: (documentdb_api_catalog.bson_validate_geography(document, 'largeGeo'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "largeGeo" : { "$centerSphere" : [ [ { "$numberDouble" : "-61.522660944103108704" }, { "$numberDouble" : "17.799379814518658804" } ], { "$numberDouble" : "2.9592242752161572739" } ] } }'::documentdb_core.bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'geoquerytest') WHERE document @@ '{"largeGeo": {"$geoWithin": {"$centerSphere": [[-61.52266094410311, 17.79937981451866], 3.15]}}}' ORDER BY object_id; -- radius > pi, both docs in result
+                                                                                                                                                                     QUERY PLAN                                                                                                                                                                      
+---------------------------------------------------------------------
+ Sort
+   Sort Key: remote_scan.worker_column_2
+   ->  Custom Scan (Citus Adaptive)
+         Task Count: 8
+         Tasks Shown: One of 8
+         ->  Task
+               Node: host=localhost port=58070 dbname=regression
+               ->  Seq Scan on documents_16750_167516 documents_16750
+                     Filter: (documentdb_api_catalog.bson_validate_geography(document, 'largeGeo'::text) OPERATOR(documentdb_api_catalog.@|-|) '{ "largeGeo" : { "$centerSphere" : [ [ { "$numberDouble" : "-61.522660944103108704" }, { "$numberDouble" : "17.799379814518658804" } ], { "$numberDouble" : "3.1499999999999999112" } ] } }'::documentdb_core.bson)
+(9 rows)
+
+ROLLBACK;
+SELECT documentdb_api.drop_collection('db', 'geoquerytest') IS NOT NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+

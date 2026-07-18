@@ -1,0 +1,7 @@
+error: custom attribute panicked
+ --> tests/compile-fail/too_many_cast_options.rs:3:1
+  |
+3 | #[pg_cast(implicit, assignment)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = help: message: The cast type has already been set to `Implicit`

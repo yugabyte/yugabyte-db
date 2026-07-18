@@ -1,0 +1,42 @@
+name: Python Driver Tests
+
+on:
+  push:
+    branches: [ "PG15" ]
+
+  pull_request:
+    branches: [ "PG15" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: drivers/python
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Run apache/age docker image
+      run: docker compose up -d
+
+    - name: Set up python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install pre-requisites
+      run: |
+        sudo apt-get install python3-dev libpq-dev
+        pip install -r requirements.txt
+
+    - name: Build
+      run: |
+        python setup.py install
+
+    - name: Test
+      run: |
+        python test_age_py.py -db "postgres" -u "postgres" -pass "agens"
+        python test_networkx.py -db "postgres" -u "postgres" -pass "agens"
+        python -m unittest -v test_agtypes.py

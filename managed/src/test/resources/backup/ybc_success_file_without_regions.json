@@ -1,0 +1,48 @@
+{
+    "dbtype": "ysql",
+    "backup_spec": "bar",
+    "backup_size": "685676",
+    "snapshot_details": [
+      {
+        "type": "NAMESPACE",
+        "id": "000033df000030008000000000000000",
+        "data": {
+          "name": "bar",
+          "database_type": "YQL_DATABASE_PGSQL",
+          "next_pg_oid": "13328",
+          "colocated": "false",
+          "state": "RUNNING"
+        }
+      },
+      {
+        "type": "TABLE",
+        "id": "000033df000030008000000000004265",
+        "data": {
+          "name": "postgresqlkeyvalue",
+          "version": "0",
+          "state": "RUNNING",
+          "next_column_id": "2",
+          "table_type": "PGSQL_TABLE_TYPE",
+          "namespace_id": "000033df000030008000000000000000",
+          "namespace_name": "bar"
+        }
+      },
+      {
+        "type": "udtype",
+        "id": "9a42005b95f3432f86069b9404961e05",
+        "data": {
+          "name": "sample_type"
+        }
+      }
+    ],
+    "cloud_store_spec": {
+      "default_backup_location": {
+        "bucket": "def_bucket",
+        "cloud_dir": "default\/foo\/keyspace-bar\/"
+      }
+    },
+    "tablet_regions": {
+      "51e6c3b9ed524c708198d4965bfac3c2": "us-west2"
+    },
+    "backup_config_data": ""
+  }

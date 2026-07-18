@@ -1,0 +1,9 @@
+# pg_stat_statements extension
+comment = 'track planning and execution statistics of all SQL statements executed'
+<<<<<<< HEAD
+default_version = '1.13'
+=======
+default_version = '1.10-yb-2.1'
+>>>>>>> bc662ba705041e6573dd356e00d6418d40a405b9
+module_pathname = '$libdir/pg_stat_statements'
+relocatable = true

@@ -1,0 +1,139 @@
+-- ----------------------------------------------------------------
+-- Regression tests for add aggregate hashval function.
+-- ----------------------------------------------------------------
+SELECT hll_set_output_version(1);
+ hll_set_output_version 
+------------------------
+                      1
+(1 row)
+
+DROP TABLE IF EXISTS test_khvengxf;
+NOTICE:  table "test_khvengxf" does not exist, skipping
+CREATE TABLE test_khvengxf (
+	val    integer
+);
+insert into test_khvengxf(val) values (1), (2), (3);
+-- Check default and explicit signatures.
+select hll_print(hll_add_agg(hll_hash_integer(val)))
+       from test_khvengxf;
+                                 hll_print                                 
+---------------------------------------------------------------------------
+ EXPLICIT, 3 elements, nregs=2048, nbits=5, expthresh=-1(160), sparseon=1:+
+ 0: -8604791237420463362                                                  +
+ 1: -2734554653617988768                                                  +
+ 2:  5208657608173592891 
+(1 row)
+
+select hll_print(hll_add_agg(hll_hash_integer(val), 10))
+       from test_khvengxf;
+                                hll_print                                 
+--------------------------------------------------------------------------
+ EXPLICIT, 3 elements, nregs=1024, nbits=5, expthresh=-1(80), sparseon=1:+
+ 0: -8604791237420463362                                                 +
+ 1: -2734554653617988768                                                 +
+ 2:  5208657608173592891 
+(1 row)
+
+select hll_print(hll_add_agg(hll_hash_integer(val), 10, 4))
+       from test_khvengxf;
+                                hll_print                                 
+--------------------------------------------------------------------------
+ EXPLICIT, 3 elements, nregs=1024, nbits=4, expthresh=-1(64), sparseon=1:+
+ 0: -8604791237420463362                                                 +
+ 1: -2734554653617988768                                                 +
+ 2:  5208657608173592891 
+(1 row)
+
+select hll_print(hll_add_agg(hll_hash_integer(val), 10, 4, 512))
+       from test_khvengxf;
+                               hll_print                               
+-----------------------------------------------------------------------
+ EXPLICIT, 3 elements, nregs=1024, nbits=4, expthresh=512, sparseon=1:+
+ 0: -8604791237420463362                                              +
+ 1: -2734554653617988768                                              +
+ 2:  5208657608173592891 
+(1 row)
+
+select hll_print(hll_add_agg(hll_hash_integer(val), 10, 4, -1))
+       from test_khvengxf;
+                                hll_print                                 
+--------------------------------------------------------------------------
+ EXPLICIT, 3 elements, nregs=1024, nbits=4, expthresh=-1(64), sparseon=1:+
+ 0: -8604791237420463362                                                 +
+ 1: -2734554653617988768                                                 +
+ 2:  5208657608173592891 
+(1 row)
+
+select hll_print(hll_add_agg(hll_hash_integer(val), 10, 4, 512, 0))
+       from test_khvengxf;
+                               hll_print                               
+-----------------------------------------------------------------------
+ EXPLICIT, 3 elements, nregs=1024, nbits=4, expthresh=512, sparseon=0:+
+ 0: -8604791237420463362                                              +
+ 1: -2734554653617988768                                              +
+ 2:  5208657608173592891 
+(1 row)
+
+-- Check range checking.
+select hll_print(hll_add_agg(hll_hash_integer(val), -1))
+       from test_khvengxf;
+ERROR:  log2m modifier must be between 0 and 17
+select hll_print(hll_add_agg(hll_hash_integer(val), 32))
+       from test_khvengxf;
+ERROR:  log2m modifier must be between 0 and 17
+select hll_print(hll_add_agg(hll_hash_integer(val), 10, -1))
+       from test_khvengxf;
+ERROR:  regwidth modifier must be between 0 and 7
+select hll_print(hll_add_agg(hll_hash_integer(val), 10, 8))
+       from test_khvengxf;
+ERROR:  regwidth modifier must be between 0 and 7
+select hll_print(hll_add_agg(hll_hash_integer(val), 10, 4, -2))
+       from test_khvengxf;
+ERROR:  expthresh modifier must be between -1 and 16383
+select hll_print(hll_add_agg(hll_hash_integer(val), 10, 4, 8589934592))
+       from test_khvengxf;
+ERROR:  expthresh modifier must be between -1 and 16383
+select hll_print(hll_add_agg(hll_hash_integer(val), 10, 4, 512, -1))
+       from test_khvengxf;
+ERROR:  sparseon modifier must be 0 or 1
+select hll_print(hll_add_agg(hll_hash_integer(val), 10, 4, 512, 2))
+       from test_khvengxf;
+ERROR:  sparseon modifier must be 0 or 1
+-- Check that we return hll_empty on null input.
+select hll_print(hll_add_agg(NULL));
+                         hll_print                         
+-----------------------------------------------------------
+ EMPTY, nregs=2048, nbits=5, expthresh=-1(160), sparseon=1
+(1 row)
+
+select hll_print(hll_add_agg(NULL, 10));
+                        hll_print                         
+----------------------------------------------------------
+ EMPTY, nregs=1024, nbits=5, expthresh=-1(80), sparseon=1
+(1 row)
+
+select hll_print(hll_add_agg(NULL, 10, 4));
+                        hll_print                         
+----------------------------------------------------------
+ EMPTY, nregs=1024, nbits=4, expthresh=-1(64), sparseon=1
+(1 row)
+
+select hll_print(hll_add_agg(NULL, 10, 4, 512));
+                       hll_print                       
+-------------------------------------------------------
+ EMPTY, nregs=1024, nbits=4, expthresh=512, sparseon=1
+(1 row)
+
+select hll_print(hll_add_agg(NULL, 10, 4, -1));
+                        hll_print                         
+----------------------------------------------------------
+ EMPTY, nregs=1024, nbits=4, expthresh=-1(64), sparseon=1
+(1 row)
+
+select hll_print(hll_add_agg(NULL, 10, 4, 512, 0));
+                       hll_print                       
+-------------------------------------------------------
+ EMPTY, nregs=1024, nbits=4, expthresh=512, sparseon=0
+(1 row)
+
+DROP TABLE test_khvengxf;

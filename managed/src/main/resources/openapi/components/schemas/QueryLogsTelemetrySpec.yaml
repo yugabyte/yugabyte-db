@@ -1,0 +1,12 @@
+x-yba-api-visibility: internal
+title: QueryLogsTelemetrySpec
+type: object
+description: Query logs (YSQL). Omit or set to null to disable.
+properties:
+  ysql_query_log_config:
+    $ref: "./YSQLQueryLogConfig.yaml"
+  exporters:
+    description: List of exporters. Empty = no export.
+    type: array
+    items:
+      $ref: "./TelemetryExporterEntry.yaml"

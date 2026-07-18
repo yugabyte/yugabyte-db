@@ -1,0 +1,117 @@
+if [[ -z "{{ package_path | default('') }}" ]]; then
+  package_path="{{ ynp_dir }}/../../thirdparty"
+else
+  package_path="{{ package_path }}"
+fi
+
+# Setup the directories & permissions for prometheus user
+mkdir -p /opt/prometheus
+mkdir -p /etc/prometheus
+mkdir -p /var/log/prometheus
+mkdir -p /var/run/prometheus
+mkdir -p /tmp/yugabyte/metrics
+
+# Detect system architecture
+arch=$(uname -m)
+
+# Set the appropriate file name based on architecture
+if [[ "$arch" == "x86_64" ]]; then
+    node_exporter_package="node_exporter-1.10.2.linux-amd64.tar.gz"
+    node_exported_package_name="node_exporter-1.10.2.linux-amd64"
+elif [[ "$arch" == "aarch64" ]]; then
+    node_exporter_package="node_exporter-1.10.2.linux-arm64.tar.gz"
+    node_exported_package_name="node_exporter-1.10.2.linux-arm64"
+else
+    echo "Unsupported architecture: $arch"
+    exit 1
+fi
+
+# Copy the appropriate package if it exists
+if [ -f "$package_path/$node_exporter_package" ]; then
+    cp "$package_path/$node_exporter_package" /opt/prometheus
+else
+    echo "Error: $node_exporter_package not found in $package_path"
+    exit 1
+fi
+
+# Check if the user "prometheus" already exists
+if ! id -u prometheus >/dev/null 2>&1; then
+    os_type=$(grep -oP '(?<=^ID=).+' /etc/os-release | tr -d '"')
+    case "$os_type" in
+        ubuntu|debian)
+            adduser --no-create-home --disabled-password \
+            --shell /sbin/nologin --ingroup {{ yb_user }} \
+            --gecos "" prometheus
+            ;;
+        rhel|centos|fedora|rocky|almalinux|amzn|ol)
+            useradd --shell /sbin/nologin --no-create-home -g {{ yb_user }} prometheus
+            ;;
+        sles)
+            useradd --shell /sbin/nologin --no-create-home -g {{ yb_user }} prometheus
+            ;;
+        *)
+            echo "Unsupported OS: $os_type"
+            exit 1
+            ;;
+    esac
+else
+    echo "User 'prometheus' already exists."
+    # Ensure existing prometheus user has non-interactive shell
+    current_shell=$(getent passwd prometheus | cut -d: -f7)
+    if [[ "$current_shell" != "/sbin/nologin" ]]; then
+        usermod -s /sbin/nologin prometheus
+        echo "Updated prometheus user shell to /sbin/nologin."
+    fi
+fi
+
+# Set ownership and permissions
+chown -R prometheus:{{ yb_user }} /opt/prometheus
+chown -R prometheus:{{ yb_user }} /etc/prometheus
+chown -R prometheus:{{ yb_user }} /var/log/prometheus
+chown -R prometheus:{{ yb_user }} /var/run/prometheus
+chown -R yugabyte:yugabyte /tmp/yugabyte/metrics
+chmod -R 755 /tmp/yugabyte/metrics
+
+if [ -f "/opt/prometheus/$node_exporter_package" ]; then
+    chmod +r /opt/prometheus/$node_exporter_package
+
+    cd /opt/prometheus
+    # Extract the node_exporter tarball
+    tar zxf $node_exporter_package
+    chown -R prometheus:{{ yb_user }} /opt/prometheus/$node_exported_package_name
+fi
+
+# Configure Systemd Unit
+file_path="/etc/systemd/system/node_exporter.service"
+
+# Create the file and write the content
+cat <<EOL > $file_path
+[Unit]
+Description=node_exporter - Exporter for machine metrics.
+Documentation=https://github.com/William-Yeh/ansible-prometheus
+After=network.target
+StartLimitInterval=100
+StartLimitBurst=10
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=5
+
+User=prometheus
+Group={{ yb_user }}
+
+ExecStart=/opt/prometheus/$node_exported_package_name/node_exporter  \
+--web.listen-address=:{{ node_exporter_port }} \
+--collector.textfile.directory={{ yb_home_dir }}/metrics
+EOL
+
+# Enable and start the node_exporter service
+systemctl daemon-reload
+systemctl enable node_exporter
+systemctl start node_exporter
+
+echo "Node exporter setup is complete."

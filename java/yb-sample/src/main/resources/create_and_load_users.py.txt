@@ -1,0 +1,69 @@
+# This is a Python script.
+# - It is renamed as text file because it does not work within the development environment although
+#   it would run in users' environment.
+# - It is kept here so that these code can be used when needed without having to rewrite them.
+#
+# Dependencies:
+# On CentOS you can install psycopg2 thus:
+#
+#  sudo yum install postgresql-libs
+#  sudo yum install python-psycopg2
+
+import psycopg2
+from multiprocessing.dummy import Pool as ThreadPool
+
+num_users = 1000
+num_threads = 4
+cluster_ip = "localhost"
+connect_string = "host={} dbname=yugabyte user=yugabyte port=5433".format(cluster_ip)
+
+
+def create_table():
+    conn = psycopg2.connect(connect_string)
+    conn.set_session(autocommit=True)
+    cur = conn.cursor()
+    cur.execute("""CREATE TABLE IF NOT EXISTS users(
+                          id text,
+                          ename text,
+                          age int,
+                          city text,
+                          about_me text,
+                          PRIMARY KEY(id, ename))
+                          """)
+    print("Created users table")
+
+
+def load_data_slave(thread_num):
+    thread_id = str(thread_num)
+    conn = psycopg2.connect(connect_string)
+    conn.set_session(autocommit=True)
+    cur = conn.cursor()
+
+    print("Thread-" + thread_id + ": Inserting %d rows..." % (num_users))
+    num_inserts = 0
+    try:
+        for idx in range(num_users):
+            cur.execute("""INSERT INTO users (id, ename, age, city, about_me)
+                             VALUES (lpad(%s, 2048), %s, %s, %s, %s)""",
+                        ("user-"+thread_id+"-"+str(idx),
+                         "name--"+str(idx),
+                         20 + (idx % 50),
+                         "city--"+str(idx % 1000),
+                         "about-me-"+str(idx)+"blah-blah"+str(idx)))
+            num_inserts += 1
+            if (idx % 10000 == 0):
+                print("Thread-" + thread_id + ": Inserted %d rows" % (num_inserts))
+
+    except Exception as e:
+        print("Unexpected exception: " + str(e))
+    print("Thread-" + thread_id + ": Inserted %d rows" % (num_inserts))
+
+
+def load_data():
+    pool = ThreadPool(num_threads)
+    results = pool.map(load_data_slave, range(num_threads))
+
+
+# Main
+create_table()
+load_data()

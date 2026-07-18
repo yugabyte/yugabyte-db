@@ -1,0 +1,12 @@
+title: RegionCloudInfo
+description: Region in a cloud provider. Part of RegionDetails.
+type: object
+properties:
+  aws:
+    $ref: "./AWSRegionCloudInfo.yaml"
+  azu:
+    $ref: "./AzureRegionCloudInfo.yaml"
+  gcp:
+    $ref: "./GCPRegionCloudInfo.yaml"
+  kubernetes:
+    $ref: "./KubernetesRegionInfo.yaml"

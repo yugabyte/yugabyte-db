@@ -1,0 +1,38 @@
+\unset ECHO
+1..36
+ok 1 - todo fail
+ok 2 - todo pass
+ok 3 - TODO tests should display properly
+ok 4 - todo fail
+ok 5 - Single default todo test should display properly
+ok 6 - todo fail
+ok 7 - todo pass
+ok 8 - TODO tests should display properly
+ok 9 - simple skip should pass
+ok 10 - simple skip should have the proper description
+ok 11 - simple skip should have the proper diagnostics
+ok 12 - skip with num should pass
+ok 13 - skip with num should have the proper description
+ok 14 - skip with num should have the proper diagnostics
+ok 15 - Skip multiple
+ok 16 - Skip multiple
+ok 17 - Skip multiple
+ok 18 - We should get the proper output for multiple skips
+ok 19 - inverted skip should pass
+ok 20 - inverted skip should have the proper description
+ok 21 - inverted skip should have the proper diagnostics
+ok 22 - num only should pass
+ok 23 - num only should have the proper description
+ok 24 - num only should have the proper diagnostics
+ok 25 - todo fail
+ok 26 - todo fail
+ok 27 - todo fail
+ok 28 - Nested todos should work properly
+ok 29 - todo fail
+ok 30 - todo fail
+ok 31 - todo fail
+ok 32 - todo_start() and todo_end() should work properly with in_todo()
+ok 33 - todo fail
+ok 34 - todo pass
+ok 35 - Should be able to revers the arguments to todo()
+ok 36 - Should get an exception when todo_end() is called without todo_start()

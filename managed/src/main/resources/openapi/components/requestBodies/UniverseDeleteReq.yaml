@@ -1,0 +1,5 @@
+required: false
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/UniverseDeleteSpec.yaml"

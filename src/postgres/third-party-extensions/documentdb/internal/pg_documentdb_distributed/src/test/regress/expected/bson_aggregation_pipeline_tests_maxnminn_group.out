@@ -1,0 +1,616 @@
+SET search_path to documentdb_core,documentdb_api,documentdb_api_catalog,pg_catalog;
+SET citus.next_shard_id TO 1116000;
+SET documentdb.next_collection_id TO 11160;
+SET documentdb.next_collection_index_id TO 11160;
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test1',' { "teamId": "T1", "person" : "userA", "points": 10 }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test1',' { "teamId": "T1", "person" : "userB", "points": 55 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test1',' { "teamId": "T1", "person" : "userC", "points": 3 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test1',' { "teamId": "T1", "person" : "userD", "points": 20 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test1',' { "teamId": "T2", "person" : "userA", "points": 40 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test1',' { "teamId": "T2", "person" : "userB", "points": 18 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test1',' { "teamId": "T2", "person" : "userC", "points": 7 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test1',' { "teamId": "T2", "person" : "userD", "points": 60 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test2',' { "teamId": "T1", "person" : "userA", "points": null }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test2',' { "teamId": "T1", "person" : "userB", "points": 55 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test2',' { "teamId": "T1", "person" : "userC", "points": {"$undefined":true} }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test2',' { "teamId": "T1", "person" : "userD", "points": 20 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test2',' { "teamId": "T1", "person" : "userA", "points": null }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test2',' { "teamId": "T1", "person" : "userB", "points": 99 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test2',' { "teamId": "T2", "person" : "userA", "points": null }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test2',' { "teamId": "T2", "person" : "userB", "points": 18 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test2',' { "teamId": "T2", "person" : "userC", "points": 7 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test2',' { "teamId": "T2", "person" : "userD", "points": {"$undefined":true} }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test2',' { "teamId": "T2", "person" : "userA", "points": 40 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test2',' { "teamId": "T2", "person" : "userB", "points": {"$undefined":true} }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test3',' { "teamId": "T1", "person" : "userA", "points": 10 }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test3',' { "teamId": "T1", "person" : "userB", "points": 55 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test3',' { "teamId": "T1", "person" : "userC", "points": [[2,4],8,1,5] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test3',' { "teamId": "T1", "person" : "userD", "points": 20 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test3',' { "teamId": "T2", "person" : "userA", "points": 40 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test3',' { "teamId": "T2", "person" : "userB", "points": [[3,6],2,7] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test3',' { "teamId": "T2", "person" : "userC", "points": 7 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test3',' { "teamId": "T2", "person" : "userD", "points": 60 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test4',' { "_id": 1, "teamId": "T1", "person" : "userA", "points": 10 }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test4',' { "_id": 2, "teamId": "T1", "person" : "userB", "points": 55 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test4',' { "_id": 3, "teamId": "T1", "person" : "userC", "points": 3 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test4',' { "_id": 4, "teamId": "T1", "person" : "userD", "points": 20 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test4',' { "_id": 5, "teamId": "T2", "person" : "userA", "points": 40 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test4',' { "_id": 6, "teamId": "T2", "person" : "userB", "points": 18 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test4',' { "_id": 7, "teamId": "T2", "person" : "userC", "points": 7 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test4',' { "_id": 8, "teamId": "T2", "person" : "userD", "points": 60 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test5',' { "teamId": "T1", "person" : "userA", "points": 10 }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test5',' { "teamId": "T1", "person" : "userB", "points": [[1,2],[3,4]] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test5',' { "teamId": "T1", "person" : "userC", "points": "apple" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test5',' { "teamId": "T1", "person" : "userD", "points": 20 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test5',' { "teamId": "T2", "person" : "userA", "points": 40 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test5',' { "teamId": "T2", "person" : "userC", "points": [[3,4],8,1] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test5',' { "teamId": "T2", "person" : "userB", "points": "port" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','bson_maxminn_group_test5',' { "teamId": "T2", "person" : "userD", "points": 60 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 3 } } } } ] }');
+                                                  document                                                  
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "55" }, { "$numberInt" : "20" }, { "$numberInt" : "10" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "60" }, { "$numberInt" : "40" }, { "$numberInt" : "18" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 3 } } } } ] }');
+                                                 document                                                  
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "3" }, { "$numberInt" : "10" }, { "$numberInt" : "20" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "7" }, { "$numberInt" : "18" }, { "$numberInt" : "40" } ] }
+(2 rows)
+
+/*n == 1*/
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 1 } } } } ] }');
+                         document                         
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "55" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "60" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 1 } } } } ] }');
+                        document                         
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "3" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "7" } ] }
+(2 rows)
+
+/*n == 0*/
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 0 } } } } ] }');
+ERROR:  The value of 'n' must be strictly greater than 0, but the current value is 0
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 0 } } } } ] }');
+ERROR:  The value of 'n' must be strictly greater than 0, but the current value is 0
+/*n == -1*/
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": -1 } } } } ] }');
+ERROR:  The value of 'n' must be strictly greater than 0, but the current value is -1
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": -1 } } } } ] }');
+ERROR:  The value of 'n' must be strictly greater than 0, but the current value is -1
+/*n == 0.5*/
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 0.5 } } } } ] }');
+ERROR:  Expected 'integer' type for 'n' but found 'double' for value '0.5'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 0.5 } } } } ] }');
+ERROR:  Expected 'integer' type for 'n' but found 'double' for value '0.5'
+/*n is a variable*/
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": "$$nValue" } } } } ], "let": { "nValue": 3 } }');
+                                                  document                                                  
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "55" }, { "$numberInt" : "20" }, { "$numberInt" : "10" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "60" }, { "$numberInt" : "40" }, { "$numberInt" : "18" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": "$$nValue" } } } } ], "let": { "nValue": 3 } }');
+                                                 document                                                  
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "3" }, { "$numberInt" : "10" }, { "$numberInt" : "20" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "7" }, { "$numberInt" : "18" }, { "$numberInt" : "40" } ] }
+(2 rows)
+
+/*input is a document*/
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": {"$bitAnd": ["$points", 7]}, "n": 3 } } } } ] }');
+                                                document                                                 
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "7" }, { "$numberInt" : "4" }, { "$numberInt" : "3" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "7" }, { "$numberInt" : "4" }, { "$numberInt" : "2" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": {"$bitAnd": ["$points", 7]}, "n": 3 } } } } ] }');
+                                                document                                                 
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "0" }, { "$numberInt" : "2" }, { "$numberInt" : "4" } ] }
+(2 rows)
+
+/*n is a object*/
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": {"key" :{"value": {"points": "$points" }}}, "n": 3 } } } } ] }');
+                                                                                                               document                                                                                                                
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "key" : { "value" : { "points" : { "$numberInt" : "55" } } } }, { "key" : { "value" : { "points" : { "$numberInt" : "20" } } } }, { "key" : { "value" : { "points" : { "$numberInt" : "10" } } } } ] }
+ { "_id" : "T2", "NScore" : [ { "key" : { "value" : { "points" : { "$numberInt" : "60" } } } }, { "key" : { "value" : { "points" : { "$numberInt" : "40" } } } }, { "key" : { "value" : { "points" : { "$numberInt" : "18" } } } } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": {"key" :{"value": {"points": "$points" }}}, "n": 3 } } } } ] }');
+                                                                                                               document                                                                                                               
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "key" : { "value" : { "points" : { "$numberInt" : "3" } } } }, { "key" : { "value" : { "points" : { "$numberInt" : "10" } } } }, { "key" : { "value" : { "points" : { "$numberInt" : "20" } } } } ] }
+ { "_id" : "T2", "NScore" : [ { "key" : { "value" : { "points" : { "$numberInt" : "7" } } } }, { "key" : { "value" : { "points" : { "$numberInt" : "18" } } } }, { "key" : { "value" : { "points" : { "$numberInt" : "40" } } } } ] }
+(2 rows)
+
+/*input is a nested array*/
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": [[2,3], "$points"], "n": 3 } } } } ] }');
+                                                                                                                                      document                                                                                                                                      
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ [ [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "55" } ], [ [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "20" } ], [ [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "10" } ] ] }
+ { "_id" : "T2", "NScore" : [ [ [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "60" } ], [ [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "40" } ], [ [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "18" } ] ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": [[2,3], "$points"], "n": 3 } } } } ] }');
+                                                                                                                                     document                                                                                                                                      
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ [ [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "3" } ], [ [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "10" } ], [ [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "20" } ] ] }
+ { "_id" : "T2", "NScore" : [ [ [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "7" } ], [ [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "18" } ], [ [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "40" } ] ] }
+(2 rows)
+
+/*n too large */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 100 } } } } ] }');
+                                                              document                                                              
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "55" }, { "$numberInt" : "20" }, { "$numberInt" : "10" }, { "$numberInt" : "3" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "60" }, { "$numberInt" : "40" }, { "$numberInt" : "18" }, { "$numberInt" : "7" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 100 } } } } ] }');
+                                                              document                                                              
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "3" }, { "$numberInt" : "10" }, { "$numberInt" : "20" }, { "$numberInt" : "55" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "7" }, { "$numberInt" : "18" }, { "$numberInt" : "40" }, { "$numberInt" : "60" } ] }
+(2 rows)
+
+/*n missing */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points"} } } } ] }');
+ERROR:  $maxN requires an 'n' field
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points"} } } } ] }');
+ERROR:  $minN requires an 'n' field
+/*input missing */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"n": 3 } } } } ] }');
+ERROR:  $maxN needs to have an 'input' field
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"n": 3 } } } } ] }');
+ERROR:  $minN needs to have an 'input' field
+/*test null/$undefined */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test2", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 3 } } } } ] }');
+                                                  document                                                  
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "99" }, { "$numberInt" : "55" }, { "$numberInt" : "20" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "40" }, { "$numberInt" : "18" }, { "$numberInt" : "7" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test2", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 3 } } } } ] }');
+                                                  document                                                  
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "20" }, { "$numberInt" : "55" }, { "$numberInt" : "99" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "7" }, { "$numberInt" : "18" }, { "$numberInt" : "40" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test2", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 100 } } } } ] }');
+                                                  document                                                  
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "99" }, { "$numberInt" : "55" }, { "$numberInt" : "20" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "40" }, { "$numberInt" : "18" }, { "$numberInt" : "7" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test2", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 100 } } } } ] }');
+                                                  document                                                  
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "20" }, { "$numberInt" : "55" }, { "$numberInt" : "99" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "7" }, { "$numberInt" : "18" }, { "$numberInt" : "40" } ] }
+(2 rows)
+
+/* nested array */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test3", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 3 } } } } ] }');
+                                                                                                     document                                                                                                      
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ [ [ { "$numberInt" : "2" }, { "$numberInt" : "4" } ], { "$numberInt" : "8" }, { "$numberInt" : "1" }, { "$numberInt" : "5" } ], { "$numberInt" : "55" }, { "$numberInt" : "20" } ] }
+ { "_id" : "T2", "NScore" : [ [ [ { "$numberInt" : "3" }, { "$numberInt" : "6" } ], { "$numberInt" : "2" }, { "$numberInt" : "7" } ], { "$numberInt" : "60" }, { "$numberInt" : "40" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test3", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 3 } } } } ] }');
+                                                  document                                                  
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "10" }, { "$numberInt" : "20" }, { "$numberInt" : "55" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "7" }, { "$numberInt" : "40" }, { "$numberInt" : "60" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test3", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 100 } } } } ] }');
+                                                                                                                  document                                                                                                                  
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ [ [ { "$numberInt" : "2" }, { "$numberInt" : "4" } ], { "$numberInt" : "8" }, { "$numberInt" : "1" }, { "$numberInt" : "5" } ], { "$numberInt" : "55" }, { "$numberInt" : "20" }, { "$numberInt" : "10" } ] }
+ { "_id" : "T2", "NScore" : [ [ [ { "$numberInt" : "3" }, { "$numberInt" : "6" } ], { "$numberInt" : "2" }, { "$numberInt" : "7" } ], { "$numberInt" : "60" }, { "$numberInt" : "40" }, { "$numberInt" : "7" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test3", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 100 } } } } ] }');
+                                                                                                                  document                                                                                                                  
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "10" }, { "$numberInt" : "20" }, { "$numberInt" : "55" }, [ [ { "$numberInt" : "2" }, { "$numberInt" : "4" } ], { "$numberInt" : "8" }, { "$numberInt" : "1" }, { "$numberInt" : "5" } ] ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "7" }, { "$numberInt" : "40" }, { "$numberInt" : "60" }, [ [ { "$numberInt" : "3" }, { "$numberInt" : "6" } ], { "$numberInt" : "2" }, { "$numberInt" : "7" } ] ] }
+(2 rows)
+
+/* sharded tests */
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test4", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 3 } } } } ] }');
+                                                                                                                   QUERY PLAN                                                                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               ->  GroupAggregate
+                     Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$teamId" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     ->  Sort
+                           Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$teamId" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                           ->  Bitmap Heap Scan on documents_11163_1116049 collection
+                                 Recheck Cond: (shard_key_value = '11163'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (shard_key_value = '11163'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test4", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 3 } } } } ] }');
+                                                                                                                   QUERY PLAN                                                                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               ->  GroupAggregate
+                     Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$teamId" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     ->  Sort
+                           Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$teamId" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                           ->  Bitmap Heap Scan on documents_11163_1116049 collection
+                                 Recheck Cond: (shard_key_value = '11163'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (shard_key_value = '11163'::bigint)
+(14 rows)
+
+SELECT documentdb_api.shard_collection('db', 'bson_maxminn_group_test4', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test4", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 3 } } } } ] }');
+                                                                                                                QUERY PLAN                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   ->  Distributed Subplan 133_1
+         ->  HashAggregate
+               Group Key: remote_scan.c2
+               ->  Custom Scan (Citus Adaptive)
+                     Task Count: 8
+                     Tasks Shown: One of 8
+                     ->  Task
+                           Node: host=localhost port=58070 dbname=regression
+                           ->  HashAggregate
+                                 Group Key: documentdb_api_internal.bson_expression_get(document, '{ "" : "$teamId" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+                                 ->  Seq Scan on documents_11163_1116080 collection
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Function Scan on read_intermediate_result intermediate_result
+(17 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test4", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 3 } } } } ] }');
+                                                                                                                QUERY PLAN                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   ->  Distributed Subplan 135_1
+         ->  HashAggregate
+               Group Key: remote_scan.c2
+               ->  Custom Scan (Citus Adaptive)
+                     Task Count: 8
+                     Tasks Shown: One of 8
+                     ->  Task
+                           Node: host=localhost port=58070 dbname=regression
+                           ->  HashAggregate
+                                 Group Key: documentdb_api_internal.bson_expression_get(document, '{ "" : "$teamId" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+                                 ->  Seq Scan on documents_11163_1116080 collection
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Function Scan on read_intermediate_result intermediate_result
+(17 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test4", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 3 } } } } ] }');
+                                                  document                                                  
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "55" }, { "$numberInt" : "20" }, { "$numberInt" : "10" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "60" }, { "$numberInt" : "40" }, { "$numberInt" : "18" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test4", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 3 } } } } ] }');
+                                                 document                                                  
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "3" }, { "$numberInt" : "10" }, { "$numberInt" : "20" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "7" }, { "$numberInt" : "18" }, { "$numberInt" : "40" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test4", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 100 } } } } ] }');
+                                                              document                                                              
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "55" }, { "$numberInt" : "20" }, { "$numberInt" : "10" }, { "$numberInt" : "3" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "60" }, { "$numberInt" : "40" }, { "$numberInt" : "18" }, { "$numberInt" : "7" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test4", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 100 } } } } ] }');
+                                                              document                                                              
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "3" }, { "$numberInt" : "10" }, { "$numberInt" : "20" }, { "$numberInt" : "55" } ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "7" }, { "$numberInt" : "18" }, { "$numberInt" : "40" }, { "$numberInt" : "60" } ] }
+(2 rows)
+
+/* test string and nested array */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test5", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 3 } } } } ] }');
+                                                                                   document                                                                                    
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] ], "apple", { "$numberInt" : "20" } ] }
+ { "_id" : "T2", "NScore" : [ [ [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ], { "$numberInt" : "8" }, { "$numberInt" : "1" } ], "port", { "$numberInt" : "60" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test5", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 3 } } } } ] }');
+                                          document                                          
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "10" }, { "$numberInt" : "20" }, "apple" ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "40" }, { "$numberInt" : "60" }, "port" ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test5", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 100 } } } } ] }');
+                                                                                                document                                                                                                
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] ], "apple", { "$numberInt" : "20" }, { "$numberInt" : "10" } ] }
+ { "_id" : "T2", "NScore" : [ [ [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ], { "$numberInt" : "8" }, { "$numberInt" : "1" } ], "port", { "$numberInt" : "60" }, { "$numberInt" : "40" } ] }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test5", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 100 } } } } ] }');
+                                                                                                document                                                                                                
+---------------------------------------------------------------------
+ { "_id" : "T1", "NScore" : [ { "$numberInt" : "10" }, { "$numberInt" : "20" }, "apple", [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] ] ] }
+ { "_id" : "T2", "NScore" : [ { "$numberInt" : "40" }, { "$numberInt" : "60" }, "port", [ [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ], { "$numberInt" : "8" }, { "$numberInt" : "1" } ] ] }
+(2 rows)
+
+/* $maxN are subject to the 100 MB limit */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 12345678 } } } } ] }');
+ERROR:  Size is larger than maximum size allowed for an intermediate document 104857600
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$maxN": {"input": "$points", "n": 9223372036854775807 } } } } ] }');
+ERROR:  Size is larger than maximum size allowed for an intermediate document 104857600
+/* $minN are subject to the 100 MB limit */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 12345678 } } } } ] }');
+ERROR:  Size is larger than maximum size allowed for an intermediate document 104857600
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bson_maxminn_group_test1", "pipeline": [ { "$group": { "_id": "$teamId", "NScore":{"$minN": {"input": "$points", "n": 9223372036854775807 } } } } ] }');
+ERROR:  Size is larger than maximum size allowed for an intermediate document 104857600

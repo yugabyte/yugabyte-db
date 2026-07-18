@@ -1,0 +1,43 @@
+# third-party-extensions/postgresql-hll/yb_schedule
+#
+####################################################################################################
+# HLL Extension Testsuites
+# The following changes were made from the upstream repo:
+#  - `CREATE EXTENSION hll` added to the top of the first test (add_agg)
+#
+####################################################################################################
+test: setup
+test: add_agg
+test: agg_oob
+test: auto_sparse
+test: card_op
+test: cast_shape
+test: copy_binary
+test: cumulative_add_cardinality_correction
+test: cumulative_add_comprehensive_promotion
+test: cumulative_add_sparse_edge
+test: cumulative_add_sparse_random
+test: cumulative_add_sparse_step
+test: cumulative_union_comprehensive
+test: cumulative_union_explicit_explicit
+test: cumulative_union_explicit_promotion
+test: cumulative_union_probabilistic_probabilistic
+test: cumulative_union_sparse_full_representation
+test: cumulative_union_sparse_promotion
+test: cumulative_union_sparse_sparse
+test: disable_hashagg
+test: equal
+test: explicit_thresh
+test: hash
+test: hash_any
+test: meta_func
+test: murmur_bigint
+test: murmur_bytea
+test: nosparse
+test: notequal
+test: scalar_oob
+test: storedproc
+test: transaction
+test: typmod
+test: typmod_insert
+test: union_op

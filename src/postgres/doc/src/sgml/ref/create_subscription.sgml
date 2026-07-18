@@ -1,0 +1,762 @@
+<!--
+doc/src/sgml/ref/create_subscription.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-createsubscription">
+ <indexterm zone="sql-createsubscription">
+  <primary>CREATE SUBSCRIPTION</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE SUBSCRIPTION</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE SUBSCRIPTION</refname>
+  <refpurpose>define a new subscription</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CREATE SUBSCRIPTION <replaceable class="parameter">subscription_name</replaceable>
+    { SERVER <replaceable class="parameter">servername</replaceable> | CONNECTION '<replaceable class="parameter">conninfo</replaceable>' }
+    PUBLICATION <replaceable class="parameter">publication_name</replaceable> [, ...]
+    [ WITH ( <replaceable class="parameter">subscription_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] ) ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>CREATE SUBSCRIPTION</command> adds a new logical-replication
+   subscription.  The user that creates a subscription becomes the owner
+   of the subscription. The subscription name must be distinct from the name of
+   any existing subscription in the current database.
+  </para>
+
+  <para>
+   A subscription represents a replication connection to the publisher.
+   Hence, in addition to adding definitions in the local catalogs, this
+   command normally creates a replication slot on the publisher.
+  </para>
+
+  <para>
+   A logical replication worker will be started to replicate data for the new
+   subscription at the commit of the transaction where this command is run,
+   unless the subscription is initially disabled.
+  </para>
+
+  <para>
+   To be able to create a subscription, you must have the privileges of
+   the <literal>pg_create_subscription</literal> role, as well as
+   <literal>CREATE</literal> privileges on the current database.
+  </para>
+
+  <para>
+   Additional information about subscriptions and logical replication as a
+   whole is available at <xref linkend="logical-replication-subscription"/> and
+   <xref linkend="logical-replication"/>.
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry id="sql-createsubscription-params-name">
+    <term><replaceable class="parameter">subscription_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of the new subscription.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-createsubscription-params-server">
+    <term><literal>SERVER <replaceable class="parameter">servername</replaceable></literal></term>
+    <listitem>
+     <para>
+      A foreign server to use for the connection.  The server's foreign data
+      wrapper must have a <replaceable>connection_function</replaceable>
+      registered, and a user mapping for the subscription owner on the server
+      must exist.  Additionally, the subscription owner must have
+      <literal>USAGE</literal> privileges on
+      <replaceable>servername</replaceable>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-createsubscription-params-connection">
+    <term><literal>CONNECTION '<replaceable class="parameter">conninfo</replaceable>'</literal></term>
+    <listitem>
+     <para>
+      The <application>libpq</application> connection string defining how
+      to connect to the publisher database.  For details see
+      <xref linkend="libpq-connstring"/>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-createsubscription-params-publication">
+    <term><literal>PUBLICATION <replaceable class="parameter">publication_name</replaceable> [, ...]</literal></term>
+    <listitem>
+     <para>
+      Names of the publications on the publisher to subscribe to.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-createsubscription-params-with">
+    <term><literal>WITH ( <replaceable class="parameter">subscription_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )</literal></term>
+    <listitem>
+     <para>
+      This clause specifies optional parameters for a subscription.
+     </para>
+
+     <para>
+      The following parameters control what happens during subscription creation:
+
+      <variablelist>
+
+       <varlistentry id="sql-createsubscription-params-with-connect">
+        <term><literal>connect</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether the <command>CREATE SUBSCRIPTION</command>
+          command should connect to the publisher at all.  The default
+          is <literal>true</literal>.  Setting this to
+          <literal>false</literal> will force the values of
+          <literal>create_slot</literal>, <literal>enabled</literal> and
+          <literal>copy_data</literal> to <literal>false</literal>.
+          (You cannot combine setting <literal>connect</literal>
+          to <literal>false</literal> with
+          setting <literal>create_slot</literal>, <literal>enabled</literal>,
+          or <literal>copy_data</literal> to <literal>true</literal>.)
+         </para>
+
+         <para>
+          Since no connection is made when this option is
+          <literal>false</literal>, no tables and sequences are subscribed. To
+          initiate replication, you must manually create the replication slot,
+          enable the failover if required, enable the subscription, and refresh
+          the subscription. See
+          <xref linkend="logical-replication-subscription-examples-deferred-slot"/>
+          for examples.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry id="sql-createsubscription-params-with-create-slot">
+        <term><literal>create_slot</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether the command should create the replication slot on
+          the publisher.  The default is <literal>true</literal>.
+         </para>
+         <para>
+          If set to <literal>false</literal>, you are responsible for
+          creating the publisher's slot in some other way. See
+          <xref linkend="logical-replication-subscription-examples-deferred-slot"/>
+          for examples.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry id="sql-createsubscription-params-with-enabled">
+        <term><literal>enabled</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether the subscription should be actively replicating
+          or whether it should just be set up but not started yet.  The default
+          is <literal>true</literal>.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry id="sql-createsubscription-params-with-slot-name">
+        <term><literal>slot_name</literal> (<type>string</type>)</term>
+        <listitem>
+         <para>
+          Name of the publisher's replication slot to use.  The default is
+          to use the name of the subscription for the slot name. The name cannot
+          be <literal>pg_conflict_detection</literal> as it is reserved for the
+          conflict detection.
+         </para>
+
+         <para>
+          Setting <literal>slot_name</literal> to <literal>NONE</literal>
+          means there will be no replication slot associated with the
+          subscription. Such subscriptions must also have both
+          <literal>enabled</literal> and <literal>create_slot</literal> set to
+          <literal>false</literal>.  Use this when you will be creating the
+          replication slot later manually. See
+          <xref linkend="logical-replication-subscription-examples-deferred-slot"/>
+          for examples.
+         </para>
+
+         <para>
+          When setting <literal>slot_name</literal> to a valid name and
+          <literal>create_slot</literal> to <literal>false</literal>, the
+          <literal>failover</literal> property value of the named slot may
+          differ from the counterpart <literal>failover</literal> parameter
+          specified in the subscription. Always ensure the slot property
+          <literal>failover</literal> matches the counterpart parameter of the
+          subscription and vice versa. Otherwise, the slot on the publisher may
+          behave differently from what these subscription options say: for
+          example, the slot on the publisher could either be synced to the
+          standbys even when the subscription's <literal>failover</literal>
+          option is disabled or could be disabled for sync even when the
+          subscription's <literal>failover</literal> option is enabled.
+         </para>
+        </listitem>
+       </varlistentry>
+      </variablelist>
+     </para>
+
+     <para>
+      The following parameters control the subscription's replication
+      behavior after it has been created:
+
+      <variablelist>
+
+       <varlistentry id="sql-createsubscription-params-with-binary">
+        <term><literal>binary</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether the subscription will request the publisher to send
+          the data in binary format (as opposed to text). The default is
+          <literal>false</literal>. Any initial table synchronization copy
+          (see <literal>copy_data</literal>) also uses the same format. Binary
+          format can be faster than the text format, but it is less portable
+          across machine architectures and <productname>PostgreSQL</productname>
+          versions. Binary format is very data type specific; for example, it
+          will not allow copying from a <type>smallint</type> column to an
+          <type>integer</type> column, even though that would work fine in text
+          format. Even when this option is enabled, only data types having binary
+          send and receive functions will be transferred in binary. Note that
+          the initial synchronization requires all data types to have binary
+          send and receive functions, otherwise the synchronization will fail
+          (see <xref linkend="sql-createtype"/> for more about send/receive
+          functions). This parameter has no effect for sequences.
+         </para>
+
+         <para>
+          When doing cross-version replication, it could be that the
+          publisher has a binary send function for some data type, but the
+          subscriber lacks a binary receive function for that type.  In
+          such a case, data transfer will fail, and
+          the <literal>binary</literal> option cannot be used.
+         </para>
+
+         <para>
+          If the publisher is a <productname>PostgreSQL</productname> version
+          before 16, then any initial table synchronization will use text format
+          even if <literal>binary = true</literal>.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry id="sql-createsubscription-params-with-copy-data">
+        <term><literal>copy_data</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether to copy pre-existing data in the publications
+          that are being subscribed to when the replication starts.
+          The default is <literal>true</literal>.
+         </para>
+         <para>
+          If the publications contain <literal>WHERE</literal> clauses, it
+          will affect what data is copied. Refer to the
+          <xref linkend="sql-createsubscription-notes" /> for details.
+         </para>
+         <para>
+          See <xref linkend="sql-createsubscription-notes"/> for details of how
+          <literal>copy_data = true</literal> can interact with the
+          <literal>origin</literal> parameter.
+         </para>
+         <para>
+          See <xref linkend="sequence-definition-mismatches"/>
+          for recommendations on how to handle any warnings about sequence
+          definition differences between the publisher and the subscriber,
+          which might occur when <literal>copy_data = true</literal>.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry id="sql-createsubscription-params-with-streaming">
+        <term><literal>streaming</literal> (<type>enum</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether to enable streaming of in-progress transactions
+          for this subscription.  The default value is <literal>parallel</literal>,
+          meaning incoming changes are directly applied via one of the parallel
+          apply workers, if available. If no parallel apply worker is free to
+          handle streaming transactions then the changes are written to
+          temporary files and applied after the transaction is committed. Note
+          that if an error happens in a parallel apply worker, the finish LSN
+          of the remote transaction might not be reported in the server log.
+          This parameter has no effect for sequences.
+         </para>
+
+         <caution>
+          <para>
+           There is a risk of deadlock when the schemas of the publisher and
+           subscriber differ, although such cases are rare. The apply worker
+           is equipped to retry these transactions automatically.
+          </para>
+         </caution>
+
+         <para>
+          If set to <literal>on</literal>, the incoming changes are written to
+          temporary files and then applied only after the transaction is
+          committed on the publisher and received by the subscriber.
+         </para>
+
+         <para>
+          If set to <literal>off</literal>, all transactions are fully decoded
+          on the publisher and only then sent to the subscriber as a whole.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry id="sql-createsubscription-params-with-synchronous-commit">
+        <term><literal>synchronous_commit</literal> (<type>enum</type>)</term>
+        <listitem>
+         <para>
+          The value of this parameter overrides the
+          <xref linkend="guc-synchronous-commit"/> setting within this
+          subscription's apply worker processes.  The default value
+          is <literal>off</literal>. This parameter has no effect for
+          sequences.
+         </para>
+
+         <para>
+          It is safe to use <literal>off</literal> for logical replication:
+          If the subscriber loses transactions because of missing
+          synchronization, the data will be sent again from the publisher.
+         </para>
+
+         <para>
+          A different setting might be appropriate when doing synchronous
+          logical replication.  The logical replication workers report the
+          positions of writes and flushes to the publisher, and when using
+          synchronous replication, the publisher will wait for the actual
+          flush.  This means that setting
+          <literal>synchronous_commit</literal> for the subscriber to
+          <literal>off</literal> when the subscription is used for
+          synchronous replication might increase the latency for
+          <command>COMMIT</command> on the publisher.  In this scenario, it
+          can be advantageous to set <literal>synchronous_commit</literal>
+          to <literal>local</literal> or higher.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry id="sql-createsubscription-params-with-two-phase">
+        <term><literal>two_phase</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether two-phase commit is enabled for this subscription.
+          The default is <literal>false</literal>. This parameter has no effect
+          for sequences.
+         </para>
+
+         <para>
+          When two-phase commit is enabled, prepared transactions are sent
+          to the subscriber at the time of <command>PREPARE
+          TRANSACTION</command>, and are processed as two-phase
+          transactions on the subscriber too.  Otherwise, prepared
+          transactions are sent to the subscriber only when committed, and
+          are then processed immediately by the subscriber.
+         </para>
+
+         <para>
+          The implementation of two-phase commit requires that replication
+          has successfully finished the initial table synchronization
+          phase. So even when <literal>two_phase</literal> is enabled for a
+          subscription, the internal two-phase state remains
+          temporarily <quote>pending</quote> until the initialization phase
+          completes. See column <structfield>subtwophasestate</structfield>
+          of <link linkend="catalog-pg-subscription"><structname>pg_subscription</structname></link>
+          to know the actual two-phase state.
+         </para>
+
+        </listitem>
+       </varlistentry>
+
+       <varlistentry id="sql-createsubscription-params-with-disable-on-error">
+        <term><literal>disable_on_error</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether the subscription should be automatically disabled
+          if any errors are detected by subscription workers during data
+          replication from the publisher. The default is
+          <literal>false</literal>.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry id="sql-createsubscription-params-with-password-required">
+        <term><literal>password_required</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          If set to <literal>true</literal>, connections to the publisher made
+          as a result of this subscription must use password authentication
+          and the password must be specified as a part of the connection
+          string. This setting is ignored when the subscription is owned by a
+          superuser.  The default is <literal>true</literal>. Only superusers
+          can set this value to <literal>false</literal>.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry id="sql-createsubscription-params-with-run-as-owner">
+        <term><literal>run_as_owner</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          If true, all replication actions are performed as the subscription
+          owner. If false, replication workers will perform actions on each
+          table or sequence as the owner of that relation. The latter
+          configuration is generally much more secure; for details, see
+          <xref linkend="logical-replication-security" />.
+          The default is <literal>false</literal>.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry id="sql-createsubscription-params-with-origin">
+        <term><literal>origin</literal> (<type>string</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether the subscription will request the publisher to only
+          send changes that don't have an origin or send changes regardless of
+          origin. Setting <literal>origin</literal> to <literal>none</literal>
+          means that the subscription will request the publisher to only send
+          changes that don't have an origin. Setting <literal>origin</literal>
+          to <literal>any</literal> means that the publisher sends changes
+          regardless of their origin. The default is <literal>any</literal>.
+          This parameter has no effect for sequences.
+         </para>
+         <para>
+          See <xref linkend="sql-createsubscription-notes"/> for details of how
+          <literal>copy_data = true</literal> can interact with the
+          <literal>origin</literal> parameter.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry id="sql-createsubscription-params-with-failover">
+        <term><literal>failover</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether the replication slots associated with the subscription
+          are enabled to be synced to the standbys so that logical
+          replication can be resumed from the new primary after failover.
+          The default is <literal>false</literal>.
+         </para>
+        </listitem>
+       </varlistentry>
+
+      <varlistentry id="sql-createsubscription-params-with-retain-dead-tuples">
+        <term><literal>retain_dead_tuples</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether the information (e.g., dead tuples, commit
+          timestamps, and origins) required for conflict detection on the
+          subscriber is retained. The default is <literal>false</literal>.
+          If set to <literal>true</literal>, the detection of
+          <xref linkend="conflict-update-deleted"/> is enabled, and a physical
+          replication slot named <quote><literal>pg_conflict_detection</literal></quote>
+          is created on the subscriber to prevent the information for detecting
+          conflicts from being removed. This parameter has no effect for
+          sequences.
+         </para>
+
+         <para>
+          Note that the information useful for conflict detection is retained
+          only after the creation of the slot. You can verify the existence of
+          this slot by querying <link linkend="view-pg-replication-slots">pg_replication_slots</link>.
+          And even if multiple subscriptions on one node enable this option,
+          only one replication slot will be created. Also,
+          <varname>wal_level</varname> must be set to <literal>replica</literal>
+          or higher to allow the replication slot to be used.
+         </para>
+
+         <caution>
+          <para>
+           Note that the information for conflict detection cannot be purged if
+           the subscription is disabled; thus, the information will accumulate
+           until the subscription is enabled. To prevent excessive accumulation,
+           it is recommended to disable <literal>retain_dead_tuples</literal>
+           if the subscription will be inactive for an extended period.
+          </para>
+
+          <para>
+           Additionally when enabling <literal>retain_dead_tuples</literal> for
+           conflict detection in logical replication, it is important to design the
+           replication topology to balance data retention requirements with
+           overall system performance. This option provides minimal performance
+           overhead when applied appropriately. The following scenarios illustrate
+           effective usage patterns when enabling this option.
+          </para>
+
+          <para>
+           a. Large Tables with Bidirectional Writes:
+           For large tables subject to concurrent writes on both publisher and
+           subscriber nodes, publishers can define row filters when creating
+           publications to segment data. This allows multiple subscriptions
+           to replicate exclusive subsets of the table in parallel, optimizing
+           the throughput.
+          </para>
+
+          <para>
+           b. Write-Enabled Subscribers:
+           If a subscriber node is expected to perform write operations, replication
+           can be structured using multiple publications and subscriptions. By
+           distributing tables across these publications, the workload is spread among
+           several apply workers, improving concurrency and reducing contention.
+          </para>
+
+          <para>
+           c. Read-Only Subscribers:
+           In configurations involving single or multiple publisher nodes
+           performing concurrent write operations, read-only subscriber nodes may
+           replicate changes without seeing a performance impact if it does index
+           scan. However, if the subscriber is impacted due to replication lag or
+           scan performance (say due to sequential scans), it needs to follow one
+           of the two previous strategies to distribute the workload on the
+           subscriber.
+          </para>
+         </caution>
+
+         <para>
+          This option cannot be enabled if the publisher is a physical standby.
+         </para>
+
+         <para>
+          Enabling this option ensures retention of information useful for
+          conflict detection solely for changes occurring locally on the
+          publisher. For the changes originating from different origins,
+          reliable conflict detection cannot be guaranteed.
+         </para>
+        </listitem>
+       </varlistentry>
+
+       <varlistentry id="sql-createsubscription-params-with-max-retention-duration">
+        <term><literal>max_retention_duration</literal> (<type>integer</type>)</term>
+        <listitem>
+         <para>
+          Maximum duration in milliseconds for which this subscription's apply worker
+          is allowed to retain the information useful for conflict detection when
+          <literal>retain_dead_tuples</literal> is enabled. The default value
+          is <literal>0</literal>, indicating that the information is retained
+          until it is no longer needed for detection purposes.
+         </para>
+         <para>
+          The information useful for conflict detection is no longer retained if
+          all apply workers associated with the subscriptions, where
+          <literal>retain_dead_tuples</literal> is enabled, confirm that the
+          retention duration has exceeded the
+          <literal>max_retention_duration</literal> set within the corresponding
+          subscription. The retention will automatically resume when at least one
+          apply worker confirms that the retention duration is within the
+          specified limit, or when a new subscription is created with
+          <literal>retain_dead_tuples = true</literal>. Alternatively, retention
+          can be manually resumed by re-enabling <literal>retain_dead_tuples</literal>.
+         </para>
+         <para>
+          Note that overall retention will not stop if other subscriptions that
+          have a value greater than 0 for this parameter have not exceeded it,
+          or if they set this option to 0.
+         </para>
+         <para>
+          This option is effective only when
+          <literal>retain_dead_tuples</literal> is enabled and the apply
+          worker associated with the subscription is active.
+         </para>
+         <warning>
+          <para>
+           Note that setting a non-zero value for this option could lead to
+           information for conflict detection being removed prematurely,
+           potentially resulting in incorrect conflict detection.
+          </para>
+         </warning>
+        </listitem>
+       </varlistentry>
+
+      <varlistentry id="sql-createsubscription-params-with-wal-receiver-timeout">
+        <term><literal>wal_receiver_timeout</literal> (<type>text</type>)</term>
+        <listitem>
+         <para>
+          The value of this parameter overrides the
+          <xref linkend="guc-wal-receiver-timeout"/> setting within this
+          subscription's apply worker processes.  The default value is
+          <literal>-1</literal>, which means it does not override the global setting,
+          i.e., the value from the server configuration, command line, role or
+          database settings will be used instead.
+         </para>
+        </listitem>
+       </varlistentry>
+      </variablelist></para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   When specifying a parameter of type <type>boolean</type>, the
+   <literal>=</literal> <replaceable class="parameter">value</replaceable>
+   part can be omitted, which is equivalent to
+   specifying <literal>TRUE</literal>.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-createsubscription-notes" xreflabel="Notes">
+  <title>Notes</title>
+
+  <para>
+   See <xref linkend="logical-replication-security"/> for details on
+   how to configure access control between the subscription and the
+   publication instance.
+  </para>
+
+  <para>
+   When creating a replication slot (the default behavior), <command>CREATE
+   SUBSCRIPTION</command> cannot be executed inside a transaction block.
+  </para>
+
+  <para>
+   Creating a subscription that connects to the same database cluster (for
+   example, to replicate between databases in the same cluster or to replicate
+   within the same database) will only succeed if the replication slot is not
+   created as part of the same command.  Otherwise, the <command>CREATE
+   SUBSCRIPTION</command> call will hang.  To make this work, create the
+   replication slot separately (using the
+   function <function>pg_create_logical_replication_slot</function> with the
+   plugin name <literal>pgoutput</literal>) and create the subscription using
+   the parameter <literal>create_slot = false</literal>.  See
+   <xref linkend="logical-replication-subscription-examples-deferred-slot"/>
+   for examples. This is an implementation restriction that might be lifted in a
+   future release.
+  </para>
+
+  <para>
+   If any table in the publication has a <literal>WHERE</literal> clause, rows
+   for which the <replaceable class="parameter">expression</replaceable>
+   evaluates to <literal>false</literal> or <literal>NULL</literal> will not be
+   published. If the subscription has
+   several publications in which the same table has been published with
+   different <literal>WHERE</literal> clauses, a row will be published if any
+   of the expressions (referring to that publish operation) are satisfied. In
+   the case of different <literal>WHERE</literal> clauses, if one of the
+   publications has no <literal>WHERE</literal> clause (referring to that
+   publish operation) or the publication is declared as
+   <link linkend="sql-createpublication-params-for-all-tables"><literal>FOR ALL TABLES</literal></link>
+   or <link linkend="sql-createpublication-params-for-tables-in-schema"><literal>FOR TABLES IN SCHEMA</literal></link>,
+   rows are always published regardless of the definition of the other
+   expressions. If the subscriber is a <productname>PostgreSQL</productname>
+   version before 15, then any row filtering is ignored during the initial data
+   synchronization phase. For this case, the user might want to consider
+   deleting any initially copied data that would be incompatible with
+   subsequent filtering. Because initial data synchronization does not take
+   into account the publication
+   <link linkend="sql-createpublication-params-with-publish"><literal>publish</literal></link>
+   parameter when copying existing table data, some rows may be copied that
+   would not be replicated using DML. See
+   <xref linkend="logical-replication-subscription-examples"/> for examples.
+  </para>
+
+  <para>
+   Subscriptions having several publications in which the same table has been
+   published with different column lists are not supported.
+  </para>
+
+  <para>
+   We allow non-existent publications to be specified so that users can add
+   those later. This means
+   <link linkend="catalog-pg-subscription"><structname>pg_subscription</structname></link>
+   can have non-existent publications.
+  </para>
+
+  <para>
+   When using a subscription parameter combination of
+   <literal>copy_data = true</literal> and <literal>origin = NONE</literal>,
+   the initial sync table data is copied directly from the publisher, meaning
+   that knowledge of the true origin of that data is not possible. If the
+   publisher also has subscriptions then the copied table data might have
+   originated from further upstream. This scenario is detected and a WARNING is
+   logged to the user, but the warning is only an indication of a potential
+   problem; it is the user's responsibility to make the necessary checks to
+   ensure the copied data origins are really as wanted or not.
+  </para>
+
+  <para>
+   To find which tables might potentially include non-local origins (due to
+   other subscriptions created on the publisher) try this SQL query:
+<programlisting>
+# substitute &lt;pub-names&gt; below with your publication name(s) to be queried
+SELECT DISTINCT PT.schemaname, PT.tablename
+FROM pg_publication_tables PT
+     JOIN pg_class C ON (C.relname = PT.tablename)
+     JOIN pg_namespace N ON (N.nspname = PT.schemaname),
+     pg_subscription_rel PS
+WHERE C.relnamespace = N.oid AND
+      (PS.srrelid = C.oid OR
+      C.oid IN (SELECT relid FROM pg_partition_ancestors(PS.srrelid) UNION
+                SELECT relid FROM pg_partition_tree(PS.srrelid))) AND
+      PT.pubname IN (&lt;pub-names&gt;);
+</programlisting></para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Create a subscription to a remote server that replicates tables in
+   the publications <literal>mypublication</literal> and
+   <literal>insert_only</literal> and starts replicating immediately on
+   commit:
+<programlisting>
+CREATE SUBSCRIPTION mysub
+         CONNECTION 'host=192.168.1.50 port=5432 user=foo dbname=foodb'
+        PUBLICATION mypublication, insert_only;
+</programlisting>
+  </para>
+
+  <para>
+   Create a subscription to a remote server that replicates tables in
+   the <literal>insert_only</literal> publication and does not start replicating
+   until enabled at a later time.
+<programlisting>
+CREATE SUBSCRIPTION mysub
+         CONNECTION 'host=192.168.1.50 port=5432 user=foo dbname=foodb'
+        PUBLICATION insert_only
+               WITH (enabled = false);
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>CREATE SUBSCRIPTION</command> is a <productname>PostgreSQL</productname>
+   extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-altersubscription"/></member>
+   <member><xref linkend="sql-dropsubscription"/></member>
+   <member><xref linkend="sql-createpublication"/></member>
+   <member><xref linkend="sql-alterpublication"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

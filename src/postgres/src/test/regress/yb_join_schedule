@@ -1,0 +1,7 @@
+# src/test/regress/yb_join_schedule
+#
+####################################################################################################
+# This includes tests for Joins
+####################################################################################################
+test: yb.orig.join_batching
+test: yb.orig.join_batching_parallel

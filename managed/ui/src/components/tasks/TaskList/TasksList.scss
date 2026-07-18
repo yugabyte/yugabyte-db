@@ -1,0 +1,19 @@
+/* Copyright (c) YugabyteDB, Inc. */
+
+@use '../../../_style/colors.scss';
+
+.react-bs-table-search-form {
+  .form-control {
+    border-radius: 7px;
+  }
+}
+
+.task-abort-view {
+  cursor: pointer;
+  display: inline-block;
+  text-align: center;
+  vertical-align: middle;
+}
+.react-bs-table table th, .react-bs-table table td.task-type-column {
+  padding-left: 5px !important;
+}

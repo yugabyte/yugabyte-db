@@ -1,0 +1,53 @@
+name: Build rpm packages
+concurrency:
+  group: build-rpm-packages-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'main'
+      - 'release/**'
+    paths-ignore:
+      - 'docs/**'
+      - '.devcontainer/**'
+      - '*.md'
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+
+jobs:
+  build-rpm-packages:
+    runs-on: ${{ matrix.runner }}
+    name: RPM packages for ${{ matrix.os }}-${{ matrix.arch }}-pg${{ matrix.pg_version }}
+    if: github.event.pull_request.draft == false
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(github.event_name == 'pull_request' && '{"include":[{"os":"rhel9","arch":"amd64","runner":"ubuntu-24.04","pg_version":"17"},{"os":"rhel9","arch":"arm64","runner":"ubuntu-24.04-arm","pg_version":"18"}]}' || '{"os":["rhel8","rhel9"],"arch":["amd64","arm64"],"include":[{"arch":"amd64","runner":"ubuntu-24.04"},{"arch":"arm64","runner":"ubuntu-24.04-arm"}],"pg_version":["16","17","18"]}') }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract and Format Default Version
+        id: extract_version
+        run: |
+          DOCUMENTDB_VERSION=$(grep -E "^default_version" pg_documentdb_core/documentdb_core.control | sed -E "s/.*'([0-9]+\.[0-9]+-[0-9]+)'.*/\1/")
+          DOCUMENTDB_VERSION=$(echo $DOCUMENTDB_VERSION | sed "s/-/./g")
+          echo "Extracted Version: $DOCUMENTDB_VERSION"
+          echo "DOCUMENTDB_VERSION=$DOCUMENTDB_VERSION" >> $GITHUB_ENV
+
+      - name: Build RPM Package
+        run: |
+          ./packaging/build_packages.sh --os ${{ matrix.os }} --pg ${{ matrix.pg_version }} --version ${{ env.DOCUMENTDB_VERSION }} --test-clean-install
+
+      - name: Upload RPM Package as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-${{ matrix.arch }}-pg${{ matrix.pg_version }}-documentdb-${{ env.DOCUMENTDB_VERSION }}
+          path: |
+            packaging/*.rpm
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0

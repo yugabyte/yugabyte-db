@@ -1,0 +1,250 @@
+<!--
+doc/src/sgml/ref/create_language.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-createlanguage">
+ <indexterm zone="sql-createlanguage">
+  <primary>CREATE LANGUAGE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE LANGUAGE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE LANGUAGE</refname>
+  <refpurpose>define a new procedural language</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CREATE [ OR REPLACE ] [ TRUSTED ] [ PROCEDURAL ] LANGUAGE <replaceable class="parameter">name</replaceable>
+    HANDLER <replaceable class="parameter">call_handler</replaceable> [ INLINE <replaceable class="parameter">inline_handler</replaceable> ] [ VALIDATOR <replaceable>valfunction</replaceable> ]
+CREATE [ OR REPLACE ] [ TRUSTED ] [ PROCEDURAL ] LANGUAGE <replaceable class="parameter">name</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1 id="sql-createlanguage-description">
+  <title>Description</title>
+
+  <para>
+   <command>CREATE LANGUAGE</command> registers a new
+   procedural language with a <productname>PostgreSQL</productname>
+   database.  Subsequently, functions and procedures can be
+   defined in this new language.
+  </para>
+
+  <para>
+   <command>CREATE LANGUAGE</command> effectively associates the
+   language name with handler function(s) that are responsible for executing
+   functions written in the language.  Refer to <xref linkend="plhandler"/>
+   for more information about language handlers.
+  </para>
+
+  <para>
+   <command>CREATE OR REPLACE LANGUAGE</command> will either create a
+   new language, or replace an existing definition.  If the language
+   already exists, its parameters are updated according to the command,
+   but the language's ownership and permissions settings do not change,
+   and any existing functions written in the language are assumed to still
+   be valid.
+  </para>
+
+  <para>
+   One must have the
+   <productname>PostgreSQL</productname> superuser privilege to
+   register a new language or change an existing language's parameters.
+   However, once the language is created it is valid to assign ownership of
+   it to a non-superuser, who may then drop it, change its permissions,
+   rename it, or assign it to a new owner.  (Do not, however, assign
+   ownership of the underlying C functions to a non-superuser; that would
+   create a privilege escalation path for that user.)
+  </para>
+
+  <para>
+   The form of <command>CREATE LANGUAGE</command> that does not supply
+   any handler function is obsolete.  For backwards compatibility with
+   old dump files, it is interpreted as <command>CREATE EXTENSION</command>.
+   That will work if the language has been packaged into an extension of
+   the same name, which is the conventional way to set up procedural
+   languages.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-createlanguage-parameters">
+  <title>Parameters</title>
+
+   <variablelist>
+    <varlistentry>
+     <term><literal>TRUSTED</literal></term>
+
+     <listitem>
+      <para><literal>TRUSTED</literal> specifies that the language does
+       not grant access to data that the user would not otherwise
+       have.  If this key word is omitted
+       when registering the language, only users with the
+       <productname>PostgreSQL</productname> superuser privilege can
+       use this language to create new functions.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>PROCEDURAL</literal></term>
+
+     <listitem>
+      <para>
+       This is a noise word.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">name</replaceable></term>
+
+     <listitem>
+      <para>
+       The name of the new procedural language.
+       The name must be unique among the languages in the database.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>HANDLER</literal> <replaceable class="parameter">call_handler</replaceable></term>
+
+     <listitem>
+      <para><replaceable class="parameter">call_handler</replaceable> is
+       the name of a previously registered function that will be
+       called to execute the procedural language's functions.  The call
+       handler for a procedural language must be written in a compiled
+       language such as C with version 1 call convention and
+       registered with <productname>PostgreSQL</productname> as a
+       function taking no arguments and returning the
+       <type>language_handler</type> type, a placeholder type that is
+       simply used to identify the function as a call handler.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>INLINE</literal> <replaceable class="parameter">inline_handler</replaceable></term>
+
+     <listitem>
+      <para><replaceable class="parameter">inline_handler</replaceable> is the
+       name of a previously registered function that will be called
+       to execute an anonymous code block
+       (<link linkend="sql-do"><command>DO</command></link> command)
+       in this language.
+       If no <replaceable class="parameter">inline_handler</replaceable>
+       function is specified, the language does not support anonymous code
+       blocks.
+       The handler function must take one argument of
+       type <type>internal</type>, which will be the <command>DO</command> command's
+       internal representation, and it will typically return
+       <type>void</type>.  The return value of the handler is ignored.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>VALIDATOR</literal> <replaceable class="parameter">valfunction</replaceable></term>
+
+     <listitem>
+      <para><replaceable class="parameter">valfunction</replaceable> is the
+       name of a previously registered function that will be called
+       when a new function in the language is created, to validate the
+       new function.
+       If no
+       validator function is specified, then a new function will not
+       be checked when it is created.
+       The validator function must take one argument of
+       type <type>oid</type>, which will be the OID of the
+       to-be-created function, and will typically return <type>void</type>.
+      </para>
+
+      <para>
+       A validator function would typically inspect the function body
+       for syntactical correctness, but it can also look at other
+       properties of the function, for example if the language cannot
+       handle certain argument types.  To signal an error, the
+       validator function should use the <function>ereport()</function>
+       function.  The return value of the function is ignored.
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+ </refsect1>
+
+ <refsect1 id="sql-createlanguage-notes">
+  <title>Notes</title>
+
+  <para>
+   Use <link linkend="sql-droplanguage"><command>DROP LANGUAGE</command></link> to drop procedural languages.
+  </para>
+
+  <para>
+   The system catalog <classname>pg_language</classname> (see <xref
+   linkend="catalog-pg-language"/>) records information about the
+   currently installed languages.  Also, the <application>psql</application>
+   command <command>\dL</command> lists the installed languages.
+  </para>
+
+  <para>
+   To create functions in a procedural language, a user must have the
+   <literal>USAGE</literal> privilege for the language.  By default,
+   <literal>USAGE</literal> is granted to <literal>PUBLIC</literal> (i.e., everyone)
+   for trusted languages.  This can be revoked if desired.
+  </para>
+
+  <para>
+   Procedural languages are local to individual databases.
+   However, a language can be installed into the <literal>template1</literal>
+   database, which will cause it to be available automatically in
+   all subsequently-created databases.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-createlanguage-examples">
+  <title>Examples</title>
+
+  <para>
+   A minimal sequence for creating a new procedural language is:
+<programlisting>
+CREATE FUNCTION plsample_call_handler() RETURNS language_handler
+    AS '$libdir/plsample'
+    LANGUAGE C;
+CREATE LANGUAGE plsample
+    HANDLER plsample_call_handler;
+</programlisting>
+   Typically that would be written in an extension's creation script,
+   and users would do this to install the extension:
+<programlisting>
+CREATE EXTENSION plsample;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1 id="sql-createlanguage-compat">
+  <title>Compatibility</title>
+
+  <para>
+   <command>CREATE LANGUAGE</command> is a
+   <productname>PostgreSQL</productname> extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-alterlanguage"/></member>
+   <member><xref linkend="sql-createfunction"/></member>
+   <member><xref linkend="sql-droplanguage"/></member>
+   <member><xref linkend="sql-grant"/></member>
+   <member><xref linkend="sql-revoke"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

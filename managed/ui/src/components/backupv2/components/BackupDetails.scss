@@ -1,0 +1,124 @@
+@use "sass:color";
+@use '../../../_style/colors.scss';
+
+.backup-details-panel {
+  border-radius: 2px;
+  padding: 24px;
+  box-shadow: 0 0.12em 2px rgba(35, 35, 41, 0.05), 0 0.5em 10px rgba(35, 35, 41, 0.07);
+  background: colors.$YB_BG_WHITE_2;
+  height: 100%;
+  width: 700px;
+  position: fixed;
+  z-index: 9999;
+  top: 0;
+  right: 0%;
+  border-left: 1px solid color.adjust(colors.$YB_BACKGROUND, $lightness: -10%);
+  max-height: 100%;
+
+  .side-panel {
+    width: 880px !important;
+  }
+
+  .side-panel__title {
+    font-size: 16px;
+    padding: 20px 20px 20px 30px !important;
+    color: #000000 !important;
+  }
+
+  .backup-details-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+
+    button {
+      margin-left: 10px;
+    }
+  }
+
+  .backup-details-info {
+    background: colors.$YB_BACKGROUND;
+    border: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
+    border-radius: 4px;
+    margin-top: 15px;
+
+    .name-and-status {
+      display: flex;
+      justify-content: space-between;
+      padding: 16px;
+      margin-bottom: 15px;
+    }
+
+    .details-rest {
+      display: flex;
+      justify-content: flex-start;
+      flex-wrap: wrap;
+      margin: -10px 0 0 0;
+      border-top: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
+      padding: 16px;
+      column-gap: 50px;
+      row-gap: 24px;
+
+      .details-storage-config {
+        max-width: fit-content !important;
+      }
+    }
+
+    .assign-config-msg {
+      margin: 0 16px 16px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: colors.$YB_BANNER_WARNING_BACKGROUND;
+      padding: 5px 8px;
+      font-size: 12px;
+      border: 1px solid rgba(157, 108, 0, 0.3);
+      border-radius: 4px;
+
+      button {
+        height: 30px;
+        padding: 7px 10px;
+        font-size: 12px;
+      }
+    }
+
+    .header-text {
+      font-weight: 600;
+      font-size: 12px;
+      line-height: 15px;
+      color: #333333;
+      margin-bottom: 8px;
+    }
+  }
+
+  .tables-list {
+    margin-top: 32px;
+  }
+
+  .close-button {
+    cursor: pointer;
+  }
+
+  .universeLink {
+    text-decoration: underline;
+    margin-top: 10px;
+  }
+
+  .add-increment-backup-btn {
+    float: right;
+    padding: 5px 10px;
+    height: 30px;
+    border: 1px solid colors.$YB_BG_WHITE_4;
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 12px;
+    line-height: 15px;
+    color: colors.$YB_TEXT_COLOR;
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+
+    i {
+      margin-right: 4px;
+    }
+  }
+}

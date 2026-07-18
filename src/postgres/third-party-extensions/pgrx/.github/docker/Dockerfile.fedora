@@ -1,0 +1,62 @@
+# Example of how to build this container (ran from pgrx checkout directory):
+#   docker build --build-arg PG_MAJOR_VER=14 -f .github/docker/Dockerfile.fedora\:36 -t pgrx-fedora .
+#
+# Example of how to run this container with tests after building the image:
+#   docker run pgrx-fedora cargo test --no-default-features --features pg14 --locked
+#
+# Note that "PG_MAJOR_VER" build arg in the build step must match the
+# "--features pgXX" in the run step
+
+ARG FEDORA_VER=40
+FROM fedora:${FEDORA_VER}
+ARG FEDORA_VER
+ENV FEDORA_VER=${FEDORA_VER}
+ARG PG_MAJOR_VER
+ENV PG_MAJOR_VER=${PG_MAJOR_VER}
+
+RUN dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/F-"${FEDORA_VER}"-x86_64/pgdg-fedora-repo-latest.noarch.rpm
+RUN dnf install -y \
+  clang \
+  clang-tools-extra \
+  cmake \
+  make \
+  gcc \
+  openssl \
+  openssl-devel \
+  postgresql$PG_MAJOR_VER-server \
+  postgresql$PG_MAJOR_VER-devel \
+  redhat-rpm-config \
+  util-linux
+
+# Set up permissions so that the rust user below can create extensions
+RUN chmod a+rwx `/usr/pgsql-$PG_MAJOR_VER/bin/pg_config --pkglibdir` \
+  `/usr/pgsql-$PG_MAJOR_VER/bin/pg_config --sharedir`/extension \
+  /var/run/postgresql/
+
+# Running pgrx and tests require a non-root user
+RUN adduser -G wheel rust
+WORKDIR /checkout
+RUN chown -R rust:rust /checkout
+COPY --chown=rust:rust . /checkout
+
+USER rust
+# This environment variable is required for postgres while running the tests
+ENV USER=rust
+
+# Install cargo and Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/home/rust/.cargo/bin:${PATH}"
+
+# By default, we always want to use '--locked'. However, there are some circumstances
+# where we might want to try it unlocked. In those one-off scenarios, the image
+# can be built by docker with: --build-arg CARGO_LOCKED_OPTION=''
+ARG CARGO_LOCKED_OPTION='--locked'
+ENV CARGO_LOCKED_OPTION=${CARGO_LOCKED_OPTION}
+
+# Install cargo-pgrx from source copied into this container
+RUN echo "Running cargo install --path cargo-pgrx/ $CARGO_LOCKED_OPTION" && cargo install --path cargo-pgrx/ $CARGO_LOCKED_OPTION
+
+# Initialize cargo pgrx so that we can run the tests
+RUN cargo pgrx init --pg$PG_MAJOR_VER=/usr/pgsql-$PG_MAJOR_VER/bin/pg_config
+
+CMD ["cargo", "test", "--no-default-features", "--features", "pg${PG_MAJOR_VER} cshim", "${CARGO_LOCKED_OPTION}"]

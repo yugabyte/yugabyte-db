@@ -1,0 +1,52 @@
+@use '../../../_style/colors.scss';
+
+.formInstructionsContainer {
+    margin-bottom: 10px;
+}
+.certFormField {
+    display: flex;
+    flex-direction: column;
+    margin-top: 10px;
+
+    &:first-child {
+        margin-top: 0;
+    }
+
+    .errorContainer {
+        color: colors.$YB_FAIL_COLOR;
+        white-space: pre-wrap;
+    }
+
+    .certItem {
+        display: flex;
+
+        .certTextArea {
+            resize: vertical;
+            width: 100%;
+            min-height: 45px;
+        }
+
+        .removeCertButton {
+            background-color: red;
+            margin-left: 10px;
+            padding: 10px 15px 10px 15px;
+
+            i {
+                color: white
+            }
+        }
+    }
+
+}
+
+.addCertButton {
+    width: 100%;
+}
+
+.certFormField+.addCertButton {
+    margin-top: 10px;
+}
+
+.modalDialog {
+    width: 860px;
+}

@@ -1,0 +1,379 @@
+SET search_path TO documentdb_api,documentdb_api_catalog,documentdb_api_internal,documentdb_core;
+SET citus.next_shard_id TO 695000;
+SET documentdb.next_collection_id TO 69500;
+SET documentdb.next_collection_index_id TO 69500;
+set documentdb.enableExtendedExplainPlans to on;
+SELECT documentdb_api.drop_collection('hint_db', 'query_index_hints') IS NOT NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.create_collection('hint_db', 'query_index_hints');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- create various kinds of indexes.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('hint_db', '{ "createIndexes": "query_index_hints", "indexes": [ { "key": { "a": 1 }, "name": "a_1" }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('hint_db', '{ "createIndexes": "query_index_hints", "indexes": [ { "key": { "b": 1, "c": 1 }, "name": "b_1_c_1" }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('hint_db', '{ "createIndexes": "query_index_hints", "indexes": [ { "key": { "d": "hashed" }, "name": "d_hashed" }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('hint_db', '{ "createIndexes": "query_index_hints", "indexes": [ { "key": { "$**": "text" }, "name": "e_text" }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('hint_db', '{ "createIndexes": "query_index_hints", "indexes": [ { "key": { "f": 1 }, "name": "f_1", "sparse": true }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "6" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('hint_db', '{ "createIndexes": "query_index_hints", "indexes": [ { "key": { "g.$**": 1 }, "name": "g_1" }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "6" }, "numIndexesAfter" : { "$numberInt" : "7" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('hint_db', '{ "createIndexes": "query_index_hints", "indexes": [ { "key": { "h": 1 }, "name": "h_1", "sparse": true }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "7" }, "numIndexesAfter" : { "$numberInt" : "8" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('hint_db', '{ "createIndexes": "query_index_hints", "indexes": [ { "key": { "i": 1, "j": 1 }, "name": "i_1_j_1", "unique": true }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "8" }, "numIndexesAfter" : { "$numberInt" : "9" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('hint_db', '{ "createIndexes": "query_index_hints", "indexes": [ { "key": { "k": 1, "l": 1 }, "name": "k_1_l_1", "sparse": true, "unique": true }] }', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "9" }, "numIndexesAfter" : { "$numberInt" : "10" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+\d documentdb_data.documents_69501
+          Table "documentdb_data.documents_69501"
+     Column      |  Type  | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
+Indexes:
+    "collection_pk_69501" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_69502" documentdb_rum (document bson_rum_single_path_ops (path=a, tl='2699'))
+    "documents_rum_index_69503" documentdb_rum (document bson_rum_single_path_ops (path=b, tl='2691'), document bson_rum_single_path_ops (path=c, tl='2691'))
+    "documents_rum_index_69504" documentdb_rum (document documentdb_rum_hashed_ops (path=d))
+    "documents_rum_index_69505" documentdb_rum (document bson_rum_text_path_ops (weights='', iswildcard='true'))
+    "documents_rum_index_69506" documentdb_rum (document bson_rum_single_path_ops (path=f, tl='2699'))
+    "documents_rum_index_69507" documentdb_rum (document bson_rum_single_path_ops (path=g, iswildcard='true', tl='2699'))
+    "documents_rum_index_69508" documentdb_rum (document bson_rum_single_path_ops (path=h, tl='2699'))
+    "documents_rum_index_69509" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "i" : { "$numberInt" : "1" }, "j" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=i, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=j, tl='2691', generatenotfoundterm='true') WITH =?=)
+    "documents_rum_index_69510" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "k" : { "$numberInt" : "1" }, "l" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=k, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=l, tl='2691', generatenotfoundterm='true') WITH =?=)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '69501'::bigint)
+
+-- now insert some sample docs
+SELECT documentdb_api.insert_one('hint_db', 'query_index_hints', '{ "_id": 1, "a": 1, "c": 1 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- query index hints by name - every index works except text index
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": "a_1" }');
+                                 QUERY PLAN                                 
+---------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: a_1
+   ->  Index Scan using a_1 on documents_69501_695002 collection
+         Index Cond: (document @<> '{ "a" : { "fullScan" : true } }'::bson)
+         Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": "b_1_c_1" }');
+                                 QUERY PLAN                                 
+---------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: b_1_c_1
+   ->  Index Scan using b_1_c_1 on documents_69501_695002 collection
+         Index Cond: (document @<> '{ "b" : { "fullScan" : true } }'::bson)
+         Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+-- this pushes to a seqscan because the index is hashed
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": "d_hashed" }');
+                            QUERY PLAN                            
+---------------------------------------------------------------------
+ Seq Scan on documents_69501_695002 collection
+   Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(2 rows)
+
+-- this should fail.
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": "e_text" }');
+ERROR:  index specified by index hint is not found or invalid for the filters
+-- pushes as an exists true query since the index is sparse
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": "f_1" }');
+                               QUERY PLAN                               
+---------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: f_1
+   ->  Index Scan using f_1 on documents_69501_695002 collection
+         Index Cond: (document @>= '{ "f" : { "$minKey" : 1 } }'::bson)
+         Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+-- cannot push to wildcard index since it is a wildcard index
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": "g_1" }');
+ERROR:  index specified by index hint is not found or invalid for the filters
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": "i_1_j_1" }');
+                                 QUERY PLAN                                 
+---------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: i_1_j_1
+   ->  Index Scan using i_1_j_1 on documents_69501_695002 collection
+         Index Cond: (document @<> '{ "i" : { "fullScan" : true } }'::bson)
+         Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+-- pushes as an exists true query since the index is sparse
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": "h_1" }');
+                               QUERY PLAN                               
+---------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: h_1
+   ->  Index Scan using h_1 on documents_69501_695002 collection
+         Index Cond: (document @>= '{ "h" : { "$minKey" : 1 } }'::bson)
+         Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": "k_1_l_1" }');
+                               QUERY PLAN                               
+---------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: k_1_l_1
+   ->  Index Scan using k_1_l_1 on documents_69501_695002 collection
+         Index Cond: (document @>= '{ "k" : { "$minKey" : 1 } }'::bson)
+         Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+-- query index hint by key - works the same as name
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": { "a": 1 } }');
+                                 QUERY PLAN                                 
+---------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: a_1
+   ->  Index Scan using a_1 on documents_69501_695002 collection
+         Index Cond: (document @<> '{ "a" : { "fullScan" : true } }'::bson)
+         Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": { "b": 1, "c": 1 } }');
+                                 QUERY PLAN                                 
+---------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: b_1_c_1
+   ->  Index Scan using b_1_c_1 on documents_69501_695002 collection
+         Index Cond: (document @<> '{ "b" : { "fullScan" : true } }'::bson)
+         Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+-- this pushes to a seqscan because the index is hashed
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": { "d": "hashed" } }');
+                            QUERY PLAN                            
+---------------------------------------------------------------------
+ Seq Scan on documents_69501_695002 collection
+   Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(2 rows)
+
+-- this should fail.
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": { "$**": "text" } }');
+ERROR:  index specified by index hint is not found or invalid for the filters
+-- pushes as an exists true query since the index is sparse
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": { "f": 1 } }');
+                               QUERY PLAN                               
+---------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: f_1
+   ->  Index Scan using f_1 on documents_69501_695002 collection
+         Index Cond: (document @>= '{ "f" : { "$minKey" : 1 } }'::bson)
+         Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+-- cannot push to wildcard index since it is a wildcard index
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": { "g.$**": 1 } }');
+ERROR:  index specified by index hint is not found or invalid for the filters
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": { "i": 1, "j": 1 } }');
+                                 QUERY PLAN                                 
+---------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: i_1_j_1
+   ->  Index Scan using i_1_j_1 on documents_69501_695002 collection
+         Index Cond: (document @<> '{ "i" : { "fullScan" : true } }'::bson)
+         Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+-- pushes as an exists true query since the index is sparse
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": { "h": 1 } }');
+                               QUERY PLAN                               
+---------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: h_1
+   ->  Index Scan using h_1 on documents_69501_695002 collection
+         Index Cond: (document @>= '{ "h" : { "$minKey" : 1 } }'::bson)
+         Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": { "k": 1, "l": 1 } }');
+                               QUERY PLAN                               
+---------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: k_1_l_1
+   ->  Index Scan using k_1_l_1 on documents_69501_695002 collection
+         Index Cond: (document @>= '{ "k" : { "$minKey" : 1 } }'::bson)
+         Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+-- hints when no index exists
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": "nonexistent" }');
+ERROR:  index specified by index hint is not found: hint provided does not correspond to an existing index
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": { "nonexistent": 1 } }');
+ERROR:  index specified by index hint is not found: hint provided does not correspond to an existing index
+-- natural hint picks _id index.
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": { "$natural": 1 } }');
+                            QUERY PLAN                            
+---------------------------------------------------------------------
+ Bitmap Heap Scan on documents_69501_695002 collection
+   Recheck Cond: (shard_key_value = '69501'::bigint)
+   Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (shard_key_value = '69501'::bigint)
+(5 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": { "$natural": -1 } }');
+                            QUERY PLAN                            
+---------------------------------------------------------------------
+ Bitmap Heap Scan on documents_69501_695002 collection
+   Recheck Cond: (shard_key_value = '69501'::bigint)
+   Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (shard_key_value = '69501'::bigint)
+(5 rows)
+
+-- more error cases
+SELECT documentdb_api_internal.create_indexes_non_concurrently('hint_db', '{ "createIndexes": "query_index_hints", "indexes": [ { "key": { "a": 1 }, "sparse": true, "name": "a_2" }] }', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "10" }, "numIndexesAfter" : { "$numberInt" : "11" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- fails due to multiple indexes matching.
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": { "a": 1 } }');
+ERROR:  index specified by index hint is ambiguous. please specify hint by name
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": "a_2" }');
+                               QUERY PLAN                               
+---------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: a_2
+   ->  Index Scan using a_2 on documents_69501_695002 collection
+         Index Cond: (document @>= '{ "a" : { "$minKey" : 1 } }'::bson)
+         Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": "a_1" }');
+                                 QUERY PLAN                                 
+---------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: a_1
+   ->  Index Scan using a_1 on documents_69501_695002 collection
+         Index Cond: (document @<> '{ "a" : { "fullScan" : true } }'::bson)
+         Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+-- try with composite indexes.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('hint_db', '{ "createIndexes": "query_index_hints", "indexes": [ { "key": { "a": 1 }, "enableCompositeTerm": true, "name": "a_3" }] }', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "11" }, "numIndexesAfter" : { "$numberInt" : "12" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('hint_db', '{ "createIndexes": "query_index_hints", "indexes": [ { "key": { "k": 1, "l": 1 }, "enableCompositeTerm": true, "name": "k_1_l_1-2" }] }', true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "12" }, "numIndexesAfter" : { "$numberInt" : "13" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": "a_3" }');
+                                 QUERY PLAN                                 
+---------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: a_3
+   indexKey: {"a": 1}
+   isMultiKey: false
+   indexBounds: ["a": (MinKey, MaxKey)]
+   ->  Index Scan using a_3 on documents_69501_695002 collection
+         Index Cond: (document @<> '{ "a" : { "fullScan" : true } }'::bson)
+         Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(8 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { "x": 1 }, "hint": "k_1_l_1-2" }');
+                                 QUERY PLAN                                 
+---------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan)
+   indexName: k_1_l_1-2
+   indexKey: {"k": 1,"l": 1}
+   isMultiKey: false
+   indexBounds: ["k": (MinKey, MaxKey), "l": (MinKey, MaxKey)]
+   ->  Index Scan using "k_1_l_1-2" on documents_69501_695002 collection
+         Index Cond: (document @<> '{ "k" : { "fullScan" : true } }'::bson)
+         Filter: (document @= '{ "x" : { "$numberInt" : "1" } }'::bson)
+(8 rows)
+
+-- try natural and id hint with no filters on sharded collections.
+SELECT documentdb_api.shard_collection('hint_db', 'query_index_hints', '{"_id": "hashed"}', FALSE);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { }, "hint": { "$natural": 1 } }');
+                               QUERY PLAN                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documents_69501_695004 collection
+(6 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE OFF, TIMING OFF) SELECT document from bson_aggregation_find('hint_db', '{ "find": "query_index_hints", "filter": { }, "hint": { "_id": 1 } }');
+                               QUERY PLAN                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documents_69501_695004 collection
+(6 rows)
+

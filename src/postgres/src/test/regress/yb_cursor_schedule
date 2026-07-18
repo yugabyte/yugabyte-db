@@ -1,0 +1,20 @@
+# src/test/regress/yb_cursor_schedule
+#
+####################################################################################################
+# This suite includes tests on CURSOR.
+####################################################################################################
+# Generic cursor test.
+test: yb.orig.cursor
+
+# Dependencies.
+test: yb.depd.onek
+test: yb.depd.tenk1
+test: yb.depd.tenk2
+test: yb.depd.onek2
+
+# Run portals tests.
+test: yb.port.portals
+test: portals_p2
+
+# Test on cursor for temp table.
+test: yb.port.combocid

@@ -1,0 +1,4 @@
+#!/bin/sh
+
+# display gcc predefined preprocessor macros
+gcc -dM -E - < /dev/null

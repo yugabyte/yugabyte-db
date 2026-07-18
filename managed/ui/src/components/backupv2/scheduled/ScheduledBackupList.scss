@@ -1,0 +1,121 @@
+@use '../../../_style/colors.scss';
+
+.schedule-list-panel {
+  .schedule-action {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 32px;
+
+    button {
+      font-weight: 400;
+      font-size: 15px;
+    }
+  }
+
+  .schedule-backup-list {
+    height: 550px;
+    overflow-y: auto;
+  }
+}
+
+.schedule-item {
+  background: colors.$YB_BG_WHITE_3;
+  border: 1px solid colors.$YB_GRAY_HOVER;
+  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  min-height: 225px;
+  margin-bottom: 24px;
+  color: #151730;
+
+  .name-and-actions {
+    min-height: 60px;
+    padding: 12px 18px;
+
+    .name-field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-left: 8px;
+      height: 42px;
+
+      &.Stopped {
+        opacity: 0.5;
+      }
+
+      .schedule-name {
+        font-size: 16px;
+        line-height: 19px;
+      }
+
+      .form-group {
+        margin-left: 16px;
+        margin-right: 2px;
+      }
+
+      .yb-field-group {
+        padding-bottom: 0 !important;
+
+        .yb-toggle {
+          margin-top: 0;
+        }
+      }
+    }
+
+    .dropdown {
+      float: right;
+    }
+  }
+
+  .info {
+    margin-top: 16px;
+    margin-bottom: 32px;
+  }
+
+  .schedule-info,
+  .backup-timeline-info {
+    .info-title {
+      font-size: 12px;
+      color: #6d7c88;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+
+    .info-val {
+      font-weight: 400;
+      font-size: 13px;
+    }
+
+    .tables-more {
+      font-weight: 400;
+      font-size: 13px;
+      color: colors.$YB_DARKER_GRAY;
+      margin-right: 10px;
+      cursor: pointer;
+    }
+
+    .schedule-config-info {
+      margin-top: 32px;
+    }
+  }
+
+  .backup-timeline-info {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .no-padding {
+    padding: 0;
+  }
+
+  .universe-link {
+    text-decoration: underline;
+  }
+}
+
+#more-tables-popover {
+  background: colors.$YB_BG_WHITE_3;
+  color: colors.$YB_TEXT_COLOR;
+  .popover-title {
+    background-color: colors.$YB_BACKGROUND;
+  }
+}

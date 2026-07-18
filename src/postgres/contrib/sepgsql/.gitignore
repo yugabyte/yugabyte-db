@@ -1,0 +1,9 @@
+/sepgsql.sql
+/sepgsql-regtest.fc
+/sepgsql-regtest.if
+/sepgsql-regtest.pp
+/tmp
+# Generated subdirectories
+/log/
+/results/
+/tmp_check/

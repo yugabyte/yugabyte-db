@@ -1,0 +1,130 @@
+# Example of how to build this container (ran from pgrx checkout directory):
+#   docker build --build-arg PG_MAJOR_VER=14 -f .github/docker/Dockerfile.amazon_2 -t pgrx-amazonlinux2 .
+#
+# Example of how to run this container with tests after building the image:
+#   docker run pgrx-amazonlinux2 cargo test --no-default-features --features pg14 --locked
+#
+# Note that "PG_MAJOR_VER" build arg in the build step must match the
+# "--features pgXX" in the run step
+
+FROM amazonlinux:2
+ARG PG_MAJOR_VER
+ENV PG_MAJOR_VER=${PG_MAJOR_VER}
+
+# NOTE: Normally in Amazon Linux 2, you would use "amazon-linux-extras" to set up
+# and install any version of Postgres. However, at the time of this writing,
+# installing Postgres 13 would flat out fail due to some packaging issues unrelated
+# to this Dockerfile. Therefore, we had to work around it by installing everything
+# necessary manually. The old method of using amazon-linux-extras are commented
+# at the end of this file in the event we want to resurrect it some day.
+RUN amazon-linux-extras install epel
+RUN yum -y remove python3
+RUN amazon-linux-extras enable python3
+RUN yum clean metadata
+RUN yum install -y python3-3.6.* --disablerepo=amzn2-core
+RUN yum install -y \
+  bison \
+  clang \
+  flex \
+  llvm13 \
+  llvm13-* \
+  openssl \
+  openssl-devel \
+  readline \
+  readline-devel \
+  which
+
+# Yucky, but required.
+RUN yum -y install http://mirror.centos.org/centos/7/extras/x86_64/Packages/centos-release-scl-rh-2-3.el7.centos.noarch.rpm
+RUN yum -y install http://mirror.centos.org/centos/7/extras/x86_64/Packages/centos-release-scl-2-3.el7.centos.noarch.rpm
+RUN yum -y install http://mirror.centos.org/centos/7/sclo/x86_64/rh/Packages/l/llvm-toolset-7-clang-5.0.1-4.el7.x86_64.rpm
+
+# Set up the official Postgres repos.
+# NOTE: Assumption here is x86_64, which might suffice for CI builds but care
+# should be taken if this is used as a template elsewhere.
+RUN echo -e "[pgdg$PG_MAJOR_VER]\n\
+  name=PostgreSQL $PG_MAJOR_VER for RHEL/CentOS7 - x86_64\n\
+  gpgkey=https://download.postgresql.org/pub/repos/yum/RPM-GPG-KEY-PGDG-$PG_MAJOR_VER\n\
+  baseurl=https://download.postgresql.org/pub/repos/yum/$PG_MAJOR_VER/redhat/rhel-7-x86_64/\n\
+  enabled=1\n\
+  gpgcheck=0\n\
+  " | sed -e 's/^[ \t]*//' >> /etc/yum.repos.d/pgdg.repo
+
+RUN yum -y install \
+  postgresql$PG_MAJOR_VER \
+  postgresql$PG_MAJOR_VER-contrib \
+  postgresql$PG_MAJOR_VER-server \
+  postgresql$PG_MAJOR_VER-devel
+
+ENV PATH="/usr/pgsql-$PG_MAJOR_VER/bin:$PATH"
+
+# Set up permissions so that the rust user below can create extensions
+RUN chmod a+rwx `$(which pg_config) --pkglibdir` \
+  `$(which pg_config) --sharedir`/extension \
+  /var/run/postgresql/
+
+# Running pgrx and tests require a non-root user
+RUN adduser -G wheel rust
+WORKDIR /checkout
+RUN chown -R rust:rust /checkout
+COPY --chown=rust:rust . /checkout
+
+USER rust
+# This environment variable is required for postgres while running the tests
+ENV USER=rust
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
+ENV PATH="/home/rust/.cargo/bin:${PATH}"
+
+# By default, we always want to use '--locked'. However, there are some circumstances
+# where we might want to try it unlocked. In those one-off scenarios, the image
+# can be built by docker with: --build-arg CARGO_LOCKED_OPTION=''
+ARG CARGO_LOCKED_OPTION='--locked'
+ENV CARGO_LOCKED_OPTION=${CARGO_LOCKED_OPTION}
+
+# Install cargo-pgrx from source copied into this container
+RUN echo "Running cargo install --path cargo-pgrx/ $CARGO_LOCKED_OPTION" && cargo install --path cargo-pgrx/ $CARGO_LOCKED_OPTION
+
+# Initialize cargo pgrx so that we can run the tests
+RUN cargo pgrx init --pg$PG_MAJOR_VER=$(which pg_config)
+
+CMD ["cargo", "test", "--no-default-features", "--features", "pg${PG_MAJOR_VER} cshim", "${CARGO_LOCKED_OPTION}"]
+
+# === Previous "amazon-linux-extras" steps, kept for historical purposes ===
+# RUN amazon-linux-extras enable postgresql$PG_MAJOR_VER
+# RUN yum clean metadata
+
+# RUN yum install -y \
+#   bison \
+#   clang \
+#   flex \
+#   libpq \
+#   libpq-devel \
+#   openssl \
+#   openssl-devel \
+#   postgresql \
+#   postgresql-devel \
+#   postgresql-server \
+#   postgresql-server-devel \
+#   readline \
+#   readline-devel \
+#   vim \
+#   which
+
+# RUN chmod a+rwx `$(which pg_config) --pkglibdir` \
+#   `$(which pg_config) --sharedir`/extension \
+#   /var/run/postgresql/
+
+# RUN adduser -G wheel rust
+# WORKDIR /checkout
+# RUN chown -R rust:rust /checkout
+# COPY --chown=rust:rust . /checkout
+
+# USER rust
+# ENV USER=rust
+
+# RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
+# ENV PATH="/home/rust/.cargo/bin:${PATH}"
+# RUN cargo install --path cargo-pgrx/
+# RUN cargo pgrx init --pg$PG_MAJOR_VER=$(which pg_config)
+# CMD ["cargo", "test", "--no-default-features", "--features", "pg${PG_MAJOR_VER}"]

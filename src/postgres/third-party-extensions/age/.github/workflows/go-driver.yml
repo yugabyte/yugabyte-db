@@ -1,0 +1,39 @@
+name: Go Driver Tests
+
+on:
+  push:
+    branches: [ "PG15" ]
+
+  pull_request:
+    branches: [ "PG15" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [ '1.20', '1.21' ]
+
+    defaults:
+      run:
+        working-directory: drivers/golang/age/
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Run apache/age docker image
+      run: docker compose up -d
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: ${{ matrix.go-version }}
+
+    - name: Generate
+      run: go generate ./../...
+
+    - name: Build
+      run: go build -v ./...
+
+    - name: Test
+      run: go test . -v

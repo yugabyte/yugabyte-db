@@ -1,0 +1,4 @@
+groups:
+  - name: yugaware
+    interval: 2m
+    rules:

@@ -1,0 +1,53 @@
+.metrics-measure-container {
+  display: flex;
+  align-items: center;
+  margin: 8px 8px 0 5px;
+  height: 40px;
+
+  .btn-group>.btn.active {
+    background: linear-gradient(0deg, rgba(43, 89, 195, 0.1), rgba(43, 89, 195, 0.1)), #FFFFFF;
+    color: #2B59C3;
+  }
+
+  .btn {
+    border: 1px solid #E5E5E9;
+    padding: 8px 12px;
+  }
+
+  .metrics-measure-label {
+    width: 124px;
+    color: #67666C;
+    padding: 12px 12px 12px 12px;
+  }
+
+  .metrics-measure-content {
+    border: 1px solid #E5E5E9;
+    border-radius: 8px 8px 8px 8px;
+  }
+
+  .metrics-measure-button {
+    &__overall {
+      width: 80px;
+      border-radius: 0px;
+      margin-right: 1px;
+    }
+
+    &__outlier {
+      width: 120px;
+    }
+
+    &__outlier_tables {
+      width: 120px;
+      border-radius: 0 8px 8px 0;
+    }
+  }
+
+  .metric-measure-button-title,
+  .metrics-measure-label {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400;
+    font-size: 13px;
+    line-height: 16px;
+  }
+}

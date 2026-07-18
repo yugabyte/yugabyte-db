@@ -1,0 +1,510 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+SET extra_float_digits = 0;
+LOAD 'age';
+SET search_path TO ag_catalog;
+SELECT create_graph('scan');
+NOTICE:  graph "scan" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT create_graph('scan');
+ERROR:  graph "scan" already exists
+--
+-- multi-line comment
+--
+SELECT * FROM cypher('scan', $$
+/*
+ * multi-line comment
+ */
+RETURN 0
+/**/
+$$) AS t(a agtype);
+ a 
+---
+ 0
+(1 row)
+
+SELECT * FROM cypher('scan', $$
+/* unterminated /* comment
+RETURN 0
+$$) AS t(a int);
+ERROR:  unterminated /* comment at or near "/* unterminated /* comment
+RETURN 0
+"
+LINE 2: /* unterminated /* comment
+        ^
+-- recover syntax highlighting */ */
+--
+-- single-line comment
+--
+SELECT * FROM cypher('scan', $$
+// single-line
+// comment
+RETURN 0
+$$) AS t(a agtype);
+ a 
+---
+ 0
+(1 row)
+
+--
+-- decimal integer
+--
+SELECT * FROM cypher('scan', $$
+RETURN 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+$$) AS t(a agtype, b agtype, c agtype, d agtype, e agtype,
+         f agtype, g agtype, h agtype, i agtype, j agtype);
+ a | b | c | d | e | f | g | h | i | j  
+---+---+---+---+---+---+---+---+---+----
+ 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+(1 row)
+
+SELECT * FROM cypher('scan', $$
+RETURN 11, 22, 33, 44, 55, 66, 77, 88, 99
+$$) AS t(a agtype, b agtype, c agtype, d agtype, e agtype,
+         f agtype, g agtype, h agtype, i agtype);
+ a  | b  | c  | d  | e  | f  | g  | h  | i  
+----+----+----+----+----+----+----+----+----
+ 11 | 22 | 33 | 44 | 55 | 66 | 77 | 88 | 99
+(1 row)
+
+-- 2^31 - 1, 2^31
+SELECT * FROM cypher('scan', $$
+RETURN 2147483647, 2147483648
+$$) AS t(a agtype, b agtype);
+     a      |     b      
+------------+------------
+ 2147483647 | 2147483648
+(1 row)
+
+--
+-- octal integer
+--
+SELECT * FROM cypher('scan', $$
+RETURN 00, 01, 02, 03, 04, 05, 06, 07, 010
+$$) AS t(a agtype, b agtype, c agtype, d agtype, e agtype,
+         f agtype, g agtype, h agtype, i agtype);
+ a | b | c | d | e | f | g | h | i 
+---+---+---+---+---+---+---+---+---
+ 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
+(1 row)
+
+SELECT * FROM cypher('scan', $$
+RETURN 000, 011, 022, 033, 044, 055, 066, 077
+$$) AS t(a agtype, b agtype, c agtype, d agtype, e agtype,
+         f agtype, g agtype, h agtype);
+ a | b | c  | d  | e  | f  | g  | h  
+---+---+----+----+----+----+----+----
+ 0 | 9 | 18 | 27 | 36 | 45 | 54 | 63
+(1 row)
+
+-- 2^31 - 1, 2^31
+SELECT * FROM cypher('scan', $$
+RETURN 000000000000, 017777777777, 0020000000000
+$$) AS t(a agtype, b agtype, c agtype);
+ a |     b      |     c      
+---+------------+------------
+ 0 | 2147483647 | 2147483648
+(1 row)
+
+-- 2^60 - 1, 2^64 - 1
+SELECT * FROM cypher('scan', $$
+RETURN 077777777777777777777, 01777777777777777777777
+$$) AS t(a agtype, b agtype);
+          a          |          b           
+---------------------+----------------------
+ 1152921504606846975 | 1.84467440737096e+19
+(1 row)
+
+-- an invalid character after reading valid digits
+SELECT * FROM cypher('scan', $$
+RETURN 012345678
+$$) AS t(a int);
+ERROR:  invalid octal integer literal at or near "012345678"
+LINE 2: RETURN 012345678
+               ^
+-- an invalid character after the leading "0"
+SELECT * FROM cypher('scan', $$
+RETURN 09
+$$) AS t(a int);
+ERROR:  invalid octal integer literal at or near "09"
+LINE 2: RETURN 09
+               ^
+--
+-- hexadecimal integer
+--
+SELECT * FROM cypher('scan', $$
+RETURN 0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9
+$$) AS t(a agtype, b agtype, c agtype, d agtype, e agtype,
+         f agtype, g agtype, h agtype, i agtype, j agtype);
+ a | b | c | d | e | f | g | h | i | j 
+---+---+---+---+---+---+---+---+---+---
+ 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+(1 row)
+
+SELECT * FROM cypher('scan', $$
+RETURN 0xA, 0xB, 0xC, 0xD, 0xE, 0xF
+$$) AS t(a agtype, b agtype, c agtype, d agtype, e agtype, f agtype);
+ a  | b  | c  | d  | e  | f  
+----+----+----+----+----+----
+ 10 | 11 | 12 | 13 | 14 | 15
+(1 row)
+
+SELECT * FROM cypher('scan', $$
+RETURN 0X00, 0X11, 0X22, 0X33, 0X44, 0X55, 0X66, 0X77, 0X88, 0X99
+$$) AS t(a agtype, b agtype, c agtype, d agtype, e agtype,
+         f agtype, g agtype, h agtype, i agtype, j agtype);
+ a | b  | c  | d  | e  | f  |  g  |  h  |  i  |  j  
+---+----+----+----+----+----+-----+-----+-----+-----
+ 0 | 17 | 34 | 51 | 68 | 85 | 102 | 119 | 136 | 153
+(1 row)
+
+SELECT * FROM cypher('scan', $$
+RETURN 0XAa, 0XBb, 0XCc, 0XDd, 0XEe, 0xFf
+$$) AS t(a agtype, b agtype, c agtype, d agtype, e agtype, f agtype);
+  a  |  b  |  c  |  d  |  e  |  f  
+-----+-----+-----+-----+-----+-----
+ 170 | 187 | 204 | 221 | 238 | 255
+(1 row)
+
+-- 2^31 - 1, 2^31
+SELECT * FROM cypher('scan', $$
+RETURN 0x00000000, 0x7FFFFFFF, 0x080000000
+$$) AS t(a agtype, b agtype, c agtype);
+ a |     b      |     c      
+---+------------+------------
+ 0 | 2147483647 | 2147483648
+(1 row)
+
+-- 10^18, 2^64 - 1
+SELECT * FROM cypher('scan', $$
+RETURN 0xde0b6b3a7640000, 0xffffffffffffffff
+$$) AS t(a agtype, b agtype);
+          a          |          b           
+---------------------+----------------------
+ 1000000000000000000 | 1.84467440737096e+19
+(1 row)
+
+-- an invalid character after reading valid digits
+SELECT * FROM cypher('scan', $$
+RETURN 0xF~
+$$) AS t(a int);
+ERROR:  syntax error at end of input
+LINE 3: $$) AS t(a int);
+        ^
+-- an invalid character after the leading "0x"
+SELECT * FROM cypher('scan', $$
+RETURN 0x~
+$$) AS t(a int);
+ERROR:  invalid hexadecimal integer literal at or near "0x"
+LINE 2: RETURN 0x~
+               ^
+-- "0x" followed by nothing
+SELECT * FROM cypher('scan', $$
+RETURN 0x
+$$) AS t(a int);
+ERROR:  invalid hexadecimal integer literal at or near "0x"
+LINE 2: RETURN 0x
+               ^
+--
+-- decimal
+--
+SELECT * FROM cypher('scan', $$
+RETURN 03., 3.141592, .141592
+$$) AS t(a agtype, b agtype, c agtype);
+  a  |    b     |    c     
+-----+----------+----------
+ 3.0 | 3.141592 | 0.141592
+(1 row)
+
+-- "0" and ".."
+SELECT * FROM cypher('scan', $$
+RETURN 0..
+$$) AS t(a text, b text, c text);
+ERROR:  syntax error at or near ".."
+LINE 2: RETURN 0..
+                ^
+--
+-- scientific notation
+--
+SELECT * FROM cypher('scan', $$
+RETURN 3141592e-6, 3.141592E0, .3141592e+1
+$$) AS t(a agtype, b agtype, c agtype);
+    a     |    b     |    c     
+----------+----------+----------
+ 3.141592 | 3.141592 | 3.141592
+(1 row)
+
+-- invalid exponent parts
+SELECT * FROM cypher('scan', $$
+RETURN 3141592e-
+$$) AS t(a text);
+ERROR:  invalid scientific notation literal at or near "3141592e-"
+LINE 2: RETURN 3141592e-
+               ^
+SELECT * FROM cypher('scan', $$
+RETURN 3.141592E
+$$) AS t(a text);
+ERROR:  invalid scientific notation literal at or near "3.141592E"
+LINE 2: RETURN 3.141592E
+               ^
+SELECT * FROM cypher('scan', $$
+RETURN .3141592e+
+$$) AS t(a text);
+ERROR:  invalid scientific notation literal at or near ".3141592e+"
+LINE 2: RETURN .3141592e+
+               ^
+--
+-- quoted string
+--
+-- a long string
+SELECT * FROM cypher('scan', $$
+RETURN " !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+$$) AS t(a agtype);
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ " !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+(1 row)
+
+-- escape sequences
+SELECT * FROM cypher('scan', $$
+RETURN " \" \" ' \' ", ' \' \' " \" ', " / \/ \\ \b \f \n \r \t "
+$$) AS t(a agtype, b agtype, c agtype);
+       a       |       b       |             c             
+---------------+---------------+---------------------------
+ " \" \" ' ' " | " ' ' \" \" " | " / / \\ \b \f \n \r \t "
+(1 row)
+
+-- invalid escape sequence
+SELECT * FROM cypher('scan', $$
+RETURN "\a"
+$$) AS t(a text);
+ERROR:  invalid escape sequence at or near "\a"
+LINE 2: RETURN "\a"
+                ^
+DETAIL:  Valid escape sequences are \", \', \/, \\, \b, \f, \n, \r, \t, \uXXXX, and \UXXXXXXXX.
+-- Unicode escape sequences
+SELECT * FROM cypher('scan', $$
+RETURN "\u03A9 (GREEK CAPITAL LETTER OMEGA, U+03A9, Ω)",
+       "\U0001d6e9 (MATHEMATICAL ITALIC CAPITAL THETA, U+1D6E9, 𝛩)",
+       "\ud835\U0000DEF0 (MATHEMATICAL ITALIC CAPITAL OMICRON, U+1D6F0, 𝛰)",
+       "\u002E (FULL STOP, U+002E, .)"
+$$) AS t(a agtype, b agtype, c agtype, d agtype);
+                      a                      |                          b                          |                           c                           |             d              
+---------------------------------------------+-----------------------------------------------------+-------------------------------------------------------+----------------------------
+ "Ω (GREEK CAPITAL LETTER OMEGA, U+03A9, Ω)" | "𝛩 (MATHEMATICAL ITALIC CAPITAL THETA, U+1D6E9, 𝛩)" | "𝛰 (MATHEMATICAL ITALIC CAPITAL OMICRON, U+1D6F0, 𝛰)" | ". (FULL STOP, U+002E, .)"
+(1 row)
+
+-- invalid Unicode surrogate pair (need a low surrogate)
+SELECT * FROM cypher('scan', $$
+RETURN "\uD835"
+$$) AS t(a text);
+ERROR:  invalid Unicode surrogate pair at or near """
+LINE 2: RETURN "\uD835"
+                      ^
+DETAIL:  A low surrogate must follow a high surrogate.
+-- invalid Unicode surrogate pair (not a low surrogate)
+SELECT * FROM cypher('scan', $$
+RETURN "\uD835\u002E"
+$$) AS t(a text);
+ERROR:  invalid Unicode surrogate pair at or near "\u002E"
+LINE 2: RETURN "\uD835\u002E"
+                      ^
+DETAIL:  A low surrogate must follow a high surrogate.
+-- invalid Unicode surrogate pair (need a high surrogate)
+SELECT * FROM cypher('scan', $$
+RETURN "\uDEF0"
+$$) AS t(a text);
+ERROR:  invalid Unicode surrogate pair at or near "\uDEF0"
+LINE 2: RETURN "\uDEF0"
+                ^
+DETAIL:  A low surrogate must follow a high surrogate.
+-- invalid Unicode escape value (must be less than or equal to 10FFFF)
+SELECT * FROM cypher('scan', $$
+RETURN "\U00110000"
+$$) AS t(a text);
+ERROR:  invalid Unicode escape value at or near "\U00110000"
+LINE 2: RETURN "\U00110000"
+                ^
+DETAIL:  Unicode escape values cannot be greater than 10FFFF, which is the maximum value of a code point.
+-- unsupported Unicode escape value ('\0' is not allowed)
+SELECT * FROM cypher('scan', $$
+RETURN "\u0000"
+$$) AS t(a text);
+ERROR:  unsupported Unicode escape value at or near "\u0000"
+LINE 2: RETURN "\u0000"
+                ^
+DETAIL:  Unicode code point value 0000 is not allowed in quoted strings.
+-- unsupported Unicode escape value (the server encoding is not UTF8)
+CREATE DATABASE contrib_regression_age_euc_kr
+  TEMPLATE template0
+  ENCODING EUC_KR
+  LC_COLLATE 'C' LC_CTYPE 'C';
+\c contrib_regression_age_euc_kr
+CREATE EXTENSION age;
+LOAD 'age';
+SET search_path TO ag_catalog;
+SELECT create_graph('scan');
+NOTICE:  graph "scan" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('scan', $$
+RETURN "\U0001D706"
+$$) AS t(a text);
+ERROR:  unsupported Unicode escape value at or near "\U0001D706"
+LINE 2: RETURN "\U0001D706"
+                ^
+DETAIL:  Unicode escape values cannot be used for code point values above 007F when the server encoding is not UTF8.
+SELECT drop_graph('scan', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table scan._ag_label_vertex
+drop cascades to table scan._ag_label_edge
+NOTICE:  graph "scan" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+\c contrib_regression
+DROP DATABASE contrib_regression_age_euc_kr;
+LOAD 'age';
+SET search_path TO ag_catalog;
+-- invalid Unicode escape sequence (must be \uXXXX or \UXXXXXXXX)
+SELECT * FROM cypher('scan', $$
+RETURN "\UD835"
+$$) AS t(a text);
+ERROR:  invalid Unicode escape sequence at or near "\UD835"
+LINE 2: RETURN "\UD835"
+                ^
+HINT:  Unicode escape sequences must be \uXXXX or \UXXXXXXXX.
+SELECT * FROM cypher('scan', $$
+RETURN "\uD835\uDEF"
+$$) AS t(a text);
+ERROR:  invalid Unicode escape sequence at or near "\uDEF"
+LINE 2: RETURN "\uD835\uDEF"
+                      ^
+HINT:  Unicode escape sequences must be \uXXXX or \UXXXXXXXX.
+-- unterminated quoted strings
+SELECT * FROM cypher('scan', $$RETURN "unterminated quoted string$$) AS t(a text);
+ERROR:  unterminated quoted string at or near ""unterminated quoted string"
+LINE 1: SELECT * FROM cypher('scan', $$RETURN "unterminated quoted s...
+                                              ^
+-- recover syntax highlighting "
+SELECT * FROM cypher('scan', $$RETURN 'unterminated quoted string$$) AS t(a text);
+ERROR:  unterminated quoted string at or near "'unterminated quoted string"
+LINE 1: SELECT * FROM cypher('scan', $$RETURN 'unterminated quoted s...
+                                              ^
+-- recover syntax highlighting '
+SELECT * FROM cypher('scan', $$RETURN "escape \$$) AS t(a text);
+ERROR:  unterminated quoted string at or near ""escape \"
+LINE 1: SELECT * FROM cypher('scan', $$RETURN "escape \$$) AS t(a te...
+                                              ^
+-- recover syntax highlighting "
+SELECT * FROM cypher('scan', $$RETURN "high surrogate \uD835$$) AS t(a text);
+ERROR:  unterminated quoted string at or near ""high surrogate \uD835"
+LINE 1: SELECT * FROM cypher('scan', $$RETURN "high surrogate \uD835...
+                                              ^
+-- recover syntax highlighting "
+--
+-- identifier
+--
+-- check that they are accepted as identifier (all tests throw an error)
+SELECT * FROM cypher('scan', $$
+RETURN _$09A_z
+$$) AS t(id text);
+ERROR:  could not find rte for _$09A_z
+LINE 2: RETURN _$09A_z
+               ^
+SELECT * FROM cypher('scan', $$
+RETURN A
+$$) AS t(id text);
+ERROR:  could not find rte for A
+LINE 2: RETURN A
+               ^
+SELECT * FROM cypher('scan', $$
+RETURN z
+$$) AS t(id text);
+ERROR:  could not find rte for z
+LINE 2: RETURN z
+               ^
+SELECT * FROM cypher('scan', $$
+RETURN `$`
+$$) AS t(id text);
+ERROR:  could not find rte for $
+LINE 2: RETURN `$`
+               ^
+SELECT * FROM cypher('scan', $$
+RETURN `0`
+$$) AS t(id text);
+ERROR:  could not find rte for 0
+LINE 2: RETURN `0`
+               ^
+SELECT * FROM cypher('scan', $$
+RETURN ````
+$$) AS t(id text);
+ERROR:  could not find rte for `
+LINE 2: RETURN ````
+               ^
+-- zero-length quoted identifier
+SELECT * FROM cypher('scan', $$
+RETURN ``
+$$) AS t(a text);
+ERROR:  zero-length quoted identifier at or near "``"
+LINE 2: RETURN ``
+               ^
+SELECT * FROM cypher('scan', $$
+RETURN `unterminated quoted identifier
+$$) AS t(a text);
+ERROR:  unterminated quoted identifier at or near "`unterminated quoted identifier
+"
+LINE 2: RETURN `unterminated quoted identifier
+               ^
+-- recover syntax highlighting `
+--
+-- parameter
+--
+-- invalid parameter names
+SELECT * FROM cypher('scan', $cypher$
+RETURN $$
+$cypher$) AS t(a text);
+ERROR:  unexpected character at or near "$"
+LINE 2: RETURN $$
+               ^
+SELECT * FROM cypher('scan', $$
+RETURN $0
+$$) AS t(a text);
+ERROR:  unexpected character at or near "$"
+LINE 2: RETURN $0
+               ^
+SELECT drop_graph('scan', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table scan._ag_label_vertex
+drop cascades to table scan._ag_label_edge
+NOTICE:  graph "scan" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+

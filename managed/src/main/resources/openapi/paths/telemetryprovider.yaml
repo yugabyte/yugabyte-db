@@ -1,0 +1,50 @@
+'/customers/{cUUID}/telemetry-provider/types':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: exportType
+      in: query
+      description: Filter by export type (logs or metrics)
+      schema:
+        type: string
+        enum:
+          - logs
+          - metrics
+      required: false
+  get:
+    operationId: listTelemetryProviderTypes
+    summary: List Available Telemetry Provider Types
+    description: Get list of all available telemetry provider types with their capabilities
+    tags:
+      - Telemetry Provider
+    responses:
+      '200':
+        description: successful operation
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "../components/schemas/TelemetryProviderTypeInfo.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview

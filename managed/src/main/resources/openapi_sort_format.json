@@ -1,0 +1,191 @@
+{
+  "root": [
+    "openapi",
+    "info",
+    "servers",
+    "tags",
+    "paths",
+    "components"
+  ],
+  "info": [
+    "title",
+    "description",
+    "termsOfService",
+    "contact",
+    "license",
+    "version"
+  ],
+  "contact": [
+    "name",
+    "url",
+    "email"
+  ],
+  "license": [
+    "name",
+    "url"
+  ],
+  "servers": [
+    "description",
+    "url",
+    "variables"
+  ],
+  "variabes": [
+    "host_port",
+    "protocol"
+  ],
+  "protocol": [
+    "enum",
+    "default"
+  ],
+  "get": [
+    "operationId",
+    "x-public-api",
+    "title",
+    "summary",
+    "description",
+    "tags",
+    "x-public-api-tag",
+    "x-resource-type",
+    "x-operation-group",
+    "parameters",
+    "requestBody",
+    "responses"
+  ],
+  "post": [
+    "operationId",
+    "x-public-api",
+    "title",
+    "summary",
+    "description",
+    "tags",
+    "x-public-api-tag",
+    "x-resource-type",
+    "x-operation-group",
+    "parameters",
+    "requestBody",
+    "responses"
+  ],
+  "put": [
+    "operationId",
+    "x-public-api",
+    "title",
+    "summary",
+    "description",
+    "tags",
+    "x-public-api-tag",
+    "x-resource-type",
+    "x-operation-group",
+    "parameters",
+    "requestBody",
+    "responses"
+  ],
+  "patch": [
+    "operationId",
+    "x-public-api",
+    "title",
+    "summary",
+    "description",
+    "tags",
+    "x-public-api-tag",
+    "x-resource-type",
+    "x-operation-group",
+    "parameters",
+    "requestBody",
+    "responses"
+  ],
+  "delete": [
+    "operationId",
+    "x-public-api",
+    "title",
+    "summary",
+    "description",
+    "tags",
+    "x-public-api-tag",
+    "x-resource-type",
+    "x-operation-group",
+    "parameters",
+    "requestBody",
+    "responses"
+  ],
+  "parameters": [
+    "name",
+    "in",
+    "summary",
+    "description",
+    "schema",
+    "explode",
+    "style",
+    "example",
+    "default",
+    "required"
+  ],
+  "requestBody": [
+    "title",
+    "summary",
+    "description",
+    "type",
+    "headers",
+    "content",
+    "required",
+    "links"
+  ],
+  "responses": [
+    "title",
+    "summary",
+    "description",
+    "type",
+    "headers",
+    "content",
+    "required",
+    "links"
+  ],
+  "content": [],
+  "components": [
+    "parameters",
+    "schemas"
+  ],
+  "schema": [
+    "title",
+    "summary",
+    "description",
+    "type",
+    "x-json-ignore-unknown-properties",
+    "x-json-ignore-null-properties",
+    "items",
+    "properties",
+    "format",
+    "explode",
+    "style",
+    "minimum",
+    "maximum",
+    "minLength",
+    "maxLength",
+    "example",
+    "default",
+    "required"
+  ],
+  "schemas": [
+    "title",
+    "summary",
+    "description",
+    "type",
+    "items",
+    "properties",
+    "format",
+    "example",
+    "default",
+    "required"
+  ],
+  "properties": [
+    "title",
+    "summary",
+    "description",
+    "type",
+    "items",
+    "format",
+    "example",
+    "default",
+    "enum",
+    "required"
+  ]
+}

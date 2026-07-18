@@ -1,0 +1,25 @@
+@use '../../_style/colors.scss';
+
+.label {
+  i {
+    margin-right: 5px;
+  }
+
+  &.running {
+    color: colors.$YB_SUCCESS_COLOR;
+  }
+
+  &.paused {
+    color: colors.$YB_WARNING_COLOR;
+  }
+
+  &.inProgress {
+    color: colors.$YB_VIOLET_TEXT;
+  }
+
+  &.deleted,
+  &.deletionFailed,
+  &.failed {
+    color: colors.$YB_FAIL_COLOR;
+  }
+}

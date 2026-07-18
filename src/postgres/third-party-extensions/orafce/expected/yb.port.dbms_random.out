@@ -1,0 +1,129 @@
+-- Tests for package DBMS_RANDOM
+SELECT dbms_random.initialize(8);
+ initialize 
+------------
+ 
+(1 row)
+
+SELECT dbms_random.normal()::numeric(10, 8);
+   normal    
+-------------
+ -0.37787769
+(1 row)
+
+SELECT dbms_random.normal()::numeric(10, 8);
+   normal   
+------------
+ 0.80499804
+(1 row)
+
+SELECT dbms_random.seed(8);
+ seed 
+------
+ 
+(1 row)
+
+SELECT dbms_random.random();
+   random   
+------------
+ -632387854
+(1 row)
+
+SELECT dbms_random.seed('test');
+ seed 
+------
+ 
+(1 row)
+
+SELECT dbms_random.string('U',5);
+ string 
+--------
+ XEJGE
+(1 row)
+
+SELECT dbms_random.string('P',2);
+ string 
+--------
+ Y9
+(1 row)
+
+SELECT dbms_random.string('x',4);
+ string 
+--------
+ FVGL
+(1 row)
+
+SELECT dbms_random.string('a',2);
+ string 
+--------
+ AZ
+(1 row)
+
+SELECT dbms_random.string('l',3);
+ string 
+--------
+ hmo
+(1 row)
+
+SELECT dbms_random.seed(5);
+ seed 
+------
+ 
+(1 row)
+
+SELECT dbms_random.value()::numeric(10, 8);
+   value    
+------------
+ 0.27474560
+(1 row)
+
+SELECT dbms_random.value(10,15)::numeric(10, 8);
+    value    
+-------------
+ 10.23233882
+(1 row)
+
+SELECT dbms_random.terminate();
+ terminate 
+-----------
+ 
+(1 row)
+
+SELECT dbms_random.string('u', 10);
+   string   
+------------
+ ZCDCHLMXAH
+(1 row)
+
+SELECT dbms_random.string('l', 10);
+   string   
+------------
+ zfkgjhkghl
+(1 row)
+
+SELECT dbms_random.string('a', 10);
+   string   
+------------
+ xodQYutYyH
+(1 row)
+
+SELECT dbms_random.string('x', 10);
+   string   
+------------
+ 0GQ5J0M1WM
+(1 row)
+
+SELECT dbms_random.string('p', 10);
+   string   
+------------
+ hX"|=i1&/h
+(1 row)
+
+SELECT dbms_random.string('uu', 10); -- error
+ERROR:  this first parameter value is more than 1 characters long
+SELECT dbms_random.string('w', 10);
+   string   
+------------
+ AXPCTOMDNY
+(1 row)
+

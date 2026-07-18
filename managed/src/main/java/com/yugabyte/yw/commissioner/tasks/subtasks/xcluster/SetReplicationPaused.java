@@ -1,0 +1,107 @@
+package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
+
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.services.config.YbClientConfig;
+import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
+import com.yugabyte.yw.forms.XClusterConfigTaskParams;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
+import java.time.Duration;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import org.yb.client.SetUniverseReplicationEnabledResponse;
+import org.yb.client.YBClient;
+
+@Slf4j
+public class SetReplicationPaused extends XClusterConfigTaskBase {
+
+  private final RuntimeConfGetter confGetter;
+  private final YbClientConfigFactory ybClientConfigFactory;
+
+  @Inject
+  protected SetReplicationPaused(
+      BaseTaskDependencies baseTaskDependencies,
+      XClusterUniverseService xClusterUniverseService,
+      RuntimeConfGetter confGetter,
+      YbClientConfigFactory ybClientConfigFactory) {
+    super(baseTaskDependencies, xClusterUniverseService);
+    this.confGetter = confGetter;
+    this.ybClientConfigFactory = ybClientConfigFactory;
+  }
+
+  public static class Params extends XClusterConfigTaskParams {
+    // The target universe UUID must be stored in universeUUID field.
+    // The parent xCluster config must be stored in xClusterConfig field.
+    // Whether the replication should be paused.
+    public boolean pause;
+  }
+
+  @Override
+  protected Params taskParams() {
+    return (Params) taskParams;
+  }
+
+  @Override
+  public String getName() {
+    return String.format(
+        "%s(xClusterConfig=%s,pause=%b)",
+        super.getName(), taskParams().getXClusterConfig(), taskParams().pause);
+  }
+
+  @Override
+  public void run() {
+    log.info("Running {}", getName());
+
+    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
+
+    // If the config is already in the requested status, then return.
+    if (xClusterConfig.isPaused() == taskParams().pause) {
+      if (xClusterConfig.isPaused()) {
+        log.warn("XClusterConfig {} is already paused", xClusterConfig);
+      } else {
+        log.warn("XClusterConfig {} is already enabled", xClusterConfig);
+      }
+      return;
+    }
+
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    Duration pauseRpcTimeout =
+        confGetter.getConfForScope(targetUniverse, UniverseConfKeys.xclusterPauseRpcTimeout);
+
+    YbClientConfig clientConfig =
+        this.ybClientConfigFactory.create(
+            targetUniverse.getMasterAddresses(),
+            targetUniverse.getCertificateNodetoNode(),
+            pauseRpcTimeout.toMillis(),
+            pauseRpcTimeout.toMillis(),
+            pauseRpcTimeout.toMillis());
+    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
+      SetUniverseReplicationEnabledResponse resp =
+          client.setUniverseReplicationEnabled(
+              xClusterConfig.getReplicationGroupName(), !taskParams().pause /* active */);
+      if (resp.hasError()) {
+        throw new RuntimeException(
+            String.format(
+                "Failed to pause/enable XClusterConfig(%s): %s",
+                xClusterConfig, resp.errorMessage()));
+      }
+
+      if (HighAvailabilityConfig.get().isPresent()) {
+        getUniverse().incrementVersion();
+      }
+
+      // Save the pause state in the DB.
+      xClusterConfig.updatePaused(taskParams().pause);
+    } catch (Exception e) {
+      log.error("{} hit error : {}", getName(), e.getMessage());
+      throw new RuntimeException(e);
+    }
+
+    log.info("Completed {}", getName());
+  }
+}

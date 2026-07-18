@@ -1,0 +1,9 @@
+# src/test/regress/yb_misc_serial4_schedule
+#
+####################################################################################################
+# See comments in src/test/regress/yb_misc_serial_schedule.
+####################################################################################################
+test: yb.orig.explicit_row_lock_planning
+test: yb.orig.explicit_row_lock_batching
+test: yb.port.fast_default
+test: yb.orig.with

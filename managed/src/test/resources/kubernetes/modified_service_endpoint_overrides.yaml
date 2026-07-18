@@ -1,0 +1,24 @@
+serviceEndpoints:
+  - name: "yb-master-service-new"
+    type: LoadBalancer
+    ## Sets the Service's externalTrafficPolicy
+    # externalTrafficPolicy: ""
+    app: "yb-master"
+    # loadBalancerIP: ""
+    annotations:
+      networking.gke.io/load-balancer-type: "Internal"
+    ports:
+      http-ui: "7000"
+
+  - name: "yb-tserver-service"
+    type: LoadBalancer
+    ## Sets the Service's externalTrafficPolicy
+    # externalTrafficPolicy: ""
+    app: "yb-tserver"
+    annotations:
+      networking.gke.io/load-balancer-type: "Internal"
+    # loadBalancerIP: ""
+    ports:
+      tcp-yql-port: "9042"
+      tcp-yedis-port: "6379"
+      tcp-ysql-port: "5433"

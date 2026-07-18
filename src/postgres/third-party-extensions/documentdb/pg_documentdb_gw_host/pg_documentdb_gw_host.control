@@ -1,0 +1,7 @@
+comment = 'pg_documentdb_gw_host:  Created by pgrx'
+default_version = '@CARGO_VERSION@'
+module_pathname = '$libdir/pg_documentdb_gw_host'
+relocatable = false
+superuser = true
+trusted = false
+requires = 'documentdb'

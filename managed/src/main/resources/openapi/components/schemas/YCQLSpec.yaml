@@ -1,0 +1,18 @@
+title: YCQLSpec
+description: YCQL Spec for the Universe. Part of UniverseSpec.
+type: object
+properties:
+  enable:
+    description: Whether to enable YCQL API on this Universe
+    type: boolean
+    example: true
+  enable_auth:
+    description: Whether to enable authentication to access YCQL on this Universe
+    type: boolean
+    example: false
+  password:
+    description: Password to set for the YCQL database in this universe. Required if enable_auth is true.
+    type: string
+    format: password
+    example: password
+    writeOnly: true

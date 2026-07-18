@@ -1,0 +1,10 @@
+title: UniverseRollbackUpgrade
+description: |
+  UniverseRollbackUpgrade
+
+  Payload to rollback a YugabyteDB software upgrade on a Universe. Part of 
+  UniverseRollbackUpgradeReq
+type: object
+allOf:
+  - $ref: "./SleepAfterRestartSchema.yaml"
+  - $ref: "./UniverseUpgradeOptionRolling.yaml"

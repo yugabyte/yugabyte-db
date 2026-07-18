@@ -1,0 +1,8 @@
+{{ $suffix := "" }}
+{{ $numpanels := .Page.Scratch.Get "numpanels" }}
+{{ if $numpanels }}{{ $suffix = printf "-%d" $numpanels }}{{ end }}
+{{ $name := printf "%s%s" (.Get "name") $suffix }}
+{{ $active := .Get "active" }}
+<div id="{{$name}}" class="tab-pane fade {{if $active}}show active{{end}}" role="tabpanel" aria-labelledby="{{$name}}-tab">
+    {{.Inner | .Page.RenderString}}
+</div>

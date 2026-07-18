@@ -1,0 +1,29 @@
+@use "../../../_style/colors.scss";
+
+.emptyListContainer {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 250px;
+  background: rgba(229, 229, 233, 0.2);
+  border: 1px dashed rgba(103, 102, 108, 0.5);
+  border-radius: 8px;
+  justify-content: center;
+  gap: 18px;
+  font-family: 'Inter';
+  font-style: normal;
+  position: relative;
+
+  .subText {
+    color: colors.$YB_DARKER_GRAY;
+    font-weight: 400;
+    font-size: 14px;
+    line-height: 17px;
+  }
+
+  .emptyIcon {
+    color: colors.$YB_GRAY_2;
+    font-size: 38px;
+  }
+}

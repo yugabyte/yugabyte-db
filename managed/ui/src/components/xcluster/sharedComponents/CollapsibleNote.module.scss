@@ -1,0 +1,14 @@
+@use '../../../_style/colors.scss';
+
+.toggleNoteDetailsBtn {
+  background: none;
+  border: none;
+  padding: 0;
+
+  color: colors.$YB_ORANGE;
+  cursor: pointer;
+  text-decoration: underline;
+  &:hover {
+    color: colors.$YB_ORANGE_HOVER;
+  }
+}

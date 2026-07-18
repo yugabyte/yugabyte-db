@@ -1,0 +1,283 @@
+# LANGUAGE message translation file for pg_hint_plan hint table.
+# Copyright (C) 2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# This file is distributed under the same license as the pg_hint_plan
+# package.
+# Julien Rouhaud <rjuju123@gmail.com>, 2023.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: pg_hint_plan \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2023-03-14 16:08+0800\n"
+"PO-Revision-Date: 2023-03-14 16:08+0800\n"
+"Last-Translator: Julien Rouhaud <rjuju123@gmail.com>\n"
+"Language: ja\n"
+"Language-Team: ja <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.12.1\n"
+
+#: ../../hint_table.md:1 e9bd87ccaaad4c87b89cb91f33eafe74
+msgid "The hint table"
+msgstr ""
+
+#: ../../hint_table.md:3 56cb505493fa4d2eb87596f757bdbd0e
+msgid ""
+"Hints are described in a comment in a special form in the above section. "
+"This is inconvenient in the case where queries cannot be edited. In the "
+"case hints can be placed in a special table named `\"hint_plan.hints\"`. "
+"The table consists of the following columns."
+msgstr ""
+
+#: ../../hint_table.md 47f5314c61ca4ccfb18e063348d8ca0b
+msgid "column"
+msgstr ""
+
+#: ../../hint_table.md c523ff6c6a464274ad8ba1ad73cb71db
+msgid "description"
+msgstr ""
+
+#: ../../hint_table.md 8a87ad5169c94db39779764ab52c4cc4
+msgid "`id`"
+msgstr ""
+
+#: ../../hint_table.md bb5e21f7db3c443aa4392bd1ce755725
+msgid ""
+"Unique number to identify a row for a hint. This column is filled "
+"automatically by sequence."
+msgstr ""
+
+#: ../../hint_table.md 356c35b65500411585ff6bbf6761708d
+msgid "`norm_query_string`"
+msgstr ""
+
+#: ../../hint_table.md 32023fbb62a24a5caf031d27be37fb2a
+msgid ""
+"A pattern matches to the query to be hinted. Constants in the query have "
+"to be replace with '?' as in the following example. White space is "
+"significant in the pattern."
+msgstr ""
+
+#: ../../hint_table.md ecbe40b673a241e09aea289c6383fe30
+msgid "`application_name`"
+msgstr ""
+
+#: ../../hint_table.md 4f3be23ae974454a916efe819ab57da4
+msgid ""
+"The value of `application_name` of sessions to apply the hint. The hint "
+"in the example below applies to sessions connected from psql. An empty "
+"string means sessions of any `application_name`."
+msgstr ""
+
+#: ../../hint_table.md cc54ed51ebcc4b0996ca248bb8a52d63
+msgid "`hints`"
+msgstr ""
+
+#: ../../hint_table.md 69352180897747fb832c66f9b5c72db4
+msgid ""
+"Hint phrase. This must be a series of hints excluding surrounding comment"
+" marks."
+msgstr ""
+
+#: ../../hint_table.md:15 3f0c3aa5d52d459d8d133a050fdf6bc0
+msgid "The following example shows how to operate with the hint table."
+msgstr ""
+
+#: ../../hint_table.md:35 af859f74cba346fe81a01734bb743c24
+msgid ""
+"The hint table is owned by the creator user and having the default "
+"privileges at the time of creation. during `CREATE EXTENSION`. Table "
+"hints are prioritized over comment hits."
+msgstr ""
+
+#: ../../hint_table.md:39 ed44da575203402090eb71f66adada8a
+msgid "The types of hints"
+msgstr ""
+
+#: ../../hint_table.md:41 5ff0cd9946d74498bd09c77da259a4f4
+msgid ""
+"Hinting phrases are classified into six types based on what kind of "
+"object and how they can affect planning. Scanning methods, join methods, "
+"joining order, row number correction, parallel query, and GUC setting. "
+"You will see the lists of hint phrases of each type in [Hint list"
+"](#hint-list)."
+msgstr ""
+
+#: ../../hint_table.md:46 abe60e6b179e4a5c9da16bd602e3aa48
+msgid "Hints for scan methods"
+msgstr ""
+
+#: ../../hint_table.md:48 3f21359dd85647739f4e17eb538d7ae3
+msgid ""
+"Scan method hints enforce specific scanning method on the target table. "
+"`pg_hint_plan` recognizes the target table by alias names if any. They "
+"are `SeqScan`, `IndexScan` and so on in this kind of hint."
+msgstr ""
+
+#: ../../hint_table.md:52 c5fd1ba9148a4ccba3b791820f993afb
+msgid ""
+"Scan hints are effective on ordinary tables, inheritance tables, UNLOGGED"
+" tables, temporary tables and system catalogs. External (foreign) tables,"
+" table functions, VALUES clause, CTEs, views and subquiries are not "
+"affected."
+msgstr ""
+
+#: ../../hint_table.md:64 81fb62fcc55a48aab1cb64347f120c40
+msgid "Hints for join methods"
+msgstr ""
+
+#: ../../hint_table.md:66 dceb8dbc1572443d8d34091a85b4e2d8
+msgid ""
+"Join method hints enforce the join methods of the joins involving "
+"specified tables."
+msgstr ""
+
+#: ../../hint_table.md:69 9636a051eed744caa81b88bf2ca21a00
+msgid ""
+"This can affect on joins only on ordinary tables, inheritance tables, "
+"UNLOGGED tables, temporary tables, external (foreign) tables, system "
+"catalogs, table functions, VALUES command results and CTEs are allowed to"
+" be in the parameter list. But joins on views and sub query are not "
+"affected."
+msgstr ""
+
+#: ../../hint_table.md:74 91099794452543b8a51479957fd9b03a
+msgid "Hint for joining order"
+msgstr ""
+
+#: ../../hint_table.md:76 f4d41890bc4a4ef7a0e80271ef7feda1
+msgid ""
+"This hint \"Leading\" enforces the order of join on two or more tables. "
+"There are two ways of enforcing. One is enforcing specific order of "
+"joining but not restricting direction at each join level. Another enfoces"
+" join direction additionaly. Details are seen in the [hint list](#hint-"
+"list) table."
+msgstr ""
+
+#: ../../hint_table.md:92 ffefc340864e46b59172414ec6d6abf2
+msgid "Hint for row number correction"
+msgstr ""
+
+#: ../../hint_table.md:94 3a0dc69c2edb43cd93c4b79836a12331
+msgid ""
+"This hint \"Rows\" corrects row number misestimation of joins that comes "
+"from restrictions of the planner."
+msgstr ""
+
+#: ../../hint_table.md:104 ddb7afa218c74266876ec6b14ad9eef8
+msgid "Hint for parallel plan"
+msgstr ""
+
+#: ../../hint_table.md:106 ee9a2c67237941b6ad65f47b96aef86a
+msgid ""
+"This hint `Parallel` enforces parallel execution configuration on scans. "
+"The third parameter specifies the strength of enfocement. `soft` means "
+"that `pg_hint_plan` only changes `max_parallel_worker_per_gather` and "
+"leave all others to planner. `hard` changes other planner parameters so "
+"as to forcibly apply the number. This can affect on ordinary tables, "
+"inheritnce parents, unlogged tables and system catalogues. External "
+"tables, table functions, values clause, CTEs, views and subqueries are "
+"not affected. Internal tables of a view can be specified by its real "
+"name/alias as the target object. The following example shows that the "
+"query is enforced differently on each table."
+msgstr ""
+
+#: ../../hint_table.md:141 9f74aa63834c4770bf33ea36cfe90913
+msgid "GUC parameters temporarily setting"
+msgstr ""
+
+#: ../../hint_table.md:143 edf0d063835e40829b73f4d803fc19f7
+msgid ""
+"`Set` hint changes GUC parameters just while planning. GUC parameter "
+"shown in [Query Planning](http://www.postgresql.org/docs/current/static"
+"/runtime-config-query.html) can have the expected effects on planning "
+"unless any other hint conflicts with the planner method configuration "
+"parameters. The last one among hints on the same GUC parameter makes "
+"effect. [GUC parameters for `pg_hint_plan`](#guc-parameters-for-"
+"pg_hint_plan) are also settable by this hint but it won't work as your "
+"expectation. See [Restrictions](#restrictions) for details."
+msgstr ""
+
+#: ../../hint_table.md:159 ebab310c13b04f8db2235606bec55356
+msgid "GUC parameters for `pg_hint_plan`"
+msgstr ""
+
+#: ../../hint_table.md:161 71beae94ac3143d69730522153c55052
+msgid "GUC parameters below affect the behavior of `pg_hint_plan`."
+msgstr ""
+
+#: ../../hint_table.md 32504cf638474ba6a4911316916503b7
+msgid "Parameter name"
+msgstr ""
+
+#: ../../hint_table.md 531fff3cdb394dc2a32e0f3d69a7eab6
+msgid "Description"
+msgstr ""
+
+#: ../../hint_table.md 3d85242e7ccc4758b43deddf4a7917cf
+msgid "Default"
+msgstr ""
+
+#: ../../hint_table.md 95581f5ced9c4e46b955f864c3c760fa
+msgid "`pg_hint_plan.enable_hint`"
+msgstr ""
+
+#: ../../hint_table.md 557a8961c3dc4edfbb7299105b5347b7
+msgid "True enbles `pg_hint_plan`."
+msgstr ""
+
+#: ../../hint_table.md f978b8e14e0540d499e128c266630325
+msgid "`on`"
+msgstr ""
+
+#: ../../hint_table.md 96d2840461e34a999bad91b650fcad6a
+msgid "`pg_hint_plan.enable_hint_table`"
+msgstr ""
+
+#: ../../hint_table.md e6ad001870b3430486807c718a5c410b
+msgid "True enbles hinting by table. `true` or `false`."
+msgstr ""
+
+#: ../../hint_table.md 9b57791704014207a7de2671ff1d7418
+#: 9d74d152556a4f40bdcae19ee6ac99f3
+msgid "`off`"
+msgstr ""
+
+#: ../../hint_table.md 9784cb20c5104ccb9e8b8453b6157b3a
+msgid "`pg_hint_plan.parse_messages`"
+msgstr ""
+
+#: ../../hint_table.md 2c98fb732746480b81b42cb9ca7da343
+msgid ""
+"Specifies the log level of hint parse error. Valid values are `error`, "
+"`warning`, `notice`, `info`, `log`, `debug`."
+msgstr ""
+
+#: ../../hint_table.md a1e054d2398b4fabbe2625b3bb9f5e94
+#: ff7833376b5f47fa95cfcae582458e3a
+msgid "`INFO`"
+msgstr ""
+
+#: ../../hint_table.md 36111eaf8aa64a5a8b37ed88e4291755
+msgid "`pg_hint_plan.debug_print`"
+msgstr ""
+
+#: ../../hint_table.md 4f46578227454c79ad13597355c4a2c2
+msgid ""
+"Controls debug print and verbosity. Valid vaiues are `off`, `on`, "
+"`detailed` and `verbose`."
+msgstr ""
+
+#: ../../hint_table.md c30b38250761426caf7d34a034162c0c
+msgid "`pg_hint_plan.message_level`"
+msgstr ""
+
+#: ../../hint_table.md 03ab1b72d9174039befc26b46313aaf3
+msgid ""
+"Specifies message level of debug print. Valid values are `error`, "
+"`warning`, `notice`, `info`, `log`, `debug`."
+msgstr ""
+

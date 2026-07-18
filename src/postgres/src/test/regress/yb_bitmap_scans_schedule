@@ -1,0 +1,11 @@
+# src/test/regress/yb_bitmap_scans_schedule
+#
+####################################################################################################
+# Bitmap Scans for YB Relations (Bitmap Index Scan + YB Bitmap Table Scan).
+####################################################################################################
+test: yb.orig.bitmap_scans_flags
+test: yb.orig.bitmap_scans
+test: yb.orig.bitmap_scans_colo
+test: yb.orig.bitmap_scans_joins
+test: yb.orig.bitmap_scans_system
+test: yb.orig.bitmap_scans_distinct

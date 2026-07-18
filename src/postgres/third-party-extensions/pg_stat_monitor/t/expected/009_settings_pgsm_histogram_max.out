@@ -1,0 +1,38 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_max';
+                name                | setting | unit |  context   | vartype | source  | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+------------+---------+---------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_histogram_max | 100000  | ms   | postmaster | real    | default | 10      | 5e+07   |          | 100000   | 100000    | f
+(1 row)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_max';
+                name                | setting | unit |  context   | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+------------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_histogram_max | 50      | ms   | postmaster | real    | configuration file | 10      | 5e+07   |          | 100000   | 50        | f
+(1 row)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_histogram_max';
+                name                | setting | unit |  context   | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+------------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_histogram_max | 1000    | ms   | postmaster | real    | configuration file | 10      | 5e+07   |          | 100000   | 1000      | f
+(1 row)
+
+DROP EXTENSION pg_stat_monitor;

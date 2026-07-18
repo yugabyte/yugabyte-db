@@ -1,0 +1,20 @@
+service_name="node_exporter.service"
+
+# Get the status of node_exporter Service
+status=$(systemctl show -p ActiveState "$service_name" | grep ActiveState | awk -F= '{print $2}')
+if [ "$status" = "active" ]; then
+    echo "\"$service_name\" is active"
+    add_result "Service Status Check" "PASS" "$service_name is active"
+else
+    echo "\"$service_name\"  is not active"
+    add_result "Service Status Check" "FAIL" "$service_name is not active"
+fi
+
+threshold={{ min_prometheus_space_gb }}
+# Get available disk space in gigabytes
+free_space_gb=$(df -B1G --output=avail "{{ tmp_directory }}" | tail -n 1 )
+if [ "$free_space_gb" -gt "$threshold" ]; then
+    add_result "Yugabyte Node Exporter Directory Free Space Check" "PASS" "Sufficient disk space available: ${free_space_gb}G"
+else
+    add_result "Yugabyte Node Exporter Directory Free Space Check" "FAIL" "Insufficient disk space: ${free_space_gb}G available, ${threshold}G required."
+fi

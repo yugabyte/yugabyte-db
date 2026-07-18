@@ -1,0 +1,40 @@
+--- sql/pgtap.sql
++++ sql/pgtap.sql
+@@ -781,10 +781,6 @@
+     RETURN ok( TRUE, descr );
+ EXCEPTION WHEN OTHERS THEN
+     -- There should have been no exception.
+-    GET STACKED DIAGNOSTICS
+-        detail  = PG_EXCEPTION_DETAIL,
+-        hint    = PG_EXCEPTION_HINT,
+-        context = PG_EXCEPTION_CONTEXT;
+     RETURN ok( FALSE, descr ) || E'\n' || diag(
+            '    died: ' || _error_diag(SQLSTATE, SQLERRM, detail, hint, context, schname, tabname, colname, chkname, typname)
+     );
+@@ -6698,10 +6694,6 @@
+                 -- Something went wrong. Record that fact.
+                 errstate := SQLSTATE;
+                 errmsg := SQLERRM;
+-                GET STACKED DIAGNOSTICS
+-                    detail  = PG_EXCEPTION_DETAIL,
+-                    hint    = PG_EXCEPTION_HINT,
+-                    context = PG_EXCEPTION_CONTEXT;
+             END;
+ 
+             -- Always raise an exception to rollback any changes.
+@@ -7169,7 +7161,6 @@
+     RETURN ok( true, $3 );
+ EXCEPTION
+     WHEN datatype_mismatch THEN
+-        GET STACKED DIAGNOSTICS err_msg = MESSAGE_TEXT;
+         RETURN ok( false, $3 ) || E'\n' || diag(
+             E'    Number of columns or their types differ between the queries' ||
+             CASE WHEN have_rec::TEXT = want_rec::text THEN '' ELSE E':\n' ||
+@@ -7323,7 +7314,6 @@
+     RETURN ok( false, $3 );
+ EXCEPTION
+     WHEN datatype_mismatch THEN
+-        GET STACKED DIAGNOSTICS err_msg = MESSAGE_TEXT;
+         RETURN ok( false, $3 ) || E'\n' || diag(
+             E'    Number of columns or their types differ between the queries' ||
+             CASE WHEN have_rec::TEXT = want_rec::text THEN '' ELSE E':\n' ||

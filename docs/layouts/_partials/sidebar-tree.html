@@ -1,0 +1,108 @@
+{{ $currentPage := .context }}
+{{ $menuName := .context.Scratch.Get "leftNavName" }}
+{{ $pageUrl := .context.Page.RelPermalink }}
+{{ $productsMenu := .context.Site.Menus.products }}
+{{ $versionDir := .context.Scratch.Get "docVersion" }}
+
+{{ if not (isset .context.Site.Menus $menuName) }}
+  {{ $menuName = .context.Scratch.Get "docVersion" }}
+{{ end }}
+
+<div class="docs-menu desktop-hide">Docs Menu</div>
+<div class="left-sidebar-wrap {{$menuName}}">
+  <div class="left-sidebar-wrap-inner">
+    <nav>
+      {{- range (index .context.Site.Menus $menuName).ByWeight -}}
+        {{- if .Params.productsDropdown -}}
+          {{- partial "products-dropdown.html" (dict "pageUrl" $pageUrl "productsMenu" $productsMenu "versionDir" $versionDir) -}}
+        {{- end -}}
+        {{- break -}}
+      {{- end -}}
+      <ul class="list pa0 nl2">
+        {{- range (index .context.Site.Menus $menuName).ByWeight -}}
+          {{- if .Params.productsDropdown -}}
+            {{- continue -}}
+          {{- end -}}
+          {{- if .Params.showSection -}}
+            {{- if .Params.hideLink -}}
+              {{- if .HasChildren -}}
+                {{- $parentIdentifier := printf "%s" .Identifier -}}
+
+                {{- template "left-nav-tree-section" (dict "currentMenu" . "currentPage" $currentPage "menuName" $menuName "newList" false "parentIdentifier" $parentIdentifier) -}}
+              {{- end -}}
+            {{- else -}}
+              <li class="section{{- if .HasChildren }} submenu parent-menu {{- if or ($currentPage.HasMenuCurrent $menuName .) (eq .URL $pageUrl) }} open{{ end }}{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
+                <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} {{- if eq .URL $pageUrl }} class="current"{{end}} title="{{- if .Title }}{{.Title}}{{else}}{{.Name}}{{- end }}" data-identifier="{{ .Identifier }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
+
+                {{- if and (.HasChildren) (not .Params.hideChildren) -}}
+                  {{- $parentIdentifier := printf "%s" .Identifier -}}
+                  <i></i>
+
+                  {{- template "left-nav-tree-section" (dict "currentMenu" . "currentPage" $currentPage "menuName" $menuName "newList" true "parentIdentifier" $parentIdentifier ) -}}
+                {{- end -}}
+              </li>
+            {{- end -}}
+          {{- end -}}
+        {{- end -}}
+      </ul>
+    </nav>
+    <nav class="fixed-nav">
+      <ul class="left-bottom-nav">
+        {{- range .context.Site.Menus.leftbottom -}}
+        <li class="bottom-link{{- if .HasChildren }} section submenu parent-menu{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
+          <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
+          {{- if .HasChildren -}}
+          <i></i>
+          <ul class="internal animated list">
+            {{- range .Children -}}
+            <li class="bottom-link{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
+              <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
+            </li>
+            {{- end -}}
+          </ul>
+          {{- end -}}
+        </li>
+        {{- end -}}
+      </ul>
+    </nav>
+  </div>
+
+  <div class="side-nav-collapse-toggle-2"></div>
+</div>
+
+{{- define "left-nav-tree-section" -}}
+  {{ $currentMenu := .currentMenu }}
+	{{ $currentPage := .currentPage }}
+  {{ $menuName := .menuName }}
+  {{ $newList := .newList }}
+	{{ $parentIdentifier := .parentIdentifier }}
+
+  {{- if $newList -}}
+  <ul class="animated list" data-identifier="{{ $parentIdentifier }}">
+  {{- end -}}
+
+  {{- range $index, $item := $currentMenu.Children -}}
+    {{- if not .Params.hide -}}
+      {{- if le (len (where (first (add $index 1) $currentMenu.Children) "Name" .Name)) 1 -}}
+        <li class="{{- if .HasChildren }}submenu {{- if or ($currentPage.HasMenuCurrent $menuName .) ($currentPage.IsMenuCurrent $menuName .) }} open{{ end }}{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
+          <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} {{- if $currentPage.IsMenuCurrent $menuName . }} class="current"{{end}} title="{{- if .Title }}{{.Title}}{{else}}{{.Name}}{{- end }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>
+            {{- .Name -}}
+          </a>
+
+          {{- if .HasChildren -}}
+            {{ $parentIdentifier := printf "%s" .Identifier }}
+            <i></i>
+
+            {{- template "left-nav-tree-section" (dict "currentMenu" . "currentPage" $currentPage "menuName" $menuName "newList" true "parentIdentifier" $parentIdentifier ) -}}
+          {{- end -}}
+        </li>
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- if $newList -}}
+  </ul>
+  {{- end -}}
+{{- end }}
+
+<script>!function(){function e(e){var t=document.querySelector("aside.td-sidebar"),i=300;if("hide"===e){var a=t.style.width;(a<300||a>500)&&(a=300),t.setAttribute("data-pwidth",a),jQuery(".left-sidebar-wrap-inner").animate({opacity:"0"}),jQuery("aside.td-sidebar").animate({minWidth:"0px",width:"60px",maxWidth:"60px"})}else browserCookieUtils.getCookie("leftMenuWidth")&&(i=browserCookieUtils.getCookie("leftMenuWidth")),t.getAttribute("data-pwidth")&&(i=t.getAttribute("data-pwidth")),(i<300||i>500)&&(i=300),jQuery(".left-sidebar-wrap-inner").animate({opacity:"1"}),jQuery("aside.td-sidebar").animate({width:i,maxWidth:i})}var t=document.querySelector(".left-sidebar-wrap nav:not(.fixed-nav) > ul a.current"),i=browserCookieUtils.getCookie("leftMenuShowHide"),a=browserCookieUtils.getCookie("leftMenuWidth"),o=document.querySelector("aside.td-sidebar"),d=document.querySelector(".side-nav-collapse-toggle-2"),r=document.querySelector(".left-sidebar-wrap");o&&(i&&""!==i&&(o.classList.add("toggled-sidebar"),"hide"===i&&(o.classList.add("stick-bar"),r.classList.add("click-to-expand"),e(i))),a&&""!==a&&(jQuery(".td-main").addClass("hide-right-menu"),"hide"===i?o.setAttribute("data-pwidth",a):(o.style.width="".concat(a,"px"),o.style.maxWidth="".concat(a,"px")),setTimeout(function(){jQuery(".td-sidebar nav:not(.fixed-nav) a").each(function(e,t){jQuery(t).outerHeight()>=42&&jQuery(t).outerHeight()<60?jQuery(t).attr("data-lines",2):jQuery(t).outerHeight()>=60&&jQuery(t).outerHeight()<=72?jQuery(t).attr("data-lines",3):jQuery(t).outerHeight()>72?jQuery(t).attr("data-lines",4):jQuery(t).removeAttr("data-lines")})},1e3)),t&&function(e){var t=document.querySelector("aside.td-sidebar nav:not(.fixed-nav)");if(t&&e){t.style.overflow="hidden";var i=t.clientHeight,a=e.getBoundingClientRect().top;t.scrollTop=a-i,setTimeout(function(){t.style.overflow="auto"},600)}}(t),d.addEventListener("click",function(){o.classList.toggle("stick-bar"),o.classList.add("toggled-sidebar"),o.classList.contains("stick-bar")?(browserCookieUtils.setCookie("leftMenuShowHide","hide",{timeToLive:3,unit:"month"}),e("hide"),r.classList.add("click-to-expand")):(browserCookieUtils.setCookie("leftMenuShowHide","show",{timeToLive:3,unit:"month"}),e("show"),r.classList.remove("click-to-expand"))}),r.addEventListener("click",function(e){e.target.classList.contains("left-sidebar-wrap")&&e.target.classList.contains("click-to-expand")&&d.click()}))}();</script>

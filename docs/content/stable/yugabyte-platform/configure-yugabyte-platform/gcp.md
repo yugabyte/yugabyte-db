@@ -1,0 +1,244 @@
+---
+title: Configure the GCP provider configuration
+headerTitle: Create cloud provider configuration
+linkTitle: Cloud providers
+description: Configure the Google Cloud Platform (GCP) cloud provider.
+headContent: For deploying universes to cloud providers
+aliases:
+  - /stable/deploy/enterprise-edition/configure-cloud-providers/gcp
+menu:
+  stable_yugabyte-platform:
+    identifier: set-up-cloud-provider-2-gcp
+    parent: configure-yugabyte-platform
+    weight: 20
+type: docs
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li>
+    <a href="../aws/" class="nav-link">
+      <i class="fa-brands fa-aws"></i>
+      AWS
+    </a>
+  </li>
+
+  <li>
+    <a href="../gcp/" class="nav-link active">
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
+      GCP
+    </a>
+  </li>
+
+  <li>
+    <a href="../azure/" class="nav-link">
+      <i class="icon-azure" aria-hidden="true"></i>
+      Azure
+    </a>
+  </li>
+
+</ul>
+
+Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
+
+Create a Google Cloud Platform (GCP) provider configuration if your target cloud is GCP, and you can provide full SSH permissions to YugabyteDB Anywhere to orchestrate universe management.
+
+{{< tip title="Use on-premises provider" >}}
+
+If you can't provide YugabyteDB Anywhere with cloud permissions or SSH access to cloud VMs (due to security policies or other restrictions), you can still deploy to GCP using an on-premises provider configuration. Refer to [On-premises provider configurations](../on-premises/).
+
+{{< /tip >}}
+
+When deploying a universe, YugabyteDB Anywhere uses the provider configuration settings to do the following:
+
+- Create instances on GCP using the following:
+  - your GCP service account credentials
+  - specified regions and availability zones (this can be a subset of those specified in the provider configuration)
+  - a Linux image
+  - optionally, an [instance template](#gcp-instance-templates)
+
+- Provision those VMs with YugabyteDB software.
+
+## Prerequisites
+
+- GCP service account credentials. YugabyteDB Anywhere uses your credentials to automatically provision and de-provision instances that run YugabyteDB. An instance for YugabyteDB includes a compute instance, as well as local or remote disk storage attached to the compute instance.
+
+For more information on setting up a GCP service account, refer to [Cloud permissions to deploy nodes](../../prepare/cloud-permissions/cloud-permissions-nodes-gcp/).
+
+## Configure GCP
+
+Navigate to **Integrations > Infrastructure > Google Cloud Platform** to see a list of all currently configured GCP providers.
+
+### Create a provider
+
+To create a GCP provider:
+
+1. Click **Create Config** to open the **Create GCP Provider Configuration** page.
+
+    ![Create GCP provider](/images/yb-platform/config/yba-gcp-config-create-stable.png)
+
+1. Enter the provider details. Refer to [Provider settings](#provider-settings).
+
+1. Click **Validate and Save Configuration** when you are done and wait for the configuration to validate and complete.
+
+    If you want to save your progress, you can skip validation by choosing the **Ignore and save provider configuration anyway** option, which saves the provider configuration without validating. Note that you may not be able to create universes using an incomplete or unvalidated provider.
+
+The create provider process includes generating a new VPC, a network, subnetworks in all available regions, as well as a new firewall rule, VPC peering for network connectivity, and a custom SSH key pair for YugabyteDB Anywhere-to-YugabyteDB connectivity.
+
+### View and edit providers
+
+To view a provider, select it in the list of GCP Configs to display the **Overview**.
+
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that for YugabyteDB Anywhere v2.20.1 and later, depending on whether the provider has been used to create a universe, you can only edit a subset of fields such as the following:
+
+- Provider Name
+- Credential Type. You can upload a new Google Service Account JSON file (`gceApplicationCredentials`). Note that the `project_id` field can't have a new entry. For example:
+
+    ```json
+    {
+      "type": "service_account",
+      "project_id": "new-project-yb",
+       ...
+    }
+    ```
+
+    If `new-project-yb` is a new GCE project, the backend request fails and you will be notified that you can't change the GCE project for an in-use provider.
+
+- Regions - You can add regions and zones to an in-use provider. Note that you cannot edit existing region details, delete a region if any of the region's zones are in use, or delete zones that are in use.
+- Linux version catalog
+
+To view the universes created using the provider, select **Universes**.
+
+To delete the provider, click **Actions** and choose **Delete Configuration**. You can only delete providers that are not in use by a universe.
+
+## Provider settings
+
+### Provider Name
+
+Enter a Provider name. The Provider name is an internal tag used for organizing provider configurations.
+
+### Cloud Info
+
+**Credential Type**. YugabyteDB Anywhere requires the ability to create VMs in GCP. To do this, you can do one of the following:
+
+- If your YugabyteDB Anywhere instance is not running inside GCP, you need to supply YugabyteDB Anywhere with credentials to the desired GCP project by uploading a configuration file.
+
+    Set **Credential Type** to **Upload Service Account config** and upload the JSON file that you obtained when you created your service account, as described in [Cloud permissions](../../prepare/cloud-permissions/cloud-permissions-nodes-gcp/).
+
+- If your YugabyteDB Anywhere instance is running inside GCP, the preferred method for authentication to the GCP APIs is to add a service account role to the GCP instance running YugabyteDB Anywhere and then configure YugabyteDB Anywhere to use the instance's service account.
+
+    Set **Credential Type** to **Use service account from this YBA host's instance**.
+
+#### VPC Setup
+
+Specify the VPC to use for deploying YugabyteDB nodes.
+
+You may choose one of the following options:
+
+- **Specify an existing VPC**. Select this option to use a VPC that you have created in Google Cloud, and enter the Custom GCE Network Name of the VPC.
+- **Use VPC from YBA host instance**. If your YugabyteDB Anywhere host machine is also running on Google Cloud, you can use the same VPC on which the YugabyteDB Anywhere host machine runs. **Credential Type** must be set to **Use service account from this YBA host's instance** to use this option.
+
+  Note that choosing to use the same VPC as YugabyteDB Anywhere is an advanced option, which assumes that you are in complete control of this VPC and will be responsible for setting up the networking, SSH access, and firewall rules for it.
+
+- **Create a new VPC**. Select this option to create a new VPC using YugabyteDB Anywhere. This option is considered beta and, therefore, not recommended for production use cases. If there are any classless inter-domain routing (CIDR) conflicts, using this option can result in a silent failure. For example, the following will fail:
+
+  - Configure more than one GCP cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
+  - Creating a new VPC with a CIDR block that overlaps with any of the existing subnets.
+
+  To use this option, contact {{% support-platform %}}.
+
+### Regions
+
+For each region that you want to use for this configuration, do the following:
+
+- Click **Add Region**.
+- Select the region.
+- Optionally, specify a **Custom Machine Image**.
+- Enter the ID of a shared subnet.
+- Optionally, if you have an [instance template](#gcp-instance-templates), specify the template name in the **Instance Template** field.
+
+### Linux version catalog
+
+Specify the machine images to be used to install on nodes of universes created using this provider.
+
+To add machine images recommended and provisioned by YugabyteDB Anywhere, select the **Include Linux versions that are chosen and managed by YugabyteDB Anywhere in the catalog** option, and choose the architectures.
+
+To add your own machine images to the catalog:
+
+1. Click **Add Linux Version**.
+
+1. Provide a name for the Linux version. You can see this name when creating universes using this provider.
+
+1. Enter the Machine Image ID to use for each [provider region](#regions).
+
+1. Provide the SSH user and port to use to access the machine image OS. Leave this empty to use the [default SSH user](#ssh-key-pairs).
+
+1. Click **Add Linux Version**.
+
+To edit custom Linux versions, remove Linux versions, and set a version as the default to use when creating universes, click **...** for the version you want to modify.
+
+### SSH Key Pairs
+
+To be able to provision cloud instances with YugabyteDB, YugabyteDB Anywhere requires SSH access.
+
+Enter the SSH user and port to use by default for machine images. You can override these values for custom Linux versions that you add to the Linux Version Catalog.
+
+You can manage SSH key pairs in the following ways:
+
+- Enable YugabyteDB Anywhere to create and manage Key Pairs. In this mode, YugabyteDB Anywhere creates SSH Key Pairs and stores the relevant private key so that you will be able to SSH into future instances.
+- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content.
+
+### Advanced
+
+You can customize the Network Time Protocol server, as follows:
+
+- Select **Use GCP's NTP Server** to enable cluster nodes to connect to the GCP internal time servers. For more information, consult the GCP documentation such as [Configure NTP on a VM](https://cloud.google.com/compute/docs/instances/configure-ntp).
+- Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
+- Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, you will be responsible for manually configuring NTP.
+
+    {{< warning title="Important" >}}
+Use this option with caution. Time synchronization is critical to database data consistency; failure to run NTP may cause data loss.
+    {{< /warning >}}
+
+#### Configure ClockBound (optional)
+
+{{<tags/feature/ea idea="2133">}}[ClockBound](https://github.com/aws/clock-bound) improves clock accuracy by several orders of magnitude and significantly reduces read-restart errors in YSQL. To enable ClockBound for universes created using your provider, after you have created the provider, set the provider runtime configuration flag `yb.provider.configure_clockbound_cloud_provisioning` for the provider to `true`. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
+When enabled, ClockBound is automatically configured during node provisioning, and the universe creation task sets the [time_source](../../../reference/configuration/yb-master/#time-source) flag to `clockbound`.
+
+ClockBound is supported on AWS and GCP. (Azure and Kubernetes deployments are not supported.)
+
+### GCP instance templates
+
+You can optionally add a GCP [instance template](https://cloud.google.com/compute/docs/instance-templates) as a region-level property when creating a GCP provider in YugabyteDB Anywhere.
+
+Instance templates provide a way to specify a set of arbitrary instance parameters, which can then be used when creating instances in Google Cloud. Instance templates define the machine type, boot disk image or container image, labels, startup script, and other instance properties. When a template is added to a GCP provider, YugabyteDB Anywhere will use most (but not all) of the configuration defined by the template to create the nodes when deploying a universe.
+
+{{< note title="Note" >}}
+Instance templates are only supported in YugabyteDB Anywhere version 2.18.2.0 and later.
+{{< /note >}}
+
+Using an instance template allows you to customize instance features that are not accessible to a provider alone, such as (but not limited to) the following:
+
+- Volume disk encryption
+- Startup scripts
+- On-host maintenance
+- Sole tenancy
+- Confidential VM service
+
+For instructions on creating an instance template on Google Cloud, refer to [Create instance templates](https://cloud.google.com/compute/docs/instance-templates/create-instance-templates) in the Google documentation.
+
+When creating the template in Google Cloud, ensure that you create the template under the right GCP project and choose the correct network and subnetwork under **Advanced Options** > **Networking**.
+
+Note that not all template customizations are honored by YugabyteDB Anywhere when creating a universe using a provider with a template. The following properties can't be overridden by an instance template:
+
+- Project
+- Zone
+- Boot disk (Auto- delete, disk type, and disk image)
+- IP forwarding
+- Instance type
+- SSH keys
+- Project wide SSH keys (always blocked)
+- Cloud NAT
+- Subnetwork
+- Volume (type, size, and source (always None))

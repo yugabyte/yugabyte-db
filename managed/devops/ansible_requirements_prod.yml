@@ -1,0 +1,9 @@
+# This file is generated automatically by refresh_roles_in_release_manifest.py. DO NOT EDIT!
+- name: ansible-prometheus
+  scm: git
+  src: https://github.com/YugaByte/ansible-prometheus.git
+  version: master-yb
+- name: ansible-sshd
+  scm: git
+  src: https://github.com/YugaByte/ansible-sshd.git
+  version: master-yb

@@ -1,0 +1,133 @@
+<!--
+doc/src/sgml/ref/checkpoint.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-checkpoint">
+ <indexterm zone="sql-checkpoint">
+  <primary>CHECKPOINT</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CHECKPOINT</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CHECKPOINT</refname>
+  <refpurpose>force a write-ahead log checkpoint</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CHECKPOINT [ ( option [, ...] ) ]
+
+<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
+
+    FLUSH_UNLOGGED [ <replaceable class="parameter">boolean</replaceable> ]
+    MODE { FAST | SPREAD }
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   A checkpoint is a point in the write-ahead log sequence at which
+   all data files have been updated to reflect the information in the
+   log.  All data files will be flushed to disk.  Refer to
+   <xref linkend="wal-configuration"/> for more details about what happens
+   during a checkpoint.
+  </para>
+
+  <para>
+   By default, the <command>CHECKPOINT</command> command forces a fast
+   checkpoint when the command is issued, without waiting for a
+   regular checkpoint scheduled by the system (controlled by the settings in
+   <xref linkend="runtime-config-wal-checkpoints"/>).
+   To request the checkpoint be spread over a longer interval, set the
+   <literal>MODE</literal> option to <literal>SPREAD</literal>.
+   <command>CHECKPOINT</command> is not intended for use during normal
+   operation.
+  </para>
+
+  <para>
+   The server may consolidate concurrently requested checkpoints.  Such
+   consolidated requests will contain a combined set of options.  For example,
+   if one session requests a fast checkpoint and another requests a spread
+   checkpoint, the server may combine those requests and perform one fast
+   checkpoint.
+  </para>
+
+  <para>
+   If executed during recovery, the <command>CHECKPOINT</command> command
+   will force a restartpoint (see <xref linkend="wal-configuration"/>)
+   rather than writing a new checkpoint.
+  </para>
+
+  <para>
+   Only superusers or users with the privileges of
+   the <xref linkend="predefined-role-pg-checkpoint"/>
+   role can call <command>CHECKPOINT</command>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>FLUSH_UNLOGGED</literal></term>
+    <listitem>
+     <para>
+      Normally, <command>CHECKPOINT</command> does not flush dirty buffers of
+      unlogged relations.  This option, which is disabled by default, enables
+      flushing unlogged relations to disk.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>MODE</literal></term>
+    <listitem>
+     <para>
+      When set to <literal>FAST</literal>, which is the default, the requested
+      checkpoint will be completed as fast as possible, which may result in a
+      significantly higher rate of I/O during the checkpoint.
+     </para>
+     <para>
+      <literal>MODE</literal> can also be set to <literal>SPREAD</literal> to
+      request the checkpoint be spread over a longer interval (controlled via
+      the settings in <xref linkend="runtime-config-wal-checkpoints"/>), like a
+      regular checkpoint scheduled by the system.  This can reduce the rate of
+      I/O during the checkpoint.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">boolean</replaceable></term>
+    <listitem>
+     <para>
+      Specifies whether the selected option should be turned on or off.
+      You can write <literal>TRUE</literal>, <literal>ON</literal>, or
+      <literal>1</literal> to enable the option, and <literal>FALSE</literal>,
+      <literal>OFF</literal>, or <literal>0</literal> to disable it.  The
+      <replaceable class="parameter">boolean</replaceable> value can also
+      be omitted, in which case <literal>TRUE</literal> is assumed.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   The <command>CHECKPOINT</command> command is a
+   <productname>PostgreSQL</productname> language extension.
+  </para>
+ </refsect1>
+</refentry>

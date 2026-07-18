@@ -1,0 +1,40 @@
+# THERE IS ANOTHER .gitignore IN test/sql!
+
+.*.swp
+pgtap.sql
+pgtap-core.sql
+pgtap-schema.sql
+uninstall_pgtap.sql
+results
+regression.*
+*.html
+*.html1
+*.sql.orig
+bbin
+
+# Compiler-generated files (borrowed from
+# https://github.com/github/gitignore/blob/main/C.gitignore)
+*.o
+*.dll
+*.so
+*.so.*
+*.dylib
+
+/sql/pgtap--?.??.?.sql
+/sql/pgtap--?.?.?.sql
+/sql/pgtap-core--*
+/sql/pgtap-schema--*
+/sql/pgtap--0.95.0--0.96.0.sql
+/sql/pgtap--0.96.0--0.97.0.sql
+/sql/pgtap--0.97.0--0.98.0.sql
+/sql/pgtap--0.98.0--0.99.0.sql
+/sql/pgtap--0.99.0--1.0.0.sql
+/sql/pgtap-static.sql
+/sql/pgtap-static.sql.tmp*
+*.sql.orig
+
+test/build
+/latest-changes.md
+
+# Misc mac crap
+.DS_Store

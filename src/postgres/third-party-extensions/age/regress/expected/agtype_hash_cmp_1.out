@@ -1,0 +1,187 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+--
+-- AGTYPE data type regression tests
+--
+SET search_path TO ag_catalog;
+-- Agtype Hash Comparison Function
+-- Result value varies depending on architecture endianness.
+-- Little endian output is in agtype_hash_cmp.out; big endian in agtype_hash_cmp_1.out.
+SELECT agtype_hash_cmp(NULL);
+ agtype_hash_cmp 
+-----------------
+               0
+(1 row)
+
+SELECT agtype_hash_cmp('1'::agtype);
+ agtype_hash_cmp 
+-----------------
+      -123017199
+(1 row)
+
+SELECT agtype_hash_cmp('1.0'::agtype);
+ agtype_hash_cmp 
+-----------------
+      1437092844
+(1 row)
+
+SELECT agtype_hash_cmp('"1"'::agtype);
+ agtype_hash_cmp 
+-----------------
+     -1434266898
+(1 row)
+
+SELECT agtype_hash_cmp('[1]'::agtype);
+ agtype_hash_cmp 
+-----------------
+       434414509
+(1 row)
+
+SELECT agtype_hash_cmp('[1, 1]'::agtype);
+ agtype_hash_cmp 
+-----------------
+     -1551022880
+(1 row)
+
+SELECT agtype_hash_cmp('[1, 1, 1]'::agtype);
+ agtype_hash_cmp 
+-----------------
+        -3900769
+(1 row)
+
+SELECT agtype_hash_cmp('[1, 1, 1, 1]'::agtype);
+ agtype_hash_cmp 
+-----------------
+      1756986519
+(1 row)
+
+SELECT agtype_hash_cmp('[1, 1, 1, 1, 1]'::agtype);
+ agtype_hash_cmp 
+-----------------
+       -47741579
+(1 row)
+
+SELECT agtype_hash_cmp('[[1]]'::agtype);
+ agtype_hash_cmp 
+-----------------
+       878744030
+(1 row)
+
+SELECT agtype_hash_cmp('[[1, 1]]'::agtype);
+ agtype_hash_cmp 
+-----------------
+     -1254522284
+(1 row)
+
+SELECT agtype_hash_cmp('[[1], 1]'::agtype);
+ agtype_hash_cmp 
+-----------------
+        -1005036
+(1 row)
+
+SELECT agtype_hash_cmp('[1543872]'::agtype);
+ agtype_hash_cmp 
+-----------------
+     -1925093371
+(1 row)
+
+SELECT agtype_hash_cmp('[1, "abcde", 2.0]'::agtype);
+ agtype_hash_cmp 
+-----------------
+       826120111
+(1 row)
+
+SELECT agtype_hash_cmp(agtype_in('null'));
+ agtype_hash_cmp 
+-----------------
+      -505290271
+(1 row)
+
+SELECT agtype_hash_cmp(agtype_in('[null]'));
+ agtype_hash_cmp 
+-----------------
+       505290241
+(1 row)
+
+SELECT agtype_hash_cmp(agtype_in('[null, null]'));
+ agtype_hash_cmp 
+-----------------
+               3
+(1 row)
+
+SELECT agtype_hash_cmp(agtype_in('[null, null, null]'));
+ agtype_hash_cmp 
+-----------------
+      2021160967
+(1 row)
+
+SELECT agtype_hash_cmp(agtype_in('[null, null, null, null]'));
+ agtype_hash_cmp 
+-----------------
+              15
+(1 row)
+
+SELECT agtype_hash_cmp(agtype_in('[null, null, null, null, null]'));
+ agtype_hash_cmp 
+-----------------
+      -505290721
+(1 row)
+
+SELECT agtype_hash_cmp('{"id":1, "label":"test", "properties":{"id":100}}'::agtype);
+ agtype_hash_cmp 
+-----------------
+      -947461933
+(1 row)
+
+SELECT agtype_hash_cmp('{"id":1, "label":"test", "properties":{"id":100}}::vertex'::agtype);
+ agtype_hash_cmp 
+-----------------
+      1848106598
+(1 row)
+
+SELECT agtype_hash_cmp('{"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}'::agtype);
+ agtype_hash_cmp 
+-----------------
+      1662709842
+(1 row)
+
+SELECT agtype_hash_cmp('{"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge'::agtype);
+ agtype_hash_cmp 
+-----------------
+     -1790838958
+(1 row)
+
+SELECT agtype_hash_cmp('
+	[{"id":1, "label":"test", "properties":{"id":100}}::vertex,
+	 {"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge,
+	 {"id":5, "label":"vlabel", "properties":{}}::vertex]'::agtype);
+ agtype_hash_cmp 
+-----------------
+      -231467898
+(1 row)
+
+SELECT agtype_hash_cmp('
+	[{"id":1, "label":"test", "properties":{"id":100}}::vertex,
+	 {"id":2, "start_id":1, "end_id": 3, "label":"elabel", "properties":{}}::edge,
+	 {"id":5, "label":"vlabel", "properties":{}}::vertex]::path'::agtype);
+ agtype_hash_cmp 
+-----------------
+       843330291
+(1 row)
+

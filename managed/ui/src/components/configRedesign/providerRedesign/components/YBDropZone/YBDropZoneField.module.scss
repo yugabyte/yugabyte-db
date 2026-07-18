@@ -1,0 +1,6 @@
+@use '../../../../../_style/colors.scss';
+
+.emptyListError {
+  border-color: colors.$YB_ERROR_BORDER;
+  background-color: colors.$YB_ERROR_BACKGROUND;
+}

@@ -1,0 +1,15 @@
+title: CollectFilesResponse
+description: Response from collecting files from database nodes
+x-yba-api-visibility: internal
+type: object
+properties:
+  summary:
+    $ref: "./FileCollectionSummary.yaml"
+  results:
+    description: Map of node name to file collection result
+    type: object
+    additionalProperties:
+      $ref: "./NodeFileCollectionResult.yaml"
+required:
+  - summary
+  - results

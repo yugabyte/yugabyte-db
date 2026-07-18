@@ -1,0 +1,232 @@
+# LANGUAGE message translation file for pg_hint_plan hint details.
+# Copyright (C) 2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# This file is distributed under the same license as the pg_hint_plan
+# package.
+# Julien Rouhaud <rjuju123@gmail.com>, 2023.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: pg_hint_plan \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2023-03-14 16:08+0800\n"
+"PO-Revision-Date: 2023-03-14 16:08+0800\n"
+"Last-Translator: Julien Rouhaud <rjuju123@gmail.com>\n"
+"Language: ja\n"
+"Language-Team: ja <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.12.1\n"
+
+#: ../../hint_details.md:1 41c5e8c95f12463290efe3b3201f7886
+msgid "Details in hinting"
+msgstr ""
+
+#: ../../hint_details.md:3 14befe18aa0a4581ae602a0b654638d7
+msgid "Syntax and placement"
+msgstr ""
+
+#: ../../hint_details.md:5 a4d50158aa984305a2b396014c2c580c
+msgid ""
+"`pg_hint_plan` reads hints from only the first block comment and any "
+"characters except alphabets, digits, spaces, underscores, commas and "
+"parentheses stops parsing immediately. In the following example "
+"`HashJoin(a b)` and `SeqScan(a)` are parsed as hints but `IndexScan(a)` "
+"and `MergeJoin(a b)` are not."
+msgstr ""
+
+#: ../../hint_details.md:34 602c8939797e47f3aad137c822d00c48
+msgid "Using with PL/pgSQL"
+msgstr ""
+
+#: ../../hint_details.md:36 7cab3790c0df47be9808331993411889
+msgid ""
+"`pg_hint_plan` works for queries in PL/pgSQL scripts with some "
+"restrictions."
+msgstr ""
+
+#: ../../hint_details.md:38 75a407018da44051b0f7f58f6f9f8671
+msgid "Hints affect only on the following kind of queries."
+msgstr ""
+
+#: ../../hint_details.md:39 4dc23833fe074f5fbbefa2c336cac9c5
+msgid "Queries that returns one row. (`SELECT`, `INSERT`, `UPDATE` and `DELETE`)"
+msgstr ""
+
+#: ../../hint_details.md:40 08c6d80bd9a244caa9a0ae347e1c38bd
+msgid "Queries that returns multiple rows. (`RETURN QUERY`)"
+msgstr ""
+
+#: ../../hint_details.md:41 c6b52177c48445de9120aea5fe646c48
+msgid "Dynamic SQL statements. (`EXECUTE`)"
+msgstr ""
+
+#: ../../hint_details.md:42 d52045ada4b7441fb525b1da1a07cabd
+msgid "Cursor open. (`OPEN`)"
+msgstr ""
+
+#: ../../hint_details.md:43 b67665ad96d84a83902e440c9da94bc2
+msgid "Loop over result of a query (`FOR`)"
+msgstr ""
+
+#: ../../hint_details.md:44 aa685c8d82704a6c91308899158ce763
+msgid ""
+"A hint comment have to be placed after the first word in a query as the "
+"following since preceding comments are not sent as a part of the query."
+msgstr ""
+
+#: ../../hint_details.md:62 ad54fc7bfc9b4e6e8a1ea92c75d5eabe
+msgid "Letter case in the object names"
+msgstr ""
+
+#: ../../hint_details.md:64 6aed96d7864e41f8b476c2f559cc9064
+msgid ""
+"Unlike the way PostgreSQL handles object names, `pg_hint_plan` compares "
+"bare object names in hints against the database internal object names in "
+"case sensitive way. Therefore an object name TBL in a hint matches only "
+"\"TBL\" in database and does not match any unquoted names like TBL, tbl "
+"or Tbl."
+msgstr ""
+
+#: ../../hint_details.md:69 390d456529054b7a8c77a14dd184244f
+msgid "Escaping special chacaters in object names"
+msgstr ""
+
+#: ../../hint_details.md:71 c491a2b114e6462e87ce133035912a18
+msgid ""
+"The objects as the hint parameter should be enclosed by double quotes if "
+"they includes parentheses, double quotes and white spaces. The escaping "
+"rule is the same as PostgreSQL."
+msgstr ""
+
+#: ../../hint_details.md:75 2095a888011b4cddb8e1b8dcfc56d166
+msgid "Distinction between multiple occurances of a table"
+msgstr ""
+
+#: ../../hint_details.md:77 bce481965e8a483f9438624ec61a78e9
+msgid ""
+"`pg_hint_plan` identifies the target object by using aliases if exists. "
+"This behavior is usable to point a specific occurance among multiple "
+"occurances of one table."
+msgstr ""
+
+#: ../../hint_details.md:100 2cf67275b3ed438abdfc87d344d59516
+msgid "Underlying tables of views or rules"
+msgstr ""
+
+#: ../../hint_details.md:102 35ea8ed30a3b4d16b46b1cd96cd0a84a
+msgid ""
+"Hints are not applicable on views itself, but they can affect the queries"
+" within if the object names match the object names in the expanded query "
+"on the view. Assigning aliases to the tables in a view enables them to be"
+" manipulated from outside the view."
+msgstr ""
+
+#: ../../hint_details.md:120 f1b075c3883748849bab46f13634e635
+msgid "Inheritance tables"
+msgstr ""
+
+#: ../../hint_details.md:122 17fd462c9ef74ff3aff2a608bb35571e
+msgid ""
+"Hints can point only the parent of an inheritance tables and the hint "
+"affect all the inheritance. Hints simultaneously point directly to "
+"children are not in effect."
+msgstr ""
+
+#: ../../hint_details.md:126 546a09acc13c43a6b297fa41d64a3c11
+msgid "Hinting on multistatements"
+msgstr ""
+
+#: ../../hint_details.md:128 f966d98b336c4f5b8755839fb6e1505a
+msgid ""
+"One multistatement can have exactly one hint comment and the hints "
+"affects all of the individual statement in the multistatement. Notice "
+"that the seemingly multistatement on the interactive interface of psql is"
+" internally a sequence of single statements so hints affects only on the "
+"statement just following."
+msgstr ""
+
+#: ../../hint_details.md:133 fc8304f92ace40bea3528eb615c5a676
+msgid "VALUES expressions"
+msgstr ""
+
+#: ../../hint_details.md:135 9111ae4aaa7e402285eeebd8a1ed8c13
+msgid ""
+"`VALUES` expressions in `FROM` clause are named as `*VALUES*` internally "
+"so it is hintable if it is the only `VALUES` in a query. Two or more "
+"`VALUES` expressions in a query seem distinguishable looking at its "
+"explain result. But in reality, it is merely a cosmetic and they are not "
+"distinguishable."
+msgstr ""
+
+#: ../../hint_details.md:155 850d8aa8e5934be3953e213a27c5d42e
+msgid "Subqueries"
+msgstr ""
+
+#: ../../hint_details.md:157 59e4ab3e13434ec386e6e520941c6f3d
+msgid ""
+"Subqueries in the following context occasionally can be hinted using the "
+"name `ANY_subquery`."
+msgstr ""
+
+#: ../../hint_details.md:164 8fc7cd7a438c496789bdc267ed2c79d3
+msgid ""
+"For these syntaxes, planner internally assigns the name to the subquery "
+"when planning joins on tables including it, so join hints are applicable "
+"on such joins using the implicit name as the following."
+msgstr ""
+
+#: ../../hint_details.md:184 298f22ca01ad440d87f1fbdb1f08b1ad
+msgid "Using `IndexOnlyScan` hint"
+msgstr ""
+
+#: ../../hint_details.md:186 c934420b49f74f6e84243b7b6ebb85ee
+msgid ""
+"Index scan may unexpectedly performed on another index when the index "
+"specifed in IndexOnlyScan hint cannot perform index only scan."
+msgstr ""
+
+#: ../../hint_details.md:189 e822f115c0e3464e87a8481442d7cc1f
+msgid "Behavior of `NoIndexScan`"
+msgstr ""
+
+#: ../../hint_details.md:191 e5ab2f1800d7499fa554039c169553d6
+msgid "`NoIndexScan` hint involes `NoIndexOnlyScan`."
+msgstr ""
+
+#: ../../hint_details.md:193 ad556fc3b3fe4375b57d2cf7bcc41d71
+msgid "Parallel hint and `UNION`"
+msgstr ""
+
+#: ../../hint_details.md:195 16e9429f115749e887ef42a2167e5951
+msgid ""
+"A `UNION` can run in parallel only when all underlying subqueries are "
+"parallel-safe. Conversely enforcing parallel on any of the subqueries let"
+" a parallel-executable `UNION` run in parallel. Meanwhile, a parallel "
+"hint with zero workers hinhibits a scan from executed in parallel."
+msgstr ""
+
+#: ../../hint_details.md:200 f9337a9f4a8c4e8e8d7b1894cdccf090
+msgid "Setting `pg_hint_plan` parameters by Set hints"
+msgstr ""
+
+#: ../../hint_details.md:202 c606686299a54953ac304bcebc4c81e1
+msgid ""
+"`pg_hint_plan` parameters change the behavior of itself so some "
+"parameters doesn't work as expected."
+msgstr ""
+
+#: ../../hint_details.md:205 10066ce8166649fc9fe54bc761e2c721
+msgid ""
+"Hints to change `enable_hint`, `enable_hint_tables` are ignored even "
+"though they are reported as \"used hints\" in debug logs."
+msgstr ""
+
+#: ../../hint_details.md:207 cf794e1b0baf4b8dbc8330d015988a17
+msgid ""
+"Setting `debug_print` and `message_level` works from midst of the "
+"processing of the target query."
+msgstr ""
+

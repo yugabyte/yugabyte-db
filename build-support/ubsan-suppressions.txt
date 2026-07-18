@@ -1,0 +1,131 @@
+# https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html#runtime-suppressions
+
+# See ubsan_checks.inc from the UBSAN source for the list of possible UBSAN checks, e.g.:
+# https://github.com/yugabyte/llvm-project/blob/12.0.1-yb/compiler-rt/lib/ubsan/ubsan_checks.inc
+
+# Here is a copy-and-paste for convenience:
+# https://gist.githubusercontent.com/mbautin/fb08c1864783cfa410c16caf7c1b4833/raw
+
+# It looks like in the suppression files we should use the last argument out of the three arguments
+# to the UBSAN_CHECK macro. Here is a list for convenience.
+#
+# This was produced with the following command, and output slightly edited.
+# curl -qL https://bit.ly/3uE0zDH | grep -Eo '"[^"]+")' | sed 's/[")]//g; s/^/# /g;' | sort | uniq
+#
+# alignment
+# bool
+# bounds
+# cfi
+# enum
+# float-cast-overflow
+# float-divide-by-zero
+# function
+# implicit-integer-sign-change
+# implicit-signed-integer-truncation
+# implicit-unsigned-integer-truncation
+# integer-divide-by-zero
+# invalid-builtin-use
+# invalid-objc-cast
+# nonnull-attribute
+# null
+# nullability-arg
+# nullability-assign
+# nullability-return
+# object-size
+# pointer-overflow
+# return
+# returns-nonnull-attribute
+# shift-base
+# shift-exponent
+# signed-integer-overflow
+# undefined
+# unreachable
+# unsigned-integer-overflow
+# vla-bound
+# vptr
+
+# Also keep in mind that some of these warnings can only be suppressed if the code is compiled with
+# the appropriate -fsanitize-recover=... option (e.g. -fsanitize-recover=shift-base).
+# -------------------------------------------------------------------------------------------------
+# UBSAN issues in the AWS C++ SDK.
+# -------------------------------------------------------------------------------------------------
+
+# TODO: verify if it is OK to ignore these.
+# Tracked here: https://goo.gl/kPaUgS
+signed-integer-overflow:Aws::Utils::HashingUtils::HashString
+
+# Invalid bool load:
+# https://gist.githubusercontent.com/mbautin/2d34b20f632b7efacac5541227579434/raw
+# Happens in Aws::Utils::Outcome<Aws::Utils::Array<unsigned char>, bool>::operator=
+#
+# The error is:
+# runtime error: load of value 156, which is not a valid value for type 'typename
+# remove_reference<bool &>::type' (aka 'bool')
+#
+# Weirdly, even though 'bool' is mentioned above, we have to use 'enum' here.
+enum:Aws::Utils::Outcome*operator=
+
+# -------------------------------------------------------------------------------------------------
+
+# crcutil works with unaligned data
+alignment:crcutil::Crc32cSSE4::Crc32c
+alignment:crc32c_sse4.cc
+
+# snappy works with unaligned data
+alignment:snappy::
+
+# explicit unaligned read in jenkins_hash in the c++ driver
+# in cassandra-cpp-driver-2.9.0-yb-6/src/jenkins_hash.cpp:97
+alignment:cass::Word64At
+
+# https://goo.gl/AaE3P5
+pointer-overflow:google::*::DumpStackFrameInfo*
+
+# src/postgres/src/port/erand48.c
+signed-integer-overflow:_dorand48
+signed-integer-overflow:pg_erand48
+signed-integer-overflow:erand48.c
+
+# https://gist.githubusercontent.com/mbautin/8939d2a6e22156fbf61daaeb986f169e/raw
+shift-base:pglz_compress
+shift-base:pglz_find_match
+
+# We might need these too:
+shift-exponent:pglz_compress
+shift-exponent:pglz_find_match
+
+# https://gist.githubusercontent.com/mbautin/c65046247ff1e48dc03ae7ac2d711c27/raw
+shift-base:LocalExecuteInvalidationMessage
+
+# https://gist.githubusercontent.com/mbautin/aa04a0504e729db687a9520c4b13fbcc/raw
+shift-exponent:postmaster.c
+signed-integer-overflow:int.c
+signed-integer-overflow:int8.c
+
+# C++ Cassandra driver uses the following hack: type B is inherited from A and object of type A
+# is downcasted to B. It works since B does not have any extra fields etc. UBSAN correctly
+# detects this failure, but it is widely used across driver so we have to suppress it.
+vptr:libcassandra.so
+
+# UBSAN finds UndefinedBehaviorSanitizer error in case of 'float' value to 'double' type casting
+# with overflow. The result is 'Inf' and that's correct. Let's suppress the error because there
+# are such castings with overflow in a few tests. (For example: QLTestSelectedExpr.TestCastDecimal)
+# (See https://github.com/YugaByte/yugabyte-db/issues/1241 for details.)
+float-cast-overflow:yb::bfql::SetNumericResult
+
+# UBSAN issues in ICU 67.
+nonnull-attribute:libicuuc.so
+function:libicuuc.so
+
+# https://github.com/yugabyte/yugabyte-db/issues/10046
+# There is this line in gflags.cc:
+#
+# for (; line_end; flagfile_contents = line_end + 1) {
+#
+# The `flagfile_contents = line_end + 1` part has undefined behavior if line_end is nullptr, but
+# it does not matter because the loop condition (`line_end`) will cause the loop to exit in that
+# case.
+pointer-overflow:CommandLineFlagParser::ProcessOptionsFromStringLocked
+
+# https://gist.githubusercontent.com/hari90/9e85bbb08a6201970713b7a9ae982210/raw
+shift-base:elf_uncompress_lzma

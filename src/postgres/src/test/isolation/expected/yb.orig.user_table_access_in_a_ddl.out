@@ -1,0 +1,25 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin_rr s1_select s1_sleep s2_insert s1_create_materialized_view s1_commit s1_select_view
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_select: SELECT * FROM test;
+k|v
+-+-
+1|1
+(1 row)
+
+step s1_sleep: SELECT pg_sleep(1); -- to avoid a read restart error
+pg_sleep
+--------
+        
+(1 row)
+
+step s2_insert: INSERT INTO test VALUES (2, 2);
+step s1_create_materialized_view: CREATE MATERIALIZED VIEW test_v AS SELECT * FROM test;
+step s1_commit: COMMIT;
+step s1_select_view: SELECT * FROM test_v;
+k|v
+-+-
+1|1
+(1 row)
+

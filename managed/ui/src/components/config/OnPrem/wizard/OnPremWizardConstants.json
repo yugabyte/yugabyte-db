@@ -1,0 +1,10 @@
+{
+  "helpPlacement": "top",
+  "nameHelpContent": "Enter a unique name for your On-Premises Datacenter that you will recognize any time you see it in YugabyteDB Anywhere.",
+  "userHelpContent": "Enter the name of the user that has SSH privileges on your instances.",
+  "portHelpContent": "Enter the SSH port to open on created instances.",
+  "pkHelpContent": "Enter the full content of the private key that the SSH User can use to SSH into your instances.",
+  "skipProvisioningHelp": "If enabled, node provisioning will not be done when the universe is created. A pre-provision script will be provided to be run manually instead.",
+  "airGapInstallHelp": "If enabled, installation will run in airgap mode without expecting access to the Internet.",
+  "useHostnameHelp": "If enabled, nodes are expected to be specified by hostname instead of IP address. This will mean that all communication between YugabyteDB Anywhere and nodes as well as amongst nodes in a cluster will happen by way of DNS resolution."
+}

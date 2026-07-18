@@ -1,0 +1,181 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: ybproviders.operator.yugabyte.io
+spec:
+  group: operator.yugabyte.io
+  scope: Namespaced
+  names:
+    plural: ybproviders
+    singular: ybprovider
+    shortNames:
+      - yp
+    kind: YBProvider
+    categories:
+      - all
+      - yugabyte
+  versions:
+    - name: v1alpha1
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+      - name: State
+        type: string
+        description: The state of the provider
+        jsonPath: .status.state
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          description: Custom resource definition for YugabyteDB Kubernetes provider configuration.
+          type: object
+          properties:
+            status:
+              description: >
+                Provider configuration status for the provider configuration custom resource.
+              type: object
+              properties:
+                state:
+                  description: >
+                    State of the provider configuration.
+                  type: string
+                resourceUUID:
+                  description: Internal UUID of the provider configuration resource.
+                  type: string
+                message:
+                  description: >
+                    Message for the provider configuration.
+                  type: string
+            spec:
+              type: object
+              properties:
+                cloudInfo:
+                  description: >
+                    Cloud information for the provider configuration.
+                  type: object
+                  properties:
+                    kubernetesProvider:
+                      description:
+                        Type of provider configuration to be created.
+                        Allowed values - gke, eks, aks, openshift, custom
+                      type: string
+                      enum:
+                        - gke
+                        - eks
+                        - aks
+                        - openshift
+                        - custom
+                      x-kubernetes-validations:
+                      - message: Config type cannot be changed
+                        rule: self == oldSelf
+                    kubernetesImageRegistry:
+                      description: >
+                        Kubernetes image registry to be used for the provider configuration.
+                        This is used to pull the YugabyteDB operator image.
+                      type: string
+                    kubeConfigSecret:
+                      description: >
+                        Secret containing kubeconfig for the region.
+                        Will use in-cluster credentials if empty.
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the kubeconfig secret.
+                          type: string
+                        namespace:
+                          description: Namespace of the kubeconfig secret.
+                          type: string
+                regions:
+                  description: >
+                    List of regions to be used for the provider configuration.
+                  type: array
+                  minItems: 1
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - code
+                  items:
+                    type: object
+                    required:
+                      - code
+                      - zones
+                    properties:
+                      code:
+                        description: >
+                          Code of the region to be used for the provider configuration.
+                          This is a short code like us-west1, us-east1, etc.
+                        type: string
+                      zones:
+                        description: >
+                          List of zones to be used for the provider configuration in the region.
+                        type: array
+                        minItems: 1
+                        x-kubernetes-list-type: map
+                        x-kubernetes-list-map-keys:
+                          - code
+                        items:
+                          type: object
+                          required:
+                            - code
+                          properties:
+                            code:
+                              description:  >
+                                Code of the zone to be used for the provider configuration.
+                                This is a short code like us-west1-a, us-east1-b, etc.
+                              type: string
+                            cloudInfo:
+                              description: >
+                                Cloud information for the zone.
+                              type: object
+                              x-kubernetes-validations:
+                              - rule: "!has(self.certManagerIssuerKind) || has(self.certManagerIssuerName)"
+                                message: >
+                                  If 'certManagerIssuerKind' is specified,
+                                  'certManagerIssuerName' must also be specified.
+                              properties:
+                                kubeNamespace:
+                                  description: >
+                                    Name of the Kubernetes namespace where universe nodes
+                                    are to be deployed.
+                                  type: string
+                                kubeDomain:
+                                  description: >
+                                    Domain Name for the Kubernetes cluster.
+                                  type: string
+                                kubePodAddressTemplate:
+                                  description: >
+                                    Template for forming the FQDN for a pod.
+                                    Useful to set in a multi-cluster k8s.
+                                  type: string
+                                kubernetesStorageClass:
+                                  description: >
+                                    Name of the StorageClass used for Volumes in this zone.
+                                  type: string
+                                kubeConfigSecret:
+                                  description: >
+                                    Secret containing kubeconfig for the region.
+                                    Will use in-cluster credentials if empty.
+                                  type: object
+                                  properties:
+                                    name:
+                                      description: Name of the kubeconfig secret.
+                                      type: string
+                                    namespace:
+                                      description: Namespace of the kubeconfig secret.
+                                      type: string
+                                overrides:
+                                  description: >
+                                    Kubernetes overrides for the provider.
+                                  type: object
+                                  x-kubernetes-preserve-unknown-fields: true
+                                certManagerIssuerKind:
+                                  description: >
+                                    Kind of the cert-manager issuer.
+                                  type: string
+                                certManagerIssuerName:
+                                  description: Name of the cert-manager issuer.
+                                  type: string
+                                certManagerIssuerGroup:
+                                  description: >
+                                    Group of the cert-manager issuer.
+                                    This is used to identify the issuer kind.
+                                  type: string

@@ -1,0 +1,13 @@
+     prfname      | prfmaxfailedloginattempts | prfpasswordlocktime 
+------------------+---------------------------+---------------------
+ profile_3_failed |                         3 |                   0
+ profile_2_failed |                         2 |                   0
+(2 rows)
+
+ rolprfrole | rolprfprofile | rolprfstatus | rolprffailedloginattempts
+------------+---------------+--------------+---------------------------
+      16387 |         16385 | l            |                         4
+      16388 |         16385 | o            |                         0
+      16389 |         16386 | o            |                         1
+(3 rows)
+

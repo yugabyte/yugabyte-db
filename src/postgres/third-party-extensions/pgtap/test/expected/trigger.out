@@ -1,0 +1,86 @@
+\unset ECHO
+1..84
+ok 1 - has_trigger(schema, table, trigger, desc) should pass
+ok 2 - has_trigger(schema, table, trigger, desc) should have the proper description
+ok 3 - has_trigger(schema, table, trigger, desc) should have the proper diagnostics
+ok 4 - has_trigger(schema, table, trigger) should pass
+ok 5 - has_trigger(schema, table, trigger) should have the proper description
+ok 6 - has_trigger(schema, table, trigger) should have the proper diagnostics
+ok 7 - has_trigger(table, trigger, desc) should pass
+ok 8 - has_trigger(table, trigger, desc) should have the proper description
+ok 9 - has_trigger(table, trigger, desc) should have the proper diagnostics
+ok 10 - has_trigger(table, trigger) should pass
+ok 11 - has_trigger(table, trigger) should have the proper description
+ok 12 - has_trigger(table, trigger) should have the proper diagnostics
+ok 13 - has_trigger(schema, table, nonexistent, desc) should fail
+ok 14 - has_trigger(schema, table, nonexistent, desc) should have the proper description
+ok 15 - has_trigger(schema, table, nonexistent, desc) should have the proper diagnostics
+ok 16 - has_trigger(table, nonexistent) no schema fail should fail
+ok 17 - has_trigger(table, nonexistent) no schema fail should have the proper description
+ok 18 - has_trigger(table, nonexistent) no schema fail should have the proper diagnostics
+ok 19 - hasnt_trigger(schema, table, trigger, desc) should fail
+ok 20 - hasnt_trigger(schema, table, trigger, desc) should have the proper description
+ok 21 - hasnt_trigger(schema, table, trigger, desc) should have the proper diagnostics
+ok 22 - hasnt_trigger(schema, table, trigger) should fail
+ok 23 - hasnt_trigger(schema, table, trigger) should have the proper description
+ok 24 - hasnt_trigger(schema, table, trigger) should have the proper diagnostics
+ok 25 - hasnt_trigger(table, trigger, desc) should fail
+ok 26 - hasnt_trigger(table, trigger, desc) should have the proper description
+ok 27 - hasnt_trigger(table, trigger, desc) should have the proper diagnostics
+ok 28 - hasnt_trigger(table, trigger) should fail
+ok 29 - hasnt_trigger(table, trigger) should have the proper description
+ok 30 - hasnt_trigger(table, trigger) should have the proper diagnostics
+ok 31 - hasnt_trigger(schema, table, nonexistent, desc) should pass
+ok 32 - hasnt_trigger(schema, table, nonexistent, desc) should have the proper description
+ok 33 - hasnt_trigger(schema, table, nonexistent, desc) should have the proper diagnostics
+ok 34 - hasnt_trigger(table, nonexistent) no schema fail should pass
+ok 35 - hasnt_trigger(table, nonexistent) no schema fail should have the proper description
+ok 36 - hasnt_trigger(table, nonexistent) no schema fail should have the proper diagnostics
+ok 37 - trigger_is() should pass
+ok 38 - trigger_is() should have the proper description
+ok 39 - trigger_is() should have the proper diagnostics
+ok 40 - trigger_is() no desc should pass
+ok 41 - trigger_is() no desc should have the proper description
+ok 42 - trigger_is() no desc should have the proper diagnostics
+ok 43 - trigger_is() no schema should pass
+ok 44 - trigger_is() no schema should have the proper description
+ok 45 - trigger_is() no schema should have the proper diagnostics
+ok 46 - trigger_is() no schema or desc should pass
+ok 47 - trigger_is() no schema or desc should have the proper description
+ok 48 - trigger_is() no schema or desc should have the proper diagnostics
+ok 49 - trigger_is() fail should fail
+ok 50 - trigger_is() fail should have the proper description
+ok 51 - trigger_is() fail should have the proper diagnostics
+ok 52 - trigger_is() no schema fail should fail
+ok 53 - trigger_is() no schema fail should have the proper description
+ok 54 - trigger_is() no schema fail should have the proper diagnostics
+ok 55 - triggers_are(schema, table, triggers, desc) should pass
+ok 56 - triggers_are(schema, table, triggers, desc) should have the proper description
+ok 57 - triggers_are(schema, table, triggers, desc) should have the proper diagnostics
+ok 58 - triggers_are(schema, table, triggers) should pass
+ok 59 - triggers_are(schema, table, triggers) should have the proper description
+ok 60 - triggers_are(schema, table, triggers) should have the proper diagnostics
+ok 61 - triggers_are(schema, table, triggers) + extra should fail
+ok 62 - triggers_are(schema, table, triggers) + extra should have the proper description
+ok 63 - triggers_are(schema, table, triggers) + extra should have the proper diagnostics
+ok 64 - triggers_are(schema, table, triggers) + missing should fail
+ok 65 - triggers_are(schema, table, triggers) + missing should have the proper description
+ok 66 - triggers_are(schema, table, triggers) + missing should have the proper diagnostics
+ok 67 - triggers_are(schema, table, triggers) + extra & missing should fail
+ok 68 - triggers_are(schema, table, triggers) + extra & missing should have the proper description
+ok 69 - triggers_are(schema, table, triggers) + extra & missing should have the proper diagnostics
+ok 70 - triggers_are(table, triggers, desc) should pass
+ok 71 - triggers_are(table, triggers, desc) should have the proper description
+ok 72 - triggers_are(table, triggers, desc) should have the proper diagnostics
+ok 73 - triggers_are(table, triggers) should pass
+ok 74 - triggers_are(table, triggers) should have the proper description
+ok 75 - triggers_are(table, triggers) should have the proper diagnostics
+ok 76 - triggers_are(table, triggers) + extra should fail
+ok 77 - triggers_are(table, triggers) + extra should have the proper description
+ok 78 - triggers_are(table, triggers) + extra should have the proper diagnostics
+ok 79 - triggers_are(table, triggers) + missing should fail
+ok 80 - triggers_are(table, triggers) + missing should have the proper description
+ok 81 - triggers_are(table, triggers) + missing should have the proper diagnostics
+ok 82 - triggers_are(table, triggers) + extra & missing should fail
+ok 83 - triggers_are(table, triggers) + extra & missing should have the proper description
+ok 84 - triggers_are(table, triggers) + extra & missing should have the proper diagnostics

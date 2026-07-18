@@ -1,0 +1,113 @@
+<!--
+doc/src/sgml/ref/reset.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-reset">
+ <indexterm zone="sql-reset">
+  <primary>RESET</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>RESET</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>RESET</refname>
+  <refpurpose>restore the value of a run-time parameter to the default value</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+RESET <replaceable class="parameter">configuration_parameter</replaceable>
+RESET ALL
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>RESET</command> restores run-time parameters to their
+   default values.  <command>RESET</command> is an alternative
+   spelling for
+<synopsis>
+SET <replaceable class="parameter">configuration_parameter</replaceable> TO DEFAULT
+</synopsis>
+   Refer to <xref linkend="sql-set"/> for
+   details.
+  </para>
+
+  <para>
+   The default value is defined as the value that the parameter would
+   have had, if no <command>SET</command> had ever been issued for it in the
+   current session.  The actual source of this value might be a
+   compiled-in default, the configuration file, command-line options,
+   or per-database or per-user default settings.  This is subtly different
+   from defining it as <quote>the value that the parameter had at session
+   start</quote>, because if the value came from the configuration file, it
+   will be reset to whatever is specified by the configuration file now.
+   See <xref linkend="runtime-config"/> for details.
+  </para>
+
+  <para>
+   The transactional behavior of <command>RESET</command> is the same as
+   <command>SET</command>: its effects will be undone by transaction rollback.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">configuration_parameter</replaceable></term>
+    <listitem>
+     <para>
+      Name of a settable run-time parameter.  Available parameters are
+      documented in <xref linkend="runtime-config"/> and on the
+      <xref linkend="sql-set"/> reference page.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ALL</literal></term>
+    <listitem>
+     <para>
+      Resets all settable run-time parameters to default values.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Set the <varname>timezone</varname> configuration variable to its default value:
+<screen>
+RESET timezone;
+</screen></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>RESET</command> is a <productname>PostgreSQL</productname> extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-set"/></member>
+   <member><xref linkend="sql-show"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

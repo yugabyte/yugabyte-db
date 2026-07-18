@@ -1,0 +1,118 @@
+<!--
+doc/src/sgml/ref/discard.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-discard">
+ <indexterm zone="sql-discard">
+  <primary>DISCARD</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DISCARD</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DISCARD</refname>
+  <refpurpose>discard session state</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DISCARD { ALL | PLANS | SEQUENCES | TEMPORARY | TEMP }
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DISCARD</command> releases internal resources associated with a
+   database session.  This command is useful for partially or fully
+   resetting the session's state.  There are several subcommands to
+   release different types of resources; the <command>DISCARD ALL</command>
+   variant subsumes all the others, and also resets additional state.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+
+   <varlistentry>
+    <term><literal>PLANS</literal></term>
+    <listitem>
+     <para>
+      Releases all cached query plans, forcing re-planning to occur
+      the next time the associated prepared statement is used.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SEQUENCES</literal></term>
+    <listitem>
+     <para>
+      Discards all cached sequence-related state,
+      including <function>currval()</function>/<function>lastval()</function>
+      information and any preallocated sequence values that have not
+      yet been returned by <function>nextval()</function>.
+      (See <xref linkend="sql-createsequence"/> for a description of
+      preallocated sequence values.)
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>TEMPORARY</literal> or <literal>TEMP</literal></term>
+    <listitem>
+     <para>
+      Drops all temporary tables created in the current session.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ALL</literal></term>
+    <listitem>
+     <para>
+      Releases all temporary resources associated with the current
+      session and resets the session to its initial state.
+      Currently, this has the same effect as executing the following sequence
+      of statements:
+<programlisting>
+CLOSE ALL;
+SET SESSION AUTHORIZATION DEFAULT;
+RESET ALL;
+DEALLOCATE ALL;
+UNLISTEN *;
+SELECT pg_advisory_unlock_all();
+DISCARD PLANS;
+DISCARD TEMP;
+DISCARD SEQUENCES;
+</programlisting></para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+   <para>
+    <command>DISCARD ALL</command> cannot be executed inside a transaction block.
+   </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>DISCARD</command> is a <productname>PostgreSQL</productname> extension.
+  </para>
+ </refsect1>
+</refentry>

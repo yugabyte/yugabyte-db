@@ -1,0 +1,14 @@
+title: PaginationResp
+description: Pagination information in page API responses.
+type: object
+properties:
+  has_next:
+    description: There are more next records if true.
+    type: boolean
+  has_prev:
+    description: There are more previous records if true.
+    type: boolean
+  total_count:
+    description: Total number of records.
+    type: integer
+    format: int32

@@ -1,0 +1,2 @@
+# src/test/regress/yb_foreign_key_schedule
+test: yb.orig.foreign_key

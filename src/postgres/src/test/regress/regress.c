@@ -1,0 +1,1626 @@
+/*------------------------------------------------------------------------
+ *
+ * regress.c
+ *	 Code for various C-language functions defined as part of the
+ *	 regression tests.
+ *
+ * This code is released under the terms of the PostgreSQL License.
+ *
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ * src/test/regress/regress.c
+ *
+ *-------------------------------------------------------------------------
+ */
+
+#include "postgres.h"
+
+#include <math.h>
+#include <signal.h>
+
+#include "access/detoast.h"
+#include "access/htup_details.h"
+#include "catalog/catalog.h"
+#include "catalog/namespace.h"
+#include "catalog/pg_operator.h"
+#include "catalog/pg_type.h"
+#include "commands/sequence.h"
+#include "commands/trigger.h"
+#include "executor/executor.h"
+#include "executor/functions.h"
+#include "executor/spi.h"
+#include "funcapi.h"
+#include "mb/pg_wchar.h"
+#include "miscadmin.h"
+#include "nodes/supportnodes.h"
+#include "optimizer/optimizer.h"
+#include "optimizer/plancat.h"
+#include "parser/parse_coerce.h"
+#include "port/atomics.h"
+#include "portability/instr_time.h"
+#include "postmaster/postmaster.h"	/* for MAX_BACKENDS */
+#include "storage/spin.h"
+#include "tcop/tcopprot.h"
+#include "utils/array.h"
+#include "utils/builtins.h"
+#include "utils/geo_decls.h"
+#include "utils/memutils.h"
+#include "utils/rel.h"
+#include "utils/typcache.h"
+
+/* YB includes */
+#include "utils/syscache.h"
+
+/* define our text domain for translations */
+#undef TEXTDOMAIN
+#define TEXTDOMAIN PG_TEXTDOMAIN("postgresql-regress")
+
+#define EXPECT_TRUE(expr)	\
+	do { \
+		if (!(expr)) \
+			elog(ERROR, \
+				 "%s was unexpectedly false in file \"%s\" line %u", \
+				 #expr, __FILE__, __LINE__); \
+	} while (0)
+
+#define EXPECT_EQ_U32(result_expr, expected_expr)	\
+	do { \
+		uint32		actual_result = (result_expr); \
+		uint32		expected_result = (expected_expr); \
+		if (actual_result != expected_result) \
+			elog(ERROR, \
+				 "%s yielded %u, expected %s in file \"%s\" line %u", \
+				 #result_expr, actual_result, #expected_expr, __FILE__, __LINE__); \
+	} while (0)
+
+#define EXPECT_EQ_U64(result_expr, expected_expr)	\
+	do { \
+		uint64		actual_result = (result_expr); \
+		uint64		expected_result = (expected_expr); \
+		if (actual_result != expected_result) \
+			elog(ERROR, \
+				 "%s yielded " UINT64_FORMAT ", expected %s in file \"%s\" line %u", \
+				 #result_expr, actual_result, #expected_expr, __FILE__, __LINE__); \
+	} while (0)
+
+#define LDELIM			'('
+#define RDELIM			')'
+#define DELIM			','
+
+static void regress_lseg_construct(LSEG *lseg, Point *pt1, Point *pt2);
+
+PG_MODULE_MAGIC_EXT(
+					.name = "regress",
+					.version = PG_VERSION
+);
+
+
+/* return the point where two paths intersect, or NULL if no intersection. */
+PG_FUNCTION_INFO_V1(interpt_pp);
+
+Datum
+interpt_pp(PG_FUNCTION_ARGS)
+{
+	PATH	   *p1 = PG_GETARG_PATH_P(0);
+	PATH	   *p2 = PG_GETARG_PATH_P(1);
+	int			i,
+				j;
+	LSEG		seg1,
+				seg2;
+	bool		found;			/* We've found the intersection */
+
+	found = false;				/* Haven't found it yet */
+
+	for (i = 0; i < p1->npts - 1 && !found; i++)
+	{
+		regress_lseg_construct(&seg1, &p1->p[i], &p1->p[i + 1]);
+		for (j = 0; j < p2->npts - 1 && !found; j++)
+		{
+			regress_lseg_construct(&seg2, &p2->p[j], &p2->p[j + 1]);
+			if (DatumGetBool(DirectFunctionCall2(lseg_intersect,
+												 LsegPGetDatum(&seg1),
+												 LsegPGetDatum(&seg2))))
+				found = true;
+		}
+	}
+
+	if (!found)
+		PG_RETURN_NULL();
+
+	/*
+	 * Note: DirectFunctionCall2 will kick out an error if lseg_interpt()
+	 * returns NULL, but that should be impossible since we know the two
+	 * segments intersect.
+	 */
+	PG_RETURN_DATUM(DirectFunctionCall2(lseg_interpt,
+										LsegPGetDatum(&seg1),
+										LsegPGetDatum(&seg2)));
+}
+
+
+/* like lseg_construct, but assume space already allocated */
+static void
+regress_lseg_construct(LSEG *lseg, Point *pt1, Point *pt2)
+{
+	lseg->p[0].x = pt1->x;
+	lseg->p[0].y = pt1->y;
+	lseg->p[1].x = pt2->x;
+	lseg->p[1].y = pt2->y;
+}
+
+PG_FUNCTION_INFO_V1(overpaid);
+
+Datum
+overpaid(PG_FUNCTION_ARGS)
+{
+	HeapTupleHeader tuple = PG_GETARG_HEAPTUPLEHEADER(0);
+	bool		isnull;
+	int32		salary;
+
+	salary = DatumGetInt32(GetAttributeByName(tuple, "salary", &isnull));
+	if (isnull)
+		PG_RETURN_NULL();
+	PG_RETURN_BOOL(salary > 699);
+}
+
+/* New type "widget"
+ * This used to be "circle", but I added circle to builtins,
+ *	so needed to make sure the names do not collide. - tgl 97/04/21
+ */
+
+typedef struct
+{
+	Point		center;
+	double		radius;
+} WIDGET;
+
+PG_FUNCTION_INFO_V1(widget_in);
+PG_FUNCTION_INFO_V1(widget_out);
+
+#define NARGS	3
+
+Datum
+widget_in(PG_FUNCTION_ARGS)
+{
+	char	   *str = PG_GETARG_CSTRING(0);
+	char	   *p,
+			   *coord[NARGS];
+	int			i;
+	WIDGET	   *result;
+
+	for (i = 0, p = str; *p && i < NARGS && *p != RDELIM; p++)
+	{
+		if (*p == DELIM || (*p == LDELIM && i == 0))
+			coord[i++] = p + 1;
+	}
+
+	/*
+	 * Note: DON'T convert this error to "soft" style (errsave/ereturn).  We
+	 * want this data type to stay permanently in the hard-error world so that
+	 * it can be used for testing that such cases still work reasonably.
+	 */
+	if (i < NARGS)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+				 errmsg("invalid input syntax for type %s: \"%s\"",
+						"widget", str)));
+
+	result = palloc_object(WIDGET);
+	result->center.x = atof(coord[0]);
+	result->center.y = atof(coord[1]);
+	result->radius = atof(coord[2]);
+
+	PG_RETURN_POINTER(result);
+}
+
+Datum
+widget_out(PG_FUNCTION_ARGS)
+{
+	WIDGET	   *widget = (WIDGET *) PG_GETARG_POINTER(0);
+	char	   *str = psprintf("(%g,%g,%g)",
+							   widget->center.x, widget->center.y, widget->radius);
+
+	PG_RETURN_CSTRING(str);
+}
+
+PG_FUNCTION_INFO_V1(pt_in_widget);
+
+Datum
+pt_in_widget(PG_FUNCTION_ARGS)
+{
+	Point	   *point = PG_GETARG_POINT_P(0);
+	WIDGET	   *widget = (WIDGET *) PG_GETARG_POINTER(1);
+	float8		distance;
+
+	distance = DatumGetFloat8(DirectFunctionCall2(point_distance,
+												  PointPGetDatum(point),
+												  PointPGetDatum(&widget->center)));
+
+	PG_RETURN_BOOL(distance < widget->radius);
+}
+
+PG_FUNCTION_INFO_V1(reverse_name);
+
+Datum
+reverse_name(PG_FUNCTION_ARGS)
+{
+	char	   *string = PG_GETARG_CSTRING(0);
+	int			i;
+	int			len;
+	char	   *new_string;
+
+	new_string = palloc0(NAMEDATALEN);
+	for (i = 0; i < NAMEDATALEN && string[i]; ++i)
+		;
+	if (i == NAMEDATALEN || !string[i])
+		--i;
+	len = i;
+	for (; i >= 0; --i)
+		new_string[len - i] = string[i];
+	PG_RETURN_CSTRING(new_string);
+}
+
+PG_FUNCTION_INFO_V1(trigger_return_old);
+
+Datum
+trigger_return_old(PG_FUNCTION_ARGS)
+{
+	TriggerData *trigdata = (TriggerData *) fcinfo->context;
+	HeapTuple	tuple;
+
+	if (!CALLED_AS_TRIGGER(fcinfo))
+		elog(ERROR, "trigger_return_old: not fired by trigger manager");
+
+	tuple = trigdata->tg_trigtuple;
+
+	return PointerGetDatum(tuple);
+}
+
+
+/*
+ * Type int44 has no real-world use, but the regression tests use it
+ * (under the alias "city_budget").  It's a four-element vector of int4's.
+ */
+
+/*
+ *		int44in			- converts "num, num, ..." to internal form
+ *
+ *		Note: Fills any missing positions with zeroes.
+ */
+PG_FUNCTION_INFO_V1(int44in);
+
+Datum
+int44in(PG_FUNCTION_ARGS)
+{
+	char	   *input_string = PG_GETARG_CSTRING(0);
+	int32	   *result = (int32 *) palloc(4 * sizeof(int32));
+	int			i;
+
+	i = sscanf(input_string,
+			   "%d, %d, %d, %d",
+			   &result[0],
+			   &result[1],
+			   &result[2],
+			   &result[3]);
+	while (i < 4)
+		result[i++] = 0;
+
+	PG_RETURN_POINTER(result);
+}
+
+/*
+ *		int44out		- converts internal form to "num, num, ..."
+ */
+PG_FUNCTION_INFO_V1(int44out);
+
+Datum
+int44out(PG_FUNCTION_ARGS)
+{
+	int32	   *an_array = (int32 *) PG_GETARG_POINTER(0);
+	char	   *result = (char *) palloc(16 * 4);
+
+	snprintf(result, 16 * 4, "%d,%d,%d,%d",
+			 an_array[0],
+			 an_array[1],
+			 an_array[2],
+			 an_array[3]);
+
+	PG_RETURN_CSTRING(result);
+}
+
+PG_FUNCTION_INFO_V1(test_canonicalize_path);
+Datum
+test_canonicalize_path(PG_FUNCTION_ARGS)
+{
+	char	   *path = text_to_cstring(PG_GETARG_TEXT_PP(0));
+
+	canonicalize_path(path);
+	PG_RETURN_TEXT_P(cstring_to_text(path));
+}
+
+PG_FUNCTION_INFO_V1(make_tuple_indirect);
+Datum
+make_tuple_indirect(PG_FUNCTION_ARGS)
+{
+	HeapTupleHeader rec = PG_GETARG_HEAPTUPLEHEADER(0);
+	HeapTupleData tuple;
+	int			ncolumns;
+	Datum	   *values;
+	bool	   *nulls;
+
+	Oid			tupType;
+	int32		tupTypmod;
+	TupleDesc	tupdesc;
+
+	HeapTuple	newtup;
+
+	int			i;
+
+	MemoryContext old_context;
+
+	/* Extract type info from the tuple itself */
+	tupType = HeapTupleHeaderGetTypeId(rec);
+	tupTypmod = HeapTupleHeaderGetTypMod(rec);
+	tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+	ncolumns = tupdesc->natts;
+
+	/* Build a temporary HeapTuple control structure */
+	tuple.t_len = HeapTupleHeaderGetDatumLength(rec);
+	ItemPointerSetInvalid(&(tuple.t_self));
+	tuple.t_tableOid = InvalidOid;
+	tuple.t_data = rec;
+
+	values = (Datum *) palloc(ncolumns * sizeof(Datum));
+	nulls = (bool *) palloc(ncolumns * sizeof(bool));
+
+	heap_deform_tuple(&tuple, tupdesc, values, nulls);
+
+	old_context = MemoryContextSwitchTo(TopTransactionContext);
+
+	for (i = 0; i < ncolumns; i++)
+	{
+		varlena    *attr;
+		varlena    *new_attr;
+		varatt_indirect redirect_pointer;
+
+		/* only work on existing, not-null varlenas */
+		if (TupleDescAttr(tupdesc, i)->attisdropped ||
+			nulls[i] ||
+			TupleDescAttr(tupdesc, i)->attlen != -1 ||
+			TupleDescAttr(tupdesc, i)->attstorage == TYPSTORAGE_PLAIN)
+			continue;
+
+		attr = (varlena *) DatumGetPointer(values[i]);
+
+		/* don't recursively indirect */
+		if (VARATT_IS_EXTERNAL_INDIRECT(attr))
+			continue;
+
+		/* copy datum, so it still lives later */
+		if (VARATT_IS_EXTERNAL_ONDISK(attr))
+			attr = detoast_external_attr(attr);
+		else
+		{
+			varlena    *oldattr = attr;
+
+			attr = palloc0(VARSIZE_ANY(oldattr));
+			memcpy(attr, oldattr, VARSIZE_ANY(oldattr));
+		}
+
+		/* build indirection Datum */
+		new_attr = (varlena *) palloc0(INDIRECT_POINTER_SIZE);
+		redirect_pointer.pointer = attr;
+		SET_VARTAG_EXTERNAL(new_attr, VARTAG_INDIRECT);
+		memcpy(VARDATA_EXTERNAL(new_attr), &redirect_pointer,
+			   sizeof(redirect_pointer));
+
+		values[i] = PointerGetDatum(new_attr);
+	}
+
+	newtup = heap_form_tuple(tupdesc, values, nulls);
+	pfree(values);
+	pfree(nulls);
+	ReleaseTupleDesc(tupdesc);
+
+	MemoryContextSwitchTo(old_context);
+
+	/*
+	 * We intentionally don't use PG_RETURN_HEAPTUPLEHEADER here, because that
+	 * would cause the indirect toast pointers to be flattened out of the
+	 * tuple immediately, rendering subsequent testing irrelevant.  So just
+	 * return the HeapTupleHeader pointer as-is.  This violates the general
+	 * rule that composite Datums shouldn't contain toast pointers, but so
+	 * long as the regression test scripts don't insert the result of this
+	 * function into a container type (record, array, etc) it should be OK.
+	 */
+	PG_RETURN_POINTER(newtup->t_data);
+}
+
+PG_FUNCTION_INFO_V1(get_environ);
+
+Datum
+get_environ(PG_FUNCTION_ARGS)
+{
+#if !defined(WIN32)
+	extern char **environ;
+#endif
+	int			nvals = 0;
+	ArrayType  *result;
+	Datum	   *env;
+
+	for (char **s = environ; *s; s++)
+		nvals++;
+
+	env = palloc(nvals * sizeof(Datum));
+
+	for (int i = 0; i < nvals; i++)
+		env[i] = CStringGetTextDatum(environ[i]);
+
+	result = construct_array_builtin(env, nvals, TEXTOID);
+
+	PG_RETURN_POINTER(result);
+}
+
+PG_FUNCTION_INFO_V1(regress_setenv);
+
+Datum
+regress_setenv(PG_FUNCTION_ARGS)
+{
+	char	   *envvar = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	char	   *envval = text_to_cstring(PG_GETARG_TEXT_PP(1));
+
+	if (!superuser())
+		elog(ERROR, "must be superuser to change environment variables");
+
+	if (setenv(envvar, envval, 1) != 0)
+		elog(ERROR, "could not set environment variable: %m");
+
+	PG_RETURN_VOID();
+}
+
+/* Sleep until no process has a given PID. */
+PG_FUNCTION_INFO_V1(wait_pid);
+
+Datum
+wait_pid(PG_FUNCTION_ARGS)
+{
+	int			pid = PG_GETARG_INT32(0);
+
+	if (!superuser())
+		elog(ERROR, "must be superuser to check PID liveness");
+
+	while (kill(pid, 0) == 0)
+	{
+		CHECK_FOR_INTERRUPTS();
+		pg_usleep(50000);
+	}
+
+	if (errno != ESRCH)
+		elog(ERROR, "could not check PID %d liveness: %m", pid);
+
+	PG_RETURN_VOID();
+}
+
+static void
+test_atomic_flag(void)
+{
+	pg_atomic_flag flag;
+
+	pg_atomic_init_flag(&flag);
+	EXPECT_TRUE(pg_atomic_unlocked_test_flag(&flag));
+	EXPECT_TRUE(pg_atomic_test_set_flag(&flag));
+	EXPECT_TRUE(!pg_atomic_unlocked_test_flag(&flag));
+	EXPECT_TRUE(!pg_atomic_test_set_flag(&flag));
+	pg_atomic_clear_flag(&flag);
+	EXPECT_TRUE(pg_atomic_unlocked_test_flag(&flag));
+	EXPECT_TRUE(pg_atomic_test_set_flag(&flag));
+	pg_atomic_clear_flag(&flag);
+}
+
+static void
+test_atomic_uint32(void)
+{
+	pg_atomic_uint32 var;
+	uint32		expected;
+	int			i;
+
+	pg_atomic_init_u32(&var, 0);
+	EXPECT_EQ_U32(pg_atomic_read_u32(&var), 0);
+	pg_atomic_write_u32(&var, 3);
+	EXPECT_EQ_U32(pg_atomic_read_u32(&var), 3);
+	EXPECT_EQ_U32(pg_atomic_fetch_add_u32(&var, pg_atomic_read_u32(&var) - 2),
+				  3);
+	EXPECT_EQ_U32(pg_atomic_fetch_sub_u32(&var, 1), 4);
+	EXPECT_EQ_U32(pg_atomic_sub_fetch_u32(&var, 3), 0);
+	EXPECT_EQ_U32(pg_atomic_add_fetch_u32(&var, 10), 10);
+	EXPECT_EQ_U32(pg_atomic_exchange_u32(&var, 5), 10);
+	EXPECT_EQ_U32(pg_atomic_exchange_u32(&var, 0), 5);
+
+	/* test around numerical limits */
+	EXPECT_EQ_U32(pg_atomic_fetch_add_u32(&var, INT_MAX), 0);
+	EXPECT_EQ_U32(pg_atomic_fetch_add_u32(&var, INT_MAX), INT_MAX);
+	pg_atomic_fetch_add_u32(&var, 2);	/* wrap to 0 */
+	EXPECT_EQ_U32(pg_atomic_fetch_add_u32(&var, PG_INT16_MAX), 0);
+	EXPECT_EQ_U32(pg_atomic_fetch_add_u32(&var, PG_INT16_MAX + 1),
+				  PG_INT16_MAX);
+	EXPECT_EQ_U32(pg_atomic_fetch_add_u32(&var, PG_INT16_MIN),
+				  2 * PG_INT16_MAX + 1);
+	EXPECT_EQ_U32(pg_atomic_fetch_add_u32(&var, PG_INT16_MIN - 1),
+				  PG_INT16_MAX);
+	pg_atomic_fetch_add_u32(&var, 1);	/* top up to UINT_MAX */
+	EXPECT_EQ_U32(pg_atomic_read_u32(&var), UINT_MAX);
+	EXPECT_EQ_U32(pg_atomic_fetch_sub_u32(&var, INT_MAX), UINT_MAX);
+	EXPECT_EQ_U32(pg_atomic_read_u32(&var), (uint32) INT_MAX + 1);
+	EXPECT_EQ_U32(pg_atomic_sub_fetch_u32(&var, INT_MAX), 1);
+	pg_atomic_sub_fetch_u32(&var, 1);
+	expected = PG_INT16_MAX;
+	EXPECT_TRUE(!pg_atomic_compare_exchange_u32(&var, &expected, 1));
+	expected = PG_INT16_MAX + 1;
+	EXPECT_TRUE(!pg_atomic_compare_exchange_u32(&var, &expected, 1));
+	expected = PG_INT16_MIN;
+	EXPECT_TRUE(!pg_atomic_compare_exchange_u32(&var, &expected, 1));
+	expected = PG_INT16_MIN - 1;
+	EXPECT_TRUE(!pg_atomic_compare_exchange_u32(&var, &expected, 1));
+
+	/* fail exchange because of old expected */
+	expected = 10;
+	EXPECT_TRUE(!pg_atomic_compare_exchange_u32(&var, &expected, 1));
+
+	/* CAS is allowed to fail due to interrupts, try a couple of times */
+	for (i = 0; i < 1000; i++)
+	{
+		expected = 0;
+		if (!pg_atomic_compare_exchange_u32(&var, &expected, 1))
+			break;
+	}
+	if (i == 1000)
+		elog(ERROR, "atomic_compare_exchange_u32() never succeeded");
+	EXPECT_EQ_U32(pg_atomic_read_u32(&var), 1);
+	pg_atomic_write_u32(&var, 0);
+
+	/* try setting flagbits */
+	EXPECT_TRUE(!(pg_atomic_fetch_or_u32(&var, 1) & 1));
+	EXPECT_TRUE(pg_atomic_fetch_or_u32(&var, 2) & 1);
+	EXPECT_EQ_U32(pg_atomic_read_u32(&var), 3);
+	/* try clearing flagbits */
+	EXPECT_EQ_U32(pg_atomic_fetch_and_u32(&var, ~2) & 3, 3);
+	EXPECT_EQ_U32(pg_atomic_fetch_and_u32(&var, ~1), 1);
+	/* no bits set anymore */
+	EXPECT_EQ_U32(pg_atomic_fetch_and_u32(&var, ~0), 0);
+}
+
+static void
+test_atomic_uint64(void)
+{
+	pg_atomic_uint64 var;
+	uint64		expected;
+	int			i;
+
+	pg_atomic_init_u64(&var, 0);
+	EXPECT_EQ_U64(pg_atomic_read_u64(&var), 0);
+	pg_atomic_write_u64(&var, 3);
+	EXPECT_EQ_U64(pg_atomic_read_u64(&var), 3);
+	EXPECT_EQ_U64(pg_atomic_fetch_add_u64(&var, pg_atomic_read_u64(&var) - 2),
+				  3);
+	EXPECT_EQ_U64(pg_atomic_fetch_sub_u64(&var, 1), 4);
+	EXPECT_EQ_U64(pg_atomic_sub_fetch_u64(&var, 3), 0);
+	EXPECT_EQ_U64(pg_atomic_add_fetch_u64(&var, 10), 10);
+	EXPECT_EQ_U64(pg_atomic_exchange_u64(&var, 5), 10);
+	EXPECT_EQ_U64(pg_atomic_exchange_u64(&var, 0), 5);
+
+	/* fail exchange because of old expected */
+	expected = 10;
+	EXPECT_TRUE(!pg_atomic_compare_exchange_u64(&var, &expected, 1));
+
+	/* CAS is allowed to fail due to interrupts, try a couple of times */
+	for (i = 0; i < 100; i++)
+	{
+		expected = 0;
+		if (!pg_atomic_compare_exchange_u64(&var, &expected, 1))
+			break;
+	}
+	if (i == 100)
+		elog(ERROR, "atomic_compare_exchange_u64() never succeeded");
+	EXPECT_EQ_U64(pg_atomic_read_u64(&var), 1);
+
+	pg_atomic_write_u64(&var, 0);
+
+	/* try setting flagbits */
+	EXPECT_TRUE(!(pg_atomic_fetch_or_u64(&var, 1) & 1));
+	EXPECT_TRUE(pg_atomic_fetch_or_u64(&var, 2) & 1);
+	EXPECT_EQ_U64(pg_atomic_read_u64(&var), 3);
+	/* try clearing flagbits */
+	EXPECT_EQ_U64((pg_atomic_fetch_and_u64(&var, ~2) & 3), 3);
+	EXPECT_EQ_U64(pg_atomic_fetch_and_u64(&var, ~1), 1);
+	/* no bits set anymore */
+	EXPECT_EQ_U64(pg_atomic_fetch_and_u64(&var, ~0), 0);
+}
+
+/*
+ * Perform, fairly minimal, testing of the spinlock implementation.
+ *
+ * It's likely worth expanding these to actually test concurrency etc, but
+ * having some regularly run tests is better than none.
+ */
+static void
+test_spinlock(void)
+{
+	/*
+	 * Basic tests for spinlocks, as well as the underlying operations.
+	 *
+	 * We embed the spinlock in a struct with other members to test that the
+	 * spinlock operations don't perform too wide writes.
+	 */
+	{
+		struct test_lock_struct
+		{
+			char		data_before[4];
+			slock_t		lock;
+			char		data_after[4];
+		}			struct_w_lock;
+
+		memcpy(struct_w_lock.data_before, "abcd", 4);
+		memcpy(struct_w_lock.data_after, "ef12", 4);
+
+		/* test basic operations via the SpinLock* API */
+		SpinLockInit(&struct_w_lock.lock);
+		SpinLockAcquire(&struct_w_lock.lock);
+		SpinLockRelease(&struct_w_lock.lock);
+
+		/* test basic operations via underlying S_* API */
+		S_INIT_LOCK(&struct_w_lock.lock);
+		S_LOCK(&struct_w_lock.lock);
+		S_UNLOCK(&struct_w_lock.lock);
+
+		/* and that "contended" acquisition works */
+		s_lock(&struct_w_lock.lock, "testfile", 17, "testfunc");
+		S_UNLOCK(&struct_w_lock.lock);
+
+		/*
+		 * Check, using TAS directly, that a single spin cycle doesn't block
+		 * when acquiring an already acquired lock.
+		 */
+#ifdef TAS
+		S_LOCK(&struct_w_lock.lock);
+
+		if (!TAS(&struct_w_lock.lock))
+			elog(ERROR, "acquired already held spinlock");
+
+#ifdef TAS_SPIN
+		if (!TAS_SPIN(&struct_w_lock.lock))
+			elog(ERROR, "acquired already held spinlock");
+#endif							/* defined(TAS_SPIN) */
+
+		S_UNLOCK(&struct_w_lock.lock);
+#endif							/* defined(TAS) */
+
+		/*
+		 * Verify that after all of this the non-lock contents are still
+		 * correct.
+		 */
+		if (memcmp(struct_w_lock.data_before, "abcd", 4) != 0)
+			elog(ERROR, "padding before spinlock modified");
+		if (memcmp(struct_w_lock.data_after, "ef12", 4) != 0)
+			elog(ERROR, "padding after spinlock modified");
+	}
+}
+
+PG_FUNCTION_INFO_V1(test_atomic_ops);
+Datum
+test_atomic_ops(PG_FUNCTION_ARGS)
+{
+	test_atomic_flag();
+
+	test_atomic_uint32();
+
+	test_atomic_uint64();
+
+	/*
+	 * Arguably this shouldn't be tested as part of this function, but it's
+	 * closely enough related that that seems ok for now.
+	 */
+	test_spinlock();
+
+	PG_RETURN_BOOL(true);
+}
+
+PG_FUNCTION_INFO_V1(test_fdw_handler);
+Datum
+test_fdw_handler(PG_FUNCTION_ARGS)
+{
+	elog(ERROR, "test_fdw_handler is not implemented");
+	PG_RETURN_NULL();
+}
+
+PG_FUNCTION_INFO_V1(test_fdw_connection);
+Datum
+test_fdw_connection(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TEXT_P(cstring_to_text("dbname=regress_doesnotexist user=doesnotexist password=secret"));
+}
+
+PG_FUNCTION_INFO_V1(is_catalog_text_unique_index_oid);
+Datum
+is_catalog_text_unique_index_oid(PG_FUNCTION_ARGS)
+{
+	return BoolGetDatum(IsCatalogTextUniqueIndexOid(PG_GETARG_OID(0)));
+}
+
+PG_FUNCTION_INFO_V1(test_support_func);
+Datum
+test_support_func(PG_FUNCTION_ARGS)
+{
+	Node	   *rawreq = (Node *) PG_GETARG_POINTER(0);
+	Node	   *ret = NULL;
+
+	if (IsA(rawreq, SupportRequestSelectivity))
+	{
+		/*
+		 * Assume that the target is int4eq; that's safe as long as we don't
+		 * attach this to any other boolean-returning function.
+		 */
+		SupportRequestSelectivity *req = (SupportRequestSelectivity *) rawreq;
+		Selectivity s1;
+
+		if (req->is_join)
+			s1 = join_selectivity(req->root, Int4EqualOperator,
+								  req->args,
+								  req->inputcollid,
+								  req->jointype,
+								  req->sjinfo);
+		else
+			s1 = restriction_selectivity(req->root, Int4EqualOperator,
+										 req->args,
+										 req->inputcollid,
+										 req->varRelid);
+
+		req->selectivity = s1;
+		ret = (Node *) req;
+	}
+
+	if (IsA(rawreq, SupportRequestCost))
+	{
+		/* Provide some generic estimate */
+		SupportRequestCost *req = (SupportRequestCost *) rawreq;
+
+		req->startup = 0;
+		req->per_tuple = 2 * cpu_operator_cost;
+		ret = (Node *) req;
+	}
+
+	if (IsA(rawreq, SupportRequestRows))
+	{
+		/*
+		 * Assume that the target is generate_series_int4; that's safe as long
+		 * as we don't attach this to any other set-returning function.
+		 */
+		SupportRequestRows *req = (SupportRequestRows *) rawreq;
+
+		if (req->node && IsA(req->node, FuncExpr))	/* be paranoid */
+		{
+			List	   *args = ((FuncExpr *) req->node)->args;
+			Node	   *arg1 = linitial(args);
+			Node	   *arg2 = lsecond(args);
+
+			if (IsA(arg1, Const) &&
+				!((Const *) arg1)->constisnull &&
+				IsA(arg2, Const) &&
+				!((Const *) arg2)->constisnull)
+			{
+				int32		val1 = DatumGetInt32(((Const *) arg1)->constvalue);
+				int32		val2 = DatumGetInt32(((Const *) arg2)->constvalue);
+
+				req->rows = val2 - val1 + 1;
+				ret = (Node *) req;
+			}
+		}
+	}
+
+	PG_RETURN_POINTER(ret);
+}
+
+PG_FUNCTION_INFO_V1(test_inline_in_from_support_func);
+Datum
+test_inline_in_from_support_func(PG_FUNCTION_ARGS)
+{
+	Node	   *rawreq = (Node *) PG_GETARG_POINTER(0);
+
+	if (IsA(rawreq, SupportRequestInlineInFrom))
+	{
+		/*
+		 * Assume that the target is foo_from_bar; that's safe as long as we
+		 * don't attach this to any other function.
+		 */
+		SupportRequestInlineInFrom *req = (SupportRequestInlineInFrom *) rawreq;
+		StringInfoData sql;
+		RangeTblFunction *rtfunc = req->rtfunc;
+		FuncExpr   *expr = (FuncExpr *) rtfunc->funcexpr;
+		Node	   *node;
+		Const	   *c;
+		char	   *colname;
+		char	   *tablename;
+		SQLFunctionParseInfoPtr pinfo;
+		List	   *raw_parsetree_list;
+		List	   *querytree_list;
+		Query	   *querytree;
+
+		if (list_length(expr->args) != 3)
+		{
+			ereport(WARNING, (errmsg("test_inline_in_from_support_func called with %d args but expected 3", list_length(expr->args))));
+			PG_RETURN_POINTER(NULL);
+		}
+
+		/* Get colname */
+		node = linitial(expr->args);
+		if (!IsA(node, Const))
+		{
+			ereport(WARNING, (errmsg("test_inline_in_from_support_func called with non-Const parameters")));
+			PG_RETURN_POINTER(NULL);
+		}
+
+		c = (Const *) node;
+		if (c->consttype != TEXTOID || c->constisnull)
+		{
+			ereport(WARNING, (errmsg("test_inline_in_from_support_func called with non-TEXT parameters")));
+			PG_RETURN_POINTER(NULL);
+		}
+		colname = TextDatumGetCString(c->constvalue);
+
+		/* Get tablename */
+		node = lsecond(expr->args);
+		if (!IsA(node, Const))
+		{
+			ereport(WARNING, (errmsg("test_inline_in_from_support_func called with non-Const parameters")));
+			PG_RETURN_POINTER(NULL);
+		}
+
+		c = (Const *) node;
+		if (c->consttype != TEXTOID || c->constisnull)
+		{
+			ereport(WARNING, (errmsg("test_inline_in_from_support_func called with non-TEXT parameters")));
+			PG_RETURN_POINTER(NULL);
+		}
+		tablename = TextDatumGetCString(c->constvalue);
+
+		/* Begin constructing replacement SELECT query. */
+		initStringInfo(&sql);
+		appendStringInfo(&sql, "SELECT %s::text FROM %s",
+						 quote_identifier(colname),
+						 quote_identifier(tablename));
+
+		/* Add filter expression if present. */
+		node = lthird(expr->args);
+		if (!(IsA(node, Const) && ((Const *) node)->constisnull))
+		{
+			/*
+			 * We only filter if $3 is not constant-NULL.  This is not a very
+			 * exact implementation of the PL/pgSQL original, but it's close
+			 * enough for demonstration purposes.
+			 */
+			appendStringInfo(&sql, " WHERE %s::text = $3",
+							 quote_identifier(colname));
+		}
+
+		/* Build a SQLFunctionParseInfo with the parameters of my function. */
+		pinfo = prepare_sql_fn_parse_info(req->proc,
+										  (Node *) expr,
+										  expr->inputcollid);
+
+		/* Parse the generated SQL. */
+		raw_parsetree_list = pg_parse_query(sql.data);
+		if (list_length(raw_parsetree_list) != 1)
+		{
+			ereport(WARNING, (errmsg("test_inline_in_from_support_func parsed to more than one node")));
+			PG_RETURN_POINTER(NULL);
+		}
+
+		/* Analyze the parse tree as if it were a SQL-language body. */
+		querytree_list = pg_analyze_and_rewrite_withcb(linitial(raw_parsetree_list),
+													   sql.data,
+													   (ParserSetupHook) sql_fn_parser_setup,
+													   pinfo, NULL);
+		if (list_length(querytree_list) != 1)
+		{
+			ereport(WARNING, (errmsg("test_inline_in_from_support_func rewrote to more than one node")));
+			PG_RETURN_POINTER(NULL);
+		}
+
+		querytree = linitial(querytree_list);
+		if (!IsA(querytree, Query))
+		{
+			ereport(WARNING, (errmsg("test_inline_in_from_support_func didn't parse to a Query")));
+			PG_RETURN_POINTER(NULL);
+		}
+
+		PG_RETURN_POINTER(querytree);
+	}
+
+	PG_RETURN_POINTER(NULL);
+}
+
+PG_FUNCTION_INFO_V1(test_opclass_options_func);
+Datum
+test_opclass_options_func(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_NULL();
+}
+
+/* one-time tests for encoding infrastructure */
+PG_FUNCTION_INFO_V1(test_enc_setup);
+Datum
+test_enc_setup(PG_FUNCTION_ARGS)
+{
+	/* Test pg_encoding_set_invalid() */
+	for (int i = 0; i < _PG_LAST_ENCODING_; i++)
+	{
+		char		buf[2],
+					bigbuf[16];
+		int			len,
+					mblen,
+					valid;
+
+		if (!PG_VALID_ENCODING(i))
+			continue;
+		if (pg_encoding_max_length(i) == 1)
+			continue;
+		pg_encoding_set_invalid(i, buf);
+		len = strnlen(buf, 2);
+		if (len != 2)
+			elog(WARNING,
+				 "official invalid string for encoding \"%s\" has length %d",
+				 pg_enc2name_tbl[i].name, len);
+		mblen = pg_encoding_mblen(i, buf);
+		if (mblen != 2)
+			elog(WARNING,
+				 "official invalid string for encoding \"%s\" has mblen %d",
+				 pg_enc2name_tbl[i].name, mblen);
+		valid = pg_encoding_verifymbstr(i, buf, len);
+		if (valid != 0)
+			elog(WARNING,
+				 "official invalid string for encoding \"%s\" has valid prefix of length %d",
+				 pg_enc2name_tbl[i].name, valid);
+		valid = pg_encoding_verifymbstr(i, buf, 1);
+		if (valid != 0)
+			elog(WARNING,
+				 "first byte of official invalid string for encoding \"%s\" has valid prefix of length %d",
+				 pg_enc2name_tbl[i].name, valid);
+		memset(bigbuf, ' ', sizeof(bigbuf));
+		bigbuf[0] = buf[0];
+		bigbuf[1] = buf[1];
+		valid = pg_encoding_verifymbstr(i, bigbuf, sizeof(bigbuf));
+		if (valid != 0)
+			elog(WARNING,
+				 "trailing data changed official invalid string for encoding \"%s\" to have valid prefix of length %d",
+				 pg_enc2name_tbl[i].name, valid);
+	}
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * Call an encoding conversion or verification function.
+ *
+ * Arguments:
+ *	string	  bytea -- string to convert
+ *	src_enc	  name  -- source encoding
+ *	dest_enc  name  -- destination encoding
+ *	noError	  bool  -- if set, don't ereport() on invalid or untranslatable
+ *					   input
+ *
+ * Result is a tuple with two attributes:
+ *  int4	-- number of input bytes successfully converted
+ *  bytea	-- converted string
+ */
+PG_FUNCTION_INFO_V1(test_enc_conversion);
+Datum
+test_enc_conversion(PG_FUNCTION_ARGS)
+{
+	bytea	   *string = PG_GETARG_BYTEA_PP(0);
+	char	   *src_encoding_name = NameStr(*PG_GETARG_NAME(1));
+	int			src_encoding = pg_char_to_encoding(src_encoding_name);
+	char	   *dest_encoding_name = NameStr(*PG_GETARG_NAME(2));
+	int			dest_encoding = pg_char_to_encoding(dest_encoding_name);
+	bool		noError = PG_GETARG_BOOL(3);
+	TupleDesc	tupdesc;
+	char	   *src;
+	char	   *dst;
+	bytea	   *retval;
+	Size		srclen;
+	Size		dstsize;
+	Oid			proc;
+	int			convertedbytes;
+	int			dstlen;
+	Datum		values[2];
+	bool		nulls[2] = {0};
+	HeapTuple	tuple;
+
+	if (src_encoding < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid source encoding name \"%s\"",
+						src_encoding_name)));
+	if (dest_encoding < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid destination encoding name \"%s\"",
+						dest_encoding_name)));
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+	tupdesc = BlessTupleDesc(tupdesc);
+
+	srclen = VARSIZE_ANY_EXHDR(string);
+	src = VARDATA_ANY(string);
+
+	if (src_encoding == dest_encoding)
+	{
+		/* just check that the source string is valid */
+		int			oklen;
+
+		oklen = pg_encoding_verifymbstr(src_encoding, src, srclen);
+
+		if (oklen == srclen)
+		{
+			convertedbytes = oklen;
+			retval = string;
+		}
+		else if (!noError)
+		{
+			report_invalid_encoding(src_encoding, src + oklen, srclen - oklen);
+		}
+		else
+		{
+			/*
+			 * build bytea data type structure.
+			 */
+			Assert(oklen < srclen);
+			convertedbytes = oklen;
+			retval = (bytea *) palloc(oklen + VARHDRSZ);
+			SET_VARSIZE(retval, oklen + VARHDRSZ);
+			memcpy(VARDATA(retval), src, oklen);
+		}
+	}
+	else
+	{
+		proc = FindDefaultConversionProc(src_encoding, dest_encoding);
+		if (!OidIsValid(proc))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_FUNCTION),
+					 errmsg("default conversion function for encoding \"%s\" to \"%s\" does not exist",
+							pg_encoding_to_char(src_encoding),
+							pg_encoding_to_char(dest_encoding))));
+
+		if (srclen >= (MaxAllocSize / (Size) MAX_CONVERSION_GROWTH))
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("out of memory"),
+					 errdetail("String of %d bytes is too long for encoding conversion.",
+							   (int) srclen)));
+
+		dstsize = (Size) srclen * MAX_CONVERSION_GROWTH + 1;
+		dst = MemoryContextAlloc(CurrentMemoryContext, dstsize);
+
+		/* perform conversion */
+		convertedbytes = pg_do_encoding_conversion_buf(proc,
+													   src_encoding,
+													   dest_encoding,
+													   (unsigned char *) src, srclen,
+													   (unsigned char *) dst, dstsize,
+													   noError);
+		dstlen = strlen(dst);
+
+		/*
+		 * build bytea data type structure.
+		 */
+		retval = (bytea *) palloc(dstlen + VARHDRSZ);
+		SET_VARSIZE(retval, dstlen + VARHDRSZ);
+		memcpy(VARDATA(retval), dst, dstlen);
+
+		pfree(dst);
+	}
+
+	values[0] = Int32GetDatum(convertedbytes);
+	values[1] = PointerGetDatum(retval);
+	tuple = heap_form_tuple(tupdesc, values, nulls);
+
+	PG_RETURN_DATUM(HeapTupleGetDatum(tuple));
+}
+
+/* Convert bytea to text without validation for corruption tests from SQL. */
+PG_FUNCTION_INFO_V1(test_bytea_to_text);
+Datum
+test_bytea_to_text(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TEXT_P(PG_GETARG_BYTEA_PP(0));
+}
+
+/* And the reverse. */
+PG_FUNCTION_INFO_V1(test_text_to_bytea);
+Datum
+test_text_to_bytea(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BYTEA_P(PG_GETARG_TEXT_PP(0));
+}
+
+/* Corruption tests in C. */
+PG_FUNCTION_INFO_V1(test_mblen_func);
+Datum
+test_mblen_func(PG_FUNCTION_ARGS)
+{
+	const char *func = text_to_cstring(PG_GETARG_BYTEA_PP(0));
+	const char *encoding = text_to_cstring(PG_GETARG_BYTEA_PP(1));
+	text	   *string = PG_GETARG_BYTEA_PP(2);
+	int			offset = PG_GETARG_INT32(3);
+	const char *data = VARDATA_ANY(string);
+	size_t		size = VARSIZE_ANY_EXHDR(string);
+	int			result = 0;
+
+	if (strcmp(func, "pg_mblen_unbounded") == 0)
+		result = pg_mblen_unbounded(data + offset);
+	else if (strcmp(func, "pg_mblen_cstr") == 0)
+		result = pg_mblen_cstr(data + offset);
+	else if (strcmp(func, "pg_mblen_with_len") == 0)
+		result = pg_mblen_with_len(data + offset, size - offset);
+	else if (strcmp(func, "pg_mblen_range") == 0)
+		result = pg_mblen_range(data + offset, data + size);
+	else if (strcmp(func, "pg_encoding_mblen") == 0)
+		result = pg_encoding_mblen(pg_char_to_encoding(encoding), data + offset);
+	else
+		elog(ERROR, "unknown function");
+
+	PG_RETURN_INT32(result);
+}
+
+PG_FUNCTION_INFO_V1(test_text_to_wchars);
+Datum
+test_text_to_wchars(PG_FUNCTION_ARGS)
+{
+	const char *encoding_name = text_to_cstring(PG_GETARG_BYTEA_PP(0));
+	text	   *string = PG_GETARG_TEXT_PP(1);
+	const char *data = VARDATA_ANY(string);
+	size_t		size = VARSIZE_ANY_EXHDR(string);
+	pg_wchar   *wchars = palloc(sizeof(pg_wchar) * (size + 1));
+	Datum	   *datums;
+	int			wlen;
+	int			encoding;
+
+	encoding = pg_char_to_encoding(encoding_name);
+	if (encoding < 0)
+		elog(ERROR, "unknown encoding name: %s", encoding_name);
+
+	if (size > 0)
+	{
+		datums = palloc(sizeof(Datum) * size);
+		wlen = pg_encoding_mb2wchar_with_len(encoding,
+											 data,
+											 wchars,
+											 size);
+		Assert(wlen >= 0);
+		Assert(wlen <= size);
+		Assert(wchars[wlen] == 0);
+
+		for (int i = 0; i < wlen; ++i)
+			datums[i] = UInt32GetDatum(wchars[i]);
+	}
+	else
+	{
+		datums = NULL;
+		wlen = 0;
+	}
+
+	PG_RETURN_ARRAYTYPE_P(construct_array_builtin(datums, wlen, INT4OID));
+}
+
+PG_FUNCTION_INFO_V1(test_wchars_to_text);
+Datum
+test_wchars_to_text(PG_FUNCTION_ARGS)
+{
+	const char *encoding_name = text_to_cstring(PG_GETARG_BYTEA_PP(0));
+	ArrayType  *array = PG_GETARG_ARRAYTYPE_P(1);
+	Datum	   *datums;
+	bool	   *nulls;
+	char	   *mb;
+	text	   *result;
+	int			wlen;
+	int			bytes;
+	int			encoding;
+
+	encoding = pg_char_to_encoding(encoding_name);
+	if (encoding < 0)
+		elog(ERROR, "unknown encoding name: %s", encoding_name);
+
+	deconstruct_array_builtin(array, INT4OID, &datums, &nulls, &wlen);
+
+	if (wlen > 0)
+	{
+		pg_wchar   *wchars = palloc(sizeof(pg_wchar) * wlen);
+
+		for (int i = 0; i < wlen; ++i)
+		{
+			if (nulls[i])
+				elog(ERROR, "unexpected NULL in array");
+			wchars[i] = DatumGetInt32(datums[i]);
+		}
+
+		mb = palloc(pg_encoding_max_length(encoding) * wlen + 1);
+		bytes = pg_encoding_wchar2mb_with_len(encoding, wchars, mb, wlen);
+	}
+	else
+	{
+		mb = "";
+		bytes = 0;
+	}
+
+	result = palloc(bytes + VARHDRSZ);
+	SET_VARSIZE(result, bytes + VARHDRSZ);
+	memcpy(VARDATA(result), mb, bytes);
+
+	PG_RETURN_TEXT_P(result);
+}
+
+PG_FUNCTION_INFO_V1(test_valid_server_encoding);
+Datum
+test_valid_server_encoding(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BOOL(pg_valid_server_encoding(text_to_cstring(PG_GETARG_TEXT_PP(0))) >= 0);
+}
+
+/* Provide SQL access to IsBinaryCoercible() */
+PG_FUNCTION_INFO_V1(binary_coercible);
+Datum
+binary_coercible(PG_FUNCTION_ARGS)
+{
+	Oid			srctype = PG_GETARG_OID(0);
+	Oid			targettype = PG_GETARG_OID(1);
+
+	PG_RETURN_BOOL(IsBinaryCoercible(srctype, targettype));
+}
+
+/*
+ * Sanity checks for functions in relpath.h
+ */
+PG_FUNCTION_INFO_V1(test_relpath);
+Datum
+test_relpath(PG_FUNCTION_ARGS)
+{
+	RelPathStr	rpath;
+
+	/*
+	 * Verify that PROCNUMBER_CHARS and MAX_BACKENDS stay in sync.
+	 * Unfortunately I don't know how to express that in a way suitable for a
+	 * static assert.
+	 */
+	if ((int) ceil(log10(MAX_BACKENDS)) != PROCNUMBER_CHARS)
+		elog(WARNING, "mismatch between MAX_BACKENDS and PROCNUMBER_CHARS");
+
+	/* verify that the max-length relpath is generated ok */
+	rpath = GetRelationPath(OID_MAX, OID_MAX, OID_MAX, MAX_BACKENDS - 1,
+							INIT_FORKNUM);
+
+	if (strlen(rpath.str) != REL_PATH_STR_MAXLEN)
+		elog(WARNING, "maximum length relpath is if length %zu instead of %zu",
+			 strlen(rpath.str), REL_PATH_STR_MAXLEN);
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * Simple test to verify NLS support, particularly that the PRI* macros work.
+ *
+ * A secondary objective is to verify that <inttypes.h>'s values for the
+ * PRI* macros match what our snprintf.c code will do.  Therefore, we run
+ * the ereport() calls even when we know that translation will not happen.
+ */
+PG_FUNCTION_INFO_V1(test_translation);
+Datum
+test_translation(PG_FUNCTION_ARGS)
+{
+#ifdef ENABLE_NLS
+	static bool inited = false;
+
+	/*
+	 * Ideally we'd do this bit in a _PG_init() hook.  However, it seems best
+	 * that the Solaris hack only get applied in the nls.sql test, so it
+	 * doesn't risk affecting other tests that load this module.
+	 */
+	if (!inited)
+	{
+		/*
+		 * Solaris' built-in gettext is not bright about associating locales
+		 * with message catalogs that are named after just the language.
+		 * Apparently the customary workaround is for users to set the
+		 * LANGUAGE environment variable to provide a mapping.  Do so here to
+		 * ensure that the nls.sql regression test will work.
+		 */
+#if defined(__sun__)
+		setenv("LANGUAGE", "es_ES.UTF-8:es", 1);
+#endif
+		pg_bindtextdomain(TEXTDOMAIN);
+		inited = true;
+	}
+
+	/*
+	 * If nls.sql failed to select a non-C locale, no translation will happen.
+	 * Report that so that we can distinguish this outcome from brokenness.
+	 * (We do this here, not in nls.sql, so as to need only 3 expected files.)
+	 */
+	if (strcmp(GetConfigOption("lc_messages", false, false), "C") == 0)
+		elog(NOTICE, "lc_messages is 'C'");
+#else
+	elog(NOTICE, "NLS is not enabled");
+#endif
+
+	ereport(NOTICE,
+			errmsg("translated PRId64 = %" PRId64, (int64) 424242424242));
+	ereport(NOTICE,
+			errmsg("translated PRId32 = %" PRId32, (int32) -1234));
+	ereport(NOTICE,
+			errmsg("translated PRIdMAX = %" PRIdMAX, (intmax_t) -123456789012));
+	ereport(NOTICE,
+			errmsg("translated PRIdPTR = %" PRIdPTR, (intptr_t) -9999));
+
+	ereport(NOTICE,
+			errmsg("translated PRIu64 = %" PRIu64, (uint64) 424242424242));
+	ereport(NOTICE,
+			errmsg("translated PRIu32 = %" PRIu32, (uint32) -1234));
+	ereport(NOTICE,
+			errmsg("translated PRIuMAX = %" PRIuMAX, (uintmax_t) 123456789012));
+	ereport(NOTICE,
+			errmsg("translated PRIuPTR = %" PRIuPTR, (uintptr_t) 9999));
+
+	ereport(NOTICE,
+			errmsg("translated PRIx64 = %" PRIx64, (uint64) 424242424242));
+	ereport(NOTICE,
+			errmsg("translated PRIx32 = %" PRIx32, (uint32) -1234));
+	ereport(NOTICE,
+			errmsg("translated PRIxMAX = %" PRIxMAX, (uintmax_t) 123456789012));
+	ereport(NOTICE,
+			errmsg("translated PRIxPTR = %" PRIxPTR, (uintptr_t) 9999));
+
+	ereport(NOTICE,
+			errmsg("translated PRIX64 = %" PRIX64, (uint64) 424242424242));
+	ereport(NOTICE,
+			errmsg("translated PRIX32 = %" PRIX32, (uint32) -1234));
+	ereport(NOTICE,
+			errmsg("translated PRIXMAX = %" PRIXMAX, (uintmax_t) 123456789012));
+	ereport(NOTICE,
+			errmsg("translated PRIXPTR = %" PRIXPTR, (uintptr_t) 9999));
+
+	PG_RETURN_VOID();
+}
+
+/* Verify that pg_ticks_to_ns behaves correct, including overflow */
+PG_FUNCTION_INFO_V1(test_instr_time);
+Datum
+test_instr_time(PG_FUNCTION_ARGS)
+{
+	instr_time	t;
+	int64		test_ns[] = {0, 1000, INT64CONST(1000000000000000)};
+	int64		max_err;
+
+	/*
+	 * The ns-to-ticks-to-ns roundtrip may lose precision due to integer
+	 * truncation in the fixed-point conversion. The maximum error depends on
+	 * ticks_per_ns_scaled relative to the shift factor.
+	 */
+	max_err = (ticks_per_ns_scaled >> TICKS_TO_NS_SHIFT) + 1;
+
+	for (int i = 0; i < lengthof(test_ns); i++)
+	{
+		int64		result;
+
+		INSTR_TIME_SET_ZERO(t);
+		INSTR_TIME_ADD_NANOSEC(t, test_ns[i]);
+		result = INSTR_TIME_GET_NANOSEC(t);
+
+		if (result < test_ns[i] - max_err || result > test_ns[i])
+			elog(ERROR,
+				 "INSTR_TIME_GET_NANOSEC(t) yielded " INT64_FORMAT
+				 ", expected " INT64_FORMAT " (max_err " INT64_FORMAT
+				 ") in file \"%s\" line %u",
+				 result, test_ns[i], max_err, __FILE__, __LINE__);
+	}
+
+	PG_RETURN_BOOL(true);
+}
+
+/* YB */
+
+/*
+ * Input and output functions for large, fixed-length name type.
+ */
+PG_FUNCTION_INFO_V1(bigname_in);
+Datum
+bigname_in(PG_FUNCTION_ARGS)
+{
+	char	   *input_string = PG_GETARG_CSTRING(0);
+	char	   *result = (char *) palloc0(128 * sizeof(char));
+
+	strncpy(result, input_string, 127 * sizeof(char));
+
+	PG_RETURN_POINTER(result);
+}
+
+PG_FUNCTION_INFO_V1(bigname_out);
+Datum
+bigname_out(PG_FUNCTION_ARGS)
+{
+	char	   *internal_string = (char *) PG_GETARG_POINTER(0);
+	char	   *result = (char *) palloc(128);
+
+	strncpy(result, internal_string, 128);
+
+	PG_RETURN_CSTRING(result);
+}
+
+/*
+ * Run given query using SPI_execute_with_args, retrieve only count rows, and
+ * return how many rows were returned.
+ */
+PG_FUNCTION_INFO_V1(yb_run_spi);
+Datum
+yb_run_spi(PG_FUNCTION_ARGS)
+{
+	char	   *query = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	int			count = PG_GETARG_INT32(1);
+	int			return_count;
+	int			res;
+
+	/* Open SPI context. */
+	if (SPI_connect() != SPI_OK_CONNECT)
+		elog(ERROR, "SPI_connect failed");
+
+	res = SPI_execute_with_args(query, 0, NULL, NULL, NULL, false, count);
+	if (res != SPI_OK_INSERT_RETURNING)
+		ereport(ERROR,
+				(errmsg("SPI_exec failed with %s: %s",
+						SPI_result_code_string(res), query)));
+
+	if (SPI_processed <= 0)
+		return_count = 0;
+	else
+		return_count = SPI_tuptable->numvals;
+
+	SPI_finish();
+
+	PG_RETURN_INT64(return_count);
+}
+
+/*
+ * Set-returning function to return information about the catalog caches.
+ *
+ * Used in tests to verify the catalog cache has not been unexpectedly modified.
+ */
+PG_FUNCTION_INFO_V1(yb_cacheinfo);
+Datum
+yb_cacheinfo(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		TupleDesc	tupdesc;
+		MemoryContext oldcontext;
+
+		funcctx = SRF_FIRSTCALL_INIT();
+
+		/*
+		 * Switch to memory context appropriate for multiple function calls
+		 */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		/*
+		 * Build a tuple descriptor for our result rows.
+		 * We'll return:
+		 *   cache_id (int4)
+		 *   name     (text)
+		 *   reloid   (oid)
+		 *   indoid   (oid)
+		 *   nkeys    (int4)
+		 *   key1     (int4)
+		 *   key2     (int4)
+		 *   key3     (int4)
+		 *   key4     (int4)
+		 *   nbuckets (int4)
+		 */
+		tupdesc = CreateTemplateTupleDesc(10);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "cache_id", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "name", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "reloid", OIDOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "indoid", OIDOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "nkeys", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "key1", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 7, "key2", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 8, "key3", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 9, "key4", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 10, "nbuckets", INT4OID, -1, 0);
+
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+		/*
+		 * Store the array length so we know how many times to iterate.
+		 */
+		funcctx->max_calls = SysCacheSize;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	/* stuff done on every call of the function */
+	funcctx = SRF_PERCALL_SETUP();
+
+	if (funcctx->call_cntr < funcctx->max_calls)
+	{
+		Datum		values[10];
+		bool		nulls[10];
+		HeapTuple	tuple;
+		Datum		result;
+
+		/* Clear null flags */
+		MemSet(nulls, false, sizeof(nulls));
+
+		/* Fill values from cacheinfo */
+		YbCopyCacheInfoToValues(funcctx->call_cntr, values);
+
+		/* Build tuple and convert to datum */
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		result = HeapTupleGetDatum(tuple);
+
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+
+	SRF_RETURN_DONE(funcctx);
+}
+
+/*
+ * Helper to extract the cache id + up to 4 key attributes from the passed-in record,
+ * then compute the hash value.
+ */
+PG_FUNCTION_INFO_V1(catalog_cache_compute_hash_tuple);
+Datum
+catalog_cache_compute_hash_tuple(PG_FUNCTION_ARGS)
+{
+	Datum	   *values;
+	bool	   *nulls;
+	HeapTupleData tmptup;
+
+	/*
+	 * If the argument is NULL (e.g. SELECT catalog_cache_compute_hash_tuple(NULL)),
+	 * we'll just return NULL.
+	 */
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	/*
+	 * Extract the tuple argument.
+	 */
+	HeapTupleHeader td = PG_GETARG_HEAPTUPLEHEADER(0);
+
+	/*
+	 * From the tuple header, fetch the rowtype's OID and typmod so we can look up
+	 * its TupleDesc (layout info).
+	 */
+	Oid			tupType = HeapTupleHeaderGetTypeId(td);
+	int32		tupTypmod = HeapTupleHeaderGetTypMod(td);
+	TupleDesc	tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+
+	tmptup.t_len = HeapTupleHeaderGetDatumLength(td);
+	ItemPointerSetInvalid(&(tmptup.t_self));
+	tmptup.t_tableOid = InvalidOid;
+	tmptup.t_data = td;
+
+	/*
+	 * Deform the tuple into a Datum array so we can pass the keys to the hash
+	 * function.
+	 */
+	values = (Datum *) palloc0(sizeof(Datum) * tupdesc->natts);
+	nulls = (bool *) palloc0(sizeof(bool) * tupdesc->natts);
+	heap_deform_tuple(&tmptup, tupdesc, values, nulls);
+
+	/* Compute the hash value. */
+	uint32		hashval = YbSysCacheComputeHashValue(values[0], values[1], values[2], values[3], values[4]);
+
+	ReleaseTupleDesc(tupdesc);
+	PG_RETURN_UINT32(hashval);
+}

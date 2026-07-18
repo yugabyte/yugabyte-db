@@ -1,0 +1,23 @@
+<settings>
+  <profiles>
+    <profile>
+      <id>artifact-registry</id>
+      <properties>
+        <yugabyte.releases.repository.id>artifact-registry</yugabyte.releases.repository.id>
+        <yugabyte.releases.repository.url>artifactregistry://us-west1-maven.pkg.dev/yugabyte-cloud-dev/yba-java-clients</yugabyte.releases.repository.url>
+        <yugabyte.snapshots.repository.id>artifact-registry</yugabyte.snapshots.repository.id>
+        <yugabyte.snapshots.repository.url>artifactregistry://us-west1-maven.pkg.dev/yugabyte-cloud-dev/yba-java-clients</yugabyte.snapshots.repository.url>
+      </properties>
+    </profile>
+  </profiles>
+  <activeProfiles>
+    <activeProfile>artifact-registry</activeProfile>
+  </activeProfiles>
+
+  <servers>
+    <server>
+      <id>artifact-registry</id>
+    </server>
+  </servers>
+
+</settings>

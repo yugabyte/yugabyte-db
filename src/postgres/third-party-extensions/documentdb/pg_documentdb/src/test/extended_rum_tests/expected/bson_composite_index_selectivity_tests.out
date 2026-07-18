@@ -1,0 +1,86 @@
+SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
+SET documentdb.next_collection_id TO 200;
+SET documentdb.next_collection_index_id TO 200;
+set documentdb.defaultUseCompositeOpClass to on;
+-- create 2 single path indexes
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_idb', '{ "createIndexes": "comp_index_selectivity", "indexes": [ { "name": "comp_index1", "key": { "path1": 1 } } ] }', TRUE);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_idb', '{ "createIndexes": "comp_index_selectivity", "indexes": [ { "name": "comp_index2", "key": { "path2": 1 } } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- insert 5000 rows
+SELECT COUNT(documentdb_api.insert_one('comp_idb', 'comp_index_selectivity', bson_build_document('_id'::text, i, 'path1'::text, i, 'path2'::text, i))) FROM generate_series(1, 5000) i;
+ count 
+-------
+  5000
+(1 row)
+
+ANALYZE documentdb_data.documents_201;
+-- now do a query on both fields, where the selectivity of 1 is far less than the other
+-- this should pick index for path1 (but doesn't)
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('comp_idb', '{ "find": "comp_index_selectivity", "filter": { "path1": 5, "path2": { "$gt": 500 } }}');
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Recheck Cond: ((document @> '{ "path2" : { "$numberInt" : "500" } }'::bson) AND (document @= '{ "path1" : { "$numberInt" : "5" } }'::bson))
+   ->  BitmapAnd
+         ->  Bitmap Index Scan on comp_index2
+               Index Cond: (document @> '{ "path2" : { "$numberInt" : "500" } }'::bson)
+         ->  Bitmap Index Scan on comp_index1
+               Index Cond: (document @= '{ "path1" : { "$numberInt" : "5" } }'::bson)
+(7 rows)
+
+-- enable the composite planner GUC and now things should work (since documents are smaller than 1 KB)
+set documentdb.enableCompositeIndexPlanner to on;
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('comp_idb', '{ "find": "comp_index_selectivity", "filter": { "path1": 5, "path2": { "$gt": 500 } }}');
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Index Scan using comp_index1 on documents_201 collection
+   Index Cond: (document @= '{ "path1" : { "$numberInt" : "5" } }'::bson)
+   Filter: (document @> '{ "path2" : { "$numberInt" : "500" } }'::bson)
+(3 rows)
+
+-- repeat this setup but with documents > 1 KB
+TRUNCATE documentdb_data.documents_201;
+SELECT COUNT(documentdb_api.insert_one('comp_idb', 'comp_index_selectivity',
+    bson_build_document('_id'::text, i, 'path1'::text, i, 'path2'::text, i, 'large_text_field'::text, repeat('aaaaaaa', 500) ))) FROM generate_series(1, 5000) i;
+ count 
+-------
+  5000
+(1 row)
+
+ANALYZE documentdb_data.documents_201;
+set documentdb.enableCompositeIndexPlanner to off;
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('comp_idb', '{ "find": "comp_index_selectivity", "filter": { "path1": 5, "path2": { "$gt": 500 } }}');
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Recheck Cond: ((document @> '{ "path2" : { "$numberInt" : "500" } }'::bson) AND (document @= '{ "path1" : { "$numberInt" : "5" } }'::bson))
+   ->  BitmapAnd
+         ->  Bitmap Index Scan on comp_index2
+               Index Cond: (document @> '{ "path2" : { "$numberInt" : "500" } }'::bson)
+         ->  Bitmap Index Scan on comp_index1
+               Index Cond: (document @= '{ "path1" : { "$numberInt" : "5" } }'::bson)
+(7 rows)
+
+set documentdb.enableCompositeIndexPlanner to on;
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('comp_idb', '{ "find": "comp_index_selectivity", "filter": { "path1": 5, "path2": { "$gt": 500 } }}');
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_201 collection
+   Recheck Cond: (document @= '{ "path1" : { "$numberInt" : "5" } }'::bson)
+   Filter: (document @> '{ "path2" : { "$numberInt" : "500" } }'::bson)
+   ->  Bitmap Index Scan on comp_index1
+         Index Cond: (document @= '{ "path1" : { "$numberInt" : "5" } }'::bson)
+(5 rows)
+

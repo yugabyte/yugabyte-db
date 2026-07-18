@@ -1,0 +1,345 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 1220000;
+SET documentdb.next_collection_id TO 12200;
+SET documentdb.next_collection_index_id TO 12200;
+SELECT documentdb_api.insert_one('db','mergeObjTestColl1','{ "_id": 1, "year": 2020, "category": "X", "metrics": { "2020A": 10, "2020B": 200 } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','mergeObjTestColl1','{ "_id": 2, "year": 2019, "category": "X", "metrics": { "2019A": 150, "2019B": 250, "2019C": 0, "2019D": 0 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','mergeObjTestColl1','{ "_id": 3, "year": 2020, "category": "Y", "metrics": { "2020A": 250 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','mergeObjTestColl1','{ "_id": 4, "year": 2019, "category": "Y", "metrics": { "2019C": 80, "2019D": 180 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','mergeObjTestColl1','{ "_id": 5, "year": 2020, "category": "Z", "metrics": { "2019C": 900, "2019D": 210 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* running multiple $mergeObjects accumulators with different expressions */
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl1", "pipeline": [ { "$group": { "_id": "$year", "mergedMetrics": { "$mergeObjects": "$metrics" } } } ] }');
+                                                                                                  document                                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2019" }, "mergedMetrics" : { "2019A" : { "$numberInt" : "150" }, "2019B" : { "$numberInt" : "250" }, "2019C" : { "$numberInt" : "80" }, "2019D" : { "$numberInt" : "180" } } }
+ { "_id" : { "$numberInt" : "2020" }, "mergedMetrics" : { "2020A" : { "$numberInt" : "250" }, "2020B" : { "$numberInt" : "200" }, "2019C" : { "$numberInt" : "900" }, "2019D" : { "$numberInt" : "210" } } }
+(2 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl1", "pipeline": [ { "$group": { "_id": "$category", "mergedMetrics": { "$mergeObjects": "$metrics" } } } ] }');
+                                                                                                                         document                                                                                                                         
+---------------------------------------------------------------------
+ { "_id" : "X", "mergedMetrics" : { "2020A" : { "$numberInt" : "10" }, "2020B" : { "$numberInt" : "200" }, "2019A" : { "$numberInt" : "150" }, "2019B" : { "$numberInt" : "250" }, "2019C" : { "$numberInt" : "0" }, "2019D" : { "$numberInt" : "0" } } }
+ { "_id" : "Y", "mergedMetrics" : { "2020A" : { "$numberInt" : "250" }, "2019C" : { "$numberInt" : "80" }, "2019D" : { "$numberInt" : "180" } } }
+ { "_id" : "Z", "mergedMetrics" : { "2019C" : { "$numberInt" : "900" }, "2019D" : { "$numberInt" : "210" } } }
+(3 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl1", "pipeline": [ { "$group": { "_id": "$year", "lastCategory": { "$mergeObjects": { "category": "$category" } } } } ] }');
+                                   document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2019" }, "lastCategory" : { "category" : "Y" } }
+ { "_id" : { "$numberInt" : "2020" }, "lastCategory" : { "category" : "Z" } }
+(2 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl1", "pipeline": [ { "$group": { "_id": "$year", "mergedMetrics": { "$mergeObjects": "$metrics" } } } ] }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_core.bson_repath_and_build(c1, c2, c3, c4) AS document FROM (SELECT '_id'::text AS c1, documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS c2, 'mergedMetrics'::text AS c3, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$metrics" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)) AS c4 FROM documentdb_data.documents_12200_1220001 collection WHERE ((collection.shard_key_value OPERATOR(pg_catalog.=) '12200'::bigint) AND documentdb_api_internal.bson_dollar_fullscan(collection.document, '{ "year" : { "$numberInt" : "1" } }'::documentdb_core.bson)) GROUP BY (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+               ->  GroupAggregate
+                     Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'mergedMetrics'::text, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$metrics" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     ->  Sort
+                           Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), collection.document
+                           Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                           ->  Bitmap Heap Scan on documentdb_data.documents_12200_1220001 collection
+                                 Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), collection.document
+                                 Recheck Cond: (collection.shard_key_value = '12200'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (collection.shard_key_value = '12200'::bigint)
+(20 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl1", "pipeline": [ { "$group": { "_id": "$category", "mergedMetrics": { "$mergeObjects": "$metrics" } } } ] }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_core.bson_repath_and_build(c1, c2, c3, c4) AS document FROM (SELECT '_id'::text AS c1, documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$category" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS c2, 'mergedMetrics'::text AS c3, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$metrics" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)) AS c4 FROM documentdb_data.documents_12200_1220001 collection WHERE ((collection.shard_key_value OPERATOR(pg_catalog.=) '12200'::bigint) AND documentdb_api_internal.bson_dollar_fullscan(collection.document, '{ "category" : { "$numberInt" : "1" } }'::documentdb_core.bson)) GROUP BY (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$category" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+               ->  GroupAggregate
+                     Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$category" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'mergedMetrics'::text, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$metrics" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$category" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     ->  Sort
+                           Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$category" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), collection.document
+                           Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$category" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                           ->  Bitmap Heap Scan on documentdb_data.documents_12200_1220001 collection
+                                 Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$category" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), collection.document
+                                 Recheck Cond: (collection.shard_key_value = '12200'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (collection.shard_key_value = '12200'::bigint)
+(20 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl1", "pipeline": [ { "$group": { "_id": "$year", "lastCategory": { "$mergeObjects": { "category": "$category" } } } } ] }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_core.bson_repath_and_build(c1, c2, c3, c4) AS document FROM (SELECT '_id'::text AS c1, documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS c2, 'lastCategory'::text AS c3, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : { "category" : "$category" } }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)) AS c4 FROM documentdb_data.documents_12200_1220001 collection WHERE ((collection.shard_key_value OPERATOR(pg_catalog.=) '12200'::bigint) AND documentdb_api_internal.bson_dollar_fullscan(collection.document, '{ "year" : { "$numberInt" : "1" } }'::documentdb_core.bson)) GROUP BY (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+               ->  GroupAggregate
+                     Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'lastCategory'::text, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : { "category" : "$category" } }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     ->  Sort
+                           Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), collection.document
+                           Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                           ->  Bitmap Heap Scan on documentdb_data.documents_12200_1220001 collection
+                                 Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$year" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), collection.document
+                                 Recheck Cond: (collection.shard_key_value = '12200'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (collection.shard_key_value = '12200'::bigint)
+(20 rows)
+
+SELECT documentdb_api.insert_one('db','mergeObjTestColl2','{ "_id": 13, "group": 1, "obj": {}, "val": null }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','mergeObjTestColl2','{ "_id": 14, "group": 1, "obj": { "x": 2, "y": 2 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','mergeObjTestColl2','{ "_id": 15, "group": 1, "obj": { "x": 1, "z": 3, "y": null } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','mergeObjTestColl2','{ "_id": 16, "group": 2, "obj": { "x": 1, "y": 1 }, "val": null }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* running multiple $mergeObjects accumulators with different expressions */
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedObj": { "$mergeObjects": "$obj" } } } ] }');
+                                                           document                                                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "mergedObj" : { "x" : { "$numberInt" : "1" }, "y" : null, "z" : { "$numberInt" : "3" } } }
+ { "_id" : { "$numberInt" : "2" }, "mergedObj" : { "x" : { "$numberInt" : "1" }, "y" : { "$numberInt" : "1" } } }
+(2 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedObj": { "$mergeObjects": "$obj.x" } } } ] }');
+ERROR:  $mergeObjects needs both inputs to be objects, but the provided input 2 has the type int
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedObj": { "$mergeObjects": { "result": "$obj.y" } } } } ] }');
+                                        document                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "mergedObj" : { "result" : null } }
+ { "_id" : { "$numberInt" : "2" }, "mergedObj" : { "result" : { "$numberInt" : "1" } } }
+(2 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedObj": { "$mergeObjects": "$val" } } } ] }');
+                        document                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "mergedObj" : null }
+ { "_id" : { "$numberInt" : "2" }, "mergedObj" : null }
+(2 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedObj": { "$mergeObjects": "$obj" } } } ] }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_core.bson_repath_and_build(c1, c2, c3, c4) AS document FROM (SELECT '_id'::text AS c1, documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS c2, 'mergedObj'::text AS c3, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$obj" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)) AS c4 FROM documentdb_data.documents_12201_1220018 collection WHERE ((collection.shard_key_value OPERATOR(pg_catalog.=) '12201'::bigint) AND documentdb_api_internal.bson_dollar_fullscan(collection.document, '{ "group" : { "$numberInt" : "1" } }'::documentdb_core.bson)) GROUP BY (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+               ->  GroupAggregate
+                     Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'mergedObj'::text, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$obj" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     ->  Sort
+                           Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), collection.document
+                           Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                           ->  Bitmap Heap Scan on documentdb_data.documents_12201_1220018 collection
+                                 Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), collection.document
+                                 Recheck Cond: (collection.shard_key_value = '12201'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (collection.shard_key_value = '12201'::bigint)
+(20 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedObj": { "$mergeObjects": "$obj.x" } } } ] }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_core.bson_repath_and_build(c1, c2, c3, c4) AS document FROM (SELECT '_id'::text AS c1, documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS c2, 'mergedObj'::text AS c3, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$obj.x" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)) AS c4 FROM documentdb_data.documents_12201_1220018 collection WHERE ((collection.shard_key_value OPERATOR(pg_catalog.=) '12201'::bigint) AND documentdb_api_internal.bson_dollar_fullscan(collection.document, '{ "group" : { "$numberInt" : "1" } }'::documentdb_core.bson)) GROUP BY (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+               ->  GroupAggregate
+                     Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'mergedObj'::text, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$obj.x" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     ->  Sort
+                           Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), collection.document
+                           Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                           ->  Bitmap Heap Scan on documentdb_data.documents_12201_1220018 collection
+                                 Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), collection.document
+                                 Recheck Cond: (collection.shard_key_value = '12201'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (collection.shard_key_value = '12201'::bigint)
+(20 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedObj": { "$mergeObjects": { "result": "$obj.y" } } } } ] }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_core.bson_repath_and_build(c1, c2, c3, c4) AS document FROM (SELECT '_id'::text AS c1, documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS c2, 'mergedObj'::text AS c3, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : { "result" : "$obj.y" } }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)) AS c4 FROM documentdb_data.documents_12201_1220018 collection WHERE ((collection.shard_key_value OPERATOR(pg_catalog.=) '12201'::bigint) AND documentdb_api_internal.bson_dollar_fullscan(collection.document, '{ "group" : { "$numberInt" : "1" } }'::documentdb_core.bson)) GROUP BY (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+               ->  GroupAggregate
+                     Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'mergedObj'::text, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : { "result" : "$obj.y" } }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     ->  Sort
+                           Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), collection.document
+                           Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                           ->  Bitmap Heap Scan on documentdb_data.documents_12201_1220018 collection
+                                 Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), collection.document
+                                 Recheck Cond: (collection.shard_key_value = '12201'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (collection.shard_key_value = '12201'::bigint)
+(20 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl2", "pipeline": [ { "$group": { "_id": "$group", "mergedObj": { "$mergeObjects": "$val" } } } ] }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_core.bson_repath_and_build(c1, c2, c3, c4) AS document FROM (SELECT '_id'::text AS c1, documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS c2, 'mergedObj'::text AS c3, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$val" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)) AS c4 FROM documentdb_data.documents_12201_1220018 collection WHERE ((collection.shard_key_value OPERATOR(pg_catalog.=) '12201'::bigint) AND documentdb_api_internal.bson_dollar_fullscan(collection.document, '{ "group" : { "$numberInt" : "1" } }'::documentdb_core.bson)) GROUP BY (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  Subquery Scan on agg_stage_0
+               Output: documentdb_core.bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+               ->  GroupAggregate
+                     Output: '_id'::text, (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'mergedObj'::text, documentdb_api_internal.bson_merge_objects_on_sorted(documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$val" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     Group Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                     ->  Sort
+                           Output: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), collection.document
+                           Sort Key: (documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                           ->  Bitmap Heap Scan on documentdb_data.documents_12201_1220018 collection
+                                 Output: documentdb_api_internal.bson_expression_get(collection.document, '{ "" : "$group" }'::documentdb_core.bson, true, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson), collection.document
+                                 Recheck Cond: (collection.shard_key_value = '12201'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (collection.shard_key_value = '12201'::bigint)
+(20 rows)
+
+/* running mergeObjects with intermediate size of more than 100mb */
+DO $$
+DECLARE i int;
+BEGIN
+-- each doc is "%s": 5 MB - ~5.5 MB & there's 25 of them
+FOR i IN 1..25 LOOP
+PERFORM documentdb_api.insert_one('db', 'mergeObjSizeTest', FORMAT('{ "_id": %s, "groupName": "A", "largeObj": { "%s": [ %s "d" ] } }', i, i, repeat('"' || i || repeat('a', 1000) || '", ', 5000))::documentdb_core.bson);
+END LOOP;
+END;
+$$;
+NOTICE:  creating collection
+/* should fail with intermediate size error */
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjSizeTest", "pipeline": [ { "$group": { "_id": "$groupName", "mergedObj": { "$mergeObjects": "$largeObj" } } } ] }');
+ERROR:  Size 106297374 is larger than maximum size allowed for an intermediate document 104857600
+/* shard collections and test for order and validations */
+SELECT documentdb_api.shard_collection('db', 'mergeObjTestColl1', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl1", "pipeline": [ { "$sort": { "category": 1 } }, { "$group": { "_id": "$year", "mergedMetrics": { "$mergeObjects": "$metrics" } } } ] }');
+                                                                                                  document                                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2019" }, "mergedMetrics" : { "2019A" : { "$numberInt" : "150" }, "2019B" : { "$numberInt" : "250" }, "2019C" : { "$numberInt" : "80" }, "2019D" : { "$numberInt" : "180" } } }
+ { "_id" : { "$numberInt" : "2020" }, "mergedMetrics" : { "2020A" : { "$numberInt" : "250" }, "2020B" : { "$numberInt" : "200" }, "2019C" : { "$numberInt" : "900" }, "2019D" : { "$numberInt" : "210" } } }
+(2 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl1", "pipeline": [ { "$sort": { "category": 1 } }, { "$group": { "_id": "$category", "mergedMetrics": { "$mergeObjects": "$metrics" } } } ] }');
+                                                                                                                         document                                                                                                                         
+---------------------------------------------------------------------
+ { "_id" : "X", "mergedMetrics" : { "2019A" : { "$numberInt" : "150" }, "2019B" : { "$numberInt" : "250" }, "2019C" : { "$numberInt" : "0" }, "2019D" : { "$numberInt" : "0" }, "2020A" : { "$numberInt" : "10" }, "2020B" : { "$numberInt" : "200" } } }
+ { "_id" : "Z", "mergedMetrics" : { "2019C" : { "$numberInt" : "900" }, "2019D" : { "$numberInt" : "210" } } }
+ { "_id" : "Y", "mergedMetrics" : { "2019C" : { "$numberInt" : "80" }, "2019D" : { "$numberInt" : "180" }, "2020A" : { "$numberInt" : "250" } } }
+(3 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl1", "pipeline": [ { "$sort": { "category": 1 } }, { "$group": { "_id": "$year", "lastCategory": { "$mergeObjects": { "category": "$category" } } } } ] }');
+                                   document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2019" }, "lastCategory" : { "category" : "Y" } }
+ { "_id" : { "$numberInt" : "2020" }, "lastCategory" : { "category" : "Z" } }
+(2 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "mergeObjTestColl1", "pipeline": [ { "$sort": { "category": 1 } }, { "$group": { "_id": "$year", "shouldFail": { "$mergeObjects": "$category" } } } ] }');
+ERROR:  $mergeObjects needs both inputs to be objects, but the provided input "X" has the type string
+select documentdb_api.drop_collection('db','mergeObjTestColl1');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+select documentdb_api.drop_collection('db','mergeObjTestColl2');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+select documentdb_api.drop_collection('db','mergeObjSizeTest');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+

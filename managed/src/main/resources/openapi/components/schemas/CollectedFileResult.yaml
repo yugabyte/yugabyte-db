@@ -1,0 +1,34 @@
+title: CollectedFileResult
+description: Result of collecting a single file from a node
+x-yba-api-visibility: internal
+type: object
+properties:
+  remote_path:
+    description: The original path of the file on the remote node
+    type: string
+    example: /home/yugabyte/tserver/logs/yb-tserver.INFO
+  file_size_bytes:
+    description: Size of the file in bytes
+    type: integer
+    format: int64
+    example: 1048576
+  success:
+    description: Whether the file was successfully collected
+    type: boolean
+    example: true
+  error_message:
+    description: Error message if collection failed
+    type: string
+    example: File not found
+  skipped:
+    description: 'Whether the file was skipped (e.g., exceeded size limit)'
+    type: boolean
+    example: false
+    default: false
+  skip_reason:
+    description: Reason why the file was skipped
+    type: string
+    example: File exceeds max_file_size_bytes limit
+required:
+  - remote_path
+  - success

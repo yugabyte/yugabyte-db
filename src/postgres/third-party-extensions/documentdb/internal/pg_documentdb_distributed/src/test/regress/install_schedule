@@ -1,0 +1,3 @@
+test: distributed_install_setup
+test: public_api_schema
+test: documentdb_distributed_test_helpers

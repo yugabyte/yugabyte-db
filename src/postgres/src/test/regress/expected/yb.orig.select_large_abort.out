@@ -1,0 +1,10 @@
+--
+-- SELECT
+--
+-- should be empty since commit failed
+SELECT COUNT(*) FROM airports;
+ count 
+-------
+     0
+(1 row)
+

@@ -1,0 +1,5 @@
+
+                    jsonb_agg
+-----------------------------------------------------
+[{"calls": 100,"query": "select * from tablename;"}]
+(1 row)

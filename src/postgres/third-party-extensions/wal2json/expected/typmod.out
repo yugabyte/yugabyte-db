@@ -1,0 +1,136 @@
+\set VERBOSITY terse
+-- predictability
+SET synchronous_commit = on;
+SET extra_float_digits = 0;
+DROP TABLE IF EXISTS table_with_pk;
+CREATE TABLE table_with_pk (
+a	smallserial,
+b	smallint,
+c	int,
+d	bigint,
+e	numeric(5,3),
+f	real not null,
+g	double precision,
+h	char(10),
+i	varchar(30),
+j	text,
+k	bit varying(20),
+l	timestamp,
+m	date,
+n	boolean not null,
+o	json,
+p	tsvector,
+PRIMARY KEY(b, c, d)
+);
+SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2json');
+ ?column? 
+----------
+ init
+(1 row)
+
+INSERT INTO table_with_pk (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p) VALUES(1, 2, 3, 3.54, 876.563452345, 1.23, 'teste', 'testando', 'um texto longo', B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }', 'Old Old Parr'::tsvector);
+UPDATE table_with_pk SET f = -f WHERE b = 1;
+-- UPDATE: pk change
+DELETE FROM table_with_pk WHERE b = 1;
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1');
+                                                                                                                                     data                                                                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {                                                                                                                                                                                                                                                                           +
+         "change": [                                                                                                                                                                                                                                                         +
+                 {                                                                                                                                                                                                                                                           +
+                         "kind": "insert",                                                                                                                                                                                                                                   +
+                         "schema": "public",                                                                                                                                                                                                                                 +
+                         "table": "table_with_pk",                                                                                                                                                                                                                           +
+                         "columnnames": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p"],                                                                                                                                                    +
+                         "columntypes": ["smallint", "smallint", "integer", "bigint", "numeric(5,3)", "real", "double precision", "character(10)", "character varying(30)", "text", "bit varying(20)", "timestamp without time zone", "date", "boolean", "json", "tsvector"],+
+                         "columnvalues": [1, 1, 2, 3, 3.540, 876.563, 1.23, "teste     ", "testando", "um texto longo", "001110010101010", "Sat Nov 02 17:30:52 2013", "02-04-2013", true, "{ \"a\": 123 }", "'Old' 'Parr'"]                                                 +
+                 }                                                                                                                                                                                                                                                           +
+         ]                                                                                                                                                                                                                                                                   +
+ }
+ {                                                                                                                                                                                                                                                                           +
+         "change": [                                                                                                                                                                                                                                                         +
+                 {                                                                                                                                                                                                                                                           +
+                         "kind": "update",                                                                                                                                                                                                                                   +
+                         "schema": "public",                                                                                                                                                                                                                                 +
+                         "table": "table_with_pk",                                                                                                                                                                                                                           +
+                         "columnnames": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p"],                                                                                                                                                    +
+                         "columntypes": ["smallint", "smallint", "integer", "bigint", "numeric(5,3)", "real", "double precision", "character(10)", "character varying(30)", "text", "bit varying(20)", "timestamp without time zone", "date", "boolean", "json", "tsvector"],+
+                         "columnvalues": [1, 1, 2, 3, 3.540, -876.563, 1.23, "teste     ", "testando", "um texto longo", "001110010101010", "Sat Nov 02 17:30:52 2013", "02-04-2013", true, "{ \"a\": 123 }", "'Old' 'Parr'"],                                               +
+                         "oldkeys": {                                                                                                                                                                                                                                        +
+                                 "keynames": ["b", "c", "d"],                                                                                                                                                                                                                +
+                                 "keytypes": ["smallint", "integer", "bigint"],                                                                                                                                                                                              +
+                                 "keyvalues": [1, 2, 3]                                                                                                                                                                                                                      +
+                         }                                                                                                                                                                                                                                                   +
+                 }                                                                                                                                                                                                                                                           +
+         ]                                                                                                                                                                                                                                                                   +
+ }
+ {                                                                                                                                                                                                                                                                           +
+         "change": [                                                                                                                                                                                                                                                         +
+                 {                                                                                                                                                                                                                                                           +
+                         "kind": "delete",                                                                                                                                                                                                                                   +
+                         "schema": "public",                                                                                                                                                                                                                                 +
+                         "table": "table_with_pk",                                                                                                                                                                                                                           +
+                         "oldkeys": {                                                                                                                                                                                                                                        +
+                                 "keynames": ["b", "c", "d"],                                                                                                                                                                                                                +
+                                 "keytypes": ["smallint", "integer", "bigint"],                                                                                                                                                                                              +
+                                 "keyvalues": [1, 2, 3]                                                                                                                                                                                                                      +
+                         }                                                                                                                                                                                                                                                   +
+                 }                                                                                                                                                                                                                                                           +
+         ]                                                                                                                                                                                                                                                                   +
+ }
+(3 rows)
+
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1', 'include-typmod', '0');
+                                                                                                             data                                                                                                              
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {                                                                                                                                                                                                                            +
+         "change": [                                                                                                                                                                                                          +
+                 {                                                                                                                                                                                                            +
+                         "kind": "insert",                                                                                                                                                                                    +
+                         "schema": "public",                                                                                                                                                                                  +
+                         "table": "table_with_pk",                                                                                                                                                                            +
+                         "columnnames": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p"],                                                                                                     +
+                         "columntypes": ["int2", "int2", "int4", "int8", "numeric", "float4", "float8", "bpchar", "varchar", "text", "varbit", "timestamp", "date", "bool", "json", "tsvector"],                              +
+                         "columnvalues": [1, 1, 2, 3, 3.540, 876.563, 1.23, "teste     ", "testando", "um texto longo", "001110010101010", "Sat Nov 02 17:30:52 2013", "02-04-2013", true, "{ \"a\": 123 }", "'Old' 'Parr'"]  +
+                 }                                                                                                                                                                                                            +
+         ]                                                                                                                                                                                                                    +
+ }
+ {                                                                                                                                                                                                                            +
+         "change": [                                                                                                                                                                                                          +
+                 {                                                                                                                                                                                                            +
+                         "kind": "update",                                                                                                                                                                                    +
+                         "schema": "public",                                                                                                                                                                                  +
+                         "table": "table_with_pk",                                                                                                                                                                            +
+                         "columnnames": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p"],                                                                                                     +
+                         "columntypes": ["int2", "int2", "int4", "int8", "numeric", "float4", "float8", "bpchar", "varchar", "text", "varbit", "timestamp", "date", "bool", "json", "tsvector"],                              +
+                         "columnvalues": [1, 1, 2, 3, 3.540, -876.563, 1.23, "teste     ", "testando", "um texto longo", "001110010101010", "Sat Nov 02 17:30:52 2013", "02-04-2013", true, "{ \"a\": 123 }", "'Old' 'Parr'"],+
+                         "oldkeys": {                                                                                                                                                                                         +
+                                 "keynames": ["b", "c", "d"],                                                                                                                                                                 +
+                                 "keytypes": ["int2", "int4", "int8"],                                                                                                                                                        +
+                                 "keyvalues": [1, 2, 3]                                                                                                                                                                       +
+                         }                                                                                                                                                                                                    +
+                 }                                                                                                                                                                                                            +
+         ]                                                                                                                                                                                                                    +
+ }
+ {                                                                                                                                                                                                                            +
+         "change": [                                                                                                                                                                                                          +
+                 {                                                                                                                                                                                                            +
+                         "kind": "delete",                                                                                                                                                                                    +
+                         "schema": "public",                                                                                                                                                                                  +
+                         "table": "table_with_pk",                                                                                                                                                                            +
+                         "oldkeys": {                                                                                                                                                                                         +
+                                 "keynames": ["b", "c", "d"],                                                                                                                                                                 +
+                                 "keytypes": ["int2", "int4", "int8"],                                                                                                                                                        +
+                                 "keyvalues": [1, 2, 3]                                                                                                                                                                       +
+                         }                                                                                                                                                                                                    +
+                 }                                                                                                                                                                                                            +
+         ]                                                                                                                                                                                                                    +
+ }
+(3 rows)
+
+SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
+ ?column? 
+----------
+ stop
+(1 row)
+

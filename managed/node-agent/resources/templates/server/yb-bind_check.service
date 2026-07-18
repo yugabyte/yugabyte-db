@@ -1,0 +1,23 @@
+[Unit]
+Description=Yugabyte IP Bind Check
+Requires=network-online.target
+After=network.target network-online.target multi-user.target
+Before=yb-controller.service yb-tserver.service yb-master.service
+# Disable restart limits, using RestartSec to rate limit restarts
+StartLimitInterval=0
+
+[Service]
+# Start
+ExecStart={{yb_home_dir}}/controller/bin/yb-controller-server \
+    --flagfile {{yb_home_dir}}/controller/conf/server.conf \
+    --only_bind --logtostderr
+Type=oneshot
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=10
+# Logs
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

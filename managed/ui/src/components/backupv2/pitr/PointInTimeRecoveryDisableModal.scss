@@ -1,0 +1,23 @@
+.pitr-disable-modal {
+  .config-info-c {
+    padding: 20px 10px;
+    border: 1px solid #e5e5e9;
+    border-radius: 8px;
+    margin-top: 20px;
+    margin-bottom: 100px;
+  }
+
+  .config-row {
+    margin-bottom: 8px;
+  }
+
+  .config-row-label {
+    max-width: 200px;
+    font-weight: 700;
+    font-size: 12px;
+  }
+
+  .config-row-val {
+    word-break: break-all;
+  }
+}

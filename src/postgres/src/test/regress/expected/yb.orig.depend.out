@@ -1,0 +1,20 @@
+CREATE TABLE test_table(k INT PRIMARY KEY, v INT);
+CREATE VIEW test_view AS SELECT k FROM test_table WHERE v = 10;
+CREATE INDEX ON test_view (k);
+ERROR:  cannot create index on relation "test_view"
+DETAIL:  This operation is not supported for views.
+CREATE TYPE type_pair AS (f1 INT, f2 INT);
+CREATE TYPE type_pair_with_int AS (f1 type_pair, f2 int);
+DROP TABLE test_table; -- should fail
+ERROR:  cannot drop table test_table because other objects depend on it
+DETAIL:  view test_view depends on table test_table
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+DROP TABLE test_table CASCADE;
+NOTICE:  drop cascades to view test_view
+DROP TYPE type_pair; -- should fail
+ERROR:  cannot drop type type_pair because other objects depend on it
+DETAIL:  column f1 of composite type type_pair_with_int depends on type type_pair
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+DROP TYPE type_pair CASCADE;
+NOTICE:  drop cascades to column f1 of composite type type_pair_with_int
+DROP TYPE type_pair_with_int;

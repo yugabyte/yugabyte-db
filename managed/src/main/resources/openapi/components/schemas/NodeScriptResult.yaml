@@ -1,0 +1,45 @@
+title: NodeScriptResult
+description: Result of script execution on a single node
+x-yba-api-visibility: internal
+type: object
+properties:
+  node_name:
+    description: Name of the node
+    type: string
+    example: yb-15-universe-n1
+  node_address:
+    description: IP address or hostname of the node
+    type: string
+    example: 10.0.0.5
+  exit_code:
+    description: Exit code of the script. 0 indicates success.
+    type: integer
+    example: 0
+  stdout:
+    description: Standard output from the script execution
+    type: string
+    example: |
+      Node hostname: yb-15-universe-n1
+      Filesystem      Size  Used Avail Use% Mounted on
+      /dev/sda1       100G   20G   80G  20% /
+  stderr:
+    description: Standard error from the script execution
+    type: string
+    example: ''
+  execution_time_ms:
+    description: Time taken to execute the script in milliseconds
+    type: integer
+    format: int64
+    example: 1523
+  success:
+    description: Whether the script execution was successful (exit_code == 0)
+    type: boolean
+    example: true
+  error_message:
+    description: 'Error message if the execution failed (e.g., timeout, connection error)'
+    type: string
+    example: null
+required:
+  - node_name
+  - exit_code
+  - success

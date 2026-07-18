@@ -1,0 +1,96 @@
+This product includes software developed by the DocumentDB Gateway contributors and third-party packages.
+
+The full license texts for all dependencies are located in the 'pg_document_gw/licenses/' directory. Below is a summary of included components and their licenses:
+
+- base64 (Apache-2.0 OR MIT)
+  Copyright (c) 2014-2022 The Rust Project Developers
+
+- futures (Apache-2.0 OR MIT)
+  Copyright (c) 2017 Alex Crichton
+
+- bson (Apache-2.0 OR MIT)
+  Copyright (c) 2016 MongoDB, Inc.
+
+- tokio (Apache-2.0 OR MIT)
+  Copyright (c) 2017 Tokio Contributors
+
+- tokio-util (Apache-2.0 OR MIT)
+  Copyright (c) 2017 Tokio Contributors
+
+- bitflags (Apache-2.0 OR MIT)
+  Copyright (c) 2014 The Rust Project Developers
+
+- async-recursion (MIT)
+  Copyright (c) 2020 David Barsky
+
+- serde_json (Apache-2.0 OR MIT)
+  Copyright (c) 2014-2021 Serde Developers
+
+- rand (Apache-2.0 OR MIT)
+  Copyright (c) 2013-2020 The Rand Project Developers
+
+- deadpool-postgres (MIT)
+  Copyright (c) 2018-2022 Björn Steinbrink
+
+- regex (Apache-2.0 OR MIT)
+  Copyright (c) 2014 The Rust Project Developers
+
+- once_cell (Apache-2.0 OR MIT)
+  Copyright (c) 2018-2022 Evgeny Poberezkin
+
+- hex (Apache-2.0 OR MIT)
+  Copyright (c) 2015-2020 François-Xavier Bourlet
+
+- openssl (Apache-2.0)
+  Copyright (c) 2015-2021 Alex Crichton and contributors
+
+- tokio-openssl (MIT)
+  Copyright (c) 2020 Tokio Contributors
+
+- rmp-serde (MIT)
+  Copyright (c) 2014 Alexander Stepaniuk
+
+- arc-swap (Apache-2.0 OR MIT)
+  Copyright (c) 2017-Vladimir Matveev
+
+- either (Apache-2.0 OR MIT)
+  Copyright (c) 2014-2019 bluss
+
+- socket2 (MIT)
+  Copyright (c) 2014-2023 Alex Crichton and contributors
+
+- rcgen (MIT OR Apache-2.0)
+  Copyright (c) 2019 Web PKI contributors
+
+- ntex (MIT)
+  Copyright (c) 2020-2024 ntex contributors
+
+- cadence (MIT OR Apache-2.0)
+  Copyright (c) 2015-2023 Chris Morganendo
+
+- num-traits (Apache-2.0 OR MIT)
+  Copyright (c) 2016 The Rust Project Developers
+
+- async-trait (Apache-2.0 OR MIT)
+  Copyright (c) 2019 David Barsky
+
+- simple_logger (MIT)
+  Copyright (c) 2015-2023 Lucas Scholtes
+
+- log (MIT OR Apache-2.0)
+  Copyright (c) 2016 The Rust Project Developers
+
+- tokio-postgres (MIT)
+  Copyright (c) 2017-2024 tokio-postgres contributors
+
+- serde (Apache-2.0 OR MIT)
+  Copyright (c) 2014-2021 Serde Developers
+
+- uuid (Apache-2.0 OR MIT)
+  Copyright (c) 2018-2022 Uuid Contributors
+
+- reqwest (MIT OR Apache-2.0)
+  Copyright (c) 2016-2024 Sean McArthur
+
+- whoami (Apache-2.0 OR BSL-1.0 OR MIT)
+  Copyright (c) 2018-2022 Uuid Contributors
