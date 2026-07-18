@@ -4,4 +4,5 @@ test: yb.orig.hypopg_old_cost_model
 test: yb.port.hypo_include
 test: yb.port.hypo_index_part
 test: yb.port.hypo_hide_index
-test: yb.orig.hypo_hints
+# YB_TODO_PG19MERGE: requires pg_hint_plan, which is not built on PG19 yet.
+# test: yb.orig.hypo_hints
