@@ -1158,7 +1158,8 @@ SELECT * FROM fract_only;
   5 |  0.9999
   7 |  0.0000
   8 |  0.0002
-(6 rows)
+  9 |     NaN
+(7 rows)
 
 DROP TABLE fract_only;
 -- Check conversion to integers
