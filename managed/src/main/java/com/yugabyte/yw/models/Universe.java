@@ -682,6 +682,31 @@ public class Universe extends Model {
   }
 
   /**
+   * Returns details about a single node in the universe, looked up by its stable node UUID.
+   *
+   * <p>Prefer this over {@link #getNode(String)} for K8s subtasks whose node reference can outlive
+   * a rename of {@code NodeDetails.nodeName} (see {@code KubernetesCommandExecutor.processNodeInfo}
+   * which can rebuild the node set when {@code PlacementInfoUtil.isMultiAZ(provider)} flips).
+   *
+   * @return details about a node, null if it does not exist.
+   */
+  public NodeDetails getNodeByUuid(UUID nodeUuid) {
+    return maybeGetNodeByUuid(nodeUuid).orElse(null);
+  }
+
+  public Optional<NodeDetails> maybeGetNodeByUuid(UUID nodeUuid) {
+    if (nodeUuid == null) {
+      return Optional.empty();
+    }
+    for (NodeDetails node : getNodes()) {
+      if (nodeUuid.equals(node.nodeUuid)) {
+        return Optional.of(node);
+      }
+    }
+    return Optional.empty();
+  }
+
+  /**
    * Returns details about a single node by ip address in the universe.
    *
    * @param nodeIP Private IP address of the node

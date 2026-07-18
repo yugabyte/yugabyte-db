@@ -248,8 +248,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // The target cluster's config.
     public Map<String, String> config = null;
 
-    // YBC server name
+    // YBC server name (NodeDetails.nodeName at the time this params was built).
+    // Kept for backward compatibility and for logging (getTaskDetails). Prefer
+    // resolving the target NodeDetails via {@link #nodeUuid} below, which stays
+    // stable across processNodeInfo re-runs even when nodeName changes (e.g.
+    // after a provider mod that flips PlacementInfoUtil.isMultiAZ(provider)).
     public String ybcServerName = null;
+    // Stable NodeDetails identifier used by COPY_PACKAGE / YBC_ACTION lookups.
+    // Populated alongside ybcServerName by callers in UniverseTaskBase. When
+    // set, the subtask resolves the node by UUID first and only falls back to
+    // ybcServerName for legacy subtasks queued before this field existed.
+    public UUID nodeUuid = null;
     public Map<String, String> ybcGflags = new HashMap<>();
     public String command = null;
     public String azCode = null;
@@ -333,6 +342,27 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     return podName + "_" + commandType + "_started";
   }
 
+  /**
+   * Resolves the target NodeDetails for COPY_PACKAGE / YBC_ACTION subtasks.
+   *
+   * <p>Prefers a lookup by the stable {@link Params#nodeUuid} so it survives a rename of {@link
+   * NodeDetails#nodeName} between subtask queuing and execution (for example, a provider edit that
+   * adds a region flips {@code PlacementInfoUtil.isMultiAZ(provider)} to true, which causes {@code
+   * processNodeInfo} to rebuild the node set with new names). Falls back to {@link
+   * Params#ybcServerName} for backward compatibility with subtasks queued before {@code nodeUuid}
+   * was populated. May return {@code null} if neither lookup succeeds; callers are expected to
+   * handle that as they did before this helper existed.
+   */
+  private NodeDetails resolveTargetNode(Universe universe) {
+    if (taskParams().nodeUuid != null) {
+      NodeDetails byUuid = universe.getNodeByUuid(taskParams().nodeUuid);
+      if (byUuid != null) {
+        return byUuid;
+      }
+    }
+    return universe.getNode(taskParams().ybcServerName);
+  }
+
   @Override
   public void run() {
     if (getTaskUUID() != null) {
@@ -352,10 +382,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
         }
       }
-      Map<String, Map<String, String>> k8sConfigMap =
-          KubernetesUtil.getKubernetesConfigPerPodName(
-              pi, Collections.singleton(universe.getNode(taskParams().ybcServerName)));
-      config = k8sConfigMap.get(taskParams().ybcServerName);
+      NodeDetails targetNode = resolveTargetNode(universe);
+      config = null;
+      if (targetNode != null) {
+        Map<String, Map<String, String>> k8sConfigMap =
+            KubernetesUtil.getKubernetesConfigPerPodName(pi, Collections.singleton(targetNode));
+        config = k8sConfigMap.get(targetNode.nodeName);
+      }
       if (config == null) {
         config = getConfig();
       }
@@ -522,13 +555,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         break;
       case COPY_PACKAGE:
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-        NodeDetails nodeDetails = u.getNode(taskParams().ybcServerName);
+        NodeDetails nodeDetails = resolveTargetNode(u);
         ybcManager.copyYbcPackagesOnK8s(
             config, u, nodeDetails, taskParams().getYbcSoftwareVersion(), taskParams().ybcGflags);
         break;
       case YBC_ACTION:
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-        nodeDetails = u.getNode(taskParams().ybcServerName);
+        nodeDetails = resolveTargetNode(u);
         List<String> commandArgs =
             Arrays.asList(
                 "/bin/bash",
@@ -646,9 +679,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         // chart as a prefix, we are removing the yb-<server>-N part
         // from it. It is blank in case of old naming style.
         pod.put("helmFullNameWithSuffix", hostname.substring(0, ybIdx));
-        // We leave out the Helm name prefix from the pod hostname,
-        // and use the name like yb-<server>-N[_<az-name>] as nodeName
-        // i.e. yb-master-0, and yb-master-0_az1 in case of multi-az.
+        // We leave out the Helm name prefix from the pod hostname and use the name
+        // yb-<server>-N_<az-name> (e.g. yb-master-0_az1) as nodeName in
+        // multi-AZ case, yb-<server>-N (e.g. yb-master-0) as nodeName in single-AZ case.
         String nodeName = hostname.substring(ybIdx, hostname.length());
         nodeName = isMultiAz ? String.format("%s_%s", nodeName, azName) : nodeName;
 
@@ -672,6 +705,21 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                       ? universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid
                       : universe.getUniverseDetails().getPrimaryCluster().uuid);
           NodeDetails defaultNode = defaultNodes.iterator().next();
+          // Preserve the existing nodeUuid across processNodeInfo re-runs so that
+          // subtasks captured by UUID (KubernetesCommandExecutor.Params.nodeUuid)
+          // still resolve after a rename (e.g. after a provider mod that flips
+          // PlacementInfoUtil.isMultiAZ(provider) - which would rebuild
+          // NodeDetails.nodeName from scratch below). Key on the pod hostname,
+          // which is derived from the immutable statefulset ordinal + AZ.
+          Map<String, UUID> podNameToExistingNodeUuid = new HashMap<>();
+          for (NodeDetails existing : defaultNodes) {
+            if (existing.cloudInfo != null
+                && StringUtils.isNotBlank(existing.cloudInfo.kubernetesPodName)
+                && existing.nodeUuid != null) {
+              podNameToExistingNodeUuid.put(
+                  existing.cloudInfo.kubernetesPodName, existing.nodeUuid);
+            }
+          }
           Set<NodeDetails> nodeDetailsSet = new HashSet<>();
           Iterator<Map.Entry<String, JsonNode>> iter = pods.fields();
           Map<String, String> azConfig;
@@ -742,6 +790,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 taskParams().isReadOnlyCluster
                     ? String.format("%s%s", nodeName, Universe.READONLY)
                     : nodeName;
+            // Prefer the previously-assigned UUID so subtask lookups by
+            // nodeUuid keep working even after a rename; only generate a fresh
+            // one for pods we haven't seen before. Deriving from
+            // (universeUuid, initial nodeName) mirrors setCloudNodeUuids for
+            // non-K8s clouds - stable and reproducible.
+            UUID preservedUuid = podNameToExistingNodeUuid.get(hostname);
+            nodeDetail.nodeUuid =
+                preservedUuid != null
+                    ? preservedUuid
+                    : Util.generateNodeUUID(u.getUniverseUUID(), nodeDetail.nodeName);
             nodeDetailsSet.add(nodeDetail);
           }
           // Remove existing cluster nodes and add nodeDetailsSet
@@ -1479,6 +1537,36 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                   + "/yw-data/.pgpass"));
       masterOverrides.put("extraEnv", masterExtraEnv);
     }
+
+    // Tell k8s_parent.py the exact suffix that YBA puts after "yb-<server>-N" in
+    // NodeDetails.nodeName, so the pod's EXPORTED_INSTANCE / --metric_node_name
+    // matches the YBA node name used for Prometheus filtering:
+    //   ""                single-AZ primary
+    //   "_<az>"           multi-AZ  primary
+    //   "-readonly"       single-AZ RR
+    //   "_<az>-readonly"  multi-AZ RR
+    // We use PlacementInfoUtil.isMultiAZ(provider) (the same call site
+    // processNodeInfo uses to decide whether to append "_<az>" to nodeName),
+    // NOT the local isMultiAz variable above which is forced true for RR
+    // clusters at line ~851 for helm/partial-universe reasons.
+    String metricSuffixAzPart =
+        PlacementInfoUtil.isMultiAZ(provider) && StringUtils.isNotBlank(placementZone)
+            ? "_" + placementZone
+            : "";
+    String metricSuffixRrPart = taskParams().isReadOnlyCluster ? Universe.READONLY : "";
+    String metricNodeNameSuffix = metricSuffixAzPart + metricSuffixRrPart;
+    Map<String, String> metricSuffixEnv =
+        ImmutableMap.of("name", "YB_METRIC_NODE_NAME_SUFFIX", "value", metricNodeNameSuffix);
+    @SuppressWarnings("unchecked")
+    List<Object> tserverExtraEnvForMetricSuffix =
+        (List<Object>) tserverOverrides.computeIfAbsent("extraEnv", k -> new ArrayList<>());
+    tserverExtraEnvForMetricSuffix.add(metricSuffixEnv);
+    // RR K8s deployments have no masters, but keeping this on masterOverrides
+    // for primary clusters keeps master pods' EXPORTED_INSTANCE aligned too.
+    @SuppressWarnings("unchecked")
+    List<Object> masterExtraEnvForMetricSuffix =
+        (List<Object>) masterOverrides.computeIfAbsent("extraEnv", k -> new ArrayList<>());
+    masterExtraEnvForMetricSuffix.add(metricSuffixEnv);
 
     if (!masterOverrides.isEmpty()) {
       overrides.put("master", masterOverrides);

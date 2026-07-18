@@ -1105,7 +1105,7 @@
     operationId: pageListRestores
     summary: List universe restores.
     description: |
-      Returns universe restores for the specified customer with pagination and optional filters.
+      Returns universe backup restore events for the specified customer with pagination and optional filters.
       WARNING: This is a preview API that could change.
     tags:
       - Backup and Restore

@@ -364,12 +364,15 @@ public class XClusterConfigController extends AuthenticatedController {
       Universe sourceUniverse =
           Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
       String nodePrefix = sourceUniverse.getUniverseDetails().nodePrefix;
-      Map<String, String> additionalFilters = new HashMap<>();
-      additionalFilters.put("node_prefix", nodePrefix);
-      additionalFilters.put("stream_id", String.join("|", streamIds));
+      Map<String, String> lagFilters = new HashMap<>();
+      lagFilters.put("node_prefix", nodePrefix);
+      lagFilters.put("stream_id", String.join("|", streamIds));
+      // The two filters above should be applied to *every* metric in the request (there is
+      // only one right now, but keep the plumbing uniform), so put them under the ALL bucket
+      // of filterOverrides rather than reintroducing an "additionalFilters" parameter.
       lagMetricData =
           metricQueryHelper.query(
-              customer, List.of(metric), metricParams, Map.of(), additionalFilters);
+              customer, List.of(metric), metricParams, Map.of(MetricQueryHelper.ALL, lagFilters));
     } catch (Exception e) {
       String errorMsg =
           String.format(

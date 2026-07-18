@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -431,6 +432,15 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     stsIndex.put("tserver", ImmutableMap.of("start", 0, "end", 0));
     stsIndex.put("master", ImmutableMap.of("start", 0, "end", 0));
     expectedOverrides.put("stsIndex", stsIndex);
+
+    // YB_METRIC_NODE_NAME_SUFFIX is injected on every helm apply so k8s_parent.py
+    // emits EXPORTED_INSTANCE matching NodeDetails.nodeName in YBA. Value is
+    // "" for single-AZ primary (the default test setup). See
+    // KubernetesCommandExecutor.generateHelmOverrides.
+    List<Map<String, String>> metricSuffixExtraEnv =
+        ImmutableList.of(ImmutableMap.of("name", "YB_METRIC_NODE_NAME_SUFFIX", "value", ""));
+    expectedOverrides.put("tserver", ImmutableMap.of("extraEnv", metricSuffixExtraEnv));
+    expectedOverrides.put("master", ImmutableMap.of("extraEnv", metricSuffixExtraEnv));
 
     expectedOverrides.put("defaultServiceScope", "AZ");
     return expectedOverrides;
@@ -1506,7 +1516,67 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
           String.format(
               "%s.%s%s.%s.%s",
               podName, helmNameSuffix, serviceName, namespace, "svc.cluster.local"));
+      // Every K8s NodeDetails must carry a stable nodeUuid derived from
+      // (universeUuid, nodeName) so subtasks captured by UUID can resolve them
+      // even after a later processNodeInfo re-run that might change nodeName
+      // (see KubernetesCommandExecutor.resolveTargetNode).
+      assertEquals(
+          Util.generateNodeUUID(defaultUniverse.getUniverseUUID(), nodeName), node.nodeUuid);
     }
+  }
+
+  @Test
+  public void testPodInfoPreservesNodeUuidAcrossReruns() {
+    // Simulate the sequence that used to strand K8s subtasks after a rename:
+    // 1) Initial POD_INFO establishes NodeDetails with fresh, deterministic UUIDs.
+    // 2) A subsequent POD_INFO re-run (e.g. after an isMultiAZ(provider) flip
+    //    would have rebuilt the node set) must preserve the same nodeUuid so
+    //    subtasks captured by UUID (KubernetesCommandExecutor.Params.nodeUuid)
+    //    still resolve. Preservation is keyed on cloudInfo.kubernetesPodName,
+    //    which processNodeInfo writes from the immutable pod hostname.
+    String nodePrefix = defaultUniverse.getUniverseDetails().nodePrefix;
+    String namespace = nodePrefix;
+    defaultAZ.updateConfig(config);
+    defaultAZ.save();
+
+    String podsString =
+        "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\","
+            + " \"podIP\": \"123.456.78.90\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
+            + " \"metadata\": {\"namespace\": \"%1$s\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"123.456.78.91\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
+            + " \"metadata\": {\"namespace\": \"%1$s\"}}]}";
+    List<Pod> podList =
+        TestUtils.deserialize(String.format(podsString, namespace), PodList.class).getItems();
+    when(kubernetesManager.getPodInfos(any(), any(), any())).thenReturn(podList);
+
+    KubernetesCommandExecutor firstRun =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.POD_INFO,
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
+    firstRun.run();
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    NodeDetails afterFirst = defaultUniverse.getNode("yb-tserver-0");
+    assertNotNull(afterFirst);
+    UUID initialUuid = afterFirst.nodeUuid;
+    assertNotNull(initialUuid);
+    // First run derives the UUID from (universeUuid, nodeName).
+    assertEquals(
+        Util.generateNodeUUID(defaultUniverse.getUniverseUUID(), "yb-tserver-0"), initialUuid);
+    assertEquals("yb-tserver-0", afterFirst.cloudInfo.kubernetesPodName);
+
+    // Second POD_INFO must reuse the previously-assigned nodeUuid for the pod
+    // with the same hostname (kubernetesPodName), even if some other code path
+    // would try to regenerate it - protecting subtasks that captured the UUID.
+    KubernetesCommandExecutor secondRun =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.POD_INFO,
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
+    secondRun.run();
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    NodeDetails afterSecond = defaultUniverse.getNode("yb-tserver-0");
+    assertNotNull(afterSecond);
+    assertEquals(initialUuid, afterSecond.nodeUuid);
   }
 
   @Test

@@ -36,6 +36,16 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
 
   private final boolean isRecharts;
 
+  // Resolver that maps Kubernetes container-metric label triples (pod_name, namespace, az_name)
+  // to YBA node names using the universe's cluster / AZ / helm-release metadata. Populated by
+  // MetricQueryHelper for container-metric queries with a resolvable universe so
+  // MetricQueryResponse can render the canonical node name (correctly handling single-AZ vs.
+  // multi-AZ and primary vs. read-replica) even for samples whose NodeDetails entries have
+  // already been removed. Null for non-container queries or when no universe was resolved;
+  // MetricQueryResponse falls back to the label-only heuristic in that case, defaulting to
+  // multi-AZ naming when no resolver is available.
+  private final K8sPodNodeNameResolver k8sPodNodeNameResolver;
+
   public MetricQueryExecutor(
       MetricUrlProvider metricUrlProvider,
       ApiHelper apiHelper,
@@ -49,7 +59,8 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
         queryParam,
         additionalFilters,
         MetricSettings.defaultSettings(queryParam.get("queryKey")),
-        false);
+        false,
+        null);
   }
 
   public MetricQueryExecutor(
@@ -59,7 +70,8 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       Map<String, String> queryParam,
       Map<String, String> additionalFilters,
       MetricSettings metricSettings,
-      boolean isRecharts) {
+      boolean isRecharts,
+      K8sPodNodeNameResolver k8sPodNodeNameResolver) {
     this.apiHelper = apiHelper;
     this.metricUrlProvider = metricUrlProvider;
     this.headers.putAll(headers);
@@ -67,6 +79,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     this.additionalFilters.putAll(additionalFilters);
     this.metricSettings = metricSettings;
     this.isRecharts = isRecharts;
+    this.k8sPodNodeNameResolver = k8sPodNodeNameResolver;
     if (queryParam.containsKey("step")) {
       this.queryRangeSecs = Integer.parseInt(queryParam.get("step"));
     } else {
@@ -178,7 +191,9 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
           responseJson.put("error", queryResponse.error);
           break;
         } else {
-          output.addAll(queryResponse.getGraphData(metric, configDefinition, metricSettings));
+          output.addAll(
+              queryResponse.getGraphData(
+                  metric, configDefinition, metricSettings, k8sPodNodeNameResolver));
         }
       }
       directURLs.add(getDirectURL(queryExpressions));

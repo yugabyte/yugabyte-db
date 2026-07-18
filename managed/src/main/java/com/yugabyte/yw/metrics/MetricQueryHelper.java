@@ -66,6 +66,15 @@ public class MetricQueryHelper {
   public static final String CONTAINER_VOLUME_METRIC_PREFIX = "container_volume";
   private static final String NODE_PREFIX = "node_prefix";
   public static final String NAMESPACE = "namespace";
+
+  /**
+   * Sentinel {@code filterOverrides} key that applies its filters to every metric in the request.
+   * Prefer this over the (now-removed) {@code additionalFilters} parameter so all filter plumbing
+   * goes through a single map: per-metric entries override the ALL entry on a key-by-key basis (see
+   * the merge order in the {@code query(...)} worker).
+   */
+  public static final String ALL = "__all__";
+
   public static final String EXPORTED_INSTANCE = "exported_instance";
   public static final String TABLE_ID = "table_id";
   public static final String TABLE_NAME = "table_name";
@@ -125,24 +134,21 @@ public class MetricQueryHelper {
   }
 
   /**
-   * Query prometheus for a given metricType and query params
+   * Query prometheus for a given list of metrics and query params.
    *
-   * @param params, Query params like start, end timestamps, even filters Ex: {"metricKey":
-   *     "cpu_usage_user", "start": <start timestamp>, "end": <end timestamp>}
-   * @return MetricQueryResponse Object
+   * @param params query params like start, end timestamps. Ex: {"start": &lt;start timestamp&gt;,
+   *     "end": &lt;end timestamp&gt;}
+   * @param filterOverrides per-metric prometheus label filters. Use the {@link #ALL} key to apply a
+   *     filter set to every metric in the request; per-metric entries take precedence over ALL on a
+   *     key-by-key basis.
    */
-  public JsonNode query(Customer customer, List<String> metricKeys, Map<String, String> params) {
-    return query(customer, metricKeys, params, new HashMap<>(), Map.of());
-  }
-
   public JsonNode query(
       Customer customer,
       List<String> metricKeys,
       Map<String, String> params,
-      Map<String, Map<String, String>> filterOverrides,
-      Map<String, String> additionalFilters) {
+      Map<String, Map<String, String>> filterOverrides) {
     List<MetricSettings> metricSettings = MetricSettings.defaultSettings(metricKeys);
-    return query(customer, metricSettings, params, filterOverrides, false, additionalFilters);
+    return query(customer, metricSettings, params, filterOverrides, false, null);
   }
 
   public JsonNode query(Customer customer, MetricQueryParams metricQueryParams) {
@@ -181,7 +187,7 @@ public class MetricQueryHelper {
           params,
           filterOverrides,
           metricQueryParams.isRecharts(),
-          Map.of());
+          null);
     }
 
     // Given we have a limitation on not being able to rename the pod labels in
@@ -193,11 +199,23 @@ public class MetricQueryHelper {
     String universeFilterLabel = hasContainerMetric ? NAMESPACE : NODE_PREFIX;
     String nodeFilterLabel = hasContainerMetric ? POD_NAME : EXPORTED_INSTANCE;
 
-    Map<String, String> additionalFilters = new LinkedHashMap<>();
+    // Filters shared across every metric in the request go into the ALL bucket of
+    // filterOverrides. Per-metric entries added below take precedence on a key-by-key basis
+    // (see the merge in the query(...) worker).
+    Map<String, String> allFilters = new LinkedHashMap<>();
+    filterOverrides.put(ALL, allFilters);
+    // Cluster-derived resolver for Kubernetes container-metric labels. Built once per query from
+    // the universe's cluster / AZ / helm-release metadata so it also covers pods whose
+    // NodeDetails have already been removed (e.g. samples from before a rolling upgrade). Null
+    // for non-container queries or when the universe isn't resolvable - MetricQueryResponse
+    // then falls back to its label-only heuristic. The resolver also carries the universe-level
+    // multi-AZ flag (via {@link K8sPodNodeNameResolver#isMultiAZ}), so we no longer need to
+    // thread that separately through the executor.
+    K8sPodNodeNameResolver k8sPodNodeNameResolver = null;
     if (StringUtils.isEmpty(metricQueryParams.getNodePrefix())) {
       String universePrefixes =
           String.join("|", Universe.getNodePrefixesForCustomer(customer.getId()));
-      additionalFilters.put(universeFilterLabel, universePrefixes);
+      allFilters.put(universeFilterLabel, universePrefixes);
     } else {
       final String nodePrefix = metricQueryParams.getNodePrefix();
       List<UUID> universeUuids =
@@ -261,6 +279,15 @@ public class MetricQueryHelper {
 
         boolean newNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
 
+        // Build the resolver from the universe's cluster / AZ metadata (which persists even
+        // for pods that no longer have a NodeDetails record). MetricQueryResponse prefers this
+        // over any label-based reconstruction so read-replica pods (which require the
+        // `-readonly` suffix) and multi-AZ pods render with the same node name YBA uses
+        // elsewhere in the UI, including for historical samples of already-removed pods.
+        // The resolver also exposes the universe-level multi-AZ flag (isMultiAZ) so we don't
+        // recompute it locally.
+        k8sPodNodeNameResolver = K8sPodNodeNameResolver.forUniverse(universe);
+
         if (CollectionUtils.isNotEmpty(nodesToFilter)) {
           Set<String> podNames = new HashSet<>();
           Set<String> containerNames = new HashSet<>();
@@ -276,12 +303,12 @@ public class MetricQueryHelper {
             pvcNames.add(pvcName);
             namespaces.add(namespace);
           }
-          additionalFilters.put(nodeFilterLabel, StringUtils.join(podNames, '|'));
-          additionalFilters.put(CONTAINER_NAME, StringUtils.join(containerNames, '|'));
-          additionalFilters.put(PVC, StringUtils.join(pvcNames, '|'));
-          additionalFilters.put(universeFilterLabel, StringUtils.join(namespaces, '|'));
+          allFilters.put(nodeFilterLabel, StringUtils.join(podNames, '|'));
+          allFilters.put(CONTAINER_NAME, StringUtils.join(containerNames, '|'));
+          allFilters.put(PVC, StringUtils.join(pvcNames, '|'));
+          allFilters.put(universeFilterLabel, StringUtils.join(namespaces, '|'));
         } else {
-          additionalFilters.put(
+          allFilters.put(
               universeFilterLabel, getNamespacesFilter(universe, nodePrefix, newNamingStyle));
           // Check if the universe is using newNamingStyle.
           if (newNamingStyle) {
@@ -303,15 +330,15 @@ public class MetricQueryHelper {
                 }
               }
             }
-            additionalFilters.put(nodeFilterLabel, StringUtils.join(nodePrefixes, '|'));
+            allFilters.put(nodeFilterLabel, StringUtils.join(nodePrefixes, '|'));
           }
         }
       } else {
-        additionalFilters.put(universeFilterLabel, metricQueryParams.getNodePrefix());
+        allFilters.put(universeFilterLabel, metricQueryParams.getNodePrefix());
         if (CollectionUtils.isNotEmpty(nodesToFilter)) {
           Set<String> nodeNames =
               nodesToFilter.stream().map(NodeDetails::getNodeName).collect(Collectors.toSet());
-          additionalFilters.put(nodeFilterLabel, StringUtils.join(nodeNames, '|'));
+          allFilters.put(nodeFilterLabel, StringUtils.join(nodeNames, '|'));
         }
 
         filterOverrides.putAll(
@@ -319,13 +346,13 @@ public class MetricQueryHelper {
       }
     }
     if (StringUtils.isNotEmpty(metricQueryParams.getTableName())) {
-      additionalFilters.put("table_name", metricQueryParams.getTableName());
+      allFilters.put("table_name", metricQueryParams.getTableName());
     }
     if (StringUtils.isNotEmpty(metricQueryParams.getTableId())) {
-      additionalFilters.put("table_id", metricQueryParams.getTableId());
+      allFilters.put("table_id", metricQueryParams.getTableId());
     }
     if (StringUtils.isNotEmpty(metricQueryParams.getStreamId())) {
-      additionalFilters.put("stream_id", metricQueryParams.getStreamId() + "|");
+      allFilters.put("stream_id", metricQueryParams.getStreamId() + "|");
     }
     if (metricQueryParams.getXClusterConfigUuid() != null) {
       XClusterConfig xClusterConfig =
@@ -362,11 +389,11 @@ public class MetricQueryHelper {
         streamIds = xClusterConfig.getStreamIdsWithReplicationSetup();
       }
       String tableIdRegex = String.join("|", tableIds);
-      additionalFilters.put("table_id", tableIdRegex);
+      allFilters.put("table_id", tableIdRegex);
       String streamIdRegex = String.join("|", streamIds);
       // We add `|` to the end of streamIdRegex for backward compatibility where a YBDB version
       // does not have stream id as a label matcher.
-      additionalFilters.put("stream_id", streamIdRegex + "|");
+      allFilters.put("stream_id", streamIdRegex + "|");
     }
 
     return query(
@@ -375,16 +402,23 @@ public class MetricQueryHelper {
         params,
         filterOverrides,
         metricQueryParams.isRecharts(),
-        additionalFilters);
+        k8sPodNodeNameResolver);
   }
 
   /**
-   * Query prometheus for a given metricType and query params
+   * Query prometheus for a given set of metrics.
    *
-   * @param params Query params like start, end timestamps. Ex: {"start": <start timestamp>, "end":
-   *     <end timestamp>}
-   * @param additionalFilters Prometheus label filters applied to every metric in the request
-   * @return MetricQueryResponse Object
+   * @param params query params like start, end timestamps. Ex: {"start": &lt;start timestamp&gt;,
+   *     "end": &lt;end timestamp&gt;}
+   * @param filterOverrides prometheus label filters keyed by metric name. Use the {@link #ALL} key
+   *     to apply a filter set to every metric in the request; per-metric entries override ALL on a
+   *     key-by-key basis.
+   * @param k8sPodNodeNameResolver resolver that maps Kubernetes container-metric label triples to
+   *     YBA node names using the universe's cluster / AZ / helm-release metadata. When non-null,
+   *     MetricQueryResponse uses it in preference to any label-only heuristic so read-replica pods
+   *     (which require the {@code -readonly} suffix) and multi-AZ pods render correctly - including
+   *     for historical samples whose {@code NodeDetails} entries may already be gone. Also carries
+   *     the universe-level multi-AZ flag used by the fallback path.
    */
   public JsonNode query(
       Customer customer,
@@ -392,7 +426,7 @@ public class MetricQueryHelper {
       Map<String, String> params,
       Map<String, Map<String, String>> filterOverrides,
       boolean isRecharts,
-      Map<String, String> additionalFilters) {
+      K8sPodNodeNameResolver k8sPodNodeNameResolver) {
     if (metricsWithSettings.isEmpty()) {
       throw new PlatformServiceException(BAD_REQUEST, "Empty metricsWithSettings data provided.");
     }
@@ -456,10 +490,14 @@ public class MetricQueryHelper {
         Map<String, String> queryParams = new HashMap<>(params);
         queryParams.put("queryKey", metricSettings.getMetric());
 
+        // Merge order: ALL bucket first (applied to every metric), then per-metric overrides
+        // so metric-specific entries win on a key-by-key basis. Callers that only want a
+        // universally-applied filter (e.g. XClusterConfigController) put it under ALL and leave
+        // per-metric overrides empty.
         Map<String, String> metricAdditionalFilters = new HashMap<>();
+        metricAdditionalFilters.putAll(filterOverrides.getOrDefault(ALL, Map.of()));
         metricAdditionalFilters.putAll(
             filterOverrides.getOrDefault(metricSettings.getMetric(), Map.of()));
-        metricAdditionalFilters.putAll(additionalFilters);
 
         Callable<JsonNode> callable =
             new MetricQueryExecutor(
@@ -469,7 +507,8 @@ public class MetricQueryHelper {
                 queryParams,
                 metricAdditionalFilters,
                 metricSettings,
-                isRecharts);
+                isRecharts,
+                k8sPodNodeNameResolver);
         Future<JsonNode> future = threadPool.submit(callable);
         futures.add(future);
       }
