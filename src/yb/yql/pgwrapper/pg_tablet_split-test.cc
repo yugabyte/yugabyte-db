@@ -84,6 +84,7 @@ DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
+DECLARE_bool(ysql_enable_write_pipelining);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_select_parallelism);
 DECLARE_uint64(rpc_max_message_size);
@@ -1864,6 +1865,12 @@ TEST_F(PgDelayedSplitAtFollower, TestDelayedSplitAtFollower) {
 
   // Insert enough data to create SST files for splitting
   ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 1000), 0"));
+
+  if (FLAGS_ysql_enable_write_pipelining) {
+    // Write pipelining acks the above insert immediately, need to wait for this to be applied
+    // before doing the flush + split.
+    ASSERT_OK(WaitForTableIntentsApplied(cluster_.get(), table_id));
+  }
 
   // Insert a row in a transaction
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
