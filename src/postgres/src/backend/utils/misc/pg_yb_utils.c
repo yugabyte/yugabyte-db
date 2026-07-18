@@ -3967,6 +3967,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 		case T_DropStmt:
 			{
+				DropStmt   *stmt = castNode(DropStmt, parsetree);
+
 				/*
 				 * If this is a DROP statement that is being executed as part of
 				 * REFRESH MATVIEW (CONCURRENTLY), we are only dropping temporary
@@ -3980,8 +3982,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					 * If all dropped objects are temporary, we do not need to
 					 * bump the catalog version.
 					 */
-					DropStmt   *stmt = castNode(DropStmt, parsetree);
-
 				if (stmt->removeType == OBJECT_INDEX ||
 					stmt->removeType == OBJECT_TABLE ||
 					stmt->removeType == OBJECT_VIEW)
@@ -4010,6 +4010,10 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 							is_altering_existing_data = true;
 					}
 				}
+				if (stmt->removeType == OBJECT_INDEX && stmt->concurrent)
+					should_run_in_autonomous_transaction =
+						!IsInTransactionBlock(is_top_level) &&
+						YBCIsLegacyModeForCatalogOps();
 				is_breaking_change = false;
 				break;
 			}

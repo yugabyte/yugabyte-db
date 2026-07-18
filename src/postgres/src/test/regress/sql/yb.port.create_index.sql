@@ -205,10 +205,38 @@ BEGIN;
 CREATE INDEX std_index on concur_heap(f2);
 COMMIT;
 
+-- Temporary indexes use the non-concurrent drop path.
+CREATE TEMP TABLE concur_temp (f1 int, f2 text) ON COMMIT PRESERVE ROWS;
+CREATE INDEX CONCURRENTLY concur_temp_ind ON concur_temp(f1);
+DROP INDEX CONCURRENTLY concur_temp_ind;
+SELECT to_regclass('pg_temp.concur_temp_ind') IS NULL AS dropped;
+DROP TABLE concur_temp;
+
+-- Try some concurrent index drops.
+DROP INDEX CONCURRENTLY "concur_index2";
+DROP INDEX CONCURRENTLY IF EXISTS "concur_index2";
+
+-- failures
+DROP INDEX CONCURRENTLY "concur_index2", "concur_index3";
+DROP INDEX CONCURRENTLY "concur_index5" CASCADE;
+BEGIN;
+DROP INDEX CONCURRENTLY "concur_index5";
+ROLLBACK;
+
+-- successes
+DROP INDEX CONCURRENTLY IF EXISTS "concur_index3";
+DROP INDEX CONCURRENTLY "concur_index4";
+DROP INDEX CONCURRENTLY "concur_index5";
+DROP INDEX CONCURRENTLY "concur_index1";
+DROP INDEX CONCURRENTLY "concur_heap_expr_idx";
+SELECT indexname FROM pg_indexes
+  WHERE tablename = 'concur_heap' ORDER BY indexname;
+
 -- Failed builds are left invalid by VACUUM FULL, fixed by REINDEX
 -- YB note: VACUUM and REINDEX TABLE are not yet supported
 VACUUM FULL concur_heap;
 REINDEX TABLE concur_heap;
+DROP TABLE concur_heap;
 
 --
 -- Test ADD CONSTRAINT USING INDEX

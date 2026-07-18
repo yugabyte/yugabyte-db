@@ -127,7 +127,6 @@ static void update_relispartition(Oid relationId, bool newval);
 static inline void set_indexsafe_procflags(void);
 
 /* YB function declarations. */
-static void YbWaitForBackendsCatalogVersion();
 static void YbDefineIndexHelper(Oid relationId, Oid indexRelationId, Oid databaseId);
 
 /*
@@ -5288,7 +5287,7 @@ set_indexsafe_procflags(void)
 	LWLockRelease(ProcArrayLock);
 }
 
-static void
+void
 YbWaitForBackendsCatalogVersion()
 {
 	if (yb_disable_wait_for_backends_catalog_version)

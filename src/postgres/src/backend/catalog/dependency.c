@@ -1465,7 +1465,8 @@ doDeletion(const ObjectAddress *object, int flags, bool ybOriginalObject)
 
 					if (yb_index)
 					{
-						if (IsYBRelation(yb_index) && !yb_index->rd_index->indisprimary)
+						if (IsYBRelation(yb_index) &&
+							!yb_index->rd_index->indisprimary && !concurrent)
 							YBCDropIndex(yb_index);
 
 						RelationClose(yb_index);
