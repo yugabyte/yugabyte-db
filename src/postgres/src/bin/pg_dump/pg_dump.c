@@ -20555,6 +20555,9 @@ ybFindIndexdefClause(const char *indexdef, const char *clause)
  * first.  If neither is present, we append it at the end of the indexdef
  * (e.g. for a single-tablet index that still has an explicit reloption to
  * preserve).
+ *
+ * The SQL pg_get_indexdef() used by getIndexes() intentionally omits
+ * TABLESPACE; pg_dump carries it separately in the archive entry metadata.
  */
 static char *
 ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
