@@ -403,17 +403,17 @@ public class TestYsqlDumpSplitOptions extends BasePgSQLTest {
   }
 
   /**
-   * Regression test: a table created without SPLIT INTO should not gain a
-   * yb_presplit reloption after dump+restore.  Pg_dump's --include-yb-metadata
-   * always emits SPLIT INTO N TABLETS for hash tables to preserve the current
-   * tablet count, and DefineRelation auto-derives yb_presplit from that
-   * clause.  To keep the restored relation aligned with the source the dump
-   * folds an empty-string yb_presplit sentinel into the CREATE statement's
-   * WITH clause, which DefineRelation/DefineIndex recognise as
-   * "suppress auto-derive" and strip before persistence.
+   * Regression test: dump+restore should preserve whether yb_presplit is
+   * absent or explicitly set.  Pg_dump's --include-yb-metadata always emits
+   * SPLIT INTO N TABLETS for hash tables to preserve the current tablet count,
+   * and DefineRelation auto-derives yb_presplit from that clause.  To keep the
+   * restored relation aligned with the source the dump folds an empty-string
+   * yb_presplit sentinel into the CREATE statement's WITH clause, which
+   * DefineRelation/DefineIndex recognise as "suppress auto-derive" and strip
+   * before persistence.
    */
   @Test
-  public void testRestorePreservesAbsenceOfPresplit() throws Exception {
+  public void testRestorePreservesPresplitState() throws Exception {
     final String sourceDb = "no_presplit_src_db";
     final String targetDb = "no_presplit_tgt_db";
     int tserverIndex = 0;
@@ -423,13 +423,18 @@ public class TestYsqlDumpSplitOptions extends BasePgSQLTest {
       stmt.executeUpdate("CREATE DATABASE " + targetDb);
     }
 
-    // Create a hash-PK table and a hash secondary index without SPLIT clauses.
+    // Create a hash-PK table and secondary indexes with different presplit states.
     try (Connection conn = getConnectionBuilder().withDatabase(sourceDb).connect();
          Statement stmt = conn.createStatement()) {
       stmt.executeUpdate(
-          "CREATE TABLE no_presplit_tbl (k INT, v INT, PRIMARY KEY (k HASH))");
+          "CREATE TABLE no_presplit_tbl "
+              + "(k INT, v INT, \"contains WITH (\" INT, PRIMARY KEY (k HASH))");
       stmt.executeUpdate(
           "CREATE INDEX no_presplit_idx ON no_presplit_tbl (v HASH) SPLIT INTO 3 TABLETS");
+      stmt.executeUpdate(
+          "CREATE INDEX partial_presplit_idx "
+              + "ON no_presplit_tbl (\"contains WITH (\" HASH) "
+              + "WITH (yb_presplit='1') WHERE k > 0");
 
       String tableRel = getReloptions(stmt, "no_presplit_tbl");
       assertTrue("Source table should not have yb_presplit in reloptions",
@@ -445,6 +450,11 @@ public class TestYsqlDumpSplitOptions extends BasePgSQLTest {
       idxRel = getReloptions(stmt, "no_presplit_idx");
       assertTrue("Index reloptions should be empty after RESET",
           idxRel == null || !idxRel.contains("yb_presplit"));
+
+      String partialIdxRel = getReloptions(stmt, "partial_presplit_idx");
+      assertNotNull("Partial index should have reloptions", partialIdxRel);
+      assertTrue("Partial index should have yb_presplit",
+          partialIdxRel.contains("yb_presplit=1"));
     }
 
     // Dump the source with --include-yb-metadata.
@@ -476,6 +486,16 @@ public class TestYsqlDumpSplitOptions extends BasePgSQLTest {
         sentinelCount >= 2);
     assertFalse("Dump should not emit ALTER TABLE RESET (yb_presplit)",
         dumpContent.contains("RESET (yb_presplit)"));
+    int partialIndexPos = dumpContent.indexOf(
+        "CREATE INDEX NONCONCURRENTLY partial_presplit_idx ");
+    int partialIndexPresplitPos = dumpContent.indexOf(
+        " WITH (yb_presplit='1')", partialIndexPos);
+    int partialIndexPredicatePos = dumpContent.indexOf(" WHERE ", partialIndexPos);
+    assertTrue("Dump should place yb_presplit before the partial-index predicate; dump=\n"
+            + dumpContent,
+        partialIndexPos >= 0
+            && partialIndexPresplitPos > partialIndexPos
+            && partialIndexPredicatePos > partialIndexPresplitPos);
 
     // Restore the dump into the target database.
     List<String> restoreArgs = new ArrayList<>(Arrays.asList(
@@ -488,7 +508,7 @@ public class TestYsqlDumpSplitOptions extends BasePgSQLTest {
         "-v", "ON_ERROR_STOP=1"));
     ProcessUtil.executeSimple(restoreArgs, "ysqlsh (restore)");
 
-    // Neither the restored table nor the restored index should have yb_presplit.
+    // Verify that each restored relation retained its source reloption state.
     try (Connection conn = getConnectionBuilder().withDatabase(targetDb).connect();
          Statement stmt = conn.createStatement()) {
       String tableRel = getReloptions(stmt, "no_presplit_tbl");
@@ -497,6 +517,10 @@ public class TestYsqlDumpSplitOptions extends BasePgSQLTest {
       String idxRel = getReloptions(stmt, "no_presplit_idx");
       assertTrue("Restored index should not have yb_presplit; got: " + idxRel,
           idxRel == null || !idxRel.contains("yb_presplit"));
+      String partialIdxRel = getReloptions(stmt, "partial_presplit_idx");
+      assertNotNull("Restored partial index should have reloptions", partialIdxRel);
+      assertTrue("Restored partial index should retain yb_presplit; got: " + partialIdxRel,
+          partialIdxRel.contains("yb_presplit=1"));
     }
 
     try (Statement stmt = connection.createStatement()) {
