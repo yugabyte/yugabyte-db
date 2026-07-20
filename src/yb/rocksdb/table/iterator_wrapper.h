@@ -25,9 +25,10 @@
 
 #include <set>
 
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/rocksdb_fwd.h"
 
-#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 
 namespace rocksdb {

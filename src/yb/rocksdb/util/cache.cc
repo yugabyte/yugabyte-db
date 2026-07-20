@@ -114,7 +114,8 @@ struct LRUHandle {
   }
 
   void Free(yb::CacheMetrics* metrics) {
-    assert((refs == 1 && in_cache) || (refs == 0 && !in_cache));
+    DCHECK((refs == 1 && in_cache) || (refs == 0 && !in_cache))
+        << "refs: " << refs << " in_cache: " << in_cache;
     (*deleter)(key(), value);
     if (metrics != nullptr) {
       if (GetSubCacheType() == MULTI_TOUCH) {

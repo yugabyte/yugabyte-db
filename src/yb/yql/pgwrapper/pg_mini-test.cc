@@ -2461,7 +2461,16 @@ TEST_F(PgMiniTest, ReadHugeRow) {
   ASSERT_STR_CONTAINS(res.status().ToString(), "Sending too long RPC message");
 }
 
-// Check that fetch of data amount exceeding the message size automatically paginates and succeeds
+// Check that fetch of data amount exceeding the message size automatically paginates and succeeds.
+//
+// The IndexScan path here also exercises the batched-ybctid mid-batch pagination contract:
+// the index emits 1000 ybctids in `i` order, the main-table fetch is via batched ybctid with
+// per-arg order tags (keep_order=true), and the wide rows force response_size_limit to trigger
+// mid-batch - driving response.batch_arg_count < batch_arguments.size() and the client's
+// pop_front-based pagination loop. The content checks below catch any skip/duplicate or
+// ordering regression introduced by the wire-order vs processed-order contract (e.g., a
+// reintroduced server-side sort, or sorting batch_arguments while keep_order is set, which
+// would break the k-way merge in MergingPgDocOpFetchStream).
 TEST_F(PgMiniTest, ReadHugeRows) {
   // kNumRows should be less than default yb_fetch_row_limit, but not too low, so system can work
   constexpr size_t kNumRows = 1000;
@@ -2481,10 +2490,67 @@ TEST_F(PgMiniTest, ReadHugeRows) {
         "INSERT INTO test VALUES($0, $0 * 2, repeat('0', $1))", i, kColumnSize));
   }
 
-  // SeqScan, direct fetch from the main table
-  ASSERT_OK(conn.Fetch("SELECT * FROM test"));
-  // IndexScan, fetch from the main table by ybctids
-  ASSERT_OK(conn.Fetch("SELECT * FROM test ORDER BY i"));
+  // SeqScan, direct fetch from the main table. Verify every pk is present exactly once.
+  {
+    auto pks = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT pk FROM test ORDER BY pk"));
+    ASSERT_EQ(pks.size(), kNumRows);
+    for (size_t i = 0; i < kNumRows; ++i) {
+      ASSERT_EQ(pks[i], i);
+    }
+    pks = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT pk FROM test ORDER BY pk DESC"));
+    ASSERT_EQ(pks.size(), kNumRows);
+    for (size_t i = 0; i < kNumRows; ++i) {
+      ASSERT_EQ(pks[i], kNumRows - 1 - i);
+    }
+    pks = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT pk FROM test ORDER BY pk % 100, pk"));
+    ASSERT_EQ(pks.size(), kNumRows);
+    int32_t pk = 0;
+    for (size_t i = 0; i < kNumRows; ++i) {
+      ASSERT_EQ(pks[i], pk);
+      pk += 100;
+      if (std::cmp_greater_equal(pk, kNumRows)) {
+        pk = pk % 100 + 1;
+      }
+    }
+  }
+
+  // IndexScan, fetch from the main table by ybctids. Each row carries i = pk * 2; verifying
+  // that all (pk, i) pairs arrive in i order proves:
+  //   - no row was dropped (mid-batch pagination didn't skip)
+  //   - no row was duplicated (wire-order vs processed-order contract holds)
+  //   - the MergingPgDocOpFetchStream's k-way merge produced globally-ordered results
+  {
+    auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(
+      ("SELECT pk, i FROM test ORDER BY i"))));
+    ASSERT_EQ(rows.size(), static_cast<size_t>(kNumRows));
+    for (size_t i = 0; i < kNumRows; ++i) {
+      const auto& [pk, idx] = rows[i];
+      ASSERT_EQ(pk, i);
+      ASSERT_EQ(idx, i * 2);
+    }
+    rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(
+      ("SELECT pk, i FROM test ORDER BY i DESC"))));
+    ASSERT_EQ(rows.size(), static_cast<size_t>(kNumRows));
+    for (size_t i = 0; i < kNumRows; ++i) {
+      const auto& [pk, idx] = rows[i];
+      const auto expected_pk = kNumRows - 1 - i;
+      ASSERT_EQ(pk, expected_pk);
+      ASSERT_EQ(idx, expected_pk * 2);
+    }
+    rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(
+      ("SELECT pk, i FROM test ORDER BY i % 100, i"))));
+    ASSERT_EQ(rows.size(), static_cast<size_t>(kNumRows));
+    int32_t expected_pk = 0;
+    for (size_t i = 0; i < kNumRows; ++i) {
+      const auto& [pk, idx] = rows[i];
+      ASSERT_EQ(pk, expected_pk);
+      ASSERT_EQ(idx, expected_pk * 2);
+      expected_pk += 50;
+      if (std::cmp_greater_equal(expected_pk, kNumRows)) {
+        expected_pk = expected_pk % 50 + 1;
+      }
+    }
+  }
 }
 
 // Test that ANALYZE on tables with different row width does not exceed the RPC size limit
