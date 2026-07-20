@@ -31,6 +31,10 @@ As a best practice, run the latest stable connector release regardless of your Y
 
 For the connector version naming scheme and how connector versions map to YugabyteDB releases, see [Connector compatibility](../yugabytedb-connector/#connector-compatibility).
 
+Upgrades are forward-only (backward compatible). A newer connector version can read the replication slot, publication, and stored offsets created by an older version, so you can upgrade in place and resume streaming. The connector doesn't support downgrade; an older connector version isn't guaranteed to read state that a later one wrote.
+
+Always move to a newer (or the latest stable) version. If you need to go back to a previous version, treat it as a full re-snapshot (see [When a re-snapshot is required](#when-a-re-snapshot-is-required)), not a downgrade.
+
 When you pick a target connector version:
 
 - Always use the _latest stable_ release (recommended). Connectors are backward compatible with YugabyteDB releases, so you don't need to match the connector to the database release.
@@ -38,15 +42,13 @@ When you pick a target connector version:
 - If no newer release is available, use the last published stable release; don't stay on an older one.
 - Read the release notes for the target (and any versions you skip) for breaking changes, and confirm the minimum supported YugabyteDB version before you upgrade.
 
-## Compatibility
-
-Upgrades are forward-only (backward compatible). A newer connector version can read the replication slot, publication, and stored offsets created by an older version, so you can upgrade in place and resume streaming. The connector doesn't support downgrade; an older connector version isn't guaranteed to read state that a later one wrote.
-
-Always move to a newer (or the latest stable) version. If you need to go back to a previous version, treat it as a full re-snapshot (see [When a re-snapshot is required](#when-a-re-snapshot-is-required)), not a downgrade.
-
 ## Standard upgrade in place
 
 Use this path for the common case: a later build with no breaking change in its release notes. The replication slot, publication, connector configuration, and offsets are all preserved.
+
+An in-place upgrade is non-disruptive. The connector records the YugabyteDB Log Sequence Number ([LSN](../key-concepts/#lsn-type)) for every event it emits and externally stores the last processed offset in the Kafka Connect offsets topic. On restart, it asks the server to resume from just after that offset.
+
+Expect a small number of duplicate events around the restart; Debezium events are idempotent.
 
 ### Before you begin
 
@@ -59,14 +61,6 @@ Use this path for the common case: a later build with no breaking change in its 
 If any table uses replica identity `CHANGE`, don't upgrade YugabyteDB from a version earlier than v2025.2.3.0 to v2025.2.3.0 or later while the connector is running. A connector that starts or restarts during that upgrade can emit change events with null keys (See {{<issue 32426>}}). Stop the connector before the upgrade and restart it after the upgrade completes on all nodes. Other replica identities are unaffected.
 
 {{< /warning >}}
-
-### How the connector resumes without a re-snapshot
-
-The connector records the YugabyteDB LSN for every event it emits and externally stores the last processed offset in the Kafka Connect offsets topic. On restart, it asks the server to resume from just after that offset.
-
-The stored offset is valid only while the replication slot remains intact. With the default `snapshot.mode=initial`, the connector takes a snapshot only when no offsets exist, so an in-place upgrade that preserves the slot and offsets resumes streaming with no re-snapshot.
-
-That's why an in-place upgrade is non-disruptive. Expect a small number of duplicate events around the restart; Debezium events are idempotent.
 
 ### Perform the upgrade
 
