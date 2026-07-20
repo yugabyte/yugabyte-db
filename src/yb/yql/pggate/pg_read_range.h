@@ -66,7 +66,8 @@ class PgReadRange {
     bool null_found = false;
     auto hashed_group = MakeGroup(values, 0, num_hash_key_columns, null_type, &null_found);
     dockv::KeyBytes out;
-    dockv::DocKeyEncoderAfterTableIdStep encoder(&out);
+    dockv::DocKeyEncoderAfterTableIdStep encoder =
+        dockv::DocKeyEncoder(&out).Schema(table_->schema());
     auto after_hash = encoder.Hash(hash, hashed_group);
     if (!null_found && num_range_key_columns > 0) {
       auto range_group = MakeGroup(

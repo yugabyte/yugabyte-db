@@ -792,9 +792,16 @@ Result<dockv::DocKey> PgDmlRead::EncodeRowKeyForBound(
         bind_.ColumnForIndex(i), col_values[i], null_type)));
   }
 
-  return BuildDocKey(
+  auto doc_key = VERIFY_RESULT(BuildDocKey(
       bind_->partition_schema(), std::move(hashed_components), hashed_values.data(),
-      std::move(range_components));
+      std::move(range_components)));
+  const auto& schema = bind_->schema();
+  if (schema.has_colocation_id()) {
+    doc_key.set_colocation_id(schema.colocation_id());
+  } else if (schema.has_cotable_id()) {
+    doc_key.set_cotable_id(schema.cotable_id());
+  }
+  return doc_key;
 }
 
 Status PgDmlRead::SetMergeSortKeys(int num_keys, const YbcSortKey* sort_keys) {
