@@ -63,10 +63,9 @@ def descriptor_strs(descriptors: List[test_descriptor.TestDescriptor]) -> Set[st
 @pytest.fixture(autouse=True)
 def isolate_spark(monkeypatch: pytest.MonkeyPatch) -> None:
     """
-    Neutralize the real Spark-touching helpers and the resubmit delay, and reset the
-    module-global cancellation flag before each test.
+    Neutralize the real Spark-touching helpers and reset the module-global cancellation flag
+    before each test.
     """
-    monkeypatch.setattr(rts.time, "sleep", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: True)
     monkeypatch.setattr(rts, "restart_spark_context", lambda: None)
     monkeypatch.setattr(rts, "g_spark_job_cancelled", False)
@@ -126,7 +125,7 @@ def test_worker_dies_after_5_iterations_only_missing_resubmitted(
 
 
 def test_context_recreated_only_when_stopped(monkeypatch: pytest.MonkeyPatch) -> None:
-    """restart_spark_context() is called before a resubmission iff the context is stopped."""
+    """restart_spark_context() is called before every submission iff the context is stopped."""
     attempts = make_attempts("tests-x/a-test:::A.B", 4)
     submissions: List[List[test_descriptor.TestDescriptor]] = []
     restart_count = 0
@@ -146,11 +145,12 @@ def test_context_recreated_only_when_stopped(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(rts, "restart_spark_context", record_restart)
     monkeypatch.setattr(rts, "SPARK_JOB_MAX_SUBMITS", 3)
 
-    # Context reports stopped -> restart before each resubmission (submissions 2 and 3).
+    # Context reports stopped -> restart before each of the 3 submissions, including the first
+    # (an already-dead context at rerun entry must be recovered before the first submission).
     monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: True)
     rts.run_tests_job_with_resubmits(attempts, rerun=True)
     assert len(submissions) == 3
-    assert restart_count == 2
+    assert restart_count == 3
 
     # Context reports alive -> never restart, even though resubmissions still happen.
     submissions.clear()
@@ -159,6 +159,150 @@ def test_context_recreated_only_when_stopped(monkeypatch: pytest.MonkeyPatch) ->
     rts.run_tests_job_with_resubmits(attempts, rerun=True)
     assert len(submissions) == 3
     assert restart_count == 0
+
+
+def test_dead_context_at_entry_is_restarted_before_first_submission(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Regression for the build where the main test job's Spark application was removed ("Master
+    removed our application: FAILED"), so the rerun phase began with an already-stopped context.
+    The context must be restarted BEFORE the first submission, so run_tests_job() never runs on a
+    dead context (which previously raised an uncaught Py4JJavaError and crashed the rerun phase).
+    """
+    attempts = make_attempts("tests-x/a-test:::A.B", 4)
+    events: List[str] = []
+    stopped = {"value": True}  # already dead when the rerun phase starts
+
+    def fake_run_tests_job(
+            pending: List[test_descriptor.TestDescriptor],
+            rerun: bool) -> List[yb_dist_tests.TestResult]:
+        events.append("submit")
+        return results_for(pending)
+
+    def record_restart() -> None:
+        events.append("restart")
+        stopped["value"] = False
+
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+    monkeypatch.setattr(rts, "restart_spark_context", record_restart)
+    monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: stopped["value"])
+
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True)
+
+    # The restart happened before the first (and here only) submission.
+    assert events == ["restart", "submit"]
+    assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
+
+
+def test_submission_error_is_recovered_not_crashed(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    If run_tests_job() raises on a stopped context -- the symptom of parallelize()/accumulator()
+    running outside run_spark_action()'s guard -- the rerun phase must treat the submission as
+    producing no results and re-submit, not crash. Recovery here is driven by the context
+    reporting stopped (the fixture default); py4j itself is not importable in the unit tests.
+    """
+    class Py4JJavaError(Exception):
+        pass
+
+    attempts = make_attempts("tests-x/a-test:::A.B", 4)
+    submissions = {"n": 0}
+
+    def fake_run_tests_job(
+            pending: List[test_descriptor.TestDescriptor],
+            rerun: bool) -> List[yb_dist_tests.TestResult]:
+        submissions["n"] += 1
+        if submissions["n"] == 1:
+            raise Py4JJavaError("Cannot call methods on a stopped SparkContext.")
+        return results_for(pending)
+
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True)
+
+    assert submissions["n"] == 2  # first submission raised, second succeeded
+    assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
+
+
+def test_failed_restart_is_retried_not_crashed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    If the context is lost again right after recovery -- e.g. restart_spark_context() cannot reach
+    the Spark master while the cluster is still churning -- that submission yields no results and
+    the loop waits and retries. It must not crash the rerun phase.
+    """
+    class Py4JNetworkError(Exception):
+        pass
+
+    attempts = make_attempts("tests-x/a-test:::A.B", 4)
+    restarts = {"n": 0}
+    submissions = {"n": 0}
+
+    def flaky_restart() -> None:
+        restarts["n"] += 1
+        if restarts["n"] == 1:
+            raise Py4JNetworkError("cannot connect to the Spark master")
+        # A later restart succeeds.
+
+    def fake_run_tests_job(
+            pending: List[test_descriptor.TestDescriptor],
+            rerun: bool) -> List[yb_dist_tests.TestResult]:
+        submissions["n"] += 1
+        return results_for(pending)
+
+    monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: True)
+    monkeypatch.setattr(rts, "restart_spark_context", flaky_restart)
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True)
+
+    assert restarts["n"] == 2      # first recovery failed, second succeeded
+    assert submissions["n"] == 1   # run_tests_job only ran after a successful recovery
+    assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
+
+
+def test_non_py4j_error_with_dead_context_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A transient failure py4j does not wrap -- e.g. a socket/EOF error when the driver's gateway is
+    gone -- must still be retried when the context is down. The retry decision is not py4j-name
+    only: a stopped context is enough on its own.
+    """
+    attempts = make_attempts("tests-x/a-test:::A.B", 4)
+    submissions = {"n": 0}
+
+    def fake_run_tests_job(
+            pending: List[test_descriptor.TestDescriptor],
+            rerun: bool) -> List[yb_dist_tests.TestResult]:
+        submissions["n"] += 1
+        if submissions["n"] == 1:
+            raise EOFError("gateway connection closed")
+        return results_for(pending)
+
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+    monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: True)  # application is down
+
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True)
+
+    assert submissions["n"] == 2  # EOFError on a dead context is retried, not fatal
+    assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
+
+
+def test_error_with_healthy_context_is_not_swallowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A failure while the context is healthy is a real bug, not a lost application, and must
+    propagate rather than being retried and hidden.
+    """
+    attempts = make_attempts("tests-x/a-test:::A.B", 4)
+
+    def fake_run_tests_job(
+            pending: List[test_descriptor.TestDescriptor],
+            rerun: bool) -> List[yb_dist_tests.TestResult]:
+        raise ValueError("unrelated bug")
+
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+    monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: False)  # context is fine
+
+    with pytest.raises(ValueError, match="unrelated bug"):
+        rts.run_tests_job_with_resubmits(attempts, rerun=True)
 
 
 def test_cancellation_stops_resubmission(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -294,6 +438,11 @@ def test_fault_hooks_combine_to_drive_recovery(monkeypatch: pytest.MonkeyPatch) 
     attempts = make_attempts("tests-x/a-test:::A.B", 10)
     submissions: List[List[test_descriptor.TestDescriptor]] = []
     restart_count = 0
+    # The context is alive when the rerun phase starts; the STOP fault hook kills it after the
+    # first submission, and restart_spark_context() brings it back. Tracking real state (rather
+    # than a constant lambda) keeps the first-submission liveness check honest: it must NOT
+    # restart on submission 1, only on the recovery submission.
+    stopped = {"value": False}
 
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
@@ -301,14 +450,18 @@ def test_fault_hooks_combine_to_drive_recovery(monkeypatch: pytest.MonkeyPatch) 
         submissions.append(list(pending))
         return results_for(pending)
 
+    def fake_stop() -> None:
+        stopped["value"] = True
+
     def record_restart() -> None:
         nonlocal restart_count
         restart_count += 1
+        stopped["value"] = False
 
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
     monkeypatch.setattr(rts, "restart_spark_context", record_restart)
-    monkeypatch.setattr(rts, "spark_context", types.SimpleNamespace(stop=lambda: None))
-    monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: True)
+    monkeypatch.setattr(rts, "spark_context", types.SimpleNamespace(stop=fake_stop))
+    monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: stopped["value"])
     monkeypatch.setenv("YB_TEST_RERUN_DROP_RESULTS", "3")
     monkeypatch.setenv("YB_TEST_RERUN_STOP_CONTEXT", "1")
 
