@@ -9535,19 +9535,28 @@ yb_stat_auto_analyze(PG_FUNCTION_ARGS)
 	for (i = 0; i < num_rows; ++i)
 	{
 		YbcAutoAnalyzeInfo *row_info = (YbcAutoAnalyzeInfo *) auto_analyze_info + i;
+		YbcPgTableDesc ybc_tabledesc;
+		YbcPgOid 	ybc_tableoid;
 		Datum		values[YB_AUTO_ANALYZE_TABLE_COLS];
 		bool		nulls[YB_AUTO_ANALYZE_TABLE_COLS];
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
-		Relation rel = RelationIdGetRelation(row_info->table_oid);
+		
+		HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId,
+						 				 row_info->table_oid,
+						 				 &ybc_tabledesc));
+
+		HandleYBStatus(YBCPgGetTableOid(ybc_tabledesc, &ybc_tableoid));
+
+		Relation rel = RelationIdGetRelation(ybc_tableoid);
 		/*
 		 * A table could be deleted, but auto analyze hasn't cleaned up its
 		 * entry from its service table yet.
 		 */
 		if (!RelationIsValid(rel))
 			continue;
-		values[0] = ObjectIdGetDatum(row_info->table_oid);
+		values[0] = ObjectIdGetDatum(ybc_tableoid);
 		values[1] = CStringGetTextDatum(get_namespace_name(RelationGetNamespace(rel)));
 		values[2] = CStringGetTextDatum(RelationGetRelationName(rel));
 		values[3] = UInt64GetDatum(row_info->mutations);

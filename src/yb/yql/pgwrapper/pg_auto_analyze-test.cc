@@ -1553,6 +1553,11 @@ TEST_F(PgAutoAnalyzeTest, AutoAnalyzeObservability) {
   ASSERT_EQ(num_rows, mutations);
   ASSERT_TRUE(!last_analyze_info.has_value());
 
+  // Regression test for a case where the table entry was missing from
+  // yb_stat_auto_analyze after ALTER TABLE.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0.$1 ALTER COLUMN k TYPE bigint",
+                               schema_name,table_name));
+
   auto start_time = GetCurrentTimeMicros();
   // Trigger ANALYZE
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0.$1 SELECT generate_series(1, $2)",
