@@ -85,7 +85,7 @@ import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.GetUniverseReplicationInfoResponse;
 import org.yb.client.GetXClusterOutboundReplicationGroupInfoResponse;
 import org.yb.client.ListTablesResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
@@ -111,7 +111,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   private final AutoFlagUtil mockAutoFlagUtil = mock(AutoFlagUtil.class);
   private final SoftwareUpgradeHelper mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
   private final XClusterScheduler mockXClusterScheduler = mock(XClusterScheduler.class);
-  private final YBClient mockYBClient = mock(YBClient.class);
+  private final YBClientApi mockYBClient = mock(YBClientApi.class);
   private final AuditService auditService = spy(new AuditService());
 
   private Universe sourceUniverse;

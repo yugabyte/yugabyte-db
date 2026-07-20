@@ -62,7 +62,7 @@ import org.yb.CommonTypes.YQLDatabase;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotInfo;
 import org.yb.client.SnapshotScheduleInfo;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 import play.libs.Json;
 import play.mvc.Result;
@@ -77,13 +77,13 @@ public class PitrControllerTest extends FakeDBApplication {
   private Universe defaultUniverse;
   private Users defaultUser;
   private Customer defaultCustomer;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
   private PitrController pitrController;
   private ListSnapshotSchedulesResponse mockListSnapshotSchedulesResponse;
 
   @Before
   public void setUp() {
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     mockListSnapshotSchedulesResponse = mock(ListSnapshotSchedulesResponse.class);
     when(mockService.getUniverseClient(any())).thenReturn(mockClient);
     lenient()

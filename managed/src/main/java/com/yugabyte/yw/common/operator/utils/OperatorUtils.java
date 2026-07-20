@@ -154,7 +154,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @Slf4j
@@ -1717,7 +1717,7 @@ public class OperatorUtils {
     String drConfigName = crParams.get("name").asText();
 
     TableType tableType = TableType.PGSQL_TABLE_TYPE;
-    YBClient client = ybService.getUniverseClient(sourceUniverse);
+    YBClientApi client = ybService.getUniverseClient(sourceUniverse);
     Map<String, String> namespaceNameNamespaceIdMap =
         UniverseTaskBase.getKeyspaceNameKeyspaceIdMap(client, tableType);
     JsonNode databasesNode = crParams.get("databases");
@@ -1775,7 +1775,7 @@ public class OperatorUtils {
       throw new Exception("No universe found with name " + crSourceUniverseName);
     }
     TableType tableType = TableType.PGSQL_TABLE_TYPE;
-    YBClient client = ybService.getUniverseClient(sourceUniverse);
+    YBClientApi client = ybService.getUniverseClient(sourceUniverse);
     Map<String, String> namespaceNameNamespaceIdMap =
         UniverseTaskBase.getKeyspaceNameKeyspaceIdMap(client, tableType);
     JsonNode databasesNode = ((ObjectNode) crParams).get("databases");
@@ -2567,7 +2567,7 @@ public class OperatorUtils {
       // Resolve spec database names to IDs
       Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
       TableType tableType = TableType.PGSQL_TABLE_TYPE;
-      YBClient client = ybService.getUniverseClient(sourceUniverse);
+      YBClientApi client = ybService.getUniverseClient(sourceUniverse);
       Map<String, String> namespaceNameToIdMap =
           UniverseTaskBase.getKeyspaceNameKeyspaceIdMap(client, tableType);
 
@@ -2670,7 +2670,7 @@ public class OperatorUtils {
 
     // Resolve database names to IDs
     TableType tableType = TableType.PGSQL_TABLE_TYPE;
-    YBClient client = ybService.getUniverseClient(sourceUniverse);
+    YBClientApi client = ybService.getUniverseClient(sourceUniverse);
     Map<String, String> namespaceNameNamespaceIdMap =
         UniverseTaskBase.getKeyspaceNameKeyspaceIdMap(client, tableType);
 

@@ -63,7 +63,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -71,7 +71,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   Customer customer;
   Universe universe;
   CustomerTaskManager taskManager;
-  YBClient mockClient;
+  YBClientApi mockClient;
 
   private CustomerTask createTask(
       CustomerTask.TargetType targetType, UUID targetUUID, CustomerTask.TaskType taskType) {
@@ -117,7 +117,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Ignore
   public void testHandlePendingTasksForCompletedCustomerTask() throws Exception {
     universe = ModelFactory.createUniverse(customer.getId());
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
       if (targetType.equals(CustomerTask.TargetType.Universe))
@@ -146,7 +146,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Ignore
   public void testFailPendingTasksForRunningTaskInfo() throws Exception {
     universe = ModelFactory.createUniverse(customer.getId());
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
       if (targetType.equals(CustomerTask.TargetType.Universe))
@@ -178,7 +178,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Ignore
   public void testFailPendingTasksForCompletedTaskInfo() throws Exception {
     universe = ModelFactory.createUniverse(customer.getId());
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
       if (targetType.equals(CustomerTask.TargetType.Universe))

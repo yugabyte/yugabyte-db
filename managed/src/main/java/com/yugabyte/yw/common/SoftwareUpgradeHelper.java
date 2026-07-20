@@ -16,7 +16,7 @@ import java.io.IOException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 import play.mvc.Http.Status;
 
@@ -37,7 +37,7 @@ public class SoftwareUpgradeHelper {
   }
 
   public YsqlMajorCatalogUpgradeState getYsqlMajorCatalogUpgradeState(Universe universe) {
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       GetYsqlMajorCatalogUpgradeStateResponse resp = client.getYsqlMajorCatalogUpgradeState();
       if (resp.hasError()) {
         log.error("Error while getting YSQL major version catalog upgrade state: ", resp);
@@ -81,7 +81,7 @@ public class SoftwareUpgradeHelper {
   }
 
   public boolean isAllMasterUpgradedToYsqlMajorVersion(Universe universe, String ysqlMajorVersion) {
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       return universe.getMasters().stream()
           .allMatch(
               master ->
@@ -98,7 +98,7 @@ public class SoftwareUpgradeHelper {
 
   public boolean isAnyMasterUpgradedOrInProgressForYsqlMajorVersion(
       Universe universe, String ysqlMajorVersion) {
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       return universe.getMasters().stream()
           .anyMatch(
               master -> {

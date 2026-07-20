@@ -10,7 +10,7 @@ import com.yugabyte.yw.models.XClusterConfig;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.AlterUniverseReplicationResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class XClusterConfigRename extends XClusterConfigTaskBase {
@@ -53,7 +53,7 @@ public class XClusterConfigRename extends XClusterConfigTaskBase {
     }
 
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-    try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
+    try (YBClientApi client = ybService.getUniverseClient(targetUniverse)) {
       log.info(
           "Renaming XClusterConfig({}): `{}` -> `{}`",
           xClusterConfig.getUuid(),

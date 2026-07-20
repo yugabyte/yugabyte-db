@@ -26,13 +26,13 @@ import org.yb.CommonTypes;
 import org.yb.client.EditSnapshotScheduleResponse;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotScheduleInfo;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 public class UpdatePitrConfigTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
   private PitrConfig pitrConfig;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   @Before
   public void setUp() {
@@ -50,7 +50,7 @@ public class UpdatePitrConfigTest extends CommissionerBaseTest {
 
     pitrConfig = PitrConfig.create(defaultUniverse.getUniverseUUID(), createParams);
 
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
   }
 

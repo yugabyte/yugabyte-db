@@ -23,7 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonNet;
 import org.yb.client.MasterErrorException;
 import org.yb.client.XClusterDeleteOutboundReplicationGroupResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.util.NetUtil;
 
 @Slf4j
@@ -98,7 +98,7 @@ public class DeleteReplicationOnSource extends XClusterConfigTaskBase {
       clientConfig =
           ybcClientConfigFactory.create(sourceUniverseMasterAddresses, sourceUniverseCertificate);
     }
-    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
       Set<CommonNet.HostPortPB> targetMasterAddresses =
           new HashSet<>(
               NetUtil.parseStringsAsPB(

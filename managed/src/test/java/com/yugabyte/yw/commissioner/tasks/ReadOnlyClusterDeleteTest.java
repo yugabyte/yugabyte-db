@@ -43,7 +43,7 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 import play.libs.Json;
 
@@ -81,7 +81,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
-    YBClient mockClient = mock(YBClient.class);
+    YBClientApi mockClient = mock(YBClientApi.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";

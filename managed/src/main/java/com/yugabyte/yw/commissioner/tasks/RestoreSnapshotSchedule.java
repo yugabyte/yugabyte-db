@@ -19,7 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ListSnapshotRestorationsResponse;
 import org.yb.client.RestoreSnapshotScheduleResponse;
 import org.yb.client.SnapshotRestorationInfo;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
 @Slf4j
@@ -62,7 +62,7 @@ public class RestoreSnapshotSchedule extends UniverseTaskBase {
     log.info("Running {}", getName());
 
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    try (YBClient client = getClientToRestoreSnapshotSchedule(universe)) {
+    try (YBClientApi client = getClientToRestoreSnapshotSchedule(universe)) {
 
       UUID restorationUuid = null;
 
@@ -123,7 +123,7 @@ public class RestoreSnapshotSchedule extends UniverseTaskBase {
     log.info("Completed {}", getName());
   }
 
-  protected YBClient getClientToRestoreSnapshotSchedule(Universe universe) {
+  protected YBClientApi getClientToRestoreSnapshotSchedule(Universe universe) {
     long timeoutMs =
         confGetter
             .getConfForScope(universe, UniverseConfKeys.restoreSnapshotScheduleTimeout)
@@ -137,7 +137,7 @@ public class RestoreSnapshotSchedule extends UniverseTaskBase {
     return ybService.getClientWithConfig(clientConfig);
   }
 
-  private void ensureStateIsRestored(YBClient client, Universe universe, UUID restorationUuid) {
+  private void ensureStateIsRestored(YBClientApi client, Universe universe, UUID restorationUuid) {
     Duration pitrRestorePollDelay =
         confGetter.getConfForScope(universe, UniverseConfKeys.pitrRestorePollDelay);
     long pitrRestorePollDelayMs = pitrRestorePollDelay.toMillis();

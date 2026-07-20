@@ -29,7 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.yb.CommonNet.HostPortPB;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 // This class runs the task that helps modify the existing list of blacklisted servers maintained
 // on the master leader.
@@ -105,7 +105,7 @@ public class ModifyBlackList extends UniverseTaskBase {
         return;
       }
 
-      try (YBClient client = ybService.getUniverseClient(universe)) {
+      try (YBClientApi client = ybService.getUniverseClient(universe)) {
         ModifyMasterClusterConfigBlacklist modifyBlackList =
             new ModifyMasterClusterConfigBlacklist(
                 client, addHosts, removeHosts, taskParams().isLeaderBlacklist);

@@ -83,7 +83,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
@@ -1223,7 +1223,7 @@ public class Universe extends Model {
   private HostAndPort getMasterLeaderInternal() {
     final YBClientService ybService =
         StaticInjectorHolder.injector().instanceOf(YBClientService.class);
-    try (YBClient client = ybService.getUniverseClient(this)) {
+    try (YBClientApi client = ybService.getUniverseClient(this)) {
       return client.getLeaderMasterHostAndPort();
     } catch (Exception e) {
       throw Throwables.propagate(e);

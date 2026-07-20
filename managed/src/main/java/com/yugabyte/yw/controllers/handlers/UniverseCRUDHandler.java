@@ -128,7 +128,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Http.Status;
@@ -3121,7 +3121,7 @@ public class UniverseCRUDHandler {
     if (taskParams.certUuid != null) {
       certificate = CertificateInfo.get(taskParams.certUuid).getCertificate();
     }
-    try (YBClient client = ybService.getClient(masterAddrs, certificate)) {
+    try (YBClientApi client = ybService.getClient(masterAddrs, certificate)) {
       return UUID.fromString(client.getMasterClusterConfig().getConfig().getClusterUuid());
     } catch (Exception e) {
       throw new RuntimeException(e);

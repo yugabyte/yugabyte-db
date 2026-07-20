@@ -210,6 +210,7 @@ import org.yb.client.ListNamespacesResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.ModifyClusterConfigIncrementVersion;
 import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.util.PeerInfo;
@@ -2814,7 +2815,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public Set<String> getLeaderlessTablets(UUID universeUuid) {
     Universe universe = Universe.getOrBadRequest(universeUuid);
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
       if (leaderMasterHostAndPort == null) {
         throw new RuntimeException(
@@ -2883,7 +2884,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param universe the universe.
    */
   public void verifyNoTabletsOnBlacklistedTservers(Universe universe) {
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       Set<HostAndPort> backlistedHostAndPorts = getBlacklistedHostAndPorts(universe, client);
       if (CollectionUtils.isEmpty(backlistedHostAndPorts)) {
         log.info("No tserver is blacklisted for universe {}", universe.getUniverseUUID());
@@ -2919,7 +2920,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  private Set<HostAndPort> getBlacklistedHostAndPorts(Universe universe, YBClient client)
+  private Set<HostAndPort> getBlacklistedHostAndPorts(Universe universe, YBClientApi client)
       throws Exception {
     return client.getMasterClusterConfig().getConfig().getServerBlacklist().getHostsList().stream()
         .map(
@@ -3001,7 +3002,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected boolean nodeInMasterConfig(Universe universe, NodeDetails node) {
     String ip = node.cloudInfo.private_ip;
     String secondaryIp = node.cloudInfo.secondary_private_ip;
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       ListMasterRaftPeersResponse response = client.listMasterRaftPeers();
       List<PeerInfo> peers = response.getPeersList();
       return peers.stream().anyMatch(p -> p.hasHost(ip) || p.hasHost(secondaryIp));
@@ -3022,7 +3023,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   protected Set<NodeDetails> getRemoteMasterNodes(Universe universe) {
     String masterAddresses = universe.getMasterAddresses();
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       return client.listMasterRaftPeers().getPeersList().stream()
           .map(
               peerInfo -> {
@@ -3753,7 +3754,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     HashMap<String, BackupTableParams> keyspaceMap = new HashMap<>();
     // Todo: add comments. Backup the whole keyspace.
     Universe universe = Universe.getOrBadRequest(backupRequestParams.getUniverseUUID());
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       ListTablesResponse listTablesResponse =
           client.getTablesList(
               null /* nameFilter */, true /* excludeSystemTables */, null /* namespace */);
@@ -5734,7 +5735,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   protected boolean isChangeMasterConfigDone(
       Universe universe, NodeDetails node, boolean isAddMasterOp, String ipToUse) {
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       ListMasterRaftPeersResponse response = client.listMasterRaftPeers();
       List<PeerInfo> peers = response.getPeersList();
       boolean anyMatched = peers.stream().anyMatch(p -> p.hasHost(ipToUse));
@@ -5753,7 +5754,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   // "follower_unavailable_considered_failed_sec" time, the tserver will be instantly marked as
   // "dead" and not "live".
   public List<TabletServerInfo> getLiveTabletServers(Universe universe) {
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       ListLiveTabletServersResponse response = client.listLiveTabletServers();
 
       return response.getTabletServers();
@@ -5787,7 +5788,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       NodeDetails node, ServerType server, String masterAddrs, long timeoutMs) {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String certificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybService.getClient(masterAddrs, certificate)) {
+    try (YBClientApi client = ybService.getClient(masterAddrs, certificate)) {
       HostAndPort hp =
           HostAndPort.fromParts(
               node.cloudInfo.private_ip,
@@ -5978,7 +5979,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   private int getClusterConfigVersion(Universe universe) {
     int version;
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       version = client.getMasterClusterConfig().getConfig().getVersion();
     } catch (Exception e) {
       log.error("Error occurred retrieving cluster config version", e);
@@ -6046,7 +6047,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /** Increment the cluster config version */
   private synchronized void incrementClusterConfigVersion(UUID universeUUID) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       int version = universe.getVersion();
       ModifyClusterConfigIncrementVersion modifyConfig =
           new ModifyClusterConfigIncrementVersion(client, version);
@@ -6197,7 +6198,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @return A map of keyspace name to keyspace ID
    */
   public static Map<String, String> getKeyspaceNameKeyspaceIdMap(
-      YBClient client, CommonTypes.TableType tableType) {
+      YBClientApi client, CommonTypes.TableType tableType) {
     try {
       ListNamespacesResponse listNamespacesResponse = client.getNamespacesList();
       if (listNamespacesResponse.hasError()) {
@@ -6220,7 +6221,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public static Map<String, String> getFilteredKeyspaceNameKeyspaceIdMap(
-      YBClient client, Set<String> namespaceIds, CommonTypes.TableType tableType) {
+      YBClientApi client, Set<String> namespaceIds, CommonTypes.TableType tableType) {
     try {
       ListNamespacesResponse listNamespacesResponse = client.getNamespacesList();
       if (listNamespacesResponse.hasError()) {

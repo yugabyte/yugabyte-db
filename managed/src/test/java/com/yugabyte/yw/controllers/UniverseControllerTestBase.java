@@ -87,7 +87,7 @@ import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.LogoutController;
 import org.pac4j.play.store.PlayCacheSessionStore;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -107,7 +107,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   protected KmsConfig kmsConfig;
   protected String authToken;
   protected YBClientService mockService;
-  protected YBClient mockClient;
+  protected YBClientApi mockClient;
   protected YsqlQueryExecutor mockYsqlQueryExecutor;
   protected ApiHelper mockApiHelper;
   protected CallHome mockCallHome;
@@ -140,7 +140,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   protected Application provideApplication() {
     mockCommissioner = mock(Commissioner.class);
     mockMetricQueryHelper = mock(MetricQueryHelper.class);
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     mockService = mock(YBClientService.class);
     mockApiHelper = mock(ApiHelper.class);
     mockCallHome = mock(CallHome.class);

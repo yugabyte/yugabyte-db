@@ -55,7 +55,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.yb.client.GetXClusterOutboundReplicationGroupInfoResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -527,7 +527,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     }
 
     // Wait for tservers to start.
-    try (YBClient client =
+    try (YBClientApi client =
         ybClientService.getClient(
             newTargetUniverse.getMasterAddresses(), newTargetUniverse.getCertificateNodetoNode())) {
       waitTillNumOfTservers(client, 3);
@@ -577,7 +577,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     Thread.sleep(5000);
 
     // Check outbound replication on old source universe is deleted.
-    try (YBClient client =
+    try (YBClientApi client =
         ybClientService.getClient(
             newTargetUniverse.getMasterAddresses(), newTargetUniverse.getCertificateNodetoNode())) {
       try {

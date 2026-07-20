@@ -38,7 +38,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class ValidateGFlags extends UniverseDefinitionTaskBase {
@@ -508,7 +508,7 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
 
   private Map<String, String> validateGFlagsWithYBClient(
       Map<String, String> gflags, Universe universe, ServerType serverType, NodeDetails node) {
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybClientService.getUniverseClient(universe)) {
       int rpcPort = serverType == ServerType.TSERVER ? node.tserverRpcPort : node.masterRpcPort;
       HostAndPort hp = HostAndPort.fromParts(node.cloudInfo.private_ip, rpcPort);
       log.info(

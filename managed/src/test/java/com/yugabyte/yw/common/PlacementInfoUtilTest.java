@@ -104,7 +104,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -373,7 +373,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   public void setUp() {
     testData.add(new TestData(Common.CloudType.aws));
     testData.add(new TestData(onprem));
-    YBClient mockYbClient = Mockito.mock(YBClient.class);
+    YBClientApi mockYbClient = Mockito.mock(YBClientApi.class);
     when(mockService.getClient(Mockito.any(), Mockito.any())).thenReturn(mockYbClient);
     when(mockYbClient.getLeaderMasterHostAndPort())
         .thenReturn(HostAndPort.fromString("some").withDefaultPort(11));

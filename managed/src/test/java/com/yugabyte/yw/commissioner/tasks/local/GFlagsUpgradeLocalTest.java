@@ -87,7 +87,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
       List.of("vector_index_backend", "limit_auto_flag_promote_for_new_universe");
   private static final List<String> TSERVER_INVALID_GFLAGS_CAUGHT_BOTH_PATHS =
       List.of("rpc_throttle_threshold_bytes", "vmodule");
-    // CLI uses old DB version, so these flag validations not caught.
+  // CLI uses old DB version, so these flag validations not caught.
   private static final List<String> TSERVER_INVALID_GFLAGS_CAUGHT_RPC_ONLY =
       List.of("enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled");
 
@@ -905,7 +905,9 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     if (!expectUseCLIBinary) {
       for (String flagName : TSERVER_INVALID_GFLAGS_CAUGHT_RPC_ONLY) {
         assertThat(
-            "Expected tserver validation error for " + flagName + " via batch RPC on version "
+            "Expected tserver validation error for "
+                + flagName
+                + " via batch RPC on version "
                 + dbVersion,
             errors,
             containsString(flagName));

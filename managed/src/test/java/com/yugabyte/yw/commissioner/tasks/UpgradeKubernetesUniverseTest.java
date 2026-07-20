@@ -60,7 +60,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.UpgradeYsqlResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -69,7 +69,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
   private UpgradeKubernetesUniverse upgradeUniverse;
 
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   private Universe defaultUniverse;
 
@@ -81,7 +81,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     setFollowerLagMock();
     setUnderReplicatedTabletsMock();
     setCheckNodesAreSafeToTakeDown(mockClient);

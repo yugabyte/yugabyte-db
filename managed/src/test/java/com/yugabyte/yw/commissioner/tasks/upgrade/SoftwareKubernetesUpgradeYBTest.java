@@ -38,7 +38,7 @@ import org.mockito.junit.MockitoRule;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.UpgradeYsqlResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 
 public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
@@ -140,7 +140,7 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     UpgradeYsqlResponse mockUpgradeYsqlResponse = new UpgradeYsqlResponse(1000, "", null);
     IsInitDbDoneResponse mockIsInitDbDoneResponse =
         new IsInitDbDoneResponse(1000, "", true, true, null, null);
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
 
     try {
