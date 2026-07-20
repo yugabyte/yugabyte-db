@@ -2,8 +2,8 @@
 title: Distributed RAG
 headerTitle: Distributed RAG
 linkTitle: Distributed RAG
-description: How to Develop Applications with AI and YugabyteDB
-headcontent: Support RAG, semantic search, and AI agents at enterprise scale
+description: Build distributed RAG pipelines in YugabyteDB with pg_dist_rag, with document ingestion, chunking, and embedding generation managed from SQL.
+headcontent: Manage document preprocessing and embedding pipelines from SQL using pg_dist_rag
 cascade:
   tags:
     feature: tech-preview
@@ -71,4 +71,4 @@ pg_dist_rag is multi-tenant capable. Each source carries an optional tenant_id, 
 | Document | An individual file tracked under a source and processed through the pipeline. |
 | Pipeline | The workflow that chunks a document and generates embeddings for each chunk. |
 | Work queue | Internal task queue (`dist_rag.work_queue`) that coordinates source creation and document preprocessing across RAG workers. |
-| RAG worker | Python service that crawls sources, and parses, chunks, and generates embeddings. Runs outside the database on dedicated nodes or VMs.
+| RAG worker | Python service that crawls sources, and parses, chunks, and generates embeddings. Runs outside the database on dedicated nodes or VMs. |

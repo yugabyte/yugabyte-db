@@ -18,7 +18,7 @@ Distributed RAG consists of two components:
 
 - **pg_dist_rag PostgreSQL extension**
 
-  Manages Retrieval-Augmented Generation (RAG) pipelines from SQL. It registers document sources (such as S3 buckets or URLs), coordinates distributed preprocessing and embedding generation, and stores vectors in [pgvector](../../../../additional-features/pg-extensions/extension-pgvector/) indexes backed by YugabyteDB.
+  Manages Retrieval-Augmented Generation (RAG) pipelines from SQL. It registers document sources (currently accessed via S3 buckets), coordinates distributed preprocessing and embedding generation, and stores vectors in [pgvector](../../../../additional-features/pg-extensions/extension-pgvector/) indexes backed by YugabyteDB.
 
   With pg_dist_rag, you can do the following:
 
@@ -64,7 +64,7 @@ The typical workflow has four steps: create sources, initialize a vector index, 
 
 #### 1. Create a source
 
-Register a document source URI. This also queues a `CREATE_SOURCE` task in the work queue.
+Register a document source URI. Currently, only S3 is supported. This queues a `CREATE_SOURCE` task in the work queue.
 
 ```sql
 -- Minimal: just a URI
@@ -75,9 +75,11 @@ SELECT dist_rag.create_source(
 
 | Parameter | Type | Default | Description |
 | :-------- | :--- | :------ | :---------- |
-| `r_source_uri` | `TEXT` | *(required)* | URI of the document source. |
+| `r_source_uri` | `TEXT` | *(required)* | URI of the document source (S3). |
 | `r_metadata` | `JSONB` | `'{}'` | Arbitrary metadata for filtering. |
 | `r_tenant_id` | `UUID` | `NULL` | Optional tenant identifier for multi-tenant isolation. |
+| `r_secrets_provider` | secrets_provider_enum | `'LOCAL'` | `LOCAL`, `AWS`, `GCP`, `AZURE`, `HASHICORP_VAULT` (only `AWS` is currently supported). |
+| `r_secrets_provider_params` | JSONB | `'{}'` | AWS S3 credentials. |
 
 Returns a `UUID` source ID.
 
@@ -106,7 +108,7 @@ SELECT dist_rag.init_vector_index(
 | `r_index_name` | `VARCHAR(50)` | `'pg_rag_default_store'` | Unique name for the index and its backing table. |
 | `r_sources` | `UUID[]` | `ARRAY[]::UUID[]` | Source IDs to associate with the index. |
 | `r_chunk_params` | `JSONB` | `'{}'` | Chunking configuration for all attached sources. |
-| `r_ai_provider` | `ai_provider_enum` | `'OPENAI'` | `OPENAI`. |
+| `r_ai_provider` | `ai_provider_enum` | `'OPENAI'` | AI provider used to generate embeddings for documents in this index. Currently only `OPENAI` is supported. |
 | `r_embedding_model_params` | `JSONB` | `'{}'` | Embedding model configuration. Must include a `"dimensions"` key (for example, `{"dimensions": 1536}`). |
 | `r_index_options` | `JSONB` | `'{"distance_metric": "cosine", "m": 16, "ef_construction": 64}'` | HNSW index options. `distance_metric` can be `cosine`, `l2`, or `ip`. |
 | `r_schema_name` | `VARCHAR(50)` | `'public'` | Schema for the backing vector table. The schema must already exist. |
@@ -160,9 +162,9 @@ SELECT dist_rag.build_index(r_index_name := 'my_knowledge_base');
 
 | Type | Values |
 | :--- | :----- |
-| `secrets_provider_enum` | `LOCAL`, `AWS`, `GCP`, `AZURE`, `HASHICORP_VAULT` |
+| `secrets_provider_enum` | `LOCAL`, `AWS`, `GCP`, `AZURE`, `HASHICORP_VAULT` (only `AWS` is currently supported) |
 | `create_source_status_enum` | `QUEUED`, `IN_PROGRESS`, `COMPLETED`, `FAILED` |
-| `ai_provider_enum` | `OPENAI` |
+| `ai_provider_enum` | `OPENAI`, `LOCAL`, `AWS_BEDROCK` (only `OPENAI` is currently supported) |
 | `index_build_status` | `INIT`, `IN_PROGRESS`, `NOT_STARTED` |
 | `document_processing_status_enum` | `NOT_STARTED`, `QUEUED`, `PROCESSING`, `COMPLETED`, `FAILED`, `RETRY` |
 | `pipeline_status_enum` | `PROCESSING`, `COMPLETED`, `FAILED` |
