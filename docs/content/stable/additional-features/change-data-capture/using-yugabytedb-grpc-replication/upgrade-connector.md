@@ -31,38 +31,33 @@ As a best practice, run the latest stable connector release regardless of your Y
 
 For the connector version naming scheme and how connector versions map to YugabyteDB releases, see [Connector compatibility](../debezium-connector-yugabytedb/#connector-compatibility).
 
+Upgrades are forward-only (backward compatible). A newer connector version resumes from checkpoints created by an older version against the same stream ID, so you can upgrade in place. The connector doesn't support downgrade.
+
+Starting with `dz.1.9.5.yb.grpc.2024.2` (YugabyteDB v2024.2), the `transaction.ordering` property is deprecated and will be removed in a future release. For details, see [Transaction ordering](../debezium-connector-yugabytedb/#transaction-ordering).
+
 When you pick a target connector version:
 
+- Validate the target version in a staging environment that mirrors production before you upgrade production.
 - Use the _latest stable_ release (recommended). Connectors are backward compatible with YugabyteDB releases, so you don't need to match the connector to the database release.
 - Never run a `*.SNAPSHOT.*` build in production; those are pre-releases.
 - If no newer release is available, use the last published stable release; don't stay on an older one.
 - Read the release notes for the target (and any versions you skip) for breaking changes before you upgrade.
 
-## Compatibility
-
-Upgrades are forward-only (backward compatible). A newer connector version resumes from checkpoints created by an older version against the same stream ID, so you can upgrade in place. The connector doesn't support downgrade.
-
-Validate the target version in a staging environment that mirrors production before you upgrade production.
-
-Starting with `dz.1.9.5.yb.grpc.2024.2` (YugabyteDB v2024.2), the `transaction.ordering` property is deprecated and will be removed in a future release. For details, see [Transaction ordering](../debezium-connector-yugabytedb/#transaction-ordering).
-
 ## Standard upgrade in place
 
 Use this path for the common case: a later build with no breaking change that affects you. The stream ID, server-side checkpoints, connector configuration, and Kafka offsets are all preserved.
-
-### Before you begin
-
-- Upgrade the connector first, then YugabyteDB. The connector is backward compatible with earlier database releases but not newer ones, so if a database upgrade is what's driving this, complete the connector upgrade before you upgrade YugabyteDB. See [When to upgrade](#when-to-upgrade).
-
-- In Kafka Connect distributed mode, connector configuration, offsets, and status live in Kafka topics, so the connector recovers cleanly when workers restart. Plan to restart workers one at a time (rolling), and finish with every worker on the same connector version. Don't run mixed versions beyond the rollout window.
-
-### How the connector resumes without a re-snapshot
 
 The connector records the WAL position (an OpId checkpoint) for the changes it emits. Checkpoints live on the Kafka side (connector offsets) and on the YugabyteDB server (the `cdc_state` table, keyed by stream ID and tablet). On restart, the connector reads the last committed checkpoint and asks the server to resume just after it.
 
 The checkpoint is valid only while the stream ID remains intact. Never delete a stream ID without first deleting all connectors associated with it, or you will lose data. With `snapshot.mode=initial`, if the snapshot for the stream ID is already complete, the connector resumes streaming from the stored checkpoint instead of snapshotting again, so an in-place upgrade needs no re-snapshot.
 
 Expect a small number of duplicate events around the restart; Debezium events are idempotent.
+
+### Before you begin
+
+- Upgrade the connector first, then YugabyteDB. The connector is backward compatible with earlier database releases but not newer ones, so if a database upgrade is what's driving this, complete the connector upgrade before you upgrade YugabyteDB. See [When to upgrade](#when-to-upgrade).
+
+- In Kafka Connect distributed mode, connector configuration, offsets, and status live in Kafka topics, so the connector recovers cleanly when workers restart. Plan to restart workers one at a time (rolling), and finish with every worker on the same connector version. Don't run mixed versions beyond the rollout window.
 
 ### Perform the upgrade
 
