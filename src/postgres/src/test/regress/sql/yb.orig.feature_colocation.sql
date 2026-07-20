@@ -550,5 +550,18 @@ SET yb_format_funcs_include_yb_metadata = on;
 SELECT * FROM get_table_indexes('tbl3');
 SET yb_format_funcs_include_yb_metadata = off;
 
+CREATE TABLE row_cmp_colo_true (a int, b int, PRIMARY KEY (a ASC, b ASC)) WITH (colocation = true);
+CREATE TABLE row_cmp_colo_false (a int, b int, PRIMARY KEY (a ASC, b ASC)) WITH (colocation = false);
+INSERT INTO row_cmp_colo_true VALUES (1, 1), (1, 9), (2, 5), (3, 2), (3, 8);
+INSERT INTO row_cmp_colo_false VALUES (1, 1), (1, 9), (2, 5), (3, 2), (3, 8);
+SELECT a, b FROM row_cmp_colo_true WHERE (a, b) > (1, 9) ORDER BY a, b;
+SELECT a, b FROM row_cmp_colo_false WHERE (a, b) > (1, 9) ORDER BY a, b;
+SELECT a, b FROM row_cmp_colo_true WHERE (a, b) >= (2, 5) ORDER BY a, b;
+SELECT a, b FROM row_cmp_colo_false WHERE (a, b) >= (2, 5) ORDER BY a, b;
+SELECT a, b FROM row_cmp_colo_true WHERE (a, b) < (2, 5) ORDER BY a, b;
+SELECT a, b FROM row_cmp_colo_false WHERE (a, b) < (2, 5) ORDER BY a, b;
+SELECT a, b FROM row_cmp_colo_true WHERE (a, b) <= (1, 9) ORDER BY a, b;
+SELECT a, b FROM row_cmp_colo_false WHERE (a, b) <= (1, 9) ORDER BY a, b;
+
 \c yugabyte
 DROP DATABASE colocation_test;
