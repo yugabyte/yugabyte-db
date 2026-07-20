@@ -248,6 +248,10 @@ class BlockIter : public InternalIterator {
     return current_;
   }
 
+  bool IsInitialized() const {
+    return data_;
+  }
+
  private:
   // It is required to store at least one entry, even in case if restart block caching is off.
   static constexpr const size_t kRestartBlockCacheMinSize = 1;

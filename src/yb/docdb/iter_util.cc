@@ -17,8 +17,10 @@
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_bytes.h"
-
 #include "yb/dockv/value_type.h"
+
+#include "yb/gutil/port.h"
+
 #include "yb/rocksdb/iterator.h"
 
 #include "yb/util/bytes_formatter.h"
@@ -183,7 +185,11 @@ const rocksdb::KeyValueEntry& DoPerformRocksDBSeek(
 
 } // namespace
 
+// Pin the function's entry to a cache-line boundary. Observed empirically: full-LTO
+// builds are prone to shifting this hot iterator method a few bytes into a cache line,
+// which adds ~1% CPU on range scans due to i-cache pressure at entry.
 template <typename IteratorType>
+CACHELINE_ALIGNED
 const rocksdb::KeyValueEntry& OptimizedRocksDbIterator<IteratorType>::DoSeekForward(
     Slice target, AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek) {
   const auto& entry = rocksdb_iter_.Entry();

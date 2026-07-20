@@ -2164,6 +2164,8 @@ class PgsqlReadRequestYbctidProvider {
       : request_(request), response_(response) {
     const auto& batch_args = request_.batch_arguments();
 
+    VLOG_WITH_FUNC(3) << "batch_args.size(): " << batch_args.size();
+
     Slice min_arg;
     Slice max_arg;
 

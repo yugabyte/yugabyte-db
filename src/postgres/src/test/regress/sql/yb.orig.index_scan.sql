@@ -70,7 +70,12 @@ INSERT INTO usc_asc VALUES (44, NULL),(22, 20),(33, 30),(11, 10),(44, NULL);
 CREATE TABLE usc_multi_asc(k int, r int, v int) SPLIT INTO 1 TABLETS;
 CREATE INDEX ON usc_multi_asc(k, r ASC NULLS FIRST);
 INSERT INTO usc_multi_asc(k, r, v) VALUES (1, 10, 1),(1, NULL, 2),(1, 20, 3);
-\set query ':P SELECT * FROM usc_multi_asc WHERE k = 1;'
+-- YB divergence: this query originally had no ORDER BY and relied on the secondary index scan
+-- emitting rows in index order. YB sorts the batched ybctid fetch by ybctid for scans that don't
+-- require order, and this table has no primary key (ybctid is a random ybrowid), so that implicit
+-- order is not reproducible. Add ORDER BY matching the index; the :P EXPLAIN still
+-- shows an Index Scan with no Sort node, so index-order retrieval is still verified.
+\set query ':P SELECT * FROM usc_multi_asc WHERE k = 1 ORDER BY r ASC NULLS FIRST;'
 \i :run_query
 
 -- Test non-unique secondary index ordering
@@ -87,7 +92,9 @@ INSERT INTO sc_desc VALUES (4, NULL),(2, 20),(3, 30),(1, 10),(4, NULL);
 CREATE TABLE sc_multi_desc(k int, r int, v int) SPLIT INTO 1 TABLETS;
 CREATE INDEX ON sc_multi_desc(k, r DESC);
 INSERT INTO sc_multi_desc(k, r, v) VALUES (1, 10, 10),(1, 10, 10),(1, NULL, 2),(1, 20, 3);
-\set query ':P SELECT * FROM sc_multi_desc WHERE k = 1;'
+-- YB divergence (see usc_multi_asc above): explicit ORDER BY added so the no-PK result is
+-- reproducible; the index still supplies it with no Sort node (shown by the :P EXPLAIN).
+\set query ':P SELECT * FROM sc_multi_desc WHERE k = 1 ORDER BY r DESC NULLS FIRST;'
 \i :run_query
 
 -- Testing for the case in issue #12481
@@ -99,15 +106,25 @@ CREATE INDEX range_ind ON sc_multi_desc(v ASC, r ASC);
 CREATE TABLE sc_desc_nl(h int, r int, v int) SPLIT INTO 1 TABLETS;
 CREATE INDEX on sc_desc_nl(h HASH, r DESC NULLS LAST);
 INSERT INTO sc_desc_nl(h,r,v) values (1,1,1), (1,2,2), (1,3,3), (1,4,4), (1,5,5), (1, null, 6);
--- Rows should be ordered DESC NULLS LAST by r.
-SELECT * FROM sc_desc_nl WHERE h = 1;
-SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1);
-SELECT * FROM sc_desc_nl WHERE h = 1 AND r >= 2;
-SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r >= 2;
-SELECT * FROM sc_desc_nl WHERE h = 1 AND r < 4;
-SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r < 4;
-SELECT * FROM sc_desc_nl WHERE h = 1 AND r > 1 AND r <= 4;
-SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r > 1 AND r <= 4;
+-- YB divergence (see usc_multi_asc above): explicit ORDER BY added so the no-PK result is
+-- reproducible. Rows come DESC NULLS LAST on r directly from the index (Index Scan, no Sort
+-- node); the :P EXPLAIN proves the NULLS LAST encoding.
+\set query ':P SELECT * FROM sc_desc_nl WHERE h = 1 ORDER BY r DESC NULLS LAST;'
+\i :run_query
+\set query ':P SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY h, r DESC NULLS LAST;'
+\i :run_query
+\set query ':P SELECT * FROM sc_desc_nl WHERE h = 1 AND r >= 2 ORDER BY r DESC NULLS LAST;'
+\i :run_query
+\set query ':P SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r >= 2 ORDER BY h, r DESC NULLS LAST;'
+\i :run_query
+\set query ':P SELECT * FROM sc_desc_nl WHERE h = 1 AND r < 4 ORDER BY r DESC NULLS LAST;'
+\i :run_query
+\set query ':P SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r < 4 ORDER BY h, r DESC NULLS LAST;'
+\i :run_query
+\set query ':P SELECT * FROM sc_desc_nl WHERE h = 1 AND r > 1 AND r <= 4 ORDER BY r DESC NULLS LAST;'
+\i :run_query
+\set query ':P SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r > 1 AND r <= 4 ORDER BY h, r DESC NULLS LAST;'
+\i :run_query
 
 -- <value> >/>=/=/<=/< null is never true per SQL semantics.
 SELECT * FROM sc_desc_nl WHERE h = 1 AND r = null;

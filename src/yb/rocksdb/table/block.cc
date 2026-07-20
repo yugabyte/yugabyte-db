@@ -30,7 +30,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "yb/util/logging.h"
+#include "yb/gutil/port.h"
 
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/table/block_hash_index.h"
@@ -43,6 +43,7 @@
 #include "yb/rocksdb/util/perf_context_imp.h"
 
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/stats/perf_step_timer.h"
 
@@ -346,6 +347,10 @@ inline bool ParseNextKeyThreeSharedParts(
 
 } // namespace
 
+// Pin the hot ParseNextKey entry to a cache-line boundary. Under full-LTO the
+// linker's function ordering can put this ~4.6 KB function at an arbitrary offset,
+// which affects i-cache efficiency on every rocksdb block iteration.
+CACHELINE_ALIGNED
 bool BlockIter::ParseNextKey() {
   current_ = NextEntryOffset();
   const char* entry_data = data_ + current_;
