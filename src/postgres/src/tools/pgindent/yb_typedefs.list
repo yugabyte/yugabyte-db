@@ -200,6 +200,9 @@ YbSplitType
 YbStatLabel
 YbStatLabelData
 YbStatementType
+YbStatusErrorData
+YbStatusErrorDataErrorLocation
+YbStatusErrorDataFormatText
 YbSubstConstsContext
 YbSubstituteContext
 YbSysCatalogModificationAspect
@@ -347,6 +350,7 @@ YbcSliceVector
 YbcSlotEntryDescriptor
 YbcSortKey
 YbcStatus
+YbcStatusErrorLocationInfo
 YbcSwitchMemoryContextFn
 YbcTableProperties
 YbcTablePropertiesData
