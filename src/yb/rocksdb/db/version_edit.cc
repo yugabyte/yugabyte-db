@@ -163,10 +163,13 @@ std::string FileMetaData::FrontiersToString() const {
 }
 
 std::string FileMetaData::ToString() const {
-  return yb::Format("{ number: $0 total_size: $1 base_size: $2 "
-                    "being_compacted: $3 smallest: $4 largest: $5 }",
+  // being_compacted is intentionally omitted. It is a mutable field guarded by the RocksDB mutex,
+  // but ToString() may be called from lock-free contexts (for example the exclude_from_compaction
+  // callback runs inside Version::PrepareApply, which VersionSet::LogAndApply deliberately invokes
+  // with the mutex released). Formatting being_compacted there would be a data race.
+  return yb::Format("{ number: $0 total_size: $1 base_size: $2 smallest: $3 largest: $4 }",
                     fd.GetNumber(), fd.GetTotalFileSize(), fd.GetBaseFileSize(),
-                    being_compacted, smallest, largest);
+                    smallest, largest);
 }
 
 void VersionEdit::Clear() {
