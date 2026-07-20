@@ -3,30 +3,17 @@ title: Distributed snapshots for YCQL
 headerTitle: Distributed snapshots for YCQL
 linkTitle: Distributed snapshots
 description: Distributed snapshots for YCQL.
+aliases:
+  - /v2025.1/manage/backup-restore/snapshots-ycql/
 menu:
-  v2025.2:
+  v2025.1:
     identifier: snapshots-2-ycql
     parent: backup-restore
     weight: 705
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../snapshot-ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../snapshots-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-
-</ul>
+{{<api-tabs>}}
 
 The most efficient way to back up the data stored in YugabyteDB is to create a distributed snapshot. A snapshot is a consistent cut of data taken across all the nodes in the cluster.
 
