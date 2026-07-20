@@ -602,6 +602,14 @@ Result<uint32_t> ExternalDaemon::ExtractMetricValue<uint32_t>(
   return value;
 }
 
+template <>
+Result<int32_t> ExternalDaemon::ExtractMetricValue<int32_t>(
+    const JsonReader& r, const Value* metric, const char* value_field) {
+  int32_t value;
+  RETURN_NOT_OK(r.ExtractInt32(metric, value_field, &value));
+  return value;
+}
+
 string ExternalDaemon::LogPrefix() {
   return Format("{ daemon_id: $0 bound_rpc: $1 } ", daemon_id_, bound_rpc_);
 }

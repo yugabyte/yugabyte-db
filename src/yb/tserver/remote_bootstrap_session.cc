@@ -159,7 +159,9 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
   // Clear any previous RocksDB files in the superblock. Each session should create a new list
   // based the checkpoint directory files.
   kv_store->clear_rocksdb_files();
-  auto status = tablet->snapshots().CreateCheckpoint(checkpoint_dir_);
+  auto status = tablet->snapshots().CreateCheckpoint(checkpoint_dir_,
+      tablet::CreateCheckpointIn::kSubDir,
+      tablet::TabletSnapshots::UseTryLock::kTrue);
   if (status.ok()) {
     auto max_retries = FLAGS_rbs_init_max_number_of_retries;
     if (max_retries != 0) {
