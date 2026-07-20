@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <regex>
+#include <thread>
 
 #include <boost/algorithm/string.hpp>
 #include <gtest/gtest.h>
@@ -67,6 +68,7 @@
 #include "yb/util/format.h"
 #include "yb/util/jsonreader.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 
@@ -2541,6 +2543,146 @@ TEST_F(AdminCliTest, TestGetTableXorHash) {
   ASSERT_GT(row_count2, 100);
   ASSERT_NE(xor_hash2, 0);
   ASSERT_NE(xor_hash, xor_hash2);
+}
+
+// DB-21953: get_table_hash at a read_ht below the history-retention cutoff must fail with
+// SnapshotTooOld, not return a wrong hash over a compacted view. Before the fix it returned OK.
+TEST_F(AdminCliTest, TestGetTableHashRejectsTooOldReadTime) {
+  // No history retention, so one compaction pushes the cutoff past any earlier read time.
+  std::vector<std::string> ts_flags = {
+    "--timestamp_history_retention_interval_sec=0"s,
+  };
+  std::vector<std::string> master_flags;
+  BuildAndStart(ts_flags, master_flags);
+
+  const auto table_name =
+      YBTableName(YQLDatabase::YQL_DATABASE_CQL, kTableName.namespace_name(), "too_old_table");
+  client::TableHandle table;
+  ASSERT_OK(table.Create(
+      table_name, /* num_tablets */ 1, client::YBSchema(schema_), client_.get()));
+
+  TestYcqlWorkload workload(cluster_.get());
+  workload.set_table_name(table_name);
+  workload.Setup();
+  workload.Start();
+  workload.WaitInserted(200);
+  workload.StopAndJoin();
+
+  auto tables = ASSERT_RESULT(client_->ListTables(table_name.table_name()));
+  ASSERT_EQ(1, tables.size());
+  const auto table_id = tables.front().table_id();
+
+  // Grab a read time that's valid now; it'll fall below the cutoff once we compact.
+  const auto too_old_ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+
+  // Reading at it now works (still within the window).
+  ASSERT_OK(CallAdmin("get_table_hash", table_id, too_old_ht.ToUint64()));
+
+  // More writes + compaction GC the history below the cutoff and push the cutoff past too_old_ht.
+  workload.Start();
+  workload.WaitInserted(workload.rows_inserted() + 200);
+  workload.StopAndJoin();
+
+  // Cutoff tracks safe time, so sleep to make sure too_old_ht is strictly behind it.
+  SleepFor(2s * kTimeMultiplier);
+  ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
+
+  // Now the same read must be rejected, not return a stale hash.
+  auto result = CallAdmin("get_table_hash", table_id, too_old_ht.ToUint64());
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "Snapshot too old");
+
+  // A default (safe time) read still works -- only the too-old path is rejected.
+  ASSERT_OK(CallAdmin("get_table_hash", table_id));
+}
+
+// DB-21953: get_table_hash registers its read time with the retention policy, which also pins the
+// history cutoff for the whole call. That pin is what stops a compaction running alongside the scan
+// from garbage-collecting row versions the scan still needs.
+//
+// To actually exercise the pin we need a scan that opens more than one iterator at the same read
+// time: a single open iterator is already safe, since it holds onto its RocksDB files until it
+// finishes. A colocated tablet gives us exactly that -- one whole-tablet scan walks each colocated
+// table with its own iterator, all under a single read time T. So we get the scan going on the
+// first table, kick off a compaction (with history retention off it would push the cutoff past T
+// and drop the old versions), and then check that the rest of the scan still reads the data as it
+// was at T.
+//
+// TEST_fetch_next_delay_ms slows the scan down so the compaction reliably lands in the middle of
+// it. With the fix the cutoff stays pinned and the totals match the pre-update baseline; without it
+// the second table reads the compacted view and the hash comes back wrong.
+TEST_F(AdminCliTestWithYSQL, TestGetTableHashPinsCutoffDuringConcurrentCompaction) {
+  std::vector<std::string> ts_flags = {
+    "--timestamp_history_retention_interval_sec=0"s,
+  };
+  std::vector<std::string> master_flags;
+  BuildAndStart(ts_flags, master_flags);
+
+  // Two colocated tables sharing one tablet, so one whole-tablet scan opens two iterators in turn.
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE codb WITH colocation = true"));
+  auto codb = ASSERT_RESULT(cluster_->ConnectToDB("codb"));
+  ASSERT_OK(codb.Execute("CREATE TABLE colo_a (k int PRIMARY KEY, v int)"));
+  ASSERT_OK(codb.Execute("CREATE TABLE colo_b (k int PRIMARY KEY, v int)"));
+  constexpr int kRowsPerTable = 50;
+  ASSERT_OK(codb.ExecuteFormat(
+      "INSERT INTO colo_a SELECT g, g * 10 FROM generate_series(1, $0) g", kRowsPerTable));
+  ASSERT_OK(codb.ExecuteFormat(
+      "INSERT INTO colo_b SELECT g, g * 7  FROM generate_series(1, $0) g", kRowsPerTable));
+
+  // The colocation parent id addresses the whole tablet (both tables).
+  const auto parent_table = ASSERT_RESULT(GetColocationParentTableId(client_.get(), "codb"));
+
+  auto parse_totals = [](const std::string& output) -> std::pair<uint64_t, uint64_t> {
+    const auto row_prefix = "Total row count: ";
+    const auto hash_prefix = "Total XOR hash: ";
+    auto rp = output.find(row_prefix);
+    auto hp = output.find(hash_prefix);
+    CHECK(rp != std::string::npos && hp != std::string::npos) << output;
+    return {std::stoull(output.substr(rp + strlen(row_prefix))),
+            std::stoull(output.substr(hp + strlen(hash_prefix)))};
+  };
+
+  // Read time T captured while every row still holds its original value.
+  const auto read_ht = ASSERT_RESULT(cluster_->master()->GetServerTime());
+  auto [baseline_rows, baseline_hash] =
+      parse_totals(ASSERT_RESULT(CallAdmin("get_table_hash", parent_table, read_ht.ToUint64())));
+  ASSERT_EQ(baseline_rows, 2 * kRowsPerTable);
+
+  // Overwrite every row in both tables *after* T. The old values now sit below T; a compaction
+  // whose cutoff passes T would GC them, so a fresh iterator reading at T would miss those rows.
+  ASSERT_OK(codb.Execute("UPDATE colo_a SET v = v + 100000"));
+  ASSERT_OK(codb.Execute("UPDATE colo_b SET v = v + 100000"));
+
+  // Slow every per-table scan (both tables have column "v") so the whole-tablet scan stays in
+  // flight long enough for a compaction to land between its two per-table iterators.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_fetch_next_delay_column", "v"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_fetch_next_delay_ms", "200"));
+
+  // Whole-tablet scan in the background under a single read time T.
+  Result<std::string> scan_output = STATUS(Uninitialized, "");
+  std::thread scan_thread([&] {
+    scan_output = CallAdmin("get_table_hash", parent_table, read_ht.ToUint64());
+  });
+  auto joiner = ScopeExit([&scan_thread] {
+    if (scan_thread.joinable()) {
+      scan_thread.join();
+    }
+  });
+
+  // Wait long enough for the scan to register read time T and open the first table's iterator (the
+  // FetchNext delay keeps it on the first table for ~kRowsPerTable * 200ms), then compact. The
+  // compaction completes well before the scan moves on to the second table's fresh iterator.
+  SleepFor(5s * kTimeMultiplier);
+  ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
+
+  scan_thread.join();
+
+  // The pinned scan must still see the original (pre-update) data across both tables.
+  ASSERT_OK(scan_output);
+  auto [scan_rows, scan_hash] = parse_totals(*scan_output);
+  ASSERT_EQ(scan_rows, baseline_rows);
+  ASSERT_EQ(scan_hash, baseline_hash);
 }
 
 // Test get_table_hash with a partition-key sub-range on a (non-colocated) hash-partitioned table.
