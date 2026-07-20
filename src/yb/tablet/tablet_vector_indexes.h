@@ -99,21 +99,13 @@ class TabletVectorIndexes :
   VectorIndexList Collect(
       const std::vector<TableId>& table_ids) EXCLUDES(vector_indexes_mutex_);
 
-  // Fails with ShutdownInProgress after shutdown was started. Should be used by callers that
-  // could legitimately race with shutdown.
-  Result<VectorIndexList> CheckedList() const EXCLUDES(vector_indexes_mutex_);
-
-  // Same as CheckedList, but shutdown is not expected by the caller, so failure triggers a
-  // DFATAL and an empty list is returned.
+  // Returns the current list of vector indexes. The list stays valid while shutdown is in progress
+  // and becomes empty only after CompleteShutdown tears the indexes down.
   VectorIndexList List() const EXCLUDES(vector_indexes_mutex_);
-
-  bool IsShuttingDown() const {
-    return !shutdown_controller_.IsRunning();
-  }
 
   // Returns true if at least one vector index on this tablet has not finished backfilling. Used to
   // postpone tablet splitting until the backfill completes (see GH#32321).
-  Result<bool> HasActiveBackfill() const EXCLUDES(vector_indexes_mutex_);
+  bool HasActiveBackfill() const EXCLUDES(vector_indexes_mutex_);
 
   void LaunchBackfillsIfNecessary();
   void StartShutdown();
@@ -174,10 +166,6 @@ class TabletVectorIndexes :
   std::unordered_map<TableId, docdb::DocVectorIndexPtr> vector_indexes_map_
       GUARDED_BY(vector_indexes_mutex_);
   docdb::DocVectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
-
-  // Populated from vector_indexes_list_ on shutting down.
-  // The access is synchronized by shutdown_controller_ state.
-  docdb::DocVectorIndexesPtr vector_indexes_cleanup_list_;
 
   ShutdownController shutdown_controller_;
 };

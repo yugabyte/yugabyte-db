@@ -738,7 +738,7 @@ Status TabletSnapshots::DoCreateCheckpoint(
 
   // Vector indexes checkpoint must be created after rocksdb checkpoint
   // to be in sync with the flushed data.
-  if (auto vector_indexes = VERIFY_RESULT(VectorIndexesList())) {
+  if (auto vector_indexes = VectorIndexesList()) {
     for (const auto& vector_index : *vector_indexes) {
       const auto storage_name = docdb::GetVectorIndexStorageName(vector_index->options());
       const auto checkpoint_dir = create_checkpoint_in == CreateCheckpointIn::kSubDir

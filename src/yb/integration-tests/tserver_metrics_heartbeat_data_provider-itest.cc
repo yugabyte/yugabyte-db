@@ -69,7 +69,7 @@ class TServerMetricsHeartbeatDataProviderITest : public MiniClusterTestWithClien
       const master::TSHeartbeatResponsePB resp;
       master::TSHeartbeatRequestPB req;
 
-      RETURN_NOT_OK(metrics_heartbeat_provider.AddData(resp, &req));
+      metrics_heartbeat_provider.AddData(resp, &req);
 
       if (!VERIFY_RESULT(metrics_check(req))) {
         return false;

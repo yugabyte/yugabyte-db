@@ -644,17 +644,14 @@ void TabletVectorIndexes::StartShutdown() {
     return;
   }
 
-  {
-    std::lock_guard lock(vector_indexes_mutex_);
-    vector_indexes_cleanup_list_.swap(vector_indexes_list_);
-    vector_indexes_map_.clear();
-  }
-
-  if (!vector_indexes_cleanup_list_) {
+  // Trigger vector indexes shutting down so they release ScopedRWOperation instances before
+  // RocksDB shutdown. The list stays intact until CompleteShutdown, so callers racing shutdown
+  // still observe the real indexes instead of an empty list.
+  auto list = List();
+  if (!list) {
     return;
   }
-
-  for (auto& index : *vector_indexes_cleanup_list_) {
+  for (const auto& index : *list) {
     index->StartShutdown();
   }
 }
@@ -666,18 +663,24 @@ void TabletVectorIndexes::CompleteShutdown(std::vector<std::string>& out_paths) 
     return;
   }
 
-  if (!vector_indexes_cleanup_list_) {
-    return;
+  docdb::DocVectorIndexesPtr list;
+  {
+    std::lock_guard lock(vector_indexes_mutex_);
+    list.swap(vector_indexes_list_);
+    vector_indexes_map_.clear();
+    has_vector_indexes_.store(false, std::memory_order_release);
   }
 
-  for (auto& index : *vector_indexes_cleanup_list_) {
-    out_paths.push_back(index->path());
-    index->CompleteShutdown();
+  if (!list) {
+    return;
   }
 
   // TODO(vector_index) It could happen that there are external references to vector index.
   // Wait actual shutdown.
-  vector_indexes_cleanup_list_->clear();
+  for (auto& index : *list) {
+    out_paths.push_back(index->path());
+    index->CompleteShutdown();
+  }
 }
 
 docdb::DocVectorIndexPtr TabletVectorIndexes::IndexForTableUnlocked(const TableId& table_id) const {
@@ -722,30 +725,16 @@ VectorIndexList TabletVectorIndexes::Collect(const std::vector<TableId>& table_i
   return VectorIndexList(std::move(result));
 }
 
-Result<VectorIndexList> TabletVectorIndexes::CheckedList() const {
+VectorIndexList TabletVectorIndexes::List() const {
   if (!has_vector_indexes_.load(std::memory_order_acquire)) {
     return VectorIndexList();
   }
   SharedLock lock(vector_indexes_mutex_);
-  // StartShutdown changes the controller state before detaching the list under the mutex, so
-  // a running controller here implies an intact list.
-  if (IsShuttingDown()) {
-    return STATUS_FORMAT(ShutdownInProgress, "$0Vector indexes are shutting down", LogPrefix());
-  }
   return VectorIndexList(vector_indexes_list_);
 }
 
-VectorIndexList TabletVectorIndexes::List() const {
-  auto list = CheckedList();
-  if (!list.ok()) {
-    LOG_WITH_PREFIX(DFATAL) << "Query vector index list failed: " << list.status();
-    return VectorIndexList();
-  }
-  return std::move(*list);
-}
-
-Result<bool> TabletVectorIndexes::HasActiveBackfill() const {
-  auto list = VERIFY_RESULT(CheckedList());
+bool TabletVectorIndexes::HasActiveBackfill() const {
+  auto list = List();
   if (!list) {
     return false;
   }
