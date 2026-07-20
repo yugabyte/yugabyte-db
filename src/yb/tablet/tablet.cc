@@ -338,9 +338,10 @@ DEFINE_test_flag(bool, skip_remove_intent, false,
 DEFINE_test_flag(bool, simulate_load_txn_for_cdc, false,
     "If true GetMinStartHTRunningTxnsForCDCProducer returns kInvalid");
 
-DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, true,
+DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, false,
     "If true, the flushed op id of intents db may be updated to match that of "
-    "regular db during flushing regular db memtable");
+    "regular db during flushing regular db memtable. "
+    "Don't enable it on xcluster target side for now");
 
 DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
     "Whether to include vector indexes into tablet's post split compaction");
