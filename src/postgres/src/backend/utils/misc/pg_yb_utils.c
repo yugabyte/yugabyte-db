@@ -852,115 +852,6 @@ FetchUniqueConstraintName(Oid relation_id)
 	return name;
 }
 
-/*
- * GetStatusMsgAndArgumentsByCode - get error message arguments out of the
- * status codes
- *
- * We already have cases when DocDB returns status with SQL code and
- * relation Oid, but without error message, assuming the message is generated
- * on Postgres side, with relation name retrieved by Oid. We have to keep
- * the functionality for backward compatibility.
- *
- * Same approach can be used for similar cases, when status is originated from
- * DocDB: by known SQL code the function may set or amend the error message and
- * message arguments.
- */
-void
-GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YbcStatus s,
-							   const char **msg_buf, size_t *msg_nargs,
-							   const char ***msg_args, const char **detail_buf,
-							   size_t *detail_nargs, const char ***detail_args,
-							   const char **detail_log_buf,
-							   size_t *detail_log_nargs,
-							   const char ***detail_log_args)
-{
-	const char *status_msg = YBCMessageAsCString(s);
-	size_t		status_nargs;
-	const char **status_args = YBCStatusArguments(s, &status_nargs);
-
-
-	/* Initialize message and detail buffers with default values */
-	*msg_buf = status_msg;
-	*msg_nargs = status_nargs;
-	*msg_args = status_args;
-	*detail_buf = NULL;
-	*detail_nargs = 0;
-	*detail_args = NULL;
-	*detail_log_buf = NULL;
-	*detail_log_nargs = 0;
-	*detail_log_args = NULL;
-	elog(DEBUG2, "status_msg=%s pg_err_code=%d", status_msg, pg_err_code);
-
-	switch (pg_err_code)
-	{
-		case ERRCODE_UNIQUE_VIOLATION:
-			*msg_buf = "duplicate key value violates unique constraint \"%s\"";
-			*msg_nargs = 1;
-			*msg_args = (const char **) palloc(sizeof(const char *));
-			(*msg_args)[0] = FetchUniqueConstraintName(YBCStatusRelationOid(s));
-			break;
-		case ERRCODE_YB_TXN_ABORTED:
-			*msg_buf = "current transaction is expired or aborted";
-			*msg_nargs = 0;
-			*msg_args = NULL;
-
-			*detail_buf = status_msg;
-			*detail_nargs = status_nargs;
-			*detail_args = status_args;
-			break;
-		case ERRCODE_YB_TXN_CONFLICT:
-			*msg_buf = "could not serialize access due to concurrent update";
-			*msg_nargs = 0;
-			*msg_args = NULL;
-
-			*detail_buf = status_msg;
-			*detail_nargs = status_nargs;
-			*detail_args = status_args;
-			break;
-		case ERRCODE_YB_RESTART_READ:
-			*msg_buf = "Restart read required";
-			*msg_nargs = 0;
-			*msg_args = NULL;
-
-			/*
-			 * Read restart errors occur when writes fall within the uncertianty
-			 * interval [read_time, global_limit).
-			 *
-			 * Moreover, read_time can be less than the current time since it
-			 * is picked as the docdb tablet's safe time as an optimization in
-			 * some cases.
-			 *
-			 * As a consequence, read_time may be lower than the commit time of the
-			 * previous transaction from the same session.
-			 *
-			 * In this case, a read restart error may be issued to move the read
-			 * time past the commit time.
-			 *
-			 * To capture such cases, print the start time of the statement. This
-			 * allows comparison between the start time and the original read time.
-			 */
-			*detail_log_buf = psprintf("%s, stmt_start_time: %s, txn_start_time: %s, iso:%d",
-									   status_msg,
-									   timestamptz_to_str(GetCurrentStatementStartTimestamp()),
-									   timestamptz_to_str(GetCurrentTransactionStartTimestamp()),
-									   XactIsoLevel);
-			*detail_log_nargs = status_nargs;
-			*detail_log_args = status_args;
-			break;
-		case ERRCODE_YB_DEADLOCK:
-			*msg_buf = "deadlock detected";
-			*msg_nargs = 0;
-			*msg_args = NULL;
-
-			*detail_buf = status_msg;
-			*detail_nargs = status_nargs;
-			*detail_args = status_args;
-			break;
-		default:
-			break;
-	}
-}
-
 void
 HandleYBStatusIgnoreNotFound(YbcStatus status, bool *not_found)
 {
@@ -10305,4 +10196,101 @@ HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status)
 						   RelationIdGetRelation(status.error_info.conflicting_table_id) :
 						   NULL),
 						   status.error_info.pg_wait_policy);
+}
+
+static int
+YBCAdjustElevel(int elevel, YbcStatus status)
+{
+	return (elevel < FATAL && YBCStatusIsUnknownSession(status)) ? FATAL : elevel;
+}
+
+static YbStatusErrorData
+YBCMakeStatusErrorData(YbcStatus status)
+{
+	const uint32_t pg_err_code = YBCStatusPgsqlError(status);
+	YbStatusErrorData result = {};
+	YbStatusErrorDataFormatText *msg = &result.msg;
+	YbStatusErrorDataFormatText *detail = &result.detail;
+	YbStatusErrorDataFormatText *detail_log = &result.detail_log;
+
+	msg->fmt = YBCMessageAsCString(status);
+	msg->args = YBCStatusArguments(status, &msg->nargs);
+
+	elog(DEBUG2, "status_msg=%s pg_err_code=%d", msg->fmt, pg_err_code);
+
+	switch (pg_err_code)
+	{
+		case ERRCODE_UNIQUE_VIOLATION:
+			*msg = (YbStatusErrorDataFormatText) {"duplicate key value violates unique constraint \"%s\"",
+												   1, (const char **) palloc(sizeof(const char *))};
+			(msg->args)[0] = FetchUniqueConstraintName(YBCStatusRelationOid(status));
+			break;
+		case ERRCODE_YB_TXN_ABORTED:
+			*detail = *msg;
+			*msg = (YbStatusErrorDataFormatText) {"current transaction is expired or aborted"};
+			break;
+		case ERRCODE_YB_TXN_CONFLICT:
+			*detail = *msg;
+			*msg = (YbStatusErrorDataFormatText) {"could not serialize access due to concurrent update"};
+			break;
+		case ERRCODE_YB_RESTART_READ:
+			/*
+			 * Read restart errors occur when writes fall within the uncertianty
+			 * interval [read_time, global_limit).
+			 *
+			 * Moreover, read_time can be less than the current time since it
+			 * is picked as the docdb tablet's safe time as an optimization in
+			 * some cases.
+			 *
+			 * As a consequence, read_time may be lower than the commit time of the
+			 * previous transaction from the same session.
+			 *
+			 * In this case, a read restart error may be issued to move the read
+			 * time past the commit time.
+			 *
+			 * To capture such cases, print the start time of the statement. This
+			 * allows comparison between the start time and the original read time.
+			 */
+			*detail_log = *msg;
+			detail_log->fmt = psprintf("%s, stmt_start_time: %s, txn_start_time: %s, iso:%d",
+									   detail_log->fmt,
+									   timestamptz_to_str(GetCurrentStatementStartTimestamp()),
+									   timestamptz_to_str(GetCurrentTransactionStartTimestamp()),
+									   XactIsoLevel);
+			*msg = (YbStatusErrorDataFormatText) {"Restart read required"};
+			break;
+		case ERRCODE_YB_DEADLOCK:
+			*detail = *msg;
+			*msg = (YbStatusErrorDataFormatText) {"deadlock detected"};
+			break;
+		default:
+			break;
+	}
+	YbcStatusErrorLocationInfo loc = YBCStatusErrorLocation(status);
+	result.location = (YbStatusErrorDataErrorLocation) {loc.filename, loc.lineno, loc.funcname};
+	return result;
+}
+
+void
+HandleYBStatusAtErrorLevelImpl(YbcStatus status, int elevel, const char *text_domain,
+							   const char *filename, int lineno, const char *funcname)
+{
+	Assert(status);
+	const int adjusted_elevel = YBCAdjustElevel(elevel, status);
+	if (errstart(adjusted_elevel, text_domain))
+	{
+		const uint32_t pg_err_code = YBCStatusPgsqlError(status);
+		const YbStatusErrorData status_data = YBCMakeStatusErrorData(status);
+		YBCFreeStatus(status);
+		yb_errapply_yb_status(&status_data, 1);
+		errcode(pg_err_code);
+		errhidecontext(true);
+		if (yb_debug_log_docdb_error_backtrace)
+			errbacktrace();
+		errfinish(filename, lineno, funcname);
+		if (adjusted_elevel >= ERROR)
+			pg_unreachable();
+	}
+	else
+		YBCFreeStatus(status);
 }
