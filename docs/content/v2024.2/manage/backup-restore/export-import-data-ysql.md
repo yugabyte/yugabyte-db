@@ -3,6 +3,8 @@ title: Export and import for YSQL
 headerTitle: Export and import
 linkTitle: Export and import
 description: Export and import for YSQL
+aliases:
+  - /v2024.2/manage/backup-restore/export-import-data/
 menu:
   v2024.2:
     identifier: export-import-data
@@ -11,20 +13,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../export-import-data/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-  <li >
-    <a href="../export-import-data-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
+{{<api-tabs>}}
 
 YugabyteDB includes `ysql_dump` and `ysql_dumpall` utilities that allow you to export data into a SQL script. These utilities derive from PostgreSQL `pg_dump` and `pg_dumpall`.
 
