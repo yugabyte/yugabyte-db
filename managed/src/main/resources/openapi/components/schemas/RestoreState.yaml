@@ -1,0 +1,15 @@
+title: RestoreState
+description: Current state of a restore operation.
+type: string
+enum:
+  - Created
+  - InProgress
+  - Completed
+  - Failed
+  - Aborted
+x-enum-varnames:
+  - Created
+  - InProgress
+  - Completed
+  - Failed
+  - Aborted

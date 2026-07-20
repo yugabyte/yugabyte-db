@@ -15,6 +15,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.ScrapeConfigTargetType;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
@@ -137,12 +138,6 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
       return;
     }
 
-    if (OtelCollectorUtil.isMetricsExportEnabledInUniverse(getMetricsExportConfig())) {
-      throw new PlatformServiceException(
-          play.mvc.Http.Status.BAD_REQUEST,
-          "Metrics export is not yet supported for kubernetes based universes.");
-    }
-
     if (OtelCollectorUtil.isMasterLogExportEnabledInUniverse(getMasterLogConfig())) {
       throw new PlatformServiceException(
           play.mvc.Http.Status.BAD_REQUEST,
@@ -182,6 +177,47 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
               userIntent.ybSoftwareVersion,
               OtelCollectorUtil.OTEL_HELM_CONFIG_PASSTHROUGH_STABLE_VERSION,
               OtelCollectorUtil.OTEL_HELM_CONFIG_PASSTHROUGH_PREVIEW_VERSION));
+    }
+
+    if (OtelCollectorUtil.isMetricsExportEnabledInUniverse(getMetricsExportConfig())) {
+      if (!OtelCollectorUtil.supportsOtelConfigPassthrough(userIntent.ybSoftwareVersion)) {
+        throw new PlatformServiceException(
+            play.mvc.Http.Status.BAD_REQUEST,
+            String.format(
+                "Metrics export is not supported for kubernetes universe '%s' running version"
+                    + " '%s'. Please upgrade to version '%s' or '%s', or disable metrics export.",
+                universe.getUniverseUUID(),
+                userIntent.ybSoftwareVersion,
+                OtelCollectorUtil.OTEL_HELM_CONFIG_PASSTHROUGH_STABLE_VERSION,
+                OtelCollectorUtil.OTEL_HELM_CONFIG_PASSTHROUGH_PREVIEW_VERSION));
+      }
+
+      // Fail fast on an empty target list: downstream layers assume a validated, non-empty set
+      // of K8s-servable targets (the config generator refuses to render otherwise).
+      if (CollectionUtils.isEmpty(getMetricsExportConfig().getScrapeConfigTargets())) {
+        throw new PlatformServiceException(
+            play.mvc.Http.Status.BAD_REQUEST,
+            String.format(
+                "Scrape config targets must be specified for metrics export on kubernetes universe"
+                    + " '%s'. Supported targets: %s.",
+                universe.getUniverseUUID(), OtelCollectorUtil.K8S_SUPPORTED_SCRAPE_TARGETS));
+      }
+
+      // The collector sidecar can only scrape pod-local endpoints on K8s; there is no
+      // node-exporter or node-agent in the DB pods, so reject those targets up front instead of
+      // silently exporting nothing for them.
+      Set<ScrapeConfigTargetType> unsupportedTargets =
+          OtelCollectorUtil.getUnsupportedK8sScrapeTargets(getMetricsExportConfig());
+      if (!unsupportedTargets.isEmpty()) {
+        throw new PlatformServiceException(
+            play.mvc.Http.Status.BAD_REQUEST,
+            String.format(
+                "Scrape config targets %s are not supported for kubernetes universe '%s'. Please"
+                    + " retry with a subset of the supported targets: %s.",
+                unsupportedTargets,
+                universe.getUniverseUUID(),
+                OtelCollectorUtil.K8S_SUPPORTED_SCRAPE_TARGETS));
+      }
     }
   }
 

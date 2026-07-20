@@ -36,25 +36,25 @@ DR further allows for the role of each universe to switch during planned switcho
     title="Set up Disaster Recovery"
     body="Designate a universe to act as a DR replica."
     href="disaster-recovery-setup/"
-    icon="/images/section_icons/explore/fault_tolerance.png">}}
+    icon="fa-thin fa-umbrella">}}
 
   {{<index/item
     title="Unplanned failover"
     body="Fail over to the DR replica in case of an unplanned outage."
     href="disaster-recovery-failover/"
-    icon="/images/section_icons/explore/high_performance.png">}}
+    icon="fa-thin fa-cloud-bolt-sun">}}
 
   {{<index/item
     title="Planned switchover"
     body="Switch over to the DR replica for planned testing and failback."
     href="disaster-recovery-switchover/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-thin fa-toggle-on">}}
 
   {{<index/item
     title="Add and remove tables and indexes"
     body="Perform DDL changes to databases in replication."
     href="disaster-recovery-tables/"
-    icon="/images/section_icons/architecture/concepts/replication.png">}}
+    icon="fa-thin fa-plus-minus">}}
 
 {{</index/block>}}
 

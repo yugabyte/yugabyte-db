@@ -1,7 +1,7 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 ':explain'
 \set P2
@@ -27,15 +27,17 @@ INSERT INTO orders SELECT i, 100, '2024-01-01'::timestamptz + ((i-1)::text||' da
 ANALYZE orders;
 -- Multi-column bucket (bucket depends on user_id AND order_id)
 \set query ':P SELECT * FROM orders WHERE user_id = 100 AND order_id = 1;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM orders WHERE user_id = 100 AND order_id = 1;
                                                      QUERY PLAN                                                      
 ---------------------------------------------------------------------------------------------------------------------
  Index Scan using orders_pkey on orders
    Index Cond: ((bucket_id = (yb_hash_code(((100)::text || (1)::text)) % 5)) AND (user_id = 100) AND (order_id = 1))
 (2 rows)
 
+SELECT * FROM orders WHERE user_id = 100 AND order_id = 1;
  order_id | user_id |          created_at          | bucket_id 
 ----------+---------+------------------------------+-----------
         1 |     100 | Mon Jan 01 00:00:00 2024 PST |         4
@@ -46,15 +48,17 @@ ANALYZE orders;
 SELECT $$
 :P :hint SELECT * FROM orders WHERE created_at = '2024-01-02'::timestamptz;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(orders orders_created_idx) */ SELECT * FROM orders WHERE created_at = '2024-01-02'::timestamptz;
                                                                                                  QUERY PLAN                                                                                                  
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using orders_created_idx on orders
    Index Cond: (((yb_hash_code(created_at) % 3) = (yb_hash_code('Tue Jan 02 00:00:00 2024 PST'::timestamp with time zone) % 3)) AND (created_at = 'Tue Jan 02 00:00:00 2024 PST'::timestamp with time zone))
 (2 rows)
 
+/*+ IndexScan(orders orders_created_idx) */ SELECT * FROM orders WHERE created_at = '2024-01-02'::timestamptz;
  order_id | user_id |          created_at          | bucket_id 
 ----------+---------+------------------------------+-----------
         2 |     100 | Tue Jan 02 00:00:00 2024 PST |         0
@@ -64,15 +68,17 @@ $$ AS query \gset
 SELECT $$
 :P :hint SELECT * FROM orders WHERE created_at = date_trunc('day', '2024-01-02 15:30:12.789'::timestamptz);
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(orders orders_created_idx) */ SELECT * FROM orders WHERE created_at = date_trunc('day', '2024-01-02 15:30:12.789'::timestamptz);
                                                                                                                               QUERY PLAN                                                                                                                               
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using orders_created_idx on orders
    Index Cond: (((yb_hash_code(created_at) % 3) = (yb_hash_code(date_trunc('day'::text, 'Tue Jan 02 15:30:12.789 2024 PST'::timestamp with time zone)) % 3)) AND (created_at = date_trunc('day'::text, 'Tue Jan 02 15:30:12.789 2024 PST'::timestamp with time zone)))
 (2 rows)
 
+/*+ IndexScan(orders orders_created_idx) */ SELECT * FROM orders WHERE created_at = date_trunc('day', '2024-01-02 15:30:12.789'::timestamptz);
  order_id | user_id |          created_at          | bucket_id 
 ----------+---------+------------------------------+-----------
         2 |     100 | Tue Jan 02 00:00:00 2024 PST |         0
@@ -81,15 +87,17 @@ $$ AS query \gset
 -- Parameterized query
 PREPARE order_query AS SELECT * FROM orders WHERE user_id = $1 AND order_id = $2;
 \set query ':P EXECUTE order_query(100, 2);'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) EXECUTE order_query(100, 2);
                                                      QUERY PLAN                                                      
 ---------------------------------------------------------------------------------------------------------------------
  Index Scan using orders_pkey on orders
    Index Cond: ((bucket_id = (yb_hash_code(((100)::text || (2)::text)) % 5)) AND (user_id = 100) AND (order_id = 2))
 (2 rows)
 
+EXECUTE order_query(100, 2);
  order_id | user_id |          created_at          | bucket_id 
 ----------+---------+------------------------------+-----------
         2 |     100 | Tue Jan 02 00:00:00 2024 PST |         0
@@ -125,17 +133,20 @@ CREATE INDEX orders_expr_idx ON orders_expr((yb_hash_code(user_id) % 3) ASC, use
 \set R2 'orders_gen'
 \set R3 'orders_expr'
 \set query 'INSERT INTO :R VALUES (1, 50), (2, 50), (3, 60), (4, 70);'
-\i :iter_R3
-\set _echo_R :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+INSERT INTO orders_no_bucket VALUES (1, 50), (2, 50), (3, 60), (4, 70);
+INSERT INTO orders_gen VALUES (1, 50), (2, 50), (3, 60), (4, 70);
+INSERT INTO orders_expr VALUES (1, 50), (2, 50), (3, 60), (4, 70);
 ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
 \set Q1 '/*+ Set(yb_prefer_bnl off) NestLoop(u o) IndexScan(o) */'
 \set Q2 '/*+ YbBatchedNL(u o) IndexScan(o) */'
-\set Qnext :iter_R3
 \set query ':explain :Q SELECT * FROM users u JOIN :R o ON o.user_id = u.id;'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ Set(yb_prefer_bnl off) NestLoop(u o) IndexScan(o) */ SELECT * FROM users u JOIN orders_no_bucket o ON o.user_id = u.id;
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Nested Loop
@@ -145,6 +156,7 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
          ->  Index Scan using orders_no_bucket_user_id_idx on orders_no_bucket o
 (5 rows)
 
+EXPLAIN (COSTS OFF) /*+ Set(yb_prefer_bnl off) NestLoop(u o) IndexScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id;
                                     QUERY PLAN                                     
 -----------------------------------------------------------------------------------
  Nested Loop
@@ -153,6 +165,7 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
          Index Cond: ((bucket_id = (yb_hash_code(u.id) % 5)) AND (user_id = u.id))
 (4 rows)
 
+EXPLAIN (COSTS OFF) /*+ Set(yb_prefer_bnl off) NestLoop(u o) IndexScan(o) */ SELECT * FROM users u JOIN orders_expr o ON o.user_id = u.id;
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Nested Loop
@@ -161,6 +174,7 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
          Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(u.id) % 3)) AND (user_id = u.id))
 (4 rows)
 
+EXPLAIN (COSTS OFF) /*+ YbBatchedNL(u o) IndexScan(o) */ SELECT * FROM users u JOIN orders_no_bucket o ON o.user_id = u.id;
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  YB Batched Nested Loop Join
@@ -170,6 +184,7 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
          Index Cond: (user_id = ANY (ARRAY[u.id, $1, $2, ..., $1023]))
 (5 rows)
 
+EXPLAIN (COSTS OFF) /*+ YbBatchedNL(u o) IndexScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id;
                                                                                                    QUERY PLAN                                                                                                   
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
@@ -179,6 +194,7 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
          Index Cond: (ROW(bucket_id, user_id) = ANY (ARRAY[ROW((yb_hash_code(u.id) % 5), u.id), ROW((yb_hash_code($1) % 5), $1), ROW((yb_hash_code($2) % 5), $2), ..., ROW((yb_hash_code($1023) % 5), $1023)]))
 (5 rows)
 
+EXPLAIN (COSTS OFF) /*+ YbBatchedNL(u o) IndexScan(o) */ SELECT * FROM users u JOIN orders_expr o ON o.user_id = u.id;
                                                                                                             QUERY PLAN                                                                                                            
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
@@ -188,14 +204,16 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
          Index Cond: (ROW((yb_hash_code(user_id) % 3), user_id) = ANY (ARRAY[ROW((yb_hash_code(u.id) % 3), u.id), ROW((yb_hash_code($1) % 3), $1), ROW((yb_hash_code($2) % 3), $2), ..., ROW((yb_hash_code($1023) % 3), $1023)]))
 (5 rows)
 
+\unset R3
 \set hint '/*+ NestLoop(u o) IndexScan(o) */'
 \set R1 'u.id = 50'
 \set R2 'u.id IN (50, 60, 70)'
 -- With WHERE clause filter
 \set query ':explain :hint SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE :R;'
-\i :iter_R2
-\set _echo_R :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 50;
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Nested Loop
@@ -205,6 +223,7 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
          Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
 (5 rows)
 
+EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE u.id IN (50, 60, 70);
                                                                                                    QUERY PLAN                                                                                                   
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
@@ -217,9 +236,10 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
 
 -- Condition in ON clause
 \set query ':explain :hint SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id AND :R;'
-\i :iter_R2
-\set _echo_R :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id AND u.id = 50;
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Nested Loop
@@ -229,6 +249,7 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
          Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
 (5 rows)
 
+EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id AND u.id IN (50, 60, 70);
                                                                                                    QUERY PLAN                                                                                                   
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
@@ -242,9 +263,10 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
 -- Equality conditions in outer joins
 -- Left join with WHERE on non-nullable side
 \set query ':P :hint SELECT * FROM users u LEFT JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 80 ORDER BY u.id, o.order_id;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u LEFT JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 80 ORDER BY u.id, o.order_id;
                                                                 QUERY PLAN                                                                 
 -------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -257,6 +279,7 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
                Index Cond: ((user_id = ANY (ARRAY[u.id, $1, $2, ..., $1023])) AND (bucket_id = (yb_hash_code(80) % 5)) AND (user_id = 80))
 (8 rows)
 
+/*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u LEFT JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 80 ORDER BY u.id, o.order_id;
  id |      email      | order_id | user_id | bucket_id 
 ----+-----------------+----------+---------+-----------
  80 | user80@test.com |          |         |          
@@ -264,9 +287,10 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
 
 -- Left join with WHERE on nullable side
 \set query ':P :hint SELECT * FROM users u LEFT JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 ORDER BY u.id, o.order_id;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u LEFT JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 ORDER BY u.id, o.order_id;
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Sort
@@ -278,6 +302,7 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
                Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
 (7 rows)
 
+/*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u LEFT JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 ORDER BY u.id, o.order_id;
  id |      email      | order_id | user_id | bucket_id 
 ----+-----------------+----------+---------+-----------
  50 | user50@test.com |        1 |      50 |         0
@@ -286,9 +311,10 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
 
 -- Left join with WHERE in ON clause
 \set query ':P :hint SELECT * FROM users u LEFT JOIN orders_gen o ON o.user_id = u.id AND o.user_id = 50 ORDER BY u.id, o.order_id;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u LEFT JOIN orders_gen o ON o.user_id = u.id AND o.user_id = 50 ORDER BY u.id, o.order_id;
                                                                 QUERY PLAN                                                                 
 -------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -300,6 +326,7 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
                Index Cond: ((user_id = ANY (ARRAY[u.id, $1, $2, ..., $1023])) AND (bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
 (7 rows)
 
+/*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u LEFT JOIN orders_gen o ON o.user_id = u.id AND o.user_id = 50 ORDER BY u.id, o.order_id;
  id |      email      | order_id | user_id | bucket_id 
 ----+-----------------+----------+---------+-----------
  50 | user50@test.com |        1 |      50 |         0
@@ -311,9 +338,10 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
 
 -- Left join with expression index
 \set query ':P :hint SELECT * FROM users u LEFT JOIN orders_expr o ON o.user_id = u.id WHERE u.id = 50 ORDER BY u.id, o.order_id;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u LEFT JOIN orders_expr o ON o.user_id = u.id WHERE u.id = 50 ORDER BY u.id, o.order_id;
                                                                          QUERY PLAN                                                                          
 -------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -326,6 +354,7 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
                Index Cond: ((user_id = ANY (ARRAY[u.id, $1, $2, ..., $1023])) AND ((yb_hash_code(user_id) % 3) = (yb_hash_code(50) % 3)) AND (user_id = 50))
 (8 rows)
 
+/*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u LEFT JOIN orders_expr o ON o.user_id = u.id WHERE u.id = 50 ORDER BY u.id, o.order_id;
  id |      email      | order_id | user_id 
 ----+-----------------+----------+---------
  50 | user50@test.com |        1 |      50
@@ -334,9 +363,10 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
 
 -- Full join with WHERE on either side
 \set query ':P :hint SELECT * FROM users u FULL JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 50 ORDER BY u.id, o.order_id;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u FULL JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 50 ORDER BY u.id, o.order_id;
                                                                 QUERY PLAN                                                                 
 -------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -349,6 +379,7 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
                Index Cond: ((user_id = ANY (ARRAY[u.id, $1, $2, ..., $1023])) AND (bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
 (8 rows)
 
+/*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u FULL JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 50 ORDER BY u.id, o.order_id;
  id |      email      | order_id | user_id | bucket_id 
 ----+-----------------+----------+---------+-----------
  50 | user50@test.com |        1 |      50 |         0
@@ -356,9 +387,10 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
 (2 rows)
 
 \set query ':P :hint SELECT * FROM users u FULL JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 60 ORDER BY u.id, o.order_id;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u FULL JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 60 ORDER BY u.id, o.order_id;
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Sort
@@ -371,6 +403,7 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
                Storage Filter: (id = 60)
 (8 rows)
 
+/*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u FULL JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 60 ORDER BY u.id, o.order_id;
  id |      email      | order_id | user_id | bucket_id 
 ----+-----------------+----------+---------+-----------
  60 | user60@test.com |        3 |      60 |         1
@@ -378,9 +411,10 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
 
 -- Full join with WHERE on both sides
 \set query ':P :hint SELECT * FROM users u FULL JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 50 AND o.user_id = 50 ORDER BY u.id, o.order_id;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u FULL JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 50 AND o.user_id = 50 ORDER BY u.id, o.order_id;
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Sort
@@ -392,6 +426,7 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
                Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
 (7 rows)
 
+/*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u FULL JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 50 AND o.user_id = 50 ORDER BY u.id, o.order_id;
  id |      email      | order_id | user_id | bucket_id 
 ----+-----------------+----------+---------+-----------
  50 | user50@test.com |        1 |      50 |         0
@@ -400,9 +435,10 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
 
 -- Full join with expression index
 \set query ':P :hint SELECT * FROM users u FULL JOIN orders_expr o ON o.user_id = u.id WHERE u.id = 50 ORDER BY u.id, o.order_id;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u FULL JOIN orders_expr o ON o.user_id = u.id WHERE u.id = 50 ORDER BY u.id, o.order_id;
                                                                          QUERY PLAN                                                                          
 -------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -415,6 +451,7 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
                Index Cond: ((user_id = ANY (ARRAY[u.id, $1, $2, ..., $1023])) AND ((yb_hash_code(user_id) % 3) = (yb_hash_code(50) % 3)) AND (user_id = 50))
 (8 rows)
 
+/*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u FULL JOIN orders_expr o ON o.user_id = u.id WHERE u.id = 50 ORDER BY u.id, o.order_id;
  id |      email      | order_id | user_id 
 ----+-----------------+----------+---------
  50 | user50@test.com |        1 |      50
@@ -430,16 +467,16 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
 SET yb_enable_bitmapscan = true;
 SET enable_bitmapscan = true;
 -- Use a custom Rnext that builds BitmapScan(:R) hint per table.
-\set Pnext :iter_R3
-\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_iter_R.sql'
+\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_from_R.sql'
 \set R1 'orders_no_bucket'
 \set R2 'orders_gen'
 \set R3 'orders_expr'
 -- Three-way OR
 \set query ':P :hint SELECT * FROM :R WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+BitmapScan(orders_no_bucket)*/ SELECT * FROM orders_no_bucket WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Sort
@@ -449,6 +486,7 @@ SET enable_bitmapscan = true;
                Storage Index Filter: ((user_id = 50) OR (user_id = 60) OR (user_id = 70))
 (5 rows)
 
+EXPLAIN (COSTS OFF) /*+BitmapScan(orders_gen)*/ SELECT * FROM orders_gen WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
                                                                                                  QUERY PLAN                                                                                                  
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -464,6 +502,7 @@ SET enable_bitmapscan = true;
                      Index Cond: ((bucket_id = (yb_hash_code(70) % 5)) AND (user_id = 70))
 (11 rows)
 
+EXPLAIN (COSTS OFF) /*+BitmapScan(orders_expr)*/ SELECT * FROM orders_expr WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
                                                                                                                             QUERY PLAN                                                                                                                             
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -479,6 +518,7 @@ SET enable_bitmapscan = true;
                      Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(70) % 3)) AND (user_id = 70))
 (11 rows)
 
+/*+BitmapScan(orders_no_bucket)*/ SELECT * FROM orders_no_bucket WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
  order_id | user_id 
 ----------+---------
         1 |      50
@@ -487,6 +527,7 @@ SET enable_bitmapscan = true;
         4 |      70
 (4 rows)
 
+/*+BitmapScan(orders_gen)*/ SELECT * FROM orders_gen WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
  order_id | user_id | bucket_id 
 ----------+---------+-----------
         1 |      50 |         0
@@ -495,6 +536,7 @@ SET enable_bitmapscan = true;
         4 |      70 |         0
 (4 rows)
 
+/*+BitmapScan(orders_expr)*/ SELECT * FROM orders_expr WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;
  order_id | user_id 
 ----------+---------
         1 |      50
@@ -504,10 +546,12 @@ SET enable_bitmapscan = true;
 (4 rows)
 
 -- OR with AND
+\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_from_R.sql'
 \set query ':P :hint SELECT * FROM :R WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+BitmapScan(orders_no_bucket)*/ SELECT * FROM orders_no_bucket WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id;
                                               QUERY PLAN                                              
 ------------------------------------------------------------------------------------------------------
  Sort
@@ -521,6 +565,7 @@ SET enable_bitmapscan = true;
                      Index Cond: (user_id = 60)
 (9 rows)
 
+EXPLAIN (COSTS OFF) /*+BitmapScan(orders_gen)*/ SELECT * FROM orders_gen WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id;
                                                                                       QUERY PLAN                                                                                      
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -534,6 +579,7 @@ SET enable_bitmapscan = true;
                      Index Cond: ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60) AND (order_id = 3))
 (9 rows)
 
+EXPLAIN (COSTS OFF) /*+BitmapScan(orders_expr)*/ SELECT * FROM orders_expr WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id;
                                                                                      QUERY PLAN                                                                                     
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -548,36 +594,38 @@ SET enable_bitmapscan = true;
                      Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(60) % 3)) AND (user_id = 60))
 (10 rows)
 
+/*+BitmapScan(orders_no_bucket)*/ SELECT * FROM orders_no_bucket WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id;
  order_id | user_id 
 ----------+---------
         1 |      50
         3 |      60
 (2 rows)
 
+/*+BitmapScan(orders_gen)*/ SELECT * FROM orders_gen WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id;
  order_id | user_id | bucket_id 
 ----------+---------+-----------
         1 |      50 |         0
         3 |      60 |         1
 (2 rows)
 
+/*+BitmapScan(orders_expr)*/ SELECT * FROM orders_expr WHERE (user_id = 50 AND order_id = 1) OR (order_id = 3 AND user_id = 60) ORDER BY user_id, order_id;
  order_id | user_id 
 ----------+---------
         1 |      50
         3 |      60
 (2 rows)
 
--- Restore defaults.
-\set Pnext :iter_query
-\set Rnext :iter_query
+\unset R3
 -- Join with an OR on a column that is also the join key.  The derivation must
 -- still apply within each arm so the bitmap scan on orders_gen uses the bucket.
 \set hint '/*+ NestLoop(u o) BitmapScan(o) */'
 SELECT $$
 :P :hint SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 OR o.user_id = 60 ORDER BY u.id, o.order_id;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ NestLoop(u o) BitmapScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 OR o.user_id = 60 ORDER BY u.id, o.order_id;
                                                                          QUERY PLAN                                                                         
 ------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -595,6 +643,7 @@ $$ AS query \gset
                                  Index Cond: ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60))
 (13 rows)
 
+/*+ NestLoop(u o) BitmapScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 OR o.user_id = 60 ORDER BY u.id, o.order_id;
  id |      email      | order_id | user_id | bucket_id 
 ----+-----------------+----------+---------+-----------
  50 | user50@test.com |        1 |      50 |         0
@@ -606,9 +655,10 @@ $$ AS query \gset
 -- from a "user_id = NULL" arm (the arm is also a constant the planner drops).
 \set hint '/*+ BitmapScan(orders_gen) */'
 \set query ':P :hint SELECT * FROM orders_gen WHERE user_id = 50 OR user_id = NULL ORDER BY user_id, order_id;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ BitmapScan(orders_gen) */ SELECT * FROM orders_gen WHERE user_id = 50 OR user_id = NULL ORDER BY user_id, order_id;
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Sort
@@ -620,6 +670,7 @@ $$ AS query \gset
                Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
 (7 rows)
 
+/*+ BitmapScan(orders_gen) */ SELECT * FROM orders_gen WHERE user_id = 50 OR user_id = NULL ORDER BY user_id, order_id;
  order_id | user_id | bucket_id 
 ----------+---------+-----------
         1 |      50 |         0
@@ -643,9 +694,10 @@ CREATE TABLE transitive (
 INSERT INTO transitive(id, x, y, z) VALUES (1, 5, 5, 5), (2, 6, 6, 2);
 \set hint '/*+ BitmapScan(transitive transitive_pkey) */'
 \set query ':P :hint SELECT * FROM transitive WHERE y = x AND ((x = 5 AND z = y) OR (x = 6 AND z = 6)) ORDER BY id;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ BitmapScan(transitive transitive_pkey) */ SELECT * FROM transitive WHERE y = x AND ((x = 5 AND z = y) OR (x = 6 AND z = 6)) ORDER BY id;
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Sort
@@ -660,6 +712,7 @@ INSERT INTO transitive(id, x, y, z) VALUES (1, 5, 5, 5), (2, 6, 6, 2);
                      Index Cond: ((bucket_id = (yb_hash_code(6) % 5)) AND (x = 6))
 (10 rows)
 
+/*+ BitmapScan(transitive transitive_pkey) */ SELECT * FROM transitive WHERE y = x AND ((x = 5 AND z = y) OR (x = 6 AND z = 6)) ORDER BY id;
  id | x | y | z | bucket_id 
 ----+---+---+---+-----------
   1 | 5 | 5 | 5 |         0
@@ -695,15 +748,17 @@ CREATE INDEX NONCONCURRENTLY ON guard_type_expr ((yb_hash_code(c) % 5) ASC, c AS
 \set R1 'guard_type_gen'
 \set R2 'guard_type_expr'
 \set query 'INSERT INTO :R(c) VALUES (5), (6), (7);'
-\i :iter_R2
-\set _echo_R :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
-\set Pnext :iter_R2
-\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_iter_R.sql'
+INSERT INTO guard_type_gen(c) VALUES (5), (6), (7);
+INSERT INTO guard_type_expr(c) VALUES (5), (6), (7);
+\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_from_R.sql'
 \set query ':P :hint SELECT c FROM :R WHERE c = 6 OR c = 5::bigint ORDER BY c;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+BitmapScan(guard_type_gen)*/ SELECT c FROM guard_type_gen WHERE c = 6 OR c = 5::bigint ORDER BY c;
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Sort
@@ -717,6 +772,7 @@ CREATE INDEX NONCONCURRENTLY ON guard_type_expr ((yb_hash_code(c) % 5) ASC, c AS
                      Index Cond: (c = '5'::bigint)
 (9 rows)
 
+EXPLAIN (COSTS OFF) /*+BitmapScan(guard_type_expr)*/ SELECT c FROM guard_type_expr WHERE c = 6 OR c = 5::bigint ORDER BY c;
                                                  QUERY PLAN                                                 
 ------------------------------------------------------------------------------------------------------------
  Sort
@@ -730,20 +786,15 @@ CREATE INDEX NONCONCURRENTLY ON guard_type_expr ((yb_hash_code(c) % 5) ASC, c AS
                      Index Cond: (c = '5'::bigint)
 (9 rows)
 
+/*+BitmapScan(guard_type_gen)*/ SELECT c FROM guard_type_gen WHERE c = 6 OR c = 5::bigint ORDER BY c;
  c 
 ---
  5
  6
 (2 rows)
 
- c 
----
- 5
- 6
-(2 rows)
-
-\set Pnext :iter_query
-\set Rnext :iter_query
+/*+BitmapScan(guard_type_expr)*/ SELECT c FROM guard_type_expr WHERE c = 6 OR c = 5::bigint ORDER BY c;
+(output identical to previous)
 DROP TABLE guard_type_gen, guard_type_expr;
 -- Positive control.  Here c is varchar and one arm compares it to a text
 -- constant.  text is binary-coercible to varchar (same representation), so
@@ -761,17 +812,19 @@ CREATE INDEX NONCONCURRENTLY ON guard_coerce_expr ((yb_hash_code(c) % 5) ASC, c 
 SELECT $$
 INSERT INTO :R(c) VALUES ('a'), ('b'), ('c');
 $$ AS query \gset
-\i :iter_R2
-\set _echo_R :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
-\set Pnext :iter_R2
-\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_iter_R.sql'
+INSERT INTO guard_coerce_gen(c) VALUES ('a'), ('b'), ('c');
+INSERT INTO guard_coerce_expr(c) VALUES ('a'), ('b'), ('c');
+\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_from_R.sql'
 SELECT $$
 :P :hint SELECT c FROM :R WHERE c = 'a'::text OR c = 'b' ORDER BY c;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+BitmapScan(guard_coerce_gen)*/ SELECT c FROM guard_coerce_gen WHERE c = 'a'::text OR c = 'b' ORDER BY c;
                                                                                    QUERY PLAN                                                                                   
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -785,6 +838,7 @@ $$ AS query \gset
                      Index Cond: ((bucket_id = (yb_hash_code('b'::text) % 5)) AND ((c)::text = 'b'::text))
 (9 rows)
 
+EXPLAIN (COSTS OFF) /*+BitmapScan(guard_coerce_expr)*/ SELECT c FROM guard_coerce_expr WHERE c = 'a'::text OR c = 'b' ORDER BY c;
                                                                                                QUERY PLAN                                                                                               
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -798,20 +852,15 @@ $$ AS query \gset
                      Index Cond: (((yb_hash_code(c) % 5) = (yb_hash_code('b'::text) % 5)) AND ((c)::text = 'b'::text))
 (9 rows)
 
+/*+BitmapScan(guard_coerce_gen)*/ SELECT c FROM guard_coerce_gen WHERE c = 'a'::text OR c = 'b' ORDER BY c;
  c 
 ---
  a
  b
 (2 rows)
 
- c 
----
- a
- b
-(2 rows)
-
-\set Pnext :iter_query
-\set Rnext :iter_query
+/*+BitmapScan(guard_coerce_expr)*/ SELECT c FROM guard_coerce_expr WHERE c = 'a'::text OR c = 'b' ORDER BY c;
+(output identical to previous)
 DROP TABLE guard_coerce_gen, guard_coerce_expr;
 -- Operator guard.  The operator must be a real equality, not just one the
 -- planner treats like equality for selectivity (an eqsel operator).  box's "="
@@ -845,17 +894,19 @@ CREATE INDEX NONCONCURRENTLY ON guard_op_expr ((yb_hash_code(y::text) % 5) ASC, 
 SELECT $$
 INSERT INTO :R(id, x, y) VALUES (1, 1, '((0,0),(4,1))'), (2, 2, '((0,0),(1,4))');
 $$ AS query \gset
-\i :iter_R2
-\set _echo_R :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
-\set Pnext :iter_R2
-\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_iter_R.sql'
+INSERT INTO guard_op_gen(id, x, y) VALUES (1, 1, '((0,0),(4,1))'), (2, 2, '((0,0),(1,4))');
+INSERT INTO guard_op_expr(id, x, y) VALUES (1, 1, '((0,0),(4,1))'), (2, 2, '((0,0),(1,4))');
+\set Rnext :abs_srcdir '/yb_commands/bitmap_hint_from_R.sql'
 SELECT $$
 :P :hint SELECT id, x FROM :R WHERE (x = 1 AND y = '((0,0),(2,2))'::box) OR (x = 2 AND y = '((1,1),(3,3))'::box) ORDER BY id;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+BitmapScan(guard_op_gen)*/ SELECT id, x FROM guard_op_gen WHERE (x = 1 AND y = '((0,0),(2,2))'::box) OR (x = 2 AND y = '((1,1),(3,3))'::box) ORDER BY id;
                                                  QUERY PLAN                                                 
 ------------------------------------------------------------------------------------------------------------
  Sort
@@ -869,6 +920,7 @@ $$ AS query \gset
                      Index Cond: (x = 2)
 (9 rows)
 
+EXPLAIN (COSTS OFF) /*+BitmapScan(guard_op_expr)*/ SELECT id, x FROM guard_op_expr WHERE (x = 1 AND y = '((0,0),(2,2))'::box) OR (x = 2 AND y = '((1,1),(3,3))'::box) ORDER BY id;
                                                  QUERY PLAN                                                 
 ------------------------------------------------------------------------------------------------------------
  Sort
@@ -882,20 +934,15 @@ $$ AS query \gset
                      Index Cond: (x = 2)
 (9 rows)
 
+/*+BitmapScan(guard_op_gen)*/ SELECT id, x FROM guard_op_gen WHERE (x = 1 AND y = '((0,0),(2,2))'::box) OR (x = 2 AND y = '((1,1),(3,3))'::box) ORDER BY id;
  id | x 
 ----+---
   1 | 1
   2 | 2
 (2 rows)
 
- id | x 
-----+---
-  1 | 1
-  2 | 2
-(2 rows)
-
-\set Pnext :iter_query
-\set Rnext :iter_query
+/*+BitmapScan(guard_op_expr)*/ SELECT id, x FROM guard_op_expr WHERE (x = 1 AND y = '((0,0),(2,2))'::box) OR (x = 2 AND y = '((1,1),(3,3))'::box) ORDER BY id;
+(output identical to previous)
 DROP TABLE guard_op_gen, guard_op_expr;
 -- Multi-way joins
 CREATE TABLE t1 (x int);
@@ -906,9 +953,12 @@ CREATE TABLE t3 (x int);
 \set R2 't2'
 \set R3 't3'
 \set query 'INSERT INTO :R SELECT generate_series(1, 1000);'
-\i :iter_R3
-\set _echo_R :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+INSERT INTO t1 SELECT generate_series(1, 1000);
+INSERT INTO t2 SELECT generate_series(1, 1000);
+INSERT INTO t3 SELECT generate_series(1, 1000);
 ANALYZE t1, t2, t3;
 SET enable_hashjoin = false;
 SET enable_mergejoin = false;
@@ -970,9 +1020,10 @@ INSERT INTO t_const_expr VALUES (10), (20);
 ANALYZE t_const_expr;
 \set hint '/*+ IndexScan(t_const_expr t_const_expr_idx) */'
 \set query ':P :hint SELECT * FROM t_const_expr ORDER BY a;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(t_const_expr t_const_expr_idx) */ SELECT * FROM t_const_expr ORDER BY a;
            QUERY PLAN           
 --------------------------------
  Sort
@@ -980,6 +1031,7 @@ ANALYZE t_const_expr;
    ->  Seq Scan on t_const_expr
 (3 rows)
 
+/*+ IndexScan(t_const_expr t_const_expr_idx) */ SELECT * FROM t_const_expr ORDER BY a;
  a  
 ----
  10
@@ -995,9 +1047,10 @@ INSERT INTO t_mixed_expr VALUES (1, 9), (2, 4);
 ANALYZE t_mixed_expr;
 \set hint '/*+ IndexScan(t_mixed_expr t_mixed_expr_idx) */'
 \set query ':P :hint SELECT * FROM t_mixed_expr WHERE b = 4 ORDER BY a;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(t_mixed_expr t_mixed_expr_idx) */ SELECT * FROM t_mixed_expr WHERE b = 4 ORDER BY a;
                        QUERY PLAN                        
 ---------------------------------------------------------
  Sort
@@ -1007,6 +1060,7 @@ ANALYZE t_mixed_expr;
          Storage Filter: (b = 4)
 (5 rows)
 
+/*+ IndexScan(t_mixed_expr t_mixed_expr_idx) */ SELECT * FROM t_mixed_expr WHERE b = 4 ORDER BY a;
  a | b 
 ---+---
  2 | 4
@@ -1027,9 +1081,10 @@ ANALYZE demo_b;
 \set hint '/*+ IndexScan(demo_a demo_a_nullif_idx) */'
 -- Single-rel, NULL-yielding const (no derived clause emitted)
 \set query ':P :hint SELECT count(*) FROM demo_a WHERE x = 0;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(demo_a demo_a_nullif_idx) */ SELECT count(*) FROM demo_a WHERE x = 0;
            QUERY PLAN            
 ---------------------------------
  Finalize Aggregate
@@ -1038,6 +1093,7 @@ ANALYZE demo_b;
          Partial Aggregate: true
 (4 rows)
 
+/*+ IndexScan(demo_a demo_a_nullif_idx) */ SELECT count(*) FROM demo_a WHERE x = 0;
  count 
 -------
     10
@@ -1045,9 +1101,10 @@ ANALYZE demo_b;
 
 -- Single-rel, non-NULL const (derived clause emitted)
 \set query ':P :hint SELECT count(*) FROM demo_a WHERE x = 3;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(demo_a demo_a_nullif_idx) */ SELECT count(*) FROM demo_a WHERE x = 3;
                      QUERY PLAN                     
 ----------------------------------------------------
  Finalize Aggregate
@@ -1057,6 +1114,7 @@ ANALYZE demo_b;
          Partial Aggregate: true
 (5 rows)
 
+/*+ IndexScan(demo_a demo_a_nullif_idx) */ SELECT count(*) FROM demo_a WHERE x = 3;
  count 
 -------
     10
@@ -1065,9 +1123,10 @@ ANALYZE demo_b;
 \set hint '/*+ NestLoop(a b) IndexScan(b demo_b_nullif_idx) */'
 -- Join with no constant predicate (no derived clause emitted)
 \set query ':P :hint SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ NestLoop(a b) IndexScan(b demo_b_nullif_idx) */ SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x;
                QUERY PLAN               
 ----------------------------------------
  Aggregate
@@ -1078,6 +1137,7 @@ ANALYZE demo_b;
                ->  Seq Scan on demo_b b
 (6 rows)
 
+/*+ NestLoop(a b) IndexScan(b demo_b_nullif_idx) */ SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x;
  count 
 -------
    700
@@ -1085,9 +1145,10 @@ ANALYZE demo_b;
 
 -- Join + WHERE on a join column = const (derived clause emitted)
 \set query ':P :hint SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x WHERE a.x = 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ NestLoop(a b) IndexScan(b demo_b_nullif_idx) */ SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x WHERE a.x = 5;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Aggregate
@@ -1100,6 +1161,7 @@ ANALYZE demo_b;
                      Storage Filter: (x = 5)
 (8 rows)
 
+/*+ NestLoop(a b) IndexScan(b demo_b_nullif_idx) */ SELECT count(*) FROM demo_a a JOIN demo_b b ON a.x = b.x WHERE a.x = 5;
  count 
 -------
    100
@@ -1148,9 +1210,10 @@ ANALYZE demo_or;
 -- returns zero rows, and the count drops to 1.
 \set hint '/*+ BitmapScan(demo_or) */'
 \set query ':P :hint SELECT count(*) FROM demo_or WHERE id = 1 OR arr = ''{}'';'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) /*+ BitmapScan(demo_or) */ SELECT count(*) FROM demo_or WHERE id = 1 OR arr = '{}';
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Aggregate
@@ -1158,6 +1221,7 @@ ANALYZE demo_or;
          Filter: ((id = 1) OR (arr = '{}'::character varying[]))
 (3 rows)
 
+/*+ BitmapScan(demo_or) */ SELECT count(*) FROM demo_or WHERE id = 1 OR arr = '{}';
  count 
 -------
     11

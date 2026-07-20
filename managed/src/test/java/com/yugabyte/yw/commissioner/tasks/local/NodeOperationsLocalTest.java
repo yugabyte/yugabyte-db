@@ -195,6 +195,39 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
   }
 
   @Test
+  public void testReplaceStoppedNodeInUniverse() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = getGFlags();
+    Universe universe = createUniverse(userIntent);
+    NodeDetails nodeDetails = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+    verifyUniverseState(universe);
+
+    String nodeName = nodeDetails.nodeName;
+    NodeActionFormData formData = new NodeActionFormData();
+    formData.nodeAction = NodeActionType.STOP;
+    Result result = nodeOperationInUniverse(universe.getUniverseUUID(), nodeName, formData);
+    checkAndWaitForTask(result);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+
+    for (NodeDetails details : universe.getUniverseDetails().nodeDetailsSet) {
+      if (details.nodeName.equals(nodeName)) {
+        assertEquals(NodeDetails.NodeState.Stopped, details.state);
+      } else {
+        assertEquals(NodeDetails.NodeState.Live, details.state);
+      }
+    }
+
+    formData.nodeAction = NodeActionType.REPLACE;
+    result = nodeOperationInUniverse(universe.getUniverseUUID(), nodeName, formData);
+    checkAndWaitForTask(result);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    for (NodeDetails details : universe.getUniverseDetails().nodeDetailsSet) {
+      assertEquals(NodeDetails.NodeState.Live, details.state);
+    }
+    verifyUniverseState(universe);
+  }
+
+  @Test
   public void testRemoveNodeFromUniverseGeoFAIL() throws InterruptedException {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
 

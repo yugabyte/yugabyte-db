@@ -24,6 +24,7 @@ import {
 } from '@app/redesign/features-v2/universe/create-universe/fields';
 import { isImgBundleSupportedByProvider } from '@app/components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
+import { usePersistStepFormValues } from '@app/redesign/features-v2/universe/create-universe/helpers/persistStepFormValues';
 import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/utils/api';
 import { useGetZones } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
 import { CloudType, Placement } from '@app/redesign/features/universe/universe-form/utils/dto';
@@ -47,6 +48,7 @@ import {
   TSERVER_K8_NODE_SPEC_FIELD,
   MASTER_TSERVER_SAME_FIELD,
   ENABLE_EBS_CONFIG_FIELD,
+  EBS_KMS_CONFIG_FIELD,
   CPU_ARCH_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
 
@@ -103,7 +105,13 @@ export const InstanceSettings = forwardRef<
   }
 >(({ editMode = false, viewMode = 'all', disableTserverFields = false }, forwardRef) => {
   const [
-    { instanceSettings, generalSettings, nodesAvailabilitySettings, resilienceAndRegionsSettings },
+    {
+      instanceSettings,
+      generalSettings,
+      nodesAvailabilitySettings,
+      resilienceAndRegionsSettings,
+      securitySettings
+    },
     { moveToNextPage, moveToPreviousPage, saveInstanceSettings, setActiveStep }
   ] = useContext(CreateUniverseContext) as unknown as CreateUniverseContextMethods;
 
@@ -127,13 +135,19 @@ export const InstanceSettings = forwardRef<
     keyPrefix: 'createUniverseV2.instanceSettings'
   });
 
+  const earKMSConfig = securitySettings?.kmsConfig ?? null;
+
   const methods = useForm<InstanceSettingProps>({
     defaultValues: instanceSettings,
+    context: {
+      earKmsConfig: earKMSConfig
+    },
     resolver: yupResolver(
       InstanceSettingsValidationSchema(t, useK8CustomResources, provider?.code, !!useDedicatedNodes)
     )
   });
-  const { watch, setValue, control } = methods;
+  usePersistStepFormValues(methods.watch, methods.getValues, saveInstanceSettings);
+  const { watch, setValue, control, trigger } = methods;
 
   const deviceInfo = watch(DEVICE_INFO_FIELD);
   const sameAsTserver = watch(MASTER_TSERVER_SAME_FIELD);
@@ -173,6 +187,12 @@ export const InstanceSettings = forwardRef<
   }, [provider?.uuid]);
 
   useEffect(() => {
+    if (earKMSConfig && ebsEnabled) {
+      trigger(EBS_KMS_CONFIG_FIELD);
+    }
+  }, [earKMSConfig, ebsEnabled, trigger]);
+
+  useEffect(() => {
     if (deviceInfo && sameAsTserver) {
       setValue(MASTER_DEVICE_INFO_FIELD, deviceInfo);
       //instance type not present for k8s
@@ -190,12 +210,10 @@ export const InstanceSettings = forwardRef<
     forwardRef,
     () => ({
       onNext: () =>
-        methods.handleSubmit((data) => {
-          saveInstanceSettings(data);
+        methods.handleSubmit(() => {
           moveToNextPage();
         })(),
       onPrev: () => {
-        saveInstanceSettings(methods.getValues());
         if (resilienceAndRegionsSettings?.resilienceType === ResilienceType.SINGLE_NODE) {
           setActiveStep(CreateUniverseSteps.RESILIENCE_AND_REGIONS);
         } else {
@@ -337,10 +355,10 @@ export const InstanceSettings = forwardRef<
                   <StorageTypeField disabled={disableTserverFields} provider={provider} />
                 )}
                 {ebsVolumeEnabled && provider?.code === CloudType.aws && (
-                  <EBSVolumeField disabled={disableTserverFields} />
+                  <EBSVolumeField disabled={disableTserverFields || editMode} />
                 )}
                 {ebsVolumeEnabled && provider?.code === CloudType.aws && ebsEnabled && (
-                  <EBSKmsConfigField disabled={disableTserverFields} />
+                  <EBSKmsConfigField disabled={disableTserverFields || editMode} />
                 )}
               </InstanceBox>
               {!showDedicatedNodesSection && !isK8s && (

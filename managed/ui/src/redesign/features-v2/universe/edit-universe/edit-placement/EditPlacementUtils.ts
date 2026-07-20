@@ -14,7 +14,8 @@ import { InstanceSettingProps } from '../../create-universe/steps/hardware-setti
 import {
   getEffectiveReplicationFactorForResilience,
   getNodeCount,
-  getPlacementRegions
+  getPlacementRegions,
+  isCurrentConfigSupportedByGuidedMode
 } from '../../create-universe/CreateUniverseUtils';
 import {
   getExistingGeoPartitions
@@ -27,7 +28,6 @@ import {
   isKubernetesCluster,
   mapUniversePayloadToResilienceAndRegionsProps
 } from '../EditUniverseUtils';
-import { values } from 'lodash';
 import { isDefinedNotNull } from '@yugabytedb/perf-advisor-ui';
 
 export const useGetEditPlacementContext = (): EditPlacementContextMethods => {
@@ -353,19 +353,10 @@ export const buildMasterAllocationEditPayload = (
 };
 
 export const getUniverseCreationMode = (universeData: Universe): ResilienceFormMode => {
-  return (universeData.info as any)?.universe_creation_mode ?? ResilienceFormMode.EXPERT_MODE;
   return isDefinedNotNull(universeData.spec?.universe_settings?.expert_mode) ? 
   universeData.spec?.universe_settings?.expert_mode ? 
   ResilienceFormMode.EXPERT_MODE : ResilienceFormMode.GUIDED : 
   ResilienceFormMode.EXPERT_MODE; 
 };
 
-export const isCurrentConfigSupportedByGuidedMode = (_resilience: ResilienceAndRegionsProps, nodesAndAvailability: NodeAvailabilityProps) => {
-
-  // 1. The no of nodes in all AZs should be equal.
-  const numOfNodesInAllAz = values(nodesAndAvailability.availabilityZones).map(az => az.map(z => z.nodeCount)).flat();
-
-  if(new Set(numOfNodesInAllAz).size !== 1) return false;
-  
-  return true;
-};
+export { isCurrentConfigSupportedByGuidedMode };

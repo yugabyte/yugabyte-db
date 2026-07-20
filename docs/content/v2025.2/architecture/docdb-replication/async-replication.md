@@ -309,14 +309,14 @@ Improper use can compromise replication consistency and lead to data divergence.
 #### Transactional Automatic mode
 
 - Global objects like Users, Roles, and Tablespaces are not replicated. These objects must be manually managed on the standby universe.
-- `ALTER LARGE OBJECT` DDLs are not supported.
+- [ALTER LARGE OBJECT](https://www.postgresql.org/docs/15/sql-alterlargeobject.html) DDLs are not supported (YugabyteDB does not support [large objects](https://www.postgresql.org/docs/15/largeobjects.html), see issue {{<issue 25318>}}).
 - DDLs related to `PUBLICATION` and `SUBSCRIPTION` are not supported.
 - Rewinding of sequences (for example, restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
 - While Automatic mode is active, you can only `CREATE`, `DROP`, or `ALTER` the following extensions: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, and pgaudit. All other extensions must be created _before_ setting up automatic mode. For pg_partman, refer to [pg_partman and xCluster](../../../additional-features/pg-extensions/extension-pgpartman/#xcluster).
 
 #### Transactional Semi-Automatic and Manual mode
 
-- Schema changes are not automatically replicated. All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables).
+- Schema changes are not automatically replicated. All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables/).
 
   An exception are DDLs related to PUBLICATION and SUBSCRIPTION, which should only be used on the source universe.
 

@@ -43,7 +43,7 @@ export const EditPlacementResilience = () => {
       universeData!,
       selectedPartitionUUID
     );
-    return isCurrentConfigSupportedByGuidedMode(resilienceProps, nodesAndAvailability);
+    return isCurrentConfigSupportedByGuidedMode(resilienceProps, nodesAndAvailability).isSupported;
   }, [resilienceProps, selectedPartitionUUID]);
 
   return (

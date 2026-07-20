@@ -581,6 +581,26 @@ Status KvStoreInfo::LoadFromPB(const std::string& tablet_log_prefix,
   kv_store_id = KvStoreId(pb.kv_store_id());
   if (local_superblock) {
     rocksdb_dir = pb.rocksdb_dir();
+
+    tier_paths.clear();
+    for (const auto& tp : pb.tier_paths()) {
+      tier_paths.push_back({
+          .path_id = tp.path_id(),
+          .tier    = tp.tier(),
+          .path    = tp.path(),
+      });
+    }
+    // Backward compatibility fallback: an old / non-tiered superblock has no tier_paths, so
+    // synthesize a single in-memory home entry to guarantee DB::Open always gets at least one
+    // db_paths slot. For local superblocks this is upgraded to the full per-disk list (and
+    // persisted) in RaftGroupMetadata::LoadFromSuperBlock, which has the FsManager.
+    if (tier_paths.empty()) {
+      tier_paths.push_back({
+          .path_id = 0,
+          .tier    = FsManager::kDefaultStorageTier,
+          .path    = rocksdb_dir,
+      });
+    }
   }
   lower_bound_key = pb.lower_bound_key();
   upper_bound_key = pb.upper_bound_key();
@@ -713,6 +733,14 @@ Result<TableInfo*> KvStoreInfo::FindMatchingTable(
 void KvStoreInfo::ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const {
   pb->set_kv_store_id(kv_store_id.ToString());
   pb->set_rocksdb_dir(rocksdb_dir);
+
+  pb->clear_tier_paths();
+  for (const auto& tp : tier_paths) {
+    auto* tppb = pb->add_tier_paths();
+    tppb->set_path_id(tp.path_id);
+    tppb->set_tier(tp.tier);
+    tppb->set_path(tp.path);
+  }
   if (lower_bound_key.empty()) {
     pb->clear_lower_bound_key();
   } else {
@@ -765,6 +793,7 @@ bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
   };
   return YB_STRUCT_EQUALS(kv_store_id,
                           rocksdb_dir,
+                          tier_paths,
                           lower_bound_key,
                           upper_bound_key,
                           parent_data_compacted,
@@ -774,6 +803,60 @@ bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
 }
 
 // ============================================================================
+namespace {
+
+constexpr size_t kMaxTierPaths = 32;
+
+// Builds the db_paths list for a tablet. Slot 0 is the home dir.
+std::vector<TierPathInfo> BuildTierPaths(
+    FsManager* fs_manager, const std::string& home_rocksdb_dir) {
+  // home_rocksdb_dir == <data_root>/rocksdb/table-X/tablet-Y  (3 levels under the data root).
+  const std::string home_data_root = DirName(DirName(DirName(home_rocksdb_dir)));
+  // Relative suffix shared by every slot, e.g. "rocksdb/table-X/tablet-Y".
+  std::string rel_suffix;
+  // safety check: home_rocksdb_dir should be a subdirectory of home_data_root
+  if (home_rocksdb_dir.size() > home_data_root.size() + 1) {
+    rel_suffix = home_rocksdb_dir.substr(home_data_root.size() + 1);
+  }
+
+  const auto& roots_by_tier = fs_manager->GetDataRootsByTier();
+
+  // Identify the home tier by finding which tier's roots contain home_data_root.
+  std::string home_tier(FsManager::kDefaultStorageTier);
+  for (const auto& [tier, roots] : roots_by_tier) {
+    if (std::find(roots.begin(), roots.end(), home_data_root) != roots.end()) {
+      home_tier = tier;
+      break;
+    }
+  }
+
+  std::vector<TierPathInfo> result;
+  result.push_back({.path_id = 0, .tier = home_tier, .path = home_rocksdb_dir});
+
+  // Add a slot for every other data root on this node (all tiers, all disks within a tier).
+  uint32_t next_path_id = 1;
+  for (const auto& [tier, roots] : roots_by_tier) {  // std::map -> sorted tier-label order
+    for (const auto& root : roots) {                 // --fs_data_dirs order within a tier
+      if (root == home_data_root) {
+        continue;  // already recorded as path_id 0
+      }
+      if (result.size() >= kMaxTierPaths) {
+        LOG(DFATAL) << "Number of data roots exceeds the maximum of " << kMaxTierPaths
+                    << " RocksDB paths; disk " << root << " will not be usable by tablet "
+                    << home_rocksdb_dir;
+        return result;
+      }
+      result.push_back({
+          .path_id = next_path_id++,
+          .tier    = tier,
+          .path    = rel_suffix.empty() ? root : JoinPathSegments(root, rel_suffix),
+      });
+    }
+  }
+  return result;
+}
+
+}  // namespace
 
 Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
     const RaftGroupMetadataData& data, const std::string& data_root_dir,
@@ -807,6 +890,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
       data_top_dir, FsManager::kRocksDBDirName, table_dir_name, tablet_dir_name);
 
   RaftGroupMetadataPtr ret(new RaftGroupMetadata(data, rocksdb_dir, wal_dir));
+  ret->kv_store_.tier_paths = BuildTierPaths(fs_manager, rocksdb_dir);
   RETURN_NOT_OK(ret->Flush());
   return ret;
 }
@@ -924,6 +1008,11 @@ Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(ColocationId colocation_id)
   return GetTableInfoUnlocked(colocation_id);
 }
 
+void RaftGroupMetadata::TEST_SetTierPaths(std::vector<TierPathInfo> paths) {
+  std::lock_guard lock(data_mutex_);
+  kv_store_.tier_paths = std::move(paths);
+}
+
 Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
                                            const OpId& last_logged_opid) {
   CHECK(delete_type == TABLET_DATA_DELETED ||
@@ -950,6 +1039,14 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
   docdb::InitRocksDBOptions(
       &rocksdb_options, log_prefix_, raft_group_id_, nullptr /* statistics */, tablet_options);
 
+  // Tiered storage: the regular DB may have SSTs spread across several disks (tier_paths). Mirror
+  // the open path by handing DestroyDB the full db_paths so its cleanup removes SST files under
+  // every tier root.
+  const auto tier_paths_copy = tier_paths();
+  for (const auto& tp : tier_paths_copy) {
+    rocksdb_options.db_paths.emplace_back(tp.path, std::numeric_limits<uint64_t>::max());
+  }
+
   const auto& rocksdb_dir = this->rocksdb_dir();
   LOG_WITH_PREFIX(INFO) << "Destroying regular db at: " << rocksdb_dir;
   auto status = DestroyDB(rocksdb_dir, rocksdb_options);
@@ -965,6 +1062,22 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
     auto s = fs_manager_->env()->DeleteRecursively(rocksdb_dir);
     LOG_IF_WITH_PREFIX(WARNING, !s.ok())
         << "Unable to delete rocksdb data directory " << rocksdb_dir;
+  }
+
+  // Remove the per-tablet subtree on every non-home tier disk.
+  for (const auto& tp : tier_paths_copy) {
+    if (tp.path == rocksdb_dir) {
+      continue;
+    }
+    if (fs_manager_->env()->FileExists(tp.path)) {
+      auto s = fs_manager_->env()->DeleteRecursively(tp.path);
+      if (s.ok()) {
+        LOG_WITH_PREFIX(INFO) << "Successfully destroyed tiered rocksdb dir at: " << tp.path;
+      } else {
+        LOG_IF_WITH_PREFIX(WARNING, !s.ok())
+            << "Unable to delete tiered rocksdb data directory " << tp.path << ": " << s;
+      }
+    }
   }
 
   const auto intents_dir = this->intents_rocksdb_dir();
@@ -1111,6 +1224,10 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
   VLOG_WITH_PREFIX(2) << "Loading RaftGroupMetadata from SuperBlockPB:" << std::endl
                       << superblock.DebugString();
 
+  // Set when an old (pre-tiered-storage) superblock is upgraded in-memory below; the upgraded
+  // tier_paths are persisted via Flush() after the lock is released.
+  bool migrated_tier_paths = false;
+
   {
     std::lock_guard lock(data_mutex_);
 
@@ -1128,6 +1245,16 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
 
     RETURN_NOT_OK(kv_store_.LoadFromPB(
         log_prefix_, superblock.kv_store(), primary_table_id_, local_superblock));
+
+    // Superblock upgrade: a pre-tiered-storage superblock has no tier_paths (LoadFromPB above only
+    // synthesized a single in-memory home entry). Rebuild the full per-disk pin list for this node
+    // via BuildTierPaths so an existing tablet can participate in tiered storage after a binary
+    // upgrade, and persist it (Flush() below) so this runs once rather than on every restart.
+    if (local_superblock && superblock.kv_store().tier_paths_size() == 0 &&
+        fs_manager_ != nullptr && !kv_store_.rocksdb_dir.empty()) {
+      kv_store_.tier_paths = BuildTierPaths(fs_manager_, kv_store_.rocksdb_dir);
+      migrated_tier_paths = true;
+    }
 
     wal_dir_ = superblock.wal_dir();
     tablet_data_state_ = superblock.tablet_data_state();
@@ -1199,6 +1326,13 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     }
 
     last_applied_change_metadata_op_id_ = last_flushed_change_metadata_op_id_;
+  }
+
+  if (migrated_tier_paths) {
+    LOG_WITH_PREFIX(INFO)
+        << "Upgraded pre-tiered-storage superblock: populated tier_paths with "
+        << kv_store_.tier_paths.size() << " node disk(s); flushing to persist.";
+    RETURN_NOT_OK_PREPEND(Flush(), "Failed to flush superblock after tier_paths upgrade");
   }
 
   return Status::OK();
@@ -2141,10 +2275,22 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   kv_store.set_kv_store_id(KvStoreId(raft_group_id).ToString());
   kv_store.set_lower_bound_key(lower_bound_key);
   kv_store.set_upper_bound_key(upper_bound_key);
-  kv_store.set_rocksdb_dir(GetSubRaftGroupDataDir(raft_group_id));
+  const std::string child_rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
+  kv_store.set_rocksdb_dir(child_rocksdb_dir);
   kv_store.set_parent_data_compacted(false);
   kv_store.set_last_full_compaction_time(kNoLastFullCompactionTime);
   kv_store.clear_post_split_compaction_file_number_upper_bound();
+
+  // Rebuild tier_paths for the child tablet. ToSuperBlock() above copied the parent's paths, but
+  // the child lives in its own rocksdb_dir, so each slot needs its own directory derived from the
+  // same data root as the parent slot. BuildTierPaths derives all slots from the child's home dir.
+  kv_store.clear_tier_paths();
+  for (const auto& tp : BuildTierPaths(fs_manager_, child_rocksdb_dir)) {
+    auto* tppb = kv_store.add_tier_paths();
+    tppb->set_path_id(tp.path_id);
+    tppb->set_tier(tp.tier);
+    tppb->set_path(tp.path);
+  }
 
   partition.ToPB(superblock.mutable_partition());
 

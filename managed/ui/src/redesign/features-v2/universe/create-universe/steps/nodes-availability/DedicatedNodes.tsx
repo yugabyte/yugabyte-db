@@ -49,11 +49,10 @@ export const DedicatedNode = ({ noAccordion }: { noAccordion?: boolean }) => {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.dedicatedNodes'
   });
   const { control, watch } = useFormContext<NodeAvailabilityProps>();
-  const [{ resilienceAndRegionsSettings, generalSettings }] = (useContext(
+  const [{ resilienceAndRegionsSettings, generalSettings }] = useContext(
     CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
-  const isK8sUniverse =
-    generalSettings?.cloud === CloudType.kubernetes;
+  ) as unknown as CreateUniverseContextMethods;
+  const isK8sUniverse = generalSettings?.cloud === CloudType.kubernetes;
 
   const availabilityZones = watch('availabilityZones');
   const useDedicatedNodes = watch('useDedicatedNodes');
@@ -142,7 +141,11 @@ export const DedicatedNode = ({ noAccordion }: { noAccordion?: boolean }) => {
   }
 
   return (
-    <YBAccordion titleContent={t('title')} sx={{ width: '100%' }}>
+    <YBAccordion
+      titleContent={t('title')}
+      sx={{ width: '100%' }}
+      defaultExpanded={!!useDedicatedNodes}
+    >
       <StyledPanel>{getStyledToggleArea()}</StyledPanel>
     </YBAccordion>
   );

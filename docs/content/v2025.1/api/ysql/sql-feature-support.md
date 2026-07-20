@@ -149,4 +149,5 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 | {{<icon/yes>}} | Common table expressions                             |                                                                                    |
 | {{<icon/yes>}} | Extensions                                           | [PostgreSQL extensions](../../../additional-features/pg-extensions/)                                         |
 | {{<icon/yes>}} | Foreign data wrappers                                | [Foreign data wrappers](../../../explore/ysql-language-features/advanced-features/foreign-data-wrappers/)               |
+| {{<icon/no>}}  | Large objects                                        |                                                                                    |
 {.sno-1}

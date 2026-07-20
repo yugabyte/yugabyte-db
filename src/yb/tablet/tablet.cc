@@ -122,6 +122,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -319,6 +320,18 @@ DEFINE_test_flag(uint64, inject_sleep_before_applying_write_batch_ms, 0,
 DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
     "Sleep before applying intents to docdb after transaction commit");
 
+DEFINE_test_flag(double, inject_delay_before_external_intents_write_probability, 0.0,
+    "Probability of injecting a random delay between an external write batch's regular db "
+    "write and its intents db write in ApplyKeyValueRowOperations. Each firing sleeps for a "
+    "duration drawn uniformly from [0, TEST_inject_delay_before_external_intents_write_max_ms]. "
+    "Widens the otherwise sub-millisecond window in which a regular db flush can force-advance "
+    "the intents db flushed frontier past not-yet-written external intents (see "
+    "advance_intents_flushed_op_id_to_match_regular).");
+
+DEFINE_test_flag(uint64, inject_delay_before_external_intents_write_max_ms, 100,
+    "Upper bound in milliseconds of the random delay injected when "
+    "TEST_inject_delay_before_external_intents_write_probability fires.");
+
 DEFINE_test_flag(bool, skip_remove_intent, false,
     "If true, remove intent will be skipped");
 
@@ -334,6 +347,7 @@ DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
 
 DECLARE_bool(cdc_immediate_transaction_cleanup);
 DECLARE_bool(consistent_restore);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
@@ -1239,6 +1253,34 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
   const auto& db_dir = metadata()->rocksdb_dir();
   RETURN_NOT_OK(CreateTabletDirectories(db_dir, metadata()->fs_manager()));
 
+  // Tiered storage: populate db_paths from the tablet's persisted tier_paths so RocksDB is
+  // aware of all tier directories at open time.
+  // Invariants:
+  //   - slot 0 must equal db_dir (MANIFEST/CURRENT/OPTIONS live there).
+  //   - target_size = UINT64_MAX for every slot so RocksDB's automatic
+  //    size-based db_path selection does not spill files to another path_id.
+  {
+    const auto& tier_paths = metadata()->tier_paths();
+    if (!tier_paths.empty()) {
+      auto* fs = metadata()->fs_manager();
+      regular_rocksdb_options.db_paths.clear();
+      std::string desc;
+      for (const auto& tp : tier_paths) {
+        if (tp.path != db_dir) {
+          RETURN_NOT_OK(CreateTabletDirectories(tp.path, fs));
+        }
+        regular_rocksdb_options.db_paths.emplace_back(
+            tp.path, std::numeric_limits<uint64_t>::max());
+        desc += Format("$0[$1]=$2 ", tp.tier, tp.path_id, tp.path);
+      }
+      LOG_IF_WITH_PREFIX(DFATAL, regular_rocksdb_options.db_paths.front().path != db_dir)
+          << "tier_paths[0] (" << regular_rocksdb_options.db_paths.front().path
+          << ") does not match home rocksdb_dir (" << db_dir << ")";
+      LOG_WITH_PREFIX(INFO) << "Opening RocksDB with " << tier_paths.size()
+                            << " tiered db_paths: " << desc;
+    }
+  }
+
   LOG(INFO) << "Opening RocksDB at: " << db_dir;
   rocksdb::DB* db = nullptr;
   rocksdb::Status rocksdb_open_status = rocksdb::DB::Open(regular_rocksdb_options, db_dir, &db);
@@ -1513,7 +1555,8 @@ void Tablet::DoCleanupIntentFiles() {
         FlushFlags::kRegular | FlushFlags::kVectorIndexes | FlushFlags::kNoScopedOperation,
         rocksdb::FlushReason::kIntentFilesCleanup);
     if (!flush_status.ok()) {
-      LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Failed to flush regular db: " << flush_status;
+      LOG_WITH_PREFIX_AND_FUNC(WARNING)
+          << "Failed to flush regular db or vector indexes: " << flush_status;
       break;
     }
     auto delete_status = intents_db_->DeleteFile(best_file->Name());
@@ -1725,8 +1768,17 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
     DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops, Stop stop) {
   TabletScopedRWOperationPauses op_pauses;
 
-  auto pause = [this,
-                stop](const BlockingRocksDbShutdownStart is_blocking) -> ScopedRWOperationPause {
+  // For graceful shutdown flush all storages while they are fully operational, so the intents DB
+  // flush filter keeps the intents DB flushed OpId behind the vector index flushed OpIds.
+  // Entries applied after this flush are recovered from the WAL during bootstrap (GH #32691).
+  if (!disable_flush_on_shutdown && !TEST_disable_flush_on_shutdown_ &&
+      FLAGS_flush_rocksdb_on_shutdown) {
+    WARN_NOT_OK(
+        Flush(FlushMode::kSync, FlushFlags::kAllDbs, rocksdb::FlushReason::kShutdown),
+        LogPrefix() + "Failed to flush storages before shutdown");
+  }
+
+  auto pause = [this, stop](const BlockingRocksDbShutdownStart is_blocking) {
     auto op_pause = PauseReadWriteOperations(is_blocking, stop);
     if (!op_pause.ok()) {
       LOG(FATAL) << "Failed to stop read/write operations: " << op_pause.status();
@@ -1734,11 +1786,11 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
     return op_pause;
   };
 
+  op_pauses.blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kTrue);
+
   // Triggering vector indexes shutting down before RocksDB to let vector indexes release
   // ScopedRWOperation instances if any.
   vector_indexes_->StartShutdown();
-
-  op_pauses.blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kTrue);
 
   bool expected = false;
   // If shutdown has been already requested, we still might need to wait for all pending read/write
@@ -1746,7 +1798,9 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
   if (rocksdb_shutdown_requested_.compare_exchange_strong(expected, true)) {
     for (auto* db : {regular_db_.get(), intents_db_.get()}) {
       if (db) {
-        db->SetDisableFlushOnShutdown(disable_flush_on_shutdown);
+        // Flushes are either already done above or not desired at all. Also at this point the
+        // intents DB flush filter cannot check the vector index flushed state anymore.
+        db->SetDisableFlushOnShutdown();
         db->StartShutdown();
       }
     }
@@ -1802,6 +1856,12 @@ std::vector<std::string> Tablet::CompleteShutdownStorages(
 Status Tablet::DeleteStorages(const std::vector<std::string>& db_paths) {
   rocksdb::Options rocksdb_options;
   InitRocksDBOptions(&rocksdb_options, LogPrefix());
+
+  // Tiered storage: hand DestroyDB the regular DB's tier disks so its cleanup removes SST files
+  // spread across all tiers.
+  for (const auto& tp : metadata()->tier_paths()) {
+    rocksdb_options.db_paths.emplace_back(tp.path, std::numeric_limits<uint64_t>::max());
+  }
 
   Status status;
   for (const auto& db_path : db_paths) {
@@ -2016,6 +2076,15 @@ Status Tablet::ApplyKeyValueRowOperations(
     }
 
     if (intents_write_batch.Count() != 0) {
+      TEST_SYNC_POINT("Tablet::ApplyKeyValueRowOperations:BeforeIntentsWrite");
+      if (PREDICT_FALSE(RandomActWithProbability(
+              FLAGS_TEST_inject_delay_before_external_intents_write_probability))) {
+        const auto delay_ms = RandomUniformInt<uint64>(
+            0, FLAGS_TEST_inject_delay_before_external_intents_write_max_ms);
+        LOG_WITH_PREFIX(INFO) << "TEST: injecting " << delay_ms
+                              << " ms delay before external intents write";
+        SleepFor(MonoDelta::FromMilliseconds(delay_ms));
+      }
       if (!metadata_->IsUnderXClusterReplication()) {
         RETURN_NOT_OK(metadata_->SetIsUnderXClusterReplicationAndFlush(true));
       }
@@ -5380,8 +5449,9 @@ docdb::CompactionHybridTimeConstraints Tablet::CompactionHybridTimeConstraints(
   for (const auto& file : inputs) {
     input_names.push_back(file->fd.GetNumber());
     if (!file->smallest.user_frontier) {
-      // This should not happen, so consider input range as a full range.
-      LOG(DFATAL) << "Input file without frontier: " << file->ToString();
+      // Frontiers are reset on files imported by bulk load, otherwise it should not happen.
+      // In both cases consider input range as a full range.
+      LOG_IF(DFATAL, !file->imported) << "Input file without frontier: " << file->ToString();
       result.input_min = HybridTime::kMin;
       result.input_max = HybridTime::kMax;
       continue;

@@ -16,6 +16,7 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.AppInit;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
@@ -41,6 +42,7 @@ import io.ebean.DB;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.PersistenceContextScope;
 import io.ebean.SqlQuery;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Transactional;
@@ -673,6 +675,31 @@ public class Universe extends Model {
     Collection<NodeDetails> nodes = getNodes();
     for (NodeDetails node : nodes) {
       if (node.nodeName != null && node.nodeName.equals(nodeName)) {
+        return Optional.of(node);
+      }
+    }
+    return Optional.empty();
+  }
+
+  /**
+   * Returns details about a single node in the universe, looked up by its stable node UUID.
+   *
+   * <p>Prefer this over {@link #getNode(String)} for K8s subtasks whose node reference can outlive
+   * a rename of {@code NodeDetails.nodeName} (see {@code KubernetesCommandExecutor.processNodeInfo}
+   * which can rebuild the node set when {@code PlacementInfoUtil.isMultiAZ(provider)} flips).
+   *
+   * @return details about a node, null if it does not exist.
+   */
+  public NodeDetails getNodeByUuid(UUID nodeUuid) {
+    return maybeGetNodeByUuid(nodeUuid).orElse(null);
+  }
+
+  public Optional<NodeDetails> maybeGetNodeByUuid(UUID nodeUuid) {
+    if (nodeUuid == null) {
+      return Optional.empty();
+    }
+    for (NodeDetails node : getNodes()) {
+      if (nodeUuid.equals(node.nodeUuid)) {
         return Optional.of(node);
       }
     }
@@ -1335,6 +1362,67 @@ public class Universe extends Model {
     return find.query().where().eq("customer_id", customerId).findSet().stream()
         .peek(Universe::fillUniverseDetails)
         .collect(Collectors.toSet());
+  }
+
+  /**
+   * Returns node prefixes for all universes belonging to a customer without loading full universe
+   * details.
+   */
+  public static Set<String> getNodePrefixesForCustomer(Long customerId) {
+    if (AppInit.isH2Db()) {
+      return listUniversesForCustomerWithDetails(customerId).stream()
+          .map(u -> u.getUniverseDetails().nodePrefix)
+          .filter(StringUtils::isNotBlank)
+          .collect(Collectors.toSet());
+    }
+
+    String query =
+        "select universe_details_json::jsonb->>'nodePrefix' as node_prefix from universe"
+            + " where customer_id = :customerId"
+            + " and universe_details_json::jsonb->>'nodePrefix' is not null";
+    return customerSqlQuery(query, customerId).findList().stream()
+        .map(row -> row.getString("node_prefix"))
+        .filter(StringUtils::isNotBlank)
+        .collect(Collectors.toSet());
+  }
+
+  public static List<UUID> findUniverseUuidsByNodePrefix(Long customerId, String nodePrefix) {
+    if (AppInit.isH2Db()) {
+      return listUniversesForCustomerWithDetails(customerId).stream()
+          .filter(u -> matchesNodePrefix(u, nodePrefix))
+          .map(Universe::getUniverseUUID)
+          .collect(Collectors.toList());
+    }
+
+    String query =
+        "select universe_uuid from universe"
+            + " where customer_id = :customerId"
+            + " and universe_details_json::jsonb->>'nodePrefix' = :nodePrefix";
+    SqlQuery sqlQuery = customerSqlQuery(query, customerId).setParameter("nodePrefix", nodePrefix);
+    return sqlQuery.findList().stream()
+        .map(row -> (UUID) row.get("universe_uuid"))
+        .collect(Collectors.toList());
+  }
+
+  private static List<Universe> listUniversesForCustomerWithDetails(Long customerId) {
+    return find
+        .query()
+        .setPersistenceContextScope(PersistenceContextScope.QUERY)
+        .where()
+        .eq("customer_id", customerId)
+        .findList()
+        .stream()
+        .peek(Universe::fillUniverseDetails)
+        .collect(Collectors.toList());
+  }
+
+  private static SqlQuery customerSqlQuery(String query, Long customerId) {
+    return DB.sqlQuery(query).setParameter("customerId", customerId);
+  }
+
+  private static boolean matchesNodePrefix(Universe universe, String nodePrefix) {
+    return universe.getUniverseDetails().nodePrefix != null
+        && universe.getUniverseDetails().nodePrefix.equals(nodePrefix);
   }
 
   static boolean isUniversePaused(UUID uuid) {

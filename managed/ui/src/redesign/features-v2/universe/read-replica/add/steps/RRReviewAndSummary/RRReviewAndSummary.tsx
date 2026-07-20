@@ -1,16 +1,14 @@
-import { forwardRef, useCallback, useContext, useImperativeHandle, useMemo } from 'react';
+import { forwardRef, useContext, useImperativeHandle, useMemo } from 'react';
 import { useQuery } from 'react-query';
-import { toast } from 'react-toastify';
 import { useTranslation } from 'react-i18next';
 import { mui } from '@yugabyte-ui-library/core';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import { ArchitectureType } from '@app/components/configRedesign/providerRedesign/constants';
-import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { ClusterSpecClusterType, NodeDetailsDedicatedTo } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType, InstanceType, Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
-import type { UniverseResourceDetails } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { getUniverseResources, useAddCluster, useEditUniverse } from '@app/v2/api/universe/universe';
-import { getReadOnlyCluster } from '@app/redesign/utils/universeUtils';
+import type { UniverseResourceDetails, Universe, ClusterSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { getUniverseResources } from '@app/v2/api/universe/universe';
 import { RRBreadCrumbs } from '../../ReadReplicaBreadCrumbs';
 import {
   StepsRef,
@@ -18,12 +16,11 @@ import {
   AddRRContextMethods,
   AddReadReplicaSteps
 } from '../../AddReadReplicaContext';
-import { getClusterByType } from '../../../../edit-universe/EditUniverseUtils';
 import {
-  mapAddReadReplicaClusterPayload,
-  mapEditReadReplicaClusterSpec,
-  sumReadReplicaNodeCounts
-} from '../../addReadReplicaClusterPayload';
+  countMasterAndTServerNodes,
+  getClusterByType
+} from '../../../../edit-universe/EditUniverseUtils';
+import { sumReadReplicaNodeCounts } from '../../addReadReplicaClusterPayload';
 import {
   buildUniverseSpecCurrentStatePricing,
   buildUniverseSpecForReadReplicaPricing,
@@ -40,9 +37,7 @@ import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/creat
 import ReplicaIcon from '@app/redesign/assets/copy.svg';
 import ClusterIcon from '@app/redesign/assets/clusters.svg';
 
-import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
-import { getReadReplicaExitRoute } from '../../../readReplicaUtils';
-import { EditUniverseTabs } from '../../../../edit-universe/EditUniverseContext';
+import { useSubmitReadReplica } from '../../useSubmitReadReplica';
 
 const { Box } = mui;
 
@@ -86,6 +81,38 @@ function readResourceMetric(
 
 function finiteHourlyPrice(d: UniverseResourceDetails | undefined): number | undefined {
   return readResourceMetric(d, 'price_per_hour');
+}
+
+/**
+ * When dedicated masters are enabled, API/spec `num_nodes` is T-Server count only.
+ * Match create-universe review: display total = tservers + masters (masters ≈ RF).
+ */
+function getDedicatedPrimaryNodeTotal(
+  universeData: Universe | undefined,
+  primary: ClusterSpec | undefined,
+  apiNumNodes: number | undefined
+): number | undefined {
+  if (!primary?.node_spec?.dedicated_nodes) {
+    return undefined;
+  }
+
+  const fromDetails = universeData
+    ? countMasterAndTServerNodes(universeData, primary)
+    : undefined;
+  const tFromDetails = fromDetails?.[NodeDetailsDedicatedTo.TSERVER] ?? 0;
+  const mFromDetails = fromDetails?.[NodeDetailsDedicatedTo.MASTER] ?? 0;
+
+  const tserver =
+    tFromDetails > 0
+      ? tFromDetails
+      : apiNumNodes ?? finiteMetric(primary.num_nodes);
+  const master =
+    mFromDetails > 0 ? mFromDetails : finiteMetric(primary.replication_factor);
+
+  if (tserver === undefined || master === undefined) {
+    return undefined;
+  }
+  return tserver + master;
 }
 
 export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
@@ -140,15 +167,21 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     [pricingContext, regionsList]
   );
 
+  const proposedRrPricingUuid = useMemo(() => {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID();
+    }
+    return `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0').slice(-12)}`;
+  }, [rrPricingFingerprint]);
 
   const pricingSpec = useMemo(
     () =>
       buildUniverseSpecForReadReplicaPricing(
         pricingContext,
         regionsList as Region[],
-        ''
+        proposedRrPricingUuid
       ),
-    [pricingContext, regionsList]
+    [pricingContext, regionsList, proposedRrPricingUuid]
   );
 
   const { data: primaryPricingData, isLoading: isPrimaryPricingLoading } = useQuery(
@@ -168,7 +201,8 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     !isRegionsLoading &&
     Boolean(regionsList.length);
 
-  const { data: fullPricingData, isLoading: isFullPricingLoading } = useQuery(
+  /** RR-only fetch-universe-resources (primary omitted from clusters). */
+  const { data: rrPricingData, isLoading: isRrPricingLoading } = useQuery(
     ['readReplicaPricing', universeUuid, pricingSpec],
     () => getUniverseResources(pricingSpec!),
     {
@@ -179,13 +213,7 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     }
   );
 
-  const addCluster = useAddCluster();
-  const editUniverse = useEditUniverse();
-
-  const existingReadReplicaCluster = useMemo(
-    () => getReadOnlyCluster(universeData?.spec?.clusters ?? []),
-    [universeData?.spec?.clusters]
-  );
+  const { submit } = useSubmitReadReplica();
 
   const mapPins = useMemo(() => {
     const list = regionsList as Region[];
@@ -236,37 +264,11 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
 
   const instanceTypes: InstanceType[] = instanceTypesData ?? [];
 
-  const buildAddPayload = useCallback(() => {
-    return mapAddReadReplicaClusterPayload(
-      {
-        universeUuid,
-        universeData,
-        regionsAndAZ,
-        instanceSettings,
-        databaseSettings,
-        activeStep
-      },
-      regionsList as Region[]
-    );
-  }, [
-    universeUuid,
-    universeData,
-    regionsAndAZ,
-    instanceSettings,
-    databaseSettings,
-    activeStep,
-    regionsList
-  ]);
-
-  const buildEditPayload = useCallback(() => {
-    if (!existingReadReplicaCluster?.uuid) {
-      throw new Error('READ_REPLICA_CLUSTER_MISSING');
-    }
-    return {
-      expected_universe_version: -1,
-      clusters: [
-        mapEditReadReplicaClusterSpec(
-          existingReadReplicaCluster.uuid,
+  useImperativeHandle(
+    forwardRef,
+    () => ({
+      onNext: () =>
+        submit(
           {
             universeUuid,
             universeData,
@@ -275,95 +277,22 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
             databaseSettings,
             activeStep
           },
-          regionsList as Region[],
-          { enforceNumNodesFloor: true }
-        )
-      ]
-    };
-  }, [
-    existingReadReplicaCluster?.uuid,
-    universeUuid,
-    universeData,
-    regionsAndAZ,
-    instanceSettings,
-    databaseSettings,
-    activeStep,
-    regionsList
-  ]);
-
-  const redirectToUniverse = useCallback(() => {
-    window.location.href = getReadReplicaExitRoute(universeUuid, EditUniverseTabs.PLACEMENT);
-  }, [universeUuid]);
-
-  const runSubmitMutation = useCallback(
-    (mutationPromise: Promise<unknown>, errorPrefix: string) =>
-      mutationPromise.then(redirectToUniverse).catch((error) => {
-        console.error(errorPrefix, error);
-      }),
-    [redirectToUniverse]
-  );
-
-  useImperativeHandle(
-    forwardRef,
-    () => ({
-      onNext: () => {
-        if (!universeUuid) {
-          toast.error(t('validation.universeUuidMissing'));
-          return Promise.resolve();
-        }
-        let addPayload;
-        let editPayload;
-        try {
-          if (existingReadReplicaCluster?.uuid) {
-            editPayload = buildEditPayload();
-          } else {
-            addPayload = buildAddPayload();
-          }
-        } catch (e) {
-          toast.error(createErrorMessage(e));
-          return Promise.resolve();
-        }
-
-        if (existingReadReplicaCluster?.uuid && editPayload) {
-          return runSubmitMutation(
-            editUniverse.mutateAsync(
-              { uniUUID: universeUuid, data: editPayload },
-              {
-                onError(error: any) {
-                  toast.error(error?.response?.data?.error ?? t('toast.updateRRFailed'));
-                }
-              }
-            ),
-            'Update read replica failed:'
-          );
-        }
-
-        return runSubmitMutation(
-          addCluster.mutateAsync(
-            { uniUUID: universeUuid, data: addPayload! },
-            {
-              onError(error: any) {
-                toast.error(error?.response?.data?.error ?? t('toast.addRRFailed'));
-              }
-            }
-          ),
-          'Add read replica failed:'
-        );
-      },
+          regionsList as Region[]
+        ),
       onPrev: () => {
         moveToPreviousPage();
       }
     }),
     [
-      addCluster,
-      editUniverse,
-      existingReadReplicaCluster?.uuid,
-      buildAddPayload,
-      buildEditPayload,
-      moveToPreviousPage,
-      runSubmitMutation,
-      t,
-      universeUuid
+      submit,
+      universeUuid,
+      universeData,
+      regionsAndAZ,
+      instanceSettings,
+      databaseSettings,
+      activeStep,
+      regionsList,
+      moveToPreviousPage
     ]
   );
 
@@ -376,39 +305,30 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
       activeStep === AddReadReplicaSteps.REVIEW &&
       !isRegionsLoading &&
       Boolean(regionsList.length) &&
-      isFullPricingLoading);
+      isRrPricingLoading);
 
   const primaryHourly = finiteHourlyPrice(primaryPricingData);
-  const fullHourly = finiteHourlyPrice(fullPricingData);
+  const rrHourly = finiteHourlyPrice(rrPricingData);
   const hasPrimaryCost = primaryHourly !== undefined;
-  const hasFullCost = fullHourly !== undefined;
+  const hasRrCost = rrHourly !== undefined;
+  const hasTotalCost = hasPrimaryCost && hasRrCost;
+  const totalHourly =
+    hasTotalCost ? (primaryHourly as number) + (rrHourly as number) : undefined;
 
   const dash = '-';
 
-  const incremental = useMemo(() => {
-    if (!fullPricingData || !primaryPricingData) {
+  const rrMetrics = useMemo(() => {
+    if (!rrPricingData) {
       return { hourly: 0, nodes: 0, cores: 0, memGb: 0, storageGb: 0 };
     }
-    const ph = readResourceMetric(primaryPricingData, 'price_per_hour');
-    const fh = readResourceMetric(fullPricingData, 'price_per_hour');
-    const hourly =
-      ph !== undefined && fh !== undefined ? Math.max(0, fh - ph) : 0;
-    const pn = readResourceMetric(primaryPricingData, 'num_nodes');
-    const fn = readResourceMetric(fullPricingData, 'num_nodes');
-    const pc = readResourceMetric(primaryPricingData, 'num_cores');
-    const fc = readResourceMetric(fullPricingData, 'num_cores');
-    const pm = readResourceMetric(primaryPricingData, 'mem_size_gb');
-    const fm = readResourceMetric(fullPricingData, 'mem_size_gb');
-    const ps = readResourceMetric(primaryPricingData, 'volume_size_gb');
-    const fs = readResourceMetric(fullPricingData, 'volume_size_gb');
     return {
-      hourly,
-      nodes: fn !== undefined && pn !== undefined ? Math.max(0, fn - pn) : 0,
-      cores: fc !== undefined && pc !== undefined ? Math.max(0, fc - pc) : 0,
-      memGb: fm !== undefined && pm !== undefined ? Math.max(0, fm - pm) : 0,
-      storageGb: fs !== undefined && ps !== undefined ? Math.max(0, fs - ps) : 0
+      hourly: readResourceMetric(rrPricingData, 'price_per_hour') ?? 0,
+      nodes: readResourceMetric(rrPricingData, 'num_nodes') ?? 0,
+      cores: readResourceMetric(rrPricingData, 'num_cores') ?? 0,
+      memGb: readResourceMetric(rrPricingData, 'mem_size_gb') ?? 0,
+      storageGb: readResourceMetric(rrPricingData, 'volume_size_gb') ?? 0
     };
-  }, [fullPricingData, primaryPricingData]);
+  }, [rrPricingData]);
 
   const totalRRNodes = regionsAndAZ ? sumReadReplicaNodeCounts(regionsAndAZ) : 0;
 
@@ -460,7 +380,7 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     const storageLabel = t('reviewSummary.totalStorage');
 
     const p = primaryPricingData;
-    const f = fullPricingData;
+    const rr = rrPricingData;
     const pNodes = readResourceMetric(p, 'num_nodes');
     const pCores = readResourceMetric(p, 'num_cores');
     const pMem = readResourceMetric(p, 'mem_size_gb');
@@ -470,6 +390,19 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
       : undefined;
     const primaryNodesFromSpec = finiteMetric(primarySpecCluster?.num_nodes);
     const primaryNodesForScale = pNodes ?? primaryNodesFromSpec;
+    const dedicatedPrimaryNodes = getDedicatedPrimaryNodeTotal(
+      universeData,
+      primarySpecCluster as ClusterSpec | undefined,
+      pNodes
+    );
+    const primaryNodesDisplay =
+      dedicatedPrimaryNodes !== undefined
+        ? String(dedicatedPrimaryNodes)
+        : pNodes !== undefined
+          ? String(pNodes)
+          : primaryNodesFromSpec !== undefined
+            ? String(primaryNodesFromSpec)
+            : dash;
 
     /** Linear estimate: primary-universe metric × (RR nodes / primary nodes). */
     const scaleMetricFromPrimaryNodes = (primaryMetric: number | undefined): string | undefined => {
@@ -486,27 +419,27 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     };
 
     /**
-     * YBA often returns identical cores/mem/disk on primary-only vs full+RR pricing calls, so
-     * incremental delta is 0. When "same as primary" is on, scale from primary universe totals.
-     * When custom RR hardware is selected, derive totals from instance settings + instance-types
-     * API (or K8 custom resources); do not scale primary metrics or the RR row mirrors primary.
+     * Prefer RR-only fetch-universe metrics. When "same as primary" is on and the API
+     * omits cores/mem/disk, scale from primary universe totals. When custom RR hardware
+     * is selected, fall back to instance settings + instance-types API (or K8 resources).
      */
     const rrHardwareCell = (
       metricKey: RrHardwareMetricKey,
-      incrementalVal: number,
+      rrMetricVal: number,
       primaryMetric: number | undefined
     ): string => {
       const fromPrimary = scaleMetricFromPrimaryNodes(primaryMetric);
-      const hasPair =
-        readResourceMetric(f, metricKey) !== undefined &&
-        readResourceMetric(p, metricKey) !== undefined;
+      const hasRrMetric = readResourceMetric(rr, metricKey) !== undefined;
 
       if (inheritPrimaryHardware) {
+        if (hasRrMetric && rrMetricVal !== 0) {
+          return String(rrMetricVal);
+        }
         if (fromPrimary !== undefined) {
           return fromPrimary;
         }
-        if (hasPair) {
-          return String(incrementalVal);
+        if (hasRrMetric) {
+          return String(rrMetricVal);
         }
         return dash;
       }
@@ -518,14 +451,14 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
             ? rrSpecHardwareTotals?.memGb
             : rrSpecHardwareTotals?.storageGb;
 
-      if (hasPair && incrementalVal !== 0) {
-        return String(incrementalVal);
+      if (hasRrMetric && rrMetricVal !== 0) {
+        return String(rrMetricVal);
       }
       if (specVal !== undefined && Number.isFinite(specVal)) {
         return String(Math.round(specVal * 10) / 10);
       }
-      if (hasPair) {
-        return String(incrementalVal);
+      if (hasRrMetric) {
+        return String(rrMetricVal);
       }
       return dash;
     };
@@ -536,12 +469,7 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
       attributes: [
         {
           name: nodesLabel,
-          value:
-            pNodes !== undefined
-              ? String(pNodes)
-              : primaryNodesFromSpec !== undefined
-                ? String(primaryNodesFromSpec)
-                : dash
+          value: primaryNodesDisplay
         },
         {
           name: coresLabel,
@@ -562,11 +490,11 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
         : dash
     });
 
-    const rrCoresDisplay = rrHardwareCell('num_cores', incremental.cores, pCores);
-    const rrMemDisplay = rrHardwareCell('mem_size_gb', incremental.memGb, pMem);
+    const rrCoresDisplay = rrHardwareCell('num_cores', rrMetrics.cores, pCores);
+    const rrMemDisplay = rrHardwareCell('mem_size_gb', rrMetrics.memGb, pMem);
     const rrStorageDisplay = rrHardwareCell(
       'volume_size_gb',
-      incremental.storageGb,
+      rrMetrics.storageGb,
       pVol
     );
 
@@ -577,9 +505,8 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
         {
           name: nodesLabel,
           value:
-            readResourceMetric(f, 'num_nodes') !== undefined &&
-            readResourceMetric(p, 'num_nodes') !== undefined
-              ? String(incremental.nodes)
+            readResourceMetric(rr, 'num_nodes') !== undefined
+              ? String(rrMetrics.nodes)
               : totalRRNodes > 0
                 ? String(totalRRNodes)
                 : dash
@@ -597,16 +524,10 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
           value: rrStorageDisplay
         }
       ],
-      dailyCost:
-        readResourceMetric(f, 'price_per_hour') !== undefined &&
-        readResourceMetric(p, 'price_per_hour') !== undefined
-          ? (incremental.hourly * 24).toFixed(2)
-          : dash,
-      monthlyCost:
-        readResourceMetric(f, 'price_per_hour') !== undefined &&
-        readResourceMetric(p, 'price_per_hour') !== undefined
-          ? (incremental.hourly * 24 * MONTHLY_COST_MULTIPLIER).toFixed(2)
-          : dash
+      dailyCost: hasRrCost ? (rrMetrics.hourly * 24).toFixed(2) : dash,
+      monthlyCost: hasRrCost
+        ? (rrMetrics.hourly * 24 * MONTHLY_COST_MULTIPLIER).toFixed(2)
+        : dash
     });
 
     return items;
@@ -614,21 +535,20 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     t,
     universeData,
     primaryPricingData,
-    fullPricingData,
+    rrPricingData,
     totalRRNodes,
-    incremental,
+    rrMetrics,
     dash,
     hasPrimaryCost,
-    hasFullCost,
+    hasRrCost,
     inheritPrimaryHardware,
     primaryHourly,
-    fullHourly,
     rrSpecHardwareTotals
   ]);
 
-  const totalDailyCost = hasFullCost ? (fullHourly! * 24).toFixed(2) : dash;
-  const totalMonthlyCost = hasFullCost
-    ? (fullHourly! * 24 * MONTHLY_COST_MULTIPLIER).toFixed(2)
+  const totalDailyCost = hasTotalCost ? (totalHourly! * 24).toFixed(2) : dash;
+  const totalMonthlyCost = hasTotalCost
+    ? (totalHourly! * 24 * MONTHLY_COST_MULTIPLIER).toFixed(2)
     : dash;
 
   if (isPageLoading) {

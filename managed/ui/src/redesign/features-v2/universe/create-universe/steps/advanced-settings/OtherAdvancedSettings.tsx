@@ -25,11 +25,14 @@ import {
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
+import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
 import { constructPlacements } from '../../utils/createUniversePayload';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { OtherAdvancedProps } from './dtos';
+import { USER_TAGS_FIELD } from '../../fields/FieldNames';
 import { OtherAdvancedValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/advanced-settings/ValidationSchema';
+import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 
 const { Box, Typography } = mui;
 
@@ -52,6 +55,13 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const methods = useForm<OtherAdvancedProps>({
     resolver: yupResolver(OtherAdvancedValidationSchema(t, provider?.code)),
     defaultValues: {
+      ...DEFAULT_COMMUNICATION_PORTS,
+      instanceTags: [],
+      awsArnString: '',
+      useSystemd: true,
+      accessKeyCode: '',
+      universeOverrides: '',
+      azOverrides: {},
       ...(provider?.code !== CloudType.kubernetes && {
         instanceTags: [
           {
@@ -60,21 +70,22 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
           }
         ]
       }),
-      ...(provider?.code === CloudType.kubernetes && {
-        azOverrides: {},
-        universeOverrides: ''
-      }),
       ...otherAdvancedSettings
     },
     mode: 'onChange'
   });
 
+  usePersistStepFormValues(methods.watch, methods.getValues, saveOtherAdvancedSettings);
+
+  const { watch } = methods;
+
+  const userTagsValue = watch(USER_TAGS_FIELD);
+
   useImperativeHandle(
     forwardRef,
     () => ({
       onNext: () => {
-        return methods.handleSubmit((data) => {
-          saveOtherAdvancedSettings(data);
+        return methods.handleSubmit(() => {
           moveToNextPage();
         })();
       },
@@ -113,7 +124,11 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
           </YBAccordion>
         )}
         {provider && isCloudVendorCloudType(provider?.code) && (
-          <YBAccordion titleContent={t('userTagsHeader')} sx={{ width: '100%' }}>
+          <YBAccordion
+            titleContent={t('userTagsHeader')}
+            sx={{ width: '100%' }}
+            defaultExpanded={userTagsValue?.length > 1 ? true : false}
+          >
             <UserTagsField disabled={false} />
           </YBAccordion>
         )}

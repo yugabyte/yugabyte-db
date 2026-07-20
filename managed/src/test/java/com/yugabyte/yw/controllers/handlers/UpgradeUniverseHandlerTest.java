@@ -73,7 +73,6 @@ import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
-import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
@@ -2208,28 +2207,6 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
         .submit(
             eq(TaskType.KubernetesConfigureExportTelemetryConfig),
             any(ExportTelemetryConfigParams.class));
-  }
-
-  @Test
-  public void testSubmitExportTelemetryConfigsRejectsActiveMetricsOnK8s() {
-    Customer c = ModelFactory.testCustomer();
-    Universe u = createKubernetesUniverse(c);
-
-    MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
-    UniverseMetricsExporterConfig exporter = new UniverseMetricsExporterConfig();
-    exporter.setExporterUuid(UUID.randomUUID());
-    metricsExportConfig.setUniverseMetricsExporterConfig(Collections.singletonList(exporter));
-
-    ExportTelemetryConfigParams params =
-        buildExportTelemetryParams(u, null, null, metricsExportConfig);
-
-    PlatformServiceException ex =
-        assertThrows(
-            PlatformServiceException.class,
-            () -> handler.submitExportTelemetryConfigs(params, c, u));
-    assertTrue(
-        "Error message must mention k8s metrics rejection, got: " + ex.getMessage(),
-        ex.getMessage().contains("Metrics export is not yet supported for kubernetes"));
   }
 
   @Test

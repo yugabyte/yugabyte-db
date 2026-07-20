@@ -49,6 +49,7 @@ OCI_FINGERPRINT_ENV = "OCI_FINGERPRINT"
 OCI_PRIVATE_KEY_CONTENT_ENV = "OCI_PRIVATE_KEY_CONTENT"
 OCI_REGION_ENV = "OCI_REGION"
 OCI_COMPARTMENT_ID_ENV = "OCI_COMPARTMENT_ID"
+OCI_AUTH_TYPE_ENV = "OCI_AUTH_TYPE"
 
 OCI_VOLUME_TYPE_STANDARD = "standard"
 OCI_VOLUME_TYPE_HIGH_PERFORMANCE = "high_performance"
@@ -106,12 +107,23 @@ def sanitize_dns_label(name, max_length=MAX_DNS_LABEL_LENGTH):
     return label[:max_length].rstrip("-") or None
 
 
+def uses_instance_principal():
+    return os.environ.get(OCI_AUTH_TYPE_ENV, "").upper() == "INSTANCE_PRINCIPAL"
+
+
 def get_oci_config():
+    region = os.environ.get(OCI_REGION_ENV)
+
+    if uses_instance_principal():
+        if not region:
+            raise YBOpsRuntimeError(
+                "OCI_REGION is required when using instance principal authentication.")
+        return {"region": region}
+
     tenancy_id = os.environ.get(OCI_TENANCY_ID_ENV)
     user_id = os.environ.get(OCI_USER_ID_ENV)
     fingerprint = os.environ.get(OCI_FINGERPRINT_ENV)
     private_key_content = os.environ.get(OCI_PRIVATE_KEY_CONTENT_ENV)
-    region = os.environ.get(OCI_REGION_ENV)
 
     if tenancy_id and user_id and fingerprint and private_key_content and region:
         config = {
@@ -134,8 +146,8 @@ def get_oci_config():
         "OCI configuration not found. Set environment variables "
         "(OCI_TENANCY_ID, OCI_USER_ID, OCI_FINGERPRINT, "
         "OCI_PRIVATE_KEY_CONTENT, "
-        "OCI_REGION, OCI_COMPARTMENT_ID) or ensure running on OCI instance "
-        "with instance principal.")
+        "OCI_REGION, OCI_COMPARTMENT_ID) or set OCI_AUTH_TYPE=INSTANCE_PRINCIPAL "
+        "when running on an OCI instance with instance principal.")
 
 
 def get_compartment_id():
@@ -163,6 +175,12 @@ class OciCloudAdmin:
             self._config = get_oci_config()
         return self._config
 
+    def _build_client(self, client_class):
+        if uses_instance_principal():
+            signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+            return client_class(self.config, signer=signer)
+        return client_class(self.config)
+
     @property
     def compartment_id(self):
         if self._compartment_id is None:
@@ -172,25 +190,25 @@ class OciCloudAdmin:
     @property
     def compute_client(self):
         if self._compute_client is None:
-            self._compute_client = ComputeClient(self.config)
+            self._compute_client = self._build_client(ComputeClient)
         return self._compute_client
 
     @property
     def network_client(self):
         if self._network_client is None:
-            self._network_client = VirtualNetworkClient(self.config)
+            self._network_client = self._build_client(VirtualNetworkClient)
         return self._network_client
 
     @property
     def blockstorage_client(self):
         if self._blockstorage_client is None:
-            self._blockstorage_client = BlockstorageClient(self.config)
+            self._blockstorage_client = self._build_client(BlockstorageClient)
         return self._blockstorage_client
 
     @property
     def identity_client(self):
         if self._identity_client is None:
-            self._identity_client = IdentityClient(self.config)
+            self._identity_client = self._build_client(IdentityClient)
         return self._identity_client
 
     def set_region(self, region):

@@ -139,7 +139,9 @@ class IndexedTableReader {
 
   void Restart(Slice start_key) {
     iter_->Refresh(docdb::SeekFilter::kAll);
-    iter_->Seek(start_key);
+    // SeekTuple prepends the cotable / colocation prefix to the key, while Seek would use it as
+    // is and miss the whole colocated table region.
+    iter_->SeekTuple(start_key, docdb::UpdateFilterKey::kFalse);
   }
 
   Result<bool> FetchNext() {
@@ -447,6 +449,7 @@ Status ReverseMappingBackfiller::Apply(rocksdb::DirectWriteHandler& handler) {
   const auto& ybctids = context_->ybctids();
   DCHECK_EQ(entries.size(), ybctids.size());
 
+  // Backfiller always uses legacy format, while table-owned vector reverse mapping uses v1 format.
   for (size_t i = 0; i != ybctids.size(); ++i) {
     docdb::DocVectorIndex::ApplyReverseEntry(
         handler, ybctids[i], entries[i].value.AsSlice(), DocHybridTime(backfill_ht, 0));
@@ -557,7 +560,7 @@ Status TabletVectorIndexes::Backfill(
 }
 
 void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
-  auto list = VectorIndexesList();
+  auto list = List();
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "list: " << AsString(list);
   if (!list) {
     return;
@@ -642,21 +645,14 @@ void TabletVectorIndexes::StartShutdown() {
     return;
   }
 
-  if (!has_vector_indexes_.exchange(false)) {
+  // Trigger vector indexes shutting down so they release ScopedRWOperation instances before
+  // RocksDB shutdown. The list stays intact until CompleteShutdown, so callers racing shutdown
+  // still observe the real indexes instead of an empty list.
+  auto list = List();
+  if (!list) {
     return;
   }
-
-  {
-    std::lock_guard lock(vector_indexes_mutex_);
-    vector_indexes_cleanup_list_.swap(vector_indexes_list_);
-    vector_indexes_map_.clear();
-  }
-
-  if (!vector_indexes_cleanup_list_) {
-    return;
-  }
-
-  for (auto& index : *vector_indexes_cleanup_list_) {
+  for (const auto& index : *list) {
     index->StartShutdown();
   }
 }
@@ -668,18 +664,24 @@ void TabletVectorIndexes::CompleteShutdown(std::vector<std::string>& out_paths) 
     return;
   }
 
-  if (!vector_indexes_cleanup_list_) {
-    return;
+  docdb::DocVectorIndexesPtr list;
+  {
+    std::lock_guard lock(vector_indexes_mutex_);
+    list.swap(vector_indexes_list_);
+    vector_indexes_map_.clear();
+    has_vector_indexes_.store(false, std::memory_order_release);
   }
 
-  for (auto& index : *vector_indexes_cleanup_list_) {
-    out_paths.push_back(index->path());
-    index->CompleteShutdown();
+  if (!list) {
+    return;
   }
 
   // TODO(vector_index) It could happen that there are external references to vector index.
   // Wait actual shutdown.
-  vector_indexes_cleanup_list_->clear();
+  for (auto& index : *list) {
+    out_paths.push_back(index->path());
+    index->CompleteShutdown();
+  }
 }
 
 docdb::DocVectorIndexPtr TabletVectorIndexes::IndexForTableUnlocked(const TableId& table_id) const {
@@ -832,7 +834,7 @@ Status TabletVectorIndexes::Verify() {
     while (VERIFY_RESULT(reader.FetchNext())) {
       auto value = dockv::EncodedDocVectorValue::FromSlice(reader.current_vector_slice());
       auto vector_id = VERIFY_RESULT(value.DecodeId());
-      auto ybctid = VERIFY_RESULT(reverse_mapping_reader->Fetch(vector_id));
+      auto ybctid = VERIFY_RESULT(reverse_mapping_reader->FetchYbctid(vector_id));
       if (reader.current_ybctid() != ybctid) {
         LOG_WITH_FUNC(DFATAL)
             << "Wrong reverse record for: " << vector_id << ": " << ybctid.ToDebugHexString()
@@ -884,7 +886,6 @@ void VectorIndexList::Flush() {
   if (!list_) {
     return;
   }
-  // TODO(vector_index) Check flush order between vector indexes and intents db
   for (const auto& index : *list_) {
     WARN_NOT_OK(index->Flush(), "Flush vector index");
   }

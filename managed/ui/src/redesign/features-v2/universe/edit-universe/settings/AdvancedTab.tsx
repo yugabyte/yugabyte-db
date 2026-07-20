@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { isEmpty } from 'lodash';
+import { isEmpty, drop } from 'lodash';
 import { useTranslation, Trans } from 'react-i18next';
-import { mui, YBButton, YBTag, YBTab, YBTabs, YBTable } from '@yugabyte-ui-library/core';
+import { mui, YBButton, YBTag, YBTab, YBTabs, YBTable, YBTooltip } from '@yugabyte-ui-library/core';
 import { useToggle } from 'react-use';
 import { toast } from 'react-toastify';
 import {
@@ -161,7 +161,6 @@ const EditK8sHelmOverrides = () => {
     setHelmOverridesModal(false);
   };
 
-  console.log(placementSpec);
   const handleSubmit = (universeOverrides: string, azOverrides: Record<string, string>) => {
     editOverrides.mutate(
       {
@@ -270,16 +269,35 @@ export const AdvancedTab = () => {
   const accessKeyValue = primaryCluster?.provider_spec?.access_key_code;
   const awsArnString = primaryCluster?.provider_spec?.aws_instance_profile;
   const userTags = transformInstanceTags(primaryCluster?.instance_tags);
+  const isProxyEnabled =
+    networking_spec?.proxy_config?.http_proxy || networking_spec?.proxy_config?.https_proxy;
 
   const getNoProxyList = () => {
     if (!networking_spec?.proxy_config?.no_proxy_list?.length) {
       return '-';
     }
+
     return (
       <>
         {networking_spec?.proxy_config?.no_proxy_list?.[0]}
         <YBTag size="small" variant="light">
-          +{(networking_spec?.proxy_config?.no_proxy_list?.length ?? 1) - 1}
+          <YBTooltip
+            title={
+              <Box sx={{ display: 'flex', flexDirection: 'column', color: '#4E5F6D' }}>
+                <ul style={{ listStyleType: 'disc', paddingInlineStart: '20px' }}>
+                  {drop(networking_spec?.proxy_config?.no_proxy_list, 1).map((nl) => (
+                    <li>
+                      <Typography sx={{ lineHeight: '20px' }} variant="subtitle1">
+                        {nl}
+                      </Typography>
+                    </li>
+                  ))}
+                </ul>
+              </Box>
+            }
+          >
+            <span>+{(networking_spec?.proxy_config?.no_proxy_list?.length ?? 1) - 1}</span>
+          </YBTooltip>
         </YBTag>
       </>
     );
@@ -296,47 +314,81 @@ export const AdvancedTab = () => {
             sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
           >
             {t('proxyConfiguration')}
-            <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
-              <YBButton
-                dataTestId="edit-security-transit-button"
-                variant="ghost"
-                startIcon={<EditIcon />}
-                onClick={() => {
-                  setEditAdvancedSettingsModalVisible(true);
-                }}
-                disabled={!isUniverseReady}
-              >
-                {t('edit', { keyPrefix: 'common' })}
-              </YBButton>
-            </RbacValidator>
+            {isProxyEnabled && (
+              <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
+                <YBButton
+                  dataTestId="edit-security-transit-button"
+                  variant="ghost"
+                  startIcon={<EditIcon />}
+                  onClick={() => {
+                    setEditAdvancedSettingsModalVisible(true);
+                  }}
+                  disabled={!isUniverseReady}
+                >
+                  {t('edit', { keyPrefix: 'common' })}
+                </YBButton>
+              </RbacValidator>
+            )}
           </StyledHeader>
-          <StyledContent>
-            <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
-              <div>
-                <span className="header">{t('proxyServer')}</span>
-                <span className="value sameline nogap">
-                  {t(networking_spec?.proxy_config ? 'enabled' : 'disabled', {
-                    keyPrefix: 'common'
-                  })}
-                  {networking_spec?.proxy_config ? <CheckedIcon /> : <DisabledIcon />}
-                </span>
-              </div>
-            </StyledInfoRow>
-            <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
-              <div style={{ width: '300px' }}>
-                <span className="header">{t('secureWebProxy')}</span>
-                <span className="value ">{networking_spec?.proxy_config?.https_proxy ?? '-'}</span>
-              </div>
-              <div style={{ width: '300px' }}>
-                <span className="header">{t('webProxy')}</span>
-                <span className="value ">{networking_spec?.proxy_config?.http_proxy ?? '-'}</span>
-              </div>
-              <div style={{ width: '300px' }}>
-                <span className="header">{t('bypassProxyList')}</span>
-                <span className="value sameline">{getNoProxyList()}</span>
-              </div>
-            </StyledInfoRow>
-          </StyledContent>
+          {
+            <StyledContent>
+              {isProxyEnabled ? (
+                <>
+                  <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
+                    <div>
+                      <span className="header">{t('proxyServer')}</span>
+                      <span className="value sameline nogap">
+                        {t(networking_spec?.proxy_config ? 'enabled' : 'disabled', {
+                          keyPrefix: 'common'
+                        })}
+                        {networking_spec?.proxy_config ? <CheckedIcon /> : <DisabledIcon />}
+                      </span>
+                    </div>
+                  </StyledInfoRow>
+                  <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
+                    <div style={{ width: '300px' }}>
+                      <span className="header">{t('secureWebProxy')}</span>
+                      <span className="value ">
+                        {networking_spec?.proxy_config?.https_proxy ?? '-'}
+                      </span>
+                    </div>
+                    <div style={{ width: '300px' }}>
+                      <span className="header">{t('webProxy')}</span>
+                      <span className="value ">
+                        {networking_spec?.proxy_config?.http_proxy ?? '-'}
+                      </span>
+                    </div>
+                    <div style={{ width: '300px' }}>
+                      <span className="header">{t('bypassProxyList')}</span>
+                      <span className="value sameline">{getNoProxyList()}</span>
+                    </div>
+                  </StyledInfoRow>
+                </>
+              ) : (
+                <StyledEmptyState>
+                  <Typography variant="body2" sx={{ color: '#4E5F6D' }}>
+                    <Trans t={t} i18nKey={'proxyHelper'} components={{ a: <StyledLink /> }} />
+                  </Typography>
+                  <RbacValidator
+                    accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER}
+                    isControl
+                  >
+                    <YBButton
+                      variant="secondary"
+                      dataTestId="add-gflags-button"
+                      sx={{ mt: 2 }}
+                      disabled={!isUniverseReady}
+                      onClick={() => {
+                        setEditAdvancedSettingsModalVisible(true);
+                      }}
+                    >
+                      {t('enableProxyServer')}
+                    </YBButton>
+                  </RbacValidator>
+                </StyledEmptyState>
+              )}
+            </StyledContent>
+          }
           <EditAdvancedSettingsModal
             visible={isEditAdvancedSettingsModalVisible}
             onClose={() => setEditAdvancedSettingsModalVisible(false)}

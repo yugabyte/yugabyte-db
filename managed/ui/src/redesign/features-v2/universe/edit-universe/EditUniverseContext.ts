@@ -9,7 +9,8 @@ export enum EditUniverseTabs {
   SECURITY = 'security',
   DATABASE = 'database',
   ADVANCED = 'advanced',
-  LOGS = 'logs'
+  LOGS = 'logs',
+  TELEMETRY_EXPORT = 'telemetry-export'
 }
 
 export type EditUniverseContextProps = {

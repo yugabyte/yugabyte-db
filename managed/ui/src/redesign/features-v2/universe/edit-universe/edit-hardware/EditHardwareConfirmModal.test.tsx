@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { ThemeProvider } from '@material-ui/core';
 import { Provider } from 'react-redux';
@@ -8,8 +8,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mainTheme } from '@app/redesign/theme/mainTheme';
 import { EditUniverseContext, EditUniverseTabs } from '../EditUniverseContext';
 import { EditHardwareConfirmModal } from './EditHardwareConfirmModal';
-import { ClusterSpecClusterType, type Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import {
+  ClusterSpecClusterType,
+  ResizeUpdateOption,
+  type Universe
+} from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import type { InstanceSettingProps } from '../../create-universe/steps/hardware-settings/dtos';
+import type { ReviewHardwareConfirmPayload } from './ReviewHardwareChangesModal';
 import {
   FIXTURE_ASYNC_CLUSTER_UUID,
   FIXTURE_PRIMARY_CLUSTER_UUID,
@@ -26,7 +31,14 @@ import {
 const mockState = vi.hoisted(() => ({
   editMutate: vi.fn(),
   resizeMutate: vi.fn(),
-  settings: {} as InstanceSettingProps
+  checkMutate: vi.fn(),
+  toastError: vi.fn(),
+  settings: {} as InstanceSettingProps,
+  strategy: 'rolling' as 'rolling' | 'migrate',
+  resizeOptions: [
+    'SMART_RESIZE',
+    'FULL_MOVE'
+  ] as Array<'FULL_MOVE' | 'SMART_RESIZE' | 'SMART_RESIZE_NON_RESTART'>
 }));
 
 vi.mock('react-i18next', () => ({
@@ -73,6 +85,13 @@ vi.mock('../../../../../v2/api/universe/universe', () => ({
   useResizeNodes: () => ({
     mutate: mockState.resizeMutate,
     isLoading: false
+  }),
+  useCheckResizeOptions: () => ({
+    mutate: (vars: unknown, opts?: { onSuccess?: (data: { options: typeof mockState.resizeOptions }) => void }) => {
+      mockState.checkMutate(vars);
+      opts?.onSuccess?.({ options: mockState.resizeOptions });
+    },
+    isLoading: false
   })
 }));
 
@@ -91,28 +110,35 @@ vi.mock('../../create-universe/helpers/ToastUtils', () => ({
   useYBToast: () => ({
     info: vi.fn(),
     success: vi.fn(),
-    error: vi.fn(),
+    error: mockState.toastError,
     warn: vi.fn(),
     inProgress: vi.fn()
   })
 }));
 
-vi.mock('./ReviewHardwareChangesModal', () => ({
-  hardwareReviewSectionHasVisibleChanges: (current: Record<string, unknown>, next: Record<string, unknown>) =>
-    JSON.stringify(current) !== JSON.stringify(next),
-  ReviewHardwareChangesModal: ({
-    visible,
-    onConfirm
-  }: {
-    visible: boolean;
-    onConfirm: (delaySeconds: number) => void;
-  }) =>
-    visible ? (
-      <button data-testid="confirm-review" onClick={() => onConfirm(1)}>
-        confirm
-      </button>
-    ) : null
-}));
+vi.mock('./ReviewHardwareChangesModal', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./ReviewHardwareChangesModal')>();
+  return {
+    ...actual,
+    ReviewHardwareChangesModal: ({
+      visible,
+      onConfirm
+    }: {
+      visible: boolean;
+      onConfirm: (payload: ReviewHardwareConfirmPayload) => void;
+    }) =>
+      visible ? (
+        <button
+          data-testid="confirm-review"
+          onClick={() =>
+            onConfirm({ delaySeconds: 1, strategy: mockState.strategy })
+          }
+        >
+          confirm
+        </button>
+      ) : null
+  };
+});
 
 vi.mock('../../create-universe/steps', async () => {
   const ReactActual = await vi.importActual<typeof import('react')>('react');
@@ -227,8 +253,9 @@ function renderModal(
   );
 }
 
-function submitAndConfirm() {
+async function submitAndConfirm() {
   fireEvent.click(screen.getByText('submitLabel'));
+  await waitFor(() => expect(screen.getByTestId('confirm-review')).toBeInTheDocument());
   fireEvent.click(screen.getByTestId('confirm-review'));
 }
 
@@ -239,12 +266,16 @@ describe('EditHardwareConfirmModal payloads', () => {
   beforeEach(() => {
     mockState.editMutate.mockReset();
     mockState.resizeMutate.mockReset();
+    mockState.checkMutate.mockReset();
+    mockState.toastError.mockReset();
     mockState.settings = vmSettings();
+    mockState.strategy = 'rolling';
+    mockState.resizeOptions = [ResizeUpdateOption.SMART_RESIZE, ResizeUpdateOption.FULL_MOVE];
   });
 
-  it('uses resize-nodes for VM non-dedicated instance/storage edits without placement fields', () => {
+  it('uses resize-nodes for VM non-dedicated instance/storage edits without placement fields', async () => {
     renderModal(makeNonGeoUniverse());
-    submitAndConfirm();
+    await submitAndConfirm();
 
     const payload = getFirstResizePayload();
     expect(payload.uuid).toBe(FIXTURE_PRIMARY_CLUSTER_UUID);
@@ -254,13 +285,15 @@ describe('EditHardwareConfirmModal payloads', () => {
     expect(mockState.editMutate).not.toHaveBeenCalled();
   });
 
-  it('uses edit-universe for VM non-dedicated volume-count edits', () => {
+  it('uses edit-universe for VM non-dedicated volume-count edits', async () => {
     mockState.settings = vmSettings({
       deviceInfo: { ...vmSettings().deviceInfo!, numVolumes: 2 }
     });
+    mockState.resizeOptions = [ResizeUpdateOption.FULL_MOVE];
+    mockState.strategy = 'migrate';
 
     renderModal(makeNonGeoUniverse());
-    submitAndConfirm();
+    await submitAndConfirm();
 
     const payload = getFirstEditPayload();
     expect(payload.node_spec.storage_spec.num_volumes).toBe(2);
@@ -269,9 +302,87 @@ describe('EditHardwareConfirmModal payloads', () => {
     expect(mockState.resizeMutate).not.toHaveBeenCalled();
   });
 
-  it('keeps geo-partitioned VM hardware edits cluster-level only', () => {
+  it('uses edit-universe for VM non-dedicated storage-type (EBS) edits', async () => {
+    mockState.settings = vmSettings({
+      instanceType: 'c5.xlarge',
+      deviceInfo: {
+        ...vmSettings().deviceInfo!,
+        storageType: 'IO1',
+        diskIops: 3000,
+        throughput: 125
+      }
+    });
+    mockState.resizeOptions = [ResizeUpdateOption.FULL_MOVE];
+    mockState.strategy = 'migrate';
+
+    renderModal(makeNonGeoUniverse());
+    await submitAndConfirm();
+
+    const payload = getFirstEditPayload();
+    expect(payload.node_spec.storage_spec.storage_type).toBe('IO1');
+    expect(payload.node_spec.storage_spec.volume_size).toBe(100);
+    expect(payload.node_spec.storage_spec.num_volumes).toBe(1);
+    expect(mockState.resizeMutate).not.toHaveBeenCalled();
+  });
+
+  it('routes migrate strategy to edit-universe when both options are available', async () => {
+    mockState.strategy = 'migrate';
+    renderModal(makeNonGeoUniverse());
+    await submitAndConfirm();
+
+    expect(mockState.editMutate).toHaveBeenCalled();
+    expect(mockState.resizeMutate).not.toHaveBeenCalled();
+  });
+
+  it('rejects rolling strategy when only FULL_MOVE is available', async () => {
+    mockState.resizeOptions = [ResizeUpdateOption.FULL_MOVE];
+    mockState.strategy = 'rolling';
+    renderModal(makeNonGeoUniverse());
+    await submitAndConfirm();
+
+    expect(mockState.resizeMutate).not.toHaveBeenCalled();
+    expect(mockState.editMutate).not.toHaveBeenCalled();
+    expect(mockState.toastError).toHaveBeenCalled();
+  });
+
+  it('uses resize-nodes for SMART_RESIZE_NON_RESTART rolling strategy', async () => {
+    mockState.resizeOptions = [
+      ResizeUpdateOption.SMART_RESIZE_NON_RESTART,
+      ResizeUpdateOption.FULL_MOVE
+    ];
+    mockState.strategy = 'rolling';
+    renderModal(makeNonGeoUniverse());
+    await submitAndConfirm();
+
+    expect(mockState.resizeMutate).toHaveBeenCalled();
+    expect(mockState.editMutate).not.toHaveBeenCalled();
+  });
+
+  it('falls back to edit-universe when check-resize returns empty options', async () => {
+    mockState.resizeOptions = [];
+    mockState.strategy = 'migrate';
+    renderModal(makeNonGeoUniverse());
+    await submitAndConfirm();
+
+    expect(mockState.editMutate).toHaveBeenCalled();
+    expect(mockState.resizeMutate).not.toHaveBeenCalled();
+  });
+
+  it('calls checkResizeOptions with cluster_uuid and edit node_spec for VM edits', async () => {
+    renderModal(makeNonGeoUniverse());
+    fireEvent.click(screen.getByText('submitLabel'));
+    await waitFor(() => expect(mockState.checkMutate).toHaveBeenCalled());
+
+    const args = mockState.checkMutate.mock.calls[0][0];
+    expect(args.uniUUID).toBeTruthy();
+    expect(args.data.cluster_uuid).toBe(FIXTURE_PRIMARY_CLUSTER_UUID);
+    expect(args.data.node_spec.instance_type).toBe('c5.2xlarge');
+    expect(args.data.node_spec.storage_spec).toBeTruthy();
+  });
+
+  it('keeps geo-partitioned VM hardware edits cluster-level only', async () => {
     renderModal(makeSingleGeoPartitionUniverse());
-    submitAndConfirm();
+    await submitAndConfirm();
 
     const payload = getFirstResizePayload();
     expect(payload.uuid).toBe(FIXTURE_PRIMARY_CLUSTER_UUID);
@@ -279,35 +390,39 @@ describe('EditHardwareConfirmModal payloads', () => {
     expect(payload).not.toHaveProperty('partitions_spec');
   });
 
-  it('emits only tserver changes for dedicated VM tserver mode', () => {
+  it('emits only tserver changes for dedicated VM tserver mode', async () => {
     renderModal(makeNonGeoUniverseWithDedicatedNodeDetails(), { mode: 'tserver' });
-    submitAndConfirm();
+    await submitAndConfirm();
 
     const payload = getFirstResizePayload();
     expect(payload.node_spec.tserver.instance_type).toBe('c5.2xlarge');
     expect(payload.node_spec).not.toHaveProperty('master');
+    expect(mockState.checkMutate).toHaveBeenCalled();
+    expect(mockState.checkMutate.mock.calls[0][0].data.node_spec.tserver).toBeTruthy();
   });
 
-  it('emits only master changes for dedicated VM master mode', () => {
+  it('emits only master changes for dedicated VM master mode', async () => {
     mockState.settings = vmSettings({
       instanceType: 'c5.xlarge',
       masterInstanceType: 'c5.4xlarge'
     });
 
     renderModal(makeNonGeoUniverseWithDedicatedNodeDetails(), { mode: 'master' });
-    submitAndConfirm();
+    await submitAndConfirm();
 
     const payload = getFirstResizePayload();
     expect(payload.node_spec.master.instance_type).toBe('c5.4xlarge');
     expect(payload.node_spec).not.toHaveProperty('tserver');
   });
 
-  it('targets the ASYNC cluster and edit-universe for VM read replica hardware edits', () => {
+  it('targets the ASYNC cluster and edit-universe for VM read replica hardware edits', async () => {
+    mockState.resizeOptions = [ResizeUpdateOption.FULL_MOVE];
+    mockState.strategy = 'migrate';
     renderModal(makeNonGeoUniverseWithReadReplicaPlacementSpec(), {
       mode: 'readReplica',
       clusterType: ClusterSpecClusterType.ASYNC
     });
-    submitAndConfirm();
+    await submitAndConfirm();
 
     const payload = getFirstEditPayload();
     expect(payload.uuid).toBe(FIXTURE_ASYNC_CLUSTER_UUID);
@@ -316,11 +431,14 @@ describe('EditHardwareConfirmModal payloads', () => {
     expect(mockState.resizeMutate).not.toHaveBeenCalled();
   });
 
-  it('routes K8s custom-resource edits through edit-universe with tserver and master specs', () => {
+  it('routes K8s custom-resource edits through edit-universe with tserver and master specs', async () => {
     mockState.settings = k8sSettings();
+    mockState.strategy = 'migrate';
+    // Even if API were to return SMART_RESIZE, K8s must force migrate/edit-universe.
+    mockState.resizeOptions = [ResizeUpdateOption.SMART_RESIZE, ResizeUpdateOption.FULL_MOVE];
 
     renderModal(makeK8sUniverse(true));
-    submitAndConfirm();
+    await submitAndConfirm();
 
     const payload = getFirstEditPayload();
     expect(payload.node_spec.k8s_tserver_resource_spec).toEqual({
@@ -333,16 +451,32 @@ describe('EditHardwareConfirmModal payloads', () => {
     });
     expect(payload.node_spec.storage_spec.storage_class).toBe('standard');
     expect(mockState.resizeMutate).not.toHaveBeenCalled();
+    expect(mockState.checkMutate).not.toHaveBeenCalled();
   });
 
-  it('routes K8s master-only edits with the master change and unchanged tserver fallback', () => {
+  it('forces edit-universe for K8s even when confirm strategy is rolling', async () => {
+    mockState.settings = k8sSettings();
+    mockState.strategy = 'rolling';
+    mockState.resizeOptions = [ResizeUpdateOption.SMART_RESIZE];
+
+    renderModal(makeK8sUniverse(true));
+    await submitAndConfirm();
+
+    // K8s effective options are FULL_MOVE only → rolling is rejected.
+    expect(mockState.resizeMutate).not.toHaveBeenCalled();
+    expect(mockState.editMutate).not.toHaveBeenCalled();
+    expect(mockState.toastError).toHaveBeenCalled();
+  });
+
+  it('routes K8s master-only edits with the master change and unchanged tserver fallback', async () => {
     mockState.settings = k8sSettings({
       tserverK8SNodeResourceSpec: { cpuCoreCount: 2, memoryGib: 4 },
       masterK8SNodeResourceSpec: { cpuCoreCount: 2.5, memoryGib: 3 }
     });
+    mockState.strategy = 'migrate';
 
     renderModal(makeK8sUniverse(true), { mode: 'master' });
-    submitAndConfirm();
+    await submitAndConfirm();
 
     const payload = getFirstEditPayload();
     expect(payload.node_spec.k8s_master_resource_spec).toEqual({
@@ -355,14 +489,15 @@ describe('EditHardwareConfirmModal payloads', () => {
     });
   });
 
-  it('includes both K8s resource specs for dedicated K8s tserver-only edits', () => {
+  it('includes both K8s resource specs for dedicated K8s tserver-only edits', async () => {
     mockState.settings = k8sSettings({
       tserverK8SNodeResourceSpec: { cpuCoreCount: 3, memoryGib: 5 },
       masterK8SNodeResourceSpec: { cpuCoreCount: 2, memoryGib: 3 }
     });
+    mockState.strategy = 'migrate';
 
     renderModal(makeK8sUniverse(true), { mode: 'tserver' });
-    submitAndConfirm();
+    await submitAndConfirm();
 
     const payload = getFirstEditPayload();
     expect(payload.node_spec.k8s_tserver_resource_spec).toEqual({
@@ -375,7 +510,7 @@ describe('EditHardwareConfirmModal payloads', () => {
     });
   });
 
-  it('emits master resize payload when keepMasterTserverSame is checked with no field delta', () => {
+  it('emits master resize payload when keepMasterTserverSame is checked with no field delta', async () => {
     const matchingDeviceInfo = {
       ...vmSettings().deviceInfo!,
       volumeSize: 100,
@@ -392,7 +527,7 @@ describe('EditHardwareConfirmModal payloads', () => {
     });
 
     renderModal(makeNonGeoUniverseWithDedicatedNodeDetails(), { mode: 'master' });
-    submitAndConfirm();
+    await submitAndConfirm();
 
     const payload = getFirstResizePayload();
     expect(payload.node_spec.master).toEqual({
@@ -406,7 +541,7 @@ describe('EditHardwareConfirmModal payloads', () => {
     expect(payload.node_spec).not.toHaveProperty('tserver');
   });
 
-  it('routes K8s master-only provisioned throughput edits through edit-universe', () => {
+  it('routes K8s master-only provisioned throughput edits through edit-universe', async () => {
     mockState.settings = k8sSettings({
       masterDeviceInfo: {
         ...k8sSettings().masterDeviceInfo!,
@@ -414,9 +549,10 @@ describe('EditHardwareConfirmModal payloads', () => {
         numVolumes: 2
       }
     });
+    mockState.strategy = 'migrate';
 
     renderModal(makeK8sUniverse(true), { mode: 'master' });
-    submitAndConfirm();
+    await submitAndConfirm();
 
     const payload = getFirstEditPayload();
     expect(payload.node_spec.master?.storage_spec).toEqual({
@@ -427,11 +563,12 @@ describe('EditHardwareConfirmModal payloads', () => {
     expect(mockState.resizeMutate).not.toHaveBeenCalled();
   });
 
-  it('keeps geo-partitioned K8s hardware edits cluster-level only', () => {
+  it('keeps geo-partitioned K8s hardware edits cluster-level only', async () => {
     mockState.settings = k8sSettings();
+    mockState.strategy = 'migrate';
 
     renderModal(makeGeoK8sUniverse(true), { mode: 'tserver' });
-    submitAndConfirm();
+    await submitAndConfirm();
 
     const payload = getFirstEditPayload();
     expect(payload.uuid).toBe(FIXTURE_PRIMARY_CLUSTER_UUID);
@@ -447,16 +584,17 @@ describe('EditHardwareConfirmModal payloads', () => {
     expect(payload).not.toHaveProperty('partitions_spec');
   });
 
-  it('targets the ASYNC cluster and edit-universe for K8s read replica hardware edits', () => {
+  it('targets the ASYNC cluster and edit-universe for K8s read replica hardware edits', async () => {
     mockState.settings = k8sSettings({
       tserverK8SNodeResourceSpec: { cpuCoreCount: 2, memoryGib: 4 }
     });
+    mockState.strategy = 'migrate';
 
     renderModal(makeK8sUniverseWithReadReplica(true), {
       mode: 'readReplica',
       clusterType: ClusterSpecClusterType.ASYNC
     });
-    submitAndConfirm();
+    await submitAndConfirm();
 
     const payload = getFirstEditPayload();
     expect(payload.uuid).toBe(FIXTURE_ASYNC_CLUSTER_UUID);

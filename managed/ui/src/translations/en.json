@@ -2339,6 +2339,14 @@
         "cancelButton": "Stay on this page"
       }
     },
+    "universeMetricsExport": {
+      "redirectToSettingsModal": {
+        "title": "You are about to leave this page",
+        "message": "To export metrics, navigate to <bold>Settings / Telemetry Export</bold>.",
+        "cancelButton": "Back",
+        "submitButton": "Navigate to Settings / Telemetry Export"
+      }
+    },
     "customCACerts": {
       "listing": {
         "header": "Trusted CA Certificates",
@@ -3367,6 +3375,12 @@
         "timeoutSecondsPlaceholder": "Optional",
         "compression": "Compression",
         "bearerToken": "Bearer Token",
+        "headers": "Custom Headers",
+        "headersTooltip": "Optional HTTP headers sent with OTLP export requests (e.g. DD-API-KEY for Datadog OTLP intake).",
+        "headerKeyPlaceholder": "Header name",
+        "headerValuePlaceholder": "Header value",
+        "addHeader": "Add Header",
+        "validationHeaderKeyRequired": "Header name is required",
         "validationEndpointRequired": "Endpoint is required",
         "validationProtocolRequired": "Protocol is required",
         "validationFieldRequired": "This field is required"
@@ -3840,6 +3854,13 @@
         "expertModeHelpText": "Set the replication factor for your data.  <a>What is this?</a>",
         "expertModeFaultToleranceMinMsg": "Clusters with replication factor of 1 won't be resilient to outages and are subject to downtime during operations that require a restart.",
         "guidedModeNotSupported": "This Universe configuration is not supported in Guided mode.",
+        "switchToGuidedModal": {
+          "title": "Are you sure?",
+          "unsupportedTitle": "Current placement configuration is not supported in the Guided mode.",
+          "unsupportedDescription": "Switching resets the placement configuration.",
+          "confirm": "Switch and Reset",
+          "cancel": "Cancel"
+        },
         "regions": "Regions",
         "replicationFactor": "Replication Factor",
         "availabilityZonesCount": "{{count}} Availability Zone",
@@ -3932,6 +3953,8 @@
           "title": "Availability Zones and Nodes",
           "region": "Region {{region_count}}",
           "add_button": "Add Availability Zone",
+          "tServer": "Nodes (TServer)",
+          "nodes": "Nodes",
           "tooltips": {
             "regionTag": "You can add or remove regions in the previous step (Regions).",
             "addAvailabilityZoneDisabled": "{{outage_count}} availability zone outage resilience supports exactly {{az_count}} AZs. Remove an availability zone from another region before adding one here.<br/><br/><a>Learn more</a>",
@@ -4034,6 +4057,7 @@
         "useSpotInstance": "Use Spot Instances",
         "kmsConfig": "Key Management Service Config",
         "kmsConfigPlaceHolder": "Select Configuration",
+        "kmsValidationMsg": "This KMS configuration is already used for encryption at rest.",
         "provisionedIopsPerNode": "Provisioned IOPS / Node ",
         "provisionedThroughputPerNode": "Provisioned Throughput / Node",
         "provisionedThroughputPerPod": "Provisioned Throughput / Pod",
@@ -4110,7 +4134,7 @@
           "label": "Enable Encryption At Rest",
           "kmsConfig": "Key Management Service Config",
           "kmsConfigPlaceHolder": "Select",
-          "kmsValidationMsg": "'This KMS configuration is already used for EBS volume encryption.'"
+          "kmsValidationMsg": "This KMS configuration is already used for EBS volume encryption."
         },
         "eitField": {
           "useSameCert": "Use the same certificate for Node-to-Node and Client-to-Node encryption.",
@@ -4195,7 +4219,9 @@
           "ysqlGroup": "YSQL",
           "ycqlGroup": "YCQL",
           "redisGroup": "Redis",
-          "othersGroup": "Others"
+          "othersGroup": "Others",
+          "ysqlServerRpcPortHelper": "Used by application clients to connect to the database.",
+          "internalYsqlServerRpcPortHelper": "Used by <strong>connection pooling</strong> to connect to the database."
         },
         "userTags": {
           "subText": "Assign custom metadata to help manage, bill, or audit the resources.",
@@ -4291,7 +4317,8 @@
         "security": "Security",
         "database": "Database",
         "advanced": "Advanced",
-        "logs": "Logs"
+        "logs": "Logs",
+        "telemetryExport": "Telemetry Export"
       },
       "general": {
         "title": "General",
@@ -4415,8 +4442,12 @@
           "volumeAndNode": "Volume / Node :",
           "universeUpdateOptions": "Universe Update Options",
           "rollingRestart": "Rolling restart the current nodes.",
+          "restartNodes": "Restart the current nodes.",
           "fasterAndRecommended": "Faster and Recommended",
           "rollingRestartDescription": "No data migration is required. The universe will remain online and available throughout.",
+          "rollingRestartRf1Warning": "<strong>Note!</strong> The universe won’t be available for reads and writes during the restart.",
+          "fullMoveInfo": "<strong>Note!</strong> This operation will migrate all data to a new set of nodes with new IP addresses. The universe will remain online and accessible throughout.",
+          "nonRestartInfo": "<strong>Note!</strong> This operation will resize the current nodes without requiring a restart.",
           "delayBetweenNodes": "Delay between nodes:",
           "seconds": "seconds",
           "migrateNodes": "Migrate to a new set of nodes.",
@@ -4467,7 +4498,9 @@
         "nodeAccess": "Node Access",
         "sshKey": "SSH ACCESS KEY",
         "awsArn": "INSTANCE PROFILE ARN",
-        "networkPorts": "Network Ports"
+        "networkPorts": "Network Ports",
+        "enableProxyServer": "Enable Proxy Server",
+        "proxyHelper": "Configure web proxies as gateways for traffic from your database nodes. <a>Learn more</a>"
       },
       "logs": {
         "troubleshootingLogs": "Troubleshooting Logs",
@@ -4485,7 +4518,7 @@
         "editDatabaseQueryLogging": "Edit Database Query Logging",
         "disableDatabaseQueryLogging": "Disable Database Query Logging",
         "enableAuditLogging": "Enable Audit Logging",
-        "telemetryExportNote": "<bold>Note:</bold> To send logs to external tools, go to Telemetry Export.",
+        "telemetryExportNote": "<bold>Note:</bold> To send logs to external tools, go to <telemetryLink>Telemetry Export</telemetryLink>.",
         "queryLogSettings": {
           "title": "Configure Database Query Logging",
           "selectParameters": "Select Parameters",
@@ -4588,6 +4621,71 @@
           }
         }
       },
+      "telemetryExport": {
+        "title": "Telemetry Export",
+        "subtitle": "Export metrics and logs to external observability tools.",
+        "metricsExport": {
+          "title": "Export Metrics",
+          "description": "Export cluster's metrics to 3rd party monitoring dashboards.",
+          "exportOff": "Export Off",
+          "exportOn": "Export On",
+          "actionLabel": "Export Metrics",
+          "editActionLabel": "Edit",
+          "active": "Active",
+          "configuring": "Configuring",
+          "exportStatus": "Export Status",
+          "exportConfigurationName": "Export Configuration Name",
+          "exportingTo": "Exporting to",
+          "editMetricsExportConfiguration": "Metrics Export Configuration",
+          "editMetricsExport": "Edit Metrics Export Configuration",
+          "disableMetricsExport": "Disable Metrics Export"
+        },
+        "metricsExportSettings": {
+          "title": "Export Metrics",
+          "subtitle": "Select a destination for the metrics.",
+          "exportConfiguration": "Export Configuration",
+          "exportConfigurationPlaceholder": "Select export configuration",
+          "collectionSettings": "Collection Settings",
+          "collectionInterval": "Collection Interval (s)",
+          "collectionTimeout": "Collection Timeout (s)",
+          "advanced": "Advanced",
+          "collectionLevel": "Collection Level",
+          "collectionLevelHelper": "Select how much metric detail to collect. <learnMore>Learn more</learnMore>",
+          "metricSources": "Metric Sources",
+          "metricSourcesHelper": "Select the universe components to collect and export metrics from. <learnMore>Learn more</learnMore>",
+          "cancel": "Cancel",
+          "exportMetrics": "Export Metrics",
+          "applyChanges": "Apply Changes",
+          "enableInProgress": "Enabling metrics export",
+          "updateInProgress": "Updating metrics export configuration",
+          "collectionLevelOptions": {
+            "all": "All",
+            "normal": "Normal",
+            "tableOff": "Table Off",
+            "minimal": "Minimal"
+          },
+          "errors": {
+            "exportConfigurationRequired": "Select an export configuration",
+            "intervalRequired": "Enter a collection interval",
+            "intervalInteger": "Collection interval must be a whole number",
+            "intervalMin": "Collection interval must be at least 1 second",
+            "timeoutRequired": "Enter a collection timeout",
+            "timeoutInteger": "Collection timeout must be a whole number",
+            "timeoutMin": "Collection timeout must be at least 1 second",
+            "timeoutLessThanInterval": "Collection timeout must be less than collection interval",
+            "collectionLevelRequired": "Select a collection level",
+            "metricSourcesRequired": "Select at least one metric source"
+          },
+          "confirmation": {
+            "enableTitle": "Enable Metrics Export",
+            "editTitle": "Confirm Configuration Change",
+            "enableSubmit": "Enable Metrics Export",
+            "editSubmit": "Apply Changes",
+            "message": "Enable metrics export requires a <bold>rolling restart</bold> of universe <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+            "back": "Back"
+          }
+        }
+      },
       "masterServerNodeAllocationModal": {
         "title": "Master Server Node Allocation",
         "editMasterServer": "Edit Master Server Instance",
@@ -4598,6 +4696,8 @@
     "readReplica": {
       "addRR": {
         "title": "Add Read Replica",
+        "editPlacementTitle": "Edit Read Replica Placement",
+        "confirmAndApply": "Apply Changes",
         "placement": "Placement",
         "regionsAndAZ": "Regions and Availability Zones",
         "hardware": "Hardware",
@@ -4619,6 +4719,7 @@
         "replicationFactor": "Replication Factor",
         "replicationFactorTooltip": "Number of copies of primary cluster data maintained in this availability zone. Determines fault tolerance within the read replica.<br/>",
         "totalNodesPlacement": "Total Nodes",
+        "totalNodesPlacementTserver": "Total Nodes (T-Server)",
         "addAvailabilityZone": "Add Availability Zone",
         "removeRegion": "Remove region",
         "addRegion": "Add Region",

@@ -23,9 +23,12 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 
 @Slf4j
 @Abortable
@@ -58,6 +61,7 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
     if (isFirstTry) {
       taskParams().verifyParams(getUniverse(), getNodeState(), isFirstTry);
       Universe universe = getUniverse();
+      validateNodeNames(universe);
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         if (cluster.userIntent.providerType == CloudType.onprem) {
           Provider provider =
@@ -75,7 +79,44 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
 
   @Override
   protected MastersAndTservers calculateNodesToBeRestarted() {
-    return fetchNodes(UpgradeOption.ROLLING_UPGRADE);
+    MastersAndTservers allNodes = fetchNodes(UpgradeOption.ROLLING_UPGRADE);
+    Set<String> nodeNames = taskParams().nodeNames;
+    // An empty (or null) nodeNames set means "all nodes" - preserve the existing behavior.
+    if (CollectionUtils.isEmpty(nodeNames)) {
+      return allNodes;
+    }
+    // Only re-provision the nodes explicitly requested in the API, keeping the computed
+    // restart order intact.
+    return new MastersAndTservers(
+        allNodes.mastersList.stream()
+            .filter(node -> nodeNames.contains(node.nodeName))
+            .collect(Collectors.toList()),
+        allNodes.tserversList.stream()
+            .filter(node -> nodeNames.contains(node.nodeName))
+            .collect(Collectors.toList()));
+  }
+
+  // Rejects the request if any requested node name is not part of the universe, so an invalid
+  // selection fails fast instead of silently re-provisioning nothing (or the wrong nodes).
+  private void validateNodeNames(Universe universe) {
+    Set<String> nodeNames = taskParams().nodeNames;
+    if (CollectionUtils.isEmpty(nodeNames)) {
+      return;
+    }
+    Set<String> universeNodeNames =
+        universe.getNodes().stream().map(NodeDetails::getNodeName).collect(Collectors.toSet());
+    Set<String> unknownNodeNames =
+        nodeNames.stream()
+            .filter(name -> !universeNodeNames.contains(name))
+            .collect(Collectors.toCollection(TreeSet::new));
+    if (!unknownNodeNames.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "The following node names do not exist in universe "
+              + universe.getUniverseUUID()
+              + ": "
+              + unknownNodeNames);
+    }
   }
 
   @Override

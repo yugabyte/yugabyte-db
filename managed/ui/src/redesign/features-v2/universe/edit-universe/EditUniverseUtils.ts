@@ -73,9 +73,7 @@ export const getK8sResourceSpecFromNodeSpec = (
   if (!nodeSpec) return null;
 
   const raw =
-    role === 'master'
-      ? nodeSpec.k8s_master_resource_spec
-      : nodeSpec.k8s_tserver_resource_spec;
+    role === 'master' ? nodeSpec.k8s_master_resource_spec : nodeSpec.k8s_tserver_resource_spec;
   if (!raw) return null;
 
   const cpuCoreCount = Number(raw.cpu_core_count);
@@ -95,11 +93,11 @@ export function useEditUniverseContext() {
   return context;
 }
 
-export const countRegionsAzsAndNodes = (placementSpec: ClusterPlacementSpec| undefined) => {
+export const countRegionsAzsAndNodes = (placementSpec: ClusterPlacementSpec | undefined) => {
   let totalRegions = 0;
   let totalAzs = 0;
   let totalNodes = 0;
-  if(!placementSpec) return { totalRegions: 0, totalAzs: 0, totalNodes: 0 };
+  if (!placementSpec) return { totalRegions: 0, totalAzs: 0, totalNodes: 0 };
 
   const regions = placementSpec.cloud_list.map((cloud) => cloud.region_list).flat() ?? [];
   totalRegions += regions.length;
@@ -207,7 +205,7 @@ export const getResilientType = (
 ) => {
   const availabilityZones = placementSpecToAvailabilityZones(placementSpec);
   const placementRegions = placementSpec.cloud_list.flatMap((cloud) => cloud.region_list ?? []);
-  const resilienceRegions = Array.from({ length: placementRegions.length }, () => ({} as Region));
+  const resilienceRegions = Array.from({ length: placementRegions.length }, () => ({}) as Region);
   const effectiveReplicationFactor = replicationFactor ?? 1;
   const inferredResilience = inferResilience(
     {
@@ -248,8 +246,8 @@ export const getResilientType = (
     inferredResilience === FaultToleranceType.REGION_LEVEL
       ? 'regionResilient'
       : inferredResilience === FaultToleranceType.AZ_LEVEL
-      ? 'azResilient'
-      : 'nodeResilient';
+        ? 'azResilient'
+        : 'nodeResilient';
 
   return t(key, {
     count: outageCount,
@@ -260,8 +258,7 @@ export const getResilientType = (
 export const getPlacementSpecForCluster = (
   cluster: ClusterSpec | ClusterPartitionSpec
 ): ClusterPlacementSpec | undefined => {
-
-  if('partitions_spec' in cluster && cluster.partitions_spec) {
+  if ('partitions_spec' in cluster && cluster.partitions_spec) {
     return cluster.partitions_spec.find((partition) => partition.default_partition)?.placement;
   }
 
@@ -306,9 +303,7 @@ export const mapUniversePayloadToResilienceAndRegionsProps = (
   const regionsFromPlacement =
     placement?.cloud_list?.flatMap((cloud) =>
       (cloud.region_list ?? [])
-        .map((placementRegion) =>
-          matchProviderRegionForPlacement(providerRegions, placementRegion)
-        )
+        .map((placementRegion) => matchProviderRegionForPlacement(providerRegions, placementRegion))
         .filter((r): r is Region => r !== undefined)
     ) ?? [];
 
@@ -317,12 +312,12 @@ export const mapUniversePayloadToResilienceAndRegionsProps = (
     replicationFactor <= 1
       ? FaultToleranceType.NONE
       : stats.totalRegions === replicationFactor
-      ? FaultToleranceType.REGION_LEVEL
-      : stats.totalRegions < replicationFactor && stats.totalAzs === replicationFactor
-      ? FaultToleranceType.AZ_LEVEL
-      : stats.totalRegions < replicationFactor && stats.totalAzs < replicationFactor
-      ? FaultToleranceType.NODE_LEVEL
-      : FaultToleranceType.NONE;
+        ? FaultToleranceType.REGION_LEVEL
+        : stats.totalRegions < replicationFactor && stats.totalAzs === replicationFactor
+          ? FaultToleranceType.AZ_LEVEL
+          : stats.totalRegions < replicationFactor && stats.totalAzs < replicationFactor
+            ? FaultToleranceType.NODE_LEVEL
+            : FaultToleranceType.NONE;
 
   const regionAndResilience: ResilienceAndRegionsProps = {
     singleAvailabilityZone: '',
@@ -354,16 +349,20 @@ export const convertProxySettingsToFormValues = (
 ): ProxyAdvancedProps => {
   const secureWebProxy = proxyConfig.https_proxy?.split(':');
   const webProxy = proxyConfig.http_proxy?.split(':');
+
   return {
     secureWebProxy: !!proxyConfig.https_proxy,
     webProxy: !!proxyConfig.http_proxy,
     byPassProxyList: (proxyConfig.no_proxy_list?.length ?? 0) > 0,
     byPassProxyListValues: proxyConfig.no_proxy_list ?? [],
     enableProxyServer: proxyConfig.http_proxy || proxyConfig.https_proxy ? true : false,
-    secureWebProxyPort: secureWebProxy?.[1] ? parseInt(secureWebProxy[1]) : undefined,
-    secureWebProxyServer: secureWebProxy?.[0] ?? '',
-    webProxyPort: webProxy?.[1] ? parseInt(webProxy[1]) : undefined,
-    webProxyServer: webProxy?.[0] ?? ''
+    secureWebProxyPort: secureWebProxy?.[2] ? parseInt(secureWebProxy[2]) : undefined,
+    secureWebProxyServer:
+      secureWebProxy?.[0] && secureWebProxy?.[1]
+        ? `${secureWebProxy?.[0]}:${secureWebProxy?.[1]}`
+        : '',
+    webProxyPort: webProxy?.[2] ? parseInt(webProxy[2]) : undefined,
+    webProxyServer: webProxy?.[0] && webProxy?.[1] ? `${webProxy?.[0]}:${webProxy?.[1]}` : ''
   };
 };
 
@@ -384,7 +383,10 @@ export const countMasterAndTServerNodesByPlacementRegion = (
   };
 
   placementRegion?.az_list?.forEach((az) => {
-    const nodeDetailsaz = filter(universeData?.info?.node_details_set, { az_uuid: az.uuid, placement_uuid: clusterUuid });
+    const nodeDetailsaz = filter(universeData?.info?.node_details_set, {
+      az_uuid: az.uuid,
+      placement_uuid: clusterUuid
+    });
     if (!isEmpty(nodeDetailsaz)) {
       nodeDetailsaz.forEach((node) => {
         node.dedicated_to === NodeDetailsDedicatedTo.MASTER
@@ -406,11 +408,13 @@ export const countMasterAndTServerNodesByPlacementRegion = (
   });
 };
 
-const getPlacementSpecFromCluster = (cluster: ClusterSpec | ClusterPartitionSpec): ClusterPlacementSpec | null => {
-  if('placement_spec' in cluster && cluster.placement_spec) {
+const getPlacementSpecFromCluster = (
+  cluster: ClusterSpec | ClusterPartitionSpec
+): ClusterPlacementSpec | null => {
+  if ('placement_spec' in cluster && cluster.placement_spec) {
     return cluster.placement_spec;
   }
-  if('placement' in cluster && cluster.placement) {
+  if ('placement' in cluster && cluster.placement) {
     return cluster.placement;
   }
   return null;
@@ -425,17 +429,20 @@ export const countMasterAndTServerNodes = (
     [NodeDetailsDedicatedTo.TSERVER]: 0
   };
 
-  if(!cluster) return dedicatedNodesCount;
+  if (!cluster) return dedicatedNodesCount;
 
   const placementSpec = getPlacementSpecFromCluster(cluster);
-  if(!placementSpec) return dedicatedNodesCount;
+  if (!placementSpec) return dedicatedNodesCount;
 
   const azLists = placementSpec?.cloud_list.flatMap((cloud) =>
     cloud!.region_list!.flatMap((region) => region.az_list)
   );
 
   azLists?.forEach((az) => {
-    const nodeDetailsaz = filter(universeData?.info?.node_details_set, { az_uuid: az?.uuid, placement_uuid: cluster.uuid });
+    const nodeDetailsaz = filter(universeData?.info?.node_details_set, {
+      az_uuid: az?.uuid,
+      placement_uuid: cluster.uuid
+    });
     if (!isEmpty(nodeDetailsaz)) {
       nodeDetailsaz.forEach((node) => {
         node.dedicated_to === NodeDetailsDedicatedTo.MASTER
@@ -450,4 +457,4 @@ export const countMasterAndTServerNodes = (
 export function useIsUniverseReady() {
   const { universeData } = useEditUniverseContext();
   return !universeData?.info?.update_in_progress && !universeData?.info?.universe_paused;
-};
+}

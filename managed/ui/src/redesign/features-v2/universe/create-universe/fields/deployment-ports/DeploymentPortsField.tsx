@@ -9,7 +9,7 @@
  */
 
 import { FC } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import { useFormContext, Controller } from 'react-hook-form';
 import { mui, YBInput } from '@yugabyte-ui-library/core';
 import { OtherAdvancedProps } from '../../steps/advanced-settings/dtos';
@@ -91,9 +91,14 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
             <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '24px' }}>
               <NextLineIcon />
               <Box
-                sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px' }}
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  gap: '16px'
+                }}
               >
-                {pg.PORTS_LIST.map((item) => (
+                {pg.PORTS_LIST.map((item: any) => (
                   <Controller
                     name={item.id}
                     render={({ field: { value, onChange } }) => {
@@ -107,7 +112,19 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
                               <InfoIcon />
                             </StyledLabelIcon>
                           }
-                          helperText={'Default ' + Number(DEFAULT_COMMUNICATION_PORTS[item.id])}
+                          helperText={
+                            <>
+                              {'Default ' + Number(DEFAULT_COMMUNICATION_PORTS[item.id])}{' '}
+                              {item?.helperText ? (
+                                <>
+                                  <br />
+                                  <Trans i18nKey={`${item.id}Helper`} t={t} />
+                                </>
+                              ) : (
+                                <></>
+                              )}
+                            </>
+                          }
                           dataTestId={`deployment-ports-field-${item.id}`}
                           onBlur={(event) => {
                             let port =

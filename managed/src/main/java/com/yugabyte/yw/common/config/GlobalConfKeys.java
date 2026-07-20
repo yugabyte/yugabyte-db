@@ -2036,6 +2036,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable performing automatic rollback of edit operation (if possible)",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowEditUniverseRollback =
+      new ConfKeyInfo<>(
+          "yb.task.allow_edit_universe_rollback",
+          ScopeType.GLOBAL,
+          "Allow Rollback of Edit Universe Tasks",
+          "Allow rolling back a failed edit universe task (VM and Kubernetes) via the task"
+              + " rollback API",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableContinuousPlatformBackups =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.continuous_platform_backups",

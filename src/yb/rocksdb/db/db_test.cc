@@ -2153,11 +2153,14 @@ static std::string CompressibleString(Random* rnd, int len) {
 
 TEST_F(DBTest, FailMoreDbPaths) {
   Options options = CurrentOptions();
+  // db_paths is capped at kMaxPathId + 1 entries (path_id is packed into kFilePathIdBits bits,
+  // so the largest valid index is kMaxPathId). Configuring one more than that must fail with
+  // NotSupported. Add kMaxPathId + 2 paths (home + kMaxPathId + 1 extras) to cross the limit.
   options.db_paths.emplace_back(dbname_, 10000000);
-  options.db_paths.emplace_back(dbname_ + "_2", 1000000);
-  options.db_paths.emplace_back(dbname_ + "_3", 1000000);
-  options.db_paths.emplace_back(dbname_ + "_4", 1000000);
-  options.db_paths.emplace_back(dbname_ + "_5", 1000000);
+  for (uint32_t i = 1; i <= kMaxPathId + 1; ++i) {
+    options.db_paths.emplace_back(dbname_ + "_" + std::to_string(i + 1), 1000000);
+  }
+  ASSERT_EQ(options.db_paths.size(), kMaxPathId + 2);
   ASSERT_TRUE(TryReopen(options).IsNotSupported());
 }
 
@@ -8661,7 +8664,7 @@ TEST_F(DBTest, CancelBackgroundWorkWithFlush) {
       ASSERT_OK(Put(Key(++key), RandomString(&rnd, kValueSize), wo));
     }
 
-    db_->SetDisableFlushOnShutdown(true);
+    db_->SetDisableFlushOnShutdown();
     CancelAllBackgroundWork(db_);
 
     // Write one more key, that should trigger scheduling flush.

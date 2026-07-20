@@ -1,4 +1,4 @@
-import { FC, useCallback, useMemo, useRef, useState } from 'react';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mui, yba, YBCheckbox } from '@yugabyte-ui-library/core';
 import { useTranslation } from 'react-i18next';
 import pluralize from 'pluralize';
@@ -22,25 +22,36 @@ import { InstanceSettings, InstanceSettingsViewMode } from '../../create-univers
 import { InstanceSettingProps } from '../../create-universe/steps/hardware-settings/dtos';
 import {
   ClusterResizeNodeSpec,
-  ClusterResizeStorageSpec,
   ClusterNodeSpec,
   ClusterSpecClusterType,
   ClusterStorageSpec,
   K8SNodeResourceSpec,
   NodeDetailsDedicatedTo,
+  ResizeUpdateOption,
   UniverseResizeNodesReqBody
 } from '../../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
+  useCheckResizeOptions,
   useEditUniverse,
   useResizeNodes
 } from '../../../../../v2/api/universe/universe';
 import { createErrorMessage } from '../../../../../utils/ObjectUtils';
 import {
+  canUseFullMove,
+  canUseRollingResize,
   HardwareReviewSection,
   HardwareReviewSummary,
   ReviewHardwareChangesModal,
+  ReviewHardwareConfirmPayload,
   hardwareReviewSectionHasVisibleChanges
 } from './ReviewHardwareChangesModal';
+import {
+  NormalizedStorage,
+  normalizeClusterStorage,
+  normalizeDeviceInfo,
+  toClusterStorageSpec,
+  toResizeStorageSpec
+} from './EditHardwareStorageUtils';
 import { DeviceInfo, K8NodeSpec } from '../../../../features/universe/universe-form/utils/dto';
 import { useQuery } from 'react-query';
 import { QUERY_KEY, api } from '../../../../features/universe/universe-form/utils/api';
@@ -108,46 +119,6 @@ const TotalNodesBadge = styled(Box)(({ theme }) => ({
   }
 }));
 
-/**
- * Normalized intermediate representation of a storage spec used to compare and
- * render hardware diffs. Keeps `null` for empty values so that `isEqual` works
- * across both API payload (snake_case) and form values (camelCase) sources.
- */
-type NormalizedStorage = {
-  volumeSize: number | null;
-  numVolumes: number | null;
-  diskIops: number | null;
-  throughput: number | null;
-  storageClass: string | null;
-  storageType: string | null;
-  mountPoints: string | null;
-};
-
-const normalizeStorageType = (value: unknown): string | null =>
-  value === undefined || value === null ? null : String(value);
-
-const normalizeClusterStorage = (spec: ClusterStorageSpec | undefined): NormalizedStorage => ({
-  volumeSize: spec?.volume_size ?? null,
-  numVolumes: spec?.num_volumes ?? null,
-  diskIops: spec?.disk_iops ?? null,
-  throughput: spec?.throughput ?? null,
-  storageClass: spec?.storage_class ?? null,
-  storageType: normalizeStorageType(spec?.storage_type),
-  mountPoints: spec?.mount_points ?? null
-});
-
-const normalizeDeviceInfo = (
-  deviceInfo: DeviceInfo | null | undefined
-): NormalizedStorage => ({
-  volumeSize: deviceInfo?.volumeSize ?? null,
-  numVolumes: deviceInfo?.numVolumes ?? null,
-  diskIops: deviceInfo?.diskIops ?? null,
-  throughput: deviceInfo?.throughput ?? null,
-  storageClass: deviceInfo?.storageClass ?? null,
-  storageType: normalizeStorageType(deviceInfo?.storageType),
-  mountPoints: deviceInfo?.mountPoints ?? null
-});
-
 const buildHardwareSummary = (
   instanceType: string | null | undefined,
   storage: NormalizedStorage,
@@ -206,9 +177,12 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
   const instanceSettingsRef = useRef<StepsRef>(null);
   const resizeNodes = useResizeNodes();
   const editUniverse = useEditUniverse();
+  const checkResizeOptions = useCheckResizeOptions();
   const [pendingInstanceSettings, setPendingInstanceSettings] =
     useState<InstanceSettingProps | null>(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [resizeOptions, setResizeOptions] = useState<ResizeUpdateOption[] | undefined>(undefined);
+  const [isLoadingResizeOptions, setIsLoadingResizeOptions] = useState(false);
   const [inheritPrimary, setInheritPrimary] = useState(false);
   const hasPendingChangesRef = useRef(false);
   const lastSavedInstanceSettingsRef = useRef<InstanceSettingProps | null>(null);
@@ -224,6 +198,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
   const providerCode =
     targetCluster?.placement_spec?.cloud_list[0].code ?? primaryCluster?.placement_spec?.cloud_list[0].code;
   const isK8s = isKubernetesCluster(targetCluster ?? primaryCluster);
+  const universeUUID = universeData?.info?.universe_uuid;
 
   // Derive the effective edit mode. When a `mode` prop is provided, it takes precedence;
   // otherwise infer from clusterType + dedicated-nodes flags so legacy callers work unchanged.
@@ -255,7 +230,6 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       : undefined;
 
   const storageSpec = targetCluster?.node_spec.storage_spec;
-  const universeUUID = universeData?.info?.universe_uuid;
   const toast = useYBToast();
 
   const { data: instanceTypes } = useQuery(
@@ -534,45 +508,6 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
     return sections;
   }, [targetCluster, pendingInstanceSettings, formatInstanceTypeLabel, useDedicatedNodes, isK8s, effectiveMode]);
 
-  const toResizeStorageSpec = (
-    deviceInfo: DeviceInfo | null | undefined,
-    currentSpec: ClusterStorageSpec | undefined
-  ): ClusterResizeStorageSpec => ({
-    volume_size: deviceInfo?.volumeSize ?? currentSpec?.volume_size,
-    disk_iops: deviceInfo?.diskIops ?? currentSpec?.disk_iops ?? undefined,
-    throughput: deviceInfo?.throughput ?? currentSpec?.throughput ?? undefined
-  });
-
-  const toClusterStorageSpec = (
-    deviceInfo: DeviceInfo | null | undefined,
-    currentSpec: ClusterStorageSpec | undefined
-  ): ClusterStorageSpec => ({
-    volume_size: deviceInfo?.volumeSize ?? currentSpec?.volume_size ?? 0,
-    num_volumes: deviceInfo?.numVolumes ?? currentSpec?.num_volumes ?? 1,
-    ...(deviceInfo?.mountPoints ?? currentSpec?.mount_points
-      ? { mount_points: deviceInfo?.mountPoints ?? currentSpec?.mount_points }
-      : {}),
-    ...(deviceInfo?.storageClass ?? currentSpec?.storage_class
-      ? { storage_class: deviceInfo?.storageClass ?? currentSpec?.storage_class }
-      : {}),
-    ...(deviceInfo?.storageType ?? currentSpec?.storage_type
-      ? { storage_type: deviceInfo?.storageType ?? currentSpec?.storage_type }
-      : {}),
-    ...(deviceInfo?.diskIops !== undefined && deviceInfo?.diskIops !== null
-      ? { disk_iops: deviceInfo.diskIops }
-      : currentSpec?.disk_iops !== undefined && currentSpec?.disk_iops !== null
-        ? { disk_iops: currentSpec.disk_iops }
-        : {}),
-    ...(deviceInfo?.throughput !== undefined && deviceInfo?.throughput !== null
-      ? { throughput: deviceInfo.throughput }
-      : currentSpec?.throughput !== undefined && currentSpec?.throughput !== null
-        ? { throughput: currentSpec.throughput }
-        : {}),
-    ...(currentSpec?.cloud_volume_encryption
-      ? { cloud_volume_encryption: currentSpec.cloud_volume_encryption }
-      : {})
-  });
-
   const buildResizeNodeSpec = (
     settings: InstanceSettingProps,
     dedicatedNodes: boolean
@@ -741,24 +676,6 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
     return dedicatedNodeSpec;
   };
 
-  const hasNumVolumesChange = (settings: InstanceSettingProps, dedicatedNodes: boolean) => {
-    const currentTserverVolumes = targetCluster?.node_spec?.storage_spec?.num_volumes ?? null;
-    const nextTserverVolumes = settings.deviceInfo?.numVolumes ?? currentTserverVolumes;
-    if (nextTserverVolumes !== currentTserverVolumes) {
-      return true;
-    }
-
-    if (!dedicatedNodes) {
-      return false;
-    }
-
-    const currentMasterVolumes =
-      targetCluster?.node_spec?.master?.storage_spec?.num_volumes ?? currentTserverVolumes;
-    const nextMasterVolumes =
-      settings.masterDeviceInfo?.numVolumes ?? settings.deviceInfo?.numVolumes ?? currentMasterVolumes;
-    return nextMasterVolumes !== currentMasterVolumes;
-  };
-
   const getExistingClusterNodeCount = () => {
     if (!targetCluster) {
       return undefined;
@@ -820,11 +737,83 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
     setPendingInstanceSettings(null);
     lastSavedInstanceSettingsRef.current = null;
     setReviewModalOpen(false);
+    setResizeOptions(undefined);
+    setIsLoadingResizeOptions(false);
     setInheritPrimary(false);
     onHide();
   };
 
-  const confirmResizeNodes = (delaySeconds: number) => {
+  /**
+   * K8s hardware edits typically yield UPDATE (not in ResizeUpdateOption), so the API
+   * can return []. Force migrate-only → editUniverse. Same fallback on empty/error.
+   * Never invent SMART_RESIZE for K8s. While loading (non-K8s), pass undefined so radios stay disabled.
+   */
+  const effectiveResizeOptions = useMemo((): ResizeUpdateOption[] | undefined => {
+    if (isK8s) {
+      return [ResizeUpdateOption.FULL_MOVE];
+    }
+    if (isLoadingResizeOptions) {
+      return undefined;
+    }
+    if (!resizeOptions?.length) {
+      return [ResizeUpdateOption.FULL_MOVE];
+    }
+    return resizeOptions;
+  }, [isK8s, isLoadingResizeOptions, resizeOptions]);
+
+  useEffect(() => {
+    if (
+      !reviewModalOpen ||
+      !pendingInstanceSettings ||
+      !universeUUID ||
+      !targetCluster?.uuid
+    ) {
+      return;
+    }
+
+    // K8s never supports smart resize in the API mapping; skip the round-trip.
+    if (isK8s) {
+      setResizeOptions([ResizeUpdateOption.FULL_MOVE]);
+      setIsLoadingResizeOptions(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingResizeOptions(true);
+    setResizeOptions(undefined);
+
+    checkResizeOptions.mutate(
+      {
+        uniUUID: universeUUID,
+        data: {
+          cluster_uuid: targetCluster.uuid,
+          node_spec: buildEditNodeSpec(pendingInstanceSettings, !!useDedicatedNodes)
+        }
+      },
+      {
+        onSuccess: (response) => {
+          if (cancelled) return;
+          const options = response?.options ?? [];
+          setResizeOptions(options.length ? options : [ResizeUpdateOption.FULL_MOVE]);
+          setIsLoadingResizeOptions(false);
+        },
+        onError: (error: unknown) => {
+          if (cancelled) return;
+          toast.error(createErrorMessage(error));
+          setResizeOptions([ResizeUpdateOption.FULL_MOVE]);
+          setIsLoadingResizeOptions(false);
+        }
+      }
+    );
+
+    return () => {
+      cancelled = true;
+    };
+    // buildEditNodeSpec closes over latest settings/cluster; re-run when review opens or pending changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewModalOpen, pendingInstanceSettings, universeUUID, targetCluster?.uuid, isK8s, useDedicatedNodes]);
+
+  const confirmResizeNodes = ({ delaySeconds, strategy }: ReviewHardwareConfirmPayload) => {
     if (!pendingInstanceSettings || !universeUUID || !targetCluster?.uuid) {
       toast.error(t('unableToApplyChanges'));
       return;
@@ -837,12 +826,20 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       return;
     }
 
-    if (
-      isK8s ||
-      clusterType === ClusterSpecClusterType.ASYNC ||
-      hasNumVolumesChange(pendingInstanceSettings, !!useDedicatedNodes)
-    ) {
+    const rollingAllowed = canUseRollingResize(effectiveResizeOptions);
+    const migrateAllowed = canUseFullMove(effectiveResizeOptions);
+
+    if (strategy === 'migrate') {
+      if (!migrateAllowed) {
+        toast.error(t('unableToApplyChanges'));
+        return;
+      }
       submitEditUniverse(pendingInstanceSettings);
+      return;
+    }
+
+    if (!rollingAllowed) {
+      toast.error(t('unableToApplyChanges'));
       return;
     }
 
@@ -1096,6 +1093,9 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
         visible={reviewModalOpen}
         sections={reviewSections}
         isSubmitting={resizeNodes.isLoading || editUniverse.isLoading}
+        resizeOptions={effectiveResizeOptions}
+        isLoadingOptions={isLoadingResizeOptions}
+        replicationFactor={targetCluster.replication_factor}
         onClose={() => setReviewModalOpen(false)}
         onConfirm={confirmResizeNodes}
       />

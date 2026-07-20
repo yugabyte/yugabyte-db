@@ -654,7 +654,7 @@ TEST_F(NonTransactionalBatchWriterTest, FastPathVectorReverseMapping) {
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
 MetaKey(VectorId(10000000-2000-3000-4000-000000000001), [HT{ physical: 6000 }]) -> \
-    DocKey([], ["row1"])
+    SubDocKey(DocKey([], ["row1"]), [ColumnId(11)])
 SubDocKey(DocKey([], ["row1"]), [ColumnId(11); HT{ physical: 6000 }]) -> \
     VECTOR_DATA(561000000020003000400000000000000111)
   )#");
@@ -666,7 +666,7 @@ SubDocKey(DocKey([], ["row1"]), [ColumnId(11); HT{ physical: 6000 }]) -> \
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
 MetaKey(VectorId(10000000-2000-3000-4000-000000000001), [HT{ physical: 7000 }]) -> DEL
 MetaKey(VectorId(10000000-2000-3000-4000-000000000001), [HT{ physical: 6000 }]) -> \
-    DocKey([], ["row1"])
+    SubDocKey(DocKey([], ["row1"]), [ColumnId(11)])
 SubDocKey(DocKey([], ["row1"]), [ColumnId(11); HT{ physical: 6000 }]) -> \
     VECTOR_DATA(561000000020003000400000000000000111)
   )#");

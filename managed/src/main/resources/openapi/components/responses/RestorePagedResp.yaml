@@ -1,0 +1,5 @@
+description: successful operation
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/RestorePagedResp.yaml"

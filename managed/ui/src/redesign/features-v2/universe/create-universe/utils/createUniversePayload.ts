@@ -219,7 +219,8 @@ export const mapCreateUniversePayload = (
         enable_ipv6: securitySettings.enableIPV6 ?? false
       },
       universe_settings: {
-        expert_mode: resilienceAndRegionsSettings.resilienceFormMode === ResilienceFormMode.EXPERT_MODE
+        expert_mode:
+          resilienceAndRegionsSettings.resilienceFormMode === ResilienceFormMode.EXPERT_MODE
       },
       clusters: [
         {
@@ -306,7 +307,7 @@ export const mapCreateUniversePayload = (
           }
         }
       ]
-    },
+    }
   };
 
   return payload;
@@ -395,12 +396,14 @@ export const getAccessiblePorts = (
     {
       id: 'ysqlServerRpcPort',
       visible: enableYSQL,
-      disabled: isEditMode || providerCode === CloudType.kubernetes
+      disabled: isEditMode || providerCode === CloudType.kubernetes,
+      helperText: true
     },
     {
       id: 'internalYsqlServerRpcPort',
       visible: enableYSQL && enableCP,
-      disabled: isEditMode || providerCode === CloudType.kubernetes
+      disabled: isEditMode || providerCode === CloudType.kubernetes,
+      helperText: true
     }
   ].filter((ports) => ports.visible);
 

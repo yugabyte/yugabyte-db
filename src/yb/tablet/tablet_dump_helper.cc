@@ -144,6 +144,13 @@ Status DumpTabletData(
   } else {
     read_hybrid_time = VERIFY_RESULT(tablet.SafeTime(RequireLease::kFalse));
   }
+
+  // Register the read time with the retention policy, like any normal read. This rejects a too-old
+  // read_ht with SnapshotTooOld (instead of scanning a compacted view) and pins the history cutoff
+  // so compaction can't GC versions out from under the scan. Do it first so we fail fast.
+  auto scoped_read_operation = VERIFY_RESULT(ScopedReadOperation::Create(
+      &tablet, RequireLease::kFalse, ReadHybridTime::SingleTime(read_hybrid_time)));
+
   RETURN_NOT_OK(AppendToFile(file, Format("Read HT: $0\n", read_hybrid_time)));
 
   std::optional<std::ostringstream> string_output;

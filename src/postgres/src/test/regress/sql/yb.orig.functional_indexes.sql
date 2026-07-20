@@ -33,33 +33,33 @@ SET enable_seqscan = false;
 
 -- we can pushdown the yb_hash_code call to the pk index
 \set query ':P SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) < 4000;'
-\i :iter_P2
+\i :run_query
 
 -- we can pushdown the yb_hash_code call to the pk index
 \set query ':P SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) = 2675;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1;'
-\i :iter_P2
+\i :run_query
 
 SET enable_seqscan = true;
 
 -- we can pushdown the yb_hash_code call to the pk index
 \set query ':P SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) < 4000;'
-\i :iter_P2
+\i :run_query
 
 -- we can pushdown the yb_hash_code call to the pk index
 \set query ':P SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) = 2675;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1;'
-\i :iter_P2
+\i :run_query
 
 ---- REGULAR COLUMN ----
 SET enable_seqscan = false;
@@ -67,16 +67,16 @@ SET enable_seqscan = false;
 -- because there is no other option
 
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;'
-\i :iter_P2
+\i :run_query
 
 ---- HASH INDEX ON THE COLUMN ----
 CREATE INDEX t_b_hash_idx ON test_with_pk(h);
@@ -84,33 +84,33 @@ SET enable_seqscan = false;
 
 -- we can pushdown yb_hash_code(h) on a hash index on h because the index is ordered by hash code
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;'
-\i :iter_P2
+\i :run_query
 
 -- we can pushdown yb_hash_code(h) on a hash index on h because the index is ordered by hash code
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;'
-\i :iter_P2
+\i :run_query
 
 SET enable_seqscan = true;
 
 -- we prefer using the index over a seq scan
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;'
-\i :iter_P2
+\i :run_query
 
 -- we prefer using the index over a seq scan
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;'
-\i :iter_P2
+\i :run_query
 
 ---- ASC INDEX ON THE COLUMN ----
 DROP INDEX t_b_hash_idx;
@@ -120,33 +120,33 @@ SET enable_seqscan = false;
 
 -- cannot pushdown a range yb_hash_code(h) clause on a ascending index on h because the index is not ordered by hash code
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;'
-\i :iter_P2
+\i :run_query
 
 -- cannot pushdown an equality yb_hash_code(h) clause on a ascending index on h because the index is not ordered by hash code
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;'
-\i :iter_P2
+\i :run_query
 
 SET enable_seqscan = true;
 
 -- we prefer filtering rows from the seq scan instead of the index scan
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;'
-\i :iter_P2
+\i :run_query
 
 -- we prefer filtering rows from the seq scan instead of the index scan
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;'
-\i :iter_P2
+\i :run_query
 
 ---- HASH INDEX ON yb_hash_code(h), HASH INDEX ON cbrt(h) ----
 DROP INDEX t_b_asc_idx;
@@ -157,37 +157,37 @@ SET enable_seqscan = false;
 
 -- cannot use a hash index for a range clause on yb_hash_code(h) because it's ordered by yb_hash_code(yb_hash_code(h))
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;'
-\i :iter_P2
+\i :run_query
 
 -- can use a hash index on yb_hash_code for a yb_hash_code equality clause
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;'
-\i :iter_P2
+\i :run_query
 
 -- cannot use a hash index on cbrt for a cbrt range clause
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;'
-\i :iter_P2
+\i :run_query
 
 -- can use a hash index on cbrt for a cbrt equality clause
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;'
-\i :iter_P2
+\i :run_query
 
 SET enable_seqscan = true;
 
 -- cannot use a hash index for a range clause on yb_hash_code(h) because it's ordered by yb_hash_code(yb_hash_code(h))
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;'
-\i :iter_P2
+\i :run_query
 
 -- can use a hash index on yb_hash_code for a yb_hash_code equality clause
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;'
-\i :iter_P2
+\i :run_query
 
 -- cannot use a hash index on cbrt for a cbrt range clause
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;'
-\i :iter_P2
+\i :run_query
 
 -- can use a hash index on cbrt for a cbrt equality clause
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;'
-\i :iter_P2
+\i :run_query
 
 ---- ASC INDEX ON yb_hash_code(h), ASC INDEX on cbrt(h) ----
 DROP INDEX t_b_hash_code_idx;
@@ -199,31 +199,31 @@ SET enable_seqscan = false;
 
 -- can use the ascending index on yb_hash_code for an equality clause
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;'
-\i :iter_P2
+\i :run_query
 
 -- can use the ascending index on yb_hash_code for an equality clause
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;'
-\i :iter_P2
+\i :run_query
 
 -- can use the ascending index on cbrt for an equality clause
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;'
-\i :iter_P2
+\i :run_query
 
 -- can use the ascending index on cbrt for an equality clause
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;'
-\i :iter_P2
+\i :run_query
 
 SET enable_seqscan = true;
 -- for each case, we prefer to use the indexes instead of a seq scan
 
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;'
-\i :iter_P2
+\i :run_query

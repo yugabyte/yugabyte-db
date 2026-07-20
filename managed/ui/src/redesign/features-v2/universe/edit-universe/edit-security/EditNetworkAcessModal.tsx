@@ -59,7 +59,6 @@ export const EditNetworkAcessModal = ({ open, onClose }: EditNetworkAcessModalPr
   const { handleSubmit } = methods;
 
   const handleFormSubmit = handleSubmit(async (values) => {
-    //TODO: Complete this once API is ready
     if (!universeUUID || !primaryCluster?.uuid) {
       toast.error(t('unableToApplyChanges'));
       return;

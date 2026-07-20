@@ -196,11 +196,16 @@ function buildReadReplicaNodeSpec(
   primary: ClusterSpec | undefined,
   instanceSettings: RRInstanceSettingsProps
 ): ClusterNodeSpec {
+  const dedicatedFromPrimary = Boolean(primary?.node_spec?.dedicated_nodes);
   if (instanceSettings.inheritPrimaryInstance && primary?.node_spec) {
     const sanitized = sanitizeInheritedAzPerProcessStorage(primary.node_spec as ClusterNodeSpec);
-    return withK8sResourceSpecFallback(sanitized, instanceSettings);
+    const withK8s = withK8sResourceSpecFallback(sanitized, instanceSettings);
+    return { ...withK8s, dedicated_nodes: dedicatedFromPrimary };
   }
-  return buildCustomReadReplicaNodeSpec(instanceSettings);
+  return {
+    ...buildCustomReadReplicaNodeSpec(instanceSettings),
+    dedicated_nodes: dedicatedFromPrimary
+  };
 }
 
 type ReadReplicaSizingAndPlacement = {

@@ -6,6 +6,9 @@ import api.v2.handlers.ImageBundleManagementHandler;
 import api.v2.models.ImageBundlePagedQuerySpec;
 import api.v2.models.ImageBundlePagedResp;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import java.util.UUID;
 import play.mvc.Http.Request;
 
@@ -14,7 +17,12 @@ public class ImageBundleApiControllerImp extends ImageBundleApiControllerImpInte
   private final ImageBundleManagementHandler handler;
 
   @Inject
-  public ImageBundleApiControllerImp(ImageBundleManagementHandler handler) {
+  public ImageBundleApiControllerImp(
+      AuditService auditService,
+      Config config,
+      GFlagsAuditHandler gFlagsAuditHandler,
+      ImageBundleManagementHandler handler) {
+    super(auditService, config, gFlagsAuditHandler);
     this.handler = handler;
   }
 

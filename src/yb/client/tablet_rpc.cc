@@ -601,9 +601,9 @@ void TabletInvoker::LookupTabletCb(
   // We should retry the RPC regardless of the outcome of the lookup, as
   // leader election doesn't depend on the existence of a master at all.
   // Unless we know that this status is persistent.
-  // For instance if tablet was deleted, we would always receive "Not found".
+  // For instance if tablet was deleted, we would always receive "Deleted".
   if (!result.ok() &&
-      (result.status().IsNotFound() ||
+      (result.status().IsNotFound() || result.status().IsDeleted() ||
        ClientError(result.status()) == ClientErrorCode::kTablePartitionListIsStale)) {
     command_->Finished(result.status());
     return;

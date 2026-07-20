@@ -633,9 +633,7 @@ DEFINE_validator(vector_index_backend,
 TAG_FLAG(vector_index_backend, hidden);
 TAG_FLAG(vector_index_backend, advanced);
 
-// TODO(GH31886): this flag will be coverted into an auto-flag when all ownership and
-// new value format changes are completed.
-DEFINE_RUNTIME_bool(enable_table_owned_vector_reverse_mapping, false,
+DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
     "Such tables write vector reverse mappings on row insert/update regardless of "
     "whether a vector index exists, and vector index backfill skips reverse mapping.");
@@ -4953,11 +4951,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // Clone will create its own tablets as part of repartitioning.
   if (!joining_colocation_group && !req.is_clone()) {
-    auto opt_wal_retention = xcluster_manager_->GetDefaultWalRetentionSec(namespace_id);
-    if (opt_wal_retention) {
-      table->mutable_metadata()->mutable_dirty()->pb.set_wal_retention_secs(*opt_wal_retention);
-    }
-
     for (const auto& tablet : tablets) {
       // If new tablets are created, they will be in PREPARING state.
       CHECK_EQ(SysTabletsEntryPB::PREPARING, tablet->metadata().dirty().pb.state());
@@ -12745,7 +12738,7 @@ Status CatalogManager::BuildLocationsForTablet(
       std::vector<TabletId> split_tablet_ids(
           l_tablet->pb.split_tablet_ids().begin(), l_tablet->pb.split_tablet_ids().end());
       return STATUS(
-          NotFound, "Tablet deleted", l_tablet->pb.state_msg(),
+          Deleted, "Tablet deleted", l_tablet->pb.state_msg(),
           SplitChildTabletIdsData(split_tablet_ids));
     }
     if (PREDICT_FALSE(!l_tablet->is_running())) {
@@ -12818,12 +12811,7 @@ Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(Table
 
 Status CatalogManager::GetTabletLocations(
     TabletIdView tablet_id, TabletLocationsPB* locs_pb, IncludeHidden include_hidden) {
-  auto tablet_info_result = GetTabletInfo(tablet_id);
-  if (!tablet_info_result.ok()) {
-    // Some clients expect non-ok statuses to have a certain form.
-    return STATUS_FORMAT(NotFound, "Unknown tablet $0", tablet_id);
-  }
-  const auto& tablet_info = *tablet_info_result;
+  auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
   Status s = GetTabletLocations(tablet_info, locs_pb, include_hidden);
   auto num_replicas = GetNumTabletReplicas(tablet_info);
   if (num_replicas.ok() && *num_replicas > 0 &&
@@ -12895,7 +12883,8 @@ Status CatalogManager::GetTableLocations(
     TabletLocationsPB* locs_pb = resp->add_tablet_locations();
     locs_pb->set_expected_live_replicas(expected_live_replicas);
     locs_pb->set_expected_read_replicas(expected_read_replicas);
-    auto status = BuildLocationsForTablet(tablet, locs_pb, IncludeHidden::kTrue, partitions_only);
+    auto status = BuildLocationsForTablet(
+        tablet, locs_pb, IncludeHidden::kTrue, partitions_only);
     if (!status.ok()) {
       // Not running.
       if (require_tablets_runnings) {
@@ -13212,13 +13201,9 @@ Result<size_t> CatalogManager::GetNumTabletReplicas(const TabletInfoPtr& tablet)
 
 Status CatalogManager::GetExpectedNumberOfReplicasForTablet(
     const TabletId& tablet_id, int* num_live_replicas, int* num_read_replicas) {
-  auto tablet_info_result = GetTabletInfo(tablet_id);
-  if (!tablet_info_result.ok()) {
-    // Some clients expect non-ok statuses to have a certain form.
-    return STATUS_FORMAT(NotFound, "Unknown tablet $0", tablet_id);
-  }
+  auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
   return GetExpectedNumberOfReplicasForTable(
-      (*tablet_info_result)->table(), num_live_replicas, num_read_replicas);
+      tablet_info->table(), num_live_replicas, num_read_replicas);
 }
 
 Status CatalogManager::GetExpectedNumberOfReplicasForTable(
