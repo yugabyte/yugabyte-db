@@ -93,8 +93,8 @@ void TabletComponent::RefreshYBMetaDataCache() {
   tablet_.ResetYBMetaDataCache();
 }
 
-Result<VectorIndexList> TabletComponent::VectorIndexesList() const {
-  return tablet_.vector_indexes().CheckedList();
+VectorIndexList TabletComponent::VectorIndexesList() const {
+  return tablet_.vector_indexes().List();
 }
 
 Status TabletComponent::Flush(

@@ -971,16 +971,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(
   VLOG_WITH_PREFIX(4) << __func__;
 
   if (state->flush_ability.empty() && state->largest_flushed_index.empty()) {
-    auto vector_indexes = vector_indexes_->CheckedList();
-    if (!vector_indexes.ok()) {
-      // Vector indexes are already detached, so there is no way to check that the memtable
-      // content is covered by their flushed state. Skip the flush, unflushed intents are
-      // recovered from the WAL during bootstrap (GH #32691).
-      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1)
-          << "Skipping intents flush: " << vector_indexes.status();
-      return false;
-    }
-    state->vector_indexes = std::move(*vector_indexes);
+    state->vector_indexes = vector_indexes_->List();
   }
 
   auto frontiers = memtable.Frontiers();
@@ -2578,7 +2569,7 @@ Status Tablet::Flush(
 
   VectorIndexList vector_indexes_list;
   if (HasFlags(flags, FlushFlags::kVectorIndexes)) {
-    vector_indexes_list = VERIFY_RESULT(vector_indexes_->CheckedList());
+    vector_indexes_list = vector_indexes_->List();
     vector_indexes_list.Flush();
   }
 
