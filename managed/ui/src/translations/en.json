@@ -3854,6 +3854,13 @@
         "expertModeHelpText": "Set the replication factor for your data.  <a>What is this?</a>",
         "expertModeFaultToleranceMinMsg": "Clusters with replication factor of 1 won't be resilient to outages and are subject to downtime during operations that require a restart.",
         "guidedModeNotSupported": "This Universe configuration is not supported in Guided mode.",
+        "switchToGuidedModal": {
+          "title": "Are you sure?",
+          "unsupportedTitle": "Current placement configuration is not supported in the Guided mode.",
+          "unsupportedDescription": "Switching resets the placement configuration.",
+          "confirm": "Switch and Reset",
+          "cancel": "Cancel"
+        },
         "regions": "Regions",
         "replicationFactor": "Replication Factor",
         "availabilityZonesCount": "{{count}} Availability Zone",
