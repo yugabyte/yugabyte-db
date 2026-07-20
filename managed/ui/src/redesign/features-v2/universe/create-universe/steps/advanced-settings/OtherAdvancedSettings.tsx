@@ -32,6 +32,7 @@ import { isCloudVendorCloudType } from '@app/components/configRedesign/providerR
 import { OtherAdvancedProps } from './dtos';
 import { USER_TAGS_FIELD } from '../../fields/FieldNames';
 import { OtherAdvancedValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/advanced-settings/ValidationSchema';
+import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 
 const { Box, Typography } = mui;
 
@@ -54,6 +55,13 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const methods = useForm<OtherAdvancedProps>({
     resolver: yupResolver(OtherAdvancedValidationSchema(t, provider?.code)),
     defaultValues: {
+      ...DEFAULT_COMMUNICATION_PORTS,
+      instanceTags: [],
+      awsArnString: '',
+      useSystemd: true,
+      accessKeyCode: '',
+      universeOverrides: '',
+      azOverrides: {},
       ...(provider?.code !== CloudType.kubernetes && {
         instanceTags: [
           {
@@ -61,10 +69,6 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
             value: ''
           }
         ]
-      }),
-      ...(provider?.code === CloudType.kubernetes && {
-        azOverrides: {},
-        universeOverrides: ''
       }),
       ...otherAdvancedSettings
     },

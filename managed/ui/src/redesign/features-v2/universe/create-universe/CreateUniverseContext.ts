@@ -30,6 +30,7 @@ import {
 } from './fields/FieldNames';
 import { ArchitectureType } from '@app/components/configRedesign/providerRedesign/constants';
 import { CloudType } from '@app/redesign/helpers/dtos';
+import { DEFAULT_COMMUNICATION_PORTS } from './helpers/constants';
 
 export enum CreateUniverseSteps {
   GENERAL_SETTINGS = 1,
@@ -117,6 +118,15 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     webProxyPort: undefined,
     byPassProxyList: false,
     byPassProxyListValues: []
+  },
+  otherAdvancedSettings: {
+    ...DEFAULT_COMMUNICATION_PORTS as any,
+    instanceTags: [],
+    awsArnString: '',
+    useSystemd: true,
+    accessKeyCode: '',
+    universeOverrides: '',
+    azOverrides: {}
   }
 };
 

@@ -21,6 +21,7 @@ export function usePersistStepFormValues<T extends FieldValues>(
   saveRef.current = save;
 
   useEffect(() => {
+    saveRef.current(getValues());
     const subscription = watch(() => {
       saveRef.current(getValues());
     });
