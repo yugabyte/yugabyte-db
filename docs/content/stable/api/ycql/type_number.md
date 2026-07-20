@@ -45,7 +45,6 @@ Where
 
 - Values of different floating-point and fixed-point data types are comparable and convertible to one another.
   - Conversion from floating-point types into `DECIMAL` will raise an error for the special values `NaN`, `Infinity`, and `-Infinity`.
-  - YCQL does not accept `NaN` / `Infinity` literals for `DECIMAL` columns. A `DECIMAL` column may still contain those values if written through YSQL; they can be read via `CAST(... AS text)` or `CAST(... AS double)`, but not returned as native CQL `DECIMAL` cells (Cassandra `BigDecimal` has no encoding for them).
 - Values of non-integer numeric data types are neither comparable nor convertible to integer although integers are convertible to them.
 - The ordering for special floating-point values is defined as (in ascending order): `-Infinity`, all negative values in order, all positive values in order, `Infinity`, and `NaN`.
 
