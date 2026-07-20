@@ -68,11 +68,17 @@ If any table uses replica identity `CHANGE`, don't upgrade YugabyteDB from a ver
 
 1. Download the new version of the connector JAR file (`yugabytedb-source-connector-<version>-jar-with-dependencies.jar`) from [GitHub releases](https://github.com/yugabyte/debezium/releases) {{<icon/github>}}.
 
-1. Stop the Kafka Connect worker gracefully. A graceful shutdown flushes in-flight records to Kafka and commits the last offsets. Because Kafka Connect loads plugins only at worker startup, you must restart the worker to switch connector versions; pausing the connector alone isn't enough.
+1. Stop the Kafka Connect worker gracefully.
 
-1. Install the new version: in the connector's directory under the Kafka Connect `plugin.path`, delete the old connector JAR file and copy in the one you downloaded, so that only one version is on the plugin path.
+    A graceful shutdown flushes in-flight records to Kafka and commits the last offsets. Because Kafka Connect loads plugins only at worker startup, you must restart the worker to switch connector versions; pausing the connector alone isn't enough.
 
-1. Restart the Kafka Connect worker. It reloads the connector from its stored configuration and resumes from the last committed offset.
+1. Install the new version.
+
+    In the connector's directory under the Kafka Connect `plugin.path`, delete the old connector JAR file and copy in the one you downloaded, so that only one version is on the plugin path.
+
+1. Restart the Kafka Connect worker.
+
+    It reloads the connector from its stored configuration and resumes from the last committed offset.
 
 1. Verify that the connector is `RUNNING`, there are no errors, and the slot's restart time and lag are advancing.
 
@@ -96,9 +102,13 @@ To re-snapshot:
 
 1. Deploy the new connector version with a fresh `slot.name` and `publication.name`, following the same registration steps as a new deployment (see [Deploy the YugabyteDB connector](../get-started/#deploy-the-yugabytedb-connector)).
 
-1. In the connector configuration, leave `snapshot.mode` set to `initial` (the default). Because the new slot has no stored offsets, the connector takes a full snapshot of the captured tables and then switches to streaming automatically.
+1. In the connector configuration, leave `snapshot.mode` set to `initial` (the default).
 
-1. Wait for the snapshot to complete and verify that streaming resumes. During the re-sync, the sink receives every row again, so downstream consumers reprocess data they have already seen. Make sure they apply events idempotently (for example, upsert on the primary key instead of appending) so the duplicates don't corrupt downstream state.
+    Because the new slot has no stored offsets, the connector takes a full snapshot of the captured tables and then switches to streaming automatically.
+
+1. Wait for the snapshot to complete and verify that streaming resumes.
+
+    During the re-sync, the sink receives every row again, so downstream consumers reprocess data they have already seen. Make sure they apply events idempotently (for example, upsert on the primary key instead of appending) so the duplicates don't corrupt downstream state.
 
 ## Perform a YSQL major upgrade {#ysql-major-upgrade}
 

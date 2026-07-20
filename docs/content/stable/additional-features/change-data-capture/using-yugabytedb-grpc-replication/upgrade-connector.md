@@ -47,9 +47,9 @@ When you pick a target connector version:
 
 Use this path for the common case: a later build with no breaking change that affects you. The stream ID, server-side checkpoints, connector configuration, and Kafka offsets are all preserved.
 
-The connector records the WAL position (an OpId checkpoint) for the changes it emits. Checkpoints live on the Kafka side (connector offsets) and on the YugabyteDB server (the `cdc_state` table, keyed by stream ID and tablet). On restart, the connector reads the last committed checkpoint and asks the server to resume just after it.
+An in-place upgrade is non-disruptive. The connector records the WAL position (an OpId checkpoint) for the changes it emits. Checkpoints live on the Kafka side (connector offsets) and on the YugabyteDB server (the `cdc_state` table, keyed by stream ID and tablet). On restart, the connector reads the last committed checkpoint and asks the server to resume just after it.
 
-The checkpoint is valid only while the stream ID remains intact. Never delete a stream ID without first deleting all connectors associated with it, or you will lose data. With `snapshot.mode=initial`, if the snapshot for the stream ID is already complete, the connector resumes streaming from the stored checkpoint instead of snapshotting again, so an in-place upgrade needs no re-snapshot.
+The checkpoint is valid only while the stream ID remains intact. Never delete a stream ID without first deleting all connectors associated with it, or you will lose data. With `snapshot.mode=initial`, if the snapshot for the stream ID is already complete, the connector resumes streaming from the stored checkpoint instead of snapshotting again, so an in-place upgrade does not need a re-snapshot.
 
 Expect a small number of duplicate events around the restart; Debezium events are idempotent.
 
@@ -65,11 +65,17 @@ Expect a small number of duplicate events around the restart; Debezium events ar
 
 1. Download the new version of the connector JAR file (`debezium-connector-yugabytedb-<version>.jar`) from [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases) {{<icon/github>}}.
 
-1. Stop the Kafka Connect worker gracefully. A graceful shutdown flushes in-flight records to Kafka and commits the last offsets. Because Kafka Connect loads plugins only at worker startup, you must restart the worker to switch connector versions; pausing the connector alone isn't enough.
+1. Stop the Kafka Connect worker gracefully.
 
-1. Install the new version: in the connector's directory under the Kafka Connect `plugin.path`, delete the old connector JAR file and copy in the one you downloaded, so that only one version is on the plugin path.
+    A graceful shutdown flushes in-flight records to Kafka and commits the last offsets. Because Kafka Connect loads plugins only at worker startup, you must restart the worker to switch connector versions; pausing the connector alone isn't enough.
 
-1. Restart the Kafka Connect worker. It reloads the connector from its stored configuration and resumes from the last committed checkpoint.
+1. Install the new version.
+
+    In the connector's directory under the Kafka Connect `plugin.path`, delete the old connector JAR file and copy in the one you downloaded, so that only one version is on the plugin path.
+
+1. Restart the Kafka Connect worker.
+
+    It reloads the connector from its stored configuration and resumes from the last committed checkpoint.
 
 1. Confirm the connector is `RUNNING`, there are no errors, and checkpoints and lag are advancing.
 
@@ -89,7 +95,7 @@ To re-snapshot:
 
 1. Delete the connector(s) associated with the stream ID.
 
-1. Create a new stream ID with [yb-admin](../../../../admin/yb-admin/#create-change-data-stream) (use EXPLICIT checkpointing mode):
+1. Create a new stream ID using [yb-admin](../../../../admin/yb-admin/#create-change-data-stream) (use EXPLICIT checkpointing mode):
 
    ```sh
    yb-admin --master_addresses <master-addresses> \
@@ -98,9 +104,13 @@ To re-snapshot:
 
 1. Deploy the new connector version with the new `database.streamid`, following the same registration steps as a new deployment (see [Deploy the YugabyteDB gRPC Connector](../cdc-get-started/#deploy-the-yugabytedb-grpc-connector)).
 
-1. In the connector configuration, set `snapshot.mode` to `initial`. Because the new stream ID has no completed snapshot, the connector takes a full snapshot of the captured tables and then switches to streaming automatically. For details on snapshot modes, see [Snapshots](../debezium-connector-yugabytedb/#snapshots).
+1. In the connector configuration, set `snapshot.mode` to `initial`.
 
-1. Wait for the snapshot to complete and verify that streaming resumes. During the re-sync, the sink receives every row again, so downstream consumers reprocess data they have already seen. Make sure they apply events idempotently (for example, upsert on the primary key instead of appending) so the duplicates don't corrupt downstream state.
+    Because the new stream ID has no completed snapshot, the connector takes a full snapshot of the captured tables and then switches to streaming automatically. For details on snapshot modes, see [Snapshots](../debezium-connector-yugabytedb/#snapshots).
+
+1. Wait for the snapshot to complete and verify that streaming resumes.
+
+    During the re-sync, the sink receives every row again, so downstream consumers reprocess data they have already seen. Make sure they apply events idempotently (for example, upsert on the primary key instead of appending) so the duplicates don't corrupt downstream state.
 
 ## Verify the upgrade
 
@@ -110,7 +120,7 @@ After any upgrade, confirm the stream is healthy:
 - Checkpoints progressing: Lag drains and the connector keeps committing checkpoints. See [Monitor](../cdc-monitor/) for the YugabyteDB CDC metrics endpoints.
 - Events flowing: New changes appear on the expected Kafka topics, transformed by [YBExtractNewRecordState](../yugabytedb-grpc-transformers/#ybextractnewrecordstate) as before.
 
-## Roll back
+## Rollback
 
 Downgrade isn't supported. If a new version misbehaves:
 
