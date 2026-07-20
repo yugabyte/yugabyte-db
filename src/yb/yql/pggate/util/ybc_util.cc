@@ -15,6 +15,8 @@
 #include <stdarg.h>
 
 #include <fstream>
+#include <string>
+#include <string_view>
 
 #include "catalog/pg_type_d.h"
 
@@ -234,7 +236,17 @@ const char* NoPrefixName(Enum value) {
   return name + 1;
 }
 
-} // anonymous namespace
+YbcUpdateInitPostgresMetricsFn update_init_postgres_metrics_fn = nullptr;
+
+Slice YBCStatusMsg(YbcStatus s) {
+  return StatusWrapper(s)->message();
+}
+
+const char* YBCPAllocNonEmptyStdString(std::string_view s) {
+  return s.empty() ? nullptr : YBCPAllocStdString(s);
+}
+
+} // namespace
 
 extern "C" {
 
@@ -273,10 +285,6 @@ bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s) {
   return StatusWrapper(s)->IsReplicationSlotLimitReached();
 }
 
-bool YBCStatusIsFatalError(YbcStatus s) {
-  return YBCStatusIsUnknownSession(s);
-}
-
 uint32_t YBCStatusPgsqlError(YbcStatus s) {
   return std::to_underlying(FetchErrorCode(s));
 }
@@ -285,33 +293,20 @@ void YBCFreeStatus(YbcStatus s) {
   FreeYBCStatus(s);
 }
 
-const char* YBCStatusFilename(YbcStatus s) {
-  return YBCPAllocStdString(StatusWrapper(s)->file_name());
-}
-
-int YBCStatusLineNumber(YbcStatus s) {
-  return StatusWrapper(s)->line_number();
-}
-
-const char* YBCStatusFuncname(YbcStatus s) {
-  const auto funcname = FuncName::ValueFromStatus(*StatusWrapper(s));
-  return funcname ? YBCPAllocStdString(*funcname) : nullptr;
-}
-
-size_t YBCStatusMessageLen(YbcStatus s) {
-  return StatusWrapper(s)->message().size();
+YbcStatusErrorLocationInfo YBCStatusErrorLocation(YbcStatus s) {
+  StatusWrapper status{s};
+  return {
+      YBCPAllocNonEmptyStdString(status->file_name()),
+      status->line_number(),
+      YBCPAllocNonEmptyStdString(FuncName::ValueFromStatus(*status).value_or(std::string{}))};
 }
 
 const char* YBCStatusMessageBegin(YbcStatus s) {
-  return StatusWrapper(s)->message().cdata();
+  return YBCStatusMsg(s).cdata();
 }
 
 const char* YBCMessageAsCString(YbcStatus s) {
-  size_t msg_size = YBCStatusMessageLen(s);
-  char* msg_buf = static_cast<char*>(YBCPAlloc(msg_size + 1));
-  memcpy(msg_buf, YBCStatusMessageBegin(s), msg_size);
-  msg_buf[msg_size] = 0;
-  return msg_buf;
+  return YBCPAllocStdString(YBCStatusMsg(s));
 }
 
 unsigned int YBCStatusRelationOid(YbcStatus s) {
@@ -875,10 +870,6 @@ const char *YBCGetOutFuncName(YbcPgOid typid) {
       return NULL;
   }
 }
-
-namespace {
-YbcUpdateInitPostgresMetricsFn update_init_postgres_metrics_fn = nullptr;
-}  // namespace
 
 void
 YBCSetUpdateInitPostgresMetricsFn(YbcUpdateInitPostgresMetricsFn update_init_postgres_metrics) {
