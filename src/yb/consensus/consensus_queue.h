@@ -437,6 +437,7 @@ class PeerMessageQueue {
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
   FRIEND_TEST(ConsensusQueueTest, TestReadReplicatedMessagesForCDC);
   FRIEND_TEST(ConsensusQueueDelayedCommitTest, TestReadReplicatedMessagesForXCluster);
+  FRIEND_TEST(ConsensusQueuePeerGotAllOpsTest, PeerGotAllOpsRequiresAllAppendedOps);
 
   // Mode specifies how the queue currently behaves:
   //
