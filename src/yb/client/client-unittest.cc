@@ -31,6 +31,7 @@
 //
 // Tests for the client which are true unit tests and don't require a cluster, etc.
 
+#include <array>
 #include <functional>
 #include <string>
 #include <vector>
@@ -38,7 +39,10 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client-internal.h"
+#include "yb/client/retryable_request_tracker.h"
 #include "yb/client/schema.h"
+
+#include "yb/util/test_thread_holder.h"
 
 namespace yb {
 namespace client {
@@ -103,6 +107,86 @@ TEST(ClientUnitTest, TestSchemaBuilder_SingleKey_GoodSchema) {
   b.AddColumn("b")->Type(DataType::INT32);
   b.AddColumn("c")->Type(DataType::INT32)->NotNull();
   ASSERT_EQ("OK", b.Build(&s).ToString());
+}
+
+TEST(ClientUnitTest, RetryableRequestTrackerMaintainsMinimumActiveRequestId) {
+  internal::RetryableRequestTracker tracker;
+  auto first = tracker.Register();
+  auto second = tracker.Register();
+  auto third = tracker.Register();
+
+  ASSERT_EQ(first.request_id(), 0);
+  ASSERT_EQ(second.request_id(), 1);
+  ASSERT_EQ(third.request_id(), 2);
+  ASSERT_EQ(first.min_running_request_id(), 0);
+  ASSERT_EQ(second.min_running_request_id(), 0);
+  ASSERT_EQ(third.min_running_request_id(), 0);
+
+  std::array middle_registration = {&second};
+  tracker.Unregister(middle_registration);
+  ASSERT_EQ(tracker.TEST_ActiveRequestsCount(), 2);
+
+  auto fourth = tracker.Register();
+  ASSERT_EQ(fourth.request_id(), 3);
+  ASSERT_EQ(fourth.min_running_request_id(), 0);
+
+  std::array first_registration = {&first};
+  tracker.Unregister(first_registration);
+  auto fifth = tracker.Register();
+  ASSERT_EQ(fifth.request_id(), 4);
+  ASSERT_EQ(fifth.min_running_request_id(), 2);
+
+  std::array remaining_registrations = {&third, &fourth, &fifth};
+  tracker.Unregister(remaining_registrations);
+  ASSERT_EQ(tracker.TEST_ActiveRequestsCount(), 0);
+
+  auto sixth = tracker.Register();
+  ASSERT_EQ(sixth.request_id(), 5);
+  ASSERT_EQ(sixth.min_running_request_id(), 5);
+  std::array sixth_registration = {&sixth};
+  tracker.Unregister(sixth_registration);
+}
+
+TEST(ClientUnitTest, RetryableRequestTrackerTransfersMovedRegistration) {
+  internal::RetryableRequestTracker tracker;
+  auto registration = tracker.Register();
+  auto moved_registration = std::move(registration);
+
+  std::array registrations = {&moved_registration};
+  tracker.Unregister(registrations);
+  ASSERT_EQ(tracker.TEST_ActiveRequestsCount(), 0);
+}
+
+TEST(ClientUnitTest, RetryableRequestTrackerConcurrentRegistrationAndRetirement) {
+  constexpr size_t kNumThreads = 8;
+  constexpr size_t kRequestsPerThread = 100;
+
+  internal::RetryableRequestTracker tracker;
+  TestThreadHolder thread_holder;
+  for (size_t thread_idx = 0; thread_idx != kNumThreads; ++thread_idx) {
+    thread_holder.AddThreadFunctor([&tracker] {
+      std::vector<internal::RetryableRequestTracker::Registration> registrations;
+      registrations.reserve(kRequestsPerThread);
+      for (size_t request_idx = 0; request_idx != kRequestsPerThread; ++request_idx) {
+        registrations.push_back(tracker.Register());
+      }
+
+      std::vector<internal::RetryableRequestTracker::Registration*> registration_ptrs;
+      registration_ptrs.reserve(registrations.size());
+      for (auto& registration : registrations) {
+        registration_ptrs.push_back(&registration);
+      }
+      tracker.Unregister(registration_ptrs);
+    });
+  }
+  thread_holder.WaitAndStop(10s);
+
+  ASSERT_EQ(tracker.TEST_ActiveRequestsCount(), 0);
+  auto registration = tracker.Register();
+  ASSERT_EQ(registration.request_id(), kNumThreads * kRequestsPerThread);
+  ASSERT_EQ(registration.min_running_request_id(), registration.request_id());
+  std::array registrations = {&registration};
+  tracker.Unregister(registrations);
 }
 
 } // namespace client
