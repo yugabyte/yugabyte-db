@@ -10,6 +10,7 @@ import {
   StyledHeader,
   StyledPanel
 } from '@app/redesign/features-v2/universe/create-universe/components/DefaultComponents';
+import { TotalNodesBadge } from '@app/redesign/features-v2/universe/create-universe/components/TotalNodesBadge';
 import {
   CPUArchField,
   LinuxVersionField,
@@ -38,6 +39,10 @@ import {
 import { ResilienceType } from '@app/redesign/features-v2/universe/create-universe/steps/resilence-regions/dtos';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import { InstanceSettingsValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/ValidationSchema';
+import {
+  getDedicatedTserverMasterCounts,
+  getNodeCount
+} from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
 import {
   DEVICE_INFO_FIELD,
   INSTANCE_TYPE_FIELD,
@@ -224,9 +229,24 @@ export const InstanceSettings = forwardRef<
     []
   );
 
-  const showDedicatedNodesSection = !!((useDedicatedNodes ?? false) || (useK8CustomResources && isK8s));
+  const showDedicatedNodesSection = !!(
+    (useDedicatedNodes ?? false) ||
+    (useK8CustomResources && isK8s)
+  );
   const isMasterOnlyDedicatedView = viewMode === 'masterOnly' && showDedicatedNodesSection;
   const isTServerOnlyView = viewMode === 'tserverOnly';
+
+  const dedicatedCounts = getDedicatedTserverMasterCounts(
+    resilienceAndRegionsSettings,
+    nodesAvailabilitySettings
+  );
+  const tserverNodeCount =
+    dedicatedCounts?.tserver ??
+    (resilienceAndRegionsSettings?.resilienceType === ResilienceType.SINGLE_NODE
+      ? 1
+      : getNodeCount(nodesAvailabilitySettings?.availabilityZones ?? {}));
+  const masterNodeCount = dedicatedCounts?.master ?? 0;
+  const goToPlacementRegions = () => setActiveStep(CreateUniverseSteps.RESILIENCE_AND_REGIONS);
 
   // this file is also used in edit universe hardware tab. To match the design there we need to conditionally change Panel and Content components
   const Panel = editMode ? Box : StyledPanel;
@@ -252,9 +272,23 @@ export const InstanceSettings = forwardRef<
       {!isMasterOnlyDedicatedView && (
         <Panel>
           {!editMode && (
-            <StyledHeader>
-              {showDedicatedNodesSection ? t('tserver') : t('clusterInstance')}
-            </StyledHeader>
+            <Box>
+              <StyledHeader>
+                {showDedicatedNodesSection ? t('tserver') : t('clusterInstance')}
+              </StyledHeader>
+              <Box sx={{ px: '24px', pb: '16px' }}>
+                <TotalNodesBadge
+                  label={useDedicatedNodes ? t('totalTServerNodes') : t('totalNodes')}
+                  count={tserverNodeCount}
+                  onEdit={goToPlacementRegions}
+                  dataTestId={
+                    useDedicatedNodes
+                      ? 'instance-settings-total-tserver-nodes'
+                      : 'instance-settings-total-nodes'
+                  }
+                />
+              </Box>
+            </Box>
           )}
 
           <Content>
@@ -273,8 +307,8 @@ export const InstanceSettings = forwardRef<
                     </>
                   )}
                 {provider && isSpotInstanceCloudType(provider.code) && canUseSpotInstance && (
-                    <SpotInstanceField disabled={false} cloudType={provider.code} />
-                  )}
+                  <SpotInstanceField disabled={false} cloudType={provider.code} />
+                )}
                 {!isK8s &&
                   (!useDedicatedNodes ? (
                     <>
@@ -381,102 +415,118 @@ export const InstanceSettings = forwardRef<
           </Content>
         </Panel>
       )}
-      {showDedicatedNodesSection && !isTServerOnlyView && (() => {
-        const sameCheckbox = (
-          <Box mb={2}>
-            <YBCheckboxField
-              label={t('keepMasterTserverSame')}
-              control={control}
-              name={MASTER_TSERVER_SAME_FIELD}
-              size="large"
-              dataTestId="keep-master-tserver-same-field"
-            />
-          </Box>
-        );
-
-        const masterFormPanel = (
-          <PanelWrapper editMode={editMode}>
-            <InstanceBox>
-              {!isK8s && useDedicatedNodes && (
-                <>
-                  <InstanceTypeField
-                    isEditMode={editMode}
-                    isMaster={true}
-                    disabled={!!sameAsTserver}
-                    provider={provider}
-                    regions={resilienceAndRegionsSettings?.regions}
-                  />
-                  <VolumeInfoField
-                    isEditMode={editMode}
-                    isMaster={true}
-                    maxVolumeCount={maxVolumeCount}
-                    disabled={!!sameAsTserver}
-                    provider={provider}
-                    useDedicatedNodes={useDedicatedNodes}
-                    regions={resilienceAndRegionsSettings?.regions}
-                  />
-                </>
-              )}
-              {isK8s && useK8CustomResources && (
-                <>
-                  <K8NodeSpecField
-                    isMaster={true}
-                    disabled={!!sameAsTserver}
-                    provider={provider}
-                  />
-                  <K8VolumeInfoField
-                    isMaster={true}
-                    disableVolumeSize={false}
-                    maxVolumeCount={maxVolumeCount}
-                    disabled={!!sameAsTserver}
-                    provider={provider}
-                  />
-                </>
-              )}
-            </InstanceBox>
-            {!isK8s && (
-              <Box mt={4} sx={{ width: 480 }}>
-                <Typography variant="subtitle1" color="textSecondary">
-                  <Trans i18nKey="masterNote">
-                    {t('masterNote', {
-                      cloudType: upperCase(provider?.code),
-                      ebs:
-                        ebsVolumeEnabled && provider?.code === CloudType.aws
-                          ? t('EBSVolume.title')
-                          : ''
-                    })}
-                    <b />
-                  </Trans>
-                </Typography>
+      {showDedicatedNodesSection &&
+        !isTServerOnlyView &&
+        (() => {
+          const masterNodesBadge =
+            !editMode && useDedicatedNodes ? (
+              <Box sx={{ mb: 3 }}>
+                <TotalNodesBadge
+                  label={t('totalMasterServerNodes')}
+                  count={masterNodeCount}
+                  onEdit={goToPlacementRegions}
+                  dataTestId="instance-settings-total-master-nodes"
+                />
               </Box>
-            )}
-          </PanelWrapper>
-        );
+            ) : null;
 
-        // Master-only edit views (e.g. dedicated Master edit modal) render a flat panel
-        // with the "Keep same" checkbox above it instead of using the YBAccordion.
-        if (isMasterOnlyDedicatedView) {
-          return (
-            <Box>
-              {sameCheckbox}
-              {masterFormPanel}
+          const sameCheckbox = (
+            <Box mb={2}>
+              <YBCheckboxField
+                label={t('keepMasterTserverSame')}
+                control={control}
+                name={MASTER_TSERVER_SAME_FIELD}
+                size="large"
+                dataTestId="keep-master-tserver-same-field"
+              />
             </Box>
           );
-        }
 
-        return (
-          <YBAccordion
-            defaultExpanded={!sameAsTserver}
-            titleContent={<>{t('master')}</>}
-            sx={{ width: '100%' }}
-          >
-            <Box>
-              {sameCheckbox}
-              {masterFormPanel}
-            </Box>
-          </YBAccordion>
-        );
-      })()}
+          const masterFormPanel = (
+            <PanelWrapper editMode={editMode}>
+              <InstanceBox>
+                {!isK8s && useDedicatedNodes && (
+                  <>
+                    <InstanceTypeField
+                      isEditMode={editMode}
+                      isMaster={true}
+                      disabled={!!sameAsTserver}
+                      provider={provider}
+                      regions={resilienceAndRegionsSettings?.regions}
+                    />
+                    <VolumeInfoField
+                      isEditMode={editMode}
+                      isMaster={true}
+                      maxVolumeCount={maxVolumeCount}
+                      disabled={!!sameAsTserver}
+                      provider={provider}
+                      useDedicatedNodes={useDedicatedNodes}
+                      regions={resilienceAndRegionsSettings?.regions}
+                    />
+                  </>
+                )}
+                {isK8s && useK8CustomResources && (
+                  <>
+                    <K8NodeSpecField
+                      isMaster={true}
+                      disabled={!!sameAsTserver}
+                      provider={provider}
+                    />
+                    <K8VolumeInfoField
+                      isMaster={true}
+                      disableVolumeSize={false}
+                      maxVolumeCount={maxVolumeCount}
+                      disabled={!!sameAsTserver}
+                      provider={provider}
+                    />
+                  </>
+                )}
+              </InstanceBox>
+              {!isK8s && (
+                <Box mt={4} sx={{ width: 480 }}>
+                  <Typography variant="subtitle1" color="textSecondary">
+                    <Trans i18nKey="masterNote">
+                      {t('masterNote', {
+                        cloudType: upperCase(provider?.code),
+                        ebs:
+                          ebsVolumeEnabled && provider?.code === CloudType.aws
+                            ? t('EBSVolume.title')
+                            : ''
+                      })}
+                      <b />
+                    </Trans>
+                  </Typography>
+                </Box>
+              )}
+            </PanelWrapper>
+          );
+
+          // Master-only edit views (e.g. dedicated Master edit modal) render a flat panel
+          // with the "Keep same" checkbox above it instead of using the YBAccordion.
+          if (isMasterOnlyDedicatedView) {
+            return (
+              <Box>
+                {masterNodesBadge}
+                {sameCheckbox}
+                {masterFormPanel}
+              </Box>
+            );
+          }
+
+          return (
+            <YBAccordion
+              defaultExpanded={!sameAsTserver}
+              titleContent={<>{t('master')}</>}
+              sx={{ width: '100%' }}
+            >
+              <Box>
+                {masterNodesBadge}
+                {sameCheckbox}
+                {masterFormPanel}
+              </Box>
+            </YBAccordion>
+          );
+        })()}
     </FormProvider>
   );
 });
