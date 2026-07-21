@@ -141,7 +141,7 @@ class DocVectorIndex {
 
   virtual Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
-      DocDBStatistics* statistics) = 0;
+      const ReadOperationData& read_operation_data) = 0;
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
   virtual void EnableAutoCompactions() = 0;
   virtual Status Compact() = 0;
