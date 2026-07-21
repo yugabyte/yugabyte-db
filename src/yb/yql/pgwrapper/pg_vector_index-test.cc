@@ -2273,6 +2273,69 @@ class PgVectorIndexSingleServerTest
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexSingleServerTest);
 
+// The vector index reverse mapping records are stored in the regular RocksDB before user data
+// records, below the middle split key lower bound. The index backfill writes only reverse mapping
+// records, so the subsequent flush produces an SST file without user data records.
+// The middle split key calculation should skip such a file instead of failing, otherwise the
+// tablet cannot be split until this file is compacted away.
+TEST_P(PgVectorIndexSingleServerTest, ManualSplitWithReverseMappingOnlySstFile) {
+  if (IsColocated()) {
+    GTEST_SKIP() << "Tablet split is not supported for colocated tables";
+  }
+
+  constexpr size_t kNumRows = 100;
+
+  // Small data blocks so rows span multiple blocks; otherwise GetMiddleKey's single-block
+  // fallback can pick an internal key and split fails.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 256;
+
+  // Reverse mappings are written by the backfill only when they are not owned by the table.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 0, kNumRows - 1, /* keep_vectors = */ true));
+
+  // Flush user data records into a separate SST file before the vector index exists.
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Create the vector index, its backfill writes reverse mapping records into the regular
+  // RocksDB. Flush them into an SST file consisting of such records only.
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  const auto parent_tablet_id = peers.front()->tablet_id();
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+
+  // Sanity check the setup: there is an SST file with reverse mapping records only.
+  size_t num_reverse_mapping_only_files = 0;
+  for (const auto& file : tablet->regular_db()->GetLiveFilesMetaData()) {
+    if (!file.largest.key.empty() &&
+        file.largest.key[0] < dockv::kMinRegularDbTableRowFirstByte) {
+      ++num_reverse_mapping_only_files;
+    }
+  }
+  ASSERT_EQ(num_reverse_mapping_only_files, 1);
+
+  // The middle split key calculation should skip the reverse mapping only file.
+  ASSERT_RESULT(tablet->GetSplitKeys(cluster_->GetSplitFactor()));
+
+  // Make sure the tablet split completes.
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), parent_tablet_id));
+
+  // Select whole set of vectors and verify.
+  auto query_vector = Vector(RandomUniformInt(0UL, kNumRows - 1));
+  auto num_found = ASSERT_RESULT(FetchAndVerifyOrder(conn, query_vector, kNumRows));
+
+  // It's OK if searching for all vectors returns less number of vectors due to
+  // algorithm's recall factor. We can tolerate 90% of recall.
+  ASSERT_GE(static_cast<float>(num_found), kNumRows * 0.9);
+  ASSERT_LE(num_found, kNumRows);
+}
+
 // Graceful restart without explicit flushes. The index is created on an empty table, so all
 // vectors live in the vector LSM mutable chunk at shutdown time. See issue #32691.
 TEST_P(PgVectorIndexSingleServerTest, GracefulRestart) {
