@@ -16,8 +16,9 @@ namespace yb::pgwrapper {
 
 class PgVectorTest : public PgMiniTestBase {};
 
-// Issue https://github.com/yugabyte/yugabyte-db/issues/32582
-TEST_F(PgVectorTest, ReadVectorColumnAfterAddColumnDefault) {
+// For now we reject added vector columns with a default value.
+// Such vector columns break the reverse vector mapping.
+TEST_F(PgVectorTest, RejectAddVectorColumnWithDefault) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
   ASSERT_OK(conn.Execute(
@@ -26,13 +27,16 @@ TEST_F(PgVectorTest, ReadVectorColumnAfterAddColumnDefault) {
       "  embedding_col vector(3)"
       ")"));
   ASSERT_OK(conn.Execute("INSERT INTO repro_vec_default VALUES (1, '[1,2,3]')"));
-  ASSERT_OK(conn.Execute(
-      "ALTER TABLE repro_vec_default "
-      "ADD COLUMN col_vec_0 vector(3) DEFAULT '[-999,-999,-999]'"));
 
-  auto value = ASSERT_RESULT(conn.FetchRow<std::string>(
-      "SELECT col_vec_0::text FROM repro_vec_default"));
-  ASSERT_EQ(value, "[-999,-999,-999]");
+  auto status = conn.Execute(
+      "ALTER TABLE repro_vec_default "
+      "ADD COLUMN col_vec_0 vector(3) DEFAULT '[-999,-999,-999]'");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "cannot add a vector column with a default value");
+
+  // Adding a vector column without DEFAULT remains supported.
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE repro_vec_default ADD COLUMN col_vec_1 vector(3)"));
 }
 
 } // namespace yb::pgwrapper
