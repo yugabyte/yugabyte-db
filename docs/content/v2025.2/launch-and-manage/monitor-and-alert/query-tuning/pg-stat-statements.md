@@ -63,6 +63,12 @@ The columns of the pg_stat_statements view are described in the following table.
 | conflict_retries    | bigint           | Number of internal query retries caused by transaction conflicts between overlapping transactions.              |
 | read_restart_retries | bigint          | Number of internal query retries for reads (possibly because of a concurrent update).                            |
 | total_retries       | bigint           | Total number of query retries of any type.                                                                       |
+| docdb_seeks | bigint | The number of DocDB seek operations |
+| docdb_nexts | bigint | The number of DocDB next operations |
+| docdb_prevs | bigint | The number of DocDB prev operations |
+| docdb_read_time | double | Aggregate read time (in ms) in storage layer |
+| docdb_write_time | double | Aggregate write time (in ms) in storage layer |
+| docdb_obsolete_rows_scanned | bigint | Number of obsolete (tombstoned) rows scanned by DocDB while executing the statement. | 
 
 ## Configuration parameters
 
@@ -76,7 +82,8 @@ You can configure the following parameters in `postgresql.conf`:
 | `pg_stat_statements.track_utility` | boolean | on | Controls whether the module tracks utility commands. |
 | `pg_stat_statements.save` | boolean | on | Specifies whether to save statement statistics across server shutdowns. |
 | `pg_stat_statements.yb_hdr_bucket_factor` | integer | 16 | Changes the number of latency range buckets. |
-| `yb_enable_pg_stat_statements_rpc_stats` | boolean | false | Enables RPC execution time statistics for pg_stat_statements. When enabled, populates the DocDB-related columns `docdb_wait_time` and  `catalog_wait_time`. This is a runtime flag that can be changed without restarting the server. |
+| `yb_enable_pg_stat_statements_rpc_stats` | boolean | true (from v2025.2.5.0) | Enables RPC execution time statistics for pg_stat_statements. When enabled, populates the DocDB-related columns `docdb_read_rpcs`, `docdb_write_rpcs`, `docdb_read_operations`, `docdb_write_operations`, `docdb_wait_time`, `catalog_wait_time`. This is a runtime flag that can be changed without restarting the server. |
+| `yb_enable_pg_stat_statements_docdb_metrics` | boolean | true (from v2025.2.5.0) | Enable DocDB metrics collection for pg_stat_statements. When enabled, populates the DocDB-related columns `docdb_seeks`, `docdb_nexts`, `docdb_prevs`, `docdb_read_time`, `docdb_write_time`, `docdb_obsolete_rows_scanned`. This is a runtime flag that can be changed without restarting the server. |
 
 The module requires additional shared memory proportional to `pg_stat_statements.max`. Note that this memory is consumed whenever the module is loaded, even if `pg_stat_statements.track` is set to `none`.
 
