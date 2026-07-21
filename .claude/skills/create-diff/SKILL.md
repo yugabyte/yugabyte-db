@@ -135,7 +135,9 @@ Offer to **auto-create** a GitHub issue or JIRA ticket if the user
 doesn't have one yet. If they accept, invoke the **`/create-issue`**
 skill to file it (GitHub issue for core DB code, JIRA ticket for
 `managed/` platform work), then capture the issue number / JIRA key it
-reports back.
+reports back. Since the issue tracks this diff's work, tell
+`/create-issue` to assign it to the invoker (`@me`) rather than leaving
+it unassigned.
 
 ### Step 3.5: Gather remaining title metadata
 
