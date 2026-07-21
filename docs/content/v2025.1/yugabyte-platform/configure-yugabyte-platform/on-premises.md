@@ -54,9 +54,9 @@ _If the instance type and instances weren't created when provisioning the VMs_, 
 
 ## Legacy provisioning
 
-{{< warning title="Legacy provisioning deprecated" >}}
+{{< warning title="Legacy provisioning will be deprecated" >}}
 
-Legacy provisioning of on-premises nodes is deprecated, and v2025.2 does not support legacy on-premises node provisioning. Before you can upgrade YugabyteDB Anywhere to v2025.2, all universes must be updated to use node agent.
+Legacy provisioning is being phased out. Going forward, [automatic provisioning](#automatic-provisioning) is strongly recommended.
 
 {{< /warning >}}
 

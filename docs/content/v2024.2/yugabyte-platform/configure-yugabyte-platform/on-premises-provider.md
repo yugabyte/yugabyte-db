@@ -70,11 +70,9 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 
 ### SSH Key Pairs
 
-In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required only if YBA needs SSH access to the nodes to provision them (for [legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/)). This SSH user cannot be named yugabyte.
+Required for [legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/), to provide sudo access to VMs.
 
-{{< tip title="SSH access" >}}
-After you have provisioned and added the instances to the provider (including installing the [node agent](/stable/faq/yugabyte-platform/#node-agent)), YBA no longer requires SSH or sudo access to nodes.
-{{< /tip >}}
+In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This SSH user cannot be named `yugabyte`.
 
 In the **SSH Port** field, provide the port number of SSH client connections.
 
@@ -82,13 +80,23 @@ In the **SSH Keypair Name** field, provide the name of the key pair.
 
 Use the **SSH Private Key Content** field to upload the private key PEM file available to the SSH user for gaining access via SSH into your instances.
 
+{{< tip title="SSH access" >}}
+sudo privileges are only required for legacy automatic provisioning. Leave these fields empty if you are using the [YugabyteDB Anywhere node agent package](../../prepare/server-nodes-software/software-on-prem/) to provision your nodes (recommended).
+{{< /tip >}}
+
 ### Advanced
 
 DB Nodes have public internet access
 : Disable this option if you want the installation to run in an airgapped mode without expecting any internet access.
 
 Manually Provision Nodes
-: IMPORTANT: Enable the **Manually Provision Nodes** option if you provisioned nodes using the [YugabyteDB Anywhere node agent package](../../prepare/server-nodes-software/software-on-prem/).
+: Indicates whether you are providing [SSH Key Pairs](#ssh-key-pairs) (sudo privileges) to YugabyteDB Anywhere for it to automatically manage VM provisioning.
+: If you _are not_ providing SSH Key Pairs to YugabyteDB Anywhere, select this option.
+: If you _are_ providing SSH Key Pairs so that YugabyteDB Anywhere can perform [legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/), _deselect_ this option.
+: This option is automatically selected when you provision nodes using the [YugabyteDB Anywhere node agent package](../../prepare/server-nodes-software/software-on-prem/).
+: Select this option if you are using legacy [assisted manual](../../prepare/server-nodes-software/software-on-prem-assist/) or [fully manual](../../prepare/server-nodes-software/software-on-prem-manual/) provisioning to provision your nodes.
+
+
 : You must also enable this option if you used legacy [assisted manual](../../prepare/server-nodes-software/software-on-prem-assist/) or [fully manual](../../prepare/server-nodes-software/software-on-prem-manual/) provisioning to provision your nodes. For manual provisioning, you are prompted to run a Python pre-provisioning script at a later stage to provision the database instances. Refer to [Add nodes to the on-premises provider](../on-premises-nodes/).
 
 YB Nodes Home Directory
