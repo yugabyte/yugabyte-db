@@ -5080,29 +5080,30 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 /*
  * ybParallelPrepare
  *
- * Load initial data into the parallel state structure.
- * When this function is working, no parallel worker is started yet, so
- * the parallel state is owned exclusively, no locking is needed.
+ * Assign the scan details (relation id and direction) to the parallel state.
+ * In Postgres the parallel DSM block initialization routines are parameterless,
+ * but for Yugabyte parallel scan we need to know some details about the scan.
+ *
+ * The scan details need to be set only once after the parallel state is
+ * initialized, however due to the parameters, it is hard to fit into the DSM
+ * initialization routines where the state is exclusive to the main worker.
+ * Hence it is called by each parallel worker, and has to be idempotent in
+ * concurrent environment. To achieve this, the function acquires the lock and
+ * checks if the relation id is already set. If it is, the function returns
+ * without making any changes. Otherwise it proceeds with the initialization.
  */
 void
 ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
-				  YbcPgExecParameters *exec_params, bool is_forward)
+							  bool is_forward)
 {
-	/*
-	 * The index scan access method's DSM initialization routines do not
-	 * disclose if DSM is initialized for main process or for the background
-	 * worker. However, it is still guaranteed that background workers do not
-	 * start until main worker DSM initialization is completed.
-	 * Hence we always call ybParallelPrepare and use table_relfilenode_oid as
-	 * an indicator: if table_relfilenode_oid is valid, it is a background
-	 * worker and no initialization is needed.
-	 * The table_relfilenode_oid is never changed once initialized,
-	 * so spinlock is not required to check it. The rest of the code still
-	 * has the YBParallelPartitionKeys structure exclusively.
-	 */
+	Oid database_oid = YBCGetDatabaseOid(relation);
+	Oid rel_oid = YbGetRelfileNodeId(relation);
+	SpinLockAcquire(&ppk->mutex);
 	if (OidIsValid(ppk->table_relfilenode_oid))
 	{
-		Assert(ppk->table_relfilenode_oid == YbGetRelfileNodeId(relation));
+		Assert(ppk->table_relfilenode_oid == rel_oid &&
+			   ppk->database_oid == database_oid);
+		SpinLockRelease(&ppk->mutex);
 		return;
 	}
 
@@ -5111,18 +5112,26 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 	Assert(ppk->low_offset == 0);
 	Assert(ppk->high_offset == 0);
 	Assert(ppk->key_count == 0);
-	ppk->database_oid = YBCGetDatabaseOid(relation);
-	ppk->table_relfilenode_oid = YbGetRelfileNodeId(relation);
+
+	ppk->database_oid = database_oid;
+	ppk->table_relfilenode_oid = rel_oid;
 	ppk->is_forward = is_forward;
+
 	/*
-	 * Put empty key as the first to be taken.
-	 * Empty key means lower bound unchanged, so if original request has
-	 * lower bound, it will be used.
-	 * TODO(#19465) Scan conditions may allow to determine boundaries, and we
-	 * have algorithms to do so, however, in practice it happens much later to
-	 * be useful here. We need to move this logic.
+	 * Put empty key as the first to be taken. Empty key corresponds to the
+	 * beginning of the relation.
+	 * Currently the parallel ranges start from the beginning. If the request
+	 * has the scan bounds derived from the conditions, the PgGate will
+	 * calculate the intersection of the scan bounds and the parallel range
+	 * bounds. If the intersection is empty, the request won't be sent to DocDB
+	 * for this parallel range. That way the overhead is minimized.
+	 * TODO(#19465) It is possible to eliminate the overhead by taking the scan
+	 * bounds from the request and using them here as the first and the last
+	 * keys. We may have to change PgGate to move the conditions analysis
+	 * logic earlier to take advantage of it at this point.
 	 */
 	yb_add_key_unsynchronized(ppk, NULL, 0);
+	SpinLockRelease(&ppk->mutex);
 }
 
 typedef enum YbNextRangeResult
