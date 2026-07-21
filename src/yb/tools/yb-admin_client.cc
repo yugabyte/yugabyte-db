@@ -1471,6 +1471,9 @@ Status ClusterAdminClient::ListAllMasters() {
 Status ClusterAdminClient::ListTabletServersLogLocations() {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
+  // Sort alive tservers first so unreachable (DEAD/unknown) nodes appear last,
+  // matching the ordering of list_all_tablet_servers.
+  SortListTabletServerEntries(servers);
 
   if (!servers.empty()) {
     cout << RightPadToUuidWidth("TS UUID") << kColumnSep

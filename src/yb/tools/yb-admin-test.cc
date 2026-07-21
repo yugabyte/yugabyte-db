@@ -2590,6 +2590,12 @@ TEST_F(AdminCliTest, TestListTabletServerLogLocationsWithDeadTServer) {
   auto output_dead = ASSERT_RESULT(CallAdmin("list_tablet_server_log_locations"));
   ASSERT_STR_CONTAINS(output_dead, ts_uuid);
   ASSERT_STR_CONTAINS(output_dead, "N/A");
+
+  // Dead tserver should sort to the end.
+  const auto dead_row_pos = output_dead.find(ts_uuid);
+  ASSERT_NE(dead_row_pos, std::string::npos);
+  ASSERT_EQ(output_dead.find(ts_uuid, dead_row_pos + 1), std::string::npos);
+  ASSERT_EQ(output_dead.find('\n', dead_row_pos), output_dead.rfind('\n'));
 }
 
 TEST_F(AdminCliTest, TestDisallowImplicitStreamCreation) {
