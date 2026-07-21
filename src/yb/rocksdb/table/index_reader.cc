@@ -248,7 +248,10 @@ Result<BlockBoundaryRestarts> GetBlockBoundaryRestarts(
 
   RETURN_NOT_OK_PREPEND(block_iter->status(), "Failed to seek to lower bound entry");
   if (!block_iter->Valid()) {
-    return STATUS(InternalError, "Failed to seek to lower bound entry");
+    // All the entries are below the lower bound, so the SST file has no user keys and cannot
+    // provide a middle key. Return Incomplete so the caller skips this file, refer to
+    // Version::GetMiddleKey.
+    return STATUS(Incomplete, "No entries above the lower bound");
   }
 
   BlockBoundaryRestarts restarts;
