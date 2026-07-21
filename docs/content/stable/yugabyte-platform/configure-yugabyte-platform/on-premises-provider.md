@@ -97,10 +97,10 @@ DB Nodes have public internet access
 
 Manually Provision Nodes
 : Indicates whether you are providing [SSH Key Pairs](#ssh-key-pairs) (sudo privileges) to YugabyteDB Anywhere for it to automatically manage VM provisioning.
-: - If you _are not_ providing SSH Key Pairs to YugabyteDB Anywhere, select this option.
-: - If you _are_ providing SSH Key Pairs so that YugabyteDB Anywhere can perform [legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/), _deselect_ this option.
-: - This option is automatically selected when you provision nodes using the [YugabyteDB Anywhere node agent package](../../prepare/server-nodes-software/software-on-prem/).
-: - Select this option if you are using [legacy fully manual](../../prepare/server-nodes-software/software-on-prem-manual/) provisioning to provision your nodes.
+: If you _are not_ providing SSH Key Pairs to YugabyteDB Anywhere, select this option.
+: If you _are_ providing SSH Key Pairs so that YugabyteDB Anywhere can perform [legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/), _deselect_ this option.
+: This option is automatically selected when you provision nodes using the [YugabyteDB Anywhere node agent package](../../prepare/server-nodes-software/software-on-prem/).
+: Select this option if you are using [legacy fully manual](../../prepare/server-nodes-software/software-on-prem-manual/) provisioning to provision your nodes.
 
 YB Nodes Home Directory
 : Optionally, use the **YB Nodes Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
