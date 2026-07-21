@@ -2350,6 +2350,31 @@ TEST_P(PgVectorIndexSingleServerTest, GracefulRestart) {
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
+// Reproduces a failure seen in pgvector stress tests: an ANN query whose read time precedes
+// a concurrent DELETE fails with "Vector not found". PgsqlVectorFilter checks reverse
+// mappings at the statement read time and accepts the deleted row, while
+// DocVectorIndexImpl::Search resolves vector ids to ybctids at ReadHybridTime::Max() and
+// observes the tombstone written by the DELETE.
+TEST_P(PgVectorIndexSingleServerTest, SnapshotReadWithConcurrentDelete) {
+  constexpr size_t kNumRows = 64;
+  constexpr size_t kQueryLimit = 5;
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+
+  auto read_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(read_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  // Pin the transaction read time before the delete happens.
+  ASSERT_RESULT(read_conn.FetchRow<int64_t>("SELECT id FROM test WHERE id = 1"));
+
+  // Tombstones the reverse mapping for row 2 and marks the tablet as having vector deletions,
+  // so the vector filter is active for the read below.
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+
+  // Row 2 was deleted after the read time, so it should still be visible to the query.
+  ASSERT_NO_FATALS(VerifyRows(read_conn, AddFilter::kFalse, ExpectedRows(kQueryLimit)));
+  ASSERT_OK(read_conn.CommitTransaction());
+}
+
 TEST_P(PgVectorIndexSingleServerTest, OnDiskSize) {
   // Make the heartbeat compute (and read OnDiskSize) on every heartbeat, and
   // heartbeat often.
