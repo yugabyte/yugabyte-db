@@ -95,7 +95,14 @@ To re-snapshot:
 
 1. Delete the connector(s) associated with the stream ID.
 
-1. Create a new stream ID using [yb-admin](../../../../admin/yb-admin/#create-change-data-stream) (use EXPLICIT checkpointing mode):
+1. Create a new stream ID. Prefer the PostgreSQL replication-slot interface with the `yb_grpc` plugin (see [Create a gRPC CDC stream](../cdc-get-started/#create-a-grpc-cdc-stream)):
+
+   ```sql
+   SELECT * FROM pg_create_logical_replication_slot('my_grpc_slot', 'yb_grpc');
+   SELECT yb_stream_id FROM pg_replication_slots WHERE slot_name = 'my_grpc_slot';
+   ```
+
+   Alternatively, use [yb-admin](../../../../admin/yb-admin/#create-change-data-stream) (deprecated; use EXPLICIT checkpointing mode):
 
    ```sh
    yb-admin --master_addresses <master-addresses> \

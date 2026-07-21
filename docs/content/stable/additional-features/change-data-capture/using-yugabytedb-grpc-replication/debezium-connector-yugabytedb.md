@@ -944,7 +944,7 @@ Support for the following YugabyteDB data types will be enabled in future releas
 
 Before using the connector to monitor the changes on a YugabyteDB server, you need to ensure the following:
 
-* You have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../../admin/yb-admin/#create-change-data-stream) command.
+* You have a stream ID created on the database you want to monitor the changes for. Prefer creating the stream with the PostgreSQL replication-slot interface and the `yb_grpc` plugin (see [Create a gRPC CDC stream](../cdc-get-started/#create-a-grpc-cdc-stream)). The [yb-admin create_change_data_stream](../../../../admin/yb-admin/#create-change-data-stream) command is deprecated but still works.
 * The table to be monitored should have a primary key. Only tables which have a primary key can be streamed.
 
 ### WAL disk space consumption
@@ -986,7 +986,7 @@ You can choose to produce events for a subset of the schemas and tables in a dat
 1. The address of this YugabyteDB server.
 1. The port number of the YugabyteDB YSQL process.
 1. List of comma separated values of master nodes of the YugabyteDB server. Usually in the form `host`:`port`.
-1. The DB stream ID created using [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands).
+1. The DB stream ID created using the PostgreSQL replication-slot interface (`yb_stream_id` from `pg_replication_slots`) or [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands). See [Create a gRPC CDC stream](../cdc-get-started/#create-a-grpc-cdc-stream).
 1. The name of the YugabyteDB user having the privileges to connect to the database.
 1. The password for the above specified YugabyteDB user.
 1. The name of the YugabyteDB database to connect to.
@@ -1044,7 +1044,7 @@ The following properties are _required_ unless a default value is available:
 | database.password | N/A | Password for the given user. |
 | database.dbname | N/A | The database from which to stream. |
 | database.server.name | N/A | Logical name that identifies and provides a namespace for the particular YugabyteDB database server or cluster for which Debezium is capturing changes. This name must be unique, as it's also used to form the Kafka topic. |
-| database.streamid | N/A | Stream ID created using [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands) for Change data capture. |
+| database.streamid | N/A | Stream ID for Change data capture. Obtain it from `yb_stream_id` in `pg_replication_slots` when using the `yb_grpc` plugin, or from [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands). See [Create a gRPC CDC stream](../cdc-get-started/#create-a-grpc-cdc-stream). |
 | table.include.list | N/A | Comma-separated list of table names and schema names, such as `public.test` or `test_schema.test_table_name`. |
 | table.max.num.tablets | 300 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
 | database.sslmode | disable | Whether to use an encrypted connection to the YugabyteDB cluster. Supported options are:<ul><li>`disable` uses an unencrypted connection</li><li>`require` uses an encrypted connection and fails if it can't be established</li><li>`verify-ca` uses an encrypted connection, verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, and fails if no valid matching CA certificates are found.</li></ul> |

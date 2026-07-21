@@ -21,7 +21,7 @@ To set up YugabyteDB for use with the YugabyteDB gRPC connector, do the followin
 
 - Create a database stream ID.
 
-    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the `create_change_data_stream` yb-admin CLI command. Refer to the [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands) CDC command reference for more details.
+    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a CDC stream. Prefer creating and managing the stream through the PostgreSQL replication-slot interface (see [Create a gRPC CDC stream](#create-a-grpc-cdc-stream)). You can still create a stream with the [yb-admin](../../../../admin/yb-admin/#create-change-data-stream) `create_change_data_stream` command, but that method is deprecated.
 
     Note that CDC currently only supports YSQL tables.
 
@@ -34,6 +34,54 @@ To set up YugabyteDB for use with the YugabyteDB gRPC connector, do the followin
     The change records for CDC are read from the WAL. YugabyteDB CDC maintains checkpoints internally for each DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
 
     If CDC lags or is away for some time, the disk usage may grow and cause instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage collected. For more information, see [Important configuration settings](#important-configuration-settings).
+
+## Create a gRPC CDC stream
+
+{{<tags/feature/ea idea="2762">}}Starting in v2026.1.1.0, you can create, list, and drop gRPC CDC streams using the standard PostgreSQL replication-slot interface by specifying the special output plugin `yb_grpc`. The stream is still consumed by the YugabyteDB gRPC connector; only the lifecycle (create, list, drop) uses familiar PostgreSQL tooling.
+
+This capability is enabled automatically after you finalize a cluster upgrade to a supporting version. Creating a gRPC stream via PostgreSQL syntax is rejected until upgrade finalization completes.
+
+Streams created this way omit the stream-level `record_type` option that older gRPC connectors expect. Before-image format is driven by each table's [replica identity](../../using-logical-replication/key-concepts/#replica-identity) instead. Use a gRPC connector version that supports replica-identity-driven streams when consuming a stream created via PostgreSQL syntax.
+
+### Using PostgreSQL replication-slot syntax
+
+Connect to the database with ysqlsh (or any PostgreSQL client) and create a logical replication slot with the `yb_grpc` plugin:
+
+```sql
+-- Create a gRPC CDC stream (after upgrade finalization)
+SELECT * FROM pg_create_logical_replication_slot('my_grpc_slot', 'yb_grpc');
+```
+
+List the slot and obtain the stream ID to use in the connector's `database.streamid` property:
+
+```sql
+SELECT slot_name, plugin, yb_stream_id
+FROM pg_replication_slots
+WHERE slot_name = 'my_grpc_slot';
+```
+
+Drop the stream like any other replication slot:
+
+```sql
+SELECT pg_drop_replication_slot('my_grpc_slot');
+```
+
+You can also create the slot using the streaming replication protocol:
+
+```sql
+CREATE_REPLICATION_SLOT my_grpc_slot LOGICAL yb_grpc;
+```
+
+### Using yb-admin (deprecated)
+
+The [yb-admin](../../../../admin/yb-admin/#create-change-data-stream) `create_change_data_stream` command still works but emits a deprecation warning. Prefer the PostgreSQL replication-slot interface.
+
+```sh
+yb-admin --master_addresses <master-addresses> \
+  create_change_data_stream ysql.<database_name>
+```
+
+Streams created with yb-admin (and pre-existing streams backfilled after upgrade finalization) continue to use the `record_type` supplied at creation time for before-image format. They receive a replication slot name of the form `grpc_<stream_id>` and the `yb_grpc` plugin name, but they do not get a `replica_identity_map`.
 
 ## Deploy the YugabyteDB gRPC Connector
 
@@ -114,11 +162,16 @@ To use the [protobuf](http://protobuf.dev) format for the serialization/de-seria
 
 ## Before image
 
-Before image refers to the state of the row _before_ the change event occurred. The YugabyteDB connector sends the before image of the row when it will be configured using a stream ID enabled with before image. It is populated for UPDATE and DELETE events. For INSERT events, before image doesn't make sense as the change record itself is in the context of new row insertion.
+Before image refers to the state of the row _before_ the change event occurred. The YugabyteDB connector sends the before image of the row when the stream is configured for it. It is populated for UPDATE and DELETE events. For INSERT events, before image doesn't make sense as the change record itself is in the context of new row insertion.
+
+How you enable before image depends on how the stream was created:
+
+- **PostgreSQL replication-slot syntax (`yb_grpc`)** — Before-image format is driven by each table's [replica identity](../../using-logical-replication/key-concepts/#replica-identity) at stream creation time (captured in the stream's `replica_identity_map`). Set the desired replica identity on tables before you create the slot (for example, `ALTER TABLE ... REPLICA IDENTITY FULL`).
+- **yb-admin `create_change_data_stream`** — Before image is controlled by the stream-level `record_type` (before-image mode) you pass when creating the stream. See [Before image modes](#before-image-modes) and [Enabling before image](../../../../admin/yb-admin/#enabling-before-image).
 
 Yugabyte uses multi-version concurrency control (MVCC) mechanism, and compacts data at regular intervals. The compaction or the history retention is controlled by the [history retention interval flag](../../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). However, when before image is enabled for a database, YugabyteDB adjusts the history retention for that database based on the most lagging active CDC stream so that the previous row state is retained, and available. Consequently, in the case of a lagging CDC stream, the amount of space required for the database grows as more data is retained. On the other hand, older rows that are not needed for any of the active CDC streams are identified and garbage collected.
 
-Schema version that is currently being used by a CDC stream will be used to frame before and current row images. The before image functionality is disabled by default unless it is specifically turned on during the CDC stream creation. The [yb-admin](../../../../admin/yb-admin/#enabling-before-image) `create_change_data_stream` command can be used to create a CDC stream with before image enabled.
+Schema version that is currently being used by a CDC stream will be used to frame before and current row images.
 
 {{< tip title="Use transformers" >}}
 
@@ -187,6 +240,8 @@ The highlighted fields in the update event are:
 | 4 | op | In an update event, this field's value is `u`, signifying that this row changed because of an update. |
 
 ### Before image modes
+
+The following record types apply to streams created with [yb-admin](../../../../admin/yb-admin/#enabling-before-image) `create_change_data_stream`. For streams created with the `yb_grpc` replication-slot plugin, use [replica identity](../../using-logical-replication/key-concepts/#replica-identity) instead.
 
 YugabyteDB supports the following record types in the context of before image:
 
