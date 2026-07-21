@@ -22,6 +22,7 @@ import {
   getProviderIcon,
   getResilientType,
   hasDedicatedNodes,
+  isKubernetesUniverse,
   useEditUniverseContext
 } from '../EditUniverseUtils';
 
@@ -78,6 +79,7 @@ const MAP_CONTAINER_PROPS = {
 export const GeneralTab = () => {
   const { universeData, providerRegions } = useEditUniverseContext();
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.general' });
+  const isK8s = isKubernetesUniverse(universeData!);
   const toast = useYBToast();
   const [mapViewMode, setMapViewMode] = useState<MapViewMode>(MapViewMode.REGIONS);
   const r = extractRegionsAndNodeDataFromUniverse(universeData!, providerRegions!);
@@ -202,7 +204,7 @@ export const GeneralTab = () => {
           <StyledInfoRow sx={{ justifyContent: 'flex-end' }}>
             <div></div>
             <div>
-              <span className="header">{t('totalNodes')}</span>{' '}
+              <span className="header">{t(isK8s ? 'totalPods' : 'totalNodes')}</span>{' '}
               <span className="value">{totalNodesCount}</span>
             </div>
             <div>

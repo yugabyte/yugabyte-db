@@ -26,7 +26,7 @@ import {
   ClusterSpecClusterType,
   UniverseRespResponse
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { CloudType, Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
 import { getClusterByType } from '../../../../edit-universe/EditUniverseUtils';
 import { RRBreadCrumbs } from '../../ReadReplicaBreadCrumbs';
@@ -234,6 +234,8 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
     : undefined;
   const providerUUID = primaryCluster?.provider_spec?.provider ?? '';
   const useDedicatedNodes = Boolean(primaryCluster?.node_spec?.dedicated_nodes);
+  const isK8s =
+    primaryCluster?.placement_spec?.cloud_list?.[0]?.code === CloudType.kubernetes;
 
   const { data: regionsList = [], isLoading: isRegionsLoading } = useQuery(
     [QUERY_KEY.getRegionsList, providerUUID],
@@ -363,6 +365,7 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
                     baselineRegion={regionsAndAZBaseline?.regions?.[index]}
                     allowAzUndo={Boolean(readReplicaPlacementFromUniverse)}
                     useDedicatedNodes={useDedicatedNodes}
+                    isK8s={isK8s}
                     showRemoveRegion={regionFields.length > 1}
                     onRemoveRegion={
                       regionFields.length > 1
@@ -399,8 +402,8 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
                     }}
                   >
                     {useDedicatedNodes
-                      ? t('totalNodesPlacementTserver')
-                      : t('totalNodesPlacement')}
+                      ? t(isK8s ? 'totalPodsPlacementTserver' : 'totalNodesPlacementTserver')
+                      : t(isK8s ? 'totalPodsPlacement' : 'totalNodesPlacement')}
                   </Typography>
                   <Typography
                     sx={{

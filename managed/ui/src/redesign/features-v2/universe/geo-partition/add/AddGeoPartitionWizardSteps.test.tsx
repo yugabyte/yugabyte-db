@@ -1,10 +1,28 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AddGeoPartitionContextProps,
   initialAddGeoPartitionFormState
 } from './AddGeoPartitionContext';
 import { useGetSteps } from './AddGeoPartitionUtils';
+
+const tMock = vi.fn((key: string) => {
+  const labels: Record<string, string> = {
+    generalSettings: 'General Settings',
+    regions: 'Regions',
+    nodesAndAvailabilityZone: 'Availability Zones and Nodes',
+    podsAndAvailabilityZone: 'Availability Zones and Pods',
+    review: 'Review',
+    summaryAndCost: 'Summary and Cost'
+  };
+  return labels[key] ?? key;
+});
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: tMock
+  })
+}));
 
 function StepsDump({ ctx }: { ctx: AddGeoPartitionContextProps }) {
   const steps = useGetSteps(ctx);
@@ -25,6 +43,10 @@ function StepsDump({ ctx }: { ctx: AddGeoPartitionContextProps }) {
 }
 
 describe('useGetSteps (geo partition wizard)', () => {
+  beforeEach(() => {
+    tMock.mockClear();
+  });
+
   it('when isNewGeoPartition and one partition: first group has only General Settings; then Review', () => {
     const ctx: AddGeoPartitionContextProps = {
       ...initialAddGeoPartitionFormState,

@@ -24,6 +24,7 @@ import {
 import { mapCreateUniversePayload, getDedicatedTserverMasterCounts } from '../../CreateUniverseUtils';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
 import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
+import { CloudType } from '@app/redesign/helpers/dtos';
 
 //icons
 import UniverseIcon from '../../../../../assets/clusters.svg';
@@ -95,7 +96,10 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
 
-  const { resilienceAndRegionsSettings, nodesAvailabilitySettings } = context;
+  const { resilienceAndRegionsSettings, nodesAvailabilitySettings, generalSettings } = context;
+  const isK8s =
+    generalSettings?.cloud === CloudType.kubernetes ||
+    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
 
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.reviewAndSummary' });
   const toast = useYBToast();
@@ -192,7 +196,7 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
                   justifyContent: 'space-between'
                 }}
               >
-                <StyledAttrib>{t('nodes')}</StyledAttrib>
+                <StyledAttrib>{t(isK8s ? 'pods' : 'nodes')}</StyledAttrib>
                 <StyledValue>{nodesDisplay}</StyledValue>
               </div>
               <div

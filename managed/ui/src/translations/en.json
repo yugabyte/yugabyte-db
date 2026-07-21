@@ -3800,6 +3800,7 @@
         "placement": "Placement",
         "resilienceAndRegions": "Regions",
         "nodesAndAvailabilityZone": "Availability Zones and Nodes",
+        "podsAndAvailabilityZone": "Availability Zones and Pods",
         "hardware": "Hardware",
         "instanceSettings": "Instance Settings",
         "database": "Database",
@@ -3886,6 +3887,7 @@
           "wordRegion": "region",
           "wordAvailabilityZone": "availability zone",
           "wordNode": "node",
+          "wordPod": "pod",
           "requirementTagRegions": "{{count}} {{entity}}",
           "requirementTagRegionsOnePlus": "1+ {{entity}}",
           "requirementTagAvailabilityZones": "{{count}} {{entity}}",
@@ -3902,7 +3904,10 @@
           "NODE_LEVEL": {
             "title": "Node",
             "subText": "Resilient to node outages but not availability zone outages.",
-            "name": "node"
+            "name": "node",
+            "titlePod": "Pod",
+            "subTextPod": "Resilient to pod outages but not availability zone outages.",
+            "namePod": "pod"
           },
           "AZ_LEVEL": {
             "title": "Availability",
@@ -3937,24 +3942,33 @@
         },
         "guidedMode": {
           "nodes": "Nodes",
+          "pods": "Pods",
           "nodesPerAz": "Nodes per Availability Zone",
           "nodesTserverPerAz": "Nodes (T-Server) per Availability Zone",
           "totalNodes": "Total Nodes",
-          "totalNodesTserver": "Total Nodes (Tserver)"
+          "totalPods": "Total Pods",
+          "totalNodesTserver": "Total Nodes (Tserver)",
+          "totalPodsTserver": "Total Pods (Tserver)"
         },
         "inferredResilienceCard": {
           "resilientMessage": "Current setup is resilient to <b>{{count}} {{outageLevel}}</b>",
           "notResilientBody": "<b>Caution!</b> Current setup is not resilient to any outages. Clusters with replication factor of 1 won't be resilient to outages and are subject to downtime during operations that require a restart.",
           "regionOutage": "region outage",
           "availabilityZoneOutage": "availability zone outage",
-          "nodeOutage": "node outage"
+          "nodeOutage": "node outage",
+          "podOutage": "pod outage"
         },
         "availabilityZones": {
           "title": "Availability Zones and Nodes",
+          "titlePods": "Availability Zones and Pods",
           "region": "Region {{region_count}}",
+          "availabilityZone": "Availability Zone",
+          "removeAvailabilityZone": "Remove availability zone",
           "add_button": "Add Availability Zone",
           "tServer": "Nodes (TServer)",
+          "tServerPods": "Pods (TServer)",
           "nodes": "Nodes",
+          "pods": "Pods",
           "tooltips": {
             "regionTag": "You can add or remove regions in the previous step (Regions).",
             "addAvailabilityZoneDisabled": "{{outage_count}} availability zone outage resilience supports exactly {{az_count}} AZs. Remove an availability zone from another region before adding one here.<br/><br/><a>Learn more</a>",
@@ -4059,6 +4073,7 @@
         "kmsConfigPlaceHolder": "Select Configuration",
         "kmsValidationMsg": "This KMS configuration is already used for encryption at rest.",
         "provisionedIopsPerNode": "Provisioned IOPS / Node ",
+        "provisionedIopsPerPod": "Provisioned IOPS / Pod ",
         "provisionedThroughputPerNode": "Provisioned Throughput / Node",
         "provisionedThroughputPerPod": "Provisioned Throughput / Pod",
         "ssd": "Storage Type (SSD)",
@@ -4067,6 +4082,7 @@
         "useTimeSyncHelper": "Enable the {{provider}} Time Sync functionality for the DB servers.",
         "useTimeSyncHelper2": "Syncs node clocks using {{provider}} Time Sync Service.",
         "volumeInfoPerNode": "Volume Info / Node",
+        "volumeInfoPerPod": "Volume Info / Pod",
         "volumeSizeUnit": "GB",
         "throughputUnit": "MB/s",
         "k8VolumeSizeUnit": "Gib",
@@ -4081,8 +4097,11 @@
         "tserver": "T-Server Instance",
         "master": "Master Server Instance (Optional)",
         "totalNodes": "Total Nodes",
+        "totalPods": "Total Pods",
         "totalTServerNodes": "Total TServer Nodes",
+        "totalTServerPods": "Total TServer Pods",
         "totalMasterServerNodes": "Total Master Server Nodes",
+        "totalMasterServerPods": "Total Master Server Pods",
         "keepMasterTserverSame": "Keep master server instance settings same as T-Server instance settings.",
         "cantChangeLater": "This CANNOT be changed after creation",
         "masterNote": "<1>Note!</1> CPU Architecture, Linux version, {{ebs}} and {{cloudType}} Spot instance usage are global settings and can not be overridden. You can change these settings from the \"Default Instance Configuration\".",
@@ -4260,6 +4279,7 @@
         "daily": "Daily",
         "monthly": "Monthly",
         "nodes": "Nodes",
+        "pods": "Pods",
         "totalCores": "Total Cores",
         "totalMemory": "Total Memory",
         "totalStorage": "Total Storage",
@@ -4278,6 +4298,21 @@
     "geoPartition": {
       "addGeoPartition": {
         "title": "Add Geo Partition"
+      },
+      "steps": {
+        "generalSettings": "General Settings",
+        "regions": "Regions",
+        "nodesAndAvailabilityZone": "Availability Zones and Nodes",
+        "podsAndAvailabilityZone": "Availability Zones and Pods",
+        "review": "Review",
+        "summaryAndCost": "Summary and Cost"
+      },
+      "reviewAndSummary": {
+        "nodes": "Nodes",
+        "pods": "Pods",
+        "cores": "Cores",
+        "totalMemory": "Total Memory",
+        "totalStorage": "Total Storage"
       },
       "GeoPartitionInfoModal": {
         "title": "Before You Start...",
@@ -4306,11 +4341,15 @@
         "ebsType": "EBS Type",
         "iops": "IOPS",
         "throughput": "Throughput",
-        "nodes": "Node Size"
+        "nodes": "Node Size",
+        "pods": "Pod Size"
       }
     },
     "editUniverse": {
       "totalNodes": "{{total}} Nodes",
+      "totalPods": "{{total}} Pods",
+      "node": "node",
+      "pod": "pod",
       "readReplica": "Read Replica",
       "preferredRank": "Preferred Rank {{rank}}",
       "tabs": {
@@ -4330,6 +4369,9 @@
         "provider": "Provider",
         "providerConfig": "Provider Config",
         "totalNodes": "Total Nodes",
+        "totalPods": "Total Pods",
+        "node": "node",
+        "pod": "pod",
         "faultTolerance": "Fault Tolerance",
         "encryption": "Encryption",
         "dateCreated": "Date Created",
@@ -4338,6 +4380,7 @@
         "regionResilient": "Resilient to {{count}} Region outage",
         "azResilient": "Resilient to {{count}} Availability Zone outage",
         "nodeResilient": "Resilient to {{count}} Node outage",
+        "podResilient": "Resilient to {{count}} Pod outage",
         "notResilient": "Not Resilient to outages",
         "primaryCluster": "Primary Cluster",
         "asyncCluster": "Async Cluster",
@@ -4345,6 +4388,7 @@
         "linuxVersion": "Linux Version",
         "defaultInstanceType": "Default Instance Type",
         "region": "Region",
+        "az": "AZ",
         "primary": "Primary",
         "readReplica": "Read Replica",
         "preferredRank1": "Preferred Rank 1",
@@ -4355,6 +4399,7 @@
         "actions": "Actions",
         "editResilienceAndRegions": "Edit Regions",
         "editNodesAndAvailabilityZones": "Edit AZ and Node Placement",
+        "editPodsAndAvailabilityZones": "Edit AZ and Pod Placement",
         "advancedPlacementOptions": "Advanced Placement Options",
         "editMasterServerNodeAllocation": "Edit Master Server Node Allocation",
         "clusterPlacement": "Cluster Placement",
@@ -4369,12 +4414,14 @@
         "resilienceLevel": "Resilience Level",
         "replicationFactor": "Replication Factor",
         "totalNodes": "Total Nodes",
+        "totalPods": "Total Pods",
         "totalNodesTServerMaster": "{{total_nodes}} ({{tservers}} T-Servers | {{masters}} Masters)",
         "tServers": "T-Servers",
         "masters": "Masters",
         "region": "Region",
         "availabilityZone": "Availability Zone",
         "noOfNodes": "No. of Nodes",
+        "noOfPods": "No. of Pods",
         "reviewChanges": "Review Changes",
         "editPlacementConfirmModal": {
           "title": "Review Changes",
@@ -4384,7 +4431,9 @@
           "faultTolerance": "Fault Tolerance:",
           "replicationFactor": "Replication Factor:",
           "totalNodes": "Total Nodes:",
+          "totalPods": "Total Pods:",
           "node": "node",
+          "pod": "pod",
           "rank": "Rank {{rank}}",
           "notPreferred": "Not Preferred",
           "confirmAndApply": "Confirm and Apply",
@@ -4392,6 +4441,7 @@
             "REGION_LEVEL": "{{count}} Region outage",
             "AZ_LEVEL": "{{count}} Availability Zone outage",
             "NODE_LEVEL": "{{count}} Node outage",
+            "POD_LEVEL": "{{count}} Pod outage",
             "NONE": "None"
           }
         },
@@ -4407,9 +4457,11 @@
       },
       "hardware": {
         "totalClusterNodes": "Total Cluster Nodes",
+        "totalClusterPods": "Total Cluster Pods",
         "clusterInstance": "Cluster Instance",
         "instanceType": "Instance Type",
         "volumeAndNode": "volume / node",
+        "volumeAndPod": "volume / pod",
         "volumeAndNodeValue": "{{nodeCount}} X {{volumeSize}} GB",
         "volumeSize": "Volume size",
         "volumeSizeValue": "{{volumeSize}} GB",
@@ -4420,7 +4472,9 @@
         "storageClass": "Storage class",
         "ebsType": "ebs type",
         "iops": "provisioned IOPS / Node",
+        "iopsPod": "provisioned IOPS / Pod",
         "throughput": "provisioned throughput / Node",
+        "throughputPod": "provisioned throughput / Pod",
         "throughtputValue": "{{throughput}} MB/s",
         "tServerInstance": "T-Server Instance",
         "masterServerInstance": "Master Server Instance",
@@ -4429,8 +4483,11 @@
           "submitLabel": "Review Changes",
           "noHardwareChanges": "Nothing to update - no hardware fields changed.",
           "totalNodes": "Total Nodes",
+          "totalPods": "Total Pods",
           "totalTServerNodes": "Total T-Server Nodes",
-          "totalMasterServerNodes": "Total Master Server Nodes"
+          "totalTServerPods": "Total T-Server Pods",
+          "totalMasterServerNodes": "Total Master Server Nodes",
+          "totalMasterServerPods": "Total Master Server Pods"
         },
         "unableToApplyChanges": "Unable to apply hardware changes.",
         "reviewChangesModal": {
@@ -4443,6 +4500,7 @@
           "new": "New",
           "instanceType": "Instance Type :",
           "volumeAndNode": "Volume / Node :",
+          "volumeAndPod": "Volume / Pod :",
           "universeUpdateOptions": "Universe Update Options",
           "rollingRestart": "Rolling restart the current nodes.",
           "restartNodes": "Restart the current nodes.",
@@ -4719,10 +4777,13 @@
         "regionLabel": "Region {{index}}",
         "availabilityZone": "Availability Zone",
         "nodes": "Nodes",
+        "pods": "Pods",
         "replicationFactor": "Replication Factor",
         "replicationFactorTooltip": "Number of copies of primary cluster data maintained in this availability zone. Determines fault tolerance within the read replica.<br/>",
         "totalNodesPlacement": "Total Nodes",
+        "totalPodsPlacement": "Total Pods",
         "totalNodesPlacementTserver": "Total Nodes (T-Server)",
+        "totalPodsPlacementTserver": "Total Pods (T-Server)",
         "addAvailabilityZone": "Add Availability Zone",
         "removeRegion": "Remove region",
         "addRegion": "Add Region",
@@ -4734,6 +4795,9 @@
         "loadingRegions": "Loading regions…",
         "rrInstance": "Read Replica Instance",
         "totalNodes": "Total Nodes",
+        "totalPods": "Total Pods",
+        "totalTServerNodes": "Total TServer Nodes",
+        "totalTServerPods": "Total TServer Pods",
         "primaryRRInstanceSame": "Keep read replica instance settings same as primary cluster instance settings.",
         "primaryClusterInstSettings": "Primary Cluster Instance Settings",
         "kmsConfig": "Key Management Service Config",
@@ -4746,6 +4810,7 @@
           "monthly": "Monthly",
           "universeTotal": "Universe total",
           "totalNodes": "Total nodes",
+          "totalPods": "Total pods",
           "totalCores": "Total cores",
           "totalMemory": "Total memory",
           "totalStorage": "Total storage"

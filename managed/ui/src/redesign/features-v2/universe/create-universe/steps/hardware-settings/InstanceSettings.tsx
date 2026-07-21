@@ -278,7 +278,11 @@ export const InstanceSettings = forwardRef<
               </StyledHeader>
               <Box sx={{ px: '24px', pb: '16px' }}>
                 <TotalNodesBadge
-                  label={useDedicatedNodes ? t('totalTServerNodes') : t('totalNodes')}
+                  label={
+                    useDedicatedNodes
+                      ? t(isK8s ? 'totalTServerPods' : 'totalTServerNodes')
+                      : t(isK8s ? 'totalPods' : 'totalNodes')
+                  }
                   count={tserverNodeCount}
                   onEdit={goToPlacementRegions}
                   dataTestId={
@@ -422,7 +426,7 @@ export const InstanceSettings = forwardRef<
             !editMode && useDedicatedNodes ? (
               <Box sx={{ mb: 3 }}>
                 <TotalNodesBadge
-                  label={t('totalMasterServerNodes')}
+                  label={t(isK8s ? 'totalMasterServerPods' : 'totalMasterServerNodes')}
                   count={masterNodeCount}
                   onEdit={goToPlacementRegions}
                   dataTestId="instance-settings-total-master-nodes"

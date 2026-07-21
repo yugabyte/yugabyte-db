@@ -9,7 +9,7 @@ import {
 import { groupBy, toUpper } from 'lodash';
 import pluralize from 'pluralize';
 import { extractGeoPartitionsFromUniverse } from '../../geo-partition/add/AddGeoPartitionUtils';
-import { useEditUniverseContext } from '../EditUniverseUtils';
+import { isKubernetesUniverse, useEditUniverseContext } from '../EditUniverseUtils';
 import { useTranslation } from 'react-i18next';
 import { isDefinedNotNull } from '@app/utils/ObjectUtils';
 import { MapRegionTooltip } from './MapTooltip';
@@ -48,6 +48,7 @@ export const MapGeoPartitionView = () => {
   const { universeData, providerRegions } = useEditUniverseContext();
   const { regions } = extractGeoPartitionsFromUniverse(universeData!, providerRegions!);
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.general' });
+  const unit = t(isKubernetesUniverse(universeData!) ? 'pod' : 'node');
   const icon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
   const preferedIcon = useGetMapIcons({ type: MarkerType.REGION_PREFERRED });
 
@@ -103,9 +104,9 @@ export const MapGeoPartitionView = () => {
             icon={<>{icon.normal}</>}
             label={t('region')}
             subText={`${regionCount} ${pluralize(t('region'), regionCount)}, ${azCount} ${pluralize(
-              'AZ',
+              t('az'),
               azCount
-            )}, ${nodeCount} ${pluralize('node', nodeCount)}`}
+            )}, ${nodeCount} ${pluralize(unit, nodeCount)}`}
           />,
           hasPrefferedRegions ? (
             <MapLegendItem icon={<>{preferedIcon.normal}</>} label={t('preferredRank1')} />

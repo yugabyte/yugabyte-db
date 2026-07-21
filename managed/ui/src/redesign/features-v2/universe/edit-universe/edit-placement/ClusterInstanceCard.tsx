@@ -24,6 +24,7 @@ import {
 import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
+import { CloudType } from '@app/redesign/helpers/dtos';
 
 export type ClusterInstanceCardEditMenuItem = {
   id: string;
@@ -83,6 +84,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
   const { universeData } = useEditUniverseContext();
   const isUniverseReady = useIsUniverseReady();
   if (!universeData) return null;
+  const isK8s = placement.cloud_list?.[0]?.code === CloudType.kubernetes;
   const regionStats = countRegionsAzsAndNodes(placement);
   const resilientType = getResilientType(placement, parition?.replication_factor ?? cluster?.replication_factor, t);
   const isReadReplicaCluster = cluster.cluster_type === ClusterSpecClusterType.ASYNC;
@@ -123,7 +125,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
     if (!dedicatedFromSpec) {
       return (
         <YBTable
-          columns={[{ accessorKey: 'name', header: t('availabilityZone') }, { accessorKey: 'num_nodes_in_az', header: t('noOfNodes') }]}
+          columns={[{ accessorKey: 'name', header: t('availabilityZone') }, { accessorKey: 'num_nodes_in_az', header: t(isK8s ? 'noOfPods' : 'noOfNodes') }]}
           data={((placementRegion.az_list as unknown) as Record<string, string>[]) ?? []}
           withBorder={false}
           options={{
@@ -291,7 +293,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
                   disabled={!isUniverseReady}
                 >
                   {<EditIcon />}
-                  {t('editNodesAndAvailabilityZones')}
+                  {t(isK8s ? 'editPodsAndAvailabilityZones' : 'editNodesAndAvailabilityZones')}
                 </MenuItem>
               </RbacValidator>,
               ...(editMasterServerNodeAllocationClicked
@@ -333,7 +335,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
         )}
         <div>
           <Typography variant="subtitle1" color="textSecondary">
-            {t('totalNodes')}
+            {t(isK8s ? 'totalPods' : 'totalNodes')}
           </Typography>
           <StyledValue>
             {dedicatedFromSpec && !isReadReplicaCluster
@@ -371,7 +373,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
           },
           {
             accessorKey: 'uuid',
-            header: t('totalNodes'),
+            header: t(isK8s ? 'totalPods' : 'totalNodes'),
             Cell: ({ cell }: any) => countTotalNodes(cell.row.original)
           }
         ]}
