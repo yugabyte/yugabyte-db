@@ -426,6 +426,8 @@ void TSManager::MarkUnresponsiveTServers() {
     auto desc_lock = desc->LockForWrite();
     if (desc_lock->pb.state() == SysTServerEntryPB::MAYBE_LIVE) {
       desc_lock.mutable_data()->pb.set_state(SysTServerEntryPB::UNRESPONSIVE);
+      // Force a full tablet report on recovery.
+      desc->set_has_tablet_report(false);
       locks.push_back(std::move(desc_lock));
     }
   }
