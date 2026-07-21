@@ -683,6 +683,22 @@
           },
           "submitLabel": "Confirm"
         }
+      },
+      "reprovisionNodesWithYnpModal": {
+        "title": "Reprovision Nodes with YNP",
+        "instructions": "Nodes will be provisioned in a rolling manner.",
+        "reprovisionNodesFor": "Reprovision nodes for:",
+        "allNodeInUniverse": "All nodes in this Universe",
+        "selectedNode": "Selected node",
+        "confirmButton": "Reprovision Nodes with YNP",
+        "error": {
+          "requestFailureLabel": "Reprovision nodes with YNP request failed",
+          "taskFailure": "Failed to reprovision nodes with YNP."
+        },
+        "success": {
+          "requestSuccess": "Reprovision nodes with YNP started.",
+          "taskSuccess": "Reprovisioned nodes with YNP."
+        }
       }
     },
     "commonErrors": {

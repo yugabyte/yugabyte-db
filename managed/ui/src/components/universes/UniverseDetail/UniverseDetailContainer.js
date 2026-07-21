@@ -171,6 +171,9 @@ const mapDispatchToProps = (dispatch) => {
     showInstallNodeAgentModal: () => {
       dispatch(openDialog('installNodeAgentModal'));
     },
+    showReprovisionNodesWithYnpModal: () => {
+      dispatch(openDialog('reprovisionNodesWithYnpModal'));
+    },
     fetchPerfAdvisorList: () => {
       dispatch(fetchPerfAdvisorList()).then((response) => {
         dispatch(fetchPerfAdvisorListResponse(response.payload));

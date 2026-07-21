@@ -133,6 +133,7 @@ export const UNIVERSE_ACTION_TO_FROZEN_TASK_MAP = {
   ENCRYPTION_AT_REST: 'EnableEncryptionAtRest_Universe',
   ENCRYPTION_IN_TRANSIT: 'TlsToggle_Universe',
   INSTALL_NODE_AGENT: 'Install_NodeAgent',
+  REPROVISION_NODES_WITH_YNP: 'ProvisionUniverseNodes_Universe',
 
   // xCluster replication Tab - refer to the button where you can disable (check api is called from)
   CONFIGURE_REPLICATION: 'Create_XClusterConfig',
@@ -187,6 +188,7 @@ export const UNIVERSE_TASKS = {
   ENCRYPTION_AT_REST: 'ENCRYPTION_AT_REST',
   ENCRYPTION_IN_TRANSIT: 'ENCRYPTION_IN_TRANSIT',
   INSTALL_NODE_AGENT: 'INSTALL_NODE_AGENT',
+  REPROVISION_NODES_WITH_YNP: 'REPROVISION_NODES_WITH_YNP',
 
   // xCluster replication actions
   CONFIGURE_REPLICATION: 'CONFIGURE_REPLICATION',
