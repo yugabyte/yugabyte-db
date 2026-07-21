@@ -4,13 +4,19 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import { useTranslation } from 'react-i18next';
 import { mui, YBCheckboxField } from '@yugabyte-ui-library/core';
 import { RRBreadCrumbs } from '../../ReadReplicaBreadCrumbs';
-import { StepsRef, AddRRContext, AddRRContextMethods } from '../../AddReadReplicaContext';
+import {
+  StepsRef,
+  AddRRContext,
+  AddRRContextMethods,
+  AddReadReplicaSteps
+} from '../../AddReadReplicaContext';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import {
   StyledPanel,
   StyledHeader,
   StyledContent
 } from '@app/redesign/features-v2/universe/create-universe/components/DefaultComponents';
+import { TotalNodesBadge } from '@app/redesign/features-v2/universe/create-universe/components/TotalNodesBadge';
 import { InstanceBox } from '@app/redesign/features-v2/universe/create-universe/steps';
 import {
   InstanceTypeField,
@@ -29,6 +35,7 @@ import { CloudType } from '@app/redesign/features/universe/universe-form/utils/d
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { buildRRInstanceSettingsFromCluster } from '../../../readReplicaUtils';
+import { sumReadReplicaNodeCounts } from '../../addReadReplicaClusterPayload';
 
 const { Box, styled, CircularProgress } = mui;
 
@@ -51,10 +58,13 @@ export type RRInstanceSettingsProps = Partial<InstanceSettingProps> & {
 export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
     { instanceSettings, universeData, regionsAndAZ },
-    { moveToNextPage, moveToPreviousPage, saveInstanceSettings }
-  ] = (useContext(AddRRContext) as unknown) as AddRRContextMethods;
+    { moveToNextPage, moveToPreviousPage, saveInstanceSettings, setActiveStep }
+  ] = useContext(AddRRContext) as unknown as AddRRContextMethods;
 
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
+  const useDedicatedNodes = Boolean(primaryCluster?.node_spec?.dedicated_nodes);
+  const totalNodes = regionsAndAZ ? sumReadReplicaNodeCounts(regionsAndAZ) : 0;
+  const goToPlacementRegions = () => setActiveStep(AddReadReplicaSteps.REGIONS_AND_AZ);
 
   const provider: Partial<ProviderType> = {
     uuid: primaryCluster?.provider_spec.provider ?? '',
@@ -86,13 +96,11 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
     if (!formRegions?.length) return undefined;
     const uuids = [
       ...new Set(
-        formRegions
-          .map((r) => r.regionUuid)
-          .filter((uuid): uuid is string => Boolean(uuid))
+        formRegions.map((r) => r.regionUuid).filter((uuid): uuid is string => Boolean(uuid))
       )
     ];
     if (!uuids.length) return undefined;
-    return uuids.map((uuid) => ({ uuid } as Region));
+    return uuids.map((uuid) => ({ uuid }) as Region);
   }, [regionsAndAZ]);
 
   const isK8s = provider?.code === CloudType.kubernetes;
@@ -112,7 +120,7 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
       // Preserve the currently selected value so toggling "same as primary" does not blank the field.
       const resolvedInstanceType =
         provider?.code === CloudType.kubernetes && !initialInstanceSettings.instanceType
-          ? currentInstanceType ?? null
+          ? (currentInstanceType ?? null)
           : initialInstanceSettings.instanceType;
       reset({ ...initialInstanceSettings, instanceType: resolvedInstanceType });
     }
@@ -142,7 +150,17 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
         <RRBreadCrumbs groupTitle={t('hardware')} subTitle={t('instanceOptional')} />
         <StyledPanel>
-          <StyledHeader>{t('rrInstance')}</StyledHeader>
+          <Box>
+            <StyledHeader>{t('rrInstance')}</StyledHeader>
+            <Box sx={{ px: '24px', pb: '16px' }}>
+              <TotalNodesBadge
+                label={useDedicatedNodes ? t('totalTServerNodes') : t('totalNodes')}
+                count={totalNodes}
+                onEdit={goToPlacementRegions}
+                dataTestId="rr-instance-settings-total-nodes"
+              />
+            </Box>
+          </Box>
           <StyledContent>
             <Box>
               <Box mb={2}>
