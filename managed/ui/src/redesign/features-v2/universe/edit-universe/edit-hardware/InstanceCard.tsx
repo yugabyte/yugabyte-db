@@ -111,7 +111,7 @@ export const InstanceCard: FC<InstanceCardProps> = ({
           </StyledInfoRow>
           <StyledInfoRow sx={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <div>
-              <span className="header">{t('volumeAndNode')}</span>
+              <span className="header">{t(isK8s ? 'volumeAndPod' : 'volumeAndNode')}</span>
               <span className="value">
                 {t('volumeAndNodeValue', {
                   volumeSize: storageSpec?.volume_size,
@@ -124,11 +124,11 @@ export const InstanceCard: FC<InstanceCardProps> = ({
               <span className="value">{storageSpec?.storage_type ?? '-'}</span>
             </div>
             <div>
-              <span className="header">{t('iops')}</span>
+              <span className="header">{t(isK8s ? 'iopsPod' : 'iops')}</span>
               <span className="value">{storageSpec?.disk_iops ?? '-'}</span>
             </div>
             <div>
-              <span className="header">{t('throughput')}</span>
+              <span className="header">{t(isK8s ? 'throughputPod' : 'throughput')}</span>
               <span className="value">
                 {storageSpec?.throughput
                   ? t('throughtputValue', { throughput: storageSpec?.throughput })

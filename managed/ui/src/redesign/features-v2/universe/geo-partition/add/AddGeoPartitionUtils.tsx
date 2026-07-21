@@ -1,4 +1,5 @@
 import { useCallback, useContext, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   AddGeoPartitionContext,
   AddGeoPartitionContextMethods,
@@ -16,7 +17,7 @@ import {
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { NodeAvailabilityProps } from '../../create-universe/steps/nodes-availability/dtos';
 import { ResilienceAndRegionsProps } from '../../create-universe/steps/resilence-regions/dtos';
-import { Region } from '@app/redesign/helpers/dtos';
+import { CloudType, Region } from '@app/redesign/helpers/dtos';
 import {
   getEffectiveReplicationFactorForResilience,
   getPlacementRegions
@@ -84,30 +85,35 @@ export function useGeoPartitionNavigation() {
 }
 
 export function useGetSteps(context: AddGeoPartitionContextProps): Step[] {
-  const { geoPartitions, activeGeoPartitionIndex, isNewGeoPartition } = context;
+  const { geoPartitions, activeGeoPartitionIndex, isNewGeoPartition, universeData } = context;
+  const { t } = useTranslation('translation', { keyPrefix: 'geoPartition.steps' });
+  const isK8s =
+    universeData?.spec?.clusters?.[0]?.placement_spec?.cloud_list?.[0]?.code ===
+    CloudType.kubernetes;
+  const azStepTitle = t(isK8s ? 'podsAndAvailabilityZone' : 'nodesAndAvailabilityZone');
 
   return useMemo(() => {
     const steps: Step[] = geoPartitions.map((geoPartition, index) => ({
       groupTitle: geoPartition.name,
       subSteps: [
         {
-          title: 'General Settings'
+          title: t('generalSettings')
         },
         ...(index !== 0 || !isNewGeoPartition
           ? [
               {
-                title: 'Regions'
+                title: t('regions')
               },
               {
-                title: 'Availability Zones and Nodes'
+                title: azStepTitle
               }
             ]
           : [])
       ]
     }));
 
-    return [...steps, { groupTitle: 'Review', subSteps: [{ title: 'Summary and Cost' }] }];
-  }, [geoPartitions, activeGeoPartitionIndex, isNewGeoPartition]);
+    return [...steps, { groupTitle: t('review'), subSteps: [{ title: t('summaryAndCost') }] }];
+  }, [geoPartitions, activeGeoPartitionIndex, isNewGeoPartition, azStepTitle, t]);
 }
 
 export type RegionsAndNodesFormType = {

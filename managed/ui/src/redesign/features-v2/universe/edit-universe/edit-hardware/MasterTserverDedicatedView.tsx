@@ -46,7 +46,7 @@ export const MasterTserverDedicatedView = () => {
             textTransform={'uppercase'}
             color="#6D7C88"
           >
-            {t('totalClusterNodes')}
+            {t(isK8s ? 'totalClusterPods' : 'totalClusterNodes')}
           </Typography>
           <Typography variant="body2" color="#0B1117">
             {t('totalNodesTServerMaster', {

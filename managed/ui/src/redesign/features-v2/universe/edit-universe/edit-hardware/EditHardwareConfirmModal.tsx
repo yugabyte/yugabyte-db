@@ -923,13 +923,13 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
   const badgeLabel = (() => {
     switch (effectiveMode) {
       case 'tserver':
-        return t('totalTServerNodes');
+        return t(isK8s ? 'totalTServerPods' : 'totalTServerNodes');
       case 'master':
-        return t('totalMasterServerNodes');
+        return t(isK8s ? 'totalMasterServerPods' : 'totalMasterServerNodes');
       case 'cluster':
       case 'readReplica':
       default:
-        return t('totalNodes');
+        return t(isK8s ? 'totalPods' : 'totalNodes');
     }
   })();
 
@@ -1063,6 +1063,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
         resizeOptions={effectiveResizeOptions}
         isLoadingOptions={isLoadingResizeOptions}
         replicationFactor={targetCluster.replication_factor}
+        isK8s={isK8s}
         onClose={() => setReviewModalOpen(false)}
         onConfirm={confirmResizeNodes}
       />

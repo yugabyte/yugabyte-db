@@ -242,12 +242,15 @@ export const getResilientType = (
     });
   }
 
+  const isK8s = placementSpec.cloud_list?.[0]?.code === CloudType.kubernetes;
   const key =
     inferredResilience === FaultToleranceType.REGION_LEVEL
       ? 'regionResilient'
       : inferredResilience === FaultToleranceType.AZ_LEVEL
         ? 'azResilient'
-        : 'nodeResilient';
+        : isK8s
+          ? 'podResilient'
+          : 'nodeResilient';
 
   return t(key, {
     count: outageCount,

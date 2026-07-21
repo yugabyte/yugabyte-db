@@ -26,6 +26,7 @@ import {
   StepsRef
 } from './CreateUniverseContext';
 import { ResilienceType } from './steps/resilence-regions/dtos';
+import { CloudType } from '@app/redesign/helpers/dtos';
 //style imports
 import './styles/override.css';
 
@@ -62,8 +63,15 @@ const CreateHeader = styled('div')(() => ({
 export function CreateUniverse() {
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.steps' });
   const restoreContextData = useMethods(createUniverseFormMethods, initialCreateUniverseFormState);
-  const [{ activeStep, resilienceType }] = restoreContextData;
-  const steps = useMemo(() => getCreateUniverseSteps(t, resilienceType), [t, resilienceType]);
+  const [{ activeStep, resilienceType, generalSettings }] = restoreContextData;
+  const isK8s =
+    generalSettings?.cloud === CloudType.kubernetes ||
+    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
+  const steps = useMemo(() => getCreateUniverseSteps(t, resilienceType, isK8s), [
+    t,
+    resilienceType,
+    isK8s
+  ]);
   const currentStepRef = useRef<StepsRef>(null);
 
   //To speed up the interaction

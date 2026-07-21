@@ -135,6 +135,8 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
   const primaryCluster = universeData
     ? getClusterByType(universeData, ClusterSpecClusterType.PRIMARY)
     : undefined;
+  const isK8s =
+    primaryCluster?.placement_spec?.cloud_list?.[0]?.code === CloudType.kubernetes;
   const providerUUID = primaryCluster?.provider_spec?.provider ?? '';
 
   const { data: regionsList = [], isLoading: isRegionsLoading } = useQuery(
@@ -374,7 +376,7 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
 
   const reviewItems: ReviewItem[] = useMemo(() => {
     const items: ReviewItem[] = [];
-    const nodesLabel = t('reviewSummary.totalNodes');
+    const nodesLabel = t(isK8s ? 'reviewSummary.totalPods' : 'reviewSummary.totalNodes');
     const coresLabel = t('reviewSummary.totalCores');
     const memLabel = t('reviewSummary.totalMemory');
     const storageLabel = t('reviewSummary.totalStorage');
@@ -533,6 +535,7 @@ export const RRReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     return items;
   }, [
     t,
+    isK8s,
     universeData,
     primaryPricingData,
     rrPricingData,

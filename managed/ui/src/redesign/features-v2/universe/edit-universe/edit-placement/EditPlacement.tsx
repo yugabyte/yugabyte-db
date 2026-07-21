@@ -12,7 +12,7 @@ import {
 import { EditPlacementNodesAndAvailability } from './EditPlacementNodesAndAvailability';
 import { EditPlacementResilience } from './EditPlacementResilience';
 
-import { useEditUniverseContext } from '../EditUniverseUtils';
+import { isKubernetesUniverse, useEditUniverseContext } from '../EditUniverseUtils';
 
 import Close from '../../../../assets/close rounded inverted.svg';
 import YBLogo from '../../../../assets/yb_logo.svg';
@@ -55,6 +55,7 @@ export const EditPlacement: FC<EditPlacementProps> = ({
     activeStep: EditPlacementSteps.RESILIENCE_AND_REGIONS
   });
   const { universeData, providerRegions } = useEditUniverseContext();
+  const isK8s = isKubernetesUniverse(universeData!);
   const activeStep = editPlacementContext[0].activeStep;
   const { resetContext, setActiveStep, setNodesAndAvailability, setResilience } =
     editPlacementContext[1];
@@ -68,12 +69,12 @@ export const EditPlacement: FC<EditPlacementProps> = ({
             title: t('resilienceAndRegions')
           },
           {
-            title: t('nodesAndAvailabilityZone')
+            title: t(isK8s ? 'podsAndAvailabilityZone' : 'nodesAndAvailabilityZone')
           }
         ]
       }
     ] as Step[];
-  }, []);
+  }, [t, isK8s]);
 
   useEffect(() => {
     if (!visible) {

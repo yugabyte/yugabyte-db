@@ -54,8 +54,10 @@ export const EditPlacementResilience = () => {
             activeStep: 1,
             resilienceAndRegionsSettings: resilience ?? resilienceProps,
             generalSettings: {
+              cloud: primaryCluster?.placement_spec?.cloud_list?.[0]?.code,
               providerConfiguration: {
-                uuid: primaryCluster?.provider_spec?.provider ?? ''
+                uuid: primaryCluster?.provider_spec?.provider ?? '',
+                code: primaryCluster?.placement_spec?.cloud_list?.[0]?.code
               }
             }
           },

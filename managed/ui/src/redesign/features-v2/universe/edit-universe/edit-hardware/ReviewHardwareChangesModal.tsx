@@ -116,6 +116,7 @@ interface ReviewHardwareChangesModalProps {
   resizeOptions?: ResizeUpdateOption[];
   isLoadingOptions?: boolean;
   replicationFactor?: number;
+  isK8s?: boolean;
   onClose: () => void;
   onConfirm: (payload: ReviewHardwareConfirmPayload) => void;
 }
@@ -248,15 +249,16 @@ const renderStorageFieldValue = (
 const storageFieldLabel = (
   key: ChangedHardwareStorageKey,
   tReview: (k: string) => string,
-  tHw: (k: string, o?: Record<string, unknown>) => string
+  tHw: (k: string, o?: Record<string, unknown>) => string,
+  isK8s: boolean
 ) => {
   switch (key) {
     case 'volumeLayout':
-      return tReview('volumeAndNode');
+      return tReview(isK8s ? 'volumeAndPod' : 'volumeAndNode');
     case 'diskIops':
-      return tHw('iops');
+      return tHw(isK8s ? 'iopsPod' : 'iops');
     case 'throughput':
-      return tHw('throughput');
+      return tHw(isK8s ? 'throughputPod' : 'throughput');
     case 'storageType':
       return tHw('ebsType');
     case 'storageClass':
@@ -280,6 +282,7 @@ export const ReviewHardwareChangesModal = ({
   resizeOptions,
   isLoadingOptions = false,
   replicationFactor,
+  isK8s = false,
   onClose,
   onConfirm
 }: ReviewHardwareChangesModalProps) => {
@@ -395,7 +398,7 @@ export const ReviewHardwareChangesModal = ({
                       ) : null}
                       {changedStorageKeys.map((key) => (
                         <SummaryCard key={`c-${sectionIdx}-${key}`}>
-                          <Label>{storageFieldLabel(key, t, tHw)}</Label>
+                          <Label>{storageFieldLabel(key, t, tHw, isK8s)}</Label>
                           {renderStorageFieldValue(key, section.current, tHw)}
                         </SummaryCard>
                       ))}
@@ -420,7 +423,7 @@ export const ReviewHardwareChangesModal = ({
                       ) : null}
                       {changedStorageKeys.map((key) => (
                         <SummaryCard key={`n-${sectionIdx}-${key}`}>
-                          <Label>{storageFieldLabel(key, t, tHw)}</Label>
+                          <Label>{storageFieldLabel(key, t, tHw, isK8s)}</Label>
                           {renderStorageFieldValue(key, section.next, tHw)}
                         </SummaryCard>
                       ))}

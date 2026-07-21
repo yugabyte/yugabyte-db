@@ -15,6 +15,7 @@ import Return from '../../../../../assets/tree.svg';
 import RemoveIcon from '../../../../../assets/close-large.svg';
 import BookIcon from '../../../../../assets/blue-book.svg';
 import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../helpers/constants';
+import { CloudType } from '@app/redesign/helpers/dtos';
 
 const { MenuItem, Typography, IconButton, Link, styled } = mui;
 
@@ -84,9 +85,13 @@ export const Zone: FC<ZoneProps> = ({
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.availabilityZones'
   });
-  const [{ resilienceAndRegionsSettings }] = (useContext(
+  const { t: tCommon } = useTranslation('translation', { keyPrefix: 'common' });
+  const [{ resilienceAndRegionsSettings, generalSettings }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
+  const isK8s =
+    generalSettings?.cloud === CloudType.kubernetes ||
+    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
   const isPrefferedAllowed = ![FaultToleranceType.NODE_LEVEL, FaultToleranceType.NONE].includes(
     resilienceAndRegionsSettings!.faultToleranceType
   );
@@ -197,13 +202,13 @@ export const Zone: FC<ZoneProps> = ({
         name={`availabilityZones.${region.code}.${index}`}
         render={({ field }) => (
           <YBSelect
-            label="Availability Zone"
+            label={t('availabilityZone')}
             sx={{ width: '300px' }}
             error={showAzSelectError}
             value={zone?.name ?? ''}
             renderValue={(value) =>
               !isGuidedMode && (value === '' || value === null || value === undefined)
-                ? 'Select'
+                ? tCommon('select')
                 : (value as string)
             }
             selectProps={!isGuidedMode ? ({ displayEmpty: true } as any) : undefined}
@@ -258,7 +263,11 @@ export const Zone: FC<ZoneProps> = ({
             <span style={{ display: 'inline-block' }}>
               <YBInput
                 type="number"
-                label={useDedicatedNodes ? t('tServer') : t('nodes')}
+                label={
+                  useDedicatedNodes
+                    ? t(isK8s ? 'tServerPods' : 'tServer')
+                    : t(isK8s ? 'pods' : 'nodes')
+                }
                 error={showNodesCountError || showOnPremNodeCountError}
                 value={field.value}
                 onChange={(e) => {
@@ -318,7 +327,7 @@ export const Zone: FC<ZoneProps> = ({
       {resilienceAndRegionsSettings?.faultToleranceType !== FaultToleranceType.NONE &&
         (selectedAzCountInRegion > 1 ? (
           <IconButton
-            aria-label="Remove availability zone"
+            aria-label={t('removeAvailabilityZone')}
             onClick={remove}
             data-testid="remove-availability-zone"
             sx={{ marginTop: '24px', marginLeft: '8px' }}

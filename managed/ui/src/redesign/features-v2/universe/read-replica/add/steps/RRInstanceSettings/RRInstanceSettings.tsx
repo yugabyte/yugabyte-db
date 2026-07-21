@@ -154,7 +154,11 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
             <StyledHeader>{t('rrInstance')}</StyledHeader>
             <Box sx={{ px: '24px', pb: '16px' }}>
               <TotalNodesBadge
-                label={useDedicatedNodes ? t('totalTServerNodes') : t('totalNodes')}
+                label={
+                  useDedicatedNodes
+                    ? t(isK8s ? 'totalTServerPods' : 'totalTServerNodes')
+                    : t(isK8s ? 'totalPods' : 'totalNodes')
+                }
                 count={totalNodes}
                 onEdit={goToPlacementRegions}
                 dataTestId="rr-instance-settings-total-nodes"
