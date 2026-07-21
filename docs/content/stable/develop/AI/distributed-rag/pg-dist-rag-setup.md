@@ -35,7 +35,7 @@ Distributed RAG consists of two components:
 
 ### Prerequisites
 
-- YugabyteDB {{<release "2025.2">}} or later
+- YugabyteDB {{<release "2026.1.1">}} or later
 - [pgvector](../../../../additional-features/pg-extensions/extension-pgvector/) extension (`vector` type support)
 - An OpenAI API key
 - Cloud credentials (AWS S3) when reading documents from object storage
@@ -308,20 +308,27 @@ LIMIT 10;
 
 ## Complete example
 
+The following shows an example end-to-end:
+
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pg_dist_rag;
 
--- Create document sources
+-- Create two document sources, capturing the returned IDs
 SELECT dist_rag.create_source(
   r_source_uri := 's3://company-docs/engineering/',
   r_metadata := '{"team": "engineering", "access": "internal"}'::jsonb
-) AS eng_source_id;
+) AS eng_source_id \gset
+
+SELECT dist_rag.create_source(
+  r_source_uri := 's3://company-docs/product/',
+  r_metadata := '{"team": "product", "access": "internal"}'::jsonb
+) AS product_source_id \gset
 
 -- Initialize a vector index with both sources
 SELECT dist_rag.init_vector_index(
   r_index_name := 'engineering_kb',
-  r_sources := ARRAY['a1b2c3d4-abcd-abcd-abcd-abcdefabcdef', 'e5f6a7b8-abcd-abcd-abcd-abcdefabcdef']::UUID[],
+  r_sources := ARRAY[:'eng_source_id', :'product_source_id']::UUID[],
   r_ai_provider := 'OPENAI',
   r_embedding_model_params := '{"dimensions": 1536, "model": "text-embedding-ada-002"}'::jsonb
 );

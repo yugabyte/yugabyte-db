@@ -58,7 +58,7 @@ Explore the following tutorials to see how YugabyteDB integrates with different 
 | [YugabyteDB MCP server](mcp-server/) | Enable LLMs to interact directly with YugabyteDB using natural language. | Claude / Cursor | External |
 | [LlamaIndex](ai-llamaindex-openai/) | Connect LLMs to structured and unstructured data using LlamaIndex. | OpenAI / LlamaIndex | External |
 | [LangChain](ai-langchain-openai/) | Build a natural language interface to query your database without writing SQL. | OpenAI / LangChain | External |
-| [Distributed RAG](distributed-rag/) | Build distributed RAG pipelines with integrated document preprocessing and embedding generation from SQL. | OpenAI / LangGraph | External |
+| [Distributed RAG](distributed-rag/) | Build distributed RAG pipelines with integrated document preprocessing and embedding generation from SQL. | OpenAI / LangChain / Unstructured.io | External |
 
 <!--
 ## Retrieval-augmented generation
