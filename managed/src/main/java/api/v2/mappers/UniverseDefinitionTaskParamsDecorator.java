@@ -73,11 +73,15 @@ public abstract class UniverseDefinitionTaskParamsDecorator
     // set creatingUser
     params.creatingUser = CommonUtils.getUserFromContext();
     // set rootCA of encryptionInTransit into top-level of v1 universe
+
     if (universeSpec != null && universeSpec.getEncryptionInTransitSpec() != null) {
       EncryptionInTransitSpec source = universeSpec.getEncryptionInTransitSpec();
       params.rootCA = source.getRootCa();
       params.setClientRootCA(source.getClientRootCa());
-      if (source.getRootCa() != null && !source.getRootCa().equals(source.getClientRootCa())) {
+      if (source.getRootAndClientRootCaSame() != null) {
+        params.rootAndClientRootCASame = source.getRootAndClientRootCaSame();
+      } else if (source.getRootCa() != null
+          && !source.getRootCa().equals(source.getClientRootCa())) {
         params.rootAndClientRootCASame = false;
       }
     }
