@@ -84,14 +84,23 @@ class PgAdvisoryLockTest : public PgAdvisoryLockTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_advisory_locks_tablets) = GetNumAdvisoryLockTablets();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_heartbeat_interval_ms) =
-        kExpiredSessionCleanupMs / 2;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_session_expiration_ms) = kExpiredSessionCleanupMs;
+        GetExpiredSessionCleanupMs() / 2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_session_expiration_ms) =
+        GetExpiredSessionCleanupMs();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(5);
     PgAdvisoryLockTestBase::SetUp();
   }
 
   virtual uint32_t GetNumAdvisoryLockTablets() {
     return 1;
+  }
+
+  // Session expiration / heartbeat interval to configure. Tests that exercise expired-session
+  // cleanup use the short default; tests that do not should return a larger value so that a
+  // transient reactor stall under load cannot expire a live session (which would DFATAL from the
+  // next heartbeat in debug builds).
+  virtual int GetExpiredSessionCleanupMs() {
+    return kExpiredSessionCleanupMs;
   }
 };
 
@@ -421,6 +430,12 @@ class PgAdvisoryLockTestMultipleTablets : public PgAdvisoryLockTest {
  protected:
   uint32_t GetNumAdvisoryLockTablets() override {
     return 3;
+  }
+
+  // This test does not exercise expired-session cleanup, so use a generous expiration to avoid
+  // spurious "unknown session" heartbeat failures under CPU oversubscription.
+  int GetExpiredSessionCleanupMs() override {
+    return 60000;
   }
 };
 
