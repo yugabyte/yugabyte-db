@@ -2,7 +2,7 @@ MODULE_big = pgaudit
 OBJS = pgaudit.o $(WIN32RES)
 
 # The version in the control file is the source of truth
-PGAUDIT_VERSION := $(shell grep default_version pgaudit.control | sed "s/.*'\(.*\)'/\1/")
+PGAUDIT_VERSION := $(shell grep default_version $(dir $(firstword $(MAKEFILE_LIST)))pgaudit.control | sed "s/.*'\(.*\)'/\1/")
 
 EXTENSION = pgaudit
 DATA = pgaudit--$(PGAUDIT_VERSION).sql
