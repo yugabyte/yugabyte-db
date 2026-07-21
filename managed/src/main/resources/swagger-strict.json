@@ -14458,6 +14458,10 @@
     },
     "OCIRegionCloudInfo" : {
       "properties" : {
+        "instanceTemplate" : {
+          "type" : "string",
+          "description" : "The OCI Instance Configuration OCID to use for nodes created in this region."
+        },
         "vnet" : {
           "type" : "string"
         }

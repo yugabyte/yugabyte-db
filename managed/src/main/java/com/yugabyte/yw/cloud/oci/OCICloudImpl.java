@@ -190,6 +190,22 @@ public class OCICloudImpl implements CloudAPI {
     }
   }
 
+  private AbstractAuthenticationDetailsProvider buildAuthProvider(
+      OCICloudInfo ociCloudInfo, Map<String, String> envVars) {
+    if (ociCloudInfo.usesInstancePrincipal()) {
+      return InstancePrincipalsAuthenticationDetailsProvider.builder().build();
+    }
+    return SimpleAuthenticationDetailsProvider.builder()
+        .tenantId(envVars.get(OCI_TENANCY_ID))
+        .userId(envVars.get(OCI_USER_ID))
+        .fingerprint(envVars.get(OCI_FINGERPRINT))
+        .privateKeySupplier(
+            () ->
+                new ByteArrayInputStream(
+                    envVars.get(OCI_PRIVATE_KEY_CONTENT).getBytes(StandardCharsets.UTF_8)))
+        .build();
+  }
+
   @Override
   public boolean isValidCredsKms(ObjectNode config, UUID customerUUID) {
     return true;

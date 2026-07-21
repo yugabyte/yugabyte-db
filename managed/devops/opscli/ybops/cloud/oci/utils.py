@@ -21,7 +21,12 @@ from ybops.utils.ssh import format_rsa_key, validated_key_file
 from threading import Thread
 
 import oci
-from oci.core import ComputeClient, VirtualNetworkClient, BlockstorageClient
+from oci.core import (
+    ComputeClient,
+    VirtualNetworkClient,
+    BlockstorageClient,
+    ComputeManagementClient,
+)
 from oci.identity import IdentityClient
 from oci.core.models import (
     CaptureConsoleHistoryDetails,
@@ -42,6 +47,69 @@ from oci.core.models import (
     UpdateInstanceDetails,
     UpdateInstanceShapeConfigDetails
 )
+
+# Sticky launch fields copied from an Instance Configuration when seeding a
+# plain LaunchInstance. YBA-owned fields (shape, image, subnet, metadata, ...)
+# are applied separately and always win.
+_INSTANCE_CONFIG_ATTRIBUTES = (
+    "agent_config",
+    "availability_config",
+    "platform_config",
+    "instance_options",
+    "launch_options",
+    "launch_mode",
+    "is_pv_encryption_in_transit_enabled",
+    "defined_tags",
+    "extended_metadata",
+    "capacity_reservation_id",
+    "dedicated_vm_host_id",
+    "compute_cluster_id",
+    "preemptible_instance_config",
+    "preferred_maintenance_action",
+    "ipxe_script",
+    "security_attributes",
+    "licensing_configs",
+    "is_ai_enterprise_enabled",
+    "placement_constraint_details",
+    "cluster_placement_group_id",
+)
+
+# IC nested models use InstanceConfiguration*-prefixed classes; LaunchInstanceDetails
+# requires the non-prefixed equivalents. Most map by stripping the prefix; a few
+# IC type names do not match the launch type name 1:1.
+_IC_TYPE_TO_LAUNCH_TYPE = {
+    "InstanceConfigurationAvailabilityConfig": "LaunchInstanceAvailabilityConfigDetails",
+}
+
+# Sticky fields tied to IC shape/image/availability domain. When YBA overrides
+# any of those, dependent fields must not be copied or OCI rejects the launch
+# (e.g. AMD_VM platform_config with VM.Standard2.1).
+_SHAPE_DEPENDENT_ATTRIBUTES = frozenset((
+    "platform_config",
+    "launch_options",
+    "launch_mode",
+    "capacity_reservation_id",
+    "dedicated_vm_host_id",
+    "compute_cluster_id",
+    "preemptible_instance_config",
+    "placement_constraint_details",
+    "cluster_placement_group_id",
+))
+
+_IMAGE_DEPENDENT_ATTRIBUTES = frozenset((
+    "launch_options",
+    "launch_mode",
+    "ipxe_script",
+    "licensing_configs",
+))
+
+_AVAILABILITY_DOMAIN_DEPENDENT_ATTRIBUTES = frozenset((
+    "capacity_reservation_id",
+    "dedicated_vm_host_id",
+    "compute_cluster_id",
+    "placement_constraint_details",
+    "cluster_placement_group_id",
+))
 
 OCI_TENANCY_ID_ENV = "OCI_TENANCY_ID"
 OCI_USER_ID_ENV = "OCI_USER_ID"
@@ -166,6 +234,7 @@ class OciCloudAdmin:
         self.metadata = metadata or {}
         self._config = None
         self._compute_client = None
+        self._compute_management_client = None
         self._network_client = None
         self._blockstorage_client = None
         self._identity_client = None
@@ -196,6 +265,12 @@ class OciCloudAdmin:
         return self._compute_client
 
     @property
+    def compute_management_client(self):
+        if self._compute_management_client is None:
+            self._compute_management_client = self._build_client(ComputeManagementClient)
+        return self._compute_management_client
+
+    @property
     def network_client(self):
         if self._network_client is None:
             self._network_client = self._build_client(VirtualNetworkClient)
@@ -216,6 +291,7 @@ class OciCloudAdmin:
     def set_region(self, region):
         self.config["region"] = region
         self._compute_client = None
+        self._compute_management_client = None
         self._network_client = None
         self._blockstorage_client = None
         self._identity_client = None
@@ -373,12 +449,185 @@ class OciCloudAdmin:
     def delete_subnet(self, subnet_id):
         self.network_client.delete_subnet(subnet_id)
 
+    def get_instance_configuration_launch_details(self, instance_configuration_id):
+        """Fetch launch_details from an Instance Configuration to seed a plain launch."""
+        try:
+            ic = self.compute_management_client.get_instance_configuration(
+                instance_configuration_id).data
+        except Exception as e:
+            raise YBOpsRuntimeError(
+                "Failed to fetch OCI Instance Configuration {}: {}".format(
+                    instance_configuration_id, e))
+        instance_details = getattr(ic, "instance_details", None)
+        launch_details = (
+            getattr(instance_details, "launch_details", None) if instance_details else None)
+        if launch_details is None:
+            raise YBOpsRuntimeError(
+                "OCI Instance Configuration {} has no launch details to seed from".format(
+                    instance_configuration_id))
+        return launch_details
+
+    @staticmethod
+    def _merge_freeform_tags(ic_tags, yba_tags):
+        """Merge IC + YBA freeform tags; YBA wins and no input tag is removed."""
+        merged = dict(ic_tags or {})
+        merged.update(yba_tags or {})
+        if len(merged) > 10:
+            keys = ", ".join(sorted(merged))
+            raise YBOpsRuntimeError(
+                "OCI supports at most 10 freeform tags per resource, but merging "
+                "YBA and Instance Configuration tags would apply {} tags ({}). "
+                "Remove at least {} tag(s) from YBA or the Instance Configuration."
+                .format(len(merged), keys, len(merged) - 10))
+        return merged
+
+    @staticmethod
+    def _ic_model_to_launch_model(value):
+        """Convert InstanceConfiguration* SDK models to LaunchInstance* equivalents.
+
+        get_instance_configuration returns nested objects typed for the IC API
+        (e.g. InstanceConfigurationInstanceOptions). LaunchInstanceDetails rejects
+        those during request serialization and requires InstanceOptions, etc.
+        """
+        if value is None or isinstance(value, (str, int, float, bool, dict)):
+            return value
+        if isinstance(value, list):
+            return [OciCloudAdmin._ic_model_to_launch_model(v) for v in value]
+
+        type_name = type(value).__name__
+        if not type_name.startswith("InstanceConfiguration"):
+            return value
+
+        target_name = _IC_TYPE_TO_LAUNCH_TYPE.get(
+            type_name, type_name[len("InstanceConfiguration"):])
+        target_cls = getattr(oci.core.models, target_name, None)
+        if target_cls is None:
+            logging.warning(
+                "[app] Skipping Instance Configuration sticky field type %s; "
+                "no LaunchInstance equivalent %s", type_name, target_name)
+            return None
+
+        data = oci.util.to_dict(value)
+        kwargs = {k: v for k, v in data.items() if v is not None}
+        # Agent plugins come back as dicts from to_dict; rehydrate to the launch model.
+        if target_name == "LaunchInstanceAgentConfigDetails" and kwargs.get("plugins_config"):
+            plugin_cls = getattr(oci.core.models, "InstanceAgentPluginConfigDetails", None)
+            if plugin_cls is not None:
+                plugins = []
+                for plugin in kwargs["plugins_config"]:
+                    if isinstance(plugin, dict):
+                        plugins.append(plugin_cls(
+                            **{pk: pv for pk, pv in plugin.items() if pv is not None}))
+                    else:
+                        plugins.append(plugin)
+                kwargs["plugins_config"] = plugins
+        try:
+            return target_cls(**kwargs)
+        except Exception as e:
+            logging.warning(
+                "[app] Failed to convert %s -> %s (%s); omitting sticky field",
+                type_name, target_name, e)
+            return None
+
+    def _build_launch_details_from_instance_configuration(
+            self, ic_launch_details, availability_domain, subnet_id, instance_name,
+            shape, shape_config, image_id, boot_volume_size_gb, assign_public_ip,
+            hostname_label, metadata, freeform_tags, fault_domain=None):
+        """Seed LaunchInstanceDetails from an IC, then apply YBA-required overrides.
+
+        OCI rejects changing shape/subnet/image via launch_instance_configuration when
+        those values are already stored on the IC. Fetching the IC and launching with
+        plain launch_instance avoids that lock while preserving sticky IC settings
+        (platform_config, agent_config, IMDS options, etc.).
+        """
+        ic_shape = getattr(ic_launch_details, "shape", None)
+        ic_source_details = getattr(ic_launch_details, "source_details", None)
+        ic_image_id = (
+            getattr(ic_source_details, "image_id", None) if ic_source_details else None)
+        ic_availability_domain = getattr(
+            ic_launch_details, "availability_domain", None)
+
+        shape_unchanged = (
+            ic_shape is not None and shape is not None and
+            ic_shape.lower() == shape.lower()
+        )
+        image_unchanged = (
+            ic_image_id is not None and image_id is not None and
+            ic_image_id == image_id
+        )
+        availability_domain_unchanged = (
+            ic_availability_domain is not None and availability_domain is not None and
+            ic_availability_domain == availability_domain
+        )
+
+        sticky = {}
+        for attr in _INSTANCE_CONFIG_ATTRIBUTES:
+            value = getattr(ic_launch_details, attr, None)
+            if value is None:
+                continue
+            mismatched_dependencies = []
+            if not shape_unchanged and attr in _SHAPE_DEPENDENT_ATTRIBUTES:
+                mismatched_dependencies.append(
+                    "shape '{}' differs from IC shape '{}'".format(shape, ic_shape))
+            if not image_unchanged and attr in _IMAGE_DEPENDENT_ATTRIBUTES:
+                mismatched_dependencies.append(
+                    "image '{}' differs from IC image '{}'".format(
+                        image_id, ic_image_id))
+            if (
+                    not availability_domain_unchanged and
+                    attr in _AVAILABILITY_DOMAIN_DEPENDENT_ATTRIBUTES):
+                mismatched_dependencies.append(
+                    "availability domain '{}' differs from IC availability domain '{}'"
+                    .format(availability_domain, ic_availability_domain))
+            if mismatched_dependencies:
+                logging.info(
+                    "[app] Omitting Instance Configuration sticky field '%s' because %s",
+                    attr, "; ".join(mismatched_dependencies))
+                continue
+            converted = self._ic_model_to_launch_model(value)
+            if converted is not None:
+                sticky[attr] = converted
+
+        merged_metadata = dict(getattr(ic_launch_details, "metadata", None) or {})
+        merged_metadata.update(metadata or {})
+
+        merged_tags = self._merge_freeform_tags(
+            getattr(ic_launch_details, "freeform_tags", None), freeform_tags)
+
+        # Prefer YBA fault domain when set; otherwise keep the IC value.
+        resolved_fault_domain = fault_domain
+        if resolved_fault_domain is None:
+            resolved_fault_domain = getattr(ic_launch_details, "fault_domain", None)
+
+        return LaunchInstanceDetails(
+            compartment_id=self.compartment_id,
+            availability_domain=availability_domain,
+            fault_domain=resolved_fault_domain,
+            shape=shape,
+            shape_config=shape_config,
+            display_name=instance_name,
+            source_details=InstanceSourceViaImageDetails(
+                image_id=image_id,
+                boot_volume_size_in_gbs=boot_volume_size_gb
+            ),
+            create_vnic_details=CreateVnicDetails(
+                subnet_id=subnet_id,
+                assign_public_ip=assign_public_ip,
+                display_name="{}-vnic".format(instance_name),
+                hostname_label=hostname_label
+            ),
+            metadata=merged_metadata,
+            freeform_tags=merged_tags,
+            **sticky
+        )
+
     def create_instance(self, region, availability_domain, subnet_id, instance_name,
                         shape, server_type, image_id, num_volumes, volume_size,
                         boot_volume_size_gb=None, assign_public_ip=True,
                         ssh_public_key=None, user_data=None, tags=None,
                         fault_domain=None, volume_type=OCI_VOLUME_TYPE_STANDARD,
-                        ocpus=None, memory_in_gbs=None, node_uuid=None, **kwargs):
+                        ocpus=None, memory_in_gbs=None, node_uuid=None,
+                        instance_template=None, **kwargs):
         self.set_region(region)
 
         availability_domain = self.resolve_availability_domain(availability_domain)
@@ -398,10 +647,6 @@ class OciCloudAdmin:
 
         actual_boot_size = max(boot_volume_size_gb or DEFAULT_BOOT_VOLUME_SIZE_GB,
                                MIN_BOOT_VOLUME_SIZE_GB)
-        source_details = InstanceSourceViaImageDetails(
-            image_id=image_id,
-            boot_volume_size_in_gbs=actual_boot_size
-        )
 
         # Assign a VCN-internal DNS hostname when the target subnet has DNS
         # enabled (i.e. has a dns_label). This makes OCI publish an A record so
@@ -416,33 +661,63 @@ class OciCloudAdmin:
             logging.warning(
                 "Could not look up subnet {} for DNS configuration: {}".format(subnet_id, e))
 
-        vnic_details = CreateVnicDetails(
-            subnet_id=subnet_id,
-            assign_public_ip=assign_public_ip,
-            display_name="{}-vnic".format(instance_name),
-            hostname_label=hostname_label
-        )
-
-        freeform_tags = tags or {}
+        freeform_tags = dict(tags or {})
         freeform_tags["yb-server-type"] = server_type
         freeform_tags["Name"] = instance_name
         if node_uuid:
             freeform_tags["node-uuid"] = node_uuid
 
-        launch_details = LaunchInstanceDetails(
-            compartment_id=self.compartment_id,
-            availability_domain=availability_domain,
-            fault_domain=fault_domain,
-            shape=shape,
-            shape_config=shape_config,
-            display_name=instance_name,
-            source_details=source_details,
-            create_vnic_details=vnic_details,
-            metadata=metadata,
-            freeform_tags=freeform_tags
-        )
+        # When an Instance Configuration OCID is set, fetch its launch
+        # details and seed a plain LaunchInstance with sticky IC settings, then
+        # apply YBA overrides (shape/image/subnet/metadata/tags/...). Using
+        # launch_instance_configuration cannot change those stored fields.
+        if instance_template:
+            instance_configuration_id = instance_template
+            logging.info(
+                "[app] Seeding OCI launch from Instance Configuration OCID {}"
+                .format(instance_configuration_id))
+            ic_launch_details = self.get_instance_configuration_launch_details(
+                instance_configuration_id)
+            launch_details = self._build_launch_details_from_instance_configuration(
+                ic_launch_details=ic_launch_details,
+                availability_domain=availability_domain,
+                subnet_id=subnet_id,
+                instance_name=instance_name,
+                shape=shape,
+                shape_config=shape_config,
+                image_id=image_id,
+                boot_volume_size_gb=actual_boot_size,
+                assign_public_ip=assign_public_ip,
+                hostname_label=hostname_label,
+                metadata=metadata,
+                freeform_tags=freeform_tags,
+                fault_domain=fault_domain
+            )
+        else:
+            launch_details = LaunchInstanceDetails(
+                compartment_id=self.compartment_id,
+                availability_domain=availability_domain,
+                fault_domain=fault_domain,
+                shape=shape,
+                shape_config=shape_config,
+                display_name=instance_name,
+                source_details=InstanceSourceViaImageDetails(
+                    image_id=image_id,
+                    boot_volume_size_in_gbs=actual_boot_size
+                ),
+                create_vnic_details=CreateVnicDetails(
+                    subnet_id=subnet_id,
+                    assign_public_ip=assign_public_ip,
+                    display_name="{}-vnic".format(instance_name),
+                    hostname_label=hostname_label
+                ),
+                metadata=metadata,
+                freeform_tags=freeform_tags
+            )
 
+        logging.info("[app] Creating OCI instance {}".format(instance_name))
         response = self.compute_client.launch_instance(launch_details)
+
         instance = response.data
         created_volume_ids = []
 
