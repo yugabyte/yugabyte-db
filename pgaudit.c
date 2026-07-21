@@ -1879,6 +1879,12 @@ pgaudit_ddl_command_end(PG_FUNCTION_ARGS)
         }
         else
             log_audit_event(auditEventStack);
+
+        /*
+        * Mark the audit event as logged so it won't be logged again with fields
+        * that have been freed.
+        */
+        auditEventStack->auditEvent.logged = true;
     }
 
     /* Complete the query */
@@ -1962,6 +1968,12 @@ pgaudit_sql_drop(PG_FUNCTION_ARGS)
 
         auditEventStack->auditEvent.logged = false;
         log_audit_event(auditEventStack);
+
+        /*
+        * Mark the audit event as logged so it won't be logged again with fields
+        * that have been freed.
+        */
+        auditEventStack->auditEvent.logged = true;
     }
 
     /* Complete the query */
