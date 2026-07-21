@@ -625,9 +625,9 @@ static inline int od_backend_startup(od_server_t *server,
 		strcpy(user_name, (char *)client->startup.user.value);
 		user_name_len = client->startup.user.value_len;
 
-		yb_logical_conn_type[0] = (client->yb_external_client->tls) ?
-						  YB_LOGICAL_ENCRYPTED_CONN :
-						  YB_LOGICAL_UNENCRYPTED_CONN;
+		yb_logical_conn_type[0] = (client->yb_external_client->startup.yb_ssl_established) ?
+					  YB_LOGICAL_ENCRYPTED_CONN :
+					  YB_LOGICAL_UNENCRYPTED_CONN;
 	}
 	else
 	{
