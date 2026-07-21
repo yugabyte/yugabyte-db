@@ -24,6 +24,7 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/key_bounds.h"
+#include "yb/docdb/read_operation_data.h"
 #include "yb/docdb/rocksdb_writer.h"
 
 #include "yb/qlexpr/index.h"
@@ -340,15 +341,18 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
-      DocDBStatistics* statistics) override {
+      const ReadOperationData& read_operation_data) override {
     auto entries = VERIFY_RESULT(lsm_.Search(
         VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
 
     auto dump_stats = FLAGS_vector_index_dump_stats;
     auto start_time = MonoTime::Now();
 
-    auto reverse_mapping_reader = VERIFY_RESULT(
-        context_->CreateReverseMappingReader(ReadHybridTime::Max(), statistics));
+    // Resolve reverse mappings at the request read time, so a row deleted after the read time
+    // is still resolved to its ybctid, while a vector inserted after the read time is treated
+    // as missing.
+    auto reverse_mapping_reader = VERIFY_RESULT(context_->CreateReverseMappingReader(
+        read_operation_data.read_time, read_operation_data.statistics));
 
     DocVectorIndexSearchResult result;
     VLOG_WITH_FUNC(4) << "could_have_missing_entries: " << could_have_missing_entries

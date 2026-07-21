@@ -62,7 +62,7 @@ class CountingVectorIndex : public DocVectorIndex {
   const DocVectorIndexContext& context() const override { LOG(FATAL) << "Unexpected call"; }
   const DocVectorIndexMetrics& metrics() const override { LOG(FATAL) << "Unexpected call"; }
   Result<DocVectorIndexSearchResult> Search(
-      Slice, const vector_index::SearchOptions&, bool, DocDBStatistics*) override {
+      Slice, const vector_index::SearchOptions&, bool, const ReadOperationData&) override {
     LOG(FATAL) << "Unexpected call";
   }
   Result<EncodedDistance> Distance(Slice, Slice) override { LOG(FATAL) << "Unexpected call"; }
