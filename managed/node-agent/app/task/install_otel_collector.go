@@ -55,8 +55,13 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		return nil, err
 	}
 
+	userInfo, err := util.UserInfo(h.username)
+	if err != nil {
+		return nil, err
+	}
+	ybUserHome := userInfo.User.HomeDir
 	// 2) Put & setup the otel collector.
-	err := h.execOtelCollectorSetupSteps(ctx, h.param.GetYbHomeDir())
+	err = h.execOtelCollectorSetupSteps(ctx, h.param.GetYbHomeDir())
 	if err != nil {
 		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
@@ -78,7 +83,7 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		ctx,
 		otelCollectorServiceContext,
 		filepath.Join(module.ServerTemplateSubpath, OtelCollectorService),
-		filepath.Join(h.param.GetYbHomeDir(), module.UserSystemdUnitPath, OtelCollectorService),
+		filepath.Join(ybUserHome, module.UserSystemdUnitPath, OtelCollectorService),
 		fs.FileMode(0755),
 		h.username,
 	)
