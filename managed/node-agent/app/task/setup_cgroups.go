@@ -62,6 +62,12 @@ func (h *SetupCgroupHandler) Handle(ctx context.Context) (*pb.DescribeTaskRespon
 		return nil, err
 	}
 
+	userInfo, err := util.UserInfo(h.username)
+	if err != nil {
+		return nil, err
+	}
+	ybUserHome := userInfo.User.HomeDir
+
 	// Setup cGroups for rhel:9 deployments
 	if helpers.IsRhel9(osInfo) {
 		h.logOut.WriteLine("Determining cgroup version")
@@ -77,8 +83,6 @@ func (h *SetupCgroupHandler) Handle(ctx context.Context) (*pb.DescribeTaskRespon
 		if err != nil {
 			return nil, err
 		}
-
-		userInfo, _ := util.UserInfo(h.username)
 		stdout := strings.TrimSpace(cmdInfo.StdOut.String())
 		userID := strconv.Itoa(int(userInfo.UserID))
 		cGroupPath := "memory/ysql"
@@ -107,7 +111,7 @@ func (h *SetupCgroupHandler) Handle(ctx context.Context) (*pb.DescribeTaskRespon
 			ctx,
 			cGroupServiceContext,
 			filepath.Join(module.ServerTemplateSubpath, YsqlCgroupService),
-			filepath.Join(h.param.GetYbHomeDir(), module.UserSystemdUnitPath, YsqlCgroupService),
+			filepath.Join(ybUserHome, module.UserSystemdUnitPath, YsqlCgroupService),
 			fs.FileMode(0755),
 			h.username,
 		)
