@@ -520,8 +520,6 @@ Status XClusterInboundReplicationGroupSetupTask::SetupReplicationGroup() {
   LOG_WITH_PREFIX(INFO) << "Replication Map: "
                         << cluster_config_producer_map.at(original_id.ToString()).DebugString();
 
-  cluster_config_l.Commit();
-
   if (universe_lock) {
     universe_lock->Commit();
   } else {
@@ -540,6 +538,8 @@ Status XClusterInboundReplicationGroupSetupTask::SetupReplicationGroup() {
   }
 
   xcluster_manager_.SyncConsumerReplicationStatusMap(original_id, cluster_config_producer_map);
+
+  cluster_config_l.Commit();
 
   xcluster_manager_.CreateXClusterSafeTimeTableAndStartService();
 
