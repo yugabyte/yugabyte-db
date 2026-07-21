@@ -7720,6 +7720,7 @@ PostgresMain(const char *dbname, const char *username)
 					char	   *host = MyProcPort->remote_host;
 					const char *authn_id = MyProcPort->authn_id;
 					sa_family_t conn_type = MyProcPort->raddr.addr.ss_family;
+					int			conn_salen = MyProcPort->raddr.salen;
 					List	   *guc_options = MyProcPort->guc_options;
 					char	   *cmdline_options = MyProcPort->cmdline_options;
 
@@ -7739,9 +7740,12 @@ PostgresMain(const char *dbname, const char *username)
 					/*
 					 * HARD Code connection type between client and
 					 * ysql_conn_mgr to AF_INET (only supported) for
-					 * authentication
+					 * authentication. Also set salen: as physical
+					 * connection is a AF_UNIX, also salen is set for
+					 * ipv4 address.
 					 */
 					MyProcPort->raddr.addr.ss_family = AF_INET;
+					MyProcPort->raddr.salen = sizeof(struct sockaddr_in);
 
 					/* Update the `remote_host` */
 					struct sockaddr_in *ip_address_1;
@@ -7817,6 +7821,7 @@ PostgresMain(const char *dbname, const char *username)
 					MyProcPort->database_name = db_name;
 					MyProcPort->remote_host = host;
 					MyProcPort->raddr.addr.ss_family = conn_type;
+					MyProcPort->raddr.salen = conn_salen;
 					MyProcPort->guc_options = guc_options;
 					MyProcPort->cmdline_options = cmdline_options;
 					inet_pton(AF_INET, MyProcPort->remote_host,
