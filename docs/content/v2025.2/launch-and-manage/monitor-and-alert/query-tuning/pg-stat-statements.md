@@ -92,7 +92,6 @@ pg_stat_statements.max = 10000
 pg_stat_statements.track = all
 pg_stat_statements.track_utility = off
 pg_stat_statements.save = on
-yb_enable_pg_stat_statements_rpc_stats = true
 ```
 
 To track IO elapsed time, turn on the `track_io_timing` parameter in `postgresql.conf`:
