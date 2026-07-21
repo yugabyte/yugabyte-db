@@ -71,7 +71,7 @@ Infer as much as you can from context first, then **batch-confirm with the user 
    If you find a candidate, surface it to the user and ask them to confirm it's the one to use *before* asking them to supply a fresh one. Only prompt for a new reference if no candidate is found or the user rejects the candidate. Acceptable forms are:
    - A GitHub issue number (e.g., `#31151`)
    - A JIRA ticket (e.g., `PLAT-20518`)
-   - Offer to **auto-create** a GitHub issue or JIRA ticket if the user doesn't have one yet. If they accept, invoke the **`/create-issue`** skill to file it (GitHub issue for core DB code, JIRA ticket for `managed/` platform work), then capture the issue number / JIRA key it reports back.
+   - Offer to **auto-create** a GitHub issue or JIRA ticket if the user doesn't have one yet. If they accept, invoke the **`/create-issue`** skill to file it (GitHub issue for core DB code, JIRA ticket for `managed/` platform work), then capture the issue number / JIRA key it reports back. Since the issue tracks this PR's work, tell `/create-issue` to assign it to the invoker (`@me`) rather than leaving it unassigned.
 
    - Don't reuse an issue across multiple in-flight master PRs — create a fresh issue (via `/create-issue`) when starting unrelated work, even if a related closed/merged PR used a similar issue.
 
