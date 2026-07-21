@@ -28,7 +28,7 @@ This tutorial builds the same question-answering application using the [pg_dist_
 | Monitor progress | Print statements | SQL monitoring views |
 | Ask questions | `question.py` | `ask.py` (same approach) |
 
-Because the pipeline state lives in the database, you can watch ingestion progress with plain SQL, point the same setup at your own S3 buckets, and scale ingestion by starting more workers — without changing the application.
+Because the pipeline state lives in the database, you can watch ingestion progress with plain SQL, point the same setup at your own S3 buckets, and scale ingestion by starting more workers, without changing the application.
 
 ## Prerequisites
 
@@ -62,7 +62,7 @@ Note what you don't do here: no `CREATE TABLE`, and no `CREATE INDEX`. pg_dist_r
 
 ## Start a RAG worker
 
-RAG workers do the heavy lifting — crawling sources, chunking documents, and generating embeddings — outside your database and your application. A worker is a standalone Python service that polls the `dist_rag.work_queue` table for tasks; it can run on any machine that can reach the database, S3, and the OpenAI API.
+RAG workers do the heavy lifting: crawling sources, chunking documents, and generating embeddings outside your database and your application. A worker is a standalone Python service that polls the `dist_rag.work_queue` table for tasks; it can run on any machine that can reach the database, S3, and the OpenAI API.
 
 1. Configure the worker:
 
@@ -93,7 +93,7 @@ RAG workers do the heavy lifting — crawling sources, chunking documents, and g
 
     Leave it running. The worker waits until the pg_dist_rag extension exists in the database, then polls the work queue for tasks.
 
-By default a worker processes text-family documents (plain text, Markdown, JSON, CSV, XML, HTML). To also process PDFs, start another worker with `WORKER_DOCUMENT_TYPE=PDF`. You can start as many workers as you like — each claims different documents from the queue, so ingestion scales horizontally and independently of your database nodes.
+By default a worker processes text-family documents (plain text, Markdown, JSON, CSV, XML, HTML). To also process PDFs, start another worker with `WORKER_DOCUMENT_TYPE=PDF`. You can start as many workers as you like, where each claims different documents from the queue, so ingestion scales horizontally and independently of your database nodes.
 
 ## Set up the application
 
@@ -108,7 +108,7 @@ pip install -r requirements.txt
 export OPENAI_API_KEY='your OpenAI key'
 ```
 
-The requirements are just `openai` and `psycopg2` — there is no document-loading or embedding library, because the application no longer does that work.
+The requirements are just `openai` and `psycopg2`; there is no document-loading or embedding library, because the application no longer does that work.
 
 By default, the application ingests a public sample bucket containing the same Paul Graham essay used in Hello RAG. To index your own documents instead, upload them to an S3 prefix and set `SOURCE_URI`:
 
@@ -204,7 +204,7 @@ cursor.execute(
 source_id = cursor.fetchone()[0]
 ```
 
-Create the vector index. This creates the backing table `public.hello_dist_rag` with a `vector(1536)` column and a ybhnsw index on it — the DDL you wrote by hand in Hello RAG. The chunking configuration names a LangChain text splitter and its arguments (as a JSON string), and must be set explicitly:
+Create the vector index. This creates the backing table `public.hello_dist_rag` with a `vector(1536)` column and a ybhnsw index on it (the DDL you wrote in Hello RAG). The chunking configuration names a LangChain text splitter and its arguments (as a JSON string), and must be set explicitly:
 
 ```python
 model_params = json.dumps(
@@ -265,11 +265,11 @@ The only differences from Hello RAG are the table and column names (`public.hell
 - No `CREATE TABLE` or `CREATE INDEX` — `init_vector_index()` creates both.
 - No llama-index dependency — `requirements.txt` is `openai` and `psycopg2`.
 
-To ingest real content — internal docs, knowledge bases, support archives — point `SOURCE_URI` at your own S3 prefix and rerun `load.py`. The application does not change.
+To ingest real content including internal docs, knowledge bases, and support archives, point `SOURCE_URI` at your own S3 prefix and rerun `load.py`. The application does not change.
 
 ## Read more
 
 - [pg_dist_rag extension](../../../additional-features/pg-extensions/extension-pg-dist-rag/)
-- [Hello RAG](../hello-rag/) — the same pipeline built by hand
+- [Hello RAG](../hello-rag/)
 - [pgvector extension](../../../additional-features/pg-extensions/extension-pgvector/)
 - [Architecting GenAI and RAG Apps with YugabyteDB](https://www.yugabyte.com/ai/)
