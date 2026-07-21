@@ -2563,6 +2563,35 @@ TEST_F(AdminCliTest, TestRemoveTabletServer) {
   EXPECT_EQ(find_tserver_result, std::nullopt);
 }
 
+// Regression test for https://github.com/yugabyte/yugabyte-db/issues/32681:
+// list_tablet_server_log_locations must not abort on DEAD tservers.
+TEST_F(AdminCliTest, TestListTabletServerLogLocationsWithDeadTServer) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
+  BuildAndStart({}, {"--enable_load_balancing=false", "--tserver_unresponsive_timeout_ms=5000"});
+
+  const auto ts_uuid = cluster_->tablet_server(0)->uuid();
+
+  auto output_alive = ASSERT_RESULT(CallAdmin("list_tablet_server_log_locations"));
+  ASSERT_STR_CONTAINS(output_alive, ts_uuid);
+  ASSERT_STR_NOT_CONTAINS(output_alive, "N/A");
+
+  cluster_->tablet_server(0)->Shutdown();
+  auto cluster_client =
+      master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  ASSERT_OK(WaitFor(
+      [&cluster_client, &ts_uuid]() -> Result<bool> {
+        auto tserver = VERIFY_RESULT(cluster_client.GetTabletServer(ts_uuid));
+        return tserver && !tserver->alive();
+      },
+      30s, "tserver not marked dead"));
+
+  // Must succeed (not connect-timeout abort) and report N/A for the dead tserver.
+  auto output_dead = ASSERT_RESULT(CallAdmin("list_tablet_server_log_locations"));
+  ASSERT_STR_CONTAINS(output_dead, ts_uuid);
+  ASSERT_STR_CONTAINS(output_dead, "N/A");
+}
+
 TEST_F(AdminCliTest, TestDisallowImplicitStreamCreation) {
   std::string test_namespace = "pg_namespace_cdc";
   BuildAndStart();
