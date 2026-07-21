@@ -24,6 +24,8 @@
 
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 
@@ -143,6 +145,7 @@ bool CatalogManager::CreateOrUpdateDdlTxnVerificationState(
             << " for schema comparison for transaction " << txn;
   ysql_ddl_txn_verfication_state_map_.emplace(txn.transaction_id,
       YsqlDdlTransactionState{TxnState::kUnknown,
+                              txn.status_tablet,
                               YsqlDdlVerificationState::kDdlInProgress,
                               {table}, {} /* processed_tables */, {} /* nochange_tables */});
   return true;
@@ -990,22 +993,26 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
 }
 
 void CatalogManager::TriggerDdlVerificationForPostProcessingFailedTxns(const LeaderEpoch& epoch) {
-  std::vector<TransactionId> txn_ids;
+  std::vector<TransactionMetadata> txns;
   {
     LockGuard lock(ddl_txn_verifier_mutex_);
     for (const auto& [txn_id, verifier_state] : ysql_ddl_txn_verfication_state_map_) {
       if (verifier_state.state == YsqlDdlVerificationState::kDdlPostProcessingFailed) {
-        txn_ids.push_back(txn_id);
+        DCHECK(!verifier_state.txn_status_tablet.empty())
+            << Format("Missing status tablet for DDL verification txn $0", txn_id);
+        TransactionMetadata txn_meta;
+        txn_meta.transaction_id = txn_id;
+        txn_meta.status_tablet = verifier_state.txn_status_tablet;
+        txns.push_back(txn_meta);
       }
     }
   }
 
-  for (const auto& txn_id : txn_ids) {
-    TransactionMetadata txn_meta;
-    txn_meta.transaction_id = txn_id;
+  for (const auto& txn_meta : txns) {
     WARN_NOT_OK(
         TriggerDdlVerificationIfNeeded(txn_meta, epoch),
-        Format("Failed to re-trigger DDL verification for transaction $0", txn_meta));
+        Format(
+            "Failed to re-trigger DDL verification for transaction $0", txn_meta.transaction_id));
   }
 }
 

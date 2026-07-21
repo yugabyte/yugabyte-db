@@ -53,6 +53,7 @@
 #include "yb/client/client_utils.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/namespace_alterer.h"
+#include "yb/client/namespace_info.h"
 #include "yb/client/permissions.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
@@ -60,6 +61,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
+#include "yb/client/transaction_status_tablets.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
@@ -301,6 +303,12 @@ DEFINE_test_flag(int32, create_namespace_if_not_exist_inject_delay_ms, 0,
     "before creating the namespace.");
 
 namespace yb::client {
+
+const CDCSDKDynamicTablesOption& DefaultDynamicTablesOption() {
+  static const CDCSDKDynamicTablesOption kDefault =
+      CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED;
+  return kDefault;
+}
 
 namespace {
 

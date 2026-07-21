@@ -27,6 +27,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
+#include "yb/client/transaction_status_tablets.h"
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
@@ -1254,8 +1255,16 @@ class TransactionParticipant::Impl
   // Returns kMax if there are no running transactions.
   HybridTime MinRunningHybridTime() {
     auto result = min_running_ht_.load(std::memory_order_acquire);
+    // Refreshing the status of the oldest running transaction below is best-effort. Issuing the
+    // status request needs a ready local client (SendStatusRequest blocks on
+    // client_future().get()). This code runs on the Raft apply path (Tablet::ApplyIntents ->
+    // MinRunningHybridTime), and blocking there can deadlock: local client initialization itself
+    // depends on this tablet's apply making progress (e.g. the master sys catalog right after a
+    // restart, where the client cannot locate a leader master until the pending write is applied).
+    // Skip the refresh until the client is ready; it will be retried later.
     if (result == HybridTime::kMax || result == HybridTime::kInvalid
-        || !transactions_loaded_.load()) {
+        || !transactions_loaded_.load()
+        || !IsReady(participant_context_.client_future())) {
       return result;
     }
     auto now = CoarseMonoClock::now();
@@ -1405,9 +1414,20 @@ class TransactionParticipant::Impl
         if (committed_ids.empty()) {
           break;
         } else {
-          // We are waiting only for committed transactions to be applied.
-          // So just add some delay.
-          std::this_thread::sleep_for(10ms * std::min<size_t>(10, committed_ids.size()));
+          // We are waiting only for committed transactions to be applied. Honor the deadline
+          // instead of spinning forever: the resolver returns quickly for already-committed
+          // transactions, so nothing in this loop observes the deadline otherwise. A committed
+          // transaction that never gets applied (e.g. when the applier is stopped during
+          // shutdown) would keep this loop sleeping indefinitely and block callers such as CDC
+          // GetChanges from returning.
+          auto now = CoarseMonoClock::Now();
+          if (now >= deadline) {
+            return STATUS(
+                TimedOut, "Timed out waiting for committed transactions to be applied");
+          }
+          // So just add some delay, but don't sleep past the deadline.
+          std::this_thread::sleep_for(std::min<CoarseMonoClock::Duration>(
+              10ms * std::min<size_t>(10, committed_ids.size()), deadline - now));
         }
       }
     }
@@ -1617,11 +1637,14 @@ class TransactionParticipant::Impl
   }
 
   void RecordConflictResolutionScanLatency(MonoDelta latency) {
-    metric_conflict_resolution_latency_->Increment(latency.ToMilliseconds());
+    metric_conflict_resolution_latency_->Increment(latency.ToMicroseconds());
   }
 
   Result<HybridTime> SimulateProcessRecentlyAppliedTransactions(
       const OpId& retryable_requests_flushed_op_id) EXCLUDES(mutex_) {
+    // Wait until the loader has finished iterating IntentsDB in order to have the correct bootstrap
+    // state threshold
+    RETURN_NOT_OK(loader_.WaitAllLoaded());
     std::lock_guard lock(mutex_);
     return DoProcessRecentlyAppliedTransactions(
         retryable_requests_flushed_op_id, false /* persist */);
@@ -2622,6 +2645,9 @@ class TransactionParticipant::Impl
     recently_applied_.insert(AppliedTransactionState{apply_op_id, first_write_ht});
     metric_wal_replayable_applied_transactions_->IncrementBy(1 - static_cast<int64_t>(cleaned));
     UpdateMinReplayTxnFirstWriteTimeIfNeeded();
+    TEST_SYNC_POINT_CALLBACK(
+        "TransactionParticipant::Impl::AddRecentlyAppliedTransaction",
+        const_cast<TransactionId*>(&transaction.id()));
   }
 
   Result<HybridTime> DoProcessRecentlyAppliedTransactions(
@@ -2665,6 +2691,11 @@ class TransactionParticipant::Impl
   HybridTime GetMinReplayTxnFirstWriteTime(RecentlyAppliedTransactions& recently_applied) {
     if (!FLAGS_use_bootstrap_intent_ht_filter) {
       return HybridTime::kInvalid;
+    }
+    // Return the existing atomic which reflects the last validly-computed (transactions_loaded_=
+    // true) value, or HybridTime::kInvalid if none yet, both safe.
+    if (!transactions_loaded_) {
+      return min_replay_txn_first_write_ht_.load(std::memory_order_acquire);
     }
 
     auto min_running_ht = min_running_ht_.load(std::memory_order_acquire);

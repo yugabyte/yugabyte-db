@@ -26,6 +26,7 @@ type Props = Pick<
   | 'resilienceAndRegionsSettings'
 > & {
   isGeoPartition?: boolean;
+  hideDedicatedNodes?: boolean;
 };
 
 export function NodesAvailabilityGuidedBody({
@@ -36,7 +37,8 @@ export function NodesAvailabilityGuidedBody({
   errors,
   t,
   resilienceAndRegionsSettings,
-  isGeoPartition = false
+  isGeoPartition = false,
+  hideDedicatedNodes = false
 }: Props) {
   const {
     formState: { errors: formErrors }
@@ -97,7 +99,7 @@ export function NodesAvailabilityGuidedBody({
       />
     ) : null;
 
-  const dedicatedNode = <DedicatedNode />;
+  const dedicatedNode = hideDedicatedNodes ? null : <DedicatedNode />;
 
   const slots = {
     map,

@@ -51,6 +51,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 
 DEFINE_test_flag(double, fault_crash_before_cmeta_flush, 0.0,

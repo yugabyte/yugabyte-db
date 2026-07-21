@@ -14,9 +14,9 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <mutex>
 
-#include "yb/util/cross_thread_mutex.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -26,6 +26,68 @@ namespace yb {
 
 YB_STRONGLY_TYPED_BOOL(Stop);
 YB_STRONGLY_TYPED_BOOL(Unlock);
+
+// The shared/exclusive counter and the exclusive-disable mutex behind RWOperationCounter, kept
+// together so the mutex's wait can observe the counter's terminal "stopped" state. counters_ packs
+// the number of in-flight shared operations, the disable count, and the stop bit (see the .cc for
+// the bit layout). Operations waiting in WaitMutexAndIncrement bail out with kStopped as soon as
+// the stop bit is set, instead of blocking on the exclusive lock -- which, for a stop, is held
+// until the guarded resource is destroyed. Using counters_ as the single source of truth keeps the
+// state consistent with the lock-free fast path. See issue #32211. Used only by RWOperationCounter.
+class RWOperationCounterLock {
+ public:
+  enum class IncrementResult {
+    kSuccess,
+    kFailed,
+    kStopped,
+  };
+
+  // Lock-free fast-path shared increment. Returns true on success, false if the resource is
+  // disabled or stopped (caller should fall back to WaitMutexAndIncrement).
+  bool Increment();
+
+  void Decrement();
+
+  uint64_t Get() const {
+    return counters_.load(std::memory_order::acquire);
+  }
+
+  // Number of in-flight shared operations only.
+  uint64_t GetOpCounter() const;
+
+  // Waits until the resource can be exclusively locked (no in-flight disable), increments the
+  // shared count, and releases the lock -- returning kSuccess. Returns kStopped if the resource is
+  // (or becomes) stopped, or kFailed on deadline. A stopped resource is reported promptly even
+  // though the exclusive lock stays held for the whole shutdown. See issue #32211.
+  IncrementResult WaitMutexAndIncrement(CoarseTimePoint deadline);
+
+  // Acquires the exclusive lock, blocking until it is free or the deadline passes. Returns false on
+  // timeout. Used by DisableAndWaitForOps; does not consult the stop state (the caller is the one
+  // about to set it).
+  bool Lock(const CoarseTimePoint& deadline);
+
+  // Sets the disable bit (or, if stop, the stop bit) and, for a stop, wakes operations waiting in
+  // WaitMutexAndIncrement so they bail out. Returns the resulting counter value.
+  uint64_t Disable(Stop stop);
+
+  // Clears the disable bit (or, if was_stop, the stop bit); optionally releases the exclusive lock.
+  void Enable(Unlock unlock, Stop was_stop);
+
+  // Releases the exclusive lock and wakes waiters.
+  void unlock();
+
+  uint64_t TEST_GetDisableCount() const;
+  bool TEST_IsStopped() const;
+
+ private:
+  uint64_t Update(uint64_t delta);
+  bool Stopped() const;
+
+  std::atomic<uint64_t> counters_{0};
+  std::mutex mutex_;
+  std::condition_variable condition_variable_;
+  bool is_locked_ = false;
+};
 
 class ScopedOperation;
 
@@ -69,57 +131,42 @@ class ScopedOperation {
 // fine-grained control, such as preventing new operations from being started.
 class RWOperationCounter {
  public:
+  using IncrementResult = RWOperationCounterLock::IncrementResult;
+
   explicit RWOperationCounter(const std::string& resource_name) : resource_name_(resource_name) {}
 
   Status DisableAndWaitForOps(const CoarseTimePoint& deadline, Stop stop);
 
-  void Enable(Unlock unlock, Stop was_stop);
+  void Enable(Unlock unlock, Stop was_stop) { lock_.Enable(unlock, was_stop); }
 
-  void UnlockExclusiveOpMutex() {
-    disable_.unlock();
-  }
+  void UnlockExclusiveOpMutex() { lock_.unlock(); }
 
-  bool Increment();
+  bool Increment() { return lock_.Increment(); }
 
-  void Decrement() { Update(-1); }
-  uint64_t Get() const {
-    return counters_.load(std::memory_order::acquire);
-  }
+  void Decrement() { lock_.Decrement(); }
+
+  uint64_t Get() const { return lock_.Get(); }
 
   // Return pending operations counter value only.
-  uint64_t GetOpCounter() const;
+  uint64_t GetOpCounter() const { return lock_.GetOpCounter(); }
 
-  enum class IncrementResult {
-    kSuccess,
-    kFailed,
-    kStopped,
-  };
-
-  IncrementResult WaitMutexAndIncrement(CoarseTimePoint deadline);
+  IncrementResult WaitMutexAndIncrement(CoarseTimePoint deadline) {
+    return lock_.WaitMutexAndIncrement(deadline);
+  }
 
   std::string resource_name() const {
     return resource_name_;
   }
 
-  uint64_t TEST_GetDisableCount() const;
+  uint64_t TEST_GetDisableCount() const { return lock_.TEST_GetDisableCount(); }
 
-  bool TEST_IsStopped() const;
+  bool TEST_IsStopped() const { return lock_.TEST_IsStopped(); }
 
  private:
   Status WaitForOpsToFinish(
       const CoarseTimePoint& start_time, const CoarseTimePoint& deadline);
 
-  uint64_t Update(uint64_t delta);
-
-  // The upper 16 bits are used for storing the number of separate operations that have disabled the
-  // resource. E.g. tablet shutdown running at the same time with Truncate/RestoreSnapshot.
-  // The lower 48 bits are used to keep track of the number of concurrent read/write operations.
-  std::atomic<uint64_t> counters_{0};
-
-  // Mutex to disable the resource exclusively. This mutex is locked by DisableAndWaitForOps after
-  // waiting for all shared-ownership operations to complete. We need this to avoid a race condition
-  // between Raft operations that replace RocksDB (apply snapshot / truncate) and tablet shutdown.
-  yb::CrossThreadMutex disable_;
+  RWOperationCounterLock lock_;
 
   std::string resource_name_;
 };

@@ -77,7 +77,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
             app.injector().instanceOf(RuntimeConfGetter.class),
             mockAWSUtil,
             mockAZUtil,
-            mockGCPUtil));
+            mockGCPUtil,
+            mockOCIUtil));
     doCallRealMethod().when(mockAWSUtil).getRegionLocationsMap(any());
     doCallRealMethod()
         .when(mockAWSUtil)

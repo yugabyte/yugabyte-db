@@ -55,15 +55,6 @@ When run at the same time, flags take precedence over configuration flag setting
 | <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 
-| --run-guardrails-checks |
-
-```yaml{.nocopy}
-import-data:
-  run-guardrails-checks:
-```
-
-| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
-
 | --batch-size |
 
 ```yaml{.nocopy}
@@ -161,6 +152,16 @@ import-data:
 ```
 
 | Truncate tables on target YugabyteDB database before importing data. This option is only valid if `--start-clean` is set to true. <br>Default: false |
+
+| --target-db-type |
+
+```yaml
+import-data:
+  target-db-type
+```
+
+| Target database type to import into. <br> Accepted values: yugabytedb (default), yugabytedb-amp (more details coming soon) |
+
 | --use-public-ip |
 
 ```yaml{.nocopy}
@@ -328,6 +329,14 @@ target:
 | -h, --help | — | Command line help. |
 | -y, --yes | — | Answer yes to all prompts during the export schema operation. <br>Default: false |
 | -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
+| --run-guardrails-checks |
+
+```yaml{.nocopy}
+import-data:
+  run-guardrails-checks:
+```
+
+| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 <br>**Note**: Setting this flag to false is unsafe, as it skips critical pre-migration validations (such as source/target database permissions, binary dependencies, and version compatibility) and may lead to migration failures or data issues. Leave the default (true) unless you have a specific reason to disable checks.|
 
 {{</table>}}
 
@@ -530,14 +539,6 @@ When run at the same time, flags take precedence over configuration flag setting
 | <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 
-| --run-guardrails-checks |
-
-```yaml{.nocopy}
-import-data-to-source:
-  run-guardrails-checks:
-```
-
-|Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
 | --parallel-jobs |
 
 ```yaml{.nocopy}
@@ -601,6 +602,14 @@ source:
 | --start-clean | — |Starts a fresh import with exported data files present in the export-dir/data directory. <br> If any table on YugabyteDB database is non-empty, it prompts whether you want to continue the import without truncating those tables. <br>Note that for the cases where a table doesn't have a primary key, this may lead to insertion of duplicate data. To avoid this, exclude the table using the --exclude-file-list or truncate those tables manually before using the start-clean flag. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | — | Answer yes to all prompts during the migration. <br>Default: false |
 | -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
+| --run-guardrails-checks |
+
+```yaml{.nocopy}
+import-data-to-source:
+  run-guardrails-checks:
+```
+
+| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 <br>**Note**: Setting this flag to false is unsafe, as it skips critical pre-migration validations (such as source/target database permissions, binary dependencies, and version compatibility) and may lead to migration failures or data issues. Leave the default (true) unless you have a specific reason to disable checks.|
 
 {{</table>}}
 

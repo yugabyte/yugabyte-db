@@ -71,7 +71,7 @@ import { ImageBundle } from '../../../../../redesign/features/universe/universe-
 import { fetchGlobalRunTimeConfigs } from '../../../../../api/admin';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { api, regionMetadataQueryKey } from '../../../../../redesign/helpers/api';
-import { OCI_FORM_MAPPERS, OCID_REGEX, OCI_FINGERPRINT_REGEX } from './constants';
+import { OCI_AUTH_TYPE_OPTIONS, OCI_FORM_MAPPERS, OCID_REGEX, OCI_FINGERPRINT_REGEX, OciAuthType } from './constants';
 import { OciApiPrivateKeyField } from '../../components/OciApiPrivateKeyField';
 import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
 
@@ -81,6 +81,7 @@ interface OCIProviderCreateFormProps {
 }
 
 export interface OCIProviderCreateFormFieldValues {
+  ociAuthType: OciAuthType;
   ociTenancyId: string;
   ociUserId: string;
   ociFingerprint: string;
@@ -104,6 +105,7 @@ export interface OCIProviderCreateFormFieldValues {
 }
 
 export const DEFAULT_FORM_VALUES: Partial<OCIProviderCreateFormFieldValues> = {
+  ociAuthType: OciAuthType.API_KEY,
   dbNodePublicInternetAccess: true,
   ntpServers: [] as string[],
   ntpSetupType: NTPSetupType.CLOUD_VENDOR,
@@ -122,16 +124,28 @@ const VALIDATION_SCHEMA = object().shape({
       ACCEPTABLE_CHARS,
       'Provider name cannot contain special characters other than "-", and "_"'
     ),
-  ociTenancyId: string()
-    .required('Tenancy OCID is required.')
-    .matches(OCID_REGEX, 'Tenancy OCID must be in OCID format: ocid1.<type>.<realm>.<unique_id>'),
-  ociUserId: string()
-    .required('User OCID is required.')
-    .matches(OCID_REGEX, 'User OCID must be in OCID format: ocid1.<type>.<realm>.<unique_id>'),
-  ociFingerprint: string()
-    .required('Fingerprint is required.')
-    .matches(OCI_FINGERPRINT_REGEX, 'Fingerprint must be 16 colon-separated hexadecimal pairs'),
-  ociPrivateKeyContent: mixed().required('API private key is required.'),
+  ociTenancyId: string().when('ociAuthType', {
+    is: OciAuthType.API_KEY,
+    then: string()
+      .required('Tenancy OCID is required.')
+      .matches(OCID_REGEX, 'Tenancy OCID must be in OCID format: ocid1.<type>.<realm>.<unique_id>')
+  }),
+  ociUserId: string().when('ociAuthType', {
+    is: OciAuthType.API_KEY,
+    then: string()
+      .required('User OCID is required.')
+      .matches(OCID_REGEX, 'User OCID must be in OCID format: ocid1.<type>.<realm>.<unique_id>')
+  }),
+  ociFingerprint: string().when('ociAuthType', {
+    is: OciAuthType.API_KEY,
+    then: string()
+      .required('Fingerprint is required.')
+      .matches(OCI_FINGERPRINT_REGEX, 'Fingerprint must be 16 colon-separated hexadecimal pairs')
+  }),
+  ociPrivateKeyContent: mixed().when('ociAuthType', {
+    is: OciAuthType.API_KEY,
+    then: mixed().required('API private key is required.')
+  }),
   ociCompartmentId: string()
     .required('Compartment OCID is required.')
     .matches(
@@ -292,6 +306,8 @@ export const OCIProviderCreateForm = ({
     'sshKeypairManagement',
     DEFAULT_FORM_VALUES.sshKeypairManagement
   );
+  const ociAuthType = formMethods.watch('ociAuthType', DEFAULT_FORM_VALUES.ociAuthType);
+  const isApiKeyAuth = ociAuthType === OciAuthType.API_KEY;
 
   const isFormDisabled = getIsFormDisabled(formMethods.formState);
   return (
@@ -314,33 +330,51 @@ export const OCIProviderCreateForm = ({
           <Box width="100%" display="flex" flexDirection="column" gridGap="32px">
             <FieldGroup heading="Cloud Info">
               <FormField>
-                <FieldLabel>Tenancy OCID</FieldLabel>
-                <YBInputField
+                <FieldLabel
+                  infoTitle="Authentication Type"
+                  infoContent="How YugabyteDB Anywhere authenticates with OCI. Use API Key to supply OCI API signing key credentials, or Instance Principal to use the YBA host's instance identity."
+                >
+                  Authentication Type
+                </FieldLabel>
+                <YBRadioGroupField
+                  name="ociAuthType"
                   control={formMethods.control}
-                  name="ociTenancyId"
-                  disabled={isFormDisabled}
-                  fullWidth
+                  options={OCI_AUTH_TYPE_OPTIONS}
+                  orientation={RadioGroupOrientation.HORIZONTAL}
                 />
               </FormField>
-              <FormField>
-                <FieldLabel>User OCID</FieldLabel>
-                <YBInputField
-                  control={formMethods.control}
-                  name="ociUserId"
-                  disabled={isFormDisabled}
-                  fullWidth
-                />
-              </FormField>
-              <FormField>
-                <FieldLabel>Fingerprint</FieldLabel>
-                <YBInputField
-                  control={formMethods.control}
-                  name="ociFingerprint"
-                  disabled={isFormDisabled}
-                  fullWidth
-                />
-              </FormField>
-              <OciApiPrivateKeyField isFormDisabled={isFormDisabled} />
+              {isApiKeyAuth && (
+                <>
+                  <FormField>
+                    <FieldLabel>Tenancy OCID</FieldLabel>
+                    <YBInputField
+                      control={formMethods.control}
+                      name="ociTenancyId"
+                      disabled={isFormDisabled}
+                      fullWidth
+                    />
+                  </FormField>
+                  <FormField>
+                    <FieldLabel>User OCID</FieldLabel>
+                    <YBInputField
+                      control={formMethods.control}
+                      name="ociUserId"
+                      disabled={isFormDisabled}
+                      fullWidth
+                    />
+                  </FormField>
+                  <FormField>
+                    <FieldLabel>Fingerprint</FieldLabel>
+                    <YBInputField
+                      control={formMethods.control}
+                      name="ociFingerprint"
+                      disabled={isFormDisabled}
+                      fullWidth
+                    />
+                  </FormField>
+                  <OciApiPrivateKeyField isFormDisabled={isFormDisabled} />
+                </>
+              )}
               <FormField>
                 <FieldLabel>Compartment OCID</FieldLabel>
                 <YBInputField
@@ -542,13 +576,16 @@ export const OCIProviderCreateForm = ({
 const constructProviderPayload = async (
   formValues: OCIProviderCreateFormFieldValues
 ): Promise<YBProviderMutation> => {
+  const isApiKeyAuth = formValues.ociAuthType === OciAuthType.API_KEY;
   let ociPrivateKeyContent = '';
-  try {
-    ociPrivateKeyContent = formValues.ociPrivateKeyContent
-      ? (await readFileAsText(formValues.ociPrivateKeyContent)) ?? ''
-      : '';
-  } catch (error) {
-    throw new Error(`An error occurred while processing the API private key file: ${error}`);
+  if (isApiKeyAuth) {
+    try {
+      ociPrivateKeyContent = formValues.ociPrivateKeyContent
+        ? (await readFileAsText(formValues.ociPrivateKeyContent)) ?? ''
+        : '';
+    } catch (error) {
+      throw new Error(`An error occurred while processing the API private key file: ${error}`);
+    }
   }
 
   let sshPrivateKeyContent = '';
@@ -579,10 +616,13 @@ const constructProviderPayload = async (
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.OCI]: {
-          ociTenancyId: formValues.ociTenancyId,
-          ociUserId: formValues.ociUserId,
-          ociFingerprint: formValues.ociFingerprint,
-          ociPrivateKeyContent,
+          ociAuthType: formValues.ociAuthType,
+          ...(isApiKeyAuth && {
+            ociTenancyId: formValues.ociTenancyId,
+            ociUserId: formValues.ociUserId,
+            ociFingerprint: formValues.ociFingerprint,
+            ociPrivateKeyContent
+          }),
           ociCompartmentId: formValues.ociCompartmentId,
           ociRegion: formValues.ociRegionData?.value?.code ?? '',
           ...(formValues.ociHostedZoneId && { ociHostedZoneId: formValues.ociHostedZoneId })
@@ -595,6 +635,15 @@ const constructProviderPayload = async (
     },
     regions: formValues.regions.map<OCIRegionMutation>((regionFormValues) => ({
       code: regionFormValues.code,
+      details: {
+        cloudInfo: {
+          [ProviderCode.OCI]: {
+            ...(regionFormValues.vnet && {
+              vnet: regionFormValues.vnet
+            })
+          }
+        }
+      },
       zones: regionFormValues.zones?.map<OCIAvailabilityZoneMutation>((azFormValues) => ({
         code: azFormValues.code,
         name: azFormValues.code,

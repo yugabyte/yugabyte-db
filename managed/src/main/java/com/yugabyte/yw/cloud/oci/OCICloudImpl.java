@@ -4,6 +4,8 @@ package com.yugabyte.yw.cloud.oci;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.oracle.bmc.auth.AbstractAuthenticationDetailsProvider;
+import com.oracle.bmc.auth.InstancePrincipalsAuthenticationDetailsProvider;
 import com.oracle.bmc.auth.SimpleAuthenticationDetailsProvider;
 import com.oracle.bmc.identity.IdentityClient;
 import com.oracle.bmc.identity.requests.ListAvailabilityDomainsRequest;
@@ -16,6 +18,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
 import com.yugabyte.yw.models.helpers.NodeID;
+import com.yugabyte.yw.models.helpers.provider.OCICloudInfo;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -30,6 +33,7 @@ import org.apache.commons.lang3.StringUtils;
 @Slf4j
 public class OCICloudImpl implements CloudAPI {
 
+  public static final String OCI_AUTH_TYPE = "OCI_AUTH_TYPE";
   public static final String OCI_TENANCY_ID = "OCI_TENANCY_ID";
   public static final String OCI_USER_ID = "OCI_USER_ID";
   public static final String OCI_FINGERPRINT = "OCI_FINGERPRINT";
@@ -57,30 +61,43 @@ public class OCICloudImpl implements CloudAPI {
         return false;
       }
 
-      Map<String, String> envVars = provider.getDetails().getCloudInfo().getOci().getEnvVars();
+      OCICloudInfo ociCloudInfo = provider.getDetails().getCloudInfo().getOci();
+      Map<String, String> envVars = ociCloudInfo.getEnvVars();
 
       if (envVars == null || envVars.isEmpty()) {
         log.error("OCI environment variables not configured for provider");
         return false;
       }
 
-      List<String> requiredKeys =
-          List.of(
-              OCI_TENANCY_ID,
-              OCI_USER_ID,
-              OCI_FINGERPRINT,
-              OCI_COMPARTMENT_ID,
-              OCI_REGION,
-              OCI_PRIVATE_KEY_CONTENT);
-      for (String key : requiredKeys) {
-        if (StringUtils.isEmpty(envVars.get(key))) {
-          log.error("{} is not configured", key);
-          return false;
-        }
+      if (StringUtils.isEmpty(envVars.get(OCI_COMPARTMENT_ID))
+          || StringUtils.isEmpty(envVars.get(OCI_REGION))) {
+        log.error("OCI_COMPARTMENT_ID and OCI_REGION are required");
+        return false;
       }
 
-      if (!validateCredentials(envVars, provider.getName())) {
-        return false;
+      if (ociCloudInfo.usesInstancePrincipal()) {
+        if (!validateInstancePrincipalCredentials(envVars, provider.getName())) {
+          return false;
+        }
+      } else {
+        List<String> requiredApiKeyFields =
+            List.of(
+                OCI_TENANCY_ID,
+                OCI_USER_ID,
+                OCI_FINGERPRINT,
+                OCI_COMPARTMENT_ID,
+                OCI_REGION,
+                OCI_PRIVATE_KEY_CONTENT);
+        for (String key : requiredApiKeyFields) {
+          if (StringUtils.isEmpty(envVars.get(key))) {
+            log.error("{} is not configured", key);
+            return false;
+          }
+        }
+
+        if (!validateApiKeyCredentials(envVars, provider.getName())) {
+          return false;
+        }
       }
 
       log.info("OCI credentials validation successful for provider: {}", provider.getName());
@@ -92,11 +109,9 @@ public class OCICloudImpl implements CloudAPI {
     }
   }
 
-  // Performs a live OCI API round-trip to verify that the supplied credentials authenticate and
-  // that the compartment OCID is reachable. Uses two cheap Identity API calls:
-  //   1) listRegions()          - validates tenancy, user, fingerprint, private key
-  //   2) listAvailabilityDomains(compartmentId) - validates the compartment OCID
-  private boolean validateCredentials(Map<String, String> envVars, String providerName) {
+  // Performs a live OCI API round-trip to verify that the supplied API key credentials
+  // authenticate and that the compartment OCID is reachable.
+  private boolean validateApiKeyCredentials(Map<String, String> envVars, String providerName) {
     String tenancyId = envVars.get(OCI_TENANCY_ID);
     String userId = envVars.get(OCI_USER_ID);
     String fingerprint = envVars.get(OCI_FINGERPRINT);
@@ -122,6 +137,34 @@ public class OCICloudImpl implements CloudAPI {
                 () -> new ByteArrayInputStream(privateKeyContent.getBytes(StandardCharsets.UTF_8)))
             .build();
 
+    return validateIdentityAccess(authProvider, region, compartmentId, providerName);
+  }
+
+  private boolean validateInstancePrincipalCredentials(
+      Map<String, String> envVars, String providerName) {
+    String compartmentId = envVars.get(OCI_COMPARTMENT_ID);
+    String regionStr = envVars.get(OCI_REGION);
+
+    com.oracle.bmc.Region region;
+    try {
+      region = com.oracle.bmc.Region.fromRegionId(regionStr);
+    } catch (IllegalArgumentException e) {
+      log.error(
+          "Invalid OCI region '{}' for provider {}: {}", regionStr, providerName, e.getMessage());
+      return false;
+    }
+
+    AbstractAuthenticationDetailsProvider authProvider =
+        InstancePrincipalsAuthenticationDetailsProvider.builder().build();
+
+    return validateIdentityAccess(authProvider, region, compartmentId, providerName);
+  }
+
+  private boolean validateIdentityAccess(
+      AbstractAuthenticationDetailsProvider authProvider,
+      com.oracle.bmc.Region region,
+      String compartmentId,
+      String providerName) {
     try (IdentityClient identityClient =
         IdentityClient.builder().region(region).build(authProvider)) {
       identityClient.listRegions(ListRegionsRequest.builder().build());

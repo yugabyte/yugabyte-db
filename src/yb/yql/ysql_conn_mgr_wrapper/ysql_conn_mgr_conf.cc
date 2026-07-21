@@ -19,8 +19,11 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/util/env_util.h"
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/pg_util.h"

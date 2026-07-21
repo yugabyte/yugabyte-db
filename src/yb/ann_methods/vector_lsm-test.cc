@@ -31,6 +31,7 @@
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread_holder.h"

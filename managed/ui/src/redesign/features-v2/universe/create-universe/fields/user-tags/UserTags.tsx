@@ -14,6 +14,7 @@ import { useFormContext, useFieldArray, FieldArrayPath } from 'react-hook-form';
 import { mui, YBInputField, YBButton } from '@yugabyte-ui-library/core';
 import { StyledLink } from '../../components/DefaultComponents';
 import { OtherAdvancedProps, InstanceTag } from '../../steps/advanced-settings/dtos';
+import { USER_TAGS_FIELD } from '../FieldNames';
 
 //icons
 import CloseIcon from '../../../../../assets/close-v2.svg';
@@ -23,8 +24,6 @@ const { Box, styled, Typography, IconButton } = mui;
 interface UserTagsProps {
   disabled: boolean;
 }
-
-const USER_TAGS_FIELD = 'instanceTags';
 
 const StyledSubText = styled(Typography)(({ theme }) => ({
   fontSize: 13,

@@ -325,7 +325,9 @@ static double
 duckdb_index_build_range_scan(Relation /*tableRelation*/, Relation /*indexRelation*/, IndexInfo * /*indexInfo*/,
                               bool /*allow_sync*/, bool /*anyvisible*/, bool /*progress*/,
                               BlockNumber /*start_blockno*/, BlockNumber /*numblocks*/, IndexBuildCallback /*callback*/,
-                              void * /*callback_state*/, TableScanDesc /*scan*/) {
+                              void * /*callback_state*/, TableScanDesc /*scan*/,
+                              YbBackfillInfo * /*bfinfo*/, YbPgExecOutParam * /*bfresult*/,
+                              YbIndexBuildCallback /*ybcallback*/) {
 	if (pgduckdb::top_level_duckdb_ddl_type == pgduckdb::DDLType::ALTER_TABLE) {
 		return 0;
 	}

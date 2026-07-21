@@ -158,6 +158,7 @@ public class GFlagsUtil {
   public static final String LEADER_LEASE_DURATION_MS = "leader_lease_duration_ms";
   public static final String LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS =
       "leader_failure_max_missed_heartbeat_periods";
+  public static final String TRANSACTION_RPC_TIMEOUT_MS = "transaction_rpc_timeout_ms";
   public static final String LOAD_BALANCER_INITIAL_DELAY_SECS = "load_balancer_initial_delay_secs";
   public static final String TIME_SOURCE = "time_source";
   public static final String ENABLE_QOS = "enable_qos";
@@ -333,6 +334,7 @@ public class GFlagsUtil {
       extra_gflags.put(RAFT_HEARTBEAT_INTERVAL, String.valueOf(1500));
       extra_gflags.put(LEADER_LEASE_DURATION_MS, String.valueOf(6000));
       extra_gflags.put(LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS, String.valueOf(5));
+      extra_gflags.put(TRANSACTION_RPC_TIMEOUT_MS, String.valueOf(7500));
     }
     // TODO cloudEnabled is supposed to be a static config but this is read from runtime config to
     // make itests work.
@@ -882,8 +884,8 @@ public class GFlagsUtil {
   }
 
   public static String getYsqlPgConfCsv(AnsibleConfigureServers.Params taskParams) {
-    String auditLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.auditLogConfig);
-    String queryLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.queryLogConfig);
+    String auditLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.getAuditLogConfig());
+    String queryLogYsqlPgConfCsv = getYsqlPgConfCsv(taskParams.getQueryLogConfig());
     return GFlagsUtil.mergeCSVs(auditLogYsqlPgConfCsv, queryLogYsqlPgConfCsv, true);
   }
 
@@ -1013,7 +1015,7 @@ public class GFlagsUtil {
 
   private static Map<String, String> getYcqlAuditFlags(AnsibleConfigureServers.Params taskParams) {
     Map<String, String> result = new HashMap<>();
-    AuditLogConfig auditLogConfig = taskParams.auditLogConfig;
+    AuditLogConfig auditLogConfig = taskParams.getAuditLogConfig();
     if (auditLogConfig != null) {
       if (auditLogConfig.getYcqlAuditConfig() != null
           && auditLogConfig.getYcqlAuditConfig().isEnabled()) {

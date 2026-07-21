@@ -17,7 +17,6 @@ public class YSQLAuditConfig {
   @ApiModelProperty(value = "Enabled", accessMode = READ_ONLY)
   private boolean enabled;
 
-  @NotNull
   @ApiModelProperty(value = "YSQL statement classes", accessMode = READ_WRITE)
   private Set<YSQLAuditStatementClass> classes;
 
@@ -29,7 +28,6 @@ public class YSQLAuditConfig {
   @ApiModelProperty(value = "Log client", accessMode = READ_WRITE)
   private boolean logClient;
 
-  @NotNull
   @ApiModelProperty(
       value =
           "Log level. For NOTICE, INFO, DEBUG levels, user also needs to set"
@@ -42,7 +40,6 @@ public class YSQLAuditConfig {
   @ApiModelProperty(value = "Log parameter", accessMode = READ_WRITE)
   private boolean logParameter;
 
-  @NotNull
   @ApiModelProperty(value = "Log parameter max size", accessMode = READ_WRITE)
   private Integer logParameterMaxSize;
 

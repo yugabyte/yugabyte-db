@@ -31,6 +31,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/math_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
 

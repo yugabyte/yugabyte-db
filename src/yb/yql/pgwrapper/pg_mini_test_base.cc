@@ -32,6 +32,7 @@
 
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/pg_test_utils.h"

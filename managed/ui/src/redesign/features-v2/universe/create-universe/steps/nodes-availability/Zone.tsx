@@ -94,6 +94,8 @@ export const Zone: FC<ZoneProps> = ({
   const [showPreferredInfoModal, setShowPreferredInfoModal] = useState(false);
 
   const availabilityZones = useWatch({ name: 'availabilityZones', control });
+  const useDedicatedNodes = useWatch({ name: 'useDedicatedNodes', control });
+
   const selectedAzCountInRegion = availabilityZones?.[region.code]?.length ?? 0;
   const selectedAzNames = useMemo(
     () =>
@@ -256,7 +258,7 @@ export const Zone: FC<ZoneProps> = ({
             <span style={{ display: 'inline-block' }}>
               <YBInput
                 type="number"
-                label="Nodes"
+                label={useDedicatedNodes ? t('tServer') : t('nodes')}
                 error={showNodesCountError || showOnPremNodeCountError}
                 value={field.value}
                 onChange={(e) => {

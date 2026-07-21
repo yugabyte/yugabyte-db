@@ -23,6 +23,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
 
 #include "yb/vector_index/vector_index_if.h"
 

@@ -30,6 +30,7 @@ import {
 } from './fields/FieldNames';
 import { ArchitectureType } from '@app/components/configRedesign/providerRedesign/constants';
 import { CloudType } from '@app/redesign/helpers/dtos';
+import { DEFAULT_COMMUNICATION_PORTS } from './helpers/constants';
 
 export enum CreateUniverseSteps {
   GENERAL_SETTINGS = 1,
@@ -100,10 +101,11 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     ebsKmsConfigUUID: null
   },
   securitySettings: {
-    enableClientToNodeEncryption: false,
-    enableNodeToNodeEncryption: false,
+    enableClientToNodeEncryption: true,
+    enableNodeToNodeEncryption: true,
     enableIPV6: false,
-    enableExposingService: false
+    enableExposingService: false,
+    assignPublicIP: false
   },
   resilienceType: ResilienceType.REGULAR,
   proxySettings: {
@@ -116,6 +118,15 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     webProxyPort: undefined,
     byPassProxyList: false,
     byPassProxyListValues: []
+  },
+  otherAdvancedSettings: {
+    ...DEFAULT_COMMUNICATION_PORTS as any,
+    instanceTags: [],
+    awsArnString: '',
+    useSystemd: true,
+    accessKeyCode: '',
+    universeOverrides: '',
+    azOverrides: {}
   }
 };
 

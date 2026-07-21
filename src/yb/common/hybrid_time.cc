@@ -40,6 +40,7 @@
 
 #include "yb/util/date_time.h"
 #include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/memcmpable_varint.h"
 #include "yb/util/result.h"
 

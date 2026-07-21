@@ -105,6 +105,12 @@ enum CompressionType : char {
   kZSTDNotFinalCompression = 0x40,
 };
 
+// This should be in sync with enum values of CompressionType
+constexpr CompressionType kAllCompressionTypes[] = {
+  kNoCompression, kSnappyCompression, kZlibCompression, kBZip2Compression,
+  kLZ4Compression, kLZ4HCCompression, kZSTDNotFinalCompression
+};
+
 enum CompactionStyle : char {
   // level based compaction style
   kCompactionStyleLevel = 0x0,
@@ -1431,25 +1437,17 @@ class ReadFileFilter {
   virtual ~ReadFileFilter() {}
 };
 
-// Cache filter key produced from user key by particular transformer.
-struct FilterKeyCache {
-  explicit FilterKeyCache(Slice user_key) : filter_key(user_key) {}
-
-  Slice filter_key;
-  const void* transformer = nullptr;
-
-  void Reset(Slice user_key) {
-    filter_key = user_key;
-    transformer = nullptr;
-  }
-};
-
 struct QueryOptions;
+
+// Opaque per-iterator cache of the last-resolved fixed-size bloom filter block.
+// Defined in table/block_based_table_reader.cc; only ever passed by pointer here.
+struct FilterBlockCache;
 
 class IteratorFilter {
  public:
   virtual bool Filter(
-      const QueryOptions& options, Slice user_key, FilterKeyCache* cache, void* context) const = 0;
+      const QueryOptions& options, Slice user_key, FilterKeyCache* filter_key_cache,
+      FilterBlockCache* filter_cache, void* context) const = 0;
 
  protected:
   virtual ~IteratorFilter() = default;

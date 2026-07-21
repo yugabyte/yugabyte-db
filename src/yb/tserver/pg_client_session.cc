@@ -44,12 +44,15 @@
 #include "yb/common/common_util.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/transaction_priority.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/object_lock_shared_state_manager.h"
+
+#include "yb/dockv/doc_vector_id.h"
 
 #include "yb/master/master_ddl.pb.h"
 
@@ -187,7 +190,8 @@ METRIC_DEFINE_event_stats(server, vector_index_reduce_us,
 namespace yb::tserver {
 namespace {
 
-YB_DEFINE_ENUM(PgClientSessionKind, (kPlain)(kDdl)(kCatalog)(kSequence)(kPgSession));
+YB_DEFINE_ENUM(PgClientSessionKind,
+    (kPlain)(kAutonomousDdl)(kLegacyCatalog)(kSequence)(kPgSession));
 YB_DEFINE_ENUM(GlobalObjectLocksReleaseMode, (kAsync)(kSync));
 
 void SetFollowerReadTime(ConsistentReadPoint& read_point, uint32_t staleness_ms) {
@@ -1234,7 +1238,7 @@ HybridTime GetInTxnLimit(const PB& options, ClockBase* clock) {
 
 PgClientSessionKind GetSessionKindBasedOnDDLOptions(
     bool ddl_mode, bool ddl_use_regular_transaction_block) {
-  return ddl_mode && !ddl_use_regular_transaction_block ? PgClientSessionKind::kDdl
+  return ddl_mode && !ddl_use_regular_transaction_block ? PgClientSessionKind::kAutonomousDdl
                                                         : PgClientSessionKind::kPlain;
 }
 
@@ -1389,12 +1393,12 @@ class TransactionProvider {
   template<PgClientSessionKind kind, class... Args>
   requires(
       kind == PgClientSessionKind::kPlain ||
-      kind == PgClientSessionKind::kDdl ||
+      kind == PgClientSessionKind::kAutonomousDdl ||
       kind == PgClientSessionKind::kPgSession)
   auto Take(Args&&... args) {
     if constexpr (kind == PgClientSessionKind::kPlain) {
       return TakeForPlain(std::forward<Args>(args)...);
-    } else if constexpr (kind == PgClientSessionKind::kDdl) {
+    } else if constexpr (kind == PgClientSessionKind::kAutonomousDdl) {
       return TakeForDdl(std::forward<Args>(args)...);
     } else if constexpr (kind == PgClientSessionKind::kPgSession) {
       return TakeForPgSession(std::forward<Args>(args)...);
@@ -1530,7 +1534,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
   ops.reserve(req->ops().size());
   client::YBTablePtr table;
   CancelableScopeExit abort_se{[session] { session->Abort(); }};
-  const auto read_from_followers = req->options().has_follower_read_staleness_ms();
+  const auto read_from_followers = req->options().read_from_followers();
   bool has_write_ops = false;
 
   // TODO(vector_index): it is unexpected to have a mix of vector index read ops and
@@ -1724,9 +1728,9 @@ Request ReleaseRequestFor(
   return req;
 }
 
-template <class OptionsPB>
-bool IsReadPointResetRequested(const OptionsPB& options) {
-  return options.has_read_time() && !options.read_time().has_read_ht();
+template <class ReadTimeOptionsPB>
+bool IsReadPointResetRequested(const ReadTimeOptionsPB& read_time_options) {
+  return read_time_options.has_read_time() && !read_time_options.read_time().has_read_ht();
 }
 
 [[nodiscard]] auto DoTrackSharedMemoryPgMethodExecution(
@@ -1939,12 +1943,25 @@ class PgClientSession::Impl {
     if (req.increment_schema_version()) {
       alterer->set_increment_schema_version();
     }
+    std::optional<dockv::VectorValueFormat> vector_value_format;
     for (const auto& add_column : req.add_columns()) {
       const auto yb_type = QLType::Create(ToLW(
           static_cast<PersistentDataType>(add_column.attr_ybtype())));
-      alterer->AddColumn(add_column.attr_name())
-            ->Type(yb_type)->Order(add_column.attr_num())->PgTypeOid(add_column.attr_pgoid())
-            ->SetMissing(add_column.attr_missing_val());
+      auto column_spec = alterer->AddColumn(add_column.attr_name())
+            ->Type(yb_type)->Order(add_column.attr_num())->PgTypeOid(add_column.attr_pgoid());
+      auto missing_val = add_column.attr_missing_val();
+      if (yb_type->main() == DataType::VECTOR && !IsNull(missing_val)) {
+        if (!vector_value_format) {
+          client::YBTablePtr yb_table;
+          RETURN_NOT_OK(GetTable(table_id, table_cache(), &yb_table));
+          vector_value_format = yb_table->schema().table_properties().owns_vector_reverse_mapping()
+              ? dockv::VectorValueFormat::kTyped
+              : dockv::VectorValueFormat::kLegacy;
+        }
+        missing_val =
+            VERIFY_RESULT(dockv::EncodeVectorSchemaMissingValue(missing_val, *vector_value_format));
+      }
+      column_spec->SetMissing(missing_val);
       // Do not set 'nullable' attribute as PgCreateTable::AddColumn() does not do it.
     }
     for (const auto& rename_column : req.rename_columns()) {
@@ -2082,7 +2099,9 @@ class PgClientSession::Impl {
 
   Status SetTxnSnapshotReadTime(
       const PgPerformOptionsPB& options, CoarseTimePoint deadline) {
-    SCHECK(options.has_read_time(), InvalidArgument, "Snapshot Read Time not provided");
+    SCHECK(
+        options.read_time_options().has_read_time(), InvalidArgument,
+        "Snapshot Read Time not provided");
     SCHECK(
         txn_serial_no_ != options.txn_serial_no(), IllegalState,
         "Snapshot read time can only be set at the very beginning of transaction.");
@@ -2210,7 +2229,7 @@ class PgClientSession::Impl {
       LOG_WITH_PREFIX_AND_FUNC(WARNING)
         << "RollbackToSubTransaction " << subtxn_id
         << " when no distributed transaction of kind"
-        << (kind == PgClientSessionKind::kPlain ? "kPlain" : "kDdl")
+        << (kind == PgClientSessionKind::kPlain ? "kPlain" : "kAutonomousDdl")
         << " is running. This can happen if no distributed transaction has been started yet"
         << " e.g., BEGIN; SAVEPOINT a; ROLLBACK TO a;";
       return Status::OK();
@@ -2248,10 +2267,13 @@ class PgClientSession::Impl {
     RSTATUS_DCHECK(transaction->HasSubTransaction(subtxn_id), InvalidArgument,
                    Format("Transaction $0 of kind $1 doesn't have sub transaction $2",
                           transaction->id(),
-                          kind == PgClientSessionKind::kPlain ? "kPlain" : "kDdl",
+                          kind == PgClientSessionKind::kPlain ? "kPlain" : "kAutonomousDdl",
                           subtxn_id));
     const auto deadline = context->GetClientDeadline();
-    RETURN_NOT_OK(transaction->RollbackToSubTransaction(subtxn_id, deadline));
+    bool is_heartbeat_aborted_or_expired = false;
+    RETURN_NOT_OK(
+        transaction->RollbackToSubTransaction(
+            subtxn_id, deadline, &is_heartbeat_aborted_or_expired));
 
     if (YsqlDdlSavepointEnabled() &&
         is_ddl_mode && req.options().ddl_use_regular_transaction_block() &&
@@ -2263,6 +2285,17 @@ class PgClientSession::Impl {
       RSTATUS_DCHECK(ddl_txn_metadata_.transaction_id == transaction->id(), IllegalState,
                      Format("Unexpected DDL transaction metadata found. Expected: $0, found: $1",
                             transaction->id(), ddl_txn_metadata_.transaction_id));
+
+      // Prevent split-brain: if the transaction is completely aborted at the DocDB level,
+      // we must propagate an error back to PostgreSQL so it triggers a full rollback and
+      // clears the stale relcache.
+      if (is_heartbeat_aborted_or_expired) {
+        return STATUS_FORMAT(
+            Aborted,
+            "Distributed transaction $0 was aborted due to deadlock or other failure",
+            transaction->id());
+      }
+
       RETURN_NOT_OK(client_.RollbackDocdbSchemaToSubtxn(ddl_txn_metadata_, subtxn_id));
       RETURN_NOT_OK(
           client_.WaitForRollbackDocdbSchemaToSubtxnToFinish(ddl_txn_metadata_, subtxn_id));
@@ -2300,8 +2333,8 @@ class PgClientSession::Impl {
             GetSessionData(PgClientSessionKind::kPlain).transaction, PgClientSessionKind::kPlain,
             deadline),
         ReleaseObjectLocksIfNecessary(
-            GetSessionData(PgClientSessionKind::kDdl).transaction, PgClientSessionKind::kDdl,
-            deadline));
+            GetSessionData(PgClientSessionKind::kAutonomousDdl).transaction,
+            PgClientSessionKind::kAutonomousDdl, deadline));
   }
 
   void Perform(
@@ -2686,9 +2719,9 @@ class PgClientSession::Impl {
     read_request->set_is_forward_scan(req.is_forward());
     auto* embedded_req = read_request->mutable_get_tablet_key_ranges_request();
 
-    // IsInclusive is actually ignored by Tablet::GetTabletKeyRanges, and it always treats both
-    // boundaries as inclusive. But we are setting it here to avoid check failures inside
-    // YBPgsqlReadOp.
+    // IsInclusive is actually ignored by Tablet::GetTabletKeyRanges, it does not matter for
+    // the parallel ranges collection. We set it here to route the request to the correct tablet,
+    // if the bound is equal to the tablet key.
     if (!req.lower_bound_key().empty()) {
       read_request->mutable_lower_bound()->set_is_inclusive(true);
       for (auto* dest_key :
@@ -2699,7 +2732,7 @@ class PgClientSession::Impl {
       }
     }
     if (!req.upper_bound_key().empty()) {
-      read_request->mutable_upper_bound()->set_is_inclusive(true);
+      read_request->mutable_upper_bound()->set_is_inclusive(false);
       for (auto* dest_key :
            {embedded_req->mutable_upper_bound_key(),
             read_request->mutable_upper_bound()->mutable_key()}) {
@@ -3147,7 +3180,7 @@ class PgClientSession::Impl {
 
       // Abort txns attached to this session
       for (const auto kind :
-           {PgClientSessionKind::kPlain, PgClientSessionKind::kDdl,
+           {PgClientSessionKind::kPlain, PgClientSessionKind::kAutonomousDdl,
             PgClientSessionKind::kPgSession}) {
         const auto& txn = Transaction(kind);
         if (!txn) {
@@ -3333,17 +3366,17 @@ class PgClientSession::Impl {
       std::stringstream ss;
       bool is_ddl = options.ddl_mode();
       bool is_regular_transaction_block = options.ddl_use_regular_transaction_block();
-      bool is_catalog = options.use_catalog_session();
+      bool is_legacy_catalog = options.use_legacy_catalog_session();
       ss << LogPrefix() << " ";
       if (is_ddl && !is_regular_transaction_block) {
         ss << "Autonomous DDL op: ";
-      } else if (is_catalog) {
-        ss << "Catalog op: ";
+      } else if (is_legacy_catalog) {
+        ss << "Legacy catalog op: ";
       } else {
-        ss << "Regular DML/ DDL op: ";
+        ss << "Plain session op: ";
       }
       ss << "txn_serial_no: " << options.txn_serial_no() << ", ";
-      ss << "read_time_serial_no: " << options.read_time_serial_no() << "; ";
+      ss << "read_time_serial_no: " << options.read_time_options().read_time_serial_no() << "; ";
       for (const auto& op : data->req.ops()) {
         if (op.has_read()) {
           ss << "Read op: " << op.read().table_id();
@@ -3437,8 +3470,8 @@ class PgClientSession::Impl {
     if (VLOG_IS_ON(2) || options.trace_requested()) {
       const auto& read_point = *session->read_point();
       const char* session_kind_str =
-          options.use_catalog_session()                                          ? "kCatalog"
-          : (options.ddl_mode() && !options.ddl_use_regular_transaction_block()) ? "kDdl"
+          options.use_legacy_catalog_session()                                   ? "kLegacyCatalog"
+          : (options.ddl_mode() && !options.ddl_use_regular_transaction_block()) ? "kAutonomousDdl"
                                                                                  : "kPlain";
       std::vector<std::string> op_summaries;
       op_summaries.reserve(data->ops.size());
@@ -3496,8 +3529,7 @@ class PgClientSession::Impl {
   }
 
   void ProcessReadTimeManipulation(
-      ReadTimeManipulation manipulation, uint64_t read_time_serial_no,
-      ClampUncertaintyWindow clamp) {
+      ReadTimeManipulation manipulation, uint64_t read_time_serial_no) {
     VLOG_WITH_PREFIX(2) << "ProcessReadTimeManipulation: " << manipulation
                         << ", read_time_serial_no: " << read_time_serial_no
                         << ", read_time_serial_no_: " << read_time_serial_no_;
@@ -3510,7 +3542,7 @@ class PgClientSession::Impl {
         return;
       case ReadTimeManipulation::ENSURE_READ_TIME_IS_SET:
         if (!read_point.GetReadTime() || (read_time_serial_no_ != read_time_serial_no)) {
-          read_point.SetCurrentReadTime(clamp);
+          read_point.SetCurrentReadTime();
           VLOG(1) << "Setting current ht as read point " << read_point.GetReadTime();
         }
         return;
@@ -3607,15 +3639,15 @@ class PgClientSession::Impl {
       WARN_NOT_OK(EnsureClientSessionCgroup(options.namespace_id()),
                   "Setting cgroup of PgClientSession");
     }
-    const auto read_time_serial_no = options.read_time_serial_no();
+    const auto read_time_serial_no = options.read_time_options().read_time_serial_no();
     auto kind = PgClientSessionKind::kPlain;
-    if (options.use_catalog_session()) {
-      SCHECK(!options.has_follower_read_staleness_ms(),
+    if (options.use_legacy_catalog_session()) {
+      SCHECK(!options.read_from_followers(),
           InvalidArgument, "Reading catalog from followers is not allowed");
-      kind = PgClientSessionKind::kCatalog;
+      kind = PgClientSessionKind::kLegacyCatalog;
       EnsureSession(kind, deadline, arena);
     } else if (options.ddl_mode() && !options.ddl_use_regular_transaction_block()) {
-      kind = PgClientSessionKind::kDdl;
+      kind = PgClientSessionKind::kAutonomousDdl;
       EnsureSession(kind, deadline, arena);
       RETURN_NOT_OK(GetDdlTransactionMetadata(
           true /* use_transaction */, false /* use_regular_transaction_block */, deadline,
@@ -3625,7 +3657,7 @@ class PgClientSession::Impl {
       DCHECK(kind == PgClientSessionKind::kPlain);
       auto& session = EnsureSession(kind, deadline, arena);
       RETURN_NOT_OK(CheckPlainSessionPendingUsedReadTime(options));
-      read_point_history_.Cleanup(options.read_time_serial_no_history_min());
+      read_point_history_.Cleanup(options.read_time_options().read_time_serial_no_history_min());
       if (read_time_serial_no != read_time_serial_no_) {
         auto& read_point = *session->read_point();
         if (read_point_history_.Restore(&read_point, read_time_serial_no)) {
@@ -3673,13 +3705,14 @@ class PgClientSession::Impl {
     auto& session = *session_data.session;
     auto& txn = session_data.transaction;
 
+    const auto& read_time_options = options.read_time_options();
     const auto txn_serial_no = options.txn_serial_no();
-    const auto read_time_serial_no = options.read_time_serial_no();
+    const auto read_time_serial_no = read_time_options.read_time_serial_no();
 
-    if (options.restart_transaction()) {
+    if (read_time_options.restart_transaction()) {
       VLOG_WITH_PREFIX(3) << "Restarting transaction";
       RETURN_NOT_OK(RestartTransaction(kind, deadline));
-      if (options.clamp_uncertainty_window()) {
+      if (read_time_options.clamp_uncertainty_window()) {
         // The clamp uncertainty option is set by catalog reads (among other cases).
         // Catalog cache invalidation messages are processed by resetting the catalog snapshot,
         // so a subsequent catalog read must use the latest snapshot. Reusing a restarted read
@@ -3694,47 +3727,47 @@ class PgClientSession::Impl {
       }
     } else {
       const auto is_plain_session = (kind == PgClientSessionKind::kPlain);
+      const auto has_read_time = read_time_options.has_read_time();
+      const auto has_follower_staleness = read_time_options.has_follower_read_staleness_ms();
       const auto has_time_manipulation =
-          options.read_time_manipulation() != ReadTimeManipulation::NONE;
+          read_time_options.read_time_manipulation() != ReadTimeManipulation::NONE;
       RSTATUS_DCHECK(
-          !has_time_manipulation ||
-              !(options.has_read_time() || options.has_follower_read_staleness_ms()),
+          !has_time_manipulation || !(has_read_time || has_follower_staleness),
           IllegalState,
           "Unexpected combination of read time fields: has_read_time_manipulation=true, "
           "has_read_time=$0, has_follower_read_staleness_ms=$1",
-          options.has_read_time(), options.has_follower_read_staleness_ms());
+          has_read_time, has_follower_staleness);
 
       if (has_time_manipulation) {
         VLOG_WITH_PREFIX(3) << "Processing read time manipulation"
-            << options.read_time_manipulation();
+            << read_time_options.read_time_manipulation();
         RSTATUS_DCHECK(
             is_plain_session, IllegalState,
             "Read time manipulation can't be specified for non kPlain sessions");
         RSTATUS_DCHECK(
-            !options.defer_read_point(), IllegalState,
+            !read_time_options.defer_read_point(), IllegalState,
             "Cannot manipulate read time when read point needs to be deferred.");
         ProcessReadTimeManipulation(
-            options.read_time_manipulation(), read_time_serial_no,
-            ClampUncertaintyWindow(options.clamp_uncertainty_window()));
-      } else if (options.has_follower_read_staleness_ms()) {
+            read_time_options.read_time_manipulation(), read_time_serial_no);
+      } else if (has_follower_staleness) {
         auto& read_point = *session.read_point();
         if (read_time_serial_no_ != read_time_serial_no) {
-          SetFollowerReadTime(read_point, options.follower_read_staleness_ms().value());
+          SetFollowerReadTime(read_point, read_time_options.follower_read_staleness_ms().value());
         } else {
           RSTATUS_DCHECK(
               read_point.GetReadTime(), IllegalState,
               "Follower read with an unchanged read_time_serial_no must already have a read time");
         }
-      } else if (options.has_read_time() && options.read_time().has_read_ht()) {
-        const auto read_time = ReadHybridTime::FromPB(options.read_time());
+      } else if (has_read_time && read_time_options.read_time().has_read_ht()) {
+        const auto read_time = ReadHybridTime::FromPB(read_time_options.read_time());
         session.SetReadPoint(read_time);
         VLOG_WITH_PREFIX(3) << "Read time: " << read_time;
-      } else if (IsReadPointResetRequested(options) ||
-                options.use_catalog_session() ||
+      } else if (IsReadPointResetRequested(read_time_options) ||
+                options.use_legacy_catalog_session() ||
                 (is_plain_session && (read_time_serial_no_ != read_time_serial_no))) {
         VLOG_WITH_PREFIX(3) << "Resetting read point for session kind " << kind
-            << " read point reset requested: " << IsReadPointResetRequested(options)
-            << " use catalog session: " << options.use_catalog_session()
+            << " read point reset requested: " << IsReadPointResetRequested(read_time_options)
+            << " use legacy catalog session: " << options.use_legacy_catalog_session()
             << " change in read time serial number "
             << read_time_serial_no_ << ", " << read_time_serial_no;
         ResetReadPoint(kind);
@@ -3772,7 +3805,8 @@ class PgClientSession::Impl {
     RETURN_NOT_OK(
         UpdateReadPointForXClusterConsistentReads(options, deadline, session.read_point()));
 
-    if (!options.ddl_mode() && !options.use_catalog_session() && options.defer_read_point()) {
+    if (!options.ddl_mode() && !options.use_legacy_catalog_session() &&
+        read_time_options.defer_read_point()) {
       // For DMLs, only fast path writes cannot be deferred.
       RETURN_NOT_OK(session.read_point()->TrySetDeferredCurrentReadTime());
       VLOG_WITH_PREFIX(3) << "Set current read time for deferred mode "
@@ -3782,7 +3816,7 @@ class PgClientSession::Impl {
     // TODO: Reset in_txn_limit which might be on session from past Perform? Not resetting will not
     // cause any issue, but should we reset for safety?
     if (!(options.ddl_mode() && !options.ddl_use_regular_transaction_block()) &&
-        !options.use_catalog_session()) {
+        !options.use_legacy_catalog_session()) {
       txn_serial_no_ = txn_serial_no;
       read_time_serial_no_ = read_time_serial_no;
       if (in_txn_limit) {
@@ -3793,7 +3827,7 @@ class PgClientSession::Impl {
 
     // Do not clamp uncertainty window for legacy catalog reads.
     // TODO(#30357): Measure the performance of picking time here instead of the storage layer.
-    if (options.clamp_uncertainty_window() && !session.read_point()->GetReadTime()) {
+    if (read_time_options.clamp_uncertainty_window() && !session.read_point()->GetReadTime()) {
       RSTATUS_DCHECK(
         !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
         IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
@@ -3806,7 +3840,7 @@ class PgClientSession::Impl {
 
   void ResetReadPoint(PgClientSessionKind kind) {
     const auto is_plain_session = (kind == PgClientSessionKind::kPlain);
-    DCHECK(is_plain_session || kind == PgClientSessionKind::kCatalog);
+    DCHECK(is_plain_session || kind == PgClientSessionKind::kLegacyCatalog);
     const auto& data = GetSessionData(kind);
     auto& session = *data.session;
     session.SetReadPoint({});
@@ -3951,8 +3985,9 @@ class PgClientSession::Impl {
       return nullptr;
     }
 
-    const auto kSessionKind =
-      use_regular_transaction_block ? PgClientSessionKind::kPlain : PgClientSessionKind::kDdl;
+    const auto kSessionKind = use_regular_transaction_block
+        ? PgClientSessionKind::kPlain
+        : PgClientSessionKind::kAutonomousDdl;
     auto& txn = GetSessionData(kSessionKind).transaction;
     if (use_regular_transaction_block) {
       RSTATUS_DCHECK(FLAGS_ysql_yb_ddl_transaction_block_enabled, IllegalState,
@@ -3973,7 +4008,7 @@ class PgClientSession::Impl {
     if (!txn) {
       const auto isolation = FLAGS_ysql_serializable_isolation_for_ddl_txn
           ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
-      txn = transaction_provider_.Take<PgClientSessionKind::kDdl>(deadline);
+      txn = transaction_provider_.Take<PgClientSessionKind::kAutonomousDdl>(deadline);
       RETURN_NOT_OK(txn->SetPgTxnStart(
           pg_txn_start_us ? pg_txn_start_us : MonoTime::Now().ToUint64(),
           is_txn_using_table_locks));
@@ -4071,10 +4106,10 @@ class PgClientSession::Impl {
           // request timeout.
           return Status::OK();
         }
-        if (options.read_time_serial_no() == read_time_serial_no_ &&
+        if (options.read_time_options().read_time_serial_no() == read_time_serial_no_ &&
             !session_data.transaction &&
             options.isolation() == IsolationLevel::NON_TRANSACTIONAL &&
-            IsReadPointResetRequested(options)) {
+            IsReadPointResetRequested(options.read_time_options())) {
           // Read time from previous operations is not required for non-transaction operation which
           // will reset session's read time prior to the execution.
           return Status::OK();
@@ -4311,7 +4346,7 @@ class PgClientSession::Impl {
       return Status::OK();
     }
     if (!txn && kind != PgClientSessionKind::kPlain) {
-      // kDdl might not have a txn when this function is invoked on Shutdown.
+      // kAutonomousDdl might not have a txn when this function is invoked on Shutdown.
       return Status::OK();
     }
 
@@ -4320,7 +4355,7 @@ class PgClientSession::Impl {
         ? MakeOptionalScopeExit([this] { transaction_provider_.ResetObjectLockOwner(); })
         : std::nullopt;
 
-    const auto ddl_mode_used = kind == PgClientSessionKind::kDdl || is_ddl;
+    const auto ddl_mode_used = kind == PgClientSessionKind::kAutonomousDdl || is_ddl;
     const auto use_global_release_path =
         ddl_mode_used || plain_session_has_exclusive_object_locks_.load();
     if (plain_session_has_exclusive_object_locks_.load() && !subtxn_id) {

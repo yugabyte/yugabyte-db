@@ -7,6 +7,9 @@
 #include "pgduckdb/pgduckdb_types.hpp"
 #include "pgduckdb/pgduckdb_planner.hpp"
 
+/* YB includes */
+#include "pgduckdb/pg/permissions.hpp"
+
 extern "C" {
 #include "postgres.h"
 #include "access/xact.h"
@@ -154,10 +157,13 @@ check_view_perms_recursive(Query *query) {
 
 #if PG_VERSION_NUM < 160000
 		if (rte->relkind == RELKIND_VIEW) {
-			bool result = ExecCheckRTEPerms(rte);
-			if (!result) {
-				aclcheck_error(ACLCHECK_NO_PRIV, OBJECT_VIEW, get_rel_name(rte->relid));
-			}
+			/*
+			 * YB: ExecCheckRTPerms ends by invoking ExecutorCheckPerms_hook, and this runs at plan time
+			 * (before ExecutorStart builds the executor stack). pgaudit's hook dereferences that
+			 * stack -> SIGSEGV. The helper clears the hook around the core ACL check and aborts with
+			 * the proper view permission error on failure.
+			 */
+			pgduckdb::pg::YbExecCheckRTPerms(list_make1(rte));
 		}
 #else
 		if (rte->perminfoindex != 0 && rte->relkind == RELKIND_VIEW) {

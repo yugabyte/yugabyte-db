@@ -374,6 +374,15 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   uint64_t GetSharedMemoryPostgresAuthKey();
 
+  // Opens an internal (yb-tserver-key authenticated) libpq connection to the local postgres.
+  // The connect retry loop is aborted if the tserver starts shutting down, so these connections
+  // never keep a shutdown blocked on a doomed connect (see the definition for details).
+  Result<pgwrapper::PGConn> CreateInternalPGConn(
+      const std::string& database_name, std::string_view user = kDefaultInternalPgUser,
+      bool simple_query_protocol = false,
+      const std::optional<CoarseTimePoint>& deadline = std::nullopt,
+      std::string_view yb_internal_conn_kind = {}) override;
+
   SchemaVersion GetMinXClusterSchemaVersion(const TableId& table_id,
       const ColocationId& colocation_id) const;
 
@@ -505,12 +514,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Result<std::unordered_set<std::string>> GetFlagsForServer() const override;
 
   void SetCronLeaderLease(MonoTime cron_leader_lease_end);
-
-  Result<pgwrapper::PGConn> CreateInternalPGConn(
-      const std::string& database_name, std::string_view user = kDefaultInternalPgUser,
-      bool simple_query_protocol = false,
-      const std::optional<CoarseTimePoint>& deadline = std::nullopt,
-      std::string_view yb_internal_conn_kind = {}) override;
 
   std::atomic<bool> initted_{false};
 
@@ -672,6 +675,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void MakeRelcacheInitConnection(const std::string& dbname);
   void RelcacheInitConnectionDone(const std::string& dbname, const Status& status)
       EXCLUDES(lock_);
+  // Completes every pending relcache-init callback with a ShutdownInProgress error. Backends block
+  // synchronously in TriggerRelcacheInitConnection waiting for this callback; if shutdown leaves
+  // them orphaned they hold their inbound connection open and wedge reactor join at teardown.
+  void AbortInFlightRelcacheInitConnections() EXCLUDES(lock_);
   void DoUpdateMasterAddresses();
 
   std::map<std::string, std::string> ValidateConfCsvViaPg(

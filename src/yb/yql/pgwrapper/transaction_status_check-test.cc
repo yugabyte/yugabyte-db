@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/transaction_status_tablets.h"
 
 #include "yb/common/transaction.h"
 
@@ -26,6 +27,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"

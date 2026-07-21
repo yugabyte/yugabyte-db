@@ -300,9 +300,9 @@ Depending on the recommendations in the assessment report, do the following when
 1. Proceed with migration with one of the migration workflows:
 
     - [Offline migration](../../migrate/migrate-steps/)
-    - [Live migration](../../migrate/live-migrate/)
-    - [Live migration with fall-forward](../../migrate/live-fall-forward/)
-    - [Live migration with fall-back](../../migrate/live-fall-back/)
+    - [Live migration](../../migrate/live-migrate/) (PostgreSQL only)
+    - [Live migration with fall-forward](../../migrate/live-fall-forward/) (PostgreSQL only)
+    - [Live migration with fall-back](../../migrate/live-fall-back/) (PostgreSQL only)
 
 ## Assess with read replicas (PostgreSQL only)
 

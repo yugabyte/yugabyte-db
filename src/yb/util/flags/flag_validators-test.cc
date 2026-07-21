@@ -18,7 +18,9 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
+#include "yb/util/format.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"

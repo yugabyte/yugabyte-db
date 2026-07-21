@@ -52,6 +52,8 @@
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 using namespace std::placeholders;
 

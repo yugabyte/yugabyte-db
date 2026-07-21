@@ -371,13 +371,24 @@ TEST_P(PgConcurrentCreateIndexWithSlowRefreshMatViewTest,
   ASSERT_OK(conn.Execute("CREATE TABLE base_table(k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(conn.Execute("INSERT INTO base_table VALUES (1, 1)"));
 
-  // This query generates (2000 * 2000) rows internally.
-  ASSERT_OK(conn.Execute(
+  // The refresh only needs to run long enough to still be an in-flight "lagging" backend while the
+  // concurrent CREATE INDEX runs (which takes tens of seconds in the slowest build). In release the
+  // executor is fast enough that 2000*2000 = 4M rows fits within the test timeout, but in debug and
+  // fastdebug builds materializing 4M rows for both the initial CREATE and the later REFRESH cannot
+  // finish in time, so use a much smaller inner dimension there. Keeping the inner bound below
+  // 10000 preserves uniqueness of unique_key = s1 * 10000 + s2 (required by the concurrent index
+  // variant).
+#ifdef NDEBUG
+  constexpr int kInnerSeriesMax = 2000;
+#else
+  constexpr int kInnerSeriesMax = 250;
+#endif
+  ASSERT_OK(conn.ExecuteFormat(
       "CREATE MATERIALIZED VIEW slow_mv AS "
       "SELECT (s1 * 10000 + s2) AS unique_key, t1.v "
       "FROM base_table t1 "
       "CROSS JOIN generate_series(1, 2000) s1 "
-      "CROSS JOIN generate_series(1, 2000) s2"));
+      "CROSS JOIN generate_series(1, $0) s2", kInnerSeriesMax));
 
   LOG(INFO) << "Created slow_mv";
   if (is_concurrent_refresh) {

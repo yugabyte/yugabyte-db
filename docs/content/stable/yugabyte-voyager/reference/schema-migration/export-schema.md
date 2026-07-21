@@ -29,15 +29,6 @@ When run at the same time, flags take precedence over configuration flag setting
 
 | <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :------- | :------------------------ | :------------------------ |
-| --run-guardrails-checks |
-
-```yaml{.nocopy}
-export-schema:
-  run-guardrails-checks:
-```
-
-| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
-
 | --assessment-report-path |
 
 ```yaml{.nocopy}
@@ -236,6 +227,14 @@ log-level:
 | -h, --help | — | Command line help for schema. |
 | -y, --yes | — | Answer "yes" to all prompts during the export schema operation. <br>Default: false |
 | -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
+| --run-guardrails-checks |
+
+```yaml{.nocopy}
+export-schema:
+  run-guardrails-checks:
+```
+
+| Run guardrails checks during migration. <br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 <br>**Note**: Setting this flag to false is unsafe, as it skips critical pre-migration validations (such as source/target database permissions, binary dependencies, and version compatibility) and may lead to migration failures or data issues. Leave the default (true) unless you have a specific reason to disable checks.|
 
 {{</table>}}
 

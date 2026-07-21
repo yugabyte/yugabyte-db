@@ -4898,6 +4898,15 @@ void CDCSDKConsumptionConsistentChangesTest::TestExplcictCheckpointMovementAfter
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
 
+  // Prevent CDCMasterBgTask from recomputing and clobbering the sys_catalog intent retention
+  // barrier that CreateCDCStream established. If the bg task runs before the ALTER TABLE DDL and
+  // computes an intent op_id of OpId::Max (no sys_catalog tablet-stream checkpoint to derive it
+  // from yet), it releases intent retention on sys_catalog. The DDL's sys_catalog intents are then
+  // cleaned up after apply, so the Virtual WAL's GetChanges on the sys_catalog tablet fails while
+  // trying to fetch the already-GCed intents. This background barrier maintenance is orthogonal to
+  // the data-tablet checkpoint movement this test validates.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = true;
+
   google::SetVLOGLevel("cdcsdk_virtual_wal", 3);
   ASSERT_OK(SetUpWithParams(
       3 /* rf */, 1 /* num_masters */, false /* colocated */,

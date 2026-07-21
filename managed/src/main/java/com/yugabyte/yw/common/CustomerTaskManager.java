@@ -9,6 +9,7 @@ import static io.ebean.DB.commitTransaction;
 import static io.ebean.DB.endTransaction;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.NOT_IMPLEMENTED;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -16,7 +17,6 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderEdit;
-import com.yugabyte.yw.commissioner.tasks.CreatePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.DeletePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
@@ -24,10 +24,8 @@ import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
-import com.yugabyte.yw.commissioner.tasks.RestoreSnapshotSchedule;
 import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
 import com.yugabyte.yw.commissioner.tasks.SendUserNotification;
-import com.yugabyte.yw.commissioner.tasks.UpdatePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.YsqlQueryExecutor.ConsistencyInfoResp;
@@ -36,6 +34,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -132,6 +131,7 @@ public class CustomerTaskManager {
   private final FileDataService fileDataService;
   private final ReleaseManager releaseManager;
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
+  private final UpgradeUniverseHandler upgradeUniverseHandler;
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskManager.class);
   private static final List<TaskType> LOAD_BALANCER_TASK_TYPES =
@@ -151,7 +151,8 @@ public class CustomerTaskManager {
       RuntimeConfGetter confGetter,
       FileDataService fileDataService,
       ReleaseManager releaseManager,
-      SoftwareUpgradeHelper softwareUpgradeHelper) {
+      SoftwareUpgradeHelper softwareUpgradeHelper,
+      UpgradeUniverseHandler upgradeUniverseHandler) {
     this.ybService = ybService;
     this.commissioner = commissioner;
     this.ybcManager = ybcManager;
@@ -160,6 +161,7 @@ public class CustomerTaskManager {
     this.fileDataService = fileDataService;
     this.releaseManager = releaseManager;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
+    this.upgradeUniverseHandler = upgradeUniverseHandler;
   }
 
   // Invoked if the task is in incomplete state.
@@ -834,6 +836,44 @@ public class CustomerTaskManager {
                 + " universe the dr universe again, you can run another switchover task.");
       }
       log.debug("Rolling back switchover task with old xCluster config: {}", currentXClusterConfig);
+    } else if (taskType == TaskType.SoftwareUpgradeYB
+        || taskType == TaskType.SoftwareKubernetesUpgradeYB) {
+      // Roll back a failed software upgrade via the dedicated downgrade path. It gates on the
+      // universe's software-upgrade state and must run as a fresh task (no previousTaskUUID),
+      // so we submit and return directly instead of using the shared tail below.
+      Universe universe = Universe.getOrBadRequest(customerTask.getTargetUUID(), customer);
+      RollbackUpgradeParams rollbackParams =
+          Json.fromJson(oldTaskParams, RollbackUpgradeParams.class);
+      // Skip the version check for this programmatically-submitted task.
+      rollbackParams.expectedUniverseVersion = -1;
+      UUID newTaskUUID = upgradeUniverseHandler.rollbackUpgrade(rollbackParams, customer, universe);
+      log.info(
+          "Submitted rollback (downgrade) for failed software upgrade task {} on {}:{}, task uuid"
+              + " = {}.",
+          taskUUID,
+          customerTask.getTargetUUID(),
+          customerTask.getTargetName(),
+          newTaskUUID);
+      return CustomerTask.getOrBadRequest(customerUUID, newTaskUUID);
+    } else if (taskType == TaskType.EditUniverse || taskType == TaskType.EditKubernetesUniverse) {
+      // Edit-universe rollback is gated behind a runtime flag while the feature is built out. The
+      // eligibility gate/annotation should also consult this flag once the rollback path lands.
+      if (!confGetter.getGlobalConf(GlobalConfKeys.allowEditUniverseRollback)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Rollback of %s tasks is not enabled. Set yb.task.allow_edit_universe_rollback to"
+                    + " enable it.",
+                taskType));
+      }
+      // TODO(PLAT-21484, PLAT-21485): edit-universe rollback (VM + K8s) placeholder. Wired up once
+      // the rollback tasks and registry land.
+      throw new PlatformServiceException(
+          NOT_IMPLEMENTED,
+          String.format(
+              "Rollback for task type %s is not yet supported; edit-universe rollback is under"
+                  + " development (tracked by PLAT-21484).",
+              taskType));
     } else {
       String errMsg =
           String.format(
@@ -1012,55 +1052,33 @@ public class CustomerTaskManager {
       case RemoveNodeFromUniverse:
       case DeleteNodeFromUniverse:
       case ReleaseInstanceFromUniverse:
-      case RebootNodeInUniverse:
       case StartNodeInUniverse:
       case StopNodeInUniverse:
       case StartMasterOnNode:
       case ReprovisionNode:
       case MasterFailover:
-        String nodeName = oldTaskParams.get("nodeName").textValue();
-        String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
-        UUID universeUUID = UUID.fromString(universeUUIDStr);
-        // Build node task params for node actions.
-        NodeTaskParams nodeTaskParams = new NodeTaskParams();
-        if (taskType == TaskType.RebootNodeInUniverse) {
-          nodeTaskParams = new RebootNodeInUniverse.Params();
-          ((RebootNodeInUniverse.Params) nodeTaskParams).isHardReboot =
-              oldTaskParams.get("isHardReboot").asBoolean();
-        }
-        nodeTaskParams.nodeName = nodeName;
-        nodeTaskParams.setUniverseUUID(universeUUID);
-
+      case ReplaceNodeInUniverse:
+      case DecommissionNode:
+        NodeTaskParams nodeTaskParams = Json.fromJson(oldTaskParams, NodeTaskParams.class);
         // Populate the user intent for software upgrades like gFlag upgrades.
-        Universe universe = Universe.getOrBadRequest(universeUUID, customer);
-        nodeTaskParams.clusters.addAll(universe.getUniverseDetails().clusters);
-
-        nodeTaskParams.expectedUniverseVersion = -1;
-        if (oldTaskParams.has("rootCA")) {
-          nodeTaskParams.rootCA = UUID.fromString(oldTaskParams.get("rootCA").textValue());
-        }
+        Universe universe = Universe.getOrBadRequest(nodeTaskParams.getUniverseUUID(), customer);
         if (universe.isYbcEnabled()) {
           nodeTaskParams.setEnableYbc(true);
           nodeTaskParams.setYbcInstalled(true);
           nodeTaskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
         }
-        if (taskType == TaskType.MasterFailover) {
-          nodeTaskParams.azUuid = UUID.fromString(oldTaskParams.get("azUuid").textValue());
-        }
+        nodeTaskParams.expectedUniverseVersion = -1;
         taskParams = nodeTaskParams;
         break;
-      case ReplaceNodeInUniverse:
-      case DecommissionNode:
-        // TODO: Revisit to avoid sending the whole payload.
-        nodeTaskParams = Json.fromJson(oldTaskParams, NodeTaskParams.class);
-        nodeName = oldTaskParams.get("nodeName").textValue();
-        nodeTaskParams.nodeName = nodeName;
+      case RebootNodeInUniverse:
+        nodeTaskParams = Json.fromJson(oldTaskParams, RebootNodeInUniverse.Params.class);
+        nodeTaskParams.expectedUniverseVersion = -1;
         taskParams = nodeTaskParams;
         break;
       case BackupUniverse:
         // V1 Restore Task
-        universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
-        universeUUID = UUID.fromString(universeUUIDStr);
+        String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
+        UUID universeUUID = UUID.fromString(universeUUIDStr);
         // Build restore V1 task params for restore task.
         BackupTableParams backupTableParams = new BackupTableParams();
         backupTableParams.setUniverseUUID(universeUUID);

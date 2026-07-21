@@ -17,7 +17,7 @@ SELECT ':P with w(i) as (
     insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
 ) insert into b values (2) on conflict on constraint b_i_key do update set i = (select 20 from w);'
 AS query \gset
-\i :iter_P2
+\i :run_query
 
 /* Test B */
 drop table if exists a;
@@ -28,7 +28,7 @@ SELECT ':P with w(i) as (
     insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
 ) insert into a values (2) on conflict on constraint a_i_key do update set i = (select 20 from w);'
 AS query \gset
-\i :iter_P2
+\i :run_query
 
 /* Test C */
 drop table if exists a;
@@ -41,4 +41,4 @@ SELECT ':P with w(i) as (
     insert into a values (2) on conflict on constraint a_i_key do update set i = 20 returning i
 ) insert into a values (3) on conflict on constraint a_i_key do update set i = (select 30 from w);'
 AS query \gset
-\i :iter_P2
+\i :run_query

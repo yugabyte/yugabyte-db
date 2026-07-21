@@ -35,6 +35,7 @@
 
 #include "yb/util/flag_validators.h"
 #include "yb/util/is_operation_done_result.h"
+#include "yb/util/status_log.h"
 
 // TODO (mbautin, 2019-12): switch the default to true after updating all external callers
 // (yb-ctl, YugaWare) and unit tests.
@@ -49,7 +50,7 @@ DEFINE_NON_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
     "Frequency at which the table to tablespace information will be updated in master "
     "from pg catalog tables. A value of -1 disables the refresh task.");
 
-DEFINE_RUNTIME_int32(ysql_ddl_post_processing_failed_verification_retry_secs, -1,
+DEFINE_RUNTIME_int32(ysql_ddl_post_processing_failed_verification_retry_secs, 300,
     "Frequency in seconds at which the master leader will re-trigger DDL verification for "
     "YSQL DDL transactions in kDdlPostProcessingFailed state. A value of -1 disables this "
     "background task.");

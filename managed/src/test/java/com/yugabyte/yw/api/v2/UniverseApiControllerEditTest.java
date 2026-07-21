@@ -5,6 +5,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -37,6 +38,7 @@ import com.yugabyte.yba.v2.client.models.PlacementRegion;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseEditSpec;
 import com.yugabyte.yba.v2.client.models.UniverseNetworkingSpec;
+import com.yugabyte.yba.v2.client.models.UniverseSettings;
 import com.yugabyte.yba.v2.client.models.UniverseSpec;
 import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.commissioner.Common;
@@ -155,7 +157,10 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .numNodes(primaryClusterSpec.getNumNodes() + incNumNodesBy)
             .placementSpec(new ClusterPlacementSpec().cloudList(List.of(newPlacementCloud)));
     UniverseEditSpec universeEditSpec =
-        new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .clusters(List.of(clusterEditSpec))
+            .universeSettings(new UniverseSettings().expertMode(true));
     // run the edit universe
     runEditUniverseV2(universeEditSpec);
   }
@@ -304,6 +309,50 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
   }
 
   @Test
+  public void testEditUniverseV2DisableDedicatedNodes() throws ApiException {
+    Universe.saveDetails(
+        universeUuid,
+        univ -> {
+          UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          intent.dedicatedNodes = true;
+          intent.masterInstanceType = "m5.large";
+          intent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+          univ.setUniverseDetails(univ.getUniverseDetails());
+        },
+        false);
+
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+
+    ClusterNodeSpec nodeSpec = new ClusterNodeSpec().dedicatedNodes(false);
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).nodeSpec(nodeSpec);
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
+
+    YBATask editTask = api.editUniverse(customer.getUuid(), universeUuid, universeEditSpec);
+    assertThat(editTask.getResourceUuid(), is(universeUuid));
+
+    ArgumentCaptor<UniverseConfigureTaskParams> v1EditParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.EditUniverse), v1EditParamsCapture.capture());
+    Cluster primaryCluster = v1EditParamsCapture.getValue().getPrimaryCluster();
+    assertThat(primaryCluster.userIntent.dedicatedNodes, is(false));
+    assertThat(primaryCluster.userIntent.masterInstanceType, is(nullValue()));
+    assertThat(primaryCluster.userIntent.masterDeviceInfo, is(nullValue()));
+  }
+
+  @Test
   public void testEditUniverseV2InstanceType() throws ApiException {
     UniverseApi api = new UniverseApi();
     // payload for editing the Universe instance type
@@ -346,7 +395,6 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
   @Test
   public void testEditUniverseV2CommunicationPorts() throws ApiException {
     UniverseApi api = new UniverseApi();
-    // payload for editing the Universe instance type
     UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
     ClusterSpec primaryClusterSpec =
         universeSpec.getClusters().stream()
@@ -354,6 +402,23 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .findAny()
             .orElseThrow();
     ClusterEditSpec clusterEditSpec = new ClusterEditSpec().uuid(primaryClusterSpec.getUuid());
+    CommunicationPortsSpec communicationPortsSpec =
+        new CommunicationPortsSpec()
+            .masterHttpPort(1234)
+            .masterRpcPort(1235)
+            .tserverHttpPort(5678)
+            .tserverRpcPort(5679)
+            .nodeExporterPort(9301)
+            .otelCollectorMetricsPort(8890)
+            .redisServerHttpPort(11001)
+            .redisServerRpcPort(6380)
+            .ybControllerHttpPort(14001)
+            .ybControllerRpcPort(18019)
+            .yqlServerHttpPort(12001)
+            .yqlServerRpcPort(9043)
+            .ysqlServerHttpPort(13001)
+            .ysqlServerRpcPort(5434)
+            .internalYsqlServerRpcPort(6434);
     UniverseEditSpec universeEditSpec =
         new UniverseEditSpec()
             .expectedUniverseVersion(-1)
@@ -364,9 +429,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
                     .assignStaticPublicIp(
                         universeSpec.getNetworkingSpec().getAssignStaticPublicIp())
                     .enableIpv6(universeSpec.getNetworkingSpec().getEnableIpv6())
-                    .communicationPorts(
-                        new CommunicationPortsSpec().masterHttpPort(1234).tserverHttpPort(5678)));
-    // run the edit universe
+                    .communicationPorts(communicationPortsSpec));
     runEditUniverseV2(universeEditSpec);
   }
 

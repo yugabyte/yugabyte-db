@@ -219,12 +219,21 @@ Status SysCatalogTable::Start(ElectedLeaderCallback leader_cb) {
 }
 
 void SysCatalogTable::StartShutdown() {
+  // A removed master going into shell mode (GoIntoShellMode) can race with process shutdown
+  // (CatalogManager::StartShutdown / CompleteShutdown). Both drive the tablet peer's two-phase
+  // shutdown, so the controller makes each phase run at most once and in order.
+  auto scope = shutdown_controller_.CheckedStartShutdown();
+  if (!scope) {
+    return;
+  }
+
   if (mem_manager_) {
     mem_manager_->Shutdown();
   }
   auto peer = tablet_peer();
   if (peer) {
-    CHECK(peer->StartShutdown());
+    CHECK(peer->StartShutdown(
+        tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse));
   }
 
   if (multi_raft_manager_) {
@@ -233,9 +242,14 @@ void SysCatalogTable::StartShutdown() {
 }
 
 void SysCatalogTable::CompleteShutdown() {
+  auto scope = shutdown_controller_.CheckedCompleteShutdown();
+  if (!scope) {
+    return;
+  }
+
   auto peer = tablet_peer();
   if (peer) {
-    peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse);
+    peer->CompleteShutdown();
   }
   inform_removed_master_pool_->Shutdown();
   raft_pool_->Shutdown();

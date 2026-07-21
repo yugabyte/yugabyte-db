@@ -22,6 +22,7 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
 

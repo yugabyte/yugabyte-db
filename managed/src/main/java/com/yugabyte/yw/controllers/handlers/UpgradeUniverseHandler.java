@@ -782,11 +782,11 @@ public class UpgradeUniverseHandler {
     userIntent.auditLogConfig = requestParams.auditLogConfig;
     ExportTelemetryConfigParams exportParams =
         UniverseControllerRequestBinder.deepCopy(requestParams, ExportTelemetryConfigParams.class);
-    exportParams.setTelemetryConfig(
-        TelemetryConfig.of(
-            requestParams.auditLogConfig,
-            userIntent.queryLogConfig,
-            userIntent.metricsExportConfig));
+    // Start from the current telemetry config (table is source of truth) and override only audit,
+    // preserving the query/metrics/master-log sections this audit-only request is not changing.
+    TelemetryConfig telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
+    telemetryConfig.setAuditLogConfig(requestParams.auditLogConfig);
+    exportParams.setTelemetryConfig(telemetryConfig);
     return submitExportTelemetryConfigs(exportParams, customer, universe);
   }
 
@@ -879,11 +879,11 @@ public class UpgradeUniverseHandler {
     userIntent.queryLogConfig = requestParams.queryLogConfig;
     ExportTelemetryConfigParams exportParams =
         UniverseControllerRequestBinder.deepCopy(requestParams, ExportTelemetryConfigParams.class);
-    exportParams.setTelemetryConfig(
-        TelemetryConfig.of(
-            userIntent.auditLogConfig,
-            requestParams.queryLogConfig,
-            userIntent.metricsExportConfig));
+    // Start from the current telemetry config (table is source of truth) and override only query,
+    // preserving the audit/metrics/master-log sections this query-log-only request is not changing.
+    TelemetryConfig telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
+    telemetryConfig.setQueryLogConfig(requestParams.queryLogConfig);
+    exportParams.setTelemetryConfig(telemetryConfig);
     return submitExportTelemetryConfigs(exportParams, customer, universe);
   }
 
@@ -1260,10 +1260,24 @@ public class UpgradeUniverseHandler {
     // accurate per-type status on the telemetry cards. The request body carries the full desired
     // state for all sections (null section == disabled), so we diff it against the currently
     // stored config rather than infer from the request alone.
-    params.setModifiedExportTypes(computeModifiedExportTypes(params, universe));
+    List<ExportType> modifiedExportTypes = computeModifiedExportTypes(params, universe);
+    params.setModifiedExportTypes(modifiedExportTypes);
+    boolean isKubernetes = Util.isKubernetesBasedUniverse(universe);
+    // Collector-only fast path: when every changed section is handled entirely by the otel
+    // collector (metrics, master logs) and no gflag-bearing section (audit/query logs) changed,
+    // skip the yb-master/yb-tserver rolling restart. ManageOtelCollector reconfigures the collector
+    // independently, so the DB processes do not need to bounce. Honoured only when the caller did
+    // not explicitly request an upgrade option. Scoped to non-K8s for now; on K8s the collector is
+    // a sidecar container that may require a pod roll (handled when master logs land on K8s).
+    if (!isKubernetes
+        && !params.isUpgradeOptionExplicitlySet()
+        && !modifiedExportTypes.isEmpty()
+        && modifiedExportTypes.stream().noneMatch(ExportType::requiresDbRestart)) {
+      params.upgradeOption = UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE;
+    }
     params.verifyParams(universe, true);
     TaskType taskType =
-        Util.isKubernetesBasedUniverse(universe)
+        isKubernetes
             ? TaskType.KubernetesConfigureExportTelemetryConfig
             : TaskType.ConfigureExportTelemetryConfig;
     return submitUpgradeTask(
@@ -1278,34 +1292,7 @@ public class UpgradeUniverseHandler {
    */
   private List<ExportType> computeModifiedExportTypes(
       ExportTelemetryConfigParams params, Universe universe) {
-    TelemetryConfig current = getCurrentTelemetryConfig(universe);
-    List<ExportType> modified = new ArrayList<>();
-    if (!Objects.equals(
-        params.getAuditLogConfig(), current == null ? null : current.getAuditLogConfig())) {
-      modified.add(ExportType.AUDIT_LOGS);
-    }
-    if (!Objects.equals(
-        params.getQueryLogConfig(), current == null ? null : current.getQueryLogConfig())) {
-      modified.add(ExportType.QUERY_LOGS);
-    }
-    if (!Objects.equals(
-        params.getMetricsExportConfig(),
-        current == null ? null : current.getMetricsExportConfig())) {
-      modified.add(ExportType.METRICS);
-    }
-    return modified;
-  }
-
-  private TelemetryConfig getCurrentTelemetryConfig(Universe universe) {
-    return ExportTelemetryConfig.getForUniverse(universe.getUniverseUUID())
-        .map(ExportTelemetryConfig::getTelemetryConfig)
-        .orElseGet(
-            () -> {
-              UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-              return TelemetryConfig.of(
-                  userIntent.auditLogConfig,
-                  userIntent.queryLogConfig,
-                  userIntent.metricsExportConfig);
-            });
+    return TelemetryConfig.diff(
+        params.getTelemetryConfig(), OtelCollectorUtil.getCurrentTelemetryConfig(universe));
   }
 }

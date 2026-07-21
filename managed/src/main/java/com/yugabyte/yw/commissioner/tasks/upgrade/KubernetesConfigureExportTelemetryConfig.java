@@ -6,6 +6,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -27,6 +28,12 @@ public class KubernetesConfigureExportTelemetryConfig extends KubernetesUpgradeT
   @Override
   protected ExportTelemetryConfigParams taskParams() {
     return (ExportTelemetryConfigParams) taskParams;
+  }
+
+  @Override
+  protected TelemetryConfig getDesiredTelemetryConfig() {
+    // Return the telemetryConfig form taskParams instead of the one from the db
+    return taskParams().getTelemetryConfig();
   }
 
   @Override
@@ -52,9 +59,9 @@ public class KubernetesConfigureExportTelemetryConfig extends KubernetesUpgradeT
         () -> {
           Universe universe = getUniverse();
           Cluster cluster = taskParams().getPrimaryCluster();
-          cluster.userIntent.auditLogConfig = taskParams().getAuditLogConfig();
-          cluster.userIntent.queryLogConfig = taskParams().getQueryLogConfig();
 
+          // The desired telemetry config reaches the helm-upgrade subtasks explicitly via
+          // getDesiredTelemetryConfig; no need to smuggle it through the userIntent copies.
           createUpgradeTask(
               universe,
               cluster.userIntent.ybSoftwareVersion,

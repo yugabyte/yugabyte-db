@@ -18,6 +18,7 @@
 #include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_format.h"
 
 namespace rocksdb {
 

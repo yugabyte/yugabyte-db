@@ -17,26 +17,36 @@ import {
   DeploymentPortsField,
   UserTagsField,
   InstanceARNField,
-  AccessKeyField
+  AccessKeyField,
+  K8sHelmOverridesCard
 } from '../../fields';
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
+import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
+import { constructPlacements } from '../../utils/createUniversePayload';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { OtherAdvancedProps } from './dtos';
+import { USER_TAGS_FIELD } from '../../fields/FieldNames';
 import { OtherAdvancedValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/advanced-settings/ValidationSchema';
+import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 
 const { Box, Typography } = mui;
 
 export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
-  const [
-    { generalSettings, databaseSettings, otherAdvancedSettings },
-    { moveToNextPage, moveToPreviousPage, saveOtherAdvancedSettings }
-  ] = useContext(CreateUniverseContext) as unknown as CreateUniverseContextMethods;
+  const [context, { moveToNextPage, moveToPreviousPage, saveOtherAdvancedSettings }] = useContext(
+    CreateUniverseContext
+  ) as unknown as CreateUniverseContextMethods;
+
+  const { generalSettings, databaseSettings, otherAdvancedSettings } = context;
+
+  const placementSpec = constructPlacements({ ...context });
 
   const provider = generalSettings?.providerConfiguration;
+  const dbVersion = generalSettings?.databaseVersion;
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.otherAdvancedSettings'
@@ -45,6 +55,13 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const methods = useForm<OtherAdvancedProps>({
     resolver: yupResolver(OtherAdvancedValidationSchema(t, provider?.code)),
     defaultValues: {
+      ...DEFAULT_COMMUNICATION_PORTS,
+      instanceTags: [],
+      awsArnString: '',
+      useSystemd: true,
+      accessKeyCode: '',
+      universeOverrides: '',
+      azOverrides: {},
       ...(provider?.code !== CloudType.kubernetes && {
         instanceTags: [
           {
@@ -58,12 +75,17 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
     mode: 'onChange'
   });
 
+  usePersistStepFormValues(methods.watch, methods.getValues, saveOtherAdvancedSettings);
+
+  const { watch } = methods;
+
+  const userTagsValue = watch(USER_TAGS_FIELD);
+
   useImperativeHandle(
     forwardRef,
     () => ({
       onNext: () => {
-        return methods.handleSubmit((data) => {
-          saveOtherAdvancedSettings(data);
+        return methods.handleSubmit(() => {
           moveToNextPage();
         })();
       },
@@ -77,13 +99,13 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   return (
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '24px' }}>
-        <YBAccordion
-          titleContent={t('nodeAcessHeader')}
-          sx={{ width: '100%', gap: '24px' }}
-          defaultExpanded={true}
-        >
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            {provider?.code !== CloudType.kubernetes && (
+        {provider?.code !== CloudType.kubernetes && (
+          <YBAccordion
+            titleContent={t('nodeAcessHeader')}
+            sx={{ width: '100%', gap: '24px' }}
+            defaultExpanded={true}
+          >
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
               <StyledInputWrapper>
                 <Typography variant="body1">{t('accessHeader')}</Typography>
                 <AccessKeyField
@@ -91,17 +113,22 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
                   provider={generalSettings?.providerConfiguration?.uuid ?? ''}
                 />
               </StyledInputWrapper>
-            )}
-            {provider?.code === CloudType.aws && (
-              <StyledInputWrapper>
-                <Typography variant="body1">{t('permissions')}</Typography>
-                <InstanceARNField disabled={false} />
-              </StyledInputWrapper>
-            )}
-          </Box>
-        </YBAccordion>
-        {provider && [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) && (
-          <YBAccordion titleContent={t('userTagsHeader')} sx={{ width: '100%' }}>
+
+              {provider?.code === CloudType.aws && (
+                <StyledInputWrapper>
+                  <Typography variant="body1">{t('permissions')}</Typography>
+                  <InstanceARNField disabled={false} />
+                </StyledInputWrapper>
+              )}
+            </Box>
+          </YBAccordion>
+        )}
+        {provider && isCloudVendorCloudType(provider?.code) && (
+          <YBAccordion
+            titleContent={t('userTagsHeader')}
+            sx={{ width: '100%' }}
+            defaultExpanded={userTagsValue?.length > 1 ? true : false}
+          >
             <UserTagsField disabled={false} />
           </YBAccordion>
         )}
@@ -111,10 +138,9 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
         databaseSettings?.ycql ? (
           <YBAccordion titleContent={t('portsOverrideHeader')} sx={{ width: '100%' }}>
             <DeploymentPortsField
-              disabled={false}
               providerCode={generalSettings?.providerConfiguration?.code as string}
-              ysql={Boolean(databaseSettings?.ysql?.enable)}
-              ycql={Boolean(databaseSettings?.ycql?.enable)}
+              ysql={!!databaseSettings?.ysql?.enable}
+              ycql={!!databaseSettings?.ycql?.enable}
               enableConnectionPooling={databaseSettings?.enableConnectionPooling}
             />
           </YBAccordion>
@@ -122,12 +148,11 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
           <></>
         )}
       </Box>
-      {/* <StyledPanel>
-        <StyledHeader>{t('additionalSettingsHeader')}</StyledHeader>
-        <StyledContent sx={{ gap: '16px' }}>
-          //Need this section for k8s Helm overrides
-        </StyledContent>
-      </StyledPanel> */}
+      {provider?.code === CloudType.kubernetes && (
+        <YBAccordion titleContent={t('k8sOverrides')} sx={{ width: '100%' }} defaultExpanded={true}>
+          <K8sHelmOverridesCard placementSpec={placementSpec} dbVersion={dbVersion ?? ''} />
+        </YBAccordion>
+      )}
     </FormProvider>
   );
 });

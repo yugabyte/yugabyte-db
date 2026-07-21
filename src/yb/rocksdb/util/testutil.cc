@@ -30,9 +30,13 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/rocksdb/port/port.h"
+#include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 
 #include "yb/storage/storage_test_util.h"
+
+#include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
 
 using std::unique_ptr;
 
@@ -119,6 +123,16 @@ std::string RandomName(Random* rnd, const size_t len) {
     ss << static_cast<char>(rnd->Uniform(26) + 'a');
   }
   return ss.str();
+}
+
+std::vector<CompressionType> GetSupportedCompressionTypes() {
+  std::vector<CompressionType> types;
+  for (auto type : kAllCompressionTypes) {
+    if (CompressionTypeSupported(type)) {
+      types.push_back(type);
+    }
+  }
+  return types;
 }
 
 CompressionType RandomCompressionType(Random* rnd) {
@@ -415,6 +429,10 @@ void BoundaryTestValues::Check(const FileBoundaryValues<InternalKey>& smallest,
   AssertSlicesEq(max_left.AsSlice(), GetBoundaryLeft(largest.user_values));
   AssertSlicesEq(min_right.AsSlice(), GetBoundaryRight(smallest.user_values));
   AssertSlicesEq(max_right.AsSlice(), GetBoundaryRight(largest.user_values));
+}
+
+size_t StringSource::memory_footprint() const {
+  LOG(FATAL) << "Not supported";
 }
 
 }  // namespace test

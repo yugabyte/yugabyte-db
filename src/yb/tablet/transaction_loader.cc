@@ -33,6 +33,7 @@
 #include "yb/util/operation_counter.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 
@@ -154,6 +155,9 @@ class TransactionLoader::Executor {
         }
         RETURN_NOT_OK(LoadTransaction(id));
         ++loaded_transactions;
+        // Sync point AFTER each LoadTransaction call.
+        TEST_SYNC_POINT_CALLBACK(
+            "TransactionLoader::Executor::LoadedTransaction", &id);
       }
       current_key_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
       intents_iterator_.Seek(current_key_.AsSlice());

@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
@@ -36,9 +37,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
-import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
-import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
-import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -1109,9 +1107,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       UniverseDefinitionTaskParams.UserIntent userIntent,
       List<NodeDetails> nodes,
       boolean installOtelCollector,
-      AuditLogConfig auditLogConfig,
-      QueryLogConfig queryLogConfig,
-      MetricsExportConfig metricsExportConfig,
+      TelemetryConfig telemetryConfig,
       Function<NodeDetails, Map<String, String>> nodeToGflags) {
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
@@ -1130,9 +1126,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       params.installOtelCollector = installOtelCollector;
       params.otelCollectorEnabled =
           installOtelCollector || getUniverse().getUniverseDetails().otelCollectorEnabled;
-      params.auditLogConfig = auditLogConfig;
-      params.queryLogConfig = queryLogConfig;
-      params.metricsExportConfig = metricsExportConfig;
+      params.telemetryConfig = telemetryConfig;
       params.deviceInfo = userIntent.getDeviceInfoForNode(node);
       params.gflags = nodeToGflags.apply(node);
 

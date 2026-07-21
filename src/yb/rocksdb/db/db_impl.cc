@@ -2678,15 +2678,10 @@ void DBImpl::NotifyOnNoOpCompactionCompleted(
   mutex_.Lock();
 }
 
-void DBImpl::SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {
-  // disable_flush_on_shutdown_ can only transition from false to true. This location
-  // can be called multiple times with arg as false. It is only called once with arg
-  // as true. Subsequently, the destructor reads this flag. Setting this flag
-  // to true and the destructor are expected to run on the same thread and hence
-  // it is not required for disable_flush_on_shutdown_ to be atomic.
-  if (disable_flush_on_shutdown) {
-    disable_flush_on_shutdown_ = disable_flush_on_shutdown;
-  }
+void DBImpl::SetDisableFlushOnShutdown() {
+  // Setting this flag and the destructor that reads it are expected to run on the same thread,
+  // hence it is not required for disable_flush_on_shutdown_ to be atomic.
+  disable_flush_on_shutdown_ = true;
 }
 
 Status DBImpl::SetOptions(
@@ -2878,8 +2873,12 @@ Status DBImpl::WaitForFlush(ColumnFamilyHandle* column_family) {
 
 Status DBImpl::UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) {
   InstrumentedMutexLock l(&mutex_);
-  SCHECK(column_family_memtables_->Seek(0), NotFound, "Column family not found");
-  column_family_memtables_->GetMemTable()->UpdateFrontiers(frontiers);
+  // Access the default column family's memtable directly rather than through the shared
+  // column_family_memtables_ object. The latter's current_/handle_ members are mutated by write
+  // threads (which do not hold mutex_), so seeking on it here would race with concurrent writes.
+  auto* cfd = versions_->GetColumnFamilySet()->GetDefault();
+  SCHECK(cfd, NotFound, "Column family not found");
+  cfd->mem()->UpdateFrontiers(frontiers);
   return Status::OK();
 }
 
@@ -3184,6 +3183,12 @@ int DBImpl::GetCfdImmNumNotFlushed() {
   auto cfd = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
   InstrumentedMutexLock guard_lock(&mutex_);
   return cfd->imm()->NumNotFlushed();
+}
+
+void DBImpl::TEST_StopWrites() {
+  auto cfd = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
+  InstrumentedMutexLock guard_lock(&mutex_);
+  cfd->TEST_StopWrites();
 }
 
 FlushAbility DBImpl::GetFlushAbility() {
@@ -5686,7 +5691,7 @@ Status DBImpl::DelayWrite(uint64_t num_bytes) {
     // in this case.
     while (bg_error_.ok() && write_controller_.IsStopped() && !IsShuttingDown()) {
       delayed = true;
-      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
+      TEST_SYNC_POINT("DBImpl::DelayWrite:Wait");
       bg_cv_.Wait();
     }
   }
@@ -6122,11 +6127,6 @@ Result<std::string> DBImpl::GetMiddleKey(Slice lower_bound_key) {
   // Use an empty (invalid) internal key to get the middle key without a lower bound.
   const Slice kEmptyInternalKey;
   return default_cf_handle_->cfd()->current()->GetMiddleKey(kEmptyInternalKey);
-}
-
-yb::Result<TableReader*> DBImpl::TEST_GetLargestSstTableReader() {
-  InstrumentedMutexLock lock(&mutex_);
-  return default_cf_handle_->cfd()->current()->TEST_GetLargestSstTableReader();
 }
 
 void DBImpl::TEST_SwitchMemtable() {
@@ -6638,9 +6638,9 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     }
   }
 
-  if (db_options.db_paths.size() > 4) {
-    return STATUS(NotSupported,
-        "More than four DB paths are not supported yet. ");
+  if (db_options.db_paths.size() > kMaxPathId + 1) {
+    return STATUS(NotSupported, yb::Format(
+        "More than $0 DB paths are not supported yet. ", kMaxPathId + 1));
   }
 
   *dbptr = nullptr;

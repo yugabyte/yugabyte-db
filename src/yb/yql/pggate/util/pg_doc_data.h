@@ -20,6 +20,7 @@
 #include "yb/yql/pggate/util/pg_wire.h"
 
 #include "yb/util/kv_util.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace pggate {

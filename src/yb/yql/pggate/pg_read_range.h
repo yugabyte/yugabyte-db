@@ -67,7 +67,8 @@ class PgReadRange {
     auto hashed_group = VERIFY_RESULT(MakeGroup(
         values, 0, num_hash_key_columns, null_type, &null_found));
     dockv::KeyBytes out;
-    dockv::DocKeyEncoderAfterTableIdStep encoder(&out);
+    dockv::DocKeyEncoderAfterTableIdStep encoder =
+        dockv::DocKeyEncoder(&out).Schema(table_->schema());
     auto after_hash = encoder.Hash(hash, hashed_group);
     auto range_group = VERIFY_RESULT(MakeGroup(
         values, num_hash_key_columns, num_range_key_columns, null_type, &null_found));
@@ -85,7 +86,8 @@ class PgReadRange {
     auto range_group = VERIFY_RESULT(MakeGroup(
         values, 0, num_range_key_columns, null_type, &null_found));
     dockv::KeyBytes out;
-    dockv::DocKeyEncoderAfterTableIdStep encoder(&out);
+    dockv::DocKeyEncoderAfterTableIdStep encoder =
+        dockv::DocKeyEncoder(&out).Schema(table_->schema());
     encoder.NoHash().Range(range_group);
     SetBound(std::move(out), is_inclusive && !null_found, is_lower);
     return Status::OK();

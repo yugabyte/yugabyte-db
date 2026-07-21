@@ -16,6 +16,7 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 

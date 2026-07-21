@@ -21,6 +21,7 @@
 #include "yb/rocksdb/util/heap.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/status_format.h"
 #include "yb/util/two_group_mutex.h"
 
 #include "yb/vector_index/coordinate_types.h"

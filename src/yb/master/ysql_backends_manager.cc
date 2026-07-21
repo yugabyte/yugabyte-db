@@ -37,6 +37,7 @@
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 
 using namespace std::chrono_literals;

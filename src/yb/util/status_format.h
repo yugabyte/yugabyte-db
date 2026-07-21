@@ -19,6 +19,7 @@
 
 #include "yb/util/format.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/std_util.h"
 
 #define STATUS_SUBSTITUTE(status_type, ...) \

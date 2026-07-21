@@ -1,7 +1,11 @@
-import { FC, useMemo, useState } from 'react';
+import { FC, useEffect, useMemo } from 'react';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
+import { browserHistory, withRouter, WithRouterProps } from 'react-router';
+import { Divider } from '@material-ui/core';
 import { mui, YBTab, YBTabs } from '@yugabyte-ui-library/core';
+
+import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import { api } from '@app/redesign/helpers/api';
 import { useGetUniverse } from '@app/v2/api/universe/universe';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
@@ -12,7 +16,11 @@ import {
   InitialEditUniverseContextState
 } from './EditUniverseContext';
 import { SwitchEditUniverseTabs } from './SwitchEditUniverseTabs';
-import { YBLoadingCircleIcon } from '@app/components/common/indicators';
+import {
+  getEditUniverseSettingsRoute,
+  isValidEditUniverseTab,
+  parseEditUniverseTabFromPath
+} from './editUniverseTabUtils';
 
 const { Grid, styled } = mui;
 
@@ -24,12 +32,40 @@ const TabItem = styled(YBTab)(({ theme }) => ({
   alignItems: 'flex-start'
 }));
 
-export const EditUniverse: FC<EditUniverseProps> = ({ universeUUID }) => {
+const StyledDivider = styled(Divider)(({ theme }) => ({
+  width: '200px',
+  marginBottom: theme.spacing(1)
+}));
+
+const EditUniverseComponent: FC<EditUniverseProps & WithRouterProps> = ({
+  universeUUID,
+  params,
+  location
+}) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.tabs' });
 
-  const [selectedTab, setSelectedTab] = useState<EditUniverseTabs>(
-    InitialEditUniverseContextState.activeTab
-  );
+  const pathTab = params?.settingsTab as string | undefined;
+  const selectedTab = useMemo(() => parseEditUniverseTabFromPath(pathTab), [pathTab]);
+
+  useEffect(() => {
+    if (!universeUUID || !location) return;
+
+    const settingsBasePath = `/universes/${universeUUID}/settings`;
+    if (!location.pathname.startsWith(settingsBasePath)) {
+      return;
+    }
+
+    const isBareSettingsRoute = location.pathname === settingsBasePath;
+    if (isBareSettingsRoute || !pathTab || !isValidEditUniverseTab(pathTab)) {
+      browserHistory.replace(getEditUniverseSettingsRoute(universeUUID, EditUniverseTabs.GENERAL));
+    }
+  }, [pathTab, universeUUID, location?.pathname]);
+
+  const handleTabChange = (_event: unknown, newValue: EditUniverseTabs) => {
+    if (newValue === selectedTab) return;
+
+    browserHistory.push(getEditUniverseSettingsRoute(universeUUID, newValue));
+  };
 
   const { data: universeData, isLoading, isSuccess } = useGetUniverse(universeUUID);
 
@@ -65,8 +101,10 @@ export const EditUniverse: FC<EditUniverseProps> = ({ universeUUID }) => {
       <Grid item sx={{ width: '230px' }}>
         <YBTabs
           orientation="vertical"
+          variant="secondary"
+          tabWidth={200}
           value={selectedTab}
-          onChange={(_event, newValue) => setSelectedTab(newValue)}
+          onChange={handleTabChange}
         >
           <TabItem value={EditUniverseTabs.GENERAL} label={t('general')} />
           <TabItem value={EditUniverseTabs.PLACEMENT} label={t('placement')} />
@@ -74,6 +112,9 @@ export const EditUniverse: FC<EditUniverseProps> = ({ universeUUID }) => {
           <TabItem value={EditUniverseTabs.SECURITY} label={t('security')} />
           <TabItem value={EditUniverseTabs.DATABASE} label={t('database')} />
           <TabItem value={EditUniverseTabs.ADVANCED} label={t('advanced')} />
+          <StyledDivider orientation="horizontal" />
+          <TabItem value={EditUniverseTabs.LOGS} label={t('logs')} />
+          <TabItem value={EditUniverseTabs.TELEMETRY_EXPORT} label={t('telemetryExport')} />
         </YBTabs>
       </Grid>
       <Grid item sx={{ flexGrow: 1, flex: 1 }}>
@@ -84,3 +125,5 @@ export const EditUniverse: FC<EditUniverseProps> = ({ universeUUID }) => {
     </Grid>
   );
 };
+
+export const EditUniverse = withRouter(EditUniverseComponent);

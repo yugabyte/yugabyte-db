@@ -18,7 +18,7 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/enums.h"
-#include "yb/util/mem_tracker.h"
+#include "yb/util/mem_tracker_fwd.h"
 
 namespace yb {
 

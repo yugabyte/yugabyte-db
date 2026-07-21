@@ -22,6 +22,7 @@
 #include "yb/util/date_time.h"
 #include "yb/util/flags.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 
 #include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"

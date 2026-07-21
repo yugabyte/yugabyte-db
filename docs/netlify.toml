@@ -444,7 +444,11 @@
 
 [[redirects]]
   from = "/preview/manage/backup-restore/back-up-data/"
-  to = "/stable/manage/backup-restore/export-import-data/"
+  to = "/stable/manage/backup-restore/export-import-data-ysql/"
+
+[[redirects]]
+  from = "/stable/manage/backup-restore/export-import-data/"
+  to = "/stable/manage/backup-restore/export-import-data-ysql/"
 
 [[redirects]]
   from = "/preview/manage/backup-restore/point-in-time-restore-ysql/"
@@ -452,7 +456,7 @@
 
 [[redirects]]
   from = "/preview/manage/backup-restore/restore-data/"
-  to = "/stable/manage/backup-restore/export-import-data/"
+  to = "/stable/manage/backup-restore/export-import-data-ysql/"
 
 [[redirects]]
   from = "/preview/manage/data-migration/bulk-export/"

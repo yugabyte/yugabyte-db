@@ -23,6 +23,8 @@
 #include "yb/tserver/xcluster_async_executor.h"
 #include "yb/tserver/xcluster_write_interface.h"
 
+#include "yb/util/format.h"
+
 #pragma once
 
 namespace rocksdb {

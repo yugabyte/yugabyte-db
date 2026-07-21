@@ -47,8 +47,16 @@ export const AddReadReplica: FC<AddRRProps> = (props) => {
   });
 
   const [addRRContext, addRRMethods] = addRRContextData;
-  const { activeStep } = addRRContext;
-  const steps = useMemo(() => getRRSteps(t), [t]);
+  const { activeStep, isEditPlacementOnly } = addRRContext;
+  const steps = useMemo(() => getRRSteps(t, { editPlacementOnly: isEditPlacementOnly }), [
+    t,
+    isEditPlacementOnly
+  ]);
+  const totalSubSteps = useMemo(
+    () => steps.reduce((count, step) => count + step.subSteps.length, 0),
+    [steps]
+  );
+  const isLastStep = activeStep === totalSubSteps;
   const currentStepRef = useRef<StepsRef>(null);
 
   const { isLoading: isUniverseDataLoading } = useQuery(
@@ -87,7 +95,7 @@ export const AddReadReplica: FC<AddRRProps> = (props) => {
                 variant="h4"
                 sx={{ color: '#1E154B', fontSize: '18px', fontWeight: 600, marginLeft: '16px' }}
               >
-                {t('title')}
+                {t(isEditPlacementOnly ? 'editPlacementTitle' : 'title')}
               </Typography>
             </div>
             <Close
@@ -126,17 +134,19 @@ export const AddReadReplica: FC<AddRRProps> = (props) => {
                   {t('cancel', { keyPrefix: 'common' })}
                 </YBButton>
                 <Grid container alignItems="center" justifyContent="flex-end" spacing={2}>
-                  <YBButton
-                    onClick={() => {
-                      currentStepRef.current?.onPrev();
-                    }}
-                    disabled={activeStep === 1}
-                    variant="secondary"
-                    size="large"
-                    dataTestId="add-rr-back-button"
-                  >
-                    {t('back', { keyPrefix: 'common' })}
-                  </YBButton>
+                  {!isEditPlacementOnly && (
+                    <YBButton
+                      onClick={() => {
+                        currentStepRef.current?.onPrev();
+                      }}
+                      disabled={activeStep === 1}
+                      variant="secondary"
+                      size="large"
+                      dataTestId="add-rr-back-button"
+                    >
+                      {t('back', { keyPrefix: 'common' })}
+                    </YBButton>
+                  )}
                   <YBButton
                     onClick={() => {
                       currentStepRef.current?.onNext();
@@ -145,7 +155,11 @@ export const AddReadReplica: FC<AddRRProps> = (props) => {
                     size="large"
                     dataTestId="add-rr-next-button"
                   >
-                    {t(activeStep === 4 ? 'create' : 'next', { keyPrefix: 'common' })}
+                    {isLastStep
+                      ? isEditPlacementOnly
+                        ? t('confirmAndApply')
+                        : t('create', { keyPrefix: 'common' })
+                      : t('next', { keyPrefix: 'common' })}
                   </YBButton>
                 </Grid>
               </Grid>

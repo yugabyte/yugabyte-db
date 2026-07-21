@@ -646,7 +646,7 @@ class DB {
     return SetOptions(DefaultColumnFamily(), new_options, dump_options);
   }
 
-  virtual void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {}
+  virtual void SetDisableFlushOnShutdown() {}
   virtual void StartShutdown() {}
 
   // CompactFiles() inputs a list of files specified by file numbers and
@@ -962,6 +962,11 @@ class DB {
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
   virtual void TEST_SwitchMemtable() {}
+
+  // Returns the sum of SeekOffsetOf(key) across all SSTs in the current version.
+  virtual yb::Result<uint64_t> TEST_Cross(Slice key) {
+    return STATUS(NotSupported, "");
+  }
 
  private:
   // No copying allowed

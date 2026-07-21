@@ -7,7 +7,7 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 \set off '/*+Set(yb_max_merge_scan_streams 0)*/'
@@ -16,7 +16,6 @@
 \set P2
 \set Q1 ':off'
 \set Q2 ':on'
-\set Pnext :iter_Q2
 \set off '/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/'
 \set on '/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/'
 SET yb_enable_derived_saops = true;
@@ -26,9 +25,10 @@ SET yb_enable_derived_saops = true;
 -- No order
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT * FROM bkt_tbl;'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl;
                       QUERY PLAN                       
 -------------------------------------------------------
  Seq Scan on public.bkt_tbl (actual rows=5048 loops=1)
@@ -38,20 +38,14 @@ SET yb_enable_derived_saops = true;
    Storage Table Rows Scanned: 5048
 (5 rows)
 
-                      QUERY PLAN                       
--------------------------------------------------------
- Seq Scan on public.bkt_tbl (actual rows=5048 loops=1)
-   Output: n, r5, r3, r1, r2, r4, bkt
-   Storage Table Read Requests: 3
-   Storage Table Read Ops: 11
-   Storage Table Rows Scanned: 5048
-(5 rows)
-
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl;
+(output identical to previous)
 -- No limit
 \set query ':explain :Q SELECT * FROM bkt_tbl ORDER BY r1, r2, r3;'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r1, r2, r3;
                          QUERY PLAN                          
 -------------------------------------------------------------
  Sort (actual rows=5048 loops=1)
@@ -65,6 +59,7 @@ SET yb_enable_derived_saops = true;
          Storage Table Rows Scanned: 5048
 (9 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r1, r2, r3;
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Index Scan using bkt_tbl_pkey on public.bkt_tbl (actual rows=5048 loops=1)
@@ -81,9 +76,10 @@ SET yb_enable_derived_saops = true;
 
 -- Forward scan
 \set query ':P :Q SELECT * FROM bkt_tbl ORDER BY r1, r2, r3, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r1, r2, r3, n LIMIT 5;
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -99,6 +95,7 @@ SET yb_enable_derived_saops = true;
                Storage Table Rows Scanned: 5048
 (11 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r1, r2, r3, n LIMIT 5;
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -120,6 +117,7 @@ SET yb_enable_derived_saops = true;
                Storage Table Rows Scanned: 15
 (17 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r1, r2, r3, n LIMIT 5;
    n   | r5 | r3 | r1 | r2 | r4 | bkt 
 -------+----+----+----+----+----+-----
  86000 |  8 |  0 |  0 |  0 |  6 |   2
@@ -129,20 +127,14 @@ SET yb_enable_derived_saops = true;
  27100 |  2 |  1 |  0 |  0 |  7 |   0
 (5 rows)
 
-   n   | r5 | r3 | r1 | r2 | r4 | bkt 
--------+----+----+----+----+----+-----
- 86000 |  8 |  0 |  0 |  0 |  6 |   2
- 96000 |  9 |  0 |  0 |  0 |  6 |   0
- 98000 |  9 |  0 |  0 |  0 |  8 |   2
-  9100 |  0 |  1 |  0 |  0 |  9 |   0
- 27100 |  2 |  1 |  0 |  0 |  7 |   0
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r1, r2, r3, n LIMIT 5;
+(output identical to previous)
 -- Backward scan
 \set query ':P :Q SELECT * FROM bkt_tbl ORDER BY r1 DESC, r2 DESC, r3 DESC, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r1 DESC, r2 DESC, r3 DESC, n LIMIT 5;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -158,6 +150,7 @@ SET yb_enable_derived_saops = true;
                Storage Table Rows Scanned: 5048
 (11 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r1 DESC, r2 DESC, r3 DESC, n LIMIT 5;
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -179,6 +172,7 @@ SET yb_enable_derived_saops = true;
                Storage Table Rows Scanned: 15
 (17 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r1 DESC, r2 DESC, r3 DESC, n LIMIT 5;
    n   | r5 | r3 | r1 | r2 | r4 | bkt 
 -------+----+----+----+----+----+-----
  81999 |  8 |  9 |  9 |  9 |  1 |   0
@@ -188,20 +182,14 @@ SET yb_enable_derived_saops = true;
  92899 |  9 |  8 |  9 |  9 |  2 |   1
 (5 rows)
 
-   n   | r5 | r3 | r1 | r2 | r4 | bkt 
--------+----+----+----+----+----+-----
- 81999 |  8 |  9 |  9 |  9 |  1 |   0
- 38899 |  3 |  8 |  9 |  9 |  8 |   0
- 55899 |  5 |  8 |  9 |  9 |  5 |   2
- 88899 |  8 |  8 |  9 |  9 |  8 |   1
- 92899 |  9 |  8 |  9 |  9 |  2 |   1
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r1 DESC, r2 DESC, r3 DESC, n LIMIT 5;
+(output identical to previous)
 -- DISTINCT
 \set query ':P :Q SELECT DISTINCT r1, r2, r3 FROM bkt_tbl ORDER BY r1, r2, r3 LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT DISTINCT r1, r2, r3 FROM bkt_tbl ORDER BY r1, r2, r3 LIMIT 5;
                                               QUERY PLAN                                               
 -------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -221,6 +209,7 @@ SET yb_enable_derived_saops = true;
                      Storage Table Rows Scanned: 2476
 (15 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT r1, r2, r3 FROM bkt_tbl ORDER BY r1, r2, r3 LIMIT 5;
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -240,6 +229,7 @@ SET yb_enable_derived_saops = true;
                Storage Table Rows Scanned: 15
 (15 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT DISTINCT r1, r2, r3 FROM bkt_tbl ORDER BY r1, r2, r3 LIMIT 5;
  r1 | r2 | r3 
 ----+----+----
   0 |  0 |  0
@@ -249,20 +239,14 @@ SET yb_enable_derived_saops = true;
   0 |  0 |  4
 (5 rows)
 
- r1 | r2 | r3 
-----+----+----
-  0 |  0 |  0
-  0 |  0 |  1
-  0 |  0 |  2
-  0 |  0 |  3
-  0 |  0 |  4
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT r1, r2, r3 FROM bkt_tbl ORDER BY r1, r2, r3 LIMIT 5;
+(output identical to previous)
 -- GROUP BY
 \set query ':P :Q SELECT COUNT(*), r1, r2, r3 FROM bkt_tbl GROUP BY r1, r2, r3 ORDER BY r1, r2, r3 LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT COUNT(*), r1, r2, r3 FROM bkt_tbl GROUP BY r1, r2, r3 ORDER BY r1, r2, r3 LIMIT 5;
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -281,6 +265,7 @@ SET yb_enable_derived_saops = true;
                      Storage Table Rows Scanned: 5048
 (14 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT COUNT(*), r1, r2, r3 FROM bkt_tbl GROUP BY r1, r2, r3 ORDER BY r1, r2, r3 LIMIT 5;
                                       QUERY PLAN                                      
 --------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -300,6 +285,7 @@ SET yb_enable_derived_saops = true;
                Storage Table Rows Scanned: 2366
 (15 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT COUNT(*), r1, r2, r3 FROM bkt_tbl GROUP BY r1, r2, r3 ORDER BY r1, r2, r3 LIMIT 5;
  count | r1 | r2 | r3 
 -------+----+----+----
      3 |  0 |  0 |  0
@@ -309,20 +295,14 @@ SET yb_enable_derived_saops = true;
      6 |  0 |  0 |  4
 (5 rows)
 
- count | r1 | r2 | r3 
--------+----+----+----
-     3 |  0 |  0 |  0
-     5 |  0 |  0 |  1
-     4 |  0 |  0 |  2
-     5 |  0 |  0 |  3
-     6 |  0 |  0 |  4
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT COUNT(*), r1, r2, r3 FROM bkt_tbl GROUP BY r1, r2, r3 ORDER BY r1, r2, r3 LIMIT 5;
+(output identical to previous)
 -- Explicit SAOP smaller than derived SAOP
 \set query ':P :Q SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2) ORDER BY r1, r2, r3, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2) ORDER BY r1, r2, r3, n LIMIT 5;
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -339,6 +319,7 @@ SET yb_enable_derived_saops = true;
                Storage Table Rows Scanned: 3367
 (12 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2) ORDER BY r1, r2, r3, n LIMIT 5;
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -360,6 +341,7 @@ SET yb_enable_derived_saops = true;
                Storage Table Rows Scanned: 10
 (17 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2) ORDER BY r1, r2, r3, n LIMIT 5;
  r1 | r2 | r3 |   n   | bkt 
 ----+----+----+-------+-----
   0 |  0 |  0 | 86000 |   2
@@ -369,20 +351,14 @@ SET yb_enable_derived_saops = true;
   0 |  0 |  1 | 99100 |   2
 (5 rows)
 
- r1 | r2 | r3 |   n   | bkt 
-----+----+----+-------+-----
-  0 |  0 |  0 | 86000 |   2
-  0 |  0 |  0 | 98000 |   2
-  0 |  0 |  1 | 31100 |   1
-  0 |  0 |  1 | 43100 |   1
-  0 |  0 |  1 | 99100 |   2
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2) ORDER BY r1, r2, r3, n LIMIT 5;
+(output identical to previous)
 -- Explicit SAOP larger than derived SAOP
 \set query ':P :Q SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2, 3, 4) ORDER BY r1, r2, r3, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2, 3, 4) ORDER BY r1, r2, r3, n LIMIT 5;
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -399,6 +375,7 @@ SET yb_enable_derived_saops = true;
                Storage Table Rows Scanned: 3367
 (12 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2, 3, 4) ORDER BY r1, r2, r3, n LIMIT 5;
                                                        QUERY PLAN                                                        
 -------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -411,16 +388,16 @@ SET yb_enable_derived_saops = true;
          ->  Index Scan using bkt_tbl_pkey on public.bkt_tbl (actual rows=6 loops=1)
                Output: r1, r2, r3, n, bkt
                Index Cond: ((bkt_tbl.bkt = ANY ('{1,2,3,4}'::integer[])) AND (bkt_tbl.bkt = ANY ('{0,1,2}'::integer[])))
-               Rows Removed by Index Recheck: 3
                Merge Sort Key: bkt_tbl.r1, bkt_tbl.r2, bkt_tbl.r3
                Merge Stream Key: bkt_tbl.bkt
                Merge Streams: 3
                Merge Cond: (bkt_tbl.bkt = ANY ('{0,1,2}'::integer[]))
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 3
-               Storage Table Rows Scanned: 15
-(18 rows)
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 10
+(17 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2, 3, 4) ORDER BY r1, r2, r3, n LIMIT 5;
  r1 | r2 | r3 |   n   | bkt 
 ----+----+----+-------+-----
   0 |  0 |  0 | 86000 |   2
@@ -430,15 +407,8 @@ SET yb_enable_derived_saops = true;
   0 |  0 |  1 | 99100 |   2
 (5 rows)
 
- r1 | r2 | r3 |   n   | bkt 
-----+----+----+-------+-----
-  0 |  0 |  0 | 86000 |   2
-  0 |  0 |  0 | 98000 |   2
-  0 |  0 |  1 | 31100 |   1
-  0 |  0 |  1 | 43100 |   1
-  0 |  0 |  1 | 99100 |   2
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2, 3, 4) ORDER BY r1, r2, r3, n LIMIT 5;
+(output identical to previous)
 CREATE INDEX NONCONCURRENTLY ON bkt_tbl (bkt ASC, r3, r2, r1)
 SPLIT AT VALUES (
     (1),
@@ -450,9 +420,10 @@ SPLIT AT VALUES (
 -- No limit
 -- TODO(#29078): this likely should use merge scan.
 \set query ':explain :Q SELECT * FROM bkt_tbl ORDER BY r3, r2, r1;'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r3, r2, r1;
                          QUERY PLAN                          
 -------------------------------------------------------------
  Sort (actual rows=5048 loops=1)
@@ -466,24 +437,14 @@ SPLIT AT VALUES (
          Storage Table Rows Scanned: 5048
 (9 rows)
 
-                         QUERY PLAN                          
--------------------------------------------------------------
- Sort (actual rows=5048 loops=1)
-   Output: n, r5, r3, r1, r2, r4, bkt
-   Sort Key: bkt_tbl.r3, bkt_tbl.r2, bkt_tbl.r1
-   Sort Method: quicksort
-   ->  Seq Scan on public.bkt_tbl (actual rows=5048 loops=1)
-         Output: n, r5, r3, r1, r2, r4, bkt
-         Storage Table Read Requests: 3
-         Storage Table Read Ops: 11
-         Storage Table Rows Scanned: 5048
-(9 rows)
-
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r3, r2, r1;
+(output identical to previous)
 -- Forward scan
 \set query ':P :Q SELECT * FROM bkt_tbl ORDER BY r3, r2, r1, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r3, r2, r1, n LIMIT 5;
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -499,6 +460,7 @@ SPLIT AT VALUES (
                Storage Table Rows Scanned: 5048
 (11 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r3, r2, r1, n LIMIT 5;
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -523,6 +485,7 @@ SPLIT AT VALUES (
                Storage Index Rows Scanned: 15
 (20 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r3, r2, r1, n LIMIT 5;
    n   | r5 | r3 | r1 | r2 | r4 | bkt 
 -------+----+----+----+----+----+-----
  86000 |  8 |  0 |  0 |  0 |  6 |   2
@@ -532,20 +495,14 @@ SPLIT AT VALUES (
  62001 |  6 |  0 |  1 |  0 |  2 |   2
 (5 rows)
 
-   n   | r5 | r3 | r1 | r2 | r4 | bkt 
--------+----+----+----+----+----+-----
- 86000 |  8 |  0 |  0 |  0 |  6 |   2
- 96000 |  9 |  0 |  0 |  0 |  6 |   0
- 98000 |  9 |  0 |  0 |  0 |  8 |   2
- 52001 |  5 |  0 |  1 |  0 |  2 |   0
- 62001 |  6 |  0 |  1 |  0 |  2 |   2
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r3, r2, r1, n LIMIT 5;
+(output identical to previous)
 -- Backward scan
 \set query ':P :Q SELECT * FROM bkt_tbl ORDER BY r3 DESC, r2 DESC, r1 DESC, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r3 DESC, r2 DESC, r1 DESC, n LIMIT 5;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -561,6 +518,7 @@ SPLIT AT VALUES (
                Storage Table Rows Scanned: 5048
 (11 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r3 DESC, r2 DESC, r1 DESC, n LIMIT 5;
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -585,6 +543,7 @@ SPLIT AT VALUES (
                Storage Index Rows Scanned: 3087
 (20 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r3 DESC, r2 DESC, r1 DESC, n LIMIT 5;
    n   | r5 | r3 | r1 | r2 | r4 | bkt 
 -------+----+----+----+----+----+-----
  81999 |  8 |  9 |  9 |  9 |  1 |   0
@@ -594,15 +553,8 @@ SPLIT AT VALUES (
   8997 |  0 |  9 |  7 |  9 |  8 |   0
 (5 rows)
 
-   n   | r5 | r3 | r1 | r2 | r4 | bkt 
--------+----+----+----+----+----+-----
- 81999 |  8 |  9 |  9 |  9 |  1 |   0
- 26998 |  2 |  9 |  8 |  9 |  6 |   0
- 30998 |  3 |  9 |  8 |  9 |  0 |   0
- 97998 |  9 |  9 |  8 |  9 |  7 |   0
-  8997 |  0 |  9 |  7 |  9 |  8 |   0
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r3 DESC, r2 DESC, r1 DESC, n LIMIT 5;
+(output identical to previous)
 --
 -- Derive from secondary index expression, expression being a prefix
 --
@@ -617,9 +569,10 @@ SPLIT AT VALUES (
 -- No limit
 -- TODO(#29078): this likely should use merge scan.
 \set query ':explain :Q SELECT * FROM r5n ORDER BY r2, r3;'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM r5n ORDER BY r2, r3;
                        QUERY PLAN                        
 ---------------------------------------------------------
  Sort (actual rows=5048 loops=1)
@@ -633,24 +586,14 @@ SPLIT AT VALUES (
          Storage Table Rows Scanned: 5048
 (9 rows)
 
-                       QUERY PLAN                        
----------------------------------------------------------
- Sort (actual rows=5048 loops=1)
-   Output: n, r5, r3, r1, r2, r4
-   Sort Key: r5n.r2, r5n.r3
-   Sort Method: quicksort
-   ->  Seq Scan on public.r5n (actual rows=5048 loops=1)
-         Output: n, r5, r3, r1, r2, r4
-         Storage Table Read Requests: 5
-         Storage Table Read Ops: 11
-         Storage Table Rows Scanned: 5048
-(9 rows)
-
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM r5n ORDER BY r2, r3;
+(output identical to previous)
 -- Forward scan
 \set query ':P :Q SELECT * FROM r5n ORDER BY r2, r3, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM r5n ORDER BY r2, r3, n LIMIT 5;
                           QUERY PLAN                           
 ---------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -666,6 +609,7 @@ SPLIT AT VALUES (
                Storage Table Rows Scanned: 5048
 (11 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM r5n ORDER BY r2, r3, n LIMIT 5;
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -690,6 +634,7 @@ SPLIT AT VALUES (
                Storage Index Rows Scanned: 2383
 (20 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM r5n ORDER BY r2, r3, n LIMIT 5;
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
      6 |  0 |  0 |  6 |  0 |  0
@@ -699,20 +644,14 @@ SPLIT AT VALUES (
  14003 |  1 |  0 |  3 |  0 |  4
 (5 rows)
 
-   n   | r5 | r3 | r1 | r2 | r4 
--------+----+----+----+----+----
-     6 |  0 |  0 |  6 |  0 |  0
-     8 |  0 |  0 |  8 |  0 |  0
-  7006 |  0 |  0 |  6 |  0 |  7
- 12007 |  1 |  0 |  7 |  0 |  2
- 14003 |  1 |  0 |  3 |  0 |  4
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM r5n ORDER BY r2, r3, n LIMIT 5;
+(output identical to previous)
 -- Explicit SAOP smaller than derived SAOP
 \set query ':P :Q SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2) ORDER BY r2, r3, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2) ORDER BY r2, r3, n LIMIT 5;
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -732,6 +671,7 @@ SPLIT AT VALUES (
                Storage Index Rows Scanned: 3311
 (15 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2) ORDER BY r2, r3, n LIMIT 5;
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -756,6 +696,7 @@ SPLIT AT VALUES (
                Storage Index Rows Scanned: 1354
 (20 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2) ORDER BY r2, r3, n LIMIT 5;
  r2 | r3 |   n   | ?column? 
 ----+----+-------+----------
   0 |  0 |     6 |        2
@@ -765,20 +706,14 @@ SPLIT AT VALUES (
   0 |  0 | 25003 |        2
 (5 rows)
 
- r2 | r3 |   n   | ?column? 
-----+----+-------+----------
-  0 |  0 |     6 |        2
-  0 |  0 |     8 |        2
-  0 |  0 | 15009 |        2
-  0 |  0 | 20009 |        2
-  0 |  0 | 25003 |        2
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2) ORDER BY r2, r3, n LIMIT 5;
+(output identical to previous)
 -- Explicit SAOP larger than derived SAOP
 \set query ':P :Q SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2, 4, 8) ORDER BY r2, r3, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2, 4, 8) ORDER BY r2, r3, n LIMIT 5;
                                               QUERY PLAN                                               
 -------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -798,6 +733,7 @@ SPLIT AT VALUES (
                Storage Index Rows Scanned: 3311
 (15 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2, 4, 8) ORDER BY r2, r3, n LIMIT 5;
                                                                                       QUERY PLAN                                                                                       
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -810,19 +746,19 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=30 loops=1)
                Output: r2, r3, n, (yb_hash_code(r2, r3, r4) % 3)
                Index Cond: (((yb_hash_code(r5n.r2, r5n.r3, r5n.r4) % 3) = ANY ('{0,2,4,8}'::integer[])) AND ((yb_hash_code(r5n.r2, r5n.r3, r5n.r4) % 3) = ANY ('{0,1,2}'::integer[])))
-               Rows Removed by Index Recheck: 16
                Merge Sort Key: r5n.r2, r5n.r3
                Merge Stream Key: (yb_hash_code(r5n.r2, r5n.r3, r5n.r4) % 3)
                Merge Streams: 3
                Merge Cond: ((yb_hash_code(r5n.r2, r5n.r3, r5n.r4) % 3) = ANY ('{0,1,2}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
-               Storage Table Rows Scanned: 1000
+               Storage Table Read Ops: 7
+               Storage Table Rows Scanned: 635
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 6
-               Storage Index Rows Scanned: 2383
-(21 rows)
+               Storage Index Read Ops: 4
+               Storage Index Rows Scanned: 1354
+(20 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2, 4, 8) ORDER BY r2, r3, n LIMIT 5;
  r2 | r3 |   n   | ?column? 
 ----+----+-------+----------
   0 |  0 |     6 |        2
@@ -832,21 +768,15 @@ SPLIT AT VALUES (
   0 |  0 | 25003 |        2
 (5 rows)
 
- r2 | r3 |   n   | ?column? 
-----+----+-------+----------
-  0 |  0 |     6 |        2
-  0 |  0 |     8 |        2
-  0 |  0 | 15009 |        2
-  0 |  0 | 20009 |        2
-  0 |  0 | 25003 |        2
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2, 4, 8) ORDER BY r2, r3, n LIMIT 5;
+(output identical to previous)
 -- Expression bound to constant
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT yb_hash_code(r2, r3, r4) % 3, r2, r3, n FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 = 1 ORDER BY r2, r3, n LIMIT 5;'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT yb_hash_code(r2, r3, r4) % 3, r2, r3, n FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 = 1 ORDER BY r2, r3, n LIMIT 5;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -867,32 +797,15 @@ SPLIT AT VALUES (
                Storage Index Rows Scanned: 1029
 (16 rows)
 
-                                        QUERY PLAN                                         
--------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: ((yb_hash_code(r2, r3, r4) % 3)), r2, r3, n
-   ->  Incremental Sort (actual rows=5 loops=1)
-         Output: ((yb_hash_code(r2, r3, r4) % 3)), r2, r3, n
-         Sort Key: r5n.r2, r5n.r3, r5n.n
-         Presorted Key: r5n.r2, r5n.r3
-         Full-sort Groups: 1  Sort Method: top-N heapsort
-         ->  Index Scan using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=17 loops=1)
-               Output: (yb_hash_code(r2, r3, r4) % 3), r2, r3, n
-               Index Cond: ((yb_hash_code(r5n.r2, r5n.r3, r5n.r4) % 3) = 1)
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
-               Storage Table Rows Scanned: 1029
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 1029
-(16 rows)
-
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT yb_hash_code(r2, r3, r4) % 3, r2, r3, n FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 = 1 ORDER BY r2, r3, n LIMIT 5;
+(output identical to previous)
 -- Range filter; no ORDER BY
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT * FROM r5n WHERE r2 > 1 LIMIT 5;'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM r5n WHERE r2 > 1 LIMIT 5;
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -905,18 +818,8 @@ SPLIT AT VALUES (
          Storage Table Rows Scanned: 16
 (8 rows)
 
-                              QUERY PLAN                               
------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: n, r5, r3, r1, r2, r4
-   ->  Index Scan using r5n_pkey on public.r5n (actual rows=5 loops=1)
-         Output: n, r5, r3, r1, r2, r4
-         Index Cond: (r5n.r2 > 1)
-         Storage Table Read Requests: 1
-         Storage Table Read Ops: 6
-         Storage Table Rows Scanned: 16
-(8 rows)
-
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM r5n WHERE r2 > 1 LIMIT 5;
+(output identical to previous)
 -- (Drop this index)
 DROP INDEX r5n_expr_r2_r3_r4_idx;
 --
@@ -934,9 +837,10 @@ SPLIT AT VALUES (
 -- Expression in sort, so not derived
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT r1, yb_hash_code(r1, r3, r4) % -5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;'
-\i :iter_Q2
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, yb_hash_code(r1, r3, r4) % -5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -957,31 +861,14 @@ SPLIT AT VALUES (
                Storage Index Rows Scanned: 492
 (16 rows)
 
-                                        QUERY PLAN                                         
--------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: r1, ((yb_hash_code(r1, r3, r4) % '-5'::integer)), r3, n
-   ->  Incremental Sort (actual rows=5 loops=1)
-         Output: r1, ((yb_hash_code(r1, r3, r4) % '-5'::integer)), r3, n
-         Sort Key: ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer)), r5n.r3, r5n.n
-         Presorted Key: ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer)), r5n.r3
-         Full-sort Groups: 1  Sort Method: top-N heapsort
-         ->  Index Scan using r5n_r1_expr_r3_r4_idx on public.r5n (actual rows=19 loops=1)
-               Output: r1, (yb_hash_code(r1, r3, r4) % '-5'::integer), r3, n
-               Index Cond: (r5n.r1 = 1)
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 492
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 492
-(16 rows)
-
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, yb_hash_code(r1, r3, r4) % -5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;
+(output identical to previous)
 -- Expression in sort, so not derived (v2)
 \set query ':P :Q SELECT yb_hash_code(r1, r3, r4) % -5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT yb_hash_code(r1, r3, r4) % -5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -998,6 +885,7 @@ SPLIT AT VALUES (
                Storage Table Rows Scanned: 1489
 (12 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT yb_hash_code(r1, r3, r4) % -5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1022,6 +910,7 @@ SPLIT AT VALUES (
                Storage Index Rows Scanned: 1165
 (20 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT yb_hash_code(r1, r3, r4) % -5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;
  ?column? | r3 |   n   | r1 
 ----------+----+-------+----
         0 |  0 |  3030 |  0
@@ -1031,23 +920,16 @@ SPLIT AT VALUES (
         0 |  0 | 16071 |  1
 (5 rows)
 
- ?column? | r3 |   n   | r1 
-----------+----+-------+----
-        0 |  0 |  3030 |  0
-        0 |  0 |  4082 |  2
-        0 |  0 |  8061 |  1
-        0 |  0 | 12091 |  1
-        0 |  0 | 16071 |  1
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT yb_hash_code(r1, r3, r4) % -5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;
+(output identical to previous)
 -- Derived
 -- Third hint is to use the expression index.
 \set query ':P :Q SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5;'
 \set Q3 '/*+IndexScan(r5n r5n_r1_expr_r3_r4_idx) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/'
-\set Pnext :iter_Q3
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5;
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1064,6 +946,7 @@ SPLIT AT VALUES (
                Storage Table Rows Scanned: 492
 (12 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5;
                                                                QUERY PLAN                                                               
 ----------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1088,30 +971,9 @@ SPLIT AT VALUES (
                Storage Index Rows Scanned: 492
 (20 rows)
 
-                                                               QUERY PLAN                                                               
-----------------------------------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: r1, r3, r4, n
-   ->  Incremental Sort (actual rows=5 loops=1)
-         Output: r1, r3, r4, n
-         Sort Key: r5n.r3, r5n.r4, r5n.n
-         Presorted Key: r5n.r3, r5n.r4
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_r1_expr_r3_r4_idx on public.r5n (actual rows=10 loops=1)
-               Output: r1, r3, r4, n
-               Index Cond: ((r5n.r1 = 1) AND ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer) = ANY ('{0,1,2,3,4}'::integer[])))
-               Merge Sort Key: r5n.r3, r5n.r4
-               Merge Stream Key: (yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer)
-               Merge Streams: 5
-               Merge Cond: ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer) = ANY ('{0,1,2,3,4}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 492
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 10
-               Storage Index Rows Scanned: 492
-(20 rows)
-
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(r5n r5n_r1_expr_r3_r4_idx) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5;
+(output identical to previous)
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5;
  r1 | r3 | r4 |   n   
 ----+----+----+-------
   1 |  0 |  0 | 10081
@@ -1121,34 +983,21 @@ SPLIT AT VALUES (
   1 |  0 |  0 | 60051
 (5 rows)
 
- r1 | r3 | r4 |   n   
-----+----+----+-------
-  1 |  0 |  0 | 10081
-  1 |  0 |  0 | 40021
-  1 |  0 |  0 | 50081
-  1 |  0 |  0 | 60041
-  1 |  0 |  0 | 60051
-(5 rows)
-
- r1 | r3 | r4 |   n   
-----+----+----+-------
-  1 |  0 |  0 | 10081
-  1 |  0 |  0 | 40021
-  1 |  0 |  0 | 50081
-  1 |  0 |  0 | 60041
-  1 |  0 |  0 | 60051
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5;
+(output identical to previous)
+/*+IndexScan(r5n r5n_r1_expr_r3_r4_idx) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5;
+(output identical to previous)
+\unset Q3
 -- Following queries send various numbers of requests/scan various number of
 -- rows due to non-deterministic order of equal rows in merge sort.  Hide their
 -- DIST.
 \set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- Derived with multiple stream keys
 \set query ':P :Q SELECT r3, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r3, r4, n LIMIT 5;'
-\set Pnext :iter_Q2
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r3, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r3, r4, n LIMIT 5;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1162,6 +1011,7 @@ SPLIT AT VALUES (
                Index Cond: (r5n.r1 = ANY ('{0,1,2}'::integer[]))
 (9 rows)
 
+EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r3, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r3, r4, n LIMIT 5;
                                                                            QUERY PLAN                                                                            
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1180,6 +1030,7 @@ SPLIT AT VALUES (
                Merge Cond: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) AND ((yb_hash_code(r5n.r1, r5n.r3, r5n.r4) % '-5'::integer) = ANY ('{0,1,2,3,4}'::integer[])))
 (14 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r3, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r3, r4, n LIMIT 5;
  r3 | r4 |   n   | r1 
 ----+----+-------+----
   0 |  0 |    60 |  0
@@ -1189,15 +1040,8 @@ SPLIT AT VALUES (
   0 |  0 | 20080 |  0
 (5 rows)
 
- r3 | r4 |   n   | r1 
-----+----+-------+----
-  0 |  0 |    60 |  0
-  0 |  0 | 10072 |  2
-  0 |  0 | 10081 |  1
-  0 |  0 | 10090 |  0
-  0 |  0 | 20080 |  0
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r3, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r3, r4, n LIMIT 5;
+(output identical to previous)
 -- (Reset the explain change)
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- (Drop this index)
@@ -1214,9 +1058,10 @@ SPLIT AT VALUES (
     (3));
 -- Parent
 \set query ':P :Q SELECT r2, r3, n FROM parent ORDER BY r2, r3, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n FROM parent ORDER BY r2, r3, n LIMIT 5;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1248,6 +1093,7 @@ SPLIT AT VALUES (
                      Storage Table Rows Scanned: 1299
 (27 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n FROM parent ORDER BY r2, r3, n LIMIT 5;
                                                   QUERY PLAN                                                  
 --------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1313,6 +1159,7 @@ SPLIT AT VALUES (
                      Storage Index Rows Scanned: 907
 (61 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n FROM parent ORDER BY r2, r3, n LIMIT 5;
  r2 | r3 |   n   
 ----+----+-------
   0 |  0 |     6
@@ -1322,20 +1169,14 @@ SPLIT AT VALUES (
   0 |  0 | 14003
 (5 rows)
 
- r2 | r3 |   n   
-----+----+-------
-  0 |  0 |     6
-  0 |  0 |     8
-  0 |  0 |  7006
-  0 |  0 | 12007
-  0 |  0 | 14003
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n FROM parent ORDER BY r2, r3, n LIMIT 5;
+(output identical to previous)
 -- Child
 \set query ':P :Q SELECT r2, r3, n FROM child1 ORDER BY r2, r3, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n FROM child1 ORDER BY r2, r3, n LIMIT 5;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1357,6 +1198,7 @@ SPLIT AT VALUES (
                      Storage Table Rows Scanned: 714
 (17 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n FROM child1 ORDER BY r2, r3, n LIMIT 5;
                                                   QUERY PLAN                                                  
 --------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1396,6 +1238,7 @@ SPLIT AT VALUES (
                      Storage Index Rows Scanned: 485
 (35 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n FROM child1 ORDER BY r2, r3, n LIMIT 5;
  r2 | r3 |   n   
 ----+----+-------
   0 |  0 |     6
@@ -1405,20 +1248,14 @@ SPLIT AT VALUES (
   0 |  0 | 30002
 (5 rows)
 
- r2 | r3 |   n   
-----+----+-------
-  0 |  0 |     6
-  0 |  0 |     8
-  0 |  0 | 12007
-  0 |  0 | 20009
-  0 |  0 | 30002
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n FROM child1 ORDER BY r2, r3, n LIMIT 5;
+(output identical to previous)
 -- Grandchild
 \set query ':P :Q SELECT r2, r3, n FROM child1b ORDER BY r2, r3, n LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n FROM child1b ORDER BY r2, r3, n LIMIT 5;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1434,6 +1271,7 @@ SPLIT AT VALUES (
                Storage Table Rows Scanned: 714
 (11 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n FROM child1b ORDER BY r2, r3, n LIMIT 5;
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1458,6 +1296,7 @@ SPLIT AT VALUES (
                Storage Index Rows Scanned: 485
 (20 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n FROM child1b ORDER BY r2, r3, n LIMIT 5;
  r2 | r3 |   n   
 ----+----+-------
   0 |  0 | 52001
@@ -1467,15 +1306,8 @@ SPLIT AT VALUES (
   0 |  0 | 91007
 (5 rows)
 
- r2 | r3 |   n   
-----+----+-------
-  0 |  0 | 52001
-  0 |  0 | 61007
-  0 |  0 | 62001
-  0 |  0 | 81005
-  0 |  0 | 91007
-(5 rows)
-
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n FROM child1b ORDER BY r2, r3, n LIMIT 5;
+(output identical to previous)
 -- (Drop this index)
 DROP INDEX parent_expr_r2_r3_idx;
 --
@@ -1498,9 +1330,10 @@ SPLIT AT VALUES (
     (3));
 -- Derive from r5n
 \set query ':P :Q SELECT r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY r5n.r2 LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY r5n.r2 LIMIT 5;
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1544,6 +1377,7 @@ SPLIT AT VALUES (
                      Storage Index Rows Scanned: 5048
 (39 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY r5n.r2 LIMIT 5;
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1581,6 +1415,7 @@ SPLIT AT VALUES (
                            Output: parent_5.r3, parent_5.n
 (33 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY r5n.r2 LIMIT 5;
  r2 | r3 | r3 |   n   |   n   
 ----+----+----+-------+-------
   0 |  0 |  0 | 86000 | 33020
@@ -1590,6 +1425,7 @@ SPLIT AT VALUES (
   0 |  0 |  0 | 86000 | 51010
 (5 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY r5n.r2 LIMIT 5;
  r2 | r3 | r3 |   n   |   n   
 ----+----+----+-------+-------
   0 |  0 |  0 | 31004 | 51010
@@ -1601,9 +1437,10 @@ SPLIT AT VALUES (
 
 -- Derive from parent
 \set query ':P :Q SELECT parent.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY parent.r2 LIMIT 5;'
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT parent.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY parent.r2 LIMIT 5;
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1647,6 +1484,7 @@ SPLIT AT VALUES (
                      Storage Index Rows Scanned: 5048
 (39 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT parent.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY parent.r2 LIMIT 5;
                                                   QUERY PLAN                                                  
 --------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1719,6 +1557,7 @@ SPLIT AT VALUES (
                      Storage Table Rows Scanned: 15
 (68 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT parent.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY parent.r2 LIMIT 5;
  r2 | r3 | r3 |   n   |   n   
 ----+----+----+-------+-------
   0 |  0 |  0 | 86000 |     6
@@ -1728,6 +1567,7 @@ SPLIT AT VALUES (
   0 |  0 |  0 | 86000 | 42007
 (5 rows)
 
+/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT parent.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY parent.r2 LIMIT 5;
  r2 | r3 | r3 |   n   |   n   
 ----+----+----+-------+-------
   0 |  4 |  4 | 30400 | 30400
@@ -1747,9 +1587,10 @@ SPLIT AT VALUES (
 \set Q3 '/*+Leading((parent r5n)) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/'
 \set Q4 '/*+MergeJoin(parent r5n) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/'
 \set Q5 '/*+MergeJoin(parent r5n) Leading((parent r5n)) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/'
-\i :iter_Q5
-\set _echo_Q :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT DISTINCT ON (r5n.r3, r5n.r4) parent.p1, r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM r5n JOIN parent ON r5n.r3 = parent.r3 WHERE parent.p1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1780,6 +1621,7 @@ SPLIT AT VALUES (
                            Storage Index Rows Scanned: 1512
 (26 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT ON (r5n.r3, r5n.r4) parent.p1, r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM r5n JOIN parent ON r5n.r3 = parent.r3 WHERE parent.p1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;
                                                                       QUERY PLAN                                                                      
 ------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1817,6 +1659,7 @@ SPLIT AT VALUES (
                            Storage Index Rows Scanned: 127
 (33 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Leading((parent r5n)) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT ON (r5n.r3, r5n.r4) parent.p1, r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM r5n JOIN parent ON r5n.r3 = parent.r3 WHERE parent.p1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1847,6 +1690,7 @@ SPLIT AT VALUES (
                            Storage Index Rows Scanned: 1512
 (26 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+MergeJoin(parent r5n) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT ON (r5n.r3, r5n.r4) parent.p1, r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM r5n JOIN parent ON r5n.r3 = parent.r3 WHERE parent.p1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;
                                                                       QUERY PLAN                                                                      
 ------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1881,6 +1725,7 @@ SPLIT AT VALUES (
                            Storage Table Rows Scanned: 1299
 (30 rows)
 
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+MergeJoin(parent r5n) Leading((parent r5n)) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT ON (r5n.r3, r5n.r4) parent.p1, r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM r5n JOIN parent ON r5n.r3 = parent.r3 WHERE parent.p1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)

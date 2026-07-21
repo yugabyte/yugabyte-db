@@ -2807,6 +2807,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     "2, r1, 1, 3, r1, 1, 3, r1, 1, 3, r1,",
     // Special case rf3 1-1
     "2, r1, 1, 3, r1, 1, 0, r1, 0, 3,,",
+    "2, r1, 2, 1, r1, 1, 0, r1, 0, 3,,", // We cannot have 1-1 replicas if one zone has 1 node.
   })
   // @formatter:on
   public void testSetPerAZRF(

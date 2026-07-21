@@ -62,6 +62,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetSta
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdateMasterAddresses;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterInfoPersist;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterNetworkConnectivityCheck;
+import com.yugabyte.yw.common.DeltaEvaluator;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.DrConfigStates;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
@@ -69,6 +70,7 @@ import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
+import com.yugabyte.yw.common.NodeDetailsArrayComparator;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -81,6 +83,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
@@ -147,9 +150,11 @@ import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Model;
@@ -248,7 +253,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.CreateKubernetesUniverse,
           TaskType.ReadOnlyClusterCreate,
           TaskType.ReadOnlyClusterDelete,
-          TaskType.EditUniverse,
+          TaskType.ReadOnlyKubernetesClusterCreate,
+          TaskType.ReadOnlyKubernetesClusterDelete,
           TaskType.AddNodeToUniverse,
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
@@ -424,6 +430,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   private final AtomicReference<ExecutionContext> executionContext = new AtomicReference<>();
+
+  /** Ensures MarkRollbackUnsafe is enqueued only once per task build. */
+  private boolean markRollbackUnsafeAdded;
 
   public class ExecutionContext {
     private final UUID universeUuid;
@@ -993,6 +1002,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           // TODO When checkSuccess = false, lock and unlock are not reverse of each other, but this
           // existing behaviour is retained to not cause regression.
           if (clearUpdatingTask || updaterConfig.isRollbackPerformed()) {
+            universe.setStateTransitionDetails(null);
             if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
               boolean pausedTask =
                   getTaskExecutor()
@@ -1210,6 +1220,48 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return false;
   }
 
+  /**
+   * Returns the post-success steady-state universe definition to diff against the pre-lock snapshot
+   * when capturing state transition delta during freeze. Derives from interim task params (e.g.
+   * {@code ToBeAdded}/{@code ToBeRemoved}/{@code masterState}). Subclasses may override to
+   * customize or return null to skip capture.
+   */
+  @Nullable
+  protected UniverseDefinitionTaskParams getTargetUniverseDetails() {
+    UniverseDefinitionTaskParams target =
+        Json.fromJson(Json.toJson(taskParams()), UniverseDefinitionTaskParams.class);
+    if (target.nodeDetailsSet == null) {
+      return target;
+    }
+    target.nodeDetailsSet.removeIf(node -> node.state == NodeState.ToBeRemoved);
+    for (NodeDetails node : target.nodeDetailsSet) {
+      if (node.state == NodeState.ToBeAdded) {
+        node.state = NodeState.Live;
+      }
+      if (node.masterState == MasterState.ToStart) {
+        node.isMaster = true;
+      } else if (node.masterState == MasterState.ToStop) {
+        node.isMaster = false;
+      }
+      node.masterState = null;
+    }
+    return target;
+  }
+
+  /**
+   * Captures the delta between the clean pre-task universe definition and the intended target
+   * definition. Invoked from the freeze callback wrapper in {@link #createFreezeUniverseTask} after
+   * the freeze callback, using the pre-lock snapshot as {@code beforeUDTP}.
+   */
+  protected void captureStateTransitionDelta(
+      Universe universe,
+      UniverseDefinitionTaskParams beforeUDTP,
+      UniverseDefinitionTaskParams targetUDTP) {
+    JsonNode delta =
+        DeltaEvaluator.buildDeltaJsonTree(beforeUDTP, targetUDTP, new NodeDetailsArrayComparator());
+    universe.setStateTransitionDetails(new StateTransitionDetails(true, delta));
+  }
+
   private void initAndAddPrecheckTasks(Universe universe) {
     createPrecheckTasks(universe);
     ExecutionContext context = getOrCreateExecutionContext();
@@ -1271,6 +1323,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdater updater = getLockingUniverseUpdater(updaterConfig);
     Universe universe = lockUniverseForUpdate(universeUuid, updater);
     try {
+      Universe universeBeforePrechecks = Universe.getOrBadRequest(universeUuid);
       initAndAddPrecheckTasks(universe);
       TaskType taskType = getTaskExecutor().getTaskType(getClass());
       if (!SKIP_CONSISTENCY_CHECK_TASKS.contains(taskType)
@@ -1279,10 +1332,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         checkAndCreateConsistencyCheckTableTask(universe.getUniverseDetails().getPrimaryCluster());
       }
       if (isFirstTry()) {
-        createFreezeUniverseTask(universeUuid, firstRunTxnCallback)
+        createFreezeUniverseTask(universeBeforePrechecks, firstRunTxnCallback)
             .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
       } else if (!getUserTaskUUID().equals(universe.getUniverseDetails().updatingTaskUUID)) {
-        createFreezeUniverseTask(universeUuid, retryTxnCallback)
+        createFreezeUniverseTask(universeBeforePrechecks, retryTxnCallback)
             .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
       } else {
         log.info(
@@ -1300,32 +1353,39 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * Similar to {@link #createFreezeUniverseTask(Consumer)} without the callback.
-   *
-   * @param universeUuid the universe UUID.
-   * @return
-   */
-  private SubTaskGroup createFreezeUniverseTask(UUID universeUuid) {
-    return createFreezeUniverseTask(universeUuid, null);
-  }
-
-  /**
    * Creates a subtask to freeze the universe {@link #freezeUniverse(Consumer)}.
    *
-   * @param universeUuid the universe UUID.
+   * @param universe the universe to be used as the expected state before freezing.
    * @param callback the callback to be executed in transaction when the universe is frozen.
    * @return the subtask group.
    */
   private SubTaskGroup createFreezeUniverseTask(
-      UUID universeUuid, @Nullable Consumer<Universe> callback) {
+      Universe universe, @Nullable Consumer<Universe> callback) {
     SubTaskGroup subTaskGroup =
         createSubTaskGroup(
             FreezeUniverse.class.getSimpleName(), SubTaskGroupType.ValidateConfigurations);
     FreezeUniverse task = createTask(FreezeUniverse.class);
     FreezeUniverse.Params params = new FreezeUniverse.Params();
-    params.setUniverseUUID(universeUuid);
-    params.setCallback(callback);
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.setUniverse(universe);
     params.setExecutionContext(getOrCreateExecutionContext());
+    // Compute target after the freeze callback so taskParams() are finalized. EditUniverse
+    // already finalizes params in precheck; this keeps the generic path correct for other tasks.
+    if (isFirstTry()) {
+      UniverseDefinitionTaskParams beforeDetails = universe.getUniverseDetails();
+      Consumer<Universe> originalCallback = callback;
+      callback =
+          univ -> {
+            if (originalCallback != null) {
+              originalCallback.accept(univ);
+            }
+            UniverseDefinitionTaskParams target = getTargetUniverseDetails();
+            if (target != null) {
+              captureStateTransitionDelta(univ, beforeDetails, target);
+            }
+          };
+    }
+    params.setCallback(callback);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -1365,10 +1425,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdater updater =
         getUnlockingUniverseUpdater(
             executionContext.getUniverseUpdaterConfig(universeUUID).toBuilder()
-                .callback(
-                    u -> {
-                      u.getUniverseDetails().setErrorString(error);
-                    })
+                .callback(u -> u.getUniverseDetails().setErrorString(error))
                 .rollbackPerformed(rollbackPerformed)
                 .build());
     // Update the progress flag to false irrespective of the version increment failure.
@@ -1432,14 +1489,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     // Add audit log config from the primary cluster
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    params.auditLogConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
-    params.metricsExportConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
-
-    // Add query log config from primary cluster
-    params.queryLogConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig;
+    params.telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
 
     // The software package to install for this cluster.
     params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
@@ -1479,6 +1529,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  /**
+   * Creates a subtask that flips {@code state_transition_details.rollbackSafe} to false when the
+   * task crosses the rollback checkpoint.
+   */
+  public SubTaskGroup createMarkRollbackUnsafeTask() {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("MarkRollbackUnsafe");
+    MarkRollbackUnsafe.Params params = new MarkRollbackUnsafe.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    MarkRollbackUnsafe task = createTask(MarkRollbackUnsafe.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Enqueues {@link #createMarkRollbackUnsafeTask()} at most once so the checkpoint flip sits
+   * immediately before the placement update on the master leader.
+   */
+  protected void createMarkRollbackUnsafeTaskOnce() {
+    if (markRollbackUnsafeAdded) {
+      return;
+    }
+    createMarkRollbackUnsafeTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    markRollbackUnsafeAdded = true;
   }
 
   /** Create a task to mark the change on a universe as success. */
@@ -4665,6 +4743,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.commandType = KubernetesCommandExecutor.CommandType.COPY_PACKAGE;
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.ybcServerName = node.nodeName;
+    // Capture the stable node identifier alongside the name so KubernetesCommandExecutor
+    // can survive a rename between here and subtask execution (see resolveTargetNode).
+    params.nodeUuid = node.nodeUuid;
     params.setYbcSoftwareVersion(ybcSoftwareVersion);
     params.ybcGflags = ybcGflags;
     params.providerUUID = providerUUID;
@@ -4698,6 +4779,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.commandType = KubernetesCommandExecutor.CommandType.YBC_ACTION;
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.ybcServerName = node.nodeName;
+    // Capture the stable node identifier alongside the name so KubernetesCommandExecutor
+    // can survive a rename between here and subtask execution (see resolveTargetNode).
+    params.nodeUuid = node.nodeUuid;
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.providerUUID = providerUUID;
     params.command = command;
@@ -5165,6 +5249,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       createWaitForLeaderBlacklistCompletionTask(
               getOrCreateExecutionContext().leaderBacklistWaitTimeMs)
           .setSubTaskGroupType(subTaskGroupType);
+      // Optional, runtime-configurable wait after the leader-blacklist operation completes and
+      // before the tserver is stopped. This gives resident tablet leaders extra time to drain
+      // when WaitForLeaderBlacklistCompletion returns before leaders have fully moved off the
+      // node. Defaults to 0 (disabled).
+      Universe universe = getUniverse();
+      Duration waitAfterBlacklist =
+          confGetter.getConfForScope(
+              universe, UniverseConfKeys.ybUpgradeBlacklistLeaderWaitAfterCompletion);
+      if (waitAfterBlacklist.compareTo(Duration.ZERO) > 0) {
+        createWaitForDurationSubtask(
+                universe.getUniverseUUID(),
+                waitAfterBlacklist,
+                "Waiting after leader blacklist completion before stopping tserver")
+            .setSubTaskGroupType(subTaskGroupType);
+      }
       return true;
     }
     return false;

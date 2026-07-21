@@ -3,6 +3,10 @@ import { TFunction } from 'i18next';
 import { ArchitectureType } from '@app/redesign/features-v2/universe/create-universe/helpers/constants';
 import { CloudType, StorageType } from '@app/redesign/features/universe/universe-form/utils/dto';
 
+type InstanceSettingsValidationContext = {
+  earKmsConfig?: string | null;
+};
+
 export const InstanceSettingsValidationSchema = (
   t: TFunction,
   useK8CustomResources: boolean,
@@ -79,30 +83,36 @@ export const InstanceSettingsValidationSchema = (
     // Device Info validation
     deviceInfo: Yup.object()
       .nullable()
-      .test('device-info-required', t('validation.required', { field: 'Device Info' }), function (
-        value
-      ) {
-        const isK8s = provider === 'kubernetes';
+      .test(
+        'device-info-required',
+        t('validation.required', { field: 'Device Info' }),
+        function (value) {
+          const isK8s = provider === 'kubernetes';
 
-        // Device info is required for non-K8s or K8s without custom resources
-        if (!isK8s || (isK8s && !useK8CustomResources)) {
-          return value !== null && value !== undefined;
-        }
-        return true;
-      })
-      .test('device-info-shape', t('validation.required', { field: 'Device Info' }), function (
-        value
-      ) {
-        if (value == null) return true;
-        try {
-          DeviceInfoValidationSchema(t).validateSync(value, { abortEarly: false });
+          // Device info is required for non-K8s or K8s without custom resources
+          if (!isK8s || (isK8s && !useK8CustomResources)) {
+            return value !== null && value !== undefined;
+          }
           return true;
-        } catch (err: any) {
-          const message =
-            err?.errors?.[0] ?? err?.message ?? t('validation.required', { field: 'Device Info' });
-          return this.createError({ message });
         }
-      }),
+      )
+      .test(
+        'device-info-shape',
+        t('validation.required', { field: 'Device Info' }),
+        function (value) {
+          if (value == null) return true;
+          try {
+            DeviceInfoValidationSchema(t).validateSync(value, { abortEarly: false });
+            return true;
+          } catch (err: any) {
+            const message =
+              err?.errors?.[0] ??
+              err?.message ??
+              t('validation.required', { field: 'Device Info' });
+            return this.createError({ message });
+          }
+        }
+      ),
 
     // Master Device Info validation - required + shape (same as deviceInfo)
     masterDeviceInfo: Yup.object()
@@ -206,6 +216,12 @@ export const InstanceSettingsValidationSchema = (
           return true;
         }
       )
+      .test('ebs-kms-config-duplicate', t('kmsValidationMsg'), function (value) {
+        const earKmsConfig = (this.options.context as InstanceSettingsValidationContext | undefined)
+          ?.earKmsConfig;
+        if (!value || !earKmsConfig) return true;
+        return value !== earKmsConfig;
+      })
   });
 };
 

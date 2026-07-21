@@ -1,7 +1,6 @@
-import { FC, useCallback, useMemo, useRef, useState } from 'react';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mui, yba, YBCheckbox } from '@yugabyte-ui-library/core';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'react-toastify';
 import pluralize from 'pluralize';
 import { isEqual } from 'lodash';
 import {
@@ -18,36 +17,49 @@ import {
   createUniverseFormProps,
   StepsRef
 } from '../../create-universe/CreateUniverseContext';
+import { TotalNodesBadge } from '../../create-universe/components/TotalNodesBadge';
 import { ResilienceAndRegionsProps } from '../../create-universe/steps/resilence-regions/dtos';
 import { InstanceSettings, InstanceSettingsViewMode } from '../../create-universe/steps';
 import { InstanceSettingProps } from '../../create-universe/steps/hardware-settings/dtos';
 import {
   ClusterResizeNodeSpec,
-  ClusterResizeStorageSpec,
   ClusterNodeSpec,
   ClusterSpecClusterType,
   ClusterStorageSpec,
   K8SNodeResourceSpec,
   NodeDetailsDedicatedTo,
+  ResizeUpdateOption,
   UniverseResizeNodesReqBody
 } from '../../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
+  useCheckResizeOptions,
   useEditUniverse,
   useResizeNodes
 } from '../../../../../v2/api/universe/universe';
 import { createErrorMessage } from '../../../../../utils/ObjectUtils';
 import {
+  canUseFullMove,
+  canUseRollingResize,
   HardwareReviewSection,
   HardwareReviewSummary,
   ReviewHardwareChangesModal,
+  ReviewHardwareConfirmPayload,
   hardwareReviewSectionHasVisibleChanges
 } from './ReviewHardwareChangesModal';
+import {
+  NormalizedStorage,
+  normalizeClusterStorage,
+  normalizeDeviceInfo,
+  toClusterStorageSpec,
+  toResizeStorageSpec
+} from './EditHardwareStorageUtils';
 import { DeviceInfo, K8NodeSpec } from '../../../../features/universe/universe-form/utils/dto';
 import { useQuery } from 'react-query';
 import { QUERY_KEY, api } from '../../../../features/universe/universe-form/utils/api';
 import { InstanceType } from '../../../../features/universe/universe-form/utils/dto';
 import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
 import { buildRRInstanceSettingsFromCluster } from '../../read-replica/readReplicaUtils';
+import { useYBToast } from '../../create-universe/helpers/ToastUtils';
 
 export type EditHardwareConfirmModalMode = 'cluster' | 'tserver' | 'master' | 'readReplica';
 
@@ -63,7 +75,8 @@ interface EditHardwareConfirmModalProps {
    * - `cluster`: non-dedicated primary cluster instance edit.
    * - `tserver`: dedicated T-Server only edit.
    * - `master`: dedicated Master only edit (renders the "Keep master same as T-Server" checkbox).
-   * - `readReplica`: read replica cluster edit (renders the "Keep RR same as primary" checkbox).
+   * - `readReplica`: read replica cluster edit (renders the "Keep RR same as primary" checkbox;
+   *   T-Server section only — no Master accordion, even on dedicated-node universes).
    *
    * When omitted, the mode is inferred from `clusterType` and `isDedicatedNodes` for backward
    * compatibility.
@@ -84,68 +97,7 @@ interface EditHardwareConfirmModalProps {
 }
 
 const { YBModal } = yba;
-const { Box, Typography, styled } = mui;
-
-const TotalNodesBadge = styled(Box)(({ theme }) => ({
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '8px',
-  background: theme.palette.common.white,
-  border: `1px solid ${theme.palette.grey[300]}`,
-  borderRadius: '8px',
-  padding: '10px 16px',
-  alignSelf: 'flex-start',
-  '& .label': {
-    fontSize: '13px',
-    fontWeight: 500,
-    color: theme.palette.grey[900]
-  },
-  '& .count': {
-    fontSize: '13px',
-    fontWeight: 500,
-    color: theme.palette.grey[900]
-  }
-}));
-
-/**
- * Normalized intermediate representation of a storage spec used to compare and
- * render hardware diffs. Keeps `null` for empty values so that `isEqual` works
- * across both API payload (snake_case) and form values (camelCase) sources.
- */
-type NormalizedStorage = {
-  volumeSize: number | null;
-  numVolumes: number | null;
-  diskIops: number | null;
-  throughput: number | null;
-  storageClass: string | null;
-  storageType: string | null;
-  mountPoints: string | null;
-};
-
-const normalizeStorageType = (value: unknown): string | null =>
-  value === undefined || value === null ? null : String(value);
-
-const normalizeClusterStorage = (spec: ClusterStorageSpec | undefined): NormalizedStorage => ({
-  volumeSize: spec?.volume_size ?? null,
-  numVolumes: spec?.num_volumes ?? null,
-  diskIops: spec?.disk_iops ?? null,
-  throughput: spec?.throughput ?? null,
-  storageClass: spec?.storage_class ?? null,
-  storageType: normalizeStorageType(spec?.storage_type),
-  mountPoints: spec?.mount_points ?? null
-});
-
-const normalizeDeviceInfo = (
-  deviceInfo: DeviceInfo | null | undefined
-): NormalizedStorage => ({
-  volumeSize: deviceInfo?.volumeSize ?? null,
-  numVolumes: deviceInfo?.numVolumes ?? null,
-  diskIops: deviceInfo?.diskIops ?? null,
-  throughput: deviceInfo?.throughput ?? null,
-  storageClass: deviceInfo?.storageClass ?? null,
-  storageType: normalizeStorageType(deviceInfo?.storageType),
-  mountPoints: deviceInfo?.mountPoints ?? null
-});
+const { Box } = mui;
 
 const buildHardwareSummary = (
   instanceType: string | null | undefined,
@@ -205,24 +157,28 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
   const instanceSettingsRef = useRef<StepsRef>(null);
   const resizeNodes = useResizeNodes();
   const editUniverse = useEditUniverse();
+  const checkResizeOptions = useCheckResizeOptions();
   const [pendingInstanceSettings, setPendingInstanceSettings] =
     useState<InstanceSettingProps | null>(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [resizeOptions, setResizeOptions] = useState<ResizeUpdateOption[] | undefined>(undefined);
+  const [isLoadingResizeOptions, setIsLoadingResizeOptions] = useState(false);
   const [inheritPrimary, setInheritPrimary] = useState(false);
   const hasPendingChangesRef = useRef(false);
   const lastSavedInstanceSettingsRef = useRef<InstanceSettingProps | null>(null);
   const { universeData, providerRegions } = useEditUniverseContext();
-  const handleEditUniverseSuccess = useEditUniverseTaskHandler(
-    universeData?.info?.universe_uuid
-  );
+  const handleEditUniverseSuccess = useEditUniverseTaskHandler(universeData?.info?.universe_uuid);
   const targetCluster = universeData ? getClusterByType(universeData, clusterType) : undefined;
   const primaryCluster = universeData
     ? getClusterByType(universeData, ClusterSpecClusterType.PRIMARY)
     : undefined;
-  const providerUUID = targetCluster?.provider_spec.provider ?? primaryCluster?.provider_spec.provider;
+  const providerUUID =
+    targetCluster?.provider_spec.provider ?? primaryCluster?.provider_spec.provider;
   const providerCode =
-    targetCluster?.placement_spec?.cloud_list[0].code ?? primaryCluster?.placement_spec?.cloud_list[0].code;
+    targetCluster?.placement_spec?.cloud_list[0].code ??
+    primaryCluster?.placement_spec?.cloud_list[0].code;
   const isK8s = isKubernetesCluster(targetCluster ?? primaryCluster);
+  const universeUUID = universeData?.info?.universe_uuid;
 
   // Derive the effective edit mode. When a `mode` prop is provided, it takes precedence;
   // otherwise infer from clusterType + dedicated-nodes flags so legacy callers work unchanged.
@@ -241,8 +197,10 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
         : (isDedicatedNodes ?? !!targetCluster?.node_spec.dedicated_nodes);
 
   const instanceSettingsViewMode: InstanceSettingsViewMode =
-    effectiveMode === 'master' ? 'masterOnly'
-      : effectiveMode === 'tserver' ? 'tserverOnly'
+    effectiveMode === 'master'
+      ? 'masterOnly'
+      : effectiveMode === 'tserver' || effectiveMode === 'readReplica'
+        ? 'tserverOnly'
         : 'all';
 
   const stats = primaryCluster?.placement_spec
@@ -254,7 +212,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       : undefined;
 
   const storageSpec = targetCluster?.node_spec.storage_spec;
-  const universeUUID = universeData?.info?.universe_uuid;
+  const toast = useYBToast();
 
   const { data: instanceTypes } = useQuery(
     [QUERY_KEY.getInstanceTypes, providerUUID, 'edit-hardware-review'],
@@ -299,37 +257,45 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
 
   const hasHardwareChanges = (settings: InstanceSettingProps) => {
     if (isK8s) {
-      const currentTserverK8s = getK8sResourceSpecFromNodeSpec(
-        targetCluster?.node_spec,
-        'tserver'
-      );
+      const currentTserverK8s = getK8sResourceSpecFromNodeSpec(targetCluster?.node_spec, 'tserver');
       const currentMasterK8s =
         getK8sResourceSpecFromNodeSpec(targetCluster?.node_spec, 'master') ?? currentTserverK8s;
       const nextTserverK8s = settings.tserverK8SNodeResourceSpec ?? null;
       const nextMasterK8s =
         (settings.keepMasterTserverSame
           ? nextTserverK8s
-          : settings.masterK8SNodeResourceSpec ?? nextTserverK8s) ?? null;
+          : (settings.masterK8SNodeResourceSpec ?? nextTserverK8s)) ?? null;
       const currentTserverInstance = targetCluster?.node_spec.instance_type ?? null;
       const currentMasterInstance =
         targetCluster?.node_spec.master?.instance_type ?? currentTserverInstance;
       const tserverInstanceChanged = (settings.instanceType ?? null) !== currentTserverInstance;
       const masterInstanceChanged =
         (settings.masterInstanceType ?? settings.instanceType ?? null) !== currentMasterInstance;
-      const currentStorage = toComparableSpecStorage(targetCluster?.node_spec?.storage_spec);
-      const nextStorage = toComparableStorage(settings.deviceInfo);
+      const currentTserverStorage = toComparableSpecStorage(targetCluster?.node_spec?.storage_spec);
+      const nextTserverStorage = toComparableStorage(settings.deviceInfo);
+      const currentMasterStorage = toComparableSpecStorage(
+        targetCluster?.node_spec?.master?.storage_spec ?? targetCluster?.node_spec?.storage_spec
+      );
+      const nextMasterStorage = toComparableStorage(
+        settings.keepMasterTserverSame
+          ? settings.deviceInfo
+          : (settings.masterDeviceInfo ?? settings.deviceInfo)
+      );
+      const tserverStorageChanged = !isEqual(currentTserverStorage, nextTserverStorage);
+      const masterStorageChanged = !isEqual(currentMasterStorage, nextMasterStorage);
 
       if (effectiveMode === 'master') {
         return (
           masterInstanceChanged ||
-          !isEqual(toComparableK8s(currentMasterK8s), toComparableK8s(nextMasterK8s))
+          !isEqual(toComparableK8s(currentMasterK8s), toComparableK8s(nextMasterK8s)) ||
+          masterStorageChanged
         );
       }
       if (effectiveMode === 'tserver' || effectiveMode === 'readReplica') {
         return (
           tserverInstanceChanged ||
           !isEqual(toComparableK8s(currentTserverK8s), toComparableK8s(nextTserverK8s)) ||
-          !isEqual(currentStorage, nextStorage)
+          tserverStorageChanged
         );
       }
       return (
@@ -337,7 +303,8 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
         masterInstanceChanged ||
         !isEqual(toComparableK8s(currentTserverK8s), toComparableK8s(nextTserverK8s)) ||
         !isEqual(toComparableK8s(currentMasterK8s), toComparableK8s(nextMasterK8s)) ||
-        !isEqual(currentStorage, nextStorage)
+        tserverStorageChanged ||
+        masterStorageChanged
       );
     }
 
@@ -352,7 +319,8 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       return tserverChanged;
     }
 
-    const currentMasterInstance = targetCluster?.node_spec?.master?.instance_type ?? currentTserverInstance;
+    const currentMasterInstance =
+      targetCluster?.node_spec?.master?.instance_type ?? currentTserverInstance;
     const currentMasterStorage = toComparableSpecStorage(
       targetCluster?.node_spec?.master?.storage_spec ?? targetCluster?.node_spec?.storage_spec
     );
@@ -379,18 +347,15 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
     if (isK8s && (currentTserverK8s || pending?.tserverK8SNodeResourceSpec)) {
       const currentMasterK8s =
         getK8sResourceSpecFromNodeSpec(targetCluster.node_spec, 'master') ?? currentTserverK8s;
-      const tCurrent = summaryFromK8s(
-        currentTserverK8s,
-        {
-          volumeSize: targetCluster.node_spec.storage_spec?.volume_size,
-          numVolumes: targetCluster.node_spec.storage_spec?.num_volumes,
-          diskIops: targetCluster.node_spec.storage_spec?.disk_iops ?? null,
-          throughput: targetCluster.node_spec.storage_spec?.throughput ?? null,
-          storageClass: targetCluster.node_spec.storage_spec?.storage_class ?? 'standard',
-          storageType: targetCluster.node_spec.storage_spec?.storage_type ?? null,
-          mountPoints: targetCluster.node_spec.storage_spec?.mount_points
-        } as DeviceInfo
-      );
+      const tCurrent = summaryFromK8s(currentTserverK8s, {
+        volumeSize: targetCluster.node_spec.storage_spec?.volume_size,
+        numVolumes: targetCluster.node_spec.storage_spec?.num_volumes,
+        diskIops: targetCluster.node_spec.storage_spec?.disk_iops ?? null,
+        throughput: targetCluster.node_spec.storage_spec?.throughput ?? null,
+        storageClass: targetCluster.node_spec.storage_spec?.storage_class ?? 'standard',
+        storageType: targetCluster.node_spec.storage_spec?.storage_type ?? null,
+        mountPoints: targetCluster.node_spec.storage_spec?.mount_points
+      } as DeviceInfo);
       const tNext = pending
         ? summaryFromK8s(pending.tserverK8SNodeResourceSpec, pending.deviceInfo)
         : tCurrent;
@@ -400,50 +365,44 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
         return [{ current: tCurrent, next: tNext }];
       }
 
-      const mCurrent = summaryFromK8s(
-        currentMasterK8s,
-        {
-          volumeSize:
-            targetCluster.node_spec.master?.storage_spec?.volume_size ??
-            targetCluster.node_spec.storage_spec?.volume_size,
-          numVolumes:
-            targetCluster.node_spec.master?.storage_spec?.num_volumes ??
-            targetCluster.node_spec.storage_spec?.num_volumes,
-          diskIops:
-            targetCluster.node_spec.master?.storage_spec?.disk_iops ??
-            targetCluster.node_spec.storage_spec?.disk_iops ??
-            null,
-          throughput:
-            targetCluster.node_spec.master?.storage_spec?.throughput ??
-            targetCluster.node_spec.storage_spec?.throughput ??
-            null,
-          storageClass:
-            targetCluster.node_spec.master?.storage_spec?.storage_class ??
-            targetCluster.node_spec.storage_spec?.storage_class ??
-            'standard',
-          storageType:
-            targetCluster.node_spec.master?.storage_spec?.storage_type ??
-            targetCluster.node_spec.storage_spec?.storage_type ??
-            null,
-          mountPoints:
-            targetCluster.node_spec.master?.storage_spec?.mount_points ??
-            targetCluster.node_spec.storage_spec?.mount_points
-        } as DeviceInfo
-      );
+      const mCurrent = summaryFromK8s(currentMasterK8s, {
+        volumeSize:
+          targetCluster.node_spec.master?.storage_spec?.volume_size ??
+          targetCluster.node_spec.storage_spec?.volume_size,
+        numVolumes:
+          targetCluster.node_spec.master?.storage_spec?.num_volumes ??
+          targetCluster.node_spec.storage_spec?.num_volumes,
+        diskIops:
+          targetCluster.node_spec.master?.storage_spec?.disk_iops ??
+          targetCluster.node_spec.storage_spec?.disk_iops ??
+          null,
+        throughput:
+          targetCluster.node_spec.master?.storage_spec?.throughput ??
+          targetCluster.node_spec.storage_spec?.throughput ??
+          null,
+        storageClass:
+          targetCluster.node_spec.master?.storage_spec?.storage_class ??
+          targetCluster.node_spec.storage_spec?.storage_class ??
+          'standard',
+        storageType:
+          targetCluster.node_spec.master?.storage_spec?.storage_type ??
+          targetCluster.node_spec.storage_spec?.storage_type ??
+          null,
+        mountPoints:
+          targetCluster.node_spec.master?.storage_spec?.mount_points ??
+          targetCluster.node_spec.storage_spec?.mount_points
+      } as DeviceInfo);
       const mNext = pending
         ? summaryFromK8s(
             pending.keepMasterTserverSame
               ? pending.tserverK8SNodeResourceSpec
-              : pending.masterK8SNodeResourceSpec ?? pending.tserverK8SNodeResourceSpec,
+              : (pending.masterK8SNodeResourceSpec ?? pending.tserverK8SNodeResourceSpec),
             pending.masterDeviceInfo ?? pending.deviceInfo
           )
         : mCurrent;
 
       const sections: HardwareReviewSection[] = [];
-      if (
-        effectiveMode !== 'master' &&
-        hardwareReviewSectionHasVisibleChanges(tCurrent, tNext)
-      ) {
+      if (effectiveMode !== 'master' && hardwareReviewSectionHasVisibleChanges(tCurrent, tNext)) {
         sections.push({
           headingKey: 'tServerInstance',
           current: tCurrent,
@@ -497,14 +456,14 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       : mCurrent;
 
     const sections: HardwareReviewSection[] = [];
-    if (hardwareReviewSectionHasVisibleChanges(tCurrent, tNext)) {
+    if (effectiveMode !== 'master' && hardwareReviewSectionHasVisibleChanges(tCurrent, tNext)) {
       sections.push({
         headingKey: 'tServerInstance',
         current: tCurrent,
         next: tNext
       });
     }
-    if (hardwareReviewSectionHasVisibleChanges(mCurrent, mNext)) {
+    if (effectiveMode !== 'tserver' && hardwareReviewSectionHasVisibleChanges(mCurrent, mNext)) {
       sections.push({
         headingKey: 'masterServerInstance',
         current: mCurrent,
@@ -512,46 +471,14 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       });
     }
     return sections;
-  }, [targetCluster, pendingInstanceSettings, formatInstanceTypeLabel, useDedicatedNodes, isK8s, effectiveMode]);
-
-  const toResizeStorageSpec = (
-    deviceInfo: DeviceInfo | null | undefined,
-    currentSpec: ClusterStorageSpec | undefined
-  ): ClusterResizeStorageSpec => ({
-    volume_size: deviceInfo?.volumeSize ?? currentSpec?.volume_size,
-    disk_iops: deviceInfo?.diskIops ?? currentSpec?.disk_iops ?? undefined,
-    throughput: deviceInfo?.throughput ?? currentSpec?.throughput ?? undefined
-  });
-
-  const toClusterStorageSpec = (
-    deviceInfo: DeviceInfo | null | undefined,
-    currentSpec: ClusterStorageSpec | undefined
-  ): ClusterStorageSpec => ({
-    volume_size: deviceInfo?.volumeSize ?? currentSpec?.volume_size ?? 0,
-    num_volumes: deviceInfo?.numVolumes ?? currentSpec?.num_volumes ?? 1,
-    ...(deviceInfo?.mountPoints ?? currentSpec?.mount_points
-      ? { mount_points: deviceInfo?.mountPoints ?? currentSpec?.mount_points }
-      : {}),
-    ...(deviceInfo?.storageClass ?? currentSpec?.storage_class
-      ? { storage_class: deviceInfo?.storageClass ?? currentSpec?.storage_class }
-      : {}),
-    ...(deviceInfo?.storageType ?? currentSpec?.storage_type
-      ? { storage_type: deviceInfo?.storageType ?? currentSpec?.storage_type }
-      : {}),
-    ...(deviceInfo?.diskIops !== undefined && deviceInfo?.diskIops !== null
-      ? { disk_iops: deviceInfo.diskIops }
-      : currentSpec?.disk_iops !== undefined && currentSpec?.disk_iops !== null
-        ? { disk_iops: currentSpec.disk_iops }
-        : {}),
-    ...(deviceInfo?.throughput !== undefined && deviceInfo?.throughput !== null
-      ? { throughput: deviceInfo.throughput }
-      : currentSpec?.throughput !== undefined && currentSpec?.throughput !== null
-        ? { throughput: currentSpec.throughput }
-        : {}),
-    ...(currentSpec?.cloud_volume_encryption
-      ? { cloud_volume_encryption: currentSpec.cloud_volume_encryption }
-      : {})
-  });
+  }, [
+    targetCluster,
+    pendingInstanceSettings,
+    formatInstanceTypeLabel,
+    useDedicatedNodes,
+    isK8s,
+    effectiveMode
+  ]);
 
   const buildResizeNodeSpec = (
     settings: InstanceSettingProps,
@@ -577,18 +504,20 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
 
     const currentMasterInstance =
       targetCluster?.node_spec?.master?.instance_type ?? currentTserverInstance;
-    const masterInstanceType = settings.masterInstanceType ?? tserverInstanceType;
+    const masterInstanceType = settings.keepMasterTserverSame
+      ? tserverInstanceType
+      : (settings.masterInstanceType ?? tserverInstanceType);
     const currentMasterStorageSpec =
       targetCluster?.node_spec?.master?.storage_spec ?? currentTserverStorageSpec;
-    const masterStorageSpec = toResizeStorageSpec(
-      settings.masterDeviceInfo ?? settings.deviceInfo,
-      currentMasterStorageSpec
-    );
+    const masterDeviceInfo = settings.keepMasterTserverSame
+      ? settings.deviceInfo
+      : (settings.masterDeviceInfo ?? settings.deviceInfo);
+    const masterStorageSpec = toResizeStorageSpec(masterDeviceInfo, currentMasterStorageSpec);
     const masterChanged =
       masterInstanceType !== currentMasterInstance ||
       !isEqual(
         toComparableSpecStorage(currentMasterStorageSpec),
-        toComparableStorage(settings.masterDeviceInfo ?? settings.deviceInfo)
+        toComparableStorage(masterDeviceInfo)
       );
 
     const dedicatedNodeSpec: ClusterResizeNodeSpec = {};
@@ -600,7 +529,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
         storage_spec: tserverStorageSpec
       };
     }
-    if (effectiveMode !== 'tserver' && masterChanged) {
+    if (effectiveMode !== 'tserver' && (masterChanged || settings.keepMasterTserverSame)) {
       dedicatedNodeSpec.master = {
         instance_type: masterInstanceType ?? undefined,
         storage_spec: masterStorageSpec
@@ -618,7 +547,8 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
 
     if (isK8s) {
       const k8sNodeSpec: ClusterNodeSpec = {
-        storage_spec: tserverStorageSpec
+        storage_spec: tserverStorageSpec,
+        dedicated_nodes: true
       };
 
       if (tserverInstanceType) {
@@ -631,7 +561,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       const nextTserverK8s = settings.tserverK8SNodeResourceSpec ?? currentTserverK8s;
       const nextMasterK8s = settings.keepMasterTserverSame
         ? nextTserverK8s
-        : settings.masterK8SNodeResourceSpec ?? currentMasterK8s ?? nextTserverK8s;
+        : (settings.masterK8SNodeResourceSpec ?? currentMasterK8s ?? nextTserverK8s);
 
       const tserverK8s = toK8sResourceSpec(nextTserverK8s);
       const masterK8s = toK8sResourceSpec(
@@ -645,6 +575,29 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
         k8sNodeSpec.k8s_master_resource_spec = masterK8s;
       }
 
+      if (dedicatedNodes) {
+        const currentMasterStorageSpec =
+          targetCluster?.node_spec?.master?.storage_spec ?? currentTserverStorageSpec;
+        const masterDeviceInfo = settings.keepMasterTserverSame
+          ? settings.deviceInfo
+          : (settings.masterDeviceInfo ?? settings.deviceInfo);
+        const masterStorageSpec = toClusterStorageSpec(masterDeviceInfo, currentMasterStorageSpec);
+        const masterInstanceType = settings.keepMasterTserverSame
+          ? tserverInstanceType
+          : (settings.masterInstanceType ?? tserverInstanceType);
+
+        k8sNodeSpec.tserver = {
+          ...(tserverInstanceType ? { instance_type: tserverInstanceType } : {}),
+          storage_spec: tserverStorageSpec
+        };
+        if (effectiveMode !== 'readReplica') {
+          k8sNodeSpec.master = {
+            ...(masterInstanceType ? { instance_type: masterInstanceType } : {}),
+            storage_spec: masterStorageSpec
+          };
+        }
+      }
+
       return k8sNodeSpec;
     }
 
@@ -655,53 +608,53 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       };
     }
 
-    const currentMasterInstance =
-      targetCluster?.node_spec?.master?.instance_type ?? currentTserverInstance;
-    const masterInstanceType = settings.masterInstanceType ?? tserverInstanceType;
+    const masterInstanceType = settings.keepMasterTserverSame
+      ? tserverInstanceType
+      : (settings.masterInstanceType ?? tserverInstanceType);
     const currentMasterStorageSpec =
       targetCluster?.node_spec?.master?.storage_spec ?? currentTserverStorageSpec;
-    const masterStorageSpec = toClusterStorageSpec(
-      settings.masterDeviceInfo ?? settings.deviceInfo,
-      currentMasterStorageSpec
-    );
+    const masterDeviceInfo = settings.keepMasterTserverSame
+      ? settings.deviceInfo
+      : (settings.masterDeviceInfo ?? settings.deviceInfo);
+    const masterStorageSpec = toClusterStorageSpec(masterDeviceInfo, currentMasterStorageSpec);
 
-    const dedicatedNodeSpec: ClusterNodeSpec = {};
-    if (effectiveMode !== 'master') {
-      if (tserverInstanceType) {
-        dedicatedNodeSpec.instance_type = tserverInstanceType;
-      }
-      dedicatedNodeSpec.storage_spec = tserverStorageSpec;
-      dedicatedNodeSpec.tserver = {
-        ...(tserverInstanceType ? { instance_type: tserverInstanceType } : {}),
-        storage_spec: tserverStorageSpec
-      };
+    const dedicatedNodeSpec: ClusterNodeSpec = {
+      dedicated_nodes: true
+    };
+    if (tserverInstanceType) {
+      dedicatedNodeSpec.instance_type = tserverInstanceType;
     }
-    if (effectiveMode !== 'tserver') {
-      dedicatedNodeSpec.master = {
-        ...(masterInstanceType ? { instance_type: masterInstanceType } : {}),
-        storage_spec: masterStorageSpec
-      };
-    }
+    dedicatedNodeSpec.storage_spec = tserverStorageSpec;
+    dedicatedNodeSpec.tserver = {
+      ...(tserverInstanceType ? { instance_type: tserverInstanceType } : {}),
+      storage_spec: tserverStorageSpec
+    };
+    dedicatedNodeSpec.master = {
+      ...(masterInstanceType ? { instance_type: masterInstanceType } : {}),
+      storage_spec: masterStorageSpec
+    };
 
     return dedicatedNodeSpec;
   };
 
-  const hasNumVolumesChange = (settings: InstanceSettingProps, dedicatedNodes: boolean) => {
-    const currentTserverVolumes = targetCluster?.node_spec?.storage_spec?.num_volumes ?? null;
-    const nextTserverVolumes = settings.deviceInfo?.numVolumes ?? currentTserverVolumes;
-    if (nextTserverVolumes !== currentTserverVolumes) {
-      return true;
+  const getExistingClusterNodeCount = () => {
+    if (!targetCluster) {
+      return undefined;
     }
-
-    if (!dedicatedNodes) {
-      return false;
+    if (typeof targetCluster.num_nodes === 'number' && targetCluster.num_nodes >= 1) {
+      return targetCluster.num_nodes;
     }
-
-    const currentMasterVolumes =
-      targetCluster?.node_spec?.master?.storage_spec?.num_volumes ?? currentTserverVolumes;
-    const nextMasterVolumes =
-      settings.masterDeviceInfo?.numVolumes ?? settings.deviceInfo?.numVolumes ?? currentMasterVolumes;
-    return nextMasterVolumes !== currentMasterVolumes;
+    if (targetCluster.placement_spec) {
+      return countRegionsAzsAndNodes(targetCluster.placement_spec).totalNodes;
+    }
+    if (targetCluster.partitions_spec?.length) {
+      return targetCluster.partitions_spec.reduce(
+        (sum, partition) =>
+          sum + (partition.placement ? countRegionsAzsAndNodes(partition.placement).totalNodes : 0),
+        0
+      );
+    }
+    return undefined;
   };
 
   const submitEditUniverse = (settings: InstanceSettingProps) => {
@@ -709,6 +662,9 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       toast.error(t('unableToApplyChanges'));
       return;
     }
+
+    const existingNodeCount =
+      effectiveMode === 'readReplica' ? getExistingClusterNodeCount() : undefined;
 
     editUniverse.mutate(
       {
@@ -718,6 +674,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
           clusters: [
             {
               uuid: targetCluster.uuid,
+              ...(existingNodeCount !== undefined ? { num_nodes: existingNodeCount } : {}),
               node_spec: buildEditNodeSpec(settings, !!useDedicatedNodes)
             }
           ]
@@ -740,11 +697,85 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
     setPendingInstanceSettings(null);
     lastSavedInstanceSettingsRef.current = null;
     setReviewModalOpen(false);
+    setResizeOptions(undefined);
+    setIsLoadingResizeOptions(false);
     setInheritPrimary(false);
     onHide();
   };
 
-  const confirmResizeNodes = (delaySeconds: number) => {
+  /**
+   * K8s hardware edits typically yield UPDATE (not in ResizeUpdateOption), so the API
+   * can return []. Force migrate-only → editUniverse. Same fallback on empty/error.
+   * Never invent SMART_RESIZE for K8s. While loading (non-K8s), pass undefined so radios stay disabled.
+   */
+  const effectiveResizeOptions = useMemo((): ResizeUpdateOption[] | undefined => {
+    if (isK8s) {
+      return [ResizeUpdateOption.FULL_MOVE];
+    }
+    if (isLoadingResizeOptions) {
+      return undefined;
+    }
+    if (!resizeOptions?.length) {
+      return [ResizeUpdateOption.FULL_MOVE];
+    }
+    return resizeOptions;
+  }, [isK8s, isLoadingResizeOptions, resizeOptions]);
+
+  useEffect(() => {
+    if (!reviewModalOpen || !pendingInstanceSettings || !universeUUID || !targetCluster?.uuid) {
+      return;
+    }
+
+    // K8s never supports smart resize in the API mapping; skip the round-trip.
+    if (isK8s) {
+      setResizeOptions([ResizeUpdateOption.FULL_MOVE]);
+      setIsLoadingResizeOptions(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingResizeOptions(true);
+    setResizeOptions(undefined);
+
+    checkResizeOptions.mutate(
+      {
+        uniUUID: universeUUID,
+        data: {
+          cluster_uuid: targetCluster.uuid,
+          node_spec: buildEditNodeSpec(pendingInstanceSettings, !!useDedicatedNodes)
+        }
+      },
+      {
+        onSuccess: (response) => {
+          if (cancelled) return;
+          const options = response?.options ?? [];
+          setResizeOptions(options.length ? options : [ResizeUpdateOption.FULL_MOVE]);
+          setIsLoadingResizeOptions(false);
+        },
+        onError: (error: unknown) => {
+          if (cancelled) return;
+          toast.error(createErrorMessage(error));
+          setResizeOptions([ResizeUpdateOption.FULL_MOVE]);
+          setIsLoadingResizeOptions(false);
+        }
+      }
+    );
+
+    return () => {
+      cancelled = true;
+    };
+    // buildEditNodeSpec closes over latest settings/cluster; re-run when review opens or pending changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    reviewModalOpen,
+    pendingInstanceSettings,
+    universeUUID,
+    targetCluster?.uuid,
+    isK8s,
+    useDedicatedNodes
+  ]);
+
+  const confirmResizeNodes = ({ delaySeconds, strategy }: ReviewHardwareConfirmPayload) => {
     if (!pendingInstanceSettings || !universeUUID || !targetCluster?.uuid) {
       toast.error(t('unableToApplyChanges'));
       return;
@@ -757,12 +788,20 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       return;
     }
 
-    if (
-      isK8s ||
-      clusterType === ClusterSpecClusterType.ASYNC ||
-      hasNumVolumesChange(pendingInstanceSettings, !!useDedicatedNodes)
-    ) {
+    const rollingAllowed = canUseRollingResize(effectiveResizeOptions);
+    const migrateAllowed = canUseFullMove(effectiveResizeOptions);
+
+    if (strategy === 'migrate') {
+      if (!migrateAllowed) {
+        toast.error(t('unableToApplyChanges'));
+        return;
+      }
       submitEditUniverse(pendingInstanceSettings);
+      return;
+    }
+
+    if (!rollingAllowed) {
+      toast.error(t('unableToApplyChanges'));
       return;
     }
 
@@ -800,7 +839,10 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
     return null;
   }
 
-  const tserverK8sResourceSpec = getK8sResourceSpecFromNodeSpec(targetCluster?.node_spec, 'tserver');
+  const tserverK8sResourceSpec = getK8sResourceSpecFromNodeSpec(
+    targetCluster?.node_spec,
+    'tserver'
+  );
   const masterK8sResourceSpec =
     getK8sResourceSpecFromNodeSpec(targetCluster?.node_spec, 'master') ?? tserverK8sResourceSpec;
 
@@ -821,10 +863,13 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       mountPoints: storageSpec?.mount_points
     },
     masterDeviceInfo: {
-      volumeSize: targetCluster?.node_spec?.master?.storage_spec?.volume_size ?? storageSpec?.volume_size,
-      numVolumes: targetCluster?.node_spec?.master?.storage_spec?.num_volumes ?? storageSpec?.num_volumes,
+      volumeSize:
+        targetCluster?.node_spec?.master?.storage_spec?.volume_size ?? storageSpec?.volume_size,
+      numVolumes:
+        targetCluster?.node_spec?.master?.storage_spec?.num_volumes ?? storageSpec?.num_volumes,
       diskIops: targetCluster?.node_spec?.master?.storage_spec?.disk_iops ?? storageSpec?.disk_iops,
-      throughput: targetCluster?.node_spec?.master?.storage_spec?.throughput ?? storageSpec?.throughput,
+      throughput:
+        targetCluster?.node_spec?.master?.storage_spec?.throughput ?? storageSpec?.throughput,
       storageClass:
         targetCluster?.node_spec?.master?.storage_spec?.storage_class ?? storageSpec?.storage_class,
       storageType:
@@ -848,7 +893,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
     effectiveMode === 'readReplica' && inheritPrimary && !!primaryDerivedSettings;
 
   const seedSettings: Partial<InstanceSettingProps> | undefined = isInheritingPrimary
-    ? primaryDerivedSettings ?? undefined
+    ? (primaryDerivedSettings ?? undefined)
     : initialInstanceSettings;
 
   const mergedInstanceSettings = {
@@ -902,19 +947,21 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
     }
   })();
 
-  const modalTitle = title ?? (() => {
-    switch (effectiveMode) {
-      case 'tserver':
-        return tHw('tServerInstance');
-      case 'master':
-        return tHw('masterServerInstance');
-      case 'readReplica':
-        return t('rrInstance', { keyPrefix: 'readReplica.addRR' });
-      case 'cluster':
-      default:
-        return t('title');
-    }
-  })();
+  const modalTitle =
+    title ??
+    (() => {
+      switch (effectiveMode) {
+        case 'tserver':
+          return tHw('tServerInstance');
+        case 'master':
+          return tHw('masterServerInstance');
+        case 'readReplica':
+          return t('rrInstance', { keyPrefix: 'readReplica.addRR' });
+        case 'cluster':
+        default:
+          return t('title');
+      }
+    })();
 
   return (
     <>
@@ -933,14 +980,11 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
         titleSeparator
       >
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <TotalNodesBadge>
-            <Typography component="span" className="label">
-              {badgeLabel}
-            </Typography>
-            <Typography component="span" className="count">
-              {badgeCount}
-            </Typography>
-          </TotalNodesBadge>
+          <TotalNodesBadge
+            label={badgeLabel}
+            count={badgeCount}
+            dataTestId="edit-hardware-total-nodes-badge"
+          />
           {effectiveMode === 'readReplica' && (
             <YBCheckbox
               dataTestId="edit-hardware-rr-same-as-primary"
@@ -952,7 +996,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
           )}
           <CreateUniverseContext.Provider
             value={
-              ([
+              [
                 {
                   activeStep: 1,
                   resilienceAndRegionsSettings: regions,
@@ -994,7 +1038,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
                   },
                   moveToPreviousPage: () => {}
                 }
-              ] as unknown) as createUniverseFormProps
+              ] as unknown as createUniverseFormProps
             }
           >
             {/*
@@ -1016,6 +1060,9 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
         visible={reviewModalOpen}
         sections={reviewSections}
         isSubmitting={resizeNodes.isLoading || editUniverse.isLoading}
+        resizeOptions={effectiveResizeOptions}
+        isLoadingOptions={isLoadingResizeOptions}
+        replicationFactor={targetCluster.replication_factor}
         onClose={() => setReviewModalOpen(false)}
         onConfirm={confirmResizeNodes}
       />

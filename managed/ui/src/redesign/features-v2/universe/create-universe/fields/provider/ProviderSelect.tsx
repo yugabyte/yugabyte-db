@@ -5,6 +5,7 @@ import {
   AZURE_CLOUD_OPTION,
   GCP_CLOUD_OPTION,
   K8S_CLOUD_OPTION,
+  OCI_CLOUD_OPTION,
   ON_PREM_CLOUD_OPTION,
   YBCloudSelectField
 } from '@yugabyte-ui-library/core';
@@ -20,17 +21,15 @@ export const CloudField = <T,>({ name, label }: CloudFieldProps<T>): ReactElemen
   const { control, getValues, setValue } =
     useFormContext<T extends FieldValues ? T : FieldValues>();
   const clouds = [
-    AWS_CLOUD_OPTION,
-    GCP_CLOUD_OPTION,
+    {...AWS_CLOUD_OPTION, value: CloudType.aws},
+    {...GCP_CLOUD_OPTION, value: CloudType.gcp},
     {
       ...AZURE_CLOUD_OPTION,
       value: CloudType.azu
     },
-    {
-      ...K8S_CLOUD_OPTION,
-      value: CloudType.kubernetes
-    },
-    ON_PREM_CLOUD_OPTION
+    {...K8S_CLOUD_OPTION, value: CloudType.kubernetes},
+    {...ON_PREM_CLOUD_OPTION, value: CloudType.onprem},
+    {...OCI_CLOUD_OPTION, value: CloudType.oci},
   ];
 
   useEffectOnce(() => {

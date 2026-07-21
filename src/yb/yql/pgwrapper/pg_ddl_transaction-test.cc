@@ -20,12 +20,14 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -36,6 +38,7 @@ DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
+DECLARE_bool(TEST_ysql_ddl_fail_transaction_status_poll);
 DECLARE_int32(TEST_ysql_ddl_atomicity_alter_table_request_delay_ms);
 DECLARE_double(TEST_ysql_ddl_verification_failure_probability);
 DECLARE_int32(ysql_ddl_post_processing_failed_verification_retry_secs);
@@ -346,9 +349,7 @@ TEST_F(PgDdlTransactionMiniClusterTest, TestPostProcessingFailedPeriodicRetrigge
   // and mimic the nemesis case when tserver - master communication breaks down.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
-  LOG(INFO) << "Reporting YSQL DDL transaction status to YB-Master is disabled";
   ASSERT_OK(conn.Execute("ROLLBACK"));
-  LOG(INFO) << "Rolled back";
 
   ASSERT_OK(WaitFor(
       [&] {
@@ -374,6 +375,88 @@ TEST_F(PgDdlTransactionMiniClusterTest, TestPostProcessingFailedPeriodicRetrigge
     },
     MonoDelta::FromSeconds(60),
     "DDL verification task should have been re-triggered"));
+}
+
+TEST_F(PgDdlTransactionMiniClusterTest, TestPostProcessingFailedDueToFailedStatusPoll) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = -1;
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+
+  ASSERT_OK(conn.Execute("CREATE TABLE ddl_pp_failed_retrigger_poll (id INT PRIMARY KEY)"));
+
+  // Fail status polling so that the DDL verifier fails and ends up in the kDdlPostProcessingFailed
+  // state.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ddl_fail_transaction_status_poll) = true;
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("ALTER TABLE ddl_pp_failed_retrigger_poll ADD COLUMN c INT"));
+
+  const auto table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabase, "ddl_pp_failed_retrigger_poll"));
+  auto table_info = catalog_manager.GetTableInfo(table_id);
+  ASSERT_NE(table_info, nullptr);
+  const auto txn_id_pb = table_info->LockForRead()->pb_transaction_id();
+  ASSERT_FALSE(txn_id_pb.empty());
+  const auto txn_id = ASSERT_RESULT(FullyDecodeTransactionId(txn_id_pb));
+
+  // Disable YSQL reporting the status to yb-master so that we fully rely on the background task
+  // and mimic the nemesis case when tserver - master communication breaks down.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(WaitFor(
+      [&] {
+        const auto st = catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id);
+        return Result<bool>(
+            st.has_value() &&
+            *st == master::YsqlDdlVerificationState::kDdlPostProcessingFailed);
+      },
+      MonoDelta::FromSeconds(60),
+      "DDL verification should reach kDdlPostProcessingFailed"));
+
+  LOG(INFO) << "Done waiting for kDdlPostProcessingFailed state (poll-path setup)";
+
+  // Allow status polling to succeed on retrigger.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ddl_fail_transaction_status_poll) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 1;
+
+  ASSERT_OK(WaitFor(
+    [&] {
+      const auto st = catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id);
+      return Result<bool>(
+          !st.has_value() ||
+          *st != master::YsqlDdlVerificationState::kDdlPostProcessingFailed);
+    },
+    MonoDelta::FromSeconds(60),
+    "DDL verification task should have been re-triggered"));
+}
+
+TEST_F(PgDdlTransactionTest, TestRenameIndexAndTruncateInTxn) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  const std::string kTable = "rename_truncate_tbl";
+  const std::string kIndex = "rename_truncate_idx";
+  const std::string kRenamedIndex = "rename_truncate_idx_new";
+
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0 CASCADE", kTable));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTable));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (v)", kIndex, kTable));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTable));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+    "report_ysql_ddl_txn_status_to_master", "false"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER INDEX $0 RENAME TO $1", kIndex, kRenamedIndex));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE TABLE $0", kTable));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+    ASSERT_TRUE(cluster_->master(i)->IsProcessAlive())
+        << "Master " << i << " fatally exited";
+  }
 }
 
 TEST_F(PgDdlTransactionTest, TestNoSkipIntentsWriteOnSavepoint) {
@@ -971,6 +1054,141 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithSlowIndexDeleti
   SyncPoint::GetInstance()->DisableProcessing();
 
   ASSERT_OK(conn.Execute("DROP TABLE existing_table"));
+}
+
+// Probe for #29139 / D51840: when sys.catalog raft replication on yb-master is delayed,
+// the master's safe time lags current hybrid time and this can cause a read restart error
+// even without concurrent sessions. This can happen in a single connection in auto-commit mode
+// running sequential commands that modify the PG catalog (say stmt1 and stmt2), and stmt2 picks
+// safe_time as its read time which can predate stmt1's catalog write time -- causing a read restart
+// error. Also, note that the read restart error is faced by any rpc other than the 1st one in stmt2
+// because the error is retried internally on yb-master if faced by the 1st rpc.
+//
+// D51840 fixes this issue for autonomous DDLs by picking the current time as read time on the
+// tserver proxy instead of picking the safe time on master. The transactional DDL path
+// (ysql_yb_ddl_transaction_block_enabled=true) still faces the issue because it still picks safe
+// time as the read time.
+class PgMasterDDLReadRestartProbeTest : public LibPqTestBase {
+ public:
+  int GetNumMasters() const override { return 3; }
+
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_master_flags.push_back(
+        "--ysql_yb_ddl_transaction_block_enabled=false");
+    options->extra_tserver_flags.push_back(
+        "--ysql_yb_ddl_transaction_block_enabled=false");
+    options->extra_tserver_flags.push_back(
+        Format("--enable_object_locking_for_table_locks=false"));
+    options->extra_master_flags.push_back(
+        Format("--enable_object_locking_for_table_locks=false"));
+    options->extra_tserver_flags.push_back(
+        Format("--ysql_enable_concurrent_ddl=false"));
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    LibPqTestBase::UpdateMiniClusterOptions(options);
+  }
+
+  Status RunRepro(bool expect_error);
+
+  void RestartClusterSetDdlTransactionBlockEnabled(bool value) {
+    LOG(INFO) << "Restart the cluster and turn " << (value ? "on" : "off")
+              << " --ysql_yb_ddl_transaction_block_enabled";
+    cluster_->Shutdown();
+    for (const auto& daemon : cluster_->daemons()) {
+      daemon->AddExtraFlag("ysql_yb_ddl_transaction_block_enabled", value ? "true" : "false");
+    }
+    ASSERT_OK(cluster_->Restart());
+  }
+};
+
+Status PgMasterDDLReadRestartProbeTest::RunRepro(bool expect_error) {
+  const auto iterations = 10;
+  auto setup_conn = VERIFY_RESULT(Connect());
+  RETURN_NOT_OK(setup_conn.Execute("DROP DATABASE IF EXISTS db_a"));
+  RETURN_NOT_OK(setup_conn.Execute("DROP DATABASE IF EXISTS db_b"));
+  RETURN_NOT_OK(setup_conn.Execute("CREATE DATABASE db_a"));
+  RETURN_NOT_OK(setup_conn.Execute("CREATE DATABASE db_b"));
+
+  // Lag master sys.catalog raft replication so safe_time trails current_ht. Targeted at
+  // the sys.catalog tablet only -- leader heartbeats and background master tasks stay
+  // fast, avoiding the cluster collapse seen with a global UpdateConsensus delay.
+  RETURN_NOT_OK(cluster_->SetFlagOnMasters(
+      "TEST_delay_update_consensus_before_mark_committed_tablet_id",
+      master::kSysCatalogTabletId));
+  RETURN_NOT_OK(cluster_->SetFlagOnMasters(
+      "TEST_delay_update_consensus_before_mark_committed_ms", "10"));
+
+  TestThreadHolder thread_holder;
+
+  // Background: continuous lightweight DDLs on db_b to keep ops in flight on master
+  // sys.catalog, holding majority_replicated (and hence safe_time) behind current_ht.
+  thread_holder.AddThreadFunctor(
+      [this, &stop = thread_holder.stop_flag()] {
+    auto conn = ASSERT_RESULT(ConnectToDB("db_b"));
+    int i = 0;
+    while (!stop.load(std::memory_order_acquire)) {
+      auto s = conn.ExecuteFormat("CREATE SCHEMA bg_r_$0", i);
+      if (!s.ok()) {
+        LOG(WARNING) << "bg CREATE SCHEMA iter=" << i << " failed: " << s;
+      }
+      s = conn.ExecuteFormat("DROP SCHEMA bg_r_$0", i);
+      if (!s.ok()) {
+        LOG(WARNING) << "bg DROP SCHEMA iter=" << i << " failed: " << s;
+      }
+      ++i;
+    }
+  });
+
+  auto conn = VERIFY_RESULT(ConnectToDB("db_a"));
+  RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=true"));
+
+  auto is_read_restart = [](const Status& s) {
+    return !s.ok() &&
+        s.message().ToBuffer().find("Restart read required") != std::string::npos;
+  };
+
+  const char* const kStmts[] = {
+      "CREATE TABLE public.test(k int primary key, "
+      "\"........pg.dropped.62........\" integer)",
+      "UPDATE pg_catalog.pg_attribute SET attlen = -1, attalign = 'i', "
+      "attbyval = false WHERE attname = '........pg.dropped.62........' "
+      "AND attrelid = 'public.test'::pg_catalog.regclass",
+      "ALTER TABLE ONLY public.test DROP COLUMN \"........pg.dropped.62........\";",
+      "DROP TABLE public.test",
+  };
+
+  const auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(60);
+  for (int i = 0; i < iterations || (expect_error && MonoTime::Now() < deadline); ++i) {
+    for (const auto* stmt : kStmts) {
+      auto s = conn.Execute(stmt);
+      if (is_read_restart(s)) {
+        LOG(INFO) << "Read restart observed at iter=" << i << ": " << s;
+        if (expect_error) {
+          return Status::OK();
+        }
+        return STATUS(IllegalState, "Faced a read restart error when none were expected");
+      } else if (!s.ok()) {
+        LOG(WARNING) << "Non-read-restart failure iter=" << i << ": " << s;
+      }
+    }
+  }
+
+  thread_holder.Stop();
+  if (expect_error) {
+    return STATUS(TimedOut, "Timed out waiting for the expected read restart error");
+  }
+  return Status::OK();
+}
+
+TEST_F(PgMasterDDLReadRestartProbeTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(DDLStaleSafeTimeReadRestart)) {
+  ASSERT_OK(RunRepro(false /* expect_error */));
+
+  // Restart with transactional DDL enabled but object locking disabled.
+  ASSERT_NO_FATALS(RestartClusterSetDdlTransactionBlockEnabled(true));
+
+  ASSERT_OK(RunRepro(true /* expect_error */));
 }
 
 } // namespace yb::pgwrapper

@@ -4,7 +4,10 @@ package api.v2.controllers;
 
 import api.v2.models.TelemetryProviderTypeInfo;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import java.util.Arrays;
@@ -17,7 +20,10 @@ import play.mvc.Http.Request;
 public class TelemetryProviderApiControllerImp extends TelemetryProviderApiControllerImpInterface {
 
   @Inject
-  public TelemetryProviderApiControllerImp() {}
+  public TelemetryProviderApiControllerImp(
+      AuditService auditService, Config config, GFlagsAuditHandler gFlagsAuditHandler) {
+    super(auditService, config, gFlagsAuditHandler);
+  }
 
   @Override
   public List<TelemetryProviderTypeInfo> listTelemetryProviderTypes(
@@ -31,16 +37,13 @@ public class TelemetryProviderApiControllerImp extends TelemetryProviderApiContr
               if (exportType == null || exportType.isEmpty()) {
                 return true;
               }
-              switch (exportType.toLowerCase()) {
-                case "logs":
-                  return info.getIsAllowedForLogs();
-                case "metrics":
-                  return info.getIsAllowedForMetrics();
-                default:
-                  throw new PlatformServiceException(
-                      Http.Status.BAD_REQUEST,
-                      "Invalid exportType. Allowed values: 'logs', 'metrics'");
-              }
+              return switch (exportType.toLowerCase()) {
+                case "logs" -> info.getIsAllowedForLogs();
+                case "metrics" -> info.getIsAllowedForMetrics();
+                default -> throw new PlatformServiceException(
+                    Http.Status.BAD_REQUEST,
+                    "Invalid exportType. Allowed values: 'logs', 'metrics'");
+              };
             })
         .collect(Collectors.toList());
   }

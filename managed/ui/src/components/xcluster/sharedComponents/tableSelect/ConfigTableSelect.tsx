@@ -556,7 +556,9 @@ const checkIsTableMatchedBySearchTokens = (table: XClusterTable, searchTokens: S
     ...(totalStorageBytes !== undefined && {
       sizeBytes: { value: totalStorageBytes, type: FieldType.NUMBER }
     }),
-    status: { value: table.statusLabel, type: FieldType.STRING }
+    ...(table.statusSearchValues.length > 0 && {
+      status: { value: table.statusSearchValues, type: FieldType.STRING_ARRAY }
+    }),
   };
   return searchTokens.every((searchToken) =>
     isMatchedBySearchToken(candidate, searchToken, SUBSTRING_SEARCH_FIELDS)

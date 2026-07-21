@@ -14,3 +14,6 @@ properties:
   metrics:
     description: Metrics export. null = disabled.
     $ref: "./MetricsTelemetrySpec.yaml"
+  master_logs:
+    description: yb-master log export. null = disabled.
+    $ref: "./MasterLogsTelemetrySpec.yaml"

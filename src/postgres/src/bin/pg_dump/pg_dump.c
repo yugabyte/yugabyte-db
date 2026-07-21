@@ -9538,7 +9538,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 bool
 shouldPrintColumn(const DumpOptions *dopt, const TableInfo *tbinfo, int colno)
 {
-	if (dopt->binary_upgrade || dopt->include_yb_metadata)
+	if (dopt->binary_upgrade)
 		return true;
 	if (tbinfo->attisdropped[colno])
 		return false;
@@ -16833,7 +16833,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 					 */
 					if (OidIsValid(tbinfo->reloftype) &&
 						!print_default && !print_notnull &&
-						!dopt->binary_upgrade && !dopt->include_yb_metadata)
+						!dopt->binary_upgrade)
 						continue;
 
 					/* Format properly if not first attr */
@@ -17224,10 +17224,11 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				if (tbinfo->attisdropped[j])
 				{
 					/*
-					 * For YB backups, we also need to recreate and drop the dropped columns
-					 * (even if the docdb snapshot import can handle such gaps in the col order)
-					 * because the table can be used as a type - referenced by another table column.
+					 * For YB backups, we don't need to recreate dropped cols because
+					 * docdb snapshot import can handle such gaps in the col order.
 					 */
+					if (!dopt->include_yb_metadata)
+					{
 						appendPQExpBufferStr(q, "\n-- For binary upgrade, recreate dropped column.\n");
 						appendPQExpBuffer(q, "UPDATE pg_catalog.pg_attribute\n"
 										  "SET attlen = %d, "
@@ -17249,6 +17250,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 											  qualrelname);
 						appendPQExpBuffer(q, "DROP COLUMN %s;\n",
 										  fmtId(tbinfo->attnames[j]));
+					}
 				}
 				else if (!tbinfo->attislocal[j] && (IsYugabyteEnabled && !tbinfo->ispartition))
 				{
@@ -20300,8 +20302,15 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbcTableProperties properties,
 		 * Gated by the yb_dump_presplit_in_create AutoFlag: the sentinel is
 		 * only emitted once the folded-WITH form is safe for the restore
 		 * target (see ybDumpPresplitInCreate).
+		 *
+		 * Skip partitioned PARENT tables (RELKIND_PARTITIONED_TABLE): they
+		 * have no storage and never emit a SPLIT clause, so folding the
+		 * sentinel into their WITH clause produces a spurious
+		 * "PARTITION BY ... WITH (yb_presplit='')".  This mirrors the
+		 * SPLIT-clause emission which already excludes partitioned tables.
 		 */
 		if (ybDumpPresplitInCreate(fout) &&
+			relkind != RELKIND_PARTITIONED_TABLE &&
 			!extractYbPresplitFromReloptions(existing_reloptions))
 			appendPGArray(reloptions_buf, "yb_presplit=");
 	}

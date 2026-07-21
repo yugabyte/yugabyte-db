@@ -17,6 +17,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/test_thread_holder.h"
@@ -178,7 +179,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ShmCatalogVersionMap result;
     for (size_t tablet_index = 0; tablet_index != cluster_->num_tablet_servers(); ++tablet_index) {
       // Get the shared memory object from tserver at 'tablet_index'.
-      auto uuid = cluster_->tablet_server(0)->instance_id().permanent_uuid();
+      auto uuid = cluster_->tablet_server(tablet_index)->instance_id().permanent_uuid();
       tserver::SharedMemoryManager shared_mem_manager;
       RETURN_NOT_OK(shared_mem_manager.InitializePgBackend(uuid));
 
@@ -1654,6 +1655,12 @@ TEST_F(PgCatalogVersionTest, AlterDatabaseRename) {
 
   auto v3_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
   auto v3_postgres = ASSERT_RESULT(GetCatalogVersion(&conn_postgres));
+
+  // Wait for the global-impact RENAME version bump to propagate to conn_postgres's tserver so
+  // that conn_postgres refreshes its catalog snapshot to the new version before running the
+  // DROP below. Otherwise conn_postgres may still send the DROP with its stale catalog version
+  // while the tserver has already advanced, producing a spurious MISMATCHED_SCHEMA (40001) error.
+  WaitForCatalogVersionToPropagate();
 
   // If we did not bump up the catalog version of postgres DB, this DROP DATABASE would
   // stuck and the test timed out.
@@ -3239,9 +3246,12 @@ TEST_P(PgCatalogVersionConnManagerTest,
   // #32063: the regular-backend auth prefetch is served from the response cache
   // when its version-keyed slot is warm. conn3 connects right after 200 version
   // bumps, so the regular slot's warmth is timing-dependent -> 5 (hit) or 6 (miss).
+  // The same warmth timing applies in CM mode, where the #30148 extra RPC adds a
+  // constant +1 -> 6 (hit) or 7 (miss).
   auto rebuild_delta = master_read_count_after - master_read_count_before;
   if (enable_ysql_conn_mgr) {
-    ASSERT_EQ(rebuild_delta, 7);
+    ASSERT_GE(rebuild_delta, 6);
+    ASSERT_LE(rebuild_delta, 7);
   } else {
     ASSERT_GE(rebuild_delta, 5);
     ASSERT_LE(rebuild_delta, 6);

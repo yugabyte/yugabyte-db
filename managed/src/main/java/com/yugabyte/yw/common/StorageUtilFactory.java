@@ -10,8 +10,9 @@ public class StorageUtilFactory extends CloudUtilFactory {
   private final NFSUtil nfsUtil;
 
   @Inject
-  public StorageUtilFactory(AWSUtil awsUtil, NFSUtil nfsUtil, GCPUtil gcpUtil, AZUtil azUtil) {
-    super(awsUtil, gcpUtil, azUtil);
+  public StorageUtilFactory(
+      AWSUtil awsUtil, NFSUtil nfsUtil, GCPUtil gcpUtil, AZUtil azUtil, OCIUtil ociUtil) {
+    super(awsUtil, gcpUtil, azUtil, ociUtil);
     this.nfsUtil = nfsUtil;
   }
 
@@ -20,6 +21,7 @@ public class StorageUtilFactory extends CloudUtilFactory {
       case Util.S3:
       case Util.AZ:
       case Util.GCS:
+      case Util.OCI:
         return getCloudUtil(configType);
       case Util.NFS:
         return nfsUtil;

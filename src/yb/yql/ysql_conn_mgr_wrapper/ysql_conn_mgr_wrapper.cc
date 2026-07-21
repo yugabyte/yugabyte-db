@@ -17,6 +17,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags/flags_callback.h"
+#include "yb/util/format.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/path_util.h"
@@ -82,7 +83,7 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_server_lifetime, 3600,
     "is reached, the connection is automatically closed, regardless of activity, ensuring that "
     "fresh backend connections are regularly maintained.");
 
-DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, max_prepared_statements, 500,
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, max_prepared_statements, 100,
     "Soft limit on prepared statements per server connection. When the limit is exceeded, the"
     "least recently used statements are closed on the backend. This is enforced periodically at "
     "connection detach points, so the actual count may temporarily exceed this value. Set to 0 "
@@ -121,11 +122,11 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_readahead_buffer_size, 8192,
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive, 15,
     "TCP keepalive time in Ysql Connection Manager. Set to zero, to disable keepalive");
 
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_keep_interval, 75,
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_keep_interval, 20,
     "TCP keepalive interval in Ysql Connection Manager. This is applicable if "
     "'ysql_conn_mgr_tcp_keepalive' is enabled.");
 
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_probes, 9,
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_probes, 4,
     "TCP keepalive probes in Ysql Connection Manager. This is applicable if "
     "'ysql_conn_mgr_tcp_keepalive' is enabled.");
 

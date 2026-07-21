@@ -3,9 +3,9 @@
 --
 
 -- create tables
-CREATE TABLE pctest1(k int, a int, b int, c int, d text, primary key(k asc));
+CREATE TABLE pctest1(k int, a int, b int, c int, d text, primary key(k asc)) SPLIT AT VALUES ((300), (900));
 CREATE TABLE pctest2(k int, a int, b int, c int, d text, primary key(k asc));
-CREATE UNIQUE INDEX ON pctest1(a asc);
+CREATE UNIQUE INDEX ON pctest1(a asc) SPLIT AT VALUES ((100), (700));
 CREATE INDEX ON pctest1(c asc);
 CREATE INDEX ON pctest2(b asc);
 INSERT INTO pctest1
@@ -62,9 +62,22 @@ SELECT * FROM pctest1 WHERE k < 10;
 
 /*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
+SELECT * FROM pctest1 WHERE k > 950;
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 WHERE k > 950;
+
+-- with sort
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off)
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k;
 /*+ Parallel(pctest1 2 hard) */
 SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k;
+
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off)
+SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k DESC;
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k DESC;
 
 --secondary index
 /*+ Parallel(pctest1 2 hard) */
@@ -74,11 +87,19 @@ SELECT * FROM pctest1 WHERE c = 10;
 SELECT * FROM pctest1 WHERE c = 10;
 
 --secondary index
+set enable_sort to false;
 /*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
 SELECT * FROM pctest1 ORDER BY a LIMIT 10;
 /*+ Parallel(pctest1 2 hard) */
 SELECT * FROM pctest1 ORDER BY a LIMIT 10;
+
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off)
+SELECT * FROM pctest1 ORDER BY a DESC LIMIT 10;
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 ORDER BY a DESC LIMIT 10;
+reset enable_sort;
 
 -- with aggregates
 /*+ Parallel(pctest1 2 hard) */

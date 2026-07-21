@@ -178,15 +178,22 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
           "yb_read_time cannot be set while LISTEN is active");
       stmt.execute("UNLISTEN *");
 
-      // 4. LISTEN is rejected when yb_read_time is set inside an open transaction.
+      // 4. LISTEN is rejected inside a transaction when yb_read_time was set at the
+      //    session level. yb_disable_catalog_version_check is set first so that the setting
+      //    yb_read_time is allowed inside a transaction.
       stmt.execute("BEGIN");
+      stmt.execute("SET yb_disable_catalog_version_check TO true");
       stmt.execute("SET yb_read_time TO " + t1);
       assertExecuteFails(stmt, "LISTEN " + CHANNEL,
           "LISTEN is not allowed in a time travel session");
       stmt.execute("ROLLBACK");
+      stmt.execute("SET yb_read_time TO 0");
 
       // 5. yb_read_time cannot be set when LISTEN is pending inside a transaction.
+      //    yb_disable_catalog_version_check is set first so that the setting yb_read_time is
+      //    allowed inside a transaction.
       stmt.execute("BEGIN");
+      stmt.execute("SET yb_disable_catalog_version_check TO true");
       stmt.execute("LISTEN " + CHANNEL);
       assertExecuteFails(stmt, "SET yb_read_time TO " + t1,
           "yb_read_time cannot be set while LISTEN is active");
@@ -198,7 +205,10 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       stmt.execute("UNLISTEN *");
 
       // 7. yb_read_time cannot be set when LISTEN was issued in a committed subtransaction.
+      //    yb_disable_catalog_version_check is set first so that the setting yb_read_time is
+      //    allowed inside a transaction.
       stmt.execute("BEGIN");
+      stmt.execute("SET yb_disable_catalog_version_check TO true");
       stmt.execute("SAVEPOINT sp1");
       stmt.execute("LISTEN " + CHANNEL);
       stmt.execute("RELEASE SAVEPOINT sp1");

@@ -85,6 +85,8 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+#include "ybgate/ybgate_api.h"
+
 using namespace std::literals;
 
 DECLARE_bool(ysql_disable_index_backfill);
@@ -1487,7 +1489,8 @@ Status PgsqlWriteOperation::InsertColumn(
     return DoInsertColumn(data, column_id, column, value, pack_context);
   }
 
-  dockv::DocVectorValue vector_value(value, vector_index::VectorId::GenerateRandom());
+  dockv::DocVectorValue vector_value(
+    doc_read_context_->vector_value_format(), value, vector_index::VectorId::GenerateRandom());
   return DoInsertColumn(data, column_id, column, vector_value, pack_context);
 }
 
@@ -1550,6 +1553,11 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
       key_bytes.AppendRawBytes(*it++);
       auto key = key_bytes.AsSlice();
       Slice packed_value(*it++);
+      // TODO(vector_index): This pass-through writes the pggate-packed row (from BindPackedRow)
+      // directly without intercepting vector columns. Vector columns won't get a VectorId
+      // assigned. When owns_vector_reverse_mapping tables are enabled, vector columns must be
+      // intercepted here (e.g. by falling through to the unpack-repack path below for tables
+      // with vectors).
       if (pack_row &&
           packed_value.size() < dockv::PackedSizeLimit(FLAGS_ysql_packed_row_size_limit)) {
         RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
@@ -1663,7 +1671,9 @@ Status PgsqlWriteOperation::UpdateColumn(
     return DoUpdateColumn(data, column_id, column, result->Value(), pack_context);
   }
 
-  dockv::DocVectorValue vector_value(result->Value(), vector_index::VectorId::GenerateRandom());
+  dockv::DocVectorValue vector_value(
+      doc_read_context_->vector_value_format(), result->Value(),
+      vector_index::VectorId::GenerateRandom());
   return DoUpdateColumn(data, column_id, column, vector_value, pack_context);
 }
 
@@ -2153,6 +2163,8 @@ class PgsqlReadRequestYbctidProvider {
       PgsqlResponseMsg& response)
       : request_(request), response_(response) {
     const auto& batch_args = request_.batch_arguments();
+
+    VLOG_WITH_FUNC(3) << "batch_args.size(): " << batch_args.size();
 
     Slice min_arg;
     Slice max_arg;

@@ -8,37 +8,29 @@ There may be some exceptions where appropriate such as `collate.icu.utf8.sql` an
 
 ## Confidentiality — never leak customer data, YugabyteDB secrets, or PII
 
-The `yugabyte/yugabyte-db` repo is public. Every GitHub issue, PR, comment, commit message, code comment, **test file, test fixture, golden output**, and file name landed on it is read by anyone on the internet, and indexed by search engines. **Phorge is also treated as public** — diff titles, summaries, test plans, inline comments, and the code/tests attached to a diff must follow the same rules as the public repo (the title, summary, test plan, and test code land on the public repo verbatim when upstreamed anyway). **Treat anything you (the agent) write that lands in a public destination — the public repo, public GitHub issues/PRs/comments, Phorge diffs, public mailing lists, public Slack channels, public gists — as permanent and unretractable.** Confidential material must never appear in those destinations. This rule is non-negotiable and overrides convenience — if following it means writing a slower synthetic reproducer instead of pasting the customer's repro, write the synthetic reproducer.
+The `yugabyte/yugabyte-db` repo is public, and **Phorge is treated as public too** (diff titles, summaries, test plans, and attached code land on the public repo verbatim when upstreamed). Anything you write to a public destination — repo, issues, PRs, comments, commit messages, Phorge diffs, mailing lists, public Slack, gists — is permanent and unretractable. This rule overrides convenience: if it means writing a slower synthetic reproducer instead of pasting the customer's repro, write the synthetic reproducer.
 
-**Internal destinations are different.** Direct chat with the user, internal JIRA tickets, internal Slack threads, and internal support cases are appropriate places to discuss customer specifics with the user — quote the customer name, paste the real schema, attach the real log if needed. The rule below is about what crosses into a public artifact, not about what you tell the human you're working with.
+Internal destinations are different: direct chat with the user, internal JIRA, internal Slack, and support cases are fine places to discuss customer specifics. The rules below are about what crosses into a public artifact.
 
-**Never write any of the following into a GitHub issue title/body/comment, PR title/description/comment, Phorge diff title/summary/test plan/comment, commit subject or body, code or test comment, test code, test fixture, test data file, golden output file, log example, fixture YAML, mock response, branch name, or file name:**
+**Never write any of the following into any public artifact — including test code, test fixtures, test data, golden outputs, code comments, branch names, and file names, not just prose:**
 
-- **Customer-identifying information** — company names, account IDs, universe/cluster UUIDs or names, environment names, region/zone names tied to a customer deployment, or any string that ties a behavior back to a specific customer. Substitute with `customer-1`, `acme-corp`, a generic description, or omit. This includes filenames and branch names: do **not** name a test `test_repro_acme_orders.cc`, and do **not** name a branch `fix-acme-replication-lag` — the branch name becomes the public PR head ref (see "Branch names are public too" below).
-- **PII** — real emails, names, phone numbers, postal addresses, real IP addresses (public **or** private — a customer's `10.x` address is still theirs). In tests, use only the documentation ranges: IPv4 `192.0.2.0/24` / `198.51.100.0/24` / `203.0.113.0/24` (RFC 5737), IPv6 `2001:db8::/32` (RFC 3849), hostnames `example.com` / `example.org` / `example.net` (RFC 2606), names `Alice`/`Bob`/`Carol`, phone numbers `555-0100`–`555-0199`.
-- **Unanonymized customer schemas, queries, plans, or data** — table names, column names, query text, query plans (including `EXPLAIN` output), sample rows, JSON payloads, or any byte taken from a real customer. Reconstruct a minimal reproducer with synthetic identifiers (`t1`, `users`, `id`, `value`) that demonstrates the same defect. Renaming a single column is **not** anonymization if the rest of the schema is intact and recognizable.
-- **Secrets and credentials** — API keys, tokens, passwords, TLS certificates, private keys, license keys, kubeconfigs, production S3 bucket names, internal-only Slack/JIRA/Linear URLs, internal hostnames, vault paths. This includes test fixtures: don't bake a real-looking access key into a mock — use obvious placeholders like `AKIAIOSFODNN7EXAMPLE` (AWS docs example) or `dummy_token`.
+- **Customer-identifying information** — company names, account IDs, universe/cluster UUIDs or names, environment names, region/zone names tied to a customer deployment, or any string that ties a behavior back to a specific customer. Substitute with `customer-1`, `acme-corp`, a generic description, or omit.
+- **PII** — real emails, names, phone numbers, postal addresses, real IP addresses (public **or** private — a customer's `10.x` address is still theirs). Use only documented public ranges: IPv4 `192.0.2.0/24` / `198.51.100.0/24` / `203.0.113.0/24` (RFC 5737), IPv6 `2001:db8::/32` (RFC 3849), hostnames `example.com`/`.org`/`.net` (RFC 2606), names `Alice`/`Bob`/`Carol`, phones `555-0100`–`555-0199`.
+- **Unanonymized customer schemas, queries, plans, or data** — table names, column names, query text, `EXPLAIN` output, sample rows, JSON payloads, or any byte taken from a real customer. Reconstruct a minimal reproducer with synthetic identifiers (`t1`, `users`, `id`, `value`). Renaming a single column is **not** anonymization if the rest of the schema is recognizable.
+- **Secrets and credentials** — API keys, tokens, passwords, TLS certificates, private keys, license keys, kubeconfigs, production S3 bucket names, internal-only Slack/JIRA/Linear URLs, internal hostnames, vault paths. In fixtures use obvious placeholders like `AKIAIOSFODNN7EXAMPLE` (AWS docs example) or `dummy_token`.
 - **YugabyteDB-internal information not yet public** — unreleased roadmap details, internal SLAs, embargoed security findings, internal infra hostnames.
 
-### Tests are not exempt
+Common leak paths that slip past a scrub of the prose:
 
-It is a common mistake to think "the test file isn't the PR description, so the customer's data is fine here." It is not fine. The test file is checked into the public repo, indexed, and stays there forever. **Every example value in a test must either be obviously synthetic or pulled from a documented public range (RFC 5737/3849/2606, AWS `EXAMPLE` keys, etc.).** Specifically:
+- **Tests are not exempt.** A test file is checked into the public repo, indexed, and stays there forever. Every example value must be obviously synthetic or from a documented public range. If the customer hit the bug on `orders_2024_q3` with column `pii_email_addr`, the test uses `t` with column `email`. `// repro for ACME's outage on 2026-04-12` leaks the customer — write `// repro for replication-lag regression (see PLAT-20518)`.
+- **File and test names.** `test_acme_replication_lag.cc` leaks the customer in `git log` even if every byte of the body is sanitized.
+- **Golden outputs, log fixtures, stack traces.** Output captured from a customer system almost certainly contains an identifying hostname, IP, UUID, path, or schema name. Regenerate by running the synthetic reproducer locally; don't paste the customer's capture.
+- **Branch names.** A branch name isn't stored in any commit, so it slips past every diff scrub — then becomes the PR's public head ref (PR page, URL, refs) the moment it's pushed. Name the branch after the change, not the customer: `fix-replication-lag` or `gh-31609`, never `fix-acme-replication-lag`. Rename with `git branch -m <new-name>` before pushing.
 
-- **Schema in tests** — rename every table and column. If the customer hit the bug on `orders_2024_q3` with column `pii_email_addr`, the test should use `t` with column `email` (or `c1` if the name is incidental to the bug).
-- **Data in tests** — replace real emails with `user@example.com`, real names with `Alice`/`Bob`, real IPs with `192.0.2.1`, real phone numbers with `555-0100`–`555-0199` (the documentation range), real UUIDs with `10000000-2000-3000-4000-000000000005`.
-- **File and test names** — don't embed a customer identifier in the filename, test name, or test fixture path. `test_acme_replication_lag.cc` leaks the customer's name in `git log` even if every byte of the body is sanitized.
-- **Code comments** — `// repro for ACME's outage on 2026-04-12` leaks the customer. Write `// repro for replication-lag regression (see PLAT-20518)` instead.
-- **Golden output and log fixtures** — output captured from a customer system almost certainly contains a hostname, IP, UUID, or schema name that identifies them. Regenerate the golden file by running the synthetic reproducer locally; don't paste the customer's log.
-- **Stack traces and crash dumps** — paths like `/home/yugabyte/acme-prod-1/...` or hostnames in frames leak the source. Re-run locally and capture a clean trace.
+When the source material is a customer report:
 
-### Branch names are public too
-
-A branch name is never stored inside a commit, so it slips past every scrub of the diff, commit messages, and test code — and then leaks anyway the moment the branch is published. When you push to a fork and open a PR, the branch name becomes the PR's **head ref**: it shows on the PR page, in the PR URL, and in the repo's refs; a committer who pushes a branch straight to `yugabyte/yugabyte-db` publishes it directly. **Name the branch after the change, not the customer.** `fix-acme-replication-lag` or `acme-orders-oom` leaks the customer — use `fix-replication-lag`, or reference a public issue / ticket number (`gh-31609`, `plat-20518`). If a branch with a customer name already exists, rename it with `git branch -m <new-name>` before it is pushed.
-
-### When the source material is a customer report
-
-1. Read the original report from the internal source (JIRA, support ticket, Slack thread) — never paste or link it from a public artifact (issue, PR, diff, commit, code comment).
-2. Reproduce the defect locally with synthetic inputs (synthetic schema, synthetic data, synthetic cluster names).
+1. Read the original report from the internal source (JIRA, support ticket, Slack thread) — never paste or link it from a public artifact.
+2. Reproduce the defect locally with synthetic inputs (synthetic schema, data, cluster names).
 3. Land only the synthetic reproducer in the test, the PR description, and the commit message.
 4. Reference the issue by internal ticket ID only (e.g., `PLAT-20518`); don't quote customer-facing text from the ticket.
 5. If the bug is impossible to reproduce without customer-specific state, **stop and ask the user** — don't paste the state into a public artifact as a workaround.
@@ -63,18 +55,18 @@ Before running `create-pr.sh`, `arc diff --create`, `gh pr comment`, `gh issue c
 This repo **squash-merges** every PR, so the per-commit history of a branch is purely a review aid — reviewers read each commit independently to follow the change. Optimize for that:
 
 - **Always add a new commit** for follow-up work (lint fixes, review feedback, additional changes). Do **not** `git commit --amend` an existing commit on a branch that has been pushed.
-- **Batch related changes into one commit; don't split per-file, per-comment, or per-round.** A new commit should mark a distinct logical unit of work, not a step in a single response to review. If a review pass surfaces five suggestions and you're applying four of them, that's one commit (`Address review feedback: <one-line summary>`) — not four. If a lint warning slipped into the prior commit, fold the fix into the *next* logical commit you'd push anyway rather than emitting a standalone `Fix lint` commit. The squash-merge collapses everything at merge time, but the PR-level history is what reviewers read; many tiny commits make that harder, not easier.
-- **Don't collapse commits locally yourself** (no `git rebase -i ... squash`, no hand-merging two commits into one). Each follow-up should stay as its own commit so reviewers can read it independently; the squash happens automatically at merge time on GitHub.
-- The first commit on a branch can carry the PR's overall message style; subsequent commits should have short, scoped subject lines (`Fix lint warnings`, `Address review: rename foo to bar`) so reviewers can tell what each commit is for.
-- **`## Upgrade/Rollback safety` section in PR descriptions.** Required for any change that affects upgrade-rollback compatibility — wire-format (`.proto`) changes, gflag default flips that alter observable behavior, catalog schema bumps, on-disk-format changes, RPC-versioning tweaks, migration scripts. The section must spell out forward/backward behavior on a mixed-version cluster and what rollback looks like. `create-pr.sh` enforces this mechanically for `.proto` file changes (`exit 1` if missing). For non-proto upgrade-relevant changes the rule is soft — include the section anyway; reviewers should ask for it.
-- **PR titles must match `[<issue>] <Component>: <Title>`.** `<issue>` is `#NNNN` for GitHub issues or `PROJECT-NNN` for JIRA. `<Component>` is one of `DocDB`, `YSQL`, `YCQL`, `YBA`, `CDC`, `xCluster`, `yugabyted`, `Docs`, `ClaudeCode`, `Build` (or another component agreed with the team). `create-pr.sh` enforces this format mechanically — invalid titles abort with `exit 1` before any push or PR creation. Backport titles produced by `backport-commit.sh` keep the same shape with a `[BACKPORT <release-branch>]` prefix.
-- **Always push via `.agents/scripts/git-push.sh`** — never via raw `git push`. The helper integrates any commits already on the fork branch, rebases onto the latest upstream `<base>`, runs lint, and force-pushes (`--force-with-lease`) since the rebase rewrote SHAs. Direct `git push` is **deny-listed** in `.claude/settings.json` so the only path to publishing a commit is through this helper. (The deny only applies to `Bash` invocations the agent makes; `git-push.sh`'s internal `git push` runs as a subprocess and is unaffected.) Force-pushing is the expected behavior of every push; don't try to avoid it. Reviewers' line comments may flip to "outdated" after a rebase that touches their lines — that's the accepted tradeoff for keeping the branch current with master.
-- **Keep the PR summary in sync — automatically.** After pushing follow-up commits to an existing PR, evaluate the new commits against the existing body. If they **change scope, change approach, or invalidate the test plan**, update the body directly via the `gh api -X PATCH` template that `git-push.sh` prints. **Do not ask the user for permission first** — the rules in this list determine when an update is needed; if they apply, just apply them. Leave the summary alone for lint fixes, typo fixes, comment-only edits, and pure-refactor commits that don't shift what the PR claims to do (these are common enough that asking each time is annoying). **Edit the cached body file with the Edit tool, not `python3`/`sed`/`awk` shell-outs.** Workflow: `gh pr view <num> -R <repo> --json body -q .body > /tmp/claude/pr-body-<num>.md` (allowed via `gh pr view`), then use the Edit tool on that path (allowed via `Edit(/tmp/claude/**)`), then `jq -Rs '{body: .}' < ... | gh api -X PATCH /repos/<repo>/pulls/<num> --input -` (both allowed). `python3 -c '...'` is *not* allowlisted (intentionally — too broad) and will prompt every time.
-- **Keep the PR title in sync — sparingly.** `git-push.sh` also surfaces the current title alongside the new commits. Update the title **only when the new commits would make the existing title misleading** — e.g., the component changed (`DocDB` → `YBA`), the work expanded substantially beyond what the title claims, or the issue reference is wrong. **Do not retitle for refinements within the existing scope, added tests, or rewordings for taste** — title churn invalidates GitHub notifications, breaks bookmarks, and creates review-tool noise. Title format must still match `[<issue>] <Component>: <Title>`. Update via `gh api -X PATCH /repos/<repo>/pulls/<num> -f title='<new title>'` (allowed via the same scoped pulls PATCH rule the body update uses). Don't ask the user first; the "misleading vs. refinement" call is yours.
+- **Batch related changes into one commit; don't split per-file, per-comment, or per-round.** Applying four review suggestions is one commit (`Address review feedback: <one-line summary>`), not four. Fold a stray lint fix into the next logical commit rather than emitting a standalone `Fix lint` commit.
+- **Don't collapse commits locally yourself** (no `git rebase -i ... squash`, no hand-merging commits). The squash happens automatically at merge time on GitHub.
+- The first commit on a branch can carry the PR's overall message style; subsequent commits should have short, scoped subject lines (`Fix lint warnings`, `Address review: rename foo to bar`).
+- **`## Upgrade/Rollback safety` section in PR descriptions.** Required for any change that affects upgrade-rollback compatibility — wire-format (`.proto`) changes, gflag default flips that alter observable behavior, catalog schema bumps, on-disk-format changes, RPC-versioning tweaks, migration scripts. Spell out forward/backward behavior on a mixed-version cluster and what rollback looks like. `create-pr.sh` enforces this mechanically for `.proto` changes; for other upgrade-relevant changes the rule is soft — include the section anyway.
+- **PR titles must match `[<issue>] <Component>: <Title>`.** `<issue>` is `#NNNN` for GitHub issues or `PROJECT-NNN` for JIRA. `<Component>` is one of `DocDB`, `YSQL`, `YCQL`, `YBA`, `CDC`, `xCluster`, `yugabyted`, `Docs`, `ClaudeCode`, `Build` (or another component agreed with the team). `create-pr.sh` enforces this mechanically. Backport titles keep the same shape with a `[BACKPORT <release-branch>]` prefix.
+- **Always push via `.agents/scripts/git-push.sh`** — never via raw `git push` (deny-listed in `.claude/settings.json`). The helper integrates commits already on the fork branch, rebases onto the latest upstream `<base>`, runs lint, and force-pushes (`--force-with-lease`). Force-pushing is the expected behavior of every push; don't try to avoid it.
+- **Keep the PR summary in sync — automatically.** After pushing follow-up commits, update the PR body if they **change scope, change approach, or invalidate the test plan** — don't ask the user first; these rules determine when an update is needed. Leave it alone for lint fixes, typos, comment-only edits, and pure refactors. Command mechanics: [.agents/docs/pr-metadata-sync.md](../.agents/docs/pr-metadata-sync.md).
+- **Keep the PR title in sync — sparingly.** Update the title **only when the new commits make it misleading** (component changed, scope expanded substantially, wrong issue reference) — not for refinements, added tests, or rewordings; title churn invalidates notifications and creates review noise. The "misleading vs. refinement" call is yours. Same mechanics doc as above.
 
 ## Agent signature on automated output
 
-Whenever you (the agent) **autonomously author** any of the following, append the signature block below at the end:
+Whenever you (the agent) **autonomously author** any of the following, append the signature block below at the end, so humans skimming the PR or `git log` can tell agent-authored output from a teammate's:
 
 - A reply to a PR review comment (`gh api -X POST .../comments/<id>/replies`).
 - A standalone PR conversation comment (`gh pr comment ...`).
@@ -85,13 +77,7 @@ Whenever you (the agent) **autonomously author** any of the following, append th
 _automated · <agent>_
 ```
 
-Substitute `<agent>` with your own identifier — e.g. `Claude Code (Opus 4.7)`, `Cursor`, `Codex`, `Aider`. Use the most specific identifier you can (model name + harness) so a reader can tell which agent wrote the line. If you don't know your model, the harness name alone (`Claude Code`, `Cursor`, etc.) is fine.
-
-**Skip the signature on:**
-- The commit subject line (one-liner stays terse).
-- Direct chat with the user (not an automated post).
-
-The point is to make agent-authored output legible to humans skimming the PR or `git log` — so reviewers know whether a comment is a teammate's nuance or a bot's heuristic, and so blame on a commit reflects that an agent drafted it.
+Substitute `<agent>` with the most specific identifier you have (model name + harness, e.g. `Claude Code (Opus 4.7)`); the harness name alone is fine if you don't know your model. Skip the signature on the commit subject line and in direct chat with the user.
 
 ## Reviewing commits
 
@@ -112,35 +98,28 @@ After addressing review comments in follow-up commits, follow these rules:
 
 ## Scratch files
 
-Write temporary files (PR bodies, commit messages, lint logs, etc.) to **`/tmp/claude/`** rather than `/tmp/` directly. The folder is allowlisted in `.claude/settings.json` for `Read`, `Write`, `Edit`, and `Bash(cat > /tmp/claude/*)` / `Bash(mkdir -p /tmp/claude*)`, so writes there don't trigger a permission prompt. Pick a filename that disambiguates across concurrent uses (include the issue number, PR number, or task name — e.g. `/tmp/claude/pr-body-31407.md`, not `/tmp/claude/body.md`). Run `mkdir -p /tmp/claude` once if it doesn't exist.
+Write temporary files (PR bodies, commit messages, lint logs, etc.) to **`/tmp/claude/`** rather than `/tmp/` directly — the folder is allowlisted in `.claude/settings.json` for `Read`, `Edit`, and the common `Bash` write patterns, so writes there don't trigger a permission prompt. Pick a filename that disambiguates across concurrent uses (e.g. `/tmp/claude/pr-body-31407.md`, not `/tmp/claude/body.md`). Run `mkdir -p /tmp/claude` once if it doesn't exist.
 
-## Build Prerequisites for Claude Code
+## C++ style
 
-Before building YugabyteDB in a Claude Code session, install the following dependencies:
+- Use `yb::Thread` instead of `std::thread`.
+- In tests, use `TestThreadHolder` instead of manually managed vectors of threads.
+- In tests, prefer `ASSERT_*` macros over `EXPECT_*` macros when possible.
+- Keep lists of `DECLARE_xxx(yyy)` flag declarations in alphabetical order.
+- Keep lists of forward declarations in alphabetical order.
 
-- **CMake >= 3.31** — Ubuntu 24.04's default apt package is too old (3.28). Install via pip:
-  ```bash
-  pip3 install 'cmake>=3.31'
-  ```
-- **rsync**
-- **gettext** (provides `msgfmt`, required by postgres NLS configure)
-- **en_US.UTF-8 locale** — required by `initdb`; minimal containers often lack it
+## Commit messages
 
-On Ubuntu/Debian (`apt-get` has DNS issues in Claude Code web sessions — use `curl` + `dpkg` instead):
-```bash
-sudo locale-gen en_US.UTF-8
-pushd /tmp
-curl -L -o gettext-base.deb "http://archive.ubuntu.com/ubuntu/pool/main/g/gettext/gettext-base_0.21-14ubuntu2_amd64.deb"
-curl -L -o gettext.deb "http://archive.ubuntu.com/ubuntu/pool/main/g/gettext/gettext_0.21-14ubuntu2_amd64.deb"
-curl -L -o libpopt0.deb "http://archive.ubuntu.com/ubuntu/pool/main/p/popt/libpopt0_1.19+dfsg-1build1_amd64.deb"
-curl -L -o rsync.deb "http://security.ubuntu.com/ubuntu/pool/main/r/rsync/rsync_3.2.7-1ubuntu1.2_amd64.deb"
-sudo dpkg -i gettext-base.deb gettext.deb libpopt0.deb rsync.deb
-popd
-```
+- Use backticks for method, class, and other code references.
+- Prefer `DocDB` over `docdb` as a component prefix.
+- When referencing other commits (for instance as the cause of a regression), use the form
+  `<COMMIT_HASH>/<DIFF_ID>`.
 
 ## Build System
 
 The primary build entry point is `yb_build.sh` at the repository root.
+Use only `yb_build.sh` for building and running tests; do not run `ninja`, `cmake`, or test
+binaries directly.
 
 Reuse existing build compiler/type if available (see `build/latest` symlink); default to `release` otherwise.
 
@@ -178,15 +157,23 @@ Further information is in [the docs page build-and-test](../docs/content/stable/
 
 ### C++ Tests
 
-```bash
-./yb_build.sh release --cxx-test tablet-test
+To build a test binary without running it:
 
+```bash
+./yb_build.sh release --target tablet-test
+```
+
+To run tests:
+
+```bash
 ./yb_build.sh release --cxx-test cluster_balance_preferred_leader-test --gtest_filter TestLoadBalancerPreferredLeader.TestBalancingMultiPriorityWildcardLeaderPreference
 
 ./yb_build.sh release --cxx-test cluster_balance_preferred_leader-test --gtest_filter "*Wildcard*"
 
 ./yb_build.sh release --cxx-test cluster_balance_preferred_leader-test -n 10
 ```
+
+Run one test per execution; do not use a `--gtest_filter` that matches more than one test.
 
 ### Java Tests
 

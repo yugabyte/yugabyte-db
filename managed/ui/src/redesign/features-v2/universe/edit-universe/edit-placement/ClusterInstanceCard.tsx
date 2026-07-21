@@ -96,7 +96,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
   );
 
   const countTotalNodes = (placementRegion: PlacementRegion) => {
-    if (dedicatedFromSpec) {
+    if (dedicatedFromSpec && !isReadReplicaCluster) {
       const { tserver, master } = getDedicatedCountsForPlacementRegion(
         universeData!,
         placementRegion,
@@ -132,23 +132,27 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
         />
       );
     }
-
+    const columns = [
+      { accessorKey: 'name', header: t('availabilityZone') },
+      {
+        accessorKey: 'tServers',
+        header: t('tServers'),
+        Cell: ({ row: azRow }: any) => azRow.original?.num_nodes_in_az ?? 0
+      }
+    ];
+    if(!isReadReplicaCluster) {
+      columns.push(
+        {
+          accessorKey: 'masters',
+          header: t('masters'),
+          Cell: ({ row: azRow }: any) =>
+            countMasterNodesInAz(universeData!, azRow.original?.uuid)
+        }
+      );
+    }
     return (
       <YBTable
-        columns={[
-          { accessorKey: 'name', header: t('availabilityZone') },
-          {
-            accessorKey: 'tServers',
-            header: t('tServers'),
-            Cell: ({ row: azRow }: any) => azRow.original?.num_nodes_in_az ?? 0
-          },
-          {
-            accessorKey: 'masters',
-            header: t('masters'),
-            Cell: ({ row: azRow }: any) =>
-              countMasterNodesInAz(universeData!, azRow.original?.uuid)
-          }
-        ]}
+        columns={columns}
         data={((placementRegion.az_list as unknown) as Record<string, string>[]) ?? []}
         withBorder={false}
         options={{
@@ -332,7 +336,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
             {t('totalNodes')}
           </Typography>
           <StyledValue>
-            {dedicatedFromSpec
+            {dedicatedFromSpec && !isReadReplicaCluster
               ? t('totalNodesTServerMaster', {
                 total_nodes: dedicatedDisplayTotals.tserver + dedicatedDisplayTotals.master,
                 tservers: dedicatedDisplayTotals.tserver,

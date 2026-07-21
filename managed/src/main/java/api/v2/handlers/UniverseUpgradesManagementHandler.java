@@ -44,10 +44,9 @@ import api.v2.utils.ApiControllerUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -70,7 +69,6 @@ import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExportTelemetryConfig;
@@ -95,11 +93,21 @@ import play.mvc.Http.Request;
 @Singleton
 @Slf4j
 public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
-  @Inject public UpgradeUniverseHandler v1Handler;
-  @Inject public Commissioner commissioner;
-  @Inject private RuntimeConfGetter confGetter;
-  @Inject private TelemetryProviderService telemetryProviderService;
-  @Inject private SoftwareUpgradeHelper softwareUpgradeHelper;
+  private final UpgradeUniverseHandler v1Handler;
+  private final RuntimeConfGetter confGetter;
+  private final TelemetryProviderService telemetryProviderService;
+
+  @Inject
+  public UniverseUpgradesManagementHandler(
+      AuditService auditService,
+      UpgradeUniverseHandler v1Handler,
+      RuntimeConfGetter confGetter,
+      TelemetryProviderService telemetryProviderService) {
+    super(auditService);
+    this.v1Handler = v1Handler;
+    this.confGetter = confGetter;
+    this.telemetryProviderService = telemetryProviderService;
+  }
 
   public YBATask editGFlags(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags editGFlags)
@@ -109,7 +117,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     // get universe from db
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
-    GFlagsUpgradeParams v1Params = null;
+    GFlagsUpgradeParams v1Params;
     if (Util.isKubernetesBasedUniverse(universe)) {
       v1Params =
           UniverseDefinitionTaskParamsMapper.INSTANCE.toKubernetesGFlagsUpgradeParams(
@@ -143,7 +151,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     UniverseSoftwareUpgradeStartMapper.INSTANCE.copyToV1SoftwareUpgradeParams(
         upgradeStart, v1Params);
 
-    UUID taskUuid = null;
+    UUID taskUuid;
     if (upgradeStart.getAllowRollback()) {
       taskUuid = v1Handler.upgradeDBVersion(v1Params, customer, universe);
     } else {
@@ -181,10 +189,8 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     Universe.getOrBadRequest(uniUUID, customer);
 
     FinalizeUpgradeInfoResponse v1Resp = v1Handler.finalizeUpgradeInfo(cUUID, uniUUID);
-    UniverseSoftwareUpgradeFinalizeInfo info =
-        UniverseSoftwareFinalizeRespMapper.INSTANCE.toV2UniverseSoftwareFinalizeInfo(v1Resp);
 
-    return info;
+    return UniverseSoftwareFinalizeRespMapper.INSTANCE.toV2UniverseSoftwareFinalizeInfo(v1Resp);
   }
 
   public YBATask startThirdPartySoftwareUpgrade(
@@ -233,8 +239,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     UUID taskUuid = v1Handler.resumeCanarySoftwareUpgrade(cUUID, uniUUID, req.getTaskUuid());
-    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
-    return ybaTask;
+    return new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
   }
 
   public UniverseSoftwareUpgradePrecheckResp precheckSoftwareUpgrade(
@@ -254,7 +259,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
       throws JsonProcessingException {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
-    UUID taskUuid = null;
+    UUID taskUuid;
     if (uniRestart == null) {
       uniRestart = new UniverseRestart();
     }
@@ -383,8 +388,12 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
     log.info("Configure metrics export for universe with v2 spec: {}", prettyPrint(req));
+
+    // Current telemetry config from the export_telemetry_config table (source of truth), falling
+    // back to the synced userIntent copies. Used both to detect a no-op and to preserve the audit,
+    // query and master-log configs that this metrics-only request must not clobber.
+    TelemetryConfig currentTelemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
 
     MetricsExportConfigParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toMetricsExportConfigParams(
@@ -395,18 +404,13 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
 
     // Verify if the metrics export payload is same as existing metrics export config.
     if (v1Params.getMetricsExportConfig() != null
-        && v1Params.getMetricsExportConfig().equals(userIntent.metricsExportConfig)) {
+        && v1Params
+            .getMetricsExportConfig()
+            .equals(currentTelemetryConfig.getMetricsExportConfig())) {
       String errorMessage =
           String.format(
               "Metrics export config is same as existing config on universe '%s'.",
               universe.getUniverseUUID());
-      log.error(errorMessage);
-      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
-    }
-
-    // Block k8s universes from configuring metrics export for now.
-    if (Util.isKubernetesBasedUniverse(universe)) {
-      String errorMessage = "Metrics export is not supported for kubernetes based universes.";
       log.error(errorMessage);
       throw new PlatformServiceException(BAD_REQUEST, errorMessage);
     }
@@ -461,12 +465,11 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     ExportTelemetryConfigParams exportParams =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toExportTelemetryConfigParams(
             universeDetails, request);
-    // Override the metrics export config in the export params with the requested config.
-    exportParams.setTelemetryConfig(
-        TelemetryConfig.of(
-            exportParams.getAuditLogConfig(),
-            exportParams.getQueryLogConfig(),
-            v1Params.getMetricsExportConfig()));
+    // Start from the universe's current telemetry config (the ExportTelemetryConfig table is the
+    // single source of truth) and override only the metrics section being changed here, preserving
+    // the audit/query/master-log sections.
+    currentTelemetryConfig.setMetricsExportConfig(v1Params.getMetricsExportConfig());
+    exportParams.setTelemetryConfig(currentTelemetryConfig);
     exportParams.upgradeOption = v1Params.upgradeOption;
     UUID taskUUID = v1Handler.submitExportTelemetryConfigs(exportParams, customer, universe);
     log.info(
@@ -542,8 +545,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     if (stored == null) {
       return new api.v2.models.TelemetryConfig();
     }
-    return ExportTelemetryConfigMapper.toGenerated(
-        stored.getAuditLogConfig(), stored.getQueryLogConfig(), stored.getMetricsExportConfig());
+    return ExportTelemetryConfigMapper.toGenerated(stored);
   }
 
   private Set<UUID> extractAuditLogExporterUuids(ExportTelemetryConfigParams params) {

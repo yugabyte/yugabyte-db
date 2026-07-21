@@ -36,6 +36,8 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
 #include "yb/util/pstack_watcher.h"

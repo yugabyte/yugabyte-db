@@ -4,7 +4,7 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 ':explain'
 \set P2
@@ -15,17 +15,18 @@ SET enable_bitmapscan = true;
 SELECT $$
 :P :Q1 SELECT rolname FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
-                                                              QUERY PLAN                                                              
---------------------------------------------------------------------------------------------------------------------------------------
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(pg_authid) */ SELECT rolname FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
+                                                                                                                           QUERY PLAN                                                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort (actual rows=16 loops=1)
    Sort Key: rolname
    Sort Method: quicksort
    ->  YB Bitmap Table Scan on pg_authid (actual rows=16 loops=1)
          Storage Filter: ((rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
-         Recheck Cond: (((rolname >= 'pg'::text) AND (rolname < 'ph'::text)) OR ((rolname >= 'yb'::text) AND (rolname < 'yc'::text)))
+         Recheck Cond: (((rolname >= 'pg'::text) AND (rolname < 'ph'::text) AND ((rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))) OR ((rolname >= 'yb'::text) AND (rolname < 'yc'::text) AND ((rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))))
          ->  BitmapOr (actual rows=16 loops=1)
                ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=16 loops=1)
                      Index Cond: ((rolname >= 'pg'::text) AND (rolname < 'ph'::text))
@@ -35,6 +36,7 @@ $$ AS query \gset
                      Storage Index Filter: ((rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
 (13 rows)
 
+/*+ BitmapScan(pg_authid) */ SELECT rolname FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER BY rolname;
           rolname          
 ---------------------------
  pg_checkpoint
@@ -60,18 +62,21 @@ SELECT $$
 SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
-                                                                               QUERY PLAN                                                                               
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(pg_authid) */
+SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+    SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
+                                                                                                                                                                            QUERY PLAN                                                                                                                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Seq Scan on pg_tablespace (actual rows=0 loops=1)
    Filter: (NOT (hashed SubPlan 1))
    Rows Removed by Filter: 2
    SubPlan 1
      ->  YB Bitmap Table Scan on pg_authid (actual rows=17 loops=1)
            Storage Filter: ((rolname = 'postgres'::name) OR (rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
-           Recheck Cond: ((rolname = 'postgres'::name) OR ((rolname >= 'pg'::text) AND (rolname < 'ph'::text)) OR ((rolname >= 'yb'::text) AND (rolname < 'yc'::text)))
+           Recheck Cond: ((rolname = 'postgres'::name) OR ((rolname >= 'pg'::text) AND (rolname < 'ph'::text) AND ((rolname = 'postgres'::name) OR (rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))) OR ((rolname >= 'yb'::text) AND (rolname < 'yc'::text) AND ((rolname = 'postgres'::name) OR (rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))))
            ->  BitmapOr (actual rows=17 loops=1)
                  ->  Bitmap Index Scan on pg_authid_rolname_index (actual rows=1 loops=1)
                        Index Cond: (rolname = 'postgres'::name)
@@ -83,6 +88,9 @@ $$ AS query \gset
                        Storage Index Filter: ((rolname = 'postgres'::name) OR (rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
 (16 rows)
 
+/*+ BitmapScan(pg_authid) */
+SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+    SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
  spcname 
 ---------
 (0 rows)
@@ -93,9 +101,12 @@ SELECT $$
 SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(pg_authid) */
+SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+    SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
                                                                                QUERY PLAN                                                                               
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Seq Scan on pg_tablespace (actual rows=0 loops=1)
@@ -115,6 +126,9 @@ $$ AS query \gset
                        Index Cond: ((rolname >= 'yb'::text) AND (rolname < 'yc'::text))
 (15 rows)
 
+/*+ BitmapScan(pg_authid) */
+SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+    SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
  spcname 
 ---------
 (0 rows)

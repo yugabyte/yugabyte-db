@@ -46,6 +46,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 #include "yb/util/to_stream.h"
 #include "yb/util/trace.h"
 
@@ -282,6 +283,14 @@ void MvccManager::Replicated(HybridTime ht, const OpId& op_id) {
   YB_PROFILE(cond_.notify_all());
 }
 
+void MvccManager::StartShutdown() {
+  {
+    std::lock_guard lock(mutex_);
+    closing_ = true;
+  }
+  YB_PROFILE(cond_.notify_all());
+}
+
 void MvccManager::Aborted(HybridTime ht, const OpId& op_id) {
   VLOG_WITH_PREFIX(1) << __func__ << "(" << ht << ", " << op_id << ")";
 
@@ -452,10 +461,16 @@ void MvccManager::UpdatePropagatedSafeTimeOnLeader(const FixedHybridTimeLease& h
 
   {
     std::unique_lock<std::mutex> lock(mutex_);
-    auto safe_time = DoGetSafeTime(HybridTime::kMin,       // min_allowed
-                                   CoarseTimePoint::max(), // deadline
-                                   ht_lease,
-                                   &lock);
+    auto safe_time_result = DoGetSafeTime(HybridTime::kMin,       // min_allowed
+                                          CoarseTimePoint::max(), // deadline
+                                          ht_lease,
+                                          &lock);
+    // With an infinite deadline DoGetSafeTime only fails when the MvccManager is shutting down, in
+    // which case there is nothing to propagate (StartShutdown has already woken any waiters).
+    if (!safe_time_result.ok()) {
+      return;
+    }
+    auto safe_time = *safe_time_result;
 #ifndef NDEBUG
     // This should only be called from RaftConsensus::UpdateMajorityReplicated, and ht_lease passed
     // in here should keep increasing, so we should not see propagated_safe_time_ going backwards.
@@ -495,7 +510,7 @@ void MvccManager::SetLeaderOnlyMode(bool leader_only) {
 }
 
 // NO_THREAD_SAFETY_ANALYSIS because this analysis does not work with unique_lock.
-HybridTime MvccManager::SafeTimeForFollower(
+Result<HybridTime> MvccManager::SafeTimeForFollower(
     HybridTime min_allowed, CoarseTimePoint deadline) const NO_THREAD_SAFETY_ANALYSIS {
   std::unique_lock<std::mutex> lock(mutex_);
 
@@ -507,6 +522,9 @@ HybridTime MvccManager::SafeTimeForFollower(
 
   SafeTimeWithSource result;
   auto predicate = [this, &result, min_allowed] {
+    if (closing_) {
+      return true;
+    }
     // last_replicated_ is updated earlier than propagated_safe_time_, so because of concurrency it
     // could be greater than propagated_safe_time_.
     if (propagated_safe_time_ > last_replicated_) {
@@ -529,7 +547,10 @@ HybridTime MvccManager::SafeTimeForFollower(
   if (deadline == CoarseTimePoint::max()) {
     cond_.wait(lock, predicate);
   } else if (!cond_.wait_until(lock, deadline, predicate)) {
-    return HybridTime::kInvalid;
+    return STATUS_FORMAT(TimedOut, "Timed out waiting for follower safe time $0", min_allowed);
+  }
+  if (closing_) {
+    return STATUS(ShutdownInProgress, "MvccManager is shutting down");
   }
   VLOG_WITH_PREFIX(1) << "SafeTimeForFollower(" << min_allowed
                       << "), result = " << result.ToString();
@@ -553,7 +574,7 @@ HybridTime MvccManager::SafeTimeForFollower(
 }
 
 // NO_THREAD_SAFETY_ANALYSIS because this analysis does not work with unique_lock.
-HybridTime MvccManager::SafeTime(
+Result<HybridTime> MvccManager::SafeTime(
     HybridTime min_allowed,
     CoarseTimePoint deadline,
     const FixedHybridTimeLease& ht_lease) const NO_THREAD_SAFETY_ANALYSIS {
@@ -564,13 +585,13 @@ HybridTime MvccManager::SafeTime(
       .min_allowed = min_allowed,
       .deadline = deadline,
       .ht_lease = ht_lease,
-      .safe_time = safe_time
+      .safe_time = safe_time.ok() ? *safe_time : HybridTime::kInvalid
     });
   }
   return safe_time;
 }
 
-HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
+Result<HybridTime> MvccManager::DoGetSafeTime(const HybridTime min_allowed,
                                       const CoarseTimePoint deadline,
                                       const FixedHybridTimeLease& ht_lease,
                                       std::unique_lock<std::mutex>* lock) const {
@@ -589,6 +610,9 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
   HybridTime result;
   SafeTimeSource source = SafeTimeSource::kUnknown;
   auto predicate = [this, &result, &source, min_allowed, ht_lease, has_lease] {
+    if (closing_) {
+      return true;
+    }
     if (queue_.empty()) {
       result = ht_lease.time.is_valid()
           ? std::max(max_safe_time_returned_with_lease_.safe_time, ht_lease.time)
@@ -624,7 +648,10 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
   if (deadline == CoarseTimePoint::max()) {
     cond_.wait(*lock, predicate);
   } else if (!cond_.wait_until(*lock, deadline, predicate)) {
-    return HybridTime::kInvalid;
+    return STATUS_FORMAT(TimedOut, "Timed out waiting for safe time $0", min_allowed);
+  }
+  if (closing_) {
+    return STATUS(ShutdownInProgress, "MvccManager is shutting down");
   }
   VLOG_WITH_PREFIX_AND_FUNC(1)
       << "(" << min_allowed << ", " << ht_lease << "),  result = " << result;

@@ -361,6 +361,11 @@ TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressAlterTable) {
   ASSERT_OK(TestPgRegress({"alter_table.sql", "alter_table2.sql"}));
 }
 
+TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressAlterType) {
+  // Tests altering composite types.
+  ASSERT_OK(TestPgRegress({"alter_type.sql", "alter_type2.sql"}));
+}
+
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropPgOnlyDdls) {
   // Tests create and drop of pass through ddls that dont require special handling.
   ASSERT_OK(TestPgRegress({"pgonly_ddls_create.sql", "pgonly_ddls_drop.sql"}));

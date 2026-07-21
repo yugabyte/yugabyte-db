@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { mui, yba, YBTag, YBRadio, YBInput } from '@yugabyte-ui-library/core';
+import { Trans, useTranslation } from 'react-i18next';
+import { AlertVariant, mui, yba, YBAlert, YBTag, YBRadio, YBInput } from '@yugabyte-ui-library/core';
+import { ResizeUpdateOption } from '../../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 const { Box, Typography, styled } = mui;
 const { YBModal } = yba;
 
-type UpdateStrategy = 'rolling' | 'migrate';
+export type UpdateStrategy = 'rolling' | 'migrate';
+
+export interface ReviewHardwareConfirmPayload {
+  delaySeconds: number;
+  strategy: UpdateStrategy;
+}
 
 /** Keys for storage-related rows (volume count/size share one card). */
 export type ChangedHardwareStorageKey =
@@ -88,13 +94,30 @@ export const hardwareReviewSectionHasVisibleChanges = (
   next: HardwareReviewSummary
 ) => instanceTypeCodeChanged(current, next) || getChangedStorageKeys(current, next).length > 0;
 
+export const canUseRollingResize = (options: ResizeUpdateOption[] | undefined) =>
+  !!options?.includes(ResizeUpdateOption.SMART_RESIZE) ||
+  !!options?.includes(ResizeUpdateOption.SMART_RESIZE_NON_RESTART);
+
+export const canUseFullMove = (options: ResizeUpdateOption[] | undefined) =>
+  !!options?.includes(ResizeUpdateOption.FULL_MOVE);
+
+export const isNonRestartSmartResize = (options: ResizeUpdateOption[] | undefined) =>
+  !!options?.includes(ResizeUpdateOption.SMART_RESIZE_NON_RESTART) &&
+  !options?.includes(ResizeUpdateOption.SMART_RESIZE);
+
+export const pickDefaultStrategy = (options: ResizeUpdateOption[] | undefined): UpdateStrategy =>
+  canUseRollingResize(options) ? 'rolling' : 'migrate';
+
 interface ReviewHardwareChangesModalProps {
   visible: boolean;
   isSubmitting?: boolean;
   sections: HardwareReviewSection[];
   initialDelaySeconds?: number;
+  resizeOptions?: ResizeUpdateOption[];
+  isLoadingOptions?: boolean;
+  replicationFactor?: number;
   onClose: () => void;
-  onConfirm: (delaySeconds: number) => void;
+  onConfirm: (payload: ReviewHardwareConfirmPayload) => void;
 }
 
 const SectionContainer = styled(Box)(({ theme }) => ({
@@ -254,6 +277,9 @@ export const ReviewHardwareChangesModal = ({
   isSubmitting = false,
   sections,
   initialDelaySeconds = 240,
+  resizeOptions,
+  isLoadingOptions = false,
+  replicationFactor,
   onClose,
   onConfirm
 }: ReviewHardwareChangesModalProps) => {
@@ -264,17 +290,38 @@ export const ReviewHardwareChangesModal = ({
     keyPrefix: 'editUniverse.hardware'
   });
 
-  const [strategy, setStrategy] = useState<UpdateStrategy>('rolling');
+  const canRolling = canUseRollingResize(resizeOptions);
+  const canMigrate = canUseFullMove(resizeOptions);
+  const nonRestart = isNonRestartSmartResize(resizeOptions);
+  const isRf1 = (replicationFactor ?? 1) <= 1;
+  const onlyFullMove = canMigrate && !canRolling;
+  const onlyNonRestart = nonRestart && !canMigrate;
+  const showUpdateOptions = !onlyFullMove && !onlyNonRestart;
+
+  const [strategy, setStrategy] = useState<UpdateStrategy>(() => pickDefaultStrategy(resizeOptions));
   const [delaySecondsInput, setDelaySecondsInput] = useState(String(initialDelaySeconds));
 
   useEffect(() => {
     if (!visible) return;
-    setStrategy('rolling');
+    setStrategy(pickDefaultStrategy(resizeOptions));
     setDelaySecondsInput(String(initialDelaySeconds));
-  }, [visible, initialDelaySeconds]);
+  }, [visible, initialDelaySeconds, resizeOptions]);
+
+  useEffect(() => {
+    if (strategy === 'rolling' && !canRolling && canMigrate) {
+      setStrategy('migrate');
+    } else if (strategy === 'migrate' && !canMigrate && canRolling) {
+      setStrategy('rolling');
+    }
+  }, [strategy, canRolling, canMigrate]);
 
   const parsedDelaySeconds = useMemo(() => Number(delaySecondsInput), [delaySecondsInput]);
-  const isDelayValid = Number.isFinite(parsedDelaySeconds) && parsedDelaySeconds > 0;
+  const needsDelay = strategy === 'rolling' && !nonRestart && !isRf1;
+  const isDelayValid = !needsDelay || (Number.isFinite(parsedDelaySeconds) && parsedDelaySeconds > 0);
+  const hasValidStrategy =
+    (strategy === 'rolling' && canRolling) || (strategy === 'migrate' && canMigrate);
+  const isConfirmDisabled =
+    isSubmitting || isLoadingOptions || !hasValidStrategy || !isDelayValid;
 
   const sectionBlocks = useMemo(() => {
     return sections.map((section, sectionIdx) => {
@@ -296,12 +343,17 @@ export const ReviewHardwareChangesModal = ({
       overrideHeight={'fit-content'}
       dialogContentProps={{ sx: { padding: '24px !important' } }}
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
-      onSubmit={() => onConfirm(parsedDelaySeconds)}
+      onSubmit={() =>
+        onConfirm({
+          delaySeconds: needsDelay ? parsedDelaySeconds : initialDelaySeconds,
+          strategy
+        })
+      }
       submitLabel={t('confirmAndApply')}
       buttonProps={{
         primary: {
           dataTestId: 'edit-hardware-confirm-and-apply',
-          disabled: isSubmitting || !isDelayValid
+          disabled: isConfirmDisabled
         }
       }}
       titleSeparator
@@ -379,53 +431,112 @@ export const ReviewHardwareChangesModal = ({
             })}
           </Box>
         )}
-        <OptionsContainer>
-          <Typography variant="body1" fontWeight={600} sx={{ minWidth: '130px' }}>
-            {t('universeUpdateOptions')}
-          </Typography>
-          <Divider />
-          <Box flex={1} display="flex" flexDirection="column" gap={2.5}>
-            <Box>
-              <Box display="flex" alignItems="center" gap={1}>
-                <YBRadio
-                  dataTestId="hardware-rolling-restart"
-                  checked={strategy === 'rolling'}
-                  onChange={() => setStrategy('rolling')}
-                  value="rolling"
-                  size="small"
-                />
-                <OptionLabel>{t('rollingRestart')}</OptionLabel>
-                <YBTag size="small" variant="light">
-                  {t('fasterAndRecommended')}
-                </YBTag>
+        {onlyFullMove ? (
+          <YBAlert
+            open
+            variant={AlertVariant.Info}
+            text={
+              <Trans t={t} i18nKey="fullMoveInfo" components={{ strong: <strong /> }} />
+            }
+          />
+        ) : null}
+        {onlyNonRestart ? (
+          <YBAlert
+            open
+            variant={AlertVariant.Info}
+            text={
+              <Trans t={t} i18nKey="nonRestartInfo" components={{ strong: <strong /> }} />
+            }
+          />
+        ) : null}
+        {showUpdateOptions ? (
+          <OptionsContainer>
+            <Typography variant="body1" fontWeight={600} sx={{ minWidth: '130px' }}>
+              {t('universeUpdateOptions')}
+            </Typography>
+            <Divider />
+            <Box flex={1} display="flex" flexDirection="column" gap={2.5}>
+              <Box>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <YBRadio
+                    dataTestId="hardware-rolling-restart"
+                    checked={strategy === 'rolling'}
+                    onChange={() => setStrategy('rolling')}
+                    value="rolling"
+                    size="small"
+                    disabled={!canRolling || isLoadingOptions}
+                  />
+                  <OptionLabel>{t(isRf1 ? 'restartNodes' : 'rollingRestart')}</OptionLabel>
+                  {canRolling && !isRf1 ? (
+                    <YBTag size="small" variant="light">
+                      {t('fasterAndRecommended')}
+                    </YBTag>
+                  ) : null}
+                </Box>
+                {strategy === 'rolling' && canRolling ? (
+                  isRf1 ? (
+                    <Box pl={4} pt={1}>
+                      <YBAlert
+                        open
+                        variant={AlertVariant.Error}
+                        text={
+                          <Trans
+                            t={t}
+                            i18nKey="rollingRestartRf1Warning"
+                            components={{ strong: <strong /> }}
+                          />
+                        }
+                      />
+                    </Box>
+                  ) : (
+                    <Typography
+                      variant="subtitle1"
+                      color="textSecondary"
+                      sx={{ marginTop: '8px', marginLeft: '24px' }}
+                    >
+                      {t('rollingRestartDescription')}
+                    </Typography>
+                  )
+                ) : null}
+                {strategy === 'rolling' && canRolling && needsDelay ? (
+                  <Box display="flex" alignItems="center" gap={1} pl={3} pt={1}>
+                    <Typography variant="body2">{t('delayBetweenNodes')}</Typography>
+                    <YBInput
+                      size="small"
+                      dataTestId="hardware-delay-seconds-input"
+                      value={delaySecondsInput}
+                      onChange={(event) => setDelaySecondsInput(event.target.value)}
+                      sx={{ width: '96px', height: '32px' }}
+                      error={!isDelayValid}
+                      inputProps={{ 'data-testid': 'hardware-delay-seconds-input' }}
+                    />
+                    <Typography variant="body2">{t('seconds')}</Typography>
+                  </Box>
+                ) : null}
               </Box>
-              <Typography
-                variant="subtitle1"
-                color="textSecondary"
-                sx={{ marginTop: '8px', marginLeft: '24px' }}
-              >
-                {t('rollingRestartDescription')}
-              </Typography>
-              <Box display="flex" alignItems="center" gap={1} pl={3} pt={1}>
-                <Typography variant="body2">{t('delayBetweenNodes')}</Typography>
-                <YBInput
-                  size="small"
-                  dataTestId="hardware-delay-seconds-input"
-                  value={delaySecondsInput}
-                  onChange={(event) => setDelaySecondsInput(event.target.value)}
-                  sx={{ width: '96px', height: '32px' }}
-                  error={!isDelayValid}
-                  inputProps={{ 'data-testid': 'hardware-delay-seconds-input' }}
-                />
-                <Typography variant="body2">{t('seconds')}</Typography>
+              <Box>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <YBRadio
+                    dataTestId="hardware-migrate-nodes"
+                    checked={strategy === 'migrate'}
+                    onChange={() => setStrategy('migrate')}
+                    value="migrate"
+                    size="small"
+                    disabled={!canMigrate || isLoadingOptions}
+                  />
+                  <OptionLabel>{t('migrateNodes')}</OptionLabel>
+                </Box>
+                <Typography
+                  variant="subtitle1"
+                  color="textSecondary"
+                  sx={{ marginTop: '8px', marginLeft: '24px' }}
+                >
+                  {t('migrateNodesDescription')}
+                </Typography>
               </Box>
             </Box>
-            {/**
-             * TODO: Add the migrate nodes option
-             * Backend support not available yet
-             */}
-          </Box>
-        </OptionsContainer>
+          </OptionsContainer>
+        ) : null}
       </Box>
     </YBModal>
   );

@@ -82,6 +82,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
 import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
@@ -266,7 +267,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Combine the existing nodes with new non-primary (read-only / add-on) cluster nodes.
       universeDetails.nodeDetailsSet.addAll(taskParams.nodeDetailsSet);
     }
-
+    if (taskParams.universeSettings != null) {
+      universeDetails.universeSettings = taskParams.universeSettings;
+    }
     universe.setUniverseDetails(universeDetails);
   }
 
@@ -1095,14 +1098,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.enableYCQL = userIntent.enableYCQL;
       params.enableYCQLAuth = userIntent.enableYCQLAuth;
       params.enableYSQLAuth = userIntent.enableYSQLAuth;
-      // Add audit log config from the primary cluster
-      params.auditLogConfig =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
-      // Add query log config from the primary cluster
-      params.queryLogConfig =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig;
-      params.metricsExportConfig =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
+      // Telemetry export config from the primary cluster (master log config is sourced from the
+      // ExportTelemetryConfig table, not userIntent).
+      params.telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
 
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
@@ -1433,13 +1431,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.otelCollectorEnabled = taskParams().otelCollectorEnabled;
     // Add audit log config from the primary cluster
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    params.auditLogConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
-    // Add query log config from the primary cluster
-    params.queryLogConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig;
-    params.metricsExportConfig =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
+    params.telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
     // Which user the node exporter service will run as
     params.nodeExporterUser = taskParams().nodeExporterUser;
     // Development testing variable.
@@ -1574,12 +1566,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.enableYSQLAuth = userIntent.enableYSQLAuth;
       // Add audit log config from the primary cluster
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-      params.auditLogConfig =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
-      params.queryLogConfig =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig;
-      params.metricsExportConfig =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
+      params.telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
       // Set if this node is a master in shell mode.
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;

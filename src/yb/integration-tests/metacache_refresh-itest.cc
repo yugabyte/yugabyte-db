@@ -41,6 +41,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/namespace_info.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"

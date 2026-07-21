@@ -633,9 +633,7 @@ DEFINE_validator(vector_index_backend,
 TAG_FLAG(vector_index_backend, hidden);
 TAG_FLAG(vector_index_backend, advanced);
 
-// TODO(GH31886): this flag will be coverted into an auto-flag when all ownership and
-// new value format changes are completed.
-DEFINE_RUNTIME_bool(enable_table_owned_vector_reverse_mapping, false,
+DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
     "Such tables write vector reverse mappings on row insert/update regardless of "
     "whether a vector index exists, and vector index backfill skips reverse mapping.");
@@ -3088,6 +3086,10 @@ Status CatalogManager::ShouldSplitValidCandidate(
     return STATUS_FORMAT(IllegalState, "Tablet $0 may have uncompacted post-split data.",
         tablet_info.id());
   }
+  if (drive_info.has_active_vector_index_backfill) {
+    return STATUS_FORMAT(
+        IllegalState, "Tablet $0 has a vector index backfill in progress.", tablet_info.id());
+  }
   ssize_t size = drive_info.sst_files_size;
   DCHECK(size >= 0) << "Detected overflow in casting sst_files_size to signed int.";
   if (size < FLAGS_tablet_split_low_phase_size_threshold_bytes) {
@@ -3164,7 +3166,7 @@ class SplitScope {
   SplitScope(CatalogManager& catalog, TabletInfo& source_tablet_info, size_t num_split_parts)
       : catalog_(catalog), source_tablet_info_(source_tablet_info),
         num_split_parts_(num_split_parts) {
-    tables_.push_back(source_tablet_info_.table());
+    tables_.push_back(TableInfoWithWriteLock(source_tablet_info_.table()));
     MakeTempTablets();
   }
 
@@ -3179,13 +3181,17 @@ class SplitScope {
     }
   }
 
-  auto& source_table() {
-    return tables_.front();
+  auto& source_table() const {
+    return source_tablet_info_.table();
   }
 
-  auto& source_table_lock() {
-    DCHECK(!table_locks_.empty());
-    return table_locks_.front();
+  auto& source_table_lock() const {
+    auto it = std::ranges::lower_bound(
+        tables_, source_table()->id(), std::less<>{},
+        [](const auto& table_with_lock) -> const TableId& { return table_with_lock->id(); });
+    DCHECK(it != tables_.end() && (*it)->id() == source_table()->id());
+    DCHECK((*it).lock.locked());
+    return (*it).lock;
   }
 
   auto& source_tablet_meta() {
@@ -3193,28 +3199,25 @@ class SplitScope {
   }
 
   Status Lock() NO_THREAD_SAFETY_ANALYSIS {
-    auto primary_lock = source_table()->LockForWrite();
-
     // Collect vector index tables.
     auto vector_index_ids = source_table()->GetVectorIndexIds();
     tables_.reserve(1 + vector_index_ids.size());
     for (const auto& id : vector_index_ids) {
-      tables_.push_back(catalog_.GetTableInfoUnlocked(id));
-      SCHECK_NOTNULL(tables_.back().get());
+      auto table = catalog_.GetTableInfoUnlocked(id);
+      SCHECK_NOTNULL(table);
+      tables_.push_back(TableInfoWithWriteLock(table));
     }
 
-    // Sort vector tables by table_id, don't touch source table.
+    // Sort tables by table_id.
     DCHECK(!tables_.empty());
     std::ranges::sort(
-        std::ranges::next(std::ranges::begin(tables_)),
+        std::ranges::begin(tables_),
         std::ranges::end(tables_), /* comp = */ {},
         [](const auto& table) -> const TableId& { return table->id(); });
 
-    // Take write locks for vector tables.
-    table_locks_.reserve(1 + vector_index_ids.size());
-    table_locks_.push_back(std::move(primary_lock));
-    for (auto it = std::next(tables_.begin()); it != tables_.end(); ++it) {
-      table_locks_.push_back((*it)->LockForWrite());
+    // Take write locks for all tables in sorted order.
+    for (auto& table : tables_) {
+      table.Lock();
     }
 
     // Lock tablets in the correct order.
@@ -3233,16 +3236,16 @@ class SplitScope {
   }
 
   int PropagateNextPartitionListVersion() {
-    // Take the version from the source table, and push it to all vector indexes.
+    // Take the version from the source table and propagate it to all tables in the split scope.
     auto new_version = source_table_lock().mutable_data()->pb.partition_list_version() + 1;
 
-    for (auto& lock : table_locks_) {
-      auto old_version = lock.mutable_data()->pb.partition_list_version();
+    for (auto& table : tables_) {
+      auto old_version = table.lock.mutable_data()->pb.partition_list_version();
       if (new_version > old_version) {
-        LOG_WITH_FUNC(INFO)
-            << "Table " << lock->pb.name() << " partition list version changed from "
-            << old_version << " => " << new_version;
-        lock.mutable_data()->pb.set_partition_list_version(new_version);
+        LOG_WITH_FUNC(INFO) << "Table " << table.lock->pb.name()
+                            << " partition list version changed from " << old_version << " => "
+                            << new_version;
+        table.lock.mutable_data()->pb.set_partition_list_version(new_version);
       } else {
         DCHECK_GE(new_version, old_version);
       }
@@ -3274,7 +3277,8 @@ class SplitScope {
 
     int new_partition_list_version = PropagateNextPartitionListVersion();
 
-    RETURN_NOT_OK(sys_catalog.Upsert(epoch, tables_, new_tablets, &source_tablet_info_));
+    auto table_infos = GetTableInfos();
+    RETURN_NOT_OK(sys_catalog.Upsert(epoch, table_infos, new_tablets, &source_tablet_info_));
 
     MAYBE_FAULT(FLAGS_TEST_crash_after_registering_split_tablets);
     if (PREDICT_FALSE(FLAGS_TEST_error_after_registering_split_tablets)) {
@@ -3295,7 +3299,7 @@ class SplitScope {
                 << ", split_depth: " << new_split_depth << ") to split the tablet "
                 << source_tablet_info_.tablet_id() << " ("
                 << AsDebugHexString(source_tablet_meta.partition()) << ") for table(s) "
-                << AsString(tables_)
+                << AsString(table_infos)
                 << ", new partition_list_version: " << new_partition_list_version;
     }
     return Status::OK();
@@ -3303,8 +3307,8 @@ class SplitScope {
 
   void Commit() {
     source_tablet_lock_.Commit();
-    for (auto& lock : table_locks_ | std::views::reverse) {
-      lock.Commit();
+    for (auto& table : tables_ | std::views::reverse) {
+      table.Commit();
     }
   }
 
@@ -3332,14 +3336,28 @@ class SplitScope {
     return Status::OK();
   }
 
+  std::vector<TableInfoPtr> GetTableInfos() const {
+    std::vector<TableInfoPtr> result;
+    result.reserve(tables_.size());
+    for (const auto& table : tables_) {
+      result.push_back(table.info);
+    }
+    return result;
+  }
+
+  auto GetSecondaryTables() const {
+    return tables_ | std::views::filter(
+                         [this](const auto& table) { return table->id() != source_table()->id(); });
+  }
+
   void AddSecondaryTablesTo(TabletInfo& tablet) {
-    // No need to add first tablet because it was added during CreateChildTablet().
+    // The primary table id was added during CreateChildTablet(); add the remaining tables.
     DCHECK_GE(tables_.size(), 1);
-    for (auto it = std::next(tables_.begin()); it != tables_.end(); ++it) {
+    for (const auto& table : GetSecondaryTables()) {
       if (FLAGS_use_parent_table_id_field) {
-        tablet.AddTableId((*it)->id());
+        tablet.AddTableId(table->id());
       } else {
-        tablet.mutable_metadata()->mutable_dirty()->pb.add_table_ids((*it)->id());
+        tablet.mutable_metadata()->mutable_dirty()->pb.add_table_ids(table->id());
       }
     }
 
@@ -3357,8 +3375,7 @@ class SplitScope {
   TabletInfo& source_tablet_info_;
   size_t num_split_parts_;
   TabletInfo::WriteLock source_tablet_lock_;
-  std::vector<TableInfoPtr> tables_;
-  std::vector<TableInfo::WriteLock> table_locks_;
+  std::vector<TableInfoWithWriteLock> tables_;
   std::vector<TabletInfoPtr> temp_tablet_info_;
   bool temp_tablet_info_locked_ = false; // To determine if it is safe to abort the mutation.
 };
@@ -3407,7 +3424,13 @@ Status CatalogManager::DoSplitTablet(
       return s;
     }
 
-    if (!is_manual_split) {
+    const bool children_already_registered =
+        scope.source_tablet_meta().split_tablet_ids().size() > 0;
+    // Skip validation for tablets whose children have already been registered in the past, as we
+    // might be retrying a previously failed split operation (failed at the tserver), and the table
+    // could have entered a different split phase now.
+    const bool should_validate_split = !is_manual_split && !children_already_registered;
+    if (should_validate_split) {
       auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
 
       // It is possible that we queued up a split candidate in TabletSplitManager which was, at the
@@ -3427,7 +3450,7 @@ Status CatalogManager::DoSplitTablet(
     // After this point, we expect to split the tablet.
 
     // If child tablets are already registered, use the existing split keys and tablets.
-    if (scope.source_tablet_meta().split_tablet_ids().size() > 0) {
+    if (children_already_registered) {
       num_split_parts = scope.source_tablet_meta().split_tablet_ids().size();
       for (auto i = 0; i < num_split_parts; ++i) {
         const auto& split_tablet_id = scope.source_tablet_meta().split_tablet_ids(i);
@@ -4928,11 +4951,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // Clone will create its own tablets as part of repartitioning.
   if (!joining_colocation_group && !req.is_clone()) {
-    auto opt_wal_retention = xcluster_manager_->GetDefaultWalRetentionSec(namespace_id);
-    if (opt_wal_retention) {
-      table->mutable_metadata()->mutable_dirty()->pb.set_wal_retention_secs(*opt_wal_retention);
-    }
-
     for (const auto& tablet : tablets) {
       // If new tablets are created, they will be in PREPARING state.
       CHECK_EQ(SysTabletsEntryPB::PREPARING, tablet->metadata().dirty().pb.state());
@@ -12720,7 +12738,7 @@ Status CatalogManager::BuildLocationsForTablet(
       std::vector<TabletId> split_tablet_ids(
           l_tablet->pb.split_tablet_ids().begin(), l_tablet->pb.split_tablet_ids().end());
       return STATUS(
-          NotFound, "Tablet deleted", l_tablet->pb.state_msg(),
+          Deleted, "Tablet deleted", l_tablet->pb.state_msg(),
           SplitChildTabletIdsData(split_tablet_ids));
     }
     if (PREDICT_FALSE(!l_tablet->is_running())) {
@@ -12793,12 +12811,7 @@ Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(Table
 
 Status CatalogManager::GetTabletLocations(
     TabletIdView tablet_id, TabletLocationsPB* locs_pb, IncludeHidden include_hidden) {
-  auto tablet_info_result = GetTabletInfo(tablet_id);
-  if (!tablet_info_result.ok()) {
-    // Some clients expect non-ok statuses to have a certain form.
-    return STATUS_FORMAT(NotFound, "Unknown tablet $0", tablet_id);
-  }
-  const auto& tablet_info = *tablet_info_result;
+  auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
   Status s = GetTabletLocations(tablet_info, locs_pb, include_hidden);
   auto num_replicas = GetNumTabletReplicas(tablet_info);
   if (num_replicas.ok() && *num_replicas > 0 &&
@@ -12870,7 +12883,8 @@ Status CatalogManager::GetTableLocations(
     TabletLocationsPB* locs_pb = resp->add_tablet_locations();
     locs_pb->set_expected_live_replicas(expected_live_replicas);
     locs_pb->set_expected_read_replicas(expected_read_replicas);
-    auto status = BuildLocationsForTablet(tablet, locs_pb, IncludeHidden::kTrue, partitions_only);
+    auto status = BuildLocationsForTablet(
+        tablet, locs_pb, IncludeHidden::kTrue, partitions_only);
     if (!status.ok()) {
       // Not running.
       if (require_tablets_runnings) {
@@ -13187,13 +13201,9 @@ Result<size_t> CatalogManager::GetNumTabletReplicas(const TabletInfoPtr& tablet)
 
 Status CatalogManager::GetExpectedNumberOfReplicasForTablet(
     const TabletId& tablet_id, int* num_live_replicas, int* num_read_replicas) {
-  auto tablet_info_result = GetTabletInfo(tablet_id);
-  if (!tablet_info_result.ok()) {
-    // Some clients expect non-ok statuses to have a certain form.
-    return STATUS_FORMAT(NotFound, "Unknown tablet $0", tablet_id);
-  }
+  auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
   return GetExpectedNumberOfReplicasForTable(
-      (*tablet_info_result)->table(), num_live_replicas, num_read_replicas);
+      tablet_info->table(), num_live_replicas, num_read_replicas);
 }
 
 Status CatalogManager::GetExpectedNumberOfReplicasForTable(

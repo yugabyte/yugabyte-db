@@ -15,7 +15,9 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.ScrapeConfigTargetType;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -25,6 +27,7 @@ import java.util.UUID;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 
 /** Task params for the unified ConfigureExportTelemetryConfig task. */
 @Data
@@ -44,6 +47,12 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
   /** Delay in seconds between tserver restarts (rolling upgrade). Default 0. */
   public Integer delayBetweenTserverServers = 0;
 
+  /**
+   * True when the caller explicitly chose an upgrade option (e.g. set rollingUpgrade in the API
+   * request). When false, the handler may downgrade a collector-only change to NON_RESTART_UPGRADE.
+   */
+  private boolean upgradeOptionExplicitlySet = false;
+
   public AuditLogConfig getAuditLogConfig() {
     return telemetryConfig != null ? telemetryConfig.getAuditLogConfig() : null;
   }
@@ -56,6 +65,10 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
     return telemetryConfig != null ? telemetryConfig.getMetricsExportConfig() : null;
   }
 
+  public MasterLogConfig getMasterLogConfig() {
+    return telemetryConfig != null ? telemetryConfig.getMasterLogConfig() : null;
+  }
+
   @Override
   public boolean isKubernetesUpgradeSupported() {
     return true;
@@ -64,6 +77,31 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
   @Override
   public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe, isFirstTry);
+
+    AuditLogConfig auditLogConfig = getAuditLogConfig();
+    if (modifiedExportTypes.contains(ExportType.AUDIT_LOGS)
+        && auditLogConfig != null
+        && auditLogConfig.isExportActive()
+        && CollectionUtils.isEmpty(auditLogConfig.getUniverseLogsExporterConfig())) {
+      throw new PlatformServiceException(
+          play.mvc.Http.Status.BAD_REQUEST,
+          String.format(
+              "Audit log config is set to export active, but no exporter configured on universe"
+                  + " '%s'.",
+              universe.getUniverseUUID()));
+    }
+    QueryLogConfig queryLogConfig = getQueryLogConfig();
+    if (modifiedExportTypes.contains(ExportType.QUERY_LOGS)
+        && queryLogConfig != null
+        && queryLogConfig.isExportActive()
+        && CollectionUtils.isEmpty(queryLogConfig.getUniverseLogsExporterConfig())) {
+      throw new PlatformServiceException(
+          play.mvc.Http.Status.BAD_REQUEST,
+          String.format(
+              "Query log config is set to export active, but no exporter configured on universe"
+                  + " '%s'.",
+              universe.getUniverseUUID()));
+    }
 
     // Validate that every referenced telemetry exporter exists up front, so a missing/deleted
     // provider fails synchronously with a 400 here instead of deep inside the task at config
@@ -85,6 +123,11 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
           .getUniverseMetricsExporterConfig()
           .forEach(c -> exporterUuids.add(c.getExporterUuid()));
     }
+    if (OtelCollectorUtil.isMasterLogExportEnabledInUniverse(getMasterLogConfig())) {
+      getMasterLogConfig()
+          .getUniverseLogsExporterConfig()
+          .forEach(c -> exporterUuids.add(c.getExporterUuid()));
+    }
     if (!exporterUuids.isEmpty()) {
       TelemetryProviderService telemetryProviderService =
           StaticInjectorHolder.injector().instanceOf(TelemetryProviderService.class);
@@ -95,10 +138,10 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
       return;
     }
 
-    if (OtelCollectorUtil.isMetricsExportEnabledInUniverse(getMetricsExportConfig())) {
+    if (OtelCollectorUtil.isMasterLogExportEnabledInUniverse(getMasterLogConfig())) {
       throw new PlatformServiceException(
           play.mvc.Http.Status.BAD_REQUEST,
-          "Metrics export is not yet supported for kubernetes based universes.");
+          "Master log export is not yet supported for kubernetes based universes.");
     }
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
@@ -134,6 +177,47 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
               userIntent.ybSoftwareVersion,
               OtelCollectorUtil.OTEL_HELM_CONFIG_PASSTHROUGH_STABLE_VERSION,
               OtelCollectorUtil.OTEL_HELM_CONFIG_PASSTHROUGH_PREVIEW_VERSION));
+    }
+
+    if (OtelCollectorUtil.isMetricsExportEnabledInUniverse(getMetricsExportConfig())) {
+      if (!OtelCollectorUtil.supportsOtelConfigPassthrough(userIntent.ybSoftwareVersion)) {
+        throw new PlatformServiceException(
+            play.mvc.Http.Status.BAD_REQUEST,
+            String.format(
+                "Metrics export is not supported for kubernetes universe '%s' running version"
+                    + " '%s'. Please upgrade to version '%s' or '%s', or disable metrics export.",
+                universe.getUniverseUUID(),
+                userIntent.ybSoftwareVersion,
+                OtelCollectorUtil.OTEL_HELM_CONFIG_PASSTHROUGH_STABLE_VERSION,
+                OtelCollectorUtil.OTEL_HELM_CONFIG_PASSTHROUGH_PREVIEW_VERSION));
+      }
+
+      // Fail fast on an empty target list: downstream layers assume a validated, non-empty set
+      // of K8s-servable targets (the config generator refuses to render otherwise).
+      if (CollectionUtils.isEmpty(getMetricsExportConfig().getScrapeConfigTargets())) {
+        throw new PlatformServiceException(
+            play.mvc.Http.Status.BAD_REQUEST,
+            String.format(
+                "Scrape config targets must be specified for metrics export on kubernetes universe"
+                    + " '%s'. Supported targets: %s.",
+                universe.getUniverseUUID(), OtelCollectorUtil.K8S_SUPPORTED_SCRAPE_TARGETS));
+      }
+
+      // The collector sidecar can only scrape pod-local endpoints on K8s; there is no
+      // node-exporter or node-agent in the DB pods, so reject those targets up front instead of
+      // silently exporting nothing for them.
+      Set<ScrapeConfigTargetType> unsupportedTargets =
+          OtelCollectorUtil.getUnsupportedK8sScrapeTargets(getMetricsExportConfig());
+      if (!unsupportedTargets.isEmpty()) {
+        throw new PlatformServiceException(
+            play.mvc.Http.Status.BAD_REQUEST,
+            String.format(
+                "Scrape config targets %s are not supported for kubernetes universe '%s'. Please"
+                    + " retry with a subset of the supported targets: %s.",
+                unsupportedTargets,
+                universe.getUniverseUUID(),
+                OtelCollectorUtil.K8S_SUPPORTED_SCRAPE_TARGETS));
+      }
     }
   }
 

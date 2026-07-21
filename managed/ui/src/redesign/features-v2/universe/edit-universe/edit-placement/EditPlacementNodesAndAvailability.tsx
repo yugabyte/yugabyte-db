@@ -13,7 +13,6 @@ import {
   createUniverseFormProps,
   StepsRef
 } from '../../create-universe/CreateUniverseContext';
-import { NodeAvailabilityProps } from '../../create-universe/steps/nodes-availability/dtos';
 import { normalizeEditPlacementNodesAvailability } from './normalizeEditPlacementNodesAvailability';
 
 const { Box } = mui;
@@ -23,12 +22,10 @@ export const EditPlacementNodesAndAvailability = () => {
   const [addEditPlacementData, addEditPlacementMethods, extraMethods] = useGetEditPlacementContext();
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.steps' });
   const [showEditPlacementModal, setShowEditPlacementModal] = useToggle(false);
-  const { setNodesAndAvailability } = addEditPlacementMethods;
+  const { setNodesAndAvailability, setResilience, setActiveStep } = addEditPlacementMethods;
 
-  const { setActiveStep } = addEditPlacementMethods;
   const { hideModal, onSubmit, isSubmittingPlacementUpdate } = extraMethods;
 
-  
   const calculateNodesandAvailability = useMemo(
     () => normalizeEditPlacementNodesAvailability(addEditPlacementData),
     [addEditPlacementData]
@@ -51,6 +48,11 @@ export const EditPlacementNodesAndAvailability = () => {
             },
             moveToNextPage: () => {
               setShowEditPlacementModal(true);
+            },
+            saveResilienceAndRegionsSettings: (
+              data: EditPlacementContextProps['resilience']
+            ) => {
+              data && setResilience(data);
             }
           }
         ] as unknown) as createUniverseFormProps
@@ -64,6 +66,7 @@ export const EditPlacementNodesAndAvailability = () => {
         <NodesAvailability
           ref={nodesAndAvailabilityRef}
           isGeoPartition
+          hideDedicatedNodes
         />
         <UniverseActionButtons
           prevButton={{

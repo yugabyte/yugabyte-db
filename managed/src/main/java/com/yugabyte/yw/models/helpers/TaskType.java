@@ -1268,6 +1268,8 @@ public enum TaskType {
 
   FreezeUniverse(com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse.class),
 
+  MarkRollbackUnsafe(com.yugabyte.yw.commissioner.tasks.subtasks.MarkRollbackUnsafe.class),
+
   QueryLdapServer(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.QueryLdapServer.class),
 
   DbLdapSync(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.DbLdapSync.class),

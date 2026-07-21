@@ -61,13 +61,17 @@ public class SupportBundleComponentDownload extends AbstractTaskBase {
           params.startDate,
           params.endDate,
           params.node);
-    } catch (Exception e) {
+    } catch (Throwable t) {
       // Log the error and continue with the rest of support bundle collection.
+      // Catch Throwable (not just Exception) so component-level Errors like
+      // ExceptionInInitializerError / UnsatisfiedLinkError / NoClassDefFoundError
+      // (e.g. snappy-java failing to load its native lib on a noexec /tmp) do not
+      // abort collection of the remaining components.
       log.error(
           "Error occurred in support bundle collection for component '{}' on {} node",
           taskParams().supportBundleComponent.getClass().getSimpleName(),
           (taskParams().node == null) ? "YBA" : taskParams().node.getNodeName(),
-          e);
+          t);
     }
   }
 }

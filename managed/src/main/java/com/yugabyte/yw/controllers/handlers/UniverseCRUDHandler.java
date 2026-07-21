@@ -24,6 +24,7 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
+import com.yugabyte.yw.cloud.oci.OCICloudUtil;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.AddOnClusterDelete;
@@ -365,12 +366,21 @@ public class UniverseCRUDHandler {
     if (cluster.userIntent.isMulticloudSupport()) {
       UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
           cluster.userIntent.getProviderSpecification(provider.getUuid());
+      if (providerSpecification == null) {
+        /* Basically that should never happen, but since this method should be
+          used to determine whether we should do a full move or not,
+          it is better just to return false.
+        */
+        return false;
+      }
       curArnString = null;
       newArnString = providerSpecification.getAwsInstanceProfile();
       UniverseDefinitionTaskParams.ProviderSpecification oldProviderSpec =
           currentCluster.userIntent.getProviderSpecification(provider.getUuid());
       if (oldProviderSpec != null) {
         curArnString = oldProviderSpec.getAwsInstanceProfile();
+      } else {
+        return false;
       }
     }
     return (!StringUtils.isEmpty(curArnString) || !StringUtils.isEmpty(newArnString))
@@ -559,7 +569,7 @@ public class UniverseCRUDHandler {
         }
 
         if (cert.getCertType() == CertConfigType.CustomCertHostPath) {
-          if (!taskParams.getPrimaryCluster().userIntent.getAllCloudTypes().stream()
+          if (taskParams.getPrimaryCluster().userIntent.getAllCloudTypes().stream()
               .filter(ct -> ct != Common.CloudType.onprem)
               .findFirst()
               .isPresent()) {
@@ -609,7 +619,7 @@ public class UniverseCRUDHandler {
 
       cert = CertificateInfo.get(taskParams.getClientRootCA());
       if (cert.getCertType() == CertConfigType.CustomCertHostPath) {
-        if (!taskParams.getPrimaryCluster().userIntent.getAllCloudTypes().stream()
+        if (taskParams.getPrimaryCluster().userIntent.getAllCloudTypes().stream()
             .filter(ct -> ct != Common.CloudType.onprem)
             .findFirst()
             .isPresent()) {
@@ -1043,6 +1053,7 @@ public class UniverseCRUDHandler {
     }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CREATE);
+    validateOciInstanceTags(taskParams);
 
     // Create a new universe. This makes sure that a universe of this name does not already exist
     // for this customer id.
@@ -1370,6 +1381,7 @@ public class UniverseCRUDHandler {
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
     }
+    validateOciInstanceTags(taskParams);
     if (u.isYbcEnabled()) {
       taskParams.installYbc = true;
       taskParams.setEnableYbc(true);
@@ -1714,6 +1726,7 @@ public class UniverseCRUDHandler {
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
     }
+    validateOciInstanceTags(taskParams);
 
     if (universe.isYbcEnabled()) {
       taskParams.installYbc = true;
@@ -3091,6 +3104,10 @@ public class UniverseCRUDHandler {
                   userTag, StringUtils.join(acceptedValuesSet, ", ")));
       }
     }
+  }
+
+  private void validateOciInstanceTags(UniverseDefinitionTaskParams taskParams) {
+    OCICloudUtil.validateInstanceTags(taskParams.clusters);
   }
 
   private UUID getClusterUuid(ImportUniverseTaskParams taskParams) {

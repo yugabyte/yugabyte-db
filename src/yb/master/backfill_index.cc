@@ -57,6 +57,7 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
@@ -478,8 +479,8 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
         catalog_manager, indexed_table, current_version, /* change state to RUNNING */ true, epoch);
   }
 
-  if (!FLAGS_allow_batching_non_deferred_indexes &&
-      indexes_to_backfill.size() > 1) {
+  const bool batch_backfill_req = FLAGS_allow_batching_non_deferred_indexes && !is_ysql_table;
+  if (indexes_to_backfill.size() > 1 && !batch_backfill_req) {
     LOG(INFO) << "Batching of non-deferred index-backfill(s) is disabled. Will be only backfilling "
                  "one index at a time.";
     indexes_to_backfill.resize(1);

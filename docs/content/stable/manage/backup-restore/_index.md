@@ -43,7 +43,7 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
   {{<index/item
     title="Export and import"
     body="Export and import data using SQL or CQL scripts."
-    href="export-import-data/"
+    href="export-import-data-ysql/"
     icon="fa-thin fa-file-import">}}
 
   {{<index/item

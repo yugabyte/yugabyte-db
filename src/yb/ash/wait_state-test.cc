@@ -15,6 +15,7 @@
 
 #include "yb/common/common.pb.h"
 
+#include "yb/util/format.h"
 #include "yb/util/random_util.h"
 #include "yb/util/test_util.h"
 
