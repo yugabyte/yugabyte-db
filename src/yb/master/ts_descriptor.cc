@@ -503,11 +503,13 @@ bool TSDescriptor::IsReadOnlyTS(const ReplicationInfoPB& replication_info) const
 
 std::optional<TSDescriptor::WriteLock> TSDescriptor::MaybeUpdateLiveness(MonoTime time) {
   auto proto_lock = LockForWrite();
-  SharedLock<decltype(mutex_)> transient_lock(mutex_);
+  std::lock_guard<decltype(mutex_)> transient_lock(mutex_);
   if (proto_lock->pb.state() == SysTabletServerEntryPB::LIVE && last_heartbeat_ &&
       time.GetDeltaSince(last_heartbeat_).ToMilliseconds() >
           FLAGS_tserver_unresponsive_timeout_ms) {
     proto_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
+    // Force a full tablet report on recovery.
+    set_has_tablet_report_unlocked(false);
     return std::move(proto_lock);
   }
   return std::nullopt;
