@@ -46,6 +46,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/numeric.h"
+#include "utils/pg_locale.h"
 #include "utils/sampling.h"
 #include "utils/syscache.h"
 #include "utils/yb_rowtypes.h"
@@ -63,6 +64,7 @@ YbgInit(const char *postgres_executable_path)
 	}
 
 	SetDatabaseEncoding(PG_UTF8);
+	YbgInitDefaultLocale();
 
 	PG_STATUS_OK();
 }

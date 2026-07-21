@@ -225,4 +225,7 @@ extern void report_newlocale_failure(const char *localename);
 extern size_t wchar2char(char *to, const wchar_t *from, size_t tolen,
 						 locale_t loc);
 
+/* YB: Initialize default locale for DocDB/YbGate (for expression pushdown) */
+extern void YbgInitDefaultLocale(void);
+
 #endif							/* _PG_LOCALE_ */

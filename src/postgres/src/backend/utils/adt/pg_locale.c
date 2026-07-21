@@ -118,6 +118,24 @@ static struct pg_locale_struct c_locale = {
 	.ctype_is_c = true,
 };
 
+/*
+ * YB: On the PG side, the default locale has collate_is_c = true,
+ * ctype_is_c = false and the ctype methods point to the UTF-8 implementation.
+ * On the DocDB/YbGate side, init_database_collation() cannot be invoked (no syscache).
+ * This struct provides a C-collation default so that DEFAULT_COLLATION_OID is
+ * safe for expression pushdown and sets ctype_is_c = true as the UTF-8 pointer
+ * is unavailable.
+ * PG is allowed to push down only those operations that rely only on collate.
+ * Operations that rely on ctype (such as UPPER) must not be pushed down as PG
+ * and DocDB's ctype implementations differ (UTF-8 vs C).
+ */
+static struct pg_locale_struct yb_docdb_default_locale = {
+	.deterministic = true,
+	.collate_is_c = true,
+	.ctype_is_c = true,
+	.is_default = true,
+};
+
 /* Cache for collation-related knowledge */
 
 typedef struct
@@ -1985,4 +2003,19 @@ icu_validate_locale(const char *loc_str)
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("ICU is not supported in this build")));
 #endif							/* not USE_ICU */
+}
+
+/*
+ * Point default_locale at yb_docdb_default_locale for DocDB/YbGate.
+ *
+ * Safe for collate-only pushdown of DEFAULT_COLLATION_OID.  Callers on the
+ * PG side must not push ctype-dependent ops (see yb_docdb_default_locale).
+ */
+void
+YbgInitDefaultLocale(void)
+{
+	Assert(IsMultiThreadedMode());
+	Assert(default_locale == NULL || default_locale == &yb_docdb_default_locale);
+
+	default_locale = &yb_docdb_default_locale;
 }

@@ -6480,14 +6480,9 @@ YBIsDbLocaleDefault()
 	 * DocDB may have different semantics and return different results.
 	 * (See CheckMyDatabase in postinit.c and setlocales in initdb.c)
 	 */
-	char	   *locale;
-
-	if ((locale = setlocale(LC_CTYPE, NULL)) && !YbIsUtf8Locale(locale))
-		return false;
-	if ((locale = setlocale(LC_COLLATE, NULL)) && !YbIsCLocale(locale))
-		return false;
-
-	return true;
+	pg_locale_t locale = pg_database_locale();
+	Assert(locale != NULL);
+	return locale->collate_is_c && !locale->ctype_is_c && GetDatabaseEncoding() == PG_UTF8;
 }
 
 Oid
