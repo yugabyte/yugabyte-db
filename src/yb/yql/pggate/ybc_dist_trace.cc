@@ -167,6 +167,7 @@ void YBCInitDistTrace(int64_t process_pid, const char* node_uuid) {
 }
 
 void YBCCleanupDistTrace() {
+  YBCDistTraceClearStack();
   dist_trace::CleanupDistTrace();
 }
 

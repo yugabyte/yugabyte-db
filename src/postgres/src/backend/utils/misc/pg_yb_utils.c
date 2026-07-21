@@ -1091,10 +1091,10 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 void
 YBOnPostgresBackendShutdown()
 {
-	YBCDestroyPgGate();
-
 	if (YBCIsDistTraceEnabled())
 		YBCCleanupDistTrace();
+
+	YBCDestroyPgGate();
 }
 
 void
