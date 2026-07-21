@@ -23,6 +23,7 @@ import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.ClusterAddSpec;
 import com.yugabyte.yba.v2.client.models.ClusterEditSpec;
+import com.yugabyte.yba.v2.client.models.ClusterNetworkingEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPartitionSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPlacementSpec;
@@ -32,6 +33,7 @@ import com.yugabyte.yba.v2.client.models.ClusterSpec.ClusterTypeEnum;
 import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
 import com.yugabyte.yba.v2.client.models.ClusterStorageSpec.StorageTypeEnum;
 import com.yugabyte.yba.v2.client.models.CommunicationPortsSpec;
+import com.yugabyte.yba.v2.client.models.ExposingServiceState;
 import com.yugabyte.yba.v2.client.models.PlacementAZ;
 import com.yugabyte.yba.v2.client.models.PlacementCloud;
 import com.yugabyte.yba.v2.client.models.PlacementRegion;
@@ -430,6 +432,30 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
                         universeSpec.getNetworkingSpec().getAssignStaticPublicIp())
                     .enableIpv6(universeSpec.getNetworkingSpec().getEnableIpv6())
                     .communicationPorts(communicationPortsSpec));
+    runEditUniverseV2(universeEditSpec);
+  }
+
+  @Test
+  public void testEditUniverseV2EnableExposingService() throws ApiException {
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+    // Create payload sets EXPOSED; edit to UNEXPOSED to verify the field is mutable.
+    assertThat(
+        primaryClusterSpec.getNetworkingSpec().getEnableExposingService(),
+        is(ExposingServiceState.EXPOSED));
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec()
+            .uuid(primaryClusterSpec.getUuid())
+            .networkingSpec(
+                new ClusterNetworkingEditSpec()
+                    .enableExposingService(ExposingServiceState.UNEXPOSED));
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
     runEditUniverseV2(universeEditSpec);
   }
 

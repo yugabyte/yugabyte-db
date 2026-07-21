@@ -27,7 +27,6 @@ import com.yugabyte.yba.v2.client.models.ClusterEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterGFlags;
 import com.yugabyte.yba.v2.client.models.ClusterInfo;
 import com.yugabyte.yba.v2.client.models.ClusterNetworkingSpec;
-import com.yugabyte.yba.v2.client.models.ClusterNetworkingSpec.EnableExposingServiceEnum;
 import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPartitionSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPlacementSpec;
@@ -41,6 +40,7 @@ import com.yugabyte.yba.v2.client.models.CommunicationPortsSpec;
 import com.yugabyte.yba.v2.client.models.EncryptionAtRestInfo;
 import com.yugabyte.yba.v2.client.models.EncryptionAtRestSpec;
 import com.yugabyte.yba.v2.client.models.EncryptionInTransitSpec;
+import com.yugabyte.yba.v2.client.models.ExposingServiceState;
 import com.yugabyte.yba.v2.client.models.K8SNodeResourceSpec;
 import com.yugabyte.yba.v2.client.models.NodeDetails;
 import com.yugabyte.yba.v2.client.models.NodeProxyConfig;
@@ -424,7 +424,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     primaryClusterSpec.setNetworkingSpec(
         new ClusterNetworkingSpec()
             .enableLb(true)
-            .enableExposingService(EnableExposingServiceEnum.EXPOSED)
+            .enableExposingService(ExposingServiceState.EXPOSED)
             .proxyConfig(proxy));
     primaryClusterSpec.setGflags(createPrimaryClusterGFlags());
     primaryClusterSpec.setAuditLogConfig(createPrimaryAuditLogConfig());
@@ -1659,6 +1659,12 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     if (v2Cluster.getNodeSpec() != null) {
       validateClusterNodeSpec(
           v2Cluster.getNodeSpec(), dbCluster.userIntent, v2Primary.getNodeSpec());
+    }
+    if (v2Cluster.getNetworkingSpec() != null
+        && v2Cluster.getNetworkingSpec().getEnableExposingService() != null) {
+      assertThat(
+          v2Cluster.getNetworkingSpec().getEnableExposingService().getValue(),
+          is(dbCluster.userIntent.enableExposingService.name()));
     }
     if (v2Cluster.getProviderSpec() != null) {
       validateProviderEditSpec(v2Cluster.getProviderSpec(), dbCluster);
