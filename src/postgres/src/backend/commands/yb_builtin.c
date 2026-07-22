@@ -25,6 +25,7 @@
 
 #include <limits.h>
 #include <math.h>
+#include <sys/resource.h>
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
 #endif
@@ -37,7 +38,6 @@
 #include "catalog/pg_type_d.h"
 #include "funcapi.h"
 #include "pg_yb_utils.h"
-#include <sys/resource.h>
 #include "utils/builtins.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -152,9 +152,9 @@ yb_getrusage(PG_FUNCTION_ARGS)
 	 */
 	memset(isnull, 0, sizeof(isnull));
 	isnull[0] = true;
-	values[0] = Int64GetDatum(NAN);
+	values[0] = Int64GetDatum(0);
 	isnull[1] = true;
-	values[1] = Int64GetDatum(NAN);
+	values[1] = Int64GetDatum(0);
 	values[2] = Int64GetDatum(r.ru_maxrss);
 	values[3] = Int64GetDatum(r.ru_ixrss);
 	values[4] = Int64GetDatum(r.ru_idrss);

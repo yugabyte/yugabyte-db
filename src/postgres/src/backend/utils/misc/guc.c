@@ -2564,7 +2564,8 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			bool		restorePrior = false;
 			bool		restoreMasked = false;
 			bool		changed;
-			bool		yb_needs_report;
+			/* YB_TODO_PG19MERGE: set-but-unused until the GUC_REPORT block below (yb_should_report_guc + yb_needs_report) is re-ported. */
+			pg_attribute_unused() bool yb_needs_report;
 
 			/*
 			 * In this next bit, if we don't set either restorePrior or

@@ -25769,7 +25769,6 @@ YbATCopyMiscMetadata(Relation old_rel, Relation new_rel, const AttrMap *attmap)
 		HeapTuple	old_rel_att_tuple,
 					new_rel_att_tuple,
 					new_rel_new_att_tuple;
-		Form_pg_attribute old_rel_attform;
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, false, sizeof(nulls));
@@ -25777,7 +25776,6 @@ YbATCopyMiscMetadata(Relation old_rel, Relation new_rel, const AttrMap *attmap)
 
 		old_rel_att_tuple = SearchSysCache2(ATTNUM, ObjectIdGetDatum(old_relid),
 											Int16GetDatum(attmap->attnums[attno - 1]));
-		old_rel_attform = (Form_pg_attribute) GETSTRUCT(old_rel_att_tuple);
 		acl_datum = heap_getattr(old_rel_att_tuple,
 								 Anum_pg_attribute_attacl,
 								 RelationGetDescr(pg_attribute),

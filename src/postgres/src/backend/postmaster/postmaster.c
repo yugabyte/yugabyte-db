@@ -482,9 +482,10 @@ static bool StartBackgroundWorker(RegisteredBgWorker *rw);
 static void InitPostmasterDeathWatchHandle(void);
 
 /* YB declarations */
-/* YB_TODO_PG19MERGE: definition + only caller currently #if 0'd; silence unused warning. */
-pg_attribute_unused()
+/* YB_TODO_PG19MERGE: definition + only caller currently #if 0'd; re-enable together. */
+#if 0
 static bool CleanupKilledProcess(PGPROC *proc);
+#endif
 
 #ifdef WIN32
 #define WNOHANG 0				/* ignored, so any integer value will do */
