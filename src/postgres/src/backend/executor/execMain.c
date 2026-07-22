@@ -282,8 +282,6 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	estate->es_instrument = queryDesc->instrument_options;
 	estate->es_jit_flags = queryDesc->plannedstmt->jitFlags;
 
-	estate->yb_read_ahead_allowed = IsYugaByteEnabled() && YbIsReadAheadAllowed();
-
 	/*
 	 * Set up an AFTER-trigger statement context, unless told not to, or
 	 * unless it's EXPLAIN-only mode (when ExecutorFinish won't be called).
@@ -1684,6 +1682,7 @@ ExecutePlan(QueryDesc *queryDesc,
 	bool		use_parallel_mode;
 	TupleTableSlot *slot;
 	uint64		current_tuple_count;
+	bool		yb_read_ahead_allowed = false;
 
 	/*
 	 * initialize local variables
@@ -1705,12 +1704,18 @@ ExecutePlan(QueryDesc *queryDesc,
 	if (queryDesc->already_executed || numberTuples != 0)
 		use_parallel_mode = false;
 	else
+	{ /* YB: Account for read-ahead logic */
+		use_parallel_mode = queryDesc->plannedstmt->parallelModeNeeded;
+		yb_read_ahead_allowed = IsYugaByteEnabled() && YbIsReadAheadAllowed();
+	}
 		use_parallel_mode = queryDesc->plannedstmt->parallelModeNeeded;
 	queryDesc->already_executed = true;
 
 	estate->es_use_parallel_mode = use_parallel_mode;
 	if (use_parallel_mode)
 		EnterParallelMode();
+
+	estate->yb_read_ahead_allowed = yb_read_ahead_allowed;
 
 	/*
 	 * Loop until we've processed the proper number of tuples from the plan.

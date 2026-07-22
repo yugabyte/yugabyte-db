@@ -413,7 +413,8 @@ ExecLockRows(PlanState *pstate)
 			break;
 		tuplestore_clear(buffered);
 		yb_info->buffered_slot_index = 0;
-		uint64_t max_read_ahead = yb_info->buffered_slots_capacity;
+		uint64_t max_read_ahead =
+			likely(lrstate->ps.state->yb_read_ahead_allowed) ? yb_info->buffered_slots_capacity : 1;
 		if (yb_info->bounded)
 		{
 			Assert(yb_info->rows_fetched < yb_info->bound);
@@ -447,11 +448,10 @@ ExecLockRows(PlanState *pstate)
 }
 
 static bool
-YbIsSkipLockedReadAheadOptimizationAllowed(const LockRows *node, const EState *estate)
+YbIsReadAheadCapable(const LockRows *node)
 {
-	return estate->yb_read_ahead_allowed &&
-		  (node->plan.ybReadAheadCapable ||
-		   *YBCGetGFlags()->TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization);
+	return node->plan.ybReadAheadCapable ||
+		   *YBCGetGFlags()->TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization;
 }
 
 /* ----------------------------------------------------------------
@@ -572,10 +572,19 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 	if (row_lock_for_yb_rel_found)
 	{
 		yb_info->are_row_marks_for_yb_rels = true;
+
+		/*
+		 * YB: Evaluate whether the plan can use SKIP LOCKED read-ahead based on
+		 * plan shape and GUCs.
+		 *
+		 * Note: The GUCs are not re-evaluated on ExecutorRun because it is
+		 * tricky to re-size the lock row buffers. The GUCs are assumed to be
+		 * a property of the prepared plan.
+		 */
 		if (yb_has_skip_locked &&
 			yb_explicit_row_locking_batch_size > 1 &&
 			yb_explicit_row_lock_skip_locked_max_read_ahead > 1 &&
-			YbIsSkipLockedReadAheadOptimizationAllowed(node, estate))
+			YbIsReadAheadCapable(node))
 		{
 			TupleDesc desc = outerPlanState(lrstate)->ps_ResultTupleDesc;
 			yb_info->buffered_slots = tuplestore_begin_heap(false, false, work_mem);

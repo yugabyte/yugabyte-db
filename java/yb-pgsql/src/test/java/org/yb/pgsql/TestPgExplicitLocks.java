@@ -22,10 +22,16 @@ import org.yb.util.Pair;
 import org.yb.YBTestRunner;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 import com.yugabyte.util.PSQLException;
 import static org.yb.AssertionWrappers.*;
@@ -530,6 +536,55 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
       assertTrue((read_count_after - read_count_before) == 2);
       stmt1.execute("COMMIT");
       stmt2.execute("ROLLBACK");
+    }
+  }
+
+  private Row countRowLocks(Statement stmt, String tableName) throws Exception {
+    // yb_locks_min_txn_age hides locks from fresh transactions; wait before inspecting.
+    stmt.execute("SELECT pg_sleep(1.5)");
+
+    return getSingleRow(stmt, String.format(
+        "SELECT count(*) FROM yb_lock_status(null, null) l " +
+        "WHERE l.locktype = 'row' AND l.relation = '%s'::regclass", tableName));
+  }
+
+  private void runSkipLockedQueryWithFetchSize(Connection conn, int maxReadAhead) throws Exception {
+    final int fetchSize = 1;
+    final long rowsToFetch = 3;
+
+    Statement stmt = conn.createStatement();
+    conn.setAutoCommit(false);
+    stmt.setFetchSize(fetchSize);
+    stmt.execute(String.format(
+        "SET yb_explicit_row_lock_skip_locked_max_read_ahead = %d", maxReadAhead));
+    stmt.execute("BEGIN");
+    ResultSet rs = stmt.executeQuery("SELECT k FROM t_simple ORDER BY k FOR UPDATE SKIP LOCKED");
+
+    int[] expected_rows = {1, 2, 3};
+    for (int expected_row : expected_rows) {
+      assertTrue(rs.next());
+      assertEquals(expected_row, rs.getInt(1));
+    }
+
+    long actualRows = countRowLocks(stmt, "t_simple").getLong(0);
+    assertEquals(actualRows, rowsToFetch);
+
+    conn.commit();
+  }
+
+  // Validate that setFetchSize does not overlock when read-ahead batching is enabled.
+  @Test
+  public void testSkipLockedReadAheadWithFetchSize() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+        .withPreferQueryMode("extended")
+        .connect()) {
+
+      Statement stmt = conn.createStatement();
+      stmt.execute("CREATE TABLE t_simple (k INT, PRIMARY KEY (k ASC))");
+      stmt.execute("INSERT INTO t_simple SELECT i FROM generate_series(1, 10) i");
+
+      runSkipLockedQueryWithFetchSize(conn, 4 /* maxReadAhead */);
+      runSkipLockedQueryWithFetchSize(conn, 1 /* maxReadAhead */);
     }
   }
 }
