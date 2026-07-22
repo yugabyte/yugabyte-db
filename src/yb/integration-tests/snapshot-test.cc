@@ -14,6 +14,8 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
@@ -588,8 +590,10 @@ TEST_F(SnapshotTest, DeleteSnapshotTombstonesBeforePhysicalCleanup) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_after_tombstoning_snapshot) = true;
   TestThreadHolder delete_thread_holder;
   Status delete_status;
+  std::atomic<bool> delete_finished = false;
   delete_thread_holder.AddThreadFunctor([&] {
     delete_status = DeleteSnapshotAndWait(snapshot_id);
+    delete_finished.store(true, std::memory_order_release);
   });
   auto unblock_deletion = ScopeExit([&] {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_after_tombstoning_snapshot) = false;
@@ -618,9 +622,15 @@ TEST_F(SnapshotTest, DeleteSnapshotTombstonesBeforePhysicalCleanup) {
     }
   }
 
+  // Raft apply is complete while the bounded cleanup workers are paused. This is the externally
+  // visible best-effort contract: physical deletion must not hold up deleting the snapshot.
+  ASSERT_OK(WaitFor(
+      [&] { return delete_finished.load(std::memory_order_acquire); }, 15s,
+      "Wait for logical snapshot deletion to complete"));
+  ASSERT_OK(delete_status);
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_after_tombstoning_snapshot) = false;
   delete_thread_holder.JoinAll();
-  ASSERT_OK(delete_status);
 }
 
 // Tests that a non-imported snapshot hides a table that is dropped subsequently.

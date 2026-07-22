@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include <mutex>
+#include <unordered_map>
+
 #include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
 #include "yb/common/snapshot.h"
@@ -23,7 +26,10 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/rpc/scheduler.h"
+
 #include "yb/util/status_fwd.h"
+#include "yb/util/threadpool.h"
 
 namespace rocksdb {
 
@@ -37,6 +43,10 @@ class Env;
 class FsManager;
 class RWOperationCounter;
 class rw_semaphore;
+
+namespace rpc {
+class Scheduler;
+}
 
 namespace tablet {
 
@@ -55,8 +65,13 @@ struct CreateSnapshotData {
 class TabletSnapshots : public TabletComponent {
  public:
   explicit TabletSnapshots(Tablet* tablet);
+  ~TabletSnapshots();
 
   Status Open();
+
+  void SetCleanupPool(ThreadPool* thread_pool, rpc::Scheduler* scheduler);
+  void StartShutdown();
+  void CompleteShutdown();
 
   // Create snapshot for this tablet.
   Status Create(SnapshotOperation* operation);
@@ -135,9 +150,41 @@ class TabletSnapshots : public TabletComponent {
 
   Result<docdb::CotableIdsMap> GetCotableIdsMap(const std::string& snapshot_dir);
 
+  enum class TombstoneState {
+    kComplete,
+    kTombstoned,
+    kBothPresent,
+    kRetry,
+  };
+
+  struct PendingSnapshotDeletion {
+    std::string active_dir;
+    std::string tombstone_dir;
+  };
+
+  TombstoneState TryTombstoneSnapshotDir(const PendingSnapshotDeletion& deletion);
+  bool CleanupTombstonedSnapshot(const PendingSnapshotDeletion& deletion);
+  void ScanDeletedSnapshotDirs();
+  void ScheduleCleanup(PendingSnapshotDeletion deletion);
+  void SubmitCleanup();
+  void RunCleanup();
+  void ScheduleRetry();
+
   Status DoCreateCheckpoint(const std::string& dir, CreateCheckpointIn create_checkpoint_in);
 
   std::string TEST_last_rocksdb_checkpoint_dir_;
+
+  // Protects the cleanup token, retry tracker, and pending deletion requests. Filesystem work runs
+  // without this mutex, and only the serial token may call RunCleanup.
+  std::mutex cleanup_mutex_;
+  std::unique_ptr<ThreadPoolToken> cleanup_token_ GUARDED_BY(cleanup_mutex_);
+  std::unordered_map<std::string, PendingSnapshotDeletion> pending_deletions_
+      GUARDED_BY(cleanup_mutex_);
+  rpc::ScheduledTaskTracker retry_task_tracker_;
+  uint32_t retry_attempt_ GUARDED_BY(cleanup_mutex_) = 0;
+  bool cleanup_task_scheduled_ GUARDED_BY(cleanup_mutex_) = false;
+  bool retry_scheduled_ GUARDED_BY(cleanup_mutex_) = false;
+  bool shutting_down_ GUARDED_BY(cleanup_mutex_) = false;
 
   std::mutex last_snapshot_ht_mutex_;
   std::unordered_map<SnapshotScheduleId, HybridTime> last_snapshot_ht_
