@@ -1,10 +1,10 @@
 DIRS = \
-	documentdb \
+	$(if $(filter 1,$(YB_SKIP_EXTRA_PG_EXTENSIONS)),,documentdb) \
 	hypopg \
 	orafce \
 	pg_cron \
 	pg_hint_plan \
-	pg_parquet \
+	$(if $(filter 1,$(YB_SKIP_EXTRA_PG_EXTENSIONS)),,pg_parquet) \
 	pg_partman \
 	pg_stat_monitor \
 	pgaudit \

@@ -91,6 +91,10 @@ Build options:
   --build-yugabyted-ui
     Build yugabyted-ui. If specified with --cmake-only, it won't be built.
 
+  --skip-extra-pg-extensions
+    Skip building extra (non-essential) PG extensions: documentdb (also skips its pgrx/Rust build)
+    and pg_parquet.
+
   --target, --targets
     Pass the given target or set of targets to make or ninja.
   --rebuild-file <source_file_to_rebuild>
@@ -617,6 +621,9 @@ parse_yb_build_cmd_line() {
       ;;
       --no-yugabyted-ui|--skip-yugabyted-ui)
         build_yugabyted_ui=false
+      ;;
+      --skip-extra-pg-extensions)
+        export YB_SKIP_EXTRA_PG_EXTENSIONS=1
       ;;
       --num-repetitions|--num-reps|-n)
         ensure_option_has_arg "$@"
