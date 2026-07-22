@@ -1,11 +1,11 @@
 DIRS = \
 	mage \
-	documentdb \
+	$(if $(filter 1,$(YB_SKIP_EXTRA_PG_EXTENSIONS)),,documentdb) \
 	hypopg \
 	orafce \
 	pg_cron \
 	pg_hint_plan \
-	$(if $(filter 1,$(YB_SKIP_PG_PARQUET_BUILD)),,pg_parquet) \
+	$(if $(filter 1,$(YB_SKIP_PG_PARQUET_BUILD) $(YB_SKIP_EXTRA_PG_EXTENSIONS)),,pg_parquet) \
 	pg_partman \
 	pg_stat_monitor \
 	pgaudit \
