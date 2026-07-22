@@ -2,8 +2,10 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.23.1.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.23.1.0-b0
+\restrict <key>
+
+-- Dumped from database version 19devel-YB-2.31.0.1900-b0
+-- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -17,6 +19,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -24,6 +27,7 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+\unrestrict <key>
 
 -- Set variable use_tablespaces (if not already set)
 \if :{?use_tablespaces}
@@ -44,6 +48,7 @@ BEGIN
     EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
   END IF;
 END $$;
+\restrict <key>
 
 SET default_table_access_method = heap;
 
@@ -73,40 +78,44 @@ CREATE TABLE public.t2 (
 WITH (colocation_id='20001');
 
 
+\unrestrict <key>
 \if :use_roles
     ALTER TABLE public.t2 OWNER TO yugabyte_test;
 \endif
 
+\restrict <key>
 --
 -- Name: mv1; Type: MATERIALIZED VIEW; Schema: public; Owner: yugabyte_test
 --
 
 
 -- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16417'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16418'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type array oid
-SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16416'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16417'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_class oids and relfilenodes
-SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16415'::pg_catalog.oid);
-SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16415'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16416'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16420'::pg_catalog.oid);
 
 
 -- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
 SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16402'::pg_catalog.oid);
 CREATE MATERIALIZED VIEW public.mv1
-WITH (colocation_id='20003') AS
- SELECT t2.col
+WITH (colocation_id='20004') AS
+ SELECT col
    FROM public.t2;
 
 
+\unrestrict <key>
 \if :use_roles
-    ALTER TABLE public.mv1 OWNER TO yugabyte_test;
+    ALTER MATERIALIZED VIEW public.mv1 OWNER TO yugabyte_test;
 \endif
 
+\restrict <key>
 --
 -- Name: t1; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
@@ -133,10 +142,12 @@ CREATE TABLE public.t1 (
 WITH (colocation_id='20001');
 
 
+\unrestrict <key>
 \if :use_roles
     ALTER TABLE public.t1 OWNER TO yugabyte_test;
 \endif
 
+\restrict <key>
 --
 -- Name: t3; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
@@ -163,10 +174,12 @@ CREATE TABLE public.t3 (
 WITH (colocation_id='20002');
 
 
+\unrestrict <key>
 \if :use_roles
     ALTER TABLE public.t3 OWNER TO yugabyte_test;
 \endif
 
+\restrict <key>
 --
 -- Name: t4; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
@@ -196,10 +209,12 @@ CREATE TABLE public.t4 (
 WITH (colocation_id='20001');
 
 
+\unrestrict <key>
 \if :use_roles
     ALTER TABLE public.t4 OWNER TO yugabyte_test;
 \endif
 
+\restrict <key>
 --
 -- Name: t5; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
@@ -226,10 +241,12 @@ CREATE TABLE public.t5 (
 WITH (colocation_id='20001');
 
 
+\unrestrict <key>
 \if :use_roles
     ALTER TABLE public.t5 OWNER TO yugabyte_test;
 \endif
 
+\restrict <key>
 --
 -- Name: t6; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
@@ -256,10 +273,12 @@ CREATE TABLE public.t6 (
 WITH (colocation_id='20002');
 
 
+\unrestrict <key>
 \if :use_roles
     ALTER TABLE public.t6 OWNER TO yugabyte_test;
 \endif
 
+\restrict <key>
 --
 -- Name: t7; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
@@ -279,8 +298,8 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16406'::pg_catalog.o
 
 
 -- For binary upgrade, must preserve pg_class oids and relfilenodes
-SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16409'::pg_catalog.oid);
-SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16409'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16410'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16410'::pg_catalog.oid);
 
 
 -- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
@@ -295,10 +314,12 @@ CREATE TABLE public.t7 (
 WITH (colocation_id='20003');
 
 
+\unrestrict <key>
 \if :use_roles
     ALTER TABLE public.t7 OWNER TO yugabyte_test;
 \endif
 
+\restrict <key>
 --
 -- Data for Name: t1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
@@ -360,12 +381,13 @@ COPY public.t7 (a, b, c, d) FROM stdin;
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 't1',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -374,12 +396,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 't2',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -388,12 +411,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 't3',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -402,12 +426,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 't4',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -416,12 +441,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 't5',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -430,12 +456,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 't6',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -444,12 +471,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 't7',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -459,8 +487,8 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 
 
 -- For binary upgrade, must preserve pg_class oids and relfilenodes
-SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16411'::pg_catalog.oid);
-SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16411'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16412'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16412'::pg_catalog.oid);
 
 
 -- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
@@ -477,8 +505,8 @@ CREATE INDEX NONCONCURRENTLY i1 ON public.t7 USING lsm (a ASC) WITH (colocation_
 
 
 -- For binary upgrade, must preserve pg_class oids and relfilenodes
-SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16412'::pg_catalog.oid);
-SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16412'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16413'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16413'::pg_catalog.oid);
 
 
 -- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
@@ -492,8 +520,8 @@ CREATE INDEX NONCONCURRENTLY i2 ON public.t7 USING lsm (b ASC) WITH (colocation_
 
 
 -- For binary upgrade, must preserve pg_class oids and relfilenodes
-SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16414'::pg_catalog.oid);
-SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16414'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16415'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16415'::pg_catalog.oid);
 
 
 -- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
@@ -507,8 +535,8 @@ CREATE INDEX NONCONCURRENTLY i21 ON public.t2 USING lsm (col ASC) WITH (colocati
 
 
 -- For binary upgrade, must preserve pg_class oids and relfilenodes
-SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16413'::pg_catalog.oid);
-SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16413'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16414'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16414'::pg_catalog.oid);
 
 
 -- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
@@ -554,12 +582,13 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'i1',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -568,12 +597,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'i2',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -582,12 +612,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'i21',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -596,12 +627,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'i3',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -617,12 +649,13 @@ REFRESH MATERIALIZED VIEW public.mv1;
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'mv1',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -631,12 +664,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 't7_pkey',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -651,3 +685,6 @@ END $$;
 --
 -- YSQL database dump complete
 --
+
+\unrestrict <key>
+

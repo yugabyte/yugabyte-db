@@ -115,7 +115,8 @@ Indexes:
     "level1_0_pkey" PRIMARY KEY, lsm (c1 ASC)
 Check constraints:
     "level0_c1_cons" CHECK (c1 > 0)
-Inherits: level0
+Inherits:
+    level0
 Number of child tables: 2 (Use \d+ to list them.)
 
               Table "public.level1_1"
@@ -131,7 +132,8 @@ Indexes:
 Check constraints:
     "level0_c1_cons" CHECK (c1 > 0)
     "level1_1_c1_cons" CHECK (c1 >= 2)
-Inherits: level0
+Inherits:
+    level0
 Number of child tables: 1 (Use \d+ to list them.)
 
               Table "public.level2_0"
@@ -143,7 +145,8 @@ Number of child tables: 1 (Use \d+ to list them.)
  c4     | text    |           |          | 
 Check constraints:
     "level0_c1_cons" CHECK (c1 > 0)
-Inherits: level1_0
+Inherits:
+    level1_0
 
               Table "public.level2_1"
  Column |  Type   | Collation | Nullable | Default 
@@ -158,8 +161,9 @@ Indexes:
 Check constraints:
     "level0_c1_cons" CHECK (c1 > 0)
     "level1_1_c1_cons" CHECK (c1 >= 2)
-Inherits: level1_0,
-          level1_1
+Inherits:
+    level1_0
+    level1_1
 
  tableoid | c1 | c2  | c3  | c4  
 ----------+----+-----+-----+-----

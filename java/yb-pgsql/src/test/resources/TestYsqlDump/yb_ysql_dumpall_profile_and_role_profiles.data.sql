@@ -2,6 +2,8 @@
 -- YSQL database cluster dump
 --
 
+\restrict <key>
+
 SET default_transaction_read_only = off;
 
 SET client_encoding = 'UTF8';
@@ -11,12 +13,15 @@ SET standard_conforming_strings = on;
 -- Roles
 --
 
+\unrestrict <key>
 -- Set variable ignore_existing_roles (if not already set)
 \if :{?ignore_existing_roles}
 \else
 \set ignore_existing_roles false
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
@@ -27,7 +32,9 @@ SET standard_conforming_strings = on;
     CREATE ROLE postgres;
     ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'test_user') AS role_exists \gset
@@ -38,7 +45,9 @@ SET standard_conforming_strings = on;
     CREATE ROLE test_user;
     ALTER ROLE test_user WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'md5d5dec22d2a9201f8b9825e21f6db97e4';
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'test_user2') AS role_exists \gset
@@ -49,7 +58,9 @@ SET standard_conforming_strings = on;
     CREATE ROLE test_user2;
     ALTER ROLE test_user2 WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'md54a5ddcd4bacb5359d2c91591a02a3fcc';
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'test_user3') AS role_exists \gset
@@ -60,7 +71,9 @@ SET standard_conforming_strings = on;
     CREATE ROLE test_user3;
     ALTER ROLE test_user3 WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'md57ed39e43212e93ec7037f51812d89f1b';
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_db_admin') AS role_exists \gset
@@ -71,7 +84,9 @@ SET standard_conforming_strings = on;
     CREATE ROLE yb_db_admin;
     ALTER ROLE yb_db_admin WITH NOSUPERUSER NOINHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_extension') AS role_exists \gset
@@ -82,7 +97,9 @@ SET standard_conforming_strings = on;
     CREATE ROLE yb_extension;
     ALTER ROLE yb_extension WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_fdw') AS role_exists \gset
@@ -93,9 +110,11 @@ SET standard_conforming_strings = on;
     CREATE ROLE yb_fdw;
     ALTER ROLE yb_fdw WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 \endif
+\restrict <key>
 
 ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD 'md52c2dc7d65d3e364f08b8addff5a54bf5';
 
+\unrestrict <key>
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
@@ -106,6 +125,7 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
     CREATE ROLE yugabyte_test;
     ALTER ROLE yugabyte_test WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN NOREPLICATION BYPASSRLS;
 \endif
+\restrict <key>
 
 
 --
@@ -151,6 +171,8 @@ WHERE rolprfrole = (SELECT oid FROM pg_authid WHERE rolname = 'test_user3')
   AND rolprfprofile = (SELECT oid FROM pg_yb_profile WHERE prfname = 'profile_2_failed');
 
 
+\unrestrict <key>
+
 --
 -- Databases
 --
@@ -165,8 +187,10 @@ WHERE rolprfrole = (SELECT oid FROM pg_authid WHERE rolname = 'test_user3')
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.27.0.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.27.0.0-b0
+\restrict <key>
+
+-- Dumped from database version 19devel-YB-2.31.0.1900-b0
+-- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -180,6 +204,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -187,6 +212,7 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+\unrestrict <key>
 
 -- Set variable use_tablespaces (if not already set)
 \if :{?use_tablespaces}
@@ -207,6 +233,7 @@ BEGIN
     EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
   END IF;
 END $$;
+\restrict <key>
 
 --
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
@@ -252,6 +279,8 @@ END $$;
 --
 -- YSQL database dump complete
 --
+
+\unrestrict <key>
 
 --
 -- Database "postgres" dump
@@ -263,8 +292,10 @@ END $$;
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.27.0.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.27.0.0-b0
+\restrict <key>
+
+-- Dumped from database version 19devel-YB-2.31.0.1900-b0
+-- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -278,6 +309,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -285,6 +317,7 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+\unrestrict <key>
 
 -- Set variable use_tablespaces (if not already set)
 \if :{?use_tablespaces}
@@ -305,6 +338,7 @@ BEGIN
     EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
   END IF;
 END $$;
+\restrict <key>
 
 --
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
@@ -351,6 +385,8 @@ END $$;
 -- YSQL database dump complete
 --
 
+\unrestrict <key>
+
 --
 -- Database "system_platform" dump
 --
@@ -359,8 +395,10 @@ END $$;
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.27.0.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.27.0.0-b0
+\restrict <key>
+
+-- Dumped from database version 19devel-YB-2.31.0.1900-b0
+-- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -374,6 +412,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -381,6 +420,7 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+\unrestrict <key>
 
 -- Set variable use_tablespaces (if not already set)
 \if :{?use_tablespaces}
@@ -393,6 +433,7 @@ SET row_security = off;
 \else
 \set use_roles true
 \endif
+\restrict <key>
 
 --
 -- Name: system_platform; Type: DATABASE; Schema: -; Owner: postgres
@@ -401,11 +442,15 @@ SET row_security = off;
 CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
+\unrestrict <key>
 \if :use_roles
     ALTER DATABASE system_platform OWNER TO postgres;
 \endif
 
+\restrict <key>
+\unrestrict <key>
 \connect system_platform
+\restrict <key>
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -419,6 +464,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -479,6 +525,8 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump complete
 --
 
+\unrestrict <key>
+
 --
 -- Database "yugabyte" dump
 --
@@ -487,8 +535,10 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.27.0.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.27.0.0-b0
+\restrict <key>
+
+-- Dumped from database version 19devel-YB-2.31.0.1900-b0
+-- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -502,6 +552,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -509,6 +560,7 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+\unrestrict <key>
 
 -- Set variable use_tablespaces (if not already set)
 \if :{?use_tablespaces}
@@ -521,6 +573,7 @@ SET row_security = off;
 \else
 \set use_roles true
 \endif
+\restrict <key>
 
 --
 -- Name: yugabyte; Type: DATABASE; Schema: -; Owner: postgres
@@ -529,11 +582,15 @@ SET row_security = off;
 CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
+\unrestrict <key>
 \if :use_roles
     ALTER DATABASE yugabyte OWNER TO postgres;
 \endif
 
+\restrict <key>
+\unrestrict <key>
 \connect yugabyte
+\restrict <key>
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -547,6 +604,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -574,10 +632,12 @@ COMMENT ON DATABASE yugabyte IS 'default administrative connection database';
 -- Name: SCHEMA public; Type: ACL; Schema: -; Owner: pg_database_owner
 --
 
+\unrestrict <key>
 \if :use_roles
 REVOKE USAGE ON SCHEMA public FROM PUBLIC;
 GRANT ALL ON SCHEMA public TO PUBLIC;
 \endif
+\restrict <key>
 
 
 --
@@ -616,6 +676,8 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 --
 -- YSQL database dump complete
 --
+
+\unrestrict <key>
 
 --
 -- YSQL database cluster dump complete

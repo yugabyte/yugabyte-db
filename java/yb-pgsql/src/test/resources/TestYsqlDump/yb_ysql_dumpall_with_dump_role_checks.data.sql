@@ -2,6 +2,8 @@
 -- YSQL database cluster dump
 --
 
+\restrict <key>
+
 SET default_transaction_read_only = off;
 
 SET client_encoding = 'UTF8';
@@ -11,12 +13,15 @@ SET standard_conforming_strings = on;
 -- Roles
 --
 
+\unrestrict <key>
 -- Set variable ignore_existing_roles (if not already set)
 \if :{?ignore_existing_roles}
 \else
 \set ignore_existing_roles false
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'User_"_WITH_""_different''_''quotes'' and spaces') AS role_exists \gset
@@ -27,7 +32,9 @@ SET standard_conforming_strings = on;
     CREATE ROLE "User_""_WITH_""""_different'_'quotes' and spaces";
     ALTER ROLE "User_""_WITH_""""_different'_'quotes' and spaces" WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
@@ -38,7 +45,9 @@ SET standard_conforming_strings = on;
     CREATE ROLE postgres;
     ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS role_exists \gset
@@ -49,7 +58,9 @@ SET standard_conforming_strings = on;
     CREATE ROLE regress_priv_user7;
     ALTER ROLE regress_priv_user7 WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS;
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user8') AS role_exists \gset
@@ -60,7 +71,9 @@ SET standard_conforming_strings = on;
     CREATE ROLE regress_priv_user8;
     ALTER ROLE regress_priv_user8 WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS;
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_db_admin') AS role_exists \gset
@@ -71,7 +84,9 @@ SET standard_conforming_strings = on;
     CREATE ROLE yb_db_admin;
     ALTER ROLE yb_db_admin WITH NOSUPERUSER NOINHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_extension') AS role_exists \gset
@@ -82,7 +97,9 @@ SET standard_conforming_strings = on;
     CREATE ROLE yb_extension;
     ALTER ROLE yb_extension WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_fdw') AS role_exists \gset
@@ -93,9 +110,11 @@ SET standard_conforming_strings = on;
     CREATE ROLE yb_fdw;
     ALTER ROLE yb_fdw WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 \endif
+\restrict <key>
 
 ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD 'md52c2dc7d65d3e364f08b8addff5a54bf5';
 
+\unrestrict <key>
 \set role_exists false
 \if :ignore_existing_roles
     SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
@@ -106,6 +125,7 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
     CREATE ROLE yugabyte_test;
     ALTER ROLE yugabyte_test WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN NOREPLICATION BYPASSRLS;
 \endif
+\restrict <key>
 
 
 --
@@ -129,20 +149,24 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS ro
 -- Role memberships
 --
 
-SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user8') AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\unrestrict <key>
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user8') AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
 \if :role_exists
-    GRANT pg_read_all_settings TO regress_priv_user8 WITH ADMIN OPTION GRANTED BY yugabyte_test;
+    GRANT pg_read_all_settings TO regress_priv_user8 WITH ADMIN OPTION, INHERIT TRUE GRANTED BY postgres;
 \else
-    \echo 'Skipping grant privilege due to missing role:' regress_priv_user8 'OR' yugabyte_test
+    \echo 'Skipping grant privilege due to missing role:' regress_priv_user8 'OR' postgres
 \endif
 
-SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\restrict <key>
+\unrestrict <key>
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AND EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
 \if :role_exists
-    GRANT pg_write_all_data TO regress_priv_user7 GRANTED BY yugabyte_test;
+    GRANT pg_write_all_data TO regress_priv_user7 WITH INHERIT TRUE GRANTED BY postgres;
 \else
-    \echo 'Skipping grant privilege due to missing role:' regress_priv_user7 'OR' yugabyte_test
+    \echo 'Skipping grant privilege due to missing role:' regress_priv_user7 'OR' postgres
 \endif
 
+\restrict <key>
 
 
 
@@ -174,12 +198,15 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS ro
 -- Tablespaces
 --
 
+\unrestrict <key>
 -- Set variable ignore_existing_tablespaces (if not already set)
 \if :{?ignore_existing_tablespaces}
 \else
 \set ignore_existing_tablespaces false
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set tablespace_exists false
 \if :ignore_existing_tablespaces
     SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = 'tsp1') AS tablespace_exists \gset
@@ -189,7 +216,9 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS ro
 \else
     CREATE TABLESPACE tsp1 OWNER yugabyte_test LOCATION '';
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set tablespace_exists false
 \if :ignore_existing_tablespaces
     SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = 'tsp2') AS tablespace_exists \gset
@@ -199,7 +228,9 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS ro
 \else
     CREATE TABLESPACE tsp2 OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"datacenter1","zone":"rack1","min_num_replicas":1}]}');
 \endif
+\restrict <key>
 
+\unrestrict <key>
 \set tablespace_exists false
 \if :ignore_existing_tablespaces
     SELECT EXISTS(SELECT 1 FROM pg_tablespace WHERE spcname = 'tsp_unused') AS tablespace_exists \gset
@@ -209,8 +240,11 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS ro
 \else
     CREATE TABLESPACE tsp_unused OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"dc_unused","zone":"z_unused","min_num_replicas":1}]}');
 \endif
+\restrict <key>
 
 
+
+\unrestrict <key>
 
 --
 -- Databases
@@ -226,8 +260,10 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user7') AS ro
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.0.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.0.0-b0
+\restrict <key>
+
+-- Dumped from database version 19devel-YB-2.31.0.1900-b0
+-- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -241,6 +277,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -248,6 +285,7 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+\unrestrict <key>
 
 -- Set variable use_tablespaces (if not already set)
 \if :{?use_tablespaces}
@@ -268,6 +306,7 @@ BEGIN
     EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
   END IF;
 END $$;
+\restrict <key>
 
 --
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
@@ -313,6 +352,8 @@ END $$;
 --
 -- YSQL database dump complete
 --
+
+\unrestrict <key>
 
 --
 -- Database "postgres" dump
@@ -324,8 +365,10 @@ END $$;
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.25.2.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.25.2.0-b0
+\restrict <key>
+
+-- Dumped from database version 19devel-YB-2.31.0.1900-b0
+-- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -339,6 +382,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -346,6 +390,7 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+\unrestrict <key>
 
 -- Set variable use_tablespaces (if not already set)
 \if :{?use_tablespaces}
@@ -366,6 +411,7 @@ BEGIN
     EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO on', current_database());
   END IF;
 END $$;
+\restrict <key>
 
 --
 -- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
@@ -412,6 +458,8 @@ END $$;
 -- YSQL database dump complete
 --
 
+\unrestrict <key>
+
 --
 -- Database "system_platform" dump
 --
@@ -420,8 +468,10 @@ END $$;
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.25.2.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.25.2.0-b0
+\restrict <key>
+
+-- Dumped from database version 19devel-YB-2.31.0.1900-b0
+-- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -435,6 +485,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -442,6 +493,7 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+\unrestrict <key>
 
 -- Set variable use_tablespaces (if not already set)
 \if :{?use_tablespaces}
@@ -454,6 +506,7 @@ SET row_security = off;
 \else
 \set use_roles true
 \endif
+\restrict <key>
 
 --
 -- Name: system_platform; Type: DATABASE; Schema: -; Owner: postgres
@@ -462,6 +515,7 @@ SET row_security = off;
 CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
+\unrestrict <key>
 \if :use_roles
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
 \if :role_exists
@@ -471,7 +525,10 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists 
 \endif
 \endif
 
+\restrict <key>
+\unrestrict <key>
 \connect system_platform
+\restrict <key>
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -485,6 +542,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -545,6 +603,8 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump complete
 --
 
+\unrestrict <key>
+
 --
 -- Database "yugabyte" dump
 --
@@ -553,8 +613,10 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.25.2.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.25.2.0-b0
+\restrict <key>
+
+-- Dumped from database version 19devel-YB-2.31.0.1900-b0
+-- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -568,6 +630,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -575,6 +638,7 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+\unrestrict <key>
 
 -- Set variable use_tablespaces (if not already set)
 \if :{?use_tablespaces}
@@ -587,6 +651,7 @@ SET row_security = off;
 \else
 \set use_roles true
 \endif
+\restrict <key>
 
 --
 -- Name: yugabyte; Type: DATABASE; Schema: -; Owner: postgres
@@ -595,6 +660,7 @@ SET row_security = off;
 CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8' colocation = false;
 
 
+\unrestrict <key>
 \if :use_roles
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists \gset
 \if :role_exists
@@ -604,7 +670,10 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'postgres') AS role_exists 
 \endif
 \endif
 
+\restrict <key>
+\unrestrict <key>
 \connect yugabyte
+\restrict <key>
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -618,6 +687,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -645,6 +715,7 @@ COMMENT ON DATABASE yugabyte IS 'default administrative connection database';
 -- Name: yugabyte; Type: DATABASE PROPERTIES; Schema: -; Owner: postgres
 --
 
+\unrestrict <key>
 \if :use_roles
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user8') AS role_exists \gset
 \if :role_exists
@@ -654,9 +725,12 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'regress_priv_user8') AS ro
 \endif
 
 \endif
+\restrict <key>
 
 
+\unrestrict <key>
 \connect yugabyte
+\restrict <key>
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -670,6 +744,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -686,10 +761,12 @@ BEGIN
     EXECUTE 'SET yb_enable_update_reltuples_after_create_index TO false';
   END IF;
 END $$;
+\unrestrict <key>
 \if :use_tablespaces
     SET default_tablespace = tsp1;
 \endif
 
+\restrict <key>
 --
 -- Name: grp_with_spc; Type: TABLEGROUP; Schema: -; Owner: yugabyte_test; Tablespace: tsp1
 --
@@ -700,6 +777,7 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16393'::pg_catalog.oid
 CREATE TABLEGROUP grp_with_spc;
 
 
+\unrestrict <key>
 \if :use_roles
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
@@ -709,10 +787,13 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_ex
 \endif
 \endif
 
+\restrict <key>
+\unrestrict <key>
 \if :use_tablespaces
     SET default_tablespace = '';
 \endif
 
+\restrict <key>
 --
 -- Name: grp_without_spc; Type: TABLEGROUP; Schema: -; Owner: yugabyte_test
 --
@@ -723,6 +804,7 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16392'::pg_catalog.oid
 CREATE TABLEGROUP grp_without_spc;
 
 
+\unrestrict <key>
 \if :use_roles
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
@@ -732,10 +814,13 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_ex
 \endif
 \endif
 
+\restrict <key>
+\unrestrict <key>
 \if :use_tablespaces
     SET default_tablespace = tsp1;
 \endif
 
+\restrict <key>
 SET default_table_access_method = heap;
 
 --
@@ -761,6 +846,7 @@ CREATE TABLE public.table1 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict <key>
 \if :use_roles
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
@@ -770,10 +856,13 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_ex
 \endif
 \endif
 
+\restrict <key>
+\unrestrict <key>
 \if :use_tablespaces
     SET default_tablespace = tsp2;
 \endif
 
+\restrict <key>
 --
 -- Name: table2; Type: TABLE; Schema: public; Owner: yugabyte_test; Tablespace: tsp2
 --
@@ -797,6 +886,7 @@ CREATE TABLE public.table2 (
 SPLIT INTO 3 TABLETS;
 
 
+\unrestrict <key>
 \if :use_roles
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
@@ -806,10 +896,13 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_ex
 \endif
 \endif
 
+\restrict <key>
+\unrestrict <key>
 \if :use_tablespaces
     SET default_tablespace = '';
 \endif
 
+\restrict <key>
 --
 -- Name: tbl_with_grp_with_spc; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
@@ -834,6 +927,7 @@ WITH (autovacuum_enabled='true', colocation_id='20001')
 TABLEGROUP grp_with_spc;
 
 
+\unrestrict <key>
 \if :use_roles
 SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
 \if :role_exists
@@ -843,6 +937,7 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_ex
 \endif
 \endif
 
+\restrict <key>
 --
 -- Data for Name: table1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
@@ -872,12 +967,13 @@ COPY public.tbl_with_grp_with_spc (a) FROM stdin;
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'table1',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -886,12 +982,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'table2',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -900,19 +997,22 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'tbl_with_grp_with_spc',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
+\unrestrict <key>
 \if :use_tablespaces
     SET default_tablespace = tsp2;
 \endif
 
+\restrict <key>
 --
 -- Name: idx1; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp2
 --
@@ -925,10 +1025,12 @@ SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16387'::pg_catalog.
 CREATE INDEX NONCONCURRENTLY idx1 ON public.table1 USING lsm (id HASH) SPLIT INTO 3 TABLETS;
 
 
+\unrestrict <key>
 \if :use_tablespaces
     SET default_tablespace = tsp1;
 \endif
 
+\restrict <key>
 --
 -- Name: idx2; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp1
 --
@@ -945,10 +1047,12 @@ CREATE INDEX NONCONCURRENTLY idx2 ON public.table2 USING lsm (name HASH) SPLIT I
 -- Name: SCHEMA public; Type: ACL; Schema: -; Owner: pg_database_owner
 --
 
+\unrestrict <key>
 \if :use_roles
 REVOKE USAGE ON SCHEMA public FROM PUBLIC;
 GRANT ALL ON SCHEMA public TO PUBLIC;
 \endif
+\restrict <key>
 
 
 --
@@ -989,12 +1093,13 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'idx1',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -1003,18 +1108,21 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'idx2',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
 --
 -- YSQL database dump complete
 --
+
+\unrestrict <key>
 
 --
 -- YSQL database cluster dump complete

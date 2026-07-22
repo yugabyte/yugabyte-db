@@ -2,12 +2,15 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.2.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
+\restrict <key>
+
+-- Dumped from database version 19devel-YB-2.31.0.1900-b0
+-- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -124,7 +127,7 @@ ALTER TABLE public.level1_0 OWNER TO yugabyte_test;
 --
 
 CREATE TABLE public.level1_1 (
-    c2 text,
+    c2 text NOT NULL,
     CONSTRAINT level1_1_c1_cons CHECK ((c1 >= 2)),
     CONSTRAINT level1_1_pkey PRIMARY KEY((c2) HASH)
 )
@@ -138,7 +141,7 @@ ALTER TABLE public.level1_1 OWNER TO yugabyte_test;
 --
 
 CREATE TABLE public.level2_0 (
-    c1 integer,
+    c1 integer NOT NULL,
     c2 text,
     c3 text NOT NULL
 )
@@ -152,8 +155,8 @@ ALTER TABLE public.level2_0 OWNER TO yugabyte_test;
 --
 
 CREATE TABLE public.level2_1 (
-    c1 integer,
-    c2 text,
+    c1 integer NOT NULL,
+    c2 text NOT NULL,
     c3 text NOT NULL,
     c4 text NOT NULL,
     CONSTRAINT level2_1_pkey PRIMARY KEY((c4) HASH)
@@ -373,12 +376,13 @@ COPY public.part_uniq_const_default (v1, v2) FROM stdin;
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'level0',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -387,12 +391,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'level1_0',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -401,12 +406,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'level1_1',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -415,12 +421,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'level2_0',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -429,12 +436,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'level2_1',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -443,12 +451,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'p1',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -457,12 +466,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'p2',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -471,12 +481,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'p3',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -485,12 +496,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_uniq_const',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -499,12 +511,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_30_50',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -513,12 +526,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_50_100',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -527,12 +541,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_default',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -656,12 +671,13 @@ GRANT ALL ON SCHEMA public TO PUBLIC;
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'c1',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -670,12 +686,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'c2',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -684,12 +701,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'c3',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -698,12 +716,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'level1_0_pkey',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -712,12 +731,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'level1_1_c3_idx',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -726,12 +746,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'level1_1_pkey',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -740,12 +761,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'level2_1_c3_idx',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -754,12 +776,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'level2_1_pkey',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -768,12 +791,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_30_50_v1_v2_key',
 	'relpages', '0'::integer,
 	'reltuples', '1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -782,12 +806,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_50_100_v1_v2_key',
 	'relpages', '0'::integer,
 	'reltuples', '1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -796,12 +821,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_50_100_v2_uniq',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -810,12 +836,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_default_v1_v2_key',
 	'relpages', '0'::integer,
 	'reltuples', '1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -824,16 +851,19 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'part_uniq_const_unique',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
 --
 -- YSQL database dump complete
 --
+
+\unrestrict <key>
 

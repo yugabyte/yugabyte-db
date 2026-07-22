@@ -100,11 +100,22 @@ public class TestYsqlDump extends BasePgSQLTest {
    * -- Dumped by ysql_dump version 11.2-YB-1.3.2.0-b0
    */
 
+  // YB_TODO_PG19MERGE: widened to accept the "19devel" major; tighten back to
+  // "<int>.<int>" once pg19 ships a numeric version.
   private static Pattern VERSION_NUMBER_PATTERN = Pattern.compile(
-      " version [0-9]+[.][0-9]+-YB-([0-9]+[.]){3}[0-9]+-b[0-9]+");
+      " version [0-9A-Za-z.]+-YB-([0-9]+[.]){3}[0-9]+-b[0-9]+");
 
   private static String  VERSION_NUMBER_REPLACEMENT_STR =
       " version X.X-YB-X.X.X.X-bX";
+
+  // YB: ysql_dump brackets plain-text dumps with psql restrict / unrestrict
+  // meta-commands (CVE-2025-8714) that carry a per-dump random key. Normalize that
+  // key to a fixed placeholder so the golden files need not encode the random value,
+  // while still validating that the wrapping lines are emitted in the right places.
+  private static Pattern RESTRICT_KEY_PATTERN = Pattern.compile(
+      "^(\\\\(?:un)?restrict) \\S+$");
+
+  private static String  RESTRICT_KEY_REPLACEMENT_STR = "$1 <key>";
 
   private static String postprocessOutputLine(String s) {
     if (s == null)
@@ -112,6 +123,9 @@ public class TestYsqlDump extends BasePgSQLTest {
 
     // First handle version number replacement
     String processed = VERSION_NUMBER_PATTERN.matcher(s).replaceAll(VERSION_NUMBER_REPLACEMENT_STR);
+
+    // Normalize the per-dump restrict / unrestrict key (see RESTRICT_KEY_PATTERN).
+    processed = RESTRICT_KEY_PATTERN.matcher(processed).replaceAll(RESTRICT_KEY_REPLACEMENT_STR);
 
     /*
       Handle SCRAM password wildcards - replace specific SCRAM hashes with '*' to match expected

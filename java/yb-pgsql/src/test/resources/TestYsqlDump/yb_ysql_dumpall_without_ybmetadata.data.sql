@@ -2,6 +2,8 @@
 -- YSQL database cluster dump
 --
 
+\restrict <key>
+
 SET default_transaction_read_only = off;
 
 SET client_encoding = 'UTF8';
@@ -45,8 +47,8 @@ ALTER ROLE regress_priv_user7 SET log_min_messages TO 'LOG';
 -- Role memberships
 --
 
-GRANT pg_read_all_settings TO regress_priv_user8 WITH ADMIN OPTION GRANTED BY yugabyte_test;
-GRANT pg_write_all_data TO regress_priv_user7 GRANTED BY yugabyte_test;
+GRANT pg_read_all_settings TO regress_priv_user8 WITH ADMIN OPTION, INHERIT TRUE GRANTED BY postgres;
+GRANT pg_write_all_data TO regress_priv_user7 WITH INHERIT TRUE GRANTED BY postgres;
 
 
 
@@ -79,6 +81,8 @@ CREATE TABLESPACE tsp2 OWNER yugabyte_test LOCATION '' WITH (replica_placement='
 CREATE TABLESPACE tsp_unused OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"dc_unused","zone":"z_unused","min_num_replicas":1}]}');
 
 
+\unrestrict <key>
+
 --
 -- Databases
 --
@@ -93,12 +97,15 @@ CREATE TABLESPACE tsp_unused OWNER yugabyte_test LOCATION '' WITH (replica_place
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.23.0.1500-b0
--- Dumped by ysql_dump version 15.2-YB-2.23.0.1500-b0
+\restrict <key>
+
+-- Dumped from database version 19devel-YB-2.31.0.1900-b0
+-- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -110,6 +117,8 @@ SET row_security = off;
 --
 -- YSQL database dump complete
 --
+
+\unrestrict <key>
 
 --
 -- Database "postgres" dump
@@ -121,12 +130,15 @@ SET row_security = off;
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.23.0.1500-b0
--- Dumped by ysql_dump version 15.2-YB-2.23.0.1500-b0
+\restrict <key>
+
+-- Dumped from database version 19devel-YB-2.31.0.1900-b0
+-- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -139,6 +151,8 @@ SET row_security = off;
 -- YSQL database dump complete
 --
 
+\unrestrict <key>
+
 --
 -- Database "system_platform" dump
 --
@@ -147,12 +161,15 @@ SET row_security = off;
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.23.0.1500-b0
--- Dumped by ysql_dump version 15.2-YB-2.23.0.1500-b0
+\restrict <key>
+
+-- Dumped from database version 19devel-YB-2.31.0.1900-b0
+-- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -170,11 +187,14 @@ CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCA
 
 ALTER DATABASE system_platform OWNER TO postgres;
 
+\unrestrict <key>
 \connect system_platform
+\restrict <key>
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -194,6 +214,8 @@ COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';
 -- YSQL database dump complete
 --
 
+\unrestrict <key>
+
 --
 -- Database "yugabyte" dump
 --
@@ -202,12 +224,15 @@ COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.23.0.1500-b0
--- Dumped by ysql_dump version 15.2-YB-2.23.0.1500-b0
+\restrict <key>
+
+-- Dumped from database version 19devel-YB-2.31.0.1900-b0
+-- Dumped by ysql_dump version 19devel-YB-2.31.0.1900-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -225,11 +250,14 @@ CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROV
 
 ALTER DATABASE yugabyte OWNER TO postgres;
 
+\unrestrict <key>
 \connect yugabyte
+\restrict <key>
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -252,11 +280,14 @@ COMMENT ON DATABASE yugabyte IS 'default administrative connection database';
 ALTER ROLE regress_priv_user8 IN DATABASE yugabyte SET log_min_messages TO 'LOG';
 
 
+\unrestrict <key>
 \connect yugabyte
+\restrict <key>
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -336,12 +367,13 @@ COPY public.tbl_with_grp_with_spc (a) FROM stdin;
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'table1',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -350,12 +382,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'table2',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -364,12 +397,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'tbl_with_grp_with_spc',
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -404,12 +438,13 @@ GRANT ALL ON SCHEMA public TO PUBLIC;
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'idx1',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
@@ -418,18 +453,21 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 --
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
-	'version', '150012'::integer,
+	'version', '190000'::integer,
 	'schemaname', 'public',
 	'relname', 'idx2',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
-	'relallvisible', '0'::integer
+	'relallvisible', '0'::integer,
+	'relallfrozen', '0'::integer
 );
 
 
 --
 -- YSQL database dump complete
 --
+
+\unrestrict <key>
 
 --
 -- YSQL database cluster dump complete
