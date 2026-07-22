@@ -120,17 +120,12 @@
         {{- $displayClass := "" -}}
         {{- if eq .Identifier "products" -}}
           {{- range .Children.ByWeight.Reverse -}}
-            {{ $childLink := "" }}
-            {{- if eq .URL "/" -}}
-              {{ $childLink = "/" }}
-              {{- if not .Params.excludeVersion -}}
-                {{ $childLink = printf "/%s%s" $versionDir .URL }}
-              {{- end -}}
-            {{- else -}}
-              {{- if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) -}}
-                {{ $childLink = .URL }}
+            {{- $childLink := .URL -}}
+            {{- if and (not .Params.excludeVersion) (ne $versionDir "") (not (or (in .URL "https://") (in .URL "http://"))) -}}
+              {{- if eq .URL "/" -}}
+                {{- $childLink = printf "/%s/" $versionDir -}}
               {{- else -}}
-                {{ $childLink = printf "/%s%s" $versionDir .URL }}
+                {{- $childLink = printf "/%s%s" $versionDir .URL -}}
               {{- end -}}
             {{- end -}}
             {{- if and (ne $childLink "/") (ne $childLink "") (strings.Contains $pageUrl $childLink) -}}
