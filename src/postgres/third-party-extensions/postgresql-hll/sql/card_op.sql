@@ -9,8 +9,10 @@ SELECT #E'\\x108b49'::hll;
 
 SELECT #hll_empty(11,5,256,1);
 
+\set VERBOSITY terse
 -- # gets evaluated first so || hll_union(double, bigint) fails
 SELECT #hll_empty(11,5,256,1) || hll_hash_integer(1,0);
+\set VERBOSITY default
 
 SELECT #(hll_empty(11,5,256,1) || hll_hash_integer(1,0));
 

@@ -28,6 +28,7 @@ test: cumulative_union_sparse_sparse
 test: disable_hashagg
 test: equal
 test: explicit_thresh
+test: explicit_threshold_cap
 test: hash
 test: hash_any
 test: meta_func

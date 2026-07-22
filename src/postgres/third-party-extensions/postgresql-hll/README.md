@@ -3,11 +3,11 @@
 Overview
 ========
 
-This Postgres module introduces a new data type `hll` which is a [HyperLogLog](https://research.neustar.biz/2012/10/25/sketch-of-the-day-hyperloglog-cornerstone-of-a-big-data-infrastructure/) data structure. HyperLogLog is a **fixed-size**, set-like structure used for distinct value counting with tunable precision. For example, in 1280 bytes `hll` can estimate the count of tens of billions of distinct values with only a few percent error.
+This Postgres module introduces a new data type `hll` which is a [HyperLogLog](https://agkn.wordpress.com/2012/10/25/sketch-of-the-day-hyperloglog-cornerstone-of-a-big-data-infrastructure/) data structure. HyperLogLog is a **fixed-size**, set-like structure used for distinct value counting with tunable precision. For example, in 1280 bytes `hll` can estimate the count of tens of billions of distinct values with only a few percent error.
 
 In addition to the algorithm proposed in the [original paper](http://algo.inria.fr/flajolet/Publications/FlFuGaMe07.pdf), this implementation is augmented to improve its accuracy and memory use without sacrificing much speed. See below for more details.
 
-This `postgresql-hll` extension was originally developed by the Science team from Aggregate Knowledge, now a part of [Neustar](https://research.neustar.biz). Please see the [acknowledgements](#acknowledgements) section below for details about its contributors. 
+This `postgresql-hll` extension was originally developed by the Science team from Aggregate Knowledge, now a part of [Neustar](https://www.home.neustar/). Please see the [acknowledgements](#acknowledgements) section below for details about its contributors. 
 
 Algorithms
 ----------
@@ -55,23 +55,25 @@ Usage
 "Hello World"
 -------------
 
-        --- Make a dummy table
-        CREATE TABLE helloworld (
-                id              integer,
-                set     hll
-        );
+```sql
+--- Make a dummy table
+CREATE TABLE helloworld (
+        id              integer,
+        set     hll
+);
 
-        --- Insert an empty HLL
-        INSERT INTO helloworld(id, set) VALUES (1, hll_empty());
+--- Insert an empty HLL
+INSERT INTO helloworld(id, set) VALUES (1, hll_empty());
 
-        --- Add a hashed integer to the HLL
-        UPDATE helloworld SET set = hll_add(set, hll_hash_integer(12345)) WHERE id = 1;
+--- Add a hashed integer to the HLL
+UPDATE helloworld SET set = hll_add(set, hll_hash_integer(12345)) WHERE id = 1;
 
-        --- Or add a hashed string to the HLL
-        UPDATE helloworld SET set = hll_add(set, hll_hash_text('hello world')) WHERE id = 1;
+--- Or add a hashed string to the HLL
+UPDATE helloworld SET set = hll_add(set, hll_hash_text('hello world')) WHERE id = 1;
 
-        --- Get the cardinality of the HLL
-        SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
+--- Get the cardinality of the HLL
+SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
+```
 
 Now with the silly stuff out of the way, here's a more realistic use case.
 
@@ -80,56 +82,70 @@ Data Warehouse Use Case
 
 Let's assume I've got a fact table that records users' visits to my site, what they did, and where they came from. It's got hundreds of millions of rows. Table scans take minutes (or at least lots and lots of seconds.)
 
-    CREATE TABLE facts (
-        date            date,
-        user_id         integer,
-        activity_type   smallint,
-        referrer        varchar(255)
-    );
+```sql
+CREATE TABLE facts (
+  date            date,
+  user_id         integer,
+  activity_type   smallint,
+  referrer        varchar(255)
+);
+```
 
 I'd really like a quick (milliseconds) idea of how many unique users are visiting per day for my dashboard. No problem, let's set up an aggregate table:
 
-    -- Create the destination table
-    CREATE TABLE daily_uniques (
-        date            date UNIQUE,
-        users           hll
-    );
+```sql
+-- Create the destination table
+CREATE TABLE daily_uniques (
+  date            date UNIQUE,
+  users           hll
+);
 
-    -- Fill it with the aggregated unique statistics
-    INSERT INTO daily_uniques(date, users)
-        SELECT date, hll_add_agg(hll_hash_integer(user_id))
-        FROM facts
-        GROUP BY 1;
+-- Fill it with the aggregated unique statistics
+INSERT INTO daily_uniques(date, users)
+  SELECT date, hll_add_agg(hll_hash_integer(user_id))
+  FROM facts
+  GROUP BY 1;
+```
 
 We're first hashing the `user_id`, then aggregating those hashed values into one `hll` per day. Now we can ask for the cardinality of the `hll` for each day:
 
-    SELECT date, hll_cardinality(users) FROM daily_uniques;
+```sql
+SELECT date, hll_cardinality(users) FROM daily_uniques;
+```
 
 You're probably thinking, "But I could have done this with `COUNT DISTINCT`!" And you're right, you could have. But then you only ever answer a single question: "How many unique users did I see each day?"
 
 What if you wanted to this week's uniques?
 
-    SELECT hll_cardinality(hll_union_agg(users)) FROM daily_uniques WHERE date >= '2012-01-02'::date AND date <= '2012-01-08'::date;
+```sql
+SELECT hll_cardinality(hll_union_agg(users)) FROM daily_uniques WHERE date >= '2012-01-02'::date AND date <= '2012-01-08'::date;
+```
 
 Or the monthly uniques for this year?
 
-    SELECT EXTRACT(MONTH FROM date) AS month, hll_cardinality(hll_union_agg(users))
-    FROM daily_uniques
-    WHERE date >= '2012-01-01' AND
-          date <  '2013-01-01'
-    GROUP BY 1;
+```sql
+SELECT EXTRACT(MONTH FROM date) AS month, hll_cardinality(hll_union_agg(users))
+FROM daily_uniques
+WHERE date >= '2012-01-01' AND
+      date <  '2013-01-01'
+GROUP BY 1;
+```
 
 Or how about a sliding window of uniques over the past 6 days?
 
-    SELECT date, #hll_union_agg(users) OVER seven_days
-    FROM daily_uniques
-    WINDOW seven_days AS (ORDER BY date ASC ROWS 6 PRECEDING);
+```sql
+SELECT date, #hll_union_agg(users) OVER seven_days
+FROM daily_uniques
+WINDOW seven_days AS (ORDER BY date ASC ROWS 6 PRECEDING);
+```
 
 Or the number of uniques you saw yesterday that you didn't see today?
 
-    SELECT date, (#hll_union_agg(users) OVER two_days) - #users AS lost_uniques
-    FROM daily_uniques
-    WINDOW two_days AS (ORDER BY date ASC ROWS 1 PRECEDING);
+```sql
+SELECT date, (#hll_union_agg(users) OVER two_days) - #users AS lost_uniques
+FROM daily_uniques
+WINDOW two_days AS (ORDER BY date ASC ROWS 1 PRECEDING);
+```
 
 These are just a few examples of the types of queries that would return in milliseconds in an `hll` world from a single aggregate, but would require either completely separate pre-built aggregates or self-joins or `generate_series` trickery in a `COUNT DISTINCT` world.
 
@@ -278,23 +294,29 @@ Aggregate functions
 
 If you want to create a `hll` from a table or result set, use `hll_add_agg`. The naming here isn't particularly creative: it's an **agg**regate function that **add**s the values to an empty `hll`.
 
-    SELECT date, hll_add_agg(hll_hash_integer(user_id))
-    FROM facts
-    GROUP BY 1;
+```sql
+SELECT date, hll_add_agg(hll_hash_integer(user_id))
+FROM facts
+GROUP BY 1;
+```
 
 The above example will give you a `hll` for each date that contains each day's users.
 
 If you want to summarize a list of `hll`s that you already have stored into a single `hll`, use `hll_union_agg`. Again: it's an **agg**regate function that **union**s the values into an empty `hll`.
 
-    SELECT EXTRACT(MONTH FROM date), hll_cardinality(hll_union_agg(users))
-    FROM daily_uniques
-    GROUP BY 1;
+```sql
+SELECT EXTRACT(MONTH FROM date), hll_cardinality(hll_union_agg(users))
+FROM daily_uniques
+GROUP BY 1;
+```
 
 Sliding windows are another prime example of the power of `hll`s. Doing sliding window unique counting typically involves some `generate_series` trickery, but it's quite simple with the `hll`s you've already computed for your roll-ups.
 
-    SELECT date, #hll_union_agg(users) OVER seven_days
-    FROM daily_uniques
-    WINDOW seven_days AS (ORDER BY date ASC ROWS 6 PRECEDING);
+```sql
+SELECT date, #hll_union_agg(users) OVER seven_days
+FROM daily_uniques
+WINDOW seven_days AS (ORDER BY date ASC ROWS 6 PRECEDING);
+```
 
 Explanation of Parameters and Tuning
 ------------------------------------
@@ -340,7 +362,7 @@ You can choose the `EXPLICIT` cutoff such that it will end up taking more memory
 
 ### `sparseon` ###
 
-Enables or disables the `SPARSE` representation. If both the `EXPLICIT` and `SPARSE` representations are disabled, an `EMPTY` set will be promoted directly to a `FULL` set. If `SPARSE` is enabled, the promotion from `SPARSE` to `FULL` will occur when the internal `SPARSE` representation's memory footprint would exceed that of the `FULL` version. Must be either either `0` (zero) or `1` (one). Zero means disabled, one is enabled.
+Enables or disables the `SPARSE` representation. If both the `EXPLICIT` and `SPARSE` representations are disabled, an `EMPTY` set will be promoted directly to a `FULL` set. If `SPARSE` is enabled, the promotion from `SPARSE` to `FULL` will occur when the internal `SPARSE` representation's memory footprint would exceed that of the `FULL` version. Must be either `0` (zero) or `1` (one). Zero means disabled, one is enabled.
 
 Defaults
 --------
@@ -363,7 +385,7 @@ Compatibility
 
 This module has been tested on:
 
-* **Postgres 9.4, 9.5, 9.6, 10, 11, 12, 13, 14, 15**
+* **Postgres 9.4, 9.5, 9.6, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19-dev**
 
 If you end up needing to change something to get this running on another system, send us the diff and we'll try to work it in!
 
@@ -376,7 +398,7 @@ Build
 
 Specify versions:
 
-    export VER=2.17
+    export VER=2.20
     export PGSHRT=11
 
 Make sure `Makefile` points to the correct `pg_config` for the specified version, since `rpmbuild` doesn't respect env variables:
@@ -394,11 +416,11 @@ Execute rpmbuild:
 
 Install RPM:
 
-    rpm -Uv rpmbuild/RPMS/x86_64/postgresql11-hll-2.16.x86_64.rpm
+    rpm -Uv rpmbuild/RPMS/x86_64/postgresql11-hll-2.20.x86_64.rpm
 
 And if you want the debugging build:
 
-    rpm -Uv rpmbuild/RPMS/x86_64/postgresql11-hll-debuginfo-2.17.x86_64.rpm
+    rpm -Uv rpmbuild/RPMS/x86_64/postgresql11-hll-debuginfo-2.20.x86_64.rpm
 
 
 ## From source ##
@@ -449,7 +471,7 @@ And then just verify it's there:
                             List of installed extensions
           Name   | Version |   Schema   |            Description
         ---------+---------+------------+-----------------------------------
-         hll     | 2.17    | public     | type for storing hyperloglog data
+         hll     | 2.20    | public     | type for storing hyperloglog data
          plpgsql | 1.0     | pg_catalog | PL/pgSQL procedural language
         (2 rows)
 
@@ -458,8 +480,8 @@ Tests
 
 Start a PostgreSQL server running in default port:
 
-    pg_ctl -D data -l logfile -c start
     initdb -D data
+    pg_ctl -D data -l logfile -c start
 
 Run the tests:
 
@@ -476,10 +498,10 @@ The seed to the hash call must remain constant for all inputs to a given `hll`. 
 
 For a good overview of the importance of hashing and hash functions when using probabilistic algorithms as well as an analysis of MurmurHash 3, see these four blog posts:
 
-* [K-Minimum Values: Sketching Error, Hash Functions, and You](http://blog.aggregateknowledge.com/2012/08/20/k-minimum-values-sketching-error-hash-functions-and-you/)
-* [Choosing a Good Hash Function, Part 1](http://blog.aggregateknowledge.com/2011/12/05/choosing-a-good-hash-function-part-1/)
-* [Choosing a Good Hash Function, Part 2](http://blog.aggregateknowledge.com/2011/12/29/choosing-a-good-hash-function-part-2/)
-* [Choosing a Good Hash Function, Part 3](http://blog.aggregateknowledge.com/2012/02/02/choosing-a-good-hash-function-part-3/)
+* [K-Minimum Values: Sketching Error, Hash Functions, and You](https://agkn.wordpress.com/2012/08/20/k-minimum-values-sketching-error-hash-functions-and-you/)
+* [Choosing a Good Hash Function, Part 1](https://agkn.wordpress.com/2011/12/05/choosing-a-good-hash-function-part-1/)
+* [Choosing a Good Hash Function, Part 2](https://agkn.wordpress.com/2011/12/29/choosing-a-good-hash-function-part-2/)
+* [Choosing a Good Hash Function, Part 3](https://agkn.wordpress.com/2012/02/02/choosing-a-good-hash-function-part-3/)
 
 On Unions and Intersections
 ===========================
@@ -488,7 +510,7 @@ On Unions and Intersections
 
 Using the [inclusion-exclusion principle](http://en.wikipedia.org/wiki/Inclusion%E2%80%93exclusion_principle) and the union function, you can also estimate the intersection of sets represented by `hll`s. Note, however, that error is proportional to the union of the two `hll`s, while the result can be significantly smaller than the union, leading to disproportionately large error relative to the actual intersection cardinality. For instance, if one `hll` has a cardinality of 1 billion, while the other has a cardinality of 10 million, with an overlap of 5 million, the intersection cardinality can easily be dwarfed by even a 1% error estimate in the larger `hll`s cardinality.
 
-For more information on `hll` intersections, see [this blog post](https://research.neustar.biz/2012/12/17/hll-intersections-2/).
+For more information on `hll` intersections, see [this blog post](https://agkn.wordpress.com/2012/12/17/hll-intersections-2/).
 
 Storage formats
 ===============

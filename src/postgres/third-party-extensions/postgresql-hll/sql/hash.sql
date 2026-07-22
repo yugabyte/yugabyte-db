@@ -64,7 +64,9 @@ SELECT hll_hash_bigint(0, -2);
 SELECT hll_hash_bigint(0, -2147483648);
 
 -- WARNING:  negative seed values not compatible
+\set VERBOSITY terse
 SELECT hll_hash_boolean(0, -1);
+\set VERBOSITY default
 SELECT hll_hash_smallint(0::smallint, -1);
 SELECT hll_hash_integer(0, -1);
 SELECT hll_hash_bigint(0, -1);
@@ -97,6 +99,7 @@ SELECT hll_empty() || 42::bigint::hll_hashval;
 SELECT hll_empty() || CAST(42 AS bigint)::hll_hashval;
 
 -- ERROR: doesn't cast implicitly
+\set VERBOSITY terse
 SELECT hll_empty() || 42;
 SELECT hll_empty() || 42::bigint;
-
+\set VERBOSITY default

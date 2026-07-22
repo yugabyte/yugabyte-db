@@ -176,11 +176,10 @@ WARNING:  negative seed values not compatible
 (1 row)
 
 -- WARNING:  negative seed values not compatible
+\set VERBOSITY terse
 SELECT hll_hash_boolean(0, -1);
-ERROR:  function hll_hash_boolean(integer, integer) does not exist
-LINE 1: SELECT hll_hash_boolean(0, -1);
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function hll_hash_boolean(integer, integer) does not exist at character 8
+\set VERBOSITY default
 SELECT hll_hash_smallint(0::smallint, -1);
 WARNING:  negative seed values not compatible
   hll_hash_smallint  
@@ -316,13 +315,9 @@ SELECT hll_empty() || CAST(42 AS bigint)::hll_hashval;
 (1 row)
 
 -- ERROR: doesn't cast implicitly
+\set VERBOSITY terse
 SELECT hll_empty() || 42;
-ERROR:  operator does not exist: hll || integer
-LINE 1: SELECT hll_empty() || 42;
-                           ^
-HINT:  No operator matches the given name and argument type(s). You might need to add explicit type casts.
+ERROR:  operator does not exist: hll || integer at character 20
 SELECT hll_empty() || 42::bigint;
-ERROR:  operator does not exist: hll || bigint
-LINE 1: SELECT hll_empty() || 42::bigint;
-                           ^
-HINT:  No operator matches the given name and argument type(s). You might need to add explicit type casts.
+ERROR:  operator does not exist: hll || bigint at character 20
+\set VERBOSITY default

@@ -20,12 +20,11 @@ SELECT #hll_empty(11,5,256,1);
         0
 (1 row)
 
+\set VERBOSITY terse
 -- # gets evaluated first so || hll_union(double, bigint) fails
 SELECT #hll_empty(11,5,256,1) || hll_hash_integer(1,0);
-ERROR:  operator does not exist: double precision || hll_hashval
-LINE 1: SELECT #hll_empty(11,5,256,1) || hll_hash_integer(1,0);
-                                      ^
-HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  operator does not exist: double precision || hll_hashval at character 31
+\set VERBOSITY default
 SELECT #(hll_empty(11,5,256,1) || hll_hash_integer(1,0));
  ?column? 
 ----------

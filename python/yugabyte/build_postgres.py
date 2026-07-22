@@ -795,7 +795,7 @@ class PostgresBuilder(YbBuildToolBase):
             # 'third-party-extensions/pgrx',
             'third-party-extensions/pgtap',
             'third-party-extensions/pgvector',
-            # 'third-party-extensions/postgresql-hll',
+            'third-party-extensions/postgresql-hll',
             # 'third-party-extensions/postgresql_anonymizer',
             # 'third-party-extensions/wal2json'
         ]
