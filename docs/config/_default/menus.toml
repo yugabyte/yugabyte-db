@@ -61,13 +61,32 @@
 
 ########## Secondary header menu
 
+# [[main]]
+#   name = "Home"
+#   weight = 1
+#   identifier = "home-icon"
+#   url = "/"
+#   [main.params]
+#     excludeVersion = true
+#     homeIcon = true
+
 [[main]]
-  name = "Products"
-  weight = 1
+  name = "Docs Home"
+  weight = 2
   identifier = "products"
   url = "/"
   [main.params]
     excludeVersion = true
+
+[[main]]
+  name = "Docs Home"
+  weight = 1
+  parent = "products"
+  url = "/"
+  [main.params]
+    excludeVersion = true
+    imageUrl = "/icons/home.svg"
+
 
 [[main]]
   name = "YugabyteDB"
@@ -75,6 +94,7 @@
   parent = "products"
   url = "/"
   [main.params]
+    classes = "product-item product-ybdb"
     description = "The open source distributed SQL database"
     imageUrl = "/icons/database.svg"
 
@@ -84,6 +104,7 @@
   parent = "products"
   url = "/yugabyte-platform/"
   [main.params]
+    classes = "product-item product-anywhere"
     description = "Self-managed cloud DBaaS"
     imageUrl = "/icons/server.svg"
 
@@ -93,6 +114,7 @@
   parent = "products"
   url = "/stable/yugabyte-cloud/"
   [main.params]
+    classes = "product-item product-aeon"
     description = "Fully-managed cloud DBaaS"
     excludeVersion = true
     imageUrl = "/icons/cloud.svg"
@@ -103,27 +125,28 @@
   parent = "products"
   url = "/stable/yugabyte-voyager/"
   [main.params]
-    description = "Database migration service"
+    classes = "product-item product-voyager"
+    description = "Database modernization service"
     excludeVersion = true
     imageUrl = "/images/migrate/migration-icon.svg"
 
 [[main]]
   name = "Develop"
-  weight = 2
+  weight = 3
   url = "/stable/develop/"
   [main.params]
     excludeVersion = true
 
 [[main]]
   name = "Integrations"
-  weight = 3
+  weight = 4
   url = "/stable/integrations/"
   [main.params]
     excludeVersion = true
 
 [[main]]
   name = "API"
-  weight = 4
+  weight = 5
   identifier = "yugabyte-apis"
   url = "/api/"
 
@@ -207,14 +230,14 @@
 
 [[main]]
   name = "FAQ"
-  weight = 5
+  weight = 6
   url = "/stable/faq/general/"
   [main.params]
     excludeVersion = true
 
 [[main]]
   name = "Releases"
-  weight = 6
+  weight = 7
   identifier = "releases"
   url = "/stable/releases/"
   [main.params]

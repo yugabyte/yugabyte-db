@@ -22,6 +22,11 @@
 {{ $.Scratch.Set "docVersion" $versionDir }}
 {{ $.Scratch.Set "leftNavName" $leftNavName }}
 
+{{ $pageUrl := "" }}
+{{- if .Page -}}
+  {{ $pageUrl = .Page.RelPermalink }}
+{{- end -}}
+
 {{ $startNow := "" }}
 {{- if .Site.Menus.start_now -}}
   {{ $startNow = .Site.Menus.start_now }}
@@ -111,9 +116,33 @@
           {{- end -}}
         {{- end -}}
 
-        <li class="header-link{{- if .HasChildren }} dropdown{{- end }}">
-          <a class="hover-label" {{- if ne $anchorLink "" }} href="{{ $anchorLink }}" {{- if .Params.newTab }} target="_blank" rel="noopener"{{ end }}{{- else }} role="button"{{- end }} title="{{ .Name }}">
-            <span class="header-menu-text">{{ .Name }}</span>
+        {{- $displayName := .Name -}}
+        {{- $displayClass := "" -}}
+        {{- if eq .Identifier "products" -}}
+          {{- range .Children.ByWeight.Reverse -}}
+            {{- $childLink := .URL -}}
+            {{- if and (not .Params.excludeVersion) (ne $versionDir "") (not (or (in .URL "https://") (in .URL "http://"))) -}}
+              {{- if eq .URL "/" -}}
+                {{- $childLink = printf "/%s/" $versionDir -}}
+              {{- else -}}
+                {{- $childLink = printf "/%s%s" $versionDir .URL -}}
+              {{- end -}}
+            {{- end -}}
+            {{- if and (ne $childLink "/") (ne $childLink "") (strings.Contains $pageUrl $childLink) -}}
+              {{ $displayName = .Name }}
+              {{ $displayClass = .Params.classes }}
+              {{- break -}}
+            {{- end -}}
+          {{- end -}}
+        {{- end -}}
+
+        <li class="header-link{{- if .HasChildren }} dropdown{{- end }}{{- with $displayClass }} {{ . }}{{- end }}">
+          <a class="hover-label" {{- if ne $anchorLink "" }} href="{{ $anchorLink }}" {{- if .Params.newTab }} target="_blank" rel="noopener"{{ end }}{{- else }} role="button"{{- end }} title="{{ if .Params.homeIcon }}Home{{ else }}{{ $displayName }}{{ end }}">
+            {{- if .Params.homeIcon -}}
+              <span class="header-menu-home"></span>
+            {{- else -}}
+              <span class="header-menu-text">{{ $displayName }}</span>
+            {{- end -}}
           </a>
 
           {{- if .HasChildren -}}
