@@ -112,6 +112,43 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     ASSERT_OK(client_->WaitForCreateTableToFinish(kAutoAnalyzeFullyQualifiedTableName));
   }
 
+  void DoTearDown() override {
+    // Stop auto-analyze and wait for it to become fully idle before tearing PostgreSQL down. These
+    // tests can drive ANALYZE almost continuously, so an internal auto-analyze connection may be
+    // mid-cycle when PgSupervisor issues fast shutdown; aborting that in-flight distributed
+    // transaction during shutdown can keep a backend busy long enough (especially under ASAN) to
+    // exceed the fixed 60s graceful-exit deadline, aborting the test. After disabling the service,
+    // at most one already-started cycle can still run. It is not enough to wait only for ANALYZE
+    // statements: between its statements the service backend is momentarily "idle in transaction"
+    // while still holding an open distributed transaction, which is exactly the state that stalls
+    // fast shutdown. So wait until no other client backend is active or holding a transaction for a
+    // continuous settle window.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    // Best effort: if the test already failed or the cluster is down we cannot connect, so just
+    // proceed with teardown.
+    auto conn = Connect();
+    if (conn.ok()) {
+      const int64_t settle_ms = 3000 * kTimeMultiplier;
+      auto last_active = MonoTime::Now();
+      auto status = WaitFor([&]() -> Result<bool> {
+        auto count = conn->FetchRow<pgwrapper::PGUint64>(
+            "SELECT count(*) FROM pg_stat_activity WHERE pid <> pg_backend_pid() "
+            "AND backend_type = 'client backend' AND state <> 'idle'");
+        if (!count.ok() || *count != 0) {
+          last_active = MonoTime::Now();
+          return false;
+        }
+        return (MonoTime::Now() - last_active).ToMilliseconds() >= settle_ms;
+      }, 90s * kTimeMultiplier, "Wait for auto-analyze to become idle");
+      LOG_IF(WARNING, !status.ok())
+          << "Auto-analyze did not become idle before teardown: " << status;
+    } else {
+      LOG(WARNING) << "Skipping auto-analyze drain, cannot connect: " << conn.status();
+    }
+
+    PgMiniTestBase::DoTearDown();
+  }
+
   // TODO(#26103): Change this to 3 to test cross tablet server mutation aggregation.
   size_t NumTabletServers() override {
     return 1;
@@ -1449,7 +1486,15 @@ TEST_F(PgAutoAnalyzeTest, PerTableCooldown) {
     auto start_time = std::chrono::system_clock::now();
 
     while (std::chrono::system_clock::now() - start_time < test_duration) {
-      ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v1 = v1 + 1", table_name));
+      // A concurrent auto-analyze ANALYZE bumps the catalog version and reads this table while
+      // this heavy full-table UPDATE runs, so an individual autocommit statement can fail
+      // transiently (e.g. catalog version mismatch or a conflict). The loop only needs to
+      // accumulate mutations to keep ANALYZE coming off cooldown, so tolerate such errors and
+      // keep going instead of failing the whole test on one transient statement error.
+      auto update_status = conn.ExecuteFormat("UPDATE $0 SET v1 = v1 + 1", table_name);
+      if (!update_status.ok()) {
+        LOG(WARNING) << "Ignoring transient UPDATE failure: " << update_status;
+      }
     }
 
     // The cooldown starts with min_analyze_interval and scales by scale_factor each time.
