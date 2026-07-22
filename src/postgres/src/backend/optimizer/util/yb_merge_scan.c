@@ -32,6 +32,7 @@
 #include "common/int.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/paths.h"
+#include "optimizer/restrictinfo.h"
 #include "optimizer/yb_merge_scan.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
@@ -343,6 +344,16 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 			continue;
 
 		/*
+		 * As in match_clause_to_index, if the clause can't be used as an
+		 * indexqual because it must wait till after some lower-security-level
+		 * restriction clause, reject it.  A SAOP pinned here is expected to
+		 * reach the executor among the index conditions, but
+		 * match_clause_to_index drops such a clause from them.
+		 */
+		if (!restriction_is_securely_promotable(rinfo, index->rel))
+			continue;
+
+		/*
 		 * If this is an eligible SAOP index clause, keep track of it if it is
 		 * better than the last one seen.
 		 */
@@ -362,6 +373,13 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 
 	bool		derived = false;
 
+	/*
+	 * Derived SAOPs need no securely-promotable check.  They are not query
+	 * clauses subject to RLS evaluation order but tautologies fabricated over
+	 * the index expression, and they bind against stored index values, which
+	 * the owner-defined expression already produced at write time, using the
+	 * builtin int equality.
+	 */
 	if (yb_enable_derived_saops)
 	{
 		if (IsA(expr, OpExpr))

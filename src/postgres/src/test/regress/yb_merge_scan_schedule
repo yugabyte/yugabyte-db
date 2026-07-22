@@ -30,6 +30,10 @@ test: yb.orig.merge_scan_partition
 test: yb.orig.merge_scan_colocated
 test: yb.orig.merge_scan_relabel
 
+# This test uses bkt_tbl, adding an index and RLS state that it tears down for
+# tests in later lines.
+test: yb.orig.merge_scan_rls
+
 # These tests touch multiple tables.
 test: yb.orig.merge_scan_join
 test: yb.orig.merge_scan_derive
