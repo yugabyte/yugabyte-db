@@ -194,6 +194,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
+  ThreadPool* snapshot_cleanup_pool() const { return snapshot_cleanup_pool_.get(); }
   rpc::ThreadPool* raft_notifications_pool() const {
     return raft_notifications_pool_.get();
   }
@@ -762,6 +763,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Thread pool for Raft replication callback operations.
   std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
+
+  // Bounded process-wide pool for physical tablet snapshot directory cleanup.
+  std::unique_ptr<ThreadPool> snapshot_cleanup_pool_;
 
   // Thread pool for appender threads, shared between all tablets.
   std::unique_ptr<ThreadPool> append_pool_;

@@ -195,6 +195,7 @@ class SysCatalogTable {
   static Schema BuildTableSchema();
 
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
+  ThreadPool* snapshot_cleanup_pool() const { return snapshot_cleanup_pool_.get(); }
   rpc::ThreadPool* raft_notifications_pool() const { return raft_notifications_pool_.get(); }
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
@@ -483,6 +484,8 @@ class SysCatalogTable {
 
   // Thread pool for callbacks on Raft replication events.
   std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
+
+  std::unique_ptr<ThreadPool> snapshot_cleanup_pool_;
 
   // Thread pool for preparing transactions, shared between all tablets.
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
