@@ -104,6 +104,11 @@ class TabletSnapshots : public TabletComponent {
 
   static bool IsTempSnapshotDir(const std::string& dir);
 
+  static bool IsDeletedSnapshotDir(const std::string& dir);
+
+  static std::string DeletedSnapshotDir(
+      const std::string& snapshot_dir, const OpId& delete_op_id);
+
   static bool IsLastSnapshotTimeFilePath(const std::string& dir);
 
  private:

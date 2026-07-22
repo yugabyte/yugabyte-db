@@ -45,6 +45,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/operation_counter.h"
+#include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -71,6 +72,10 @@ DEFINE_test_flag(int32, delay_tablet_export_metadata_ms, 0,
 DEFINE_test_flag(double, delay_create_snapshot_probability, 0.0,
     "The probability to delay creating snapshot by 1 second");
 
+DEFINE_test_flag(bool, pause_after_tombstoning_snapshot, false,
+    "If true, pause snapshot deletion after tombstoning the snapshot directory "
+    "until the flag is reset.");
+
 DEFINE_test_flag(bool, pause_create_checkpoint, false,
     "If true, pause after acquiring checkpoint lock in CreateCheckpoint "
     "until the flag is reset.");
@@ -80,8 +85,23 @@ namespace yb::tablet {
 namespace {
 
 const std::string kTempSnapshotDirSuffix = ".tmp";
+const std::string kDeletedSnapshotDirSuffix = ".deleted.tmp";
 const std::string kTabletMetadataFile = "tablet.metadata";
 const std::string kLastSnapshotPrefix = "last_snapshot.";
+
+Result<bool> IsSnapshotDirectory(Env& env, const std::string& path) {
+  auto is_directory = env.IsDirectory(path);
+  if (!is_directory.ok()) {
+    if (is_directory.status().IsNotFound()) {
+      return false;
+    }
+    return is_directory.status();
+  }
+  if (!*is_directory) {
+    return STATUS_FORMAT(IllegalState, "Snapshot path $0 is not a directory", path);
+  }
+  return true;
+}
 
 std::string TabletMetadataFile(const std::string& dir) {
   return JoinPathSegments(dir, kTabletMetadataFile);
@@ -173,6 +193,35 @@ std::string TabletSnapshots::SnapshotsDirName(const std::string& rocksdb_dir) {
 
 bool TabletSnapshots::IsTempSnapshotDir(const std::string& dir) {
   return dir.ends_with(kTempSnapshotDirSuffix);
+}
+
+bool TabletSnapshots::IsDeletedSnapshotDir(const std::string& dir) {
+  const auto base_name = BaseName(dir);
+  if (!base_name.ends_with(kDeletedSnapshotDirSuffix)) {
+    return false;
+  }
+
+  const auto op_id_end = base_name.size() - kDeletedSnapshotDirSuffix.size();
+  if (op_id_end == 0) {
+    return false;
+  }
+  const auto index_separator = base_name.rfind('.', op_id_end - 1);
+  if (index_separator == std::string::npos || index_separator == 0) {
+    return false;
+  }
+  const auto term_separator = base_name.rfind('.', index_separator - 1);
+  if (term_separator == std::string::npos || term_separator == 0) {
+    return false;
+  }
+
+  const auto op_id = OpId::FromString(
+      base_name.substr(term_separator + 1, op_id_end - term_separator - 1));
+  return op_id.ok() && op_id->is_valid_not_empty();
+}
+
+std::string TabletSnapshots::DeletedSnapshotDir(
+    const std::string& snapshot_dir, const OpId& delete_op_id) {
+  return Format("$0.$1$2", snapshot_dir, delete_op_id, kDeletedSnapshotDirSuffix);
 }
 
 bool TabletSnapshots::IsLastSnapshotTimeFilePath(const std::string& dir) {
@@ -661,29 +710,81 @@ Result<std::string> TabletSnapshots::RestoreToTemporary(
 Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
   const std::string top_snapshots_dir = metadata().snapshots_dir();
   const auto& snapshot_id = operation.request()->snapshot_id();
-  auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
+  const auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
   const std::string snapshot_dir = JoinPathSegments(
       top_snapshots_dir, !txn_snapshot_id ? snapshot_id.ToBuffer() : txn_snapshot_id.ToString());
+  const auto tombstone_dir = DeletedSnapshotDir(snapshot_dir, operation.op_id());
+  Env& env = this->env();
 
-  std::lock_guard lock(create_checkpoint_lock());
-  Env* const env = metadata().fs_manager()->env();
-
-  if (env->FileExists(snapshot_dir)) {
-    const Status deletion_status = env->DeleteRecursively(snapshot_dir);
-    if (PREDICT_FALSE(!deletion_status.ok())) {
-      LOG_WITH_PREFIX(WARNING) << "Cannot recursively delete snapshot dir " << snapshot_dir
-                               << ": " << deletion_status;
+  bool delete_tombstone = false;
+  {
+    std::lock_guard lock(create_checkpoint_lock());
+    const auto snapshot_dir_exists = IsSnapshotDirectory(env, snapshot_dir);
+    if (!snapshot_dir_exists.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Cannot check snapshot dir " << snapshot_dir
+                               << " while deleting it: " << snapshot_dir_exists.status();
+      return Status::OK();
+    }
+    const auto tombstone_dir_exists = IsSnapshotDirectory(env, tombstone_dir);
+    if (!tombstone_dir_exists.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Cannot check deleted snapshot dir " << tombstone_dir
+                               << " while deleting snapshot dir " << snapshot_dir
+                               << ": " << tombstone_dir_exists.status();
+      return Status::OK();
     }
 
-    const Status sync_status = env->SyncDir(top_snapshots_dir);
-    if (PREDICT_FALSE(!sync_status.ok())) {
-      LOG_WITH_PREFIX(WARNING) << "Cannot sync top snapshots dir " << top_snapshots_dir
-                               << ": " << sync_status;
+    if (*snapshot_dir_exists && *tombstone_dir_exists) {
+      LOG_WITH_PREFIX(WARNING) << "Both snapshot dir " << snapshot_dir
+                               << " and deleted snapshot dir " << tombstone_dir << " exist";
+      return Status::OK();
+    }
+
+    if (*snapshot_dir_exists) {
+      const Status rename_status = env.RenameFile(snapshot_dir, tombstone_dir);
+      if (PREDICT_FALSE(!rename_status.ok())) {
+        LOG_WITH_PREFIX(WARNING) << "Cannot tombstone snapshot dir " << snapshot_dir
+                                 << " as " << tombstone_dir << ": " << rename_status;
+        return Status::OK();
+      }
+      LOG_WITH_PREFIX(INFO) << "Tombstoned snapshot dir " << snapshot_dir
+                            << " as " << tombstone_dir;
+    }
+
+    if (*snapshot_dir_exists || *tombstone_dir_exists) {
+      const Status sync_status = env.SyncDir(top_snapshots_dir);
+      if (PREDICT_FALSE(!sync_status.ok())) {
+        LOG_WITH_PREFIX(WARNING) << "Cannot sync top snapshots dir " << top_snapshots_dir
+                                 << " after tombstoning snapshot dir " << snapshot_dir
+                                 << ": " << sync_status;
+      }
+      delete_tombstone = true;
     }
   }
 
-  LOG_WITH_PREFIX(INFO) << "Complete snapshot deletion on tablet in folder: " << snapshot_dir;
+  if (!delete_tombstone) {
+    LOG_WITH_PREFIX(INFO) << "Complete snapshot deletion on tablet in folder: " << snapshot_dir;
+    return Status::OK();
+  }
 
+  TEST_PAUSE_IF_FLAG(TEST_pause_after_tombstoning_snapshot);
+
+  {
+    SCOPED_WAIT_STATUS(Snapshot_CleanupSnapshotDir);
+    const Status deletion_status = env.DeleteRecursively(tombstone_dir);
+    if (PREDICT_FALSE(!deletion_status.ok())) {
+      LOG_WITH_PREFIX(WARNING) << "Cannot recursively delete tombstoned snapshot dir "
+                               << tombstone_dir << ": " << deletion_status;
+    }
+  }
+
+  const Status sync_status = env.SyncDir(top_snapshots_dir);
+  if (PREDICT_FALSE(!sync_status.ok())) {
+    LOG_WITH_PREFIX(WARNING) << "Cannot sync top snapshots dir " << top_snapshots_dir
+                             << " after deleting tombstoned snapshot dir " << tombstone_dir
+                             << ": " << sync_status;
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Complete snapshot deletion on tablet in folder: " << snapshot_dir;
   return Status::OK();
 }
 

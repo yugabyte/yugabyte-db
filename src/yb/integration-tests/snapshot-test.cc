@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <algorithm>
+
 #include <gtest/gtest.h>
 
 #include "yb/client/snapshot_test_util.h"
@@ -60,6 +62,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/util/test_thread_holder.h"
 
 using namespace std::literals;
 
@@ -69,6 +72,7 @@ DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_uint32(default_snapshot_retention_hours);
+DECLARE_bool(TEST_pause_after_tombstoning_snapshot);
 DECLARE_bool(TEST_tablet_verify_flushed_frontier_after_modifying);
 DECLARE_bool(TEST_treat_hours_as_milliseconds_for_snapshot_expiry);
 DECLARE_bool(TEST_fail_tserver_snapshot_op);
@@ -117,6 +121,21 @@ using master::SysSnapshotEntryPB;
 using master::TableIdentifierPB;
 
 const YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "snapshot_test_table");
+
+TEST(TabletSnapshotsTest, DeletedSnapshotDirectoryName) {
+  const std::string snapshot_dir = "/tmp/snapshots/snapshot.id";
+  const auto deleted_snapshot_dir =
+      tablet::TabletSnapshots::DeletedSnapshotDir(snapshot_dir, OpId(7, 1234));
+
+  ASSERT_EQ(deleted_snapshot_dir, snapshot_dir + ".7.1234.deleted.tmp");
+  ASSERT_TRUE(tablet::TabletSnapshots::IsTempSnapshotDir(deleted_snapshot_dir));
+  ASSERT_TRUE(tablet::TabletSnapshots::IsDeletedSnapshotDir(deleted_snapshot_dir));
+  ASSERT_TRUE(tablet::TabletSnapshots::IsDeletedSnapshotDir(
+      "/tmp/snapshots/snapshot.id.with.dots.7.1234.deleted.tmp"));
+  ASSERT_FALSE(tablet::TabletSnapshots::IsDeletedSnapshotDir(snapshot_dir + ".tmp"));
+  ASSERT_FALSE(tablet::TabletSnapshots::IsDeletedSnapshotDir(
+      snapshot_dir + ".invalid.1234.deleted.tmp"));
+}
 
 template <typename MiniClusterType>
 class SnapshotTestBase : public YBMiniClusterTestBase<MiniClusterType> {
@@ -560,9 +579,51 @@ TEST_F(SnapshotTest, CreateSnapshot) {
   ASSERT_OK(cluster_->RestartSync());
 }
 
+// Verifies that physical cleanup only starts after the snapshot directory is tombstoned.
+TEST_F(SnapshotTest, DeleteSnapshotTombstonesBeforePhysicalCleanup) {
+  SetupWorkload();
+  const auto snapshot_id = CreateSnapshot();
+  ASSERT_NO_FATALS(VerifySnapshotFiles(snapshot_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_after_tombstoning_snapshot) = true;
+  TestThreadHolder delete_thread_holder;
+  Status delete_status;
+  delete_thread_holder.AddThreadFunctor([&] {
+    delete_status = DeleteSnapshotAndWait(snapshot_id);
+  });
+  auto unblock_deletion = ScopeExit([&] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_after_tombstoning_snapshot) = false;
+    delete_thread_holder.JoinAll();
+  });
+
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    MiniTabletServer* const ts = cluster_->mini_tablet_server(i);
+    for (const auto& tablet_peer : ts->server()->tablet_manager()->GetTabletPeers()) {
+      const auto top_snapshots_dir = tablet_peer->tablet_metadata()->snapshots_dir();
+      const auto snapshot_dir = JoinPathSegments(top_snapshots_dir, snapshot_id.ToString());
+      auto* const env = tablet_peer->tablet_metadata()->fs_manager()->env();
+      ASSERT_OK(WaitFor([&] {
+        if (env->FileExists(snapshot_dir)) {
+          return false;
+        }
+        const auto children = env->GetChildren(top_snapshots_dir, ExcludeDots::kTrue);
+        if (!children.ok()) {
+          return false;
+        }
+        return std::any_of(children->begin(), children->end(), [&](const auto& child) {
+          return child.starts_with(snapshot_id.ToString()) &&
+                 tablet::TabletSnapshots::IsDeletedSnapshotDir(child);
+        });
+      }, 15s, Format("Wait for snapshot $0 to be tombstoned", snapshot_id)));
+    }
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_after_tombstoning_snapshot) = false;
+  delete_thread_holder.JoinAll();
+  ASSERT_OK(delete_status);
+}
+
 // Tests that a non-imported snapshot hides a table that is dropped subsequently.
-// Until the snapshot is deleted, the table is hidden and once the
-// snapshot gets deleted, the table is subsequently deleted.
 TEST_F(SnapshotTest, HideTablesCoveredBySnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 500;
   auto workload = SetupWorkload(); // Used to create table
