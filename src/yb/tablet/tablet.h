@@ -811,7 +811,8 @@ class Tablet : public AbstractTablet,
   bool IsTransactionalRequest(bool is_ysql_request) const override;
 
   void SetCleanupPool(
-      ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler, ThreadPool* intent_cleanup_pool);
+      ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler,
+      ThreadPool* intent_cleanup_pool);
 
   TabletSnapshots& snapshots() {
     return *snapshots_;

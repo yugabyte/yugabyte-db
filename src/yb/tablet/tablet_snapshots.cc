@@ -57,8 +57,7 @@ using std::string;
 
 using namespace std::literals;
 
-DEFINE_RUNTIME_bool(
-    enable_async_snapshot_directory_cleanup, false,
+DEFINE_RUNTIME_bool(enable_async_snapshot_directory_cleanup, false,
     "Delete tablet snapshot directories asynchronously after logically tombstoning them.");
 
 DEFINE_RUNTIME_int32(max_wait_for_aborting_transactions_during_restore_ms, 200,
@@ -121,8 +120,7 @@ DEFINE_test_flag(bool, pause_create_checkpoint, false,
     "If true, pause after acquiring checkpoint lock in CreateCheckpoint "
     "until the flag is reset.");
 
-DEFINE_test_flag(
-    int32, snapshot_cleanup_retry_delay_ms, 0,
+DEFINE_test_flag(int32, snapshot_cleanup_retry_delay_ms, 0,
     "If positive, override the snapshot cleanup retry backoff in tests.");
 
 namespace yb::tablet {

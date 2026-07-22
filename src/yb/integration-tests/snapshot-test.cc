@@ -11,10 +11,9 @@
 // under the License.
 
 #include <algorithm>
+#include <atomic>
 
 #include <gtest/gtest.h>
-
-#include <atomic>
 
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_handle.h"
