@@ -509,6 +509,14 @@ pgstat_bestart_final(void)
 	 */
 	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 
+	/*
+	 * YB: yb-conn-mgr workers only get their MyBackendType from the
+	 * yb_is_client_ysqlconnmgr GUC assign hook, which runs after
+	 * pgstat_bestart_initial() already published st_backendType.  Re-copy the
+	 * now-final type so pg_stat_activity.backend_type is reported correctly.
+	 */
+	if (IsYugaByteEnabled())
+		beentry->st_backendType = MyBackendType;
 	beentry->st_databaseid = MyDatabaseId;
 	beentry->st_userid = userid;
 	beentry->st_state = STATE_UNDEFINED;
