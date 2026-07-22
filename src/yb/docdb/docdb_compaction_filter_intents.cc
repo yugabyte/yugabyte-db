@@ -14,6 +14,7 @@
 #include "yb/docdb/docdb_compaction_filter_intents.h"
 
 #include <memory>
+#include <tuple>
 
 #include <boost/multi_index/member.hpp>
 
@@ -84,12 +85,13 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
 
   Result<std::optional<TransactionId>> FilterExternalIntent(const Slice& key);
 
-  Result<std::pair<TransactionId, OpId>> ParsePostApplyTransactionMetadata(
+  Result<std::tuple<TransactionId, OpId, HybridTime>> ParsePostApplyTransactionMetadata(
       const Slice& key, const Slice& existing_value);
 
   void AddTransactionToCleanup(const TransactionId& transaction_id);
 
-  void SetTransactionApplyOpId(const TransactionId& transaction_id, const OpId& apply_op_id);
+  void SetTransactionApplyMetadata(
+      const TransactionId& transaction_id, const OpId& apply_op_id, HybridTime commit_ht);
 
   tablet::Tablet* const tablet_;
   const MicrosTime compaction_start_time_;
@@ -162,8 +164,8 @@ rocksdb::FilterDecision DocDBIntentsCompactionFilter::Filter(
   if (key_type == KeyType::kPostApplyTransactionMetadata) {
     auto result = ParsePostApplyTransactionMetadata(key, existing_value);
     MAYBE_LOG_ERROR_AND_RETURN_KEEP(result);
-    const auto& [transaction_id, apply_op_id] = *result;
-    SetTransactionApplyOpId(transaction_id, apply_op_id);
+    const auto& [transaction_id, apply_op_id, commit_ht] = *result;
+    SetTransactionApplyMetadata(transaction_id, apply_op_id, commit_ht);
   }
 
   // TODO(dtxn): If/when we add processing of reverse index or intents here - we will need to
@@ -200,7 +202,7 @@ Result<std::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterTransac
       "Could not decode Transaction metadata");
 }
 
-Result<std::pair<TransactionId, OpId>>
+Result<std::tuple<TransactionId, OpId, HybridTime>>
 DocDBIntentsCompactionFilter::ParsePostApplyTransactionMetadata(
     const Slice& key, const Slice& existing_value) {
   PostApplyTransactionMetadataPB metadata_pb;
@@ -211,13 +213,18 @@ DocDBIntentsCompactionFilter::ParsePostApplyTransactionMetadata(
 
   OpId apply_op_id = metadata_pb.has_apply_op_id() ? OpId::FromPB(metadata_pb.apply_op_id())
                                                    : OpId::Invalid();
+  // commit_ht is the wall-clock reference used by the time-based intent-retention path
+  // (--intents_min_seconds_to_retain). Surfaced here so TransactionParticipant::Cleanup can decide
+  // whether a committed transaction's intents are still within the retention window.
+  HybridTime commit_ht = metadata_pb.has_commit_ht() ? HybridTime(metadata_pb.commit_ht())
+                                                     : HybridTime::kInvalid;
 
   Slice key_slice = key;
   TransactionId transaction_id = VERIFY_RESULT_PREPEND(
       dockv::DecodeTransactionIdFromIntentValue(&key_slice),
       "Could not decode post-apply transaction metadata");
 
-  return std::make_pair(transaction_id, apply_op_id);
+  return std::make_tuple(transaction_id, apply_op_id, commit_ht);
 }
 
 Result<std::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterExternalIntent(
@@ -252,17 +259,18 @@ void DocDBIntentsCompactionFilter::CompactionFinished() {
 
 void DocDBIntentsCompactionFilter::AddTransactionToCleanup(const TransactionId& transaction_id) {
   if (transactions_to_cleanup_.size() <= FLAGS_aborted_intent_cleanup_max_batch_size) {
-    transactions_to_cleanup_.emplace(transaction_id, OpId::Invalid());
+    transactions_to_cleanup_.emplace(transaction_id, TransactionApplyOpIdInfo{});
   } else {
     rejected_transactions_++;
   }
 }
 
-void DocDBIntentsCompactionFilter::SetTransactionApplyOpId(
-    const TransactionId& transaction_id, const OpId& apply_op_id) {
+void DocDBIntentsCompactionFilter::SetTransactionApplyMetadata(
+    const TransactionId& transaction_id, const OpId& apply_op_id, HybridTime commit_ht) {
   auto itr = transactions_to_cleanup_.find(transaction_id);
   if (itr != transactions_to_cleanup_.end()) {
-    itr->second = apply_op_id;
+    itr->second.apply_op_id = apply_op_id;
+    itr->second.commit_ht = commit_ht;
   }
 }
 

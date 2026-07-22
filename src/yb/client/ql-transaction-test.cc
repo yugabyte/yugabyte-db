@@ -84,6 +84,7 @@ DECLARE_int32(TEST_inject_load_transaction_delay_ms);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_uint32(intents_min_seconds_to_retain);
 DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_uint64(max_clock_skew_usec);
@@ -910,6 +911,62 @@ TEST_F(QLTransactionTest, CheckCompactionAbortCleanup) {
   ASSERT_OK(WaitIntentsCleaned());
 
   ASSERT_OK(cluster_->RestartSync());
+}
+
+// Baseline for --intents_min_seconds_to_retain: with the flag disabled (default 0), a committed
+// transaction's provisional records are reclaimed shortly after apply (HandleTransactionCleanup
+// schedules their removal), even when the compaction filter is told to surface the transaction
+// immediately (aborted_intent_cleanup_ms == 0). This is the behavior the retention flag overrides,
+// and it anchors the positive test below.
+TEST_F(QLTransactionTest, CommittedIntentsCleanedWithoutRetentionWindow) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_intents_min_seconds_to_retain) = 0;
+  // Surface committed transactions to the intents compaction filter immediately.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 0;
+
+  ASSERT_NO_FATALS(WriteData());
+  ASSERT_OK(WaitTransactionsCleaned());
+
+  // Committed intents are reclaimed as usual -- nothing is pinning them.
+  ASSERT_OK(WaitIntentsCleaned());
+}
+
+// Positive test for --intents_min_seconds_to_retain: with a large retention window a committed
+// transaction's provisional records survive apply, in-memory eviction, and repeated IntentsDB
+// flush + compaction, even with aborted_intent_cleanup_ms == 0 (so the compaction filter surfaces
+// the transaction on every pass and only the wall-clock window protects the intents). This mirrors
+// a CDC consumer that relies on wall-clock retention instead of a per-stream checkpoint barrier.
+TEST_F(QLTransactionTest, CommittedIntentsSurviveWithinRetentionWindow) {
+  // 1 hour: comfortably larger than the test runtime, so the window never elapses here.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_intents_min_seconds_to_retain) = 3600;
+  // Force the compaction filter to consider the committed txn for cleanup on every pass; only the
+  // retention window should keep its intents alive.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 0;
+
+  ASSERT_NO_FATALS(WriteData());
+
+  // The transaction is still evicted from memory: the retention window only defers intent GC, it
+  // does not pin the transaction in `transactions_`.
+  ASSERT_OK(WaitTransactionsCleaned());
+
+  const auto intents_after_apply = CountIntents(cluster_.get());
+  ASSERT_GE(intents_after_apply, kNumRows)
+      << "committed provisional records should still be present after apply within the window";
+
+  // Flush the IntentsDB (so the post-apply metadata carrying commit_ht is on disk) and compact
+  // repeatedly. Pre-fix the immediate post-apply removal / compaction GC would have reclaimed the
+  // committed intents here; with the wall-clock gate they must survive because commit_ht is inside
+  // the retention window.
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kIntents));
+    ASSERT_OK(cluster_->CompactTablets());
+  }
+
+  ASSERT_GE(CountIntents(cluster_.get()), kNumRows)
+      << "committed intents were GC'd inside the --intents_min_seconds_to_retain window";
+
+  // The window did not leave the transaction stuck as pending: the data is committed and readable.
+  ASSERT_FALSE(HasTransactions());
+  ASSERT_NO_FATALS(VerifyData());
 }
 
 class QLTransactionTestWithDisabledCompactions : public QLTransactionTest {
