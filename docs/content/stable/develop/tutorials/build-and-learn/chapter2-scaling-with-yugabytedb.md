@@ -234,7 +234,7 @@ Upon establishing a successful connection, the backend uses Flyway to execute da
 ```
 
 {{< tip title="YugabyteDB Voyager - Database Migration Tool" >}}
-For real production workloads consider using [YugabyteDB Voyager](/stable/yugabyte-voyager/), an open-source database migration tool and service for end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager supports offline and live migration from PostgreSQL. Offline migration from MySQL and Oracle is deprecated and will no longer be supported after October 13, 2026.
+For real production workloads consider using [YugabyteDB Voyager](/stable/yugabyte-voyager/), an open-source database migration tool and service for end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager supports offline and live migration from PostgreSQL.
 {{< /tip >}}
 
 After the schema is created and data is loaded, refresh the YugaPlus UI and sign in one more time at <http://localhost:3000/login>.
