@@ -27,6 +27,7 @@ import { SwitchToGuidedConfirmModal } from './SwitchToGuidedConfirmModal';
 import { ResilienceAndRegionsSchema } from './ValidationSchema';
 import {
   computeResilienceTypeFromProvider,
+  getAZCount,
   getFaultToleranceNeeded,
   isCurrentConfigSupportedByGuidedMode
 } from '../../CreateUniverseUtils';
@@ -163,6 +164,12 @@ export const ResilienceAndRegions = forwardRef<
 
   const handleGuidedModeClick = () => {
     if (formMode !== ResilienceFormMode.EXPERT_MODE || disableGuidedMode) {
+      switchToGuided();
+      return;
+    }
+
+    // Nodes & Availability not configured yet — no placement to reset; switch freely.
+    if (getAZCount(nodesAvailabilitySettings?.availabilityZones ?? {}) === 0) {
       switchToGuided();
       return;
     }
