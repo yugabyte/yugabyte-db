@@ -549,3 +549,27 @@ SELECT atttypmod FROM pg_attribute
        104
 (1 row)
 
+-- #28502: After a DDL in a SERIALIZABLE transaction, DML with NO WAIT / SKIP
+-- LOCKED must still warn that those clauses are unsupported.
+CREATE TABLE test_nowait (id int PRIMARY KEY);
+INSERT INTO test_nowait VALUES (1);
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+CREATE TABLE dummy_nowait (id int);
+SELECT * FROM test_nowait FOR UPDATE NOWAIT;
+WARNING:  NO WAIT clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)
+WARNING:  NO WAIT clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM test_nowait FOR UPDATE SKIP LOCKED;
+WARNING:  SKIP LOCKED clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)
+WARNING:  SKIP LOCKED clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)
+ id 
+----
+  1
+(1 row)
+
+ROLLBACK;
+DROP TABLE test_nowait;

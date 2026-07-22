@@ -7494,14 +7494,15 @@ YBGetDocDBWaitPolicy(LockWaitPolicy pg_wait_policy)
 {
 	LockWaitPolicy result = pg_wait_policy;
 
-	if (!YBCPgIsDdlMode() && IsolationIsSerializable())
+	if (!YBIsCurrentStmtDdl() && IsolationIsSerializable())
 	{
 		/*
 		 * TODO(concurrency-control): We don't honour SKIP LOCKED/ NO WAIT yet in serializable
 		 * isolation level.
 		 *
-		 * The !YBCPgIsDdlMode() check is to avoid the warning for DDLs because they try to acquire a
-		 * row lock on the catalog version with LockWaitError for Fail-on-Conflict semantics.
+		 * The !YBIsCurrentStmtDdl() check is to avoid the warning for DDLs because they try to
+		 * acquire a row lock on the catalog version with LockWaitError for Fail-on-Conflict
+		 * semantics.
 		 */
 		if (pg_wait_policy == LockWaitSkip || pg_wait_policy == LockWaitError)
 			elog(WARNING,
