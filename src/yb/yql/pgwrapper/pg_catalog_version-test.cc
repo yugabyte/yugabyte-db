@@ -3407,11 +3407,15 @@ TEST_P(PgCatalogVersionConnManagerTest,
             << ", master_read_count_after: " << master_read_count_after;
 
   if (enable_ysql_conn_mgr) {
-    // CM auth-passthrough serves auth from the cache and does no relcache rebuild
-    // during auth, so the loop's master reads come only from rebuilding the
-    // expired auth-phase cache entry: 0 when object locking already warmed it at
-    // v_new before the loop, else 1.
-    const int num_rebuild_rpcs = IsObjectLockingEnabled() ? 0 : 1;
+    // CM auth-passthrough serves auth from the cache and does no relcache
+    // rebuild during auth. With object locking the relcache init file is already
+    // warm at v_new before the loop, so the loop sees no master reads (0).
+    // Without object locking the init file is stale when the loop runs and --
+    // via the #31844 yb_internal_conn routing -- a single dedicated
+    // relcache-init connection rebuilds it once for all conn-mgr backends rather
+    // than each rebuilding it inline; that rebuild (1 master RPC) plus the
+    // auth-phase pg_authid read (1) give 2.
+    const int num_rebuild_rpcs = IsObjectLockingEnabled() ? 0 : 2;
     ASSERT_EQ(master_read_count_before + num_rebuild_rpcs,
               master_read_count_after);
   }
