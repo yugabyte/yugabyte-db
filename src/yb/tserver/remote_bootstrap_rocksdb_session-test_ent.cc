@@ -12,6 +12,8 @@
 
 #include "yb/tserver/remote_bootstrap_session-test.h"
 
+#include <array>
+
 #include "yb/consensus/log.h"
 
 #include "yb/tablet/tablet.h"
@@ -61,6 +63,21 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapSessionTest {
       ASSERT_OK(writer->Close());
     }
     ASSERT_TRUE(env_->FileExists(extra_file));
+
+    // Remote bootstrap must not advertise temporary or logically deleted snapshot directories.
+    const std::array ignored_snapshot_dirs = {
+        JoinPathSegments(top_snapshots_dir, "incomplete-snapshot.tmp"),
+        tablet::TabletSnapshots::DeletedSnapshotDir(
+            JoinPathSegments(top_snapshots_dir, "deleted-snapshot"), OpId(1, 1)),
+    };
+    for (const auto& ignored_snapshot_dir : ignored_snapshot_dirs) {
+      ASSERT_OK(env_->CreateDirs(ignored_snapshot_dir));
+      std::unique_ptr<WritableFile> ignored_file;
+      ASSERT_OK(env_->NewWritableFile(
+          JoinPathSegments(ignored_snapshot_dir, "ignored.sst"), &ignored_file));
+      ASSERT_OK(ignored_file->Append(Slice("ignored")));
+      ASSERT_OK(ignored_file->Close());
+    }
   }
 
   void CheckSuperBlockHasSnapshotFields() {

@@ -44,6 +44,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
@@ -56,7 +57,8 @@ using std::string;
 
 using namespace std::literals;
 
-DEFINE_RUNTIME_bool(enable_async_snapshot_directory_cleanup, true,
+DEFINE_RUNTIME_bool(
+    enable_async_snapshot_directory_cleanup, false,
     "Delete tablet snapshot directories asynchronously after logically tombstoning them.");
 
 DEFINE_RUNTIME_int32(max_wait_for_aborting_transactions_during_restore_ms, 200,
@@ -83,9 +85,45 @@ DEFINE_test_flag(bool, pause_after_tombstoning_snapshot, false,
     "If true, pause snapshot deletion after tombstoning the snapshot directory "
     "until the flag is reset.");
 
+METRIC_DEFINE_counter(
+    tablet, snapshot_tombstone_successes, "Snapshot Tombstone Successes",
+    yb::MetricUnit::kOperations,
+    "Number of snapshot directories successfully renamed to deletion tombstones");
+METRIC_DEFINE_counter(
+    tablet, snapshot_tombstone_failures, "Snapshot Tombstone Failures", yb::MetricUnit::kOperations,
+    "Number of snapshot logical deletion attempts that require retry");
+METRIC_DEFINE_counter(
+    tablet, snapshot_parent_sync_failures, "Snapshot Parent Directory Sync Failures",
+    yb::MetricUnit::kOperations, "Number of failed snapshot parent directory sync attempts");
+METRIC_DEFINE_counter(
+    tablet, snapshot_cleanup_successes, "Snapshot Cleanup Successes", yb::MetricUnit::kOperations,
+    "Number of snapshot tombstone directories successfully removed");
+METRIC_DEFINE_counter(
+    tablet, snapshot_cleanup_failures, "Snapshot Cleanup Failures", yb::MetricUnit::kOperations,
+    "Number of failed recursive snapshot tombstone deletion attempts");
+METRIC_DEFINE_counter(
+    tablet, snapshot_cleanup_retries, "Snapshot Cleanup Retries", yb::MetricUnit::kOperations,
+    "Number of delayed snapshot cleanup retry passes scheduled");
+METRIC_DEFINE_gauge_uint64(
+    tablet, snapshot_pending_logical_deletions, "Pending Logical Snapshot Deletions",
+    yb::MetricUnit::kOperations,
+    "Number of snapshot deletions still requiring a rename or durable parent sync");
+METRIC_DEFINE_gauge_uint64(
+    tablet, snapshot_pending_physical_deletions, "Pending Physical Snapshot Deletions",
+    yb::MetricUnit::kOperations,
+    "Number of snapshot deletions awaiting physical removal or durable parent sync");
+METRIC_DEFINE_gauge_uint64(
+    tablet, snapshot_oldest_pending_deletion_age_ms, "Oldest Pending Snapshot Deletion Age",
+    yb::MetricUnit::kMilliseconds,
+    "Approximate age in milliseconds of the oldest pending snapshot deletion");
+
 DEFINE_test_flag(bool, pause_create_checkpoint, false,
     "If true, pause after acquiring checkpoint lock in CreateCheckpoint "
     "until the flag is reset.");
+
+DEFINE_test_flag(
+    int32, snapshot_cleanup_retry_delay_ms, 0,
+    "If positive, override the snapshot cleanup retry backoff in tests.");
 
 namespace yb::tablet {
 
@@ -146,7 +184,40 @@ struct TabletSnapshots::ColocatedTableMetadata {
   TableId table_id;
 };
 
-TabletSnapshots::TabletSnapshots(Tablet* tablet) : TabletComponent(tablet) {}
+struct TabletSnapshots::Metrics {
+  Metrics(const scoped_refptr<MetricEntity>& entity, TabletSnapshots* snapshots)
+      : tombstone_successes(METRIC_snapshot_tombstone_successes.Instantiate(entity)),
+        tombstone_failures(METRIC_snapshot_tombstone_failures.Instantiate(entity)),
+        parent_sync_failures(METRIC_snapshot_parent_sync_failures.Instantiate(entity)),
+        cleanup_successes(METRIC_snapshot_cleanup_successes.Instantiate(entity)),
+        cleanup_failures(METRIC_snapshot_cleanup_failures.Instantiate(entity)),
+        cleanup_retries(METRIC_snapshot_cleanup_retries.Instantiate(entity)),
+        pending_logical_deletions(METRIC_snapshot_pending_logical_deletions.Instantiate(entity, 0)),
+        pending_physical_deletions(
+            METRIC_snapshot_pending_physical_deletions.Instantiate(entity, 0)),
+        oldest_pending_deletion_age_ms(
+            METRIC_snapshot_oldest_pending_deletion_age_ms.InstantiateFunctionGauge(
+                entity,
+                Bind(&TabletSnapshots::OldestPendingDeletionAgeMs, Unretained(snapshots)))) {
+    oldest_pending_deletion_age_ms->AutoDetach(&snapshots->metrics_detacher_);
+  }
+
+  scoped_refptr<Counter> tombstone_successes;
+  scoped_refptr<Counter> tombstone_failures;
+  scoped_refptr<Counter> parent_sync_failures;
+  scoped_refptr<Counter> cleanup_successes;
+  scoped_refptr<Counter> cleanup_failures;
+  scoped_refptr<Counter> cleanup_retries;
+  scoped_refptr<AtomicGauge<uint64_t>> pending_logical_deletions;
+  scoped_refptr<AtomicGauge<uint64_t>> pending_physical_deletions;
+  scoped_refptr<FunctionGauge<uint64_t>> oldest_pending_deletion_age_ms;
+};
+
+TabletSnapshots::TabletSnapshots(Tablet* tablet) : TabletComponent(tablet) {
+  if (const auto& metric_entity = tablet->GetTabletMetricsEntity()) {
+    metrics_ = std::make_unique<Metrics>(metric_entity, this);
+  }
+}
 
 TabletSnapshots::~TabletSnapshots() {
   CompleteShutdown();
@@ -192,6 +263,11 @@ void TabletSnapshots::CompleteShutdown() {
   }
   if (cleanup_token) {
     cleanup_token->Shutdown();
+  }
+  {
+    std::lock_guard lock(cleanup_mutex_);
+    pending_deletions_.clear();
+    UpdatePendingMetricsUnlocked();
   }
 }
 
@@ -250,27 +326,36 @@ bool TabletSnapshots::IsTempSnapshotDir(const std::string& dir) {
 }
 
 bool TabletSnapshots::IsDeletedSnapshotDir(const std::string& dir) {
-  const auto base_name = BaseName(dir);
-  if (!base_name.ends_with(kDeletedSnapshotDirSuffix)) {
-    return false;
-  }
+  return ActiveSnapshotDirFromDeletedSnapshotDir(dir).ok();
+}
+
+Result<std::string> TabletSnapshots::ActiveSnapshotDirFromDeletedSnapshotDir(
+    const std::string& deleted_snapshot_dir) {
+  const auto base_name = BaseName(deleted_snapshot_dir);
+  SCHECK(
+      base_name.ends_with(kDeletedSnapshotDirSuffix), InvalidArgument,
+      "Deleted snapshot path must end in .deleted.tmp");
 
   const auto op_id_end = base_name.size() - kDeletedSnapshotDirSuffix.size();
-  if (op_id_end == 0) {
-    return false;
-  }
+  SCHECK_GT(op_id_end, 0, InvalidArgument, "Deleted snapshot path has no snapshot id or OpId");
   const auto index_separator = base_name.rfind('.', op_id_end - 1);
-  if (index_separator == std::string::npos || index_separator == 0) {
-    return false;
-  }
+  SCHECK_NE(
+      index_separator, std::string::npos, InvalidArgument,
+      "Deleted snapshot path has no Raft index");
+  SCHECK_GT(index_separator, 0, InvalidArgument, "Deleted snapshot path has no snapshot id");
   const auto term_separator = base_name.rfind('.', index_separator - 1);
-  if (term_separator == std::string::npos || term_separator == 0) {
-    return false;
-  }
+  SCHECK_NE(
+      term_separator, std::string::npos, InvalidArgument, "Deleted snapshot path has no Raft term");
+  SCHECK_GT(term_separator, 0, InvalidArgument, "Deleted snapshot path has no snapshot id");
 
-  const auto op_id = OpId::FromString(
-      base_name.substr(term_separator + 1, op_id_end - term_separator - 1));
-  return op_id.ok() && op_id->is_valid_not_empty();
+  const auto op_id = VERIFY_RESULT(
+      OpId::FromString(base_name.substr(term_separator + 1, op_id_end - term_separator - 1)));
+  SCHECK(op_id.is_valid_not_empty(), InvalidArgument, "Deleted snapshot path has an invalid OpId");
+
+  const auto active_base_name = base_name.substr(0, term_separator);
+  const auto parent_dir = DirName(deleted_snapshot_dir);
+  return parent_dir.empty() || parent_dir == "." ? active_base_name
+                                                 : JoinPathSegments(parent_dir, active_base_name);
 }
 
 std::string TabletSnapshots::DeletedSnapshotDir(
@@ -762,28 +847,41 @@ Result<std::string> TabletSnapshots::RestoreToTemporary(
 }
 
 TabletSnapshots::TombstoneState TabletSnapshots::TryTombstoneSnapshotDir(
-    const PendingSnapshotDeletion& deletion) {
+    PendingSnapshotDeletion* deletion) {
   std::lock_guard lock(create_checkpoint_lock());
   Result<bool> snapshot_dir_exists = false;
-  if (!deletion.active_dir.empty()) {
-    snapshot_dir_exists = IsSnapshotDirectory(env(), deletion.active_dir);
+  if (!deletion->active_dir.empty()) {
+    snapshot_dir_exists = IsSnapshotDirectory(env(), deletion->active_dir);
     if (!snapshot_dir_exists.ok()) {
-      LOG_WITH_PREFIX(WARNING) << "Cannot check snapshot dir " << deletion.active_dir
+      deletion->logical_pending = true;
+      if (metrics_) {
+        metrics_->tombstone_failures->Increment();
+      }
+      LOG_WITH_PREFIX(WARNING) << "Cannot check snapshot dir " << deletion->active_dir
                                << " while deleting it: " << snapshot_dir_exists.status();
       return TombstoneState::kRetry;
     }
   }
-  const auto tombstone_dir_exists = IsSnapshotDirectory(env(), deletion.tombstone_dir);
+  const auto tombstone_dir_exists = IsSnapshotDirectory(env(), deletion->tombstone_dir);
   if (!tombstone_dir_exists.ok()) {
-    LOG_WITH_PREFIX(WARNING) << "Cannot check deleted snapshot dir " << deletion.tombstone_dir
-                             << " while deleting snapshot dir " << deletion.active_dir
-                             << ": " << tombstone_dir_exists.status();
+    deletion->logical_pending = true;
+    if (metrics_) {
+      metrics_->tombstone_failures->Increment();
+    }
+    LOG_WITH_PREFIX(WARNING) << "Cannot check deleted snapshot dir " << deletion->tombstone_dir
+                             << " while deleting snapshot dir " << deletion->active_dir << ": "
+                             << tombstone_dir_exists.status();
     return TombstoneState::kRetry;
   }
 
+  deletion->logical_pending = *snapshot_dir_exists;
+  deletion->physical_pending = *tombstone_dir_exists;
   if (*snapshot_dir_exists && *tombstone_dir_exists) {
-    LOG_WITH_PREFIX(WARNING) << "Both snapshot dir " << deletion.active_dir
-                             << " and deleted snapshot dir " << deletion.tombstone_dir << " exist";
+    if (metrics_) {
+      metrics_->tombstone_failures->Increment();
+    }
+    LOG_WITH_PREFIX(WARNING) << "Both snapshot dir " << deletion->active_dir
+                             << " and deleted snapshot dir " << deletion->tombstone_dir << " exist";
     return TombstoneState::kBothPresent;
   }
   if (!*snapshot_dir_exists && !*tombstone_dir_exists) {
@@ -791,29 +889,60 @@ TabletSnapshots::TombstoneState TabletSnapshots::TryTombstoneSnapshotDir(
   }
 
   if (*snapshot_dir_exists) {
-    const Status rename_status = env().RenameFile(deletion.active_dir, deletion.tombstone_dir);
+    const Status rename_status = env().RenameFile(deletion->active_dir, deletion->tombstone_dir);
     if (PREDICT_FALSE(!rename_status.ok())) {
-      LOG_WITH_PREFIX(WARNING) << "Cannot tombstone snapshot dir " << deletion.active_dir
-                               << " as " << deletion.tombstone_dir << ": " << rename_status;
+      if (metrics_) {
+        metrics_->tombstone_failures->Increment();
+      }
+      LOG_WITH_PREFIX(WARNING) << "Cannot tombstone snapshot dir " << deletion->active_dir << " as "
+                               << deletion->tombstone_dir << ": " << rename_status;
       return TombstoneState::kRetry;
     }
-    LOG_WITH_PREFIX(INFO) << "Tombstoned snapshot dir " << deletion.active_dir
-                          << " as " << deletion.tombstone_dir;
+    deletion->logical_pending = false;
+    deletion->physical_pending = true;
+    if (metrics_) {
+      metrics_->tombstone_successes->Increment();
+    }
+    LOG_WITH_PREFIX(INFO) << "Tombstoned snapshot dir " << deletion->active_dir << " as "
+                          << deletion->tombstone_dir;
   }
 
-  const Status sync_status = env().SyncDir(DirName(deletion.tombstone_dir));
+  const Status sync_status = env().SyncDir(DirName(deletion->tombstone_dir));
   if (PREDICT_FALSE(!sync_status.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "Cannot sync top snapshots dir "
-                             << DirName(deletion.tombstone_dir)
-                             << " after tombstoning snapshot dir " << deletion.active_dir
-                             << ": " << sync_status;
+    deletion->logical_pending = true;
+    if (metrics_) {
+      metrics_->parent_sync_failures->Increment();
+    }
+    LOG_WITH_PREFIX(WARNING) << "Cannot sync top snapshots dir " << DirName(deletion->tombstone_dir)
+                             << " after tombstoning snapshot dir " << deletion->active_dir << ": "
+                             << sync_status;
     return TombstoneState::kRetry;
   }
+  deletion->logical_pending = false;
   return TombstoneState::kTombstoned;
 }
 
-bool TabletSnapshots::CleanupTombstonedSnapshot(const PendingSnapshotDeletion& deletion) {
+bool TabletSnapshots::CleanupTombstonedSnapshot(PendingSnapshotDeletion* deletion) {
+  if (deletion->parent_sync_pending) {
+    const Status sync_status = env().SyncDir(DirName(deletion->tombstone_dir));
+    if (PREDICT_FALSE(!sync_status.ok())) {
+      if (metrics_) {
+        metrics_->parent_sync_failures->Increment();
+      }
+      LOG_WITH_PREFIX(WARNING) << "Cannot retry syncing top snapshots dir "
+                               << DirName(deletion->tombstone_dir)
+                               << " after deleting tombstoned snapshot dir "
+                               << deletion->tombstone_dir << ": " << sync_status;
+      return false;
+    }
+    deletion->parent_sync_pending = false;
+    deletion->physical_pending = false;
+    PublishPendingDeletionState(*deletion);
+    return !deletion->logical_pending;
+  }
+
   const auto tombstone_state = TryTombstoneSnapshotDir(deletion);
+  PublishPendingDeletionState(*deletion);
   if (tombstone_state == TombstoneState::kComplete) {
     return true;
   }
@@ -824,22 +953,37 @@ bool TabletSnapshots::CleanupTombstonedSnapshot(const PendingSnapshotDeletion& d
   TEST_PAUSE_IF_FLAG(TEST_pause_after_tombstoning_snapshot);
   {
     SCOPED_WAIT_STATUS(Snapshot_CleanupSnapshotDir);
-    const Status deletion_status = env().DeleteRecursively(deletion.tombstone_dir);
+    const Status deletion_status = env().DeleteRecursively(deletion->tombstone_dir);
     if (PREDICT_FALSE(!deletion_status.ok())) {
+      deletion->physical_pending = true;
+      if (metrics_) {
+        metrics_->cleanup_failures->Increment();
+      }
       LOG_WITH_PREFIX(WARNING) << "Cannot recursively delete tombstoned snapshot dir "
-                               << deletion.tombstone_dir << ": " << deletion_status;
+                               << deletion->tombstone_dir << ": " << deletion_status;
       return false;
     }
   }
 
-  const auto top_snapshots_dir = DirName(deletion.tombstone_dir);
+  if (metrics_) {
+    metrics_->cleanup_successes->Increment();
+  }
+  const auto top_snapshots_dir = DirName(deletion->tombstone_dir);
   const Status sync_status = env().SyncDir(top_snapshots_dir);
   if (PREDICT_FALSE(!sync_status.ok())) {
+    deletion->parent_sync_pending = true;
+    if (metrics_) {
+      metrics_->parent_sync_failures->Increment();
+    }
     LOG_WITH_PREFIX(WARNING) << "Cannot sync top snapshots dir " << top_snapshots_dir
                              << " after deleting tombstoned snapshot dir "
-                             << deletion.tombstone_dir << ": " << sync_status;
+                             << deletion->tombstone_dir << ": " << sync_status;
+    PublishPendingDeletionState(*deletion);
+    return false;
   }
-  return tombstone_state == TombstoneState::kTombstoned;
+  deletion->physical_pending = false;
+  PublishPendingDeletionState(*deletion);
+  return !deletion->logical_pending;
 }
 
 void TabletSnapshots::ScheduleCleanup(PendingSnapshotDeletion deletion) {
@@ -848,7 +992,17 @@ void TabletSnapshots::ScheduleCleanup(PendingSnapshotDeletion deletion) {
     if (shutting_down_) {
       return;
     }
-    pending_deletions_.insert_or_assign(deletion.tombstone_dir, std::move(deletion));
+    deletion.epoch = ++next_pending_deletion_epoch_;
+    auto [it, inserted] = pending_deletions_.try_emplace(deletion.tombstone_dir, deletion);
+    if (!inserted) {
+      it->second.active_dir = std::move(deletion.active_dir);
+      it->second.logical_pending = it->second.logical_pending || deletion.logical_pending;
+      it->second.physical_pending = it->second.physical_pending || deletion.physical_pending;
+      it->second.parent_sync_pending =
+          it->second.parent_sync_pending || deletion.parent_sync_pending;
+      it->second.epoch = deletion.epoch;
+    }
+    UpdatePendingMetricsUnlocked();
     if (retry_scheduled_) {
       retry_task_tracker_.Abort();
       retry_scheduled_ = false;
@@ -875,8 +1029,14 @@ void TabletSnapshots::ScheduleRetry() {
   if (shutting_down_ || !cleanup_token_ || pending_deletions_.empty() || retry_scheduled_) {
     return;
   }
-  const auto delay = 1s * (1 << std::min(retry_attempt_++, 6U));
+  const auto delay = FLAGS_TEST_snapshot_cleanup_retry_delay_ms > 0
+                         ? FLAGS_TEST_snapshot_cleanup_retry_delay_ms * 1ms
+                         : 1s * (1 << std::min(retry_attempt_++, 6U));
   retry_scheduled_ = true;
+  if (metrics_) {
+    metrics_->cleanup_retries->Increment();
+  }
+  UpdatePendingMetricsUnlocked();
   retry_task_tracker_.Schedule([this](const Status& status) {
     if (!status.ok()) {
       return;
@@ -893,34 +1053,85 @@ void TabletSnapshots::RunCleanup() {
   std::vector<PendingSnapshotDeletion> deletions;
   {
     std::lock_guard lock(cleanup_mutex_);
+    deletions.reserve(pending_deletions_.size());
     for (const auto& [_, deletion] : pending_deletions_) {
       deletions.push_back(deletion);
     }
   }
 
-  std::vector<std::string> completed;
-  for (const auto& deletion : deletions) {
-    if (CleanupTombstonedSnapshot(deletion)) {
-      completed.push_back(deletion.tombstone_dir);
-    }
+  std::vector<bool> completed;
+  completed.reserve(deletions.size());
+  for (auto& deletion : deletions) {
+    completed.push_back(CleanupTombstonedSnapshot(&deletion));
   }
 
   bool retry = false;
   {
     std::lock_guard lock(cleanup_mutex_);
     cleanup_task_scheduled_ = false;
-    for (const auto& tombstone_dir : completed) {
-      pending_deletions_.erase(tombstone_dir);
+    for (size_t i = 0; i != deletions.size(); ++i) {
+      auto& deletion = deletions[i];
+      auto it = pending_deletions_.find(deletion.tombstone_dir);
+      if (it == pending_deletions_.end() || it->second.epoch != deletion.epoch) {
+        continue;
+      }
+      if (completed[i]) {
+        pending_deletions_.erase(it);
+      } else {
+        deletion.first_pending_at =
+            std::min(deletion.first_pending_at, it->second.first_pending_at);
+        it->second = std::move(deletion);
+      }
     }
     if (pending_deletions_.empty()) {
       retry_attempt_ = 0;
     } else if (!shutting_down_) {
       retry = true;
     }
+    UpdatePendingMetricsUnlocked();
   }
   if (retry) {
     ScheduleRetry();
   }
+}
+
+void TabletSnapshots::PublishPendingDeletionState(const PendingSnapshotDeletion& deletion) {
+  std::lock_guard lock(cleanup_mutex_);
+  auto it = pending_deletions_.find(deletion.tombstone_dir);
+  if (it == pending_deletions_.end() || it->second.epoch != deletion.epoch) {
+    return;
+  }
+  const auto first_pending_at = std::min(it->second.first_pending_at, deletion.first_pending_at);
+  it->second = deletion;
+  it->second.first_pending_at = first_pending_at;
+  UpdatePendingMetricsUnlocked();
+}
+
+void TabletSnapshots::UpdatePendingMetricsUnlocked() {
+  if (!metrics_) {
+    return;
+  }
+
+  uint64_t logical_pending = 0;
+  uint64_t physical_pending = 0;
+  for (const auto& [_, deletion] : pending_deletions_) {
+    logical_pending += deletion.logical_pending;
+    physical_pending += deletion.physical_pending;
+  }
+
+  metrics_->pending_logical_deletions->set_value(logical_pending);
+  metrics_->pending_physical_deletions->set_value(physical_pending);
+}
+
+uint64_t TabletSnapshots::OldestPendingDeletionAgeMs() {
+  std::lock_guard lock(cleanup_mutex_);
+  MonoTime oldest;
+  for (const auto& [_, deletion] : pending_deletions_) {
+    if (!oldest.Initialized() || deletion.first_pending_at < oldest) {
+      oldest = deletion.first_pending_at;
+    }
+  }
+  return oldest.Initialized() ? MonoTime::Now().GetDeltaSince(oldest).ToMilliseconds() : 0;
 }
 
 void TabletSnapshots::ScanDeletedSnapshotDirs() {
@@ -935,10 +1146,22 @@ void TabletSnapshots::ScanDeletedSnapshotDirs() {
   }
 
   for (const auto& child : *children) {
-    const auto tombstone_dir = JoinPathSegments(top_snapshots_dir, child);
-    if (IsDeletedSnapshotDir(tombstone_dir)) {
-      ScheduleCleanup({ .active_dir = "", .tombstone_dir = tombstone_dir });
+    if (!child.ends_with(kDeletedSnapshotDirSuffix)) {
+      continue;
     }
+    const auto tombstone_dir = JoinPathSegments(top_snapshots_dir, child);
+    auto active_dir = ActiveSnapshotDirFromDeletedSnapshotDir(tombstone_dir);
+    if (!active_dir.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Cannot parse deleted snapshot dir " << tombstone_dir << ": "
+                               << active_dir.status();
+      continue;
+    }
+    ScheduleCleanup({
+        .active_dir = std::move(*active_dir),
+        .tombstone_dir = tombstone_dir,
+        .logical_pending = true,
+        .physical_pending = true,
+    });
   }
 }
 
@@ -953,7 +1176,7 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
     .tombstone_dir = DeletedSnapshotDir(snapshot_dir, operation.op_id()),
   };
 
-  const auto tombstone_state = TryTombstoneSnapshotDir(deletion);
+  const auto tombstone_state = TryTombstoneSnapshotDir(&deletion);
   if (tombstone_state == TombstoneState::kComplete) {
     LOG_WITH_PREFIX(INFO) << "Complete snapshot deletion on tablet in folder: " << snapshot_dir;
     return Status::OK();
@@ -965,7 +1188,7 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
   }
 
   if (tombstone_state == TombstoneState::kTombstoned) {
-    CleanupTombstonedSnapshot(deletion);
+    CleanupTombstonedSnapshot(&deletion);
   }
   LOG_WITH_PREFIX(INFO) << "Complete snapshot deletion on tablet in folder: " << snapshot_dir;
   return Status::OK();

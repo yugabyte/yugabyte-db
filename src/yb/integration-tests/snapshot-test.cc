@@ -68,6 +68,7 @@
 
 using namespace std::literals;
 
+DECLARE_bool(enable_async_snapshot_directory_cleanup);
 DECLARE_bool(enable_ysql);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
@@ -132,8 +133,15 @@ TEST(TabletSnapshotsTest, DeletedSnapshotDirectoryName) {
   ASSERT_EQ(deleted_snapshot_dir, snapshot_dir + ".7.1234.deleted.tmp");
   ASSERT_TRUE(tablet::TabletSnapshots::IsTempSnapshotDir(deleted_snapshot_dir));
   ASSERT_TRUE(tablet::TabletSnapshots::IsDeletedSnapshotDir(deleted_snapshot_dir));
-  ASSERT_TRUE(tablet::TabletSnapshots::IsDeletedSnapshotDir(
-      "/tmp/snapshots/snapshot.id.with.dots.7.1234.deleted.tmp"));
+  ASSERT_EQ(
+      ASSERT_RESULT(
+          tablet::TabletSnapshots::ActiveSnapshotDirFromDeletedSnapshotDir(deleted_snapshot_dir)),
+      snapshot_dir);
+  ASSERT_EQ(
+      ASSERT_RESULT(
+          tablet::TabletSnapshots::ActiveSnapshotDirFromDeletedSnapshotDir(
+              "/tmp/snapshots/snapshot.id.with.dots.7.1234.deleted.tmp")),
+      "/tmp/snapshots/snapshot.id.with.dots");
   ASSERT_FALSE(tablet::TabletSnapshots::IsDeletedSnapshotDir(snapshot_dir + ".tmp"));
   ASSERT_FALSE(tablet::TabletSnapshots::IsDeletedSnapshotDir(
       snapshot_dir + ".invalid.1234.deleted.tmp"));
@@ -583,7 +591,8 @@ TEST_F(SnapshotTest, CreateSnapshot) {
 
 // Verifies that physical cleanup only starts after the snapshot directory is tombstoned.
 TEST_F(SnapshotTest, DeleteSnapshotTombstonesBeforePhysicalCleanup) {
-  SetupWorkload();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_async_snapshot_directory_cleanup) = true;
+  auto workload = SetupWorkload();
   const auto snapshot_id = CreateSnapshot();
   ASSERT_NO_FATALS(VerifySnapshotFiles(snapshot_id));
 
@@ -628,6 +637,11 @@ TEST_F(SnapshotTest, DeleteSnapshotTombstonesBeforePhysicalCleanup) {
       [&] { return delete_finished.load(std::memory_order_acquire); }, 15s,
       "Wait for logical snapshot deletion to complete"));
   ASSERT_OK(delete_status);
+
+  workload.Start();
+  workload.WaitInserted(100);
+  workload.StopAndJoin();
+  ASSERT_GE(workload.rows_inserted(), 100);
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_after_tombstoning_snapshot) = false;
   delete_thread_holder.JoinAll();
