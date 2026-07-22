@@ -2843,7 +2843,29 @@ TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
   // Make some changes to a next SST file.
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
   ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 4"));
+
+  // Force a chunk flush while the compaction owns the manifest; such a chunk used to be lost
+  // from the manifest, hanging the sync flush below. Wait for vector inserts first so the flush
+  // has a chunk to save; otherwise the compaction would wait on the second dependency forever.
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+
+  auto vector_indexes = ListVectorIndexes(cluster_.get());
+  ASSERT_EQ(vector_indexes.size(), 1);
+
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->LoadDependency({
+      {"VectorLSM::DoCompact:ManifestAcquired", "VectorLSM::DoSaveChunk:BeforeManifestCheck"},
+      {"VectorLSM::DoSaveChunk:ManifestWriteSkipped", "VectorLSM::DoCompact:BeforeManifestUpdate"},
+  });
+  sync_point->EnableProcessing();
+
+  // Compact only schedules; the compaction races with the flush below.
+  ASSERT_OK(vector_indexes.front()->Compact());
+
   ASSERT_OK(flush_tablet_and_wait("Flush for inital updates"));
+
+  ASSERT_OK(vector_indexes.front()->WaitForCompaction());
+  sync_point->DisableProcessing();
 
   // Wait less than retention period and make sure no tombstoned reverse mapping records deleted.
   SleepFor(MonoDelta::FromSeconds(kRetentionIntervalSec / 4.0));

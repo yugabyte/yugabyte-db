@@ -221,7 +221,9 @@ class VectorLSM {
   Result<SaveIndexToFileResult> SaveIndexToFile(VectorIndex& index, uint64_t serial_no);
 
   // The argument `chunk` must be the very first chunk from `updates_queue_`.
-  Status UpdateManifest(WritableFile& manifest_file, ImmutableChunkPtr chunk) EXCLUDES(mutex_);
+  Status UpdateManifest(
+      WritableFile& manifest_file, ImmutableChunkPtr chunk, bool schedule_compaction)
+      EXCLUDES(mutex_);
   Status AddChunkToManifest(WritableFile& manifest_file, ImmutableChunk& chunk);
 
   bool ManifestAcquired() EXCLUDES(mutex_);
