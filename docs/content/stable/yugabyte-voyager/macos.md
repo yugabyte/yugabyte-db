@@ -4,11 +4,13 @@ private=true
 +++
 -->
 
-{{< note title = "Migrating from MySQL/Oracle on macOS" >}}
+{{< warning title="MySQL and Oracle offline migration deprecated" >}}
+
+MySQL and Oracle offline migration using YugabyteDB Voyager is deprecated and will no longer be supported after October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
 
 The brew install on macOS does not support installing ora2pg, which is required for MySQL/Oracle database schema export. If you are planning to migrate MySQL or Oracle source databases on macOS, install yb-voyager using Docker instead.
 
-{{< /note >}}
+{{< /warning >}}
 
 Perform the following steps to install yb-voyager using brew for macOS:
 
