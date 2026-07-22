@@ -39,7 +39,7 @@ To set up YugabyteDB for use with the YugabyteDB gRPC connector, do the followin
 
 {{<tags/feature/ea idea="2762">}}Starting in v2026.1.1.0, you can create, list, and drop gRPC CDC streams using the standard PostgreSQL replication-slot interface by specifying the special output plugin `yb_grpc`. The stream is still consumed by the YugabyteDB gRPC connector; only the lifecycle (create, list, drop) uses familiar PostgreSQL tooling.
 
-This capability is enabled automatically after you finalize a cluster upgrade to a supporting version. Creating a gRPC stream via PostgreSQL syntax is rejected until upgrade finalization completes.
+This capability is enabled automatically after you finalize a [universe upgrade](../../../../manage/upgrade-deployment/) to a supporting version. Creating a gRPC stream via PostgreSQL syntax is rejected until upgrade finalization completes.
 
 Streams created this way omit the stream-level `record_type` option that older gRPC connectors expect. Before-image format is driven by each table's [replica identity](../../using-logical-replication/key-concepts/#replica-identity) instead. Use a gRPC connector version that supports replica-identity-driven streams when consuming a stream created via PostgreSQL syntax.
 
@@ -48,7 +48,7 @@ Streams created this way omit the stream-level `record_type` option that older g
 Connect to the database with ysqlsh (or any PostgreSQL client) and create a logical replication slot with the `yb_grpc` plugin:
 
 ```sql
--- Create a gRPC CDC stream (after upgrade finalization)
+-- Create a gRPC CDC stream
 SELECT * FROM pg_create_logical_replication_slot('my_grpc_slot', 'yb_grpc');
 ```
 
@@ -58,6 +58,13 @@ List the slot and obtain the stream ID to use in the connector's `database.strea
 SELECT slot_name, plugin, yb_stream_id
 FROM pg_replication_slots
 WHERE slot_name = 'my_grpc_slot';
+```
+
+```output
+  slot_name   | plugin  |           yb_stream_id
+--------------+---------+----------------------------------
+ my_grpc_slot | yb_grpc | d540f5e4890c4d3b812933cbfd703ed3
+(1 row)
 ```
 
 Drop the stream like any other replication slot:
