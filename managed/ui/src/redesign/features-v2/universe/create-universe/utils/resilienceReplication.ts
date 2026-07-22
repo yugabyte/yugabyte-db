@@ -74,11 +74,20 @@ export const isCurrentConfigSupportedByGuidedMode = (
   const availabilityZones = nodesAndAvailability?.availabilityZones;
   const azCount = getAZCount(availabilityZones ?? {});
   const regionCount = resilience.regions.length;
-  const nodeCounts = values(availabilityZones).flatMap((zones) =>
+  const nodeCounts = values(availabilityZones ?? {}).flatMap((zones) =>
     zones.map((zone) => zone.nodeCount)
   );
 
-  // All AZs must have the same node count (empty placement → unsupported).
+  // No nodes/placement yet — nothing incompatible with guided; keep current resilience settings.
+  if (azCount === 0) {
+    return {
+      isSupported: true,
+      resilienceFactor: resilience.resilienceFactor,
+      faultToleranceType: resilience.faultToleranceType
+    };
+  }
+
+  // All AZs must have the same node count.
   if (new Set(nodeCounts).size !== 1) {
     return { isSupported: false };
   }
