@@ -2394,12 +2394,12 @@ class CppCassandraDriverTestIndexSnapshotTooOld : public CppCassandraDriverTestI
   const MonoDelta kHistoryRetentionInterval = MonoDelta::FromSeconds(kHistoryRetentionSec);
 };
 
-// Verify that compacting the INDEX TABLE after the history retention interval does NOT cause
-// CQL unique index backfill writes to fail with "Snapshot too old".  Although the index
-// tablet's history cutoff advances past the backfill safe time, the index table has
-// retain_delete_markers=true during backfill.  This means compaction preserves all data
-// (delete markers and regular values), so RegisterReaderTimestamp skips the SnapshotTooOld
-// check and allows the read to proceed.
+// Verify that compacting the INDEX TABLE after the history retention interval does NOT cause CQL
+// unique index backfill writes to fail with "Snapshot too old".  Although the index tablet's
+// history cutoff advances past the backfill safe time, the index table has
+// retain_delete_markers=true during backfill, so RegisterReaderTimestamp skips the SnapshotTooOld
+// check and allows the read to proceed (see the comment there for why retaining delete markers
+// makes that safe).
 //
 // A UNIQUE index is used because unique index backfill uses QL_STMT_INSERT
 // (which sets insert_into_unique_index_ = true, require_read_ = true, and thus
