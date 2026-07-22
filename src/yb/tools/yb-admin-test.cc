@@ -2564,38 +2564,62 @@ TEST_F(AdminCliTest, TestRemoveTabletServer) {
 }
 
 // Regression test for https://github.com/yugabyte/yugabyte-db/issues/32681:
-// list_tablet_server_log_locations must not abort on DEAD tservers.
+// list_tablet_server_log_locations must not abort on DEAD tservers, and must
+// sort alive tservers ahead of dead ones.
 TEST_F(AdminCliTest, TestListTabletServerLogLocationsWithDeadTServer) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 2;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
   BuildAndStart({}, {"--enable_load_balancing=false", "--tserver_unresponsive_timeout_ms=5000"});
 
-  const auto ts_uuid = cluster_->tablet_server(0)->uuid();
+  // Kill tserver 0 (the one that sorts first by host/port) and keep tserver 1
+  // alive, so alive-first ordering must actively reorder the two entries rather
+  // than coincidentally matching the host/port tie-break.
+  auto* dead_ts = cluster_->tablet_server(0);
+  auto* alive_ts = cluster_->tablet_server(1);
+  const auto dead_uuid = dead_ts->uuid();
+  const auto alive_uuid = alive_ts->uuid();
 
+  // Helper: extract the LogLocation column for a given tserver UUID.
+  auto log_location_for = [](const std::string& output, const std::string& uuid) -> std::string {
+    std::smatch match;
+    if (!std::regex_search(output, match, std::regex(uuid + R"(\s+\S+\s+(\S+))"))) {
+      return "";
+    }
+    return match[1].str();
+  };
+
+  // While both are alive, both report a real log directory (no N/A).
   auto output_alive = ASSERT_RESULT(CallAdmin("list_tablet_server_log_locations"));
-  ASSERT_STR_CONTAINS(output_alive, ts_uuid);
+  ASSERT_STR_CONTAINS(output_alive, dead_uuid);
+  ASSERT_STR_CONTAINS(output_alive, alive_uuid);
   ASSERT_STR_NOT_CONTAINS(output_alive, "N/A");
 
-  cluster_->tablet_server(0)->Shutdown();
+  dead_ts->Shutdown();
   auto cluster_client =
       master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
   ASSERT_OK(WaitFor(
-      [&cluster_client, &ts_uuid]() -> Result<bool> {
-        auto tserver = VERIFY_RESULT(cluster_client.GetTabletServer(ts_uuid));
+      [&cluster_client, &dead_uuid]() -> Result<bool> {
+        auto tserver = VERIFY_RESULT(cluster_client.GetTabletServer(dead_uuid));
         return tserver && !tserver->alive();
       },
       30s, "tserver not marked dead"));
 
-  // Must succeed (not connect-timeout abort) and report N/A for the dead tserver.
-  auto output_dead = ASSERT_RESULT(CallAdmin("list_tablet_server_log_locations"));
-  ASSERT_STR_CONTAINS(output_dead, ts_uuid);
-  ASSERT_STR_CONTAINS(output_dead, "N/A");
+  // Must succeed (not connect-timeout abort) and list both tservers.
+  auto output = ASSERT_RESULT(CallAdmin("list_tablet_server_log_locations"));
+  ASSERT_STR_CONTAINS(output, dead_uuid);
+  ASSERT_STR_CONTAINS(output, alive_uuid);
 
-  // Dead tserver should sort to the end.
-  const auto dead_row_pos = output_dead.find(ts_uuid);
-  ASSERT_NE(dead_row_pos, std::string::npos);
-  ASSERT_EQ(output_dead.find(ts_uuid, dead_row_pos + 1), std::string::npos);
-  ASSERT_EQ(output_dead.find('\n', dead_row_pos), output_dead.rfind('\n'));
+  // Alive tserver reports a real log location; dead tserver reports N/A.
+  ASSERT_NE(log_location_for(output, alive_uuid), "N/A");
+  ASSERT_NE(log_location_for(output, alive_uuid), "");
+  ASSERT_EQ(log_location_for(output, dead_uuid), "N/A");
+
+  // Alive tserver sorts ahead of the dead one.
+  const auto alive_pos = output.find(alive_uuid);
+  const auto dead_pos = output.find(dead_uuid);
+  ASSERT_NE(alive_pos, std::string::npos);
+  ASSERT_NE(dead_pos, std::string::npos);
+  ASSERT_LT(alive_pos, dead_pos);
 }
 
 TEST_F(AdminCliTest, TestDisallowImplicitStreamCreation) {
