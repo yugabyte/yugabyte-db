@@ -55,18 +55,21 @@ You configure the maximum batch size in YugabyteDB, while the polling frequency 
 
 ### Stream classification and metadata
 
-A CDCSDK stream is treated as a **gRPC stream** when its replication-slot plugin name is absent, empty, or `yb_grpc`; otherwise it is a logical replication stream.
+A CDCSDK stream is treated as a _gRPC stream_ when its replication-slot plugin name is absent, empty, or `yb_grpc`; otherwise it is a logical replication stream.
 
-gRPC streams carry different metadata depending on how they were created:
+gRPC streams carry different metadata depending on how (and when) they were created:
+
+- **PostgreSQL syntax (`yb_grpc`)**: User-provided slot name, `yb_grpc` plugin, a `replica_identity_map`, and a `cdc_state` slot entry. [Before-image](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#before-image) format comes from per-table replica identity (no stream-level `record_type`).
+- **yb-admin `create_change_data_stream`**: Auto-generated slot name (`grpc_<stream_id>`), `yb_grpc` plugin, and a `cdc_state` slot entry. No `replica_identity_map`; before-image format still comes from the stream-level `record_type` passed to yb-admin.
+- **Pre-existing gRPC streams (created in versions earlier than v2026.1.1.0)**: On master leader bringup after upgrading to v2026.1.1.0 or later, these streams are automatically backfilled to match the yb-admin shape above: auto-generated slot name (`grpc_<stream_id>`), `yb_grpc` plugin, and a `cdc_state` slot entry. They keep using `record_type` and do **not** receive a `replica_identity_map`.
 
 | Creation method | Replication slot name | Plugin | `replica_identity_map` | Slot entry in `cdc_state` | Before-image source |
 | :-------------- | :-------------------- | :----- | :--------------------- | :------------------------ | :------------------ |
 | PostgreSQL syntax (`yb_grpc`) | User-provided | `yb_grpc` | Yes | Yes | Per-table replica identity |
-| yb-admin `create_change_data_stream`, or pre-existing streams after backfill | `grpc_<stream_id>` | `yb_grpc` | No | Yes | Stream-level `record_type` |
+| yb-admin `create_change_data_stream` (after finalization) | `grpc_<stream_id>` | `yb_grpc` | No | Yes | Stream-level `record_type` |
+| Pre-existing streams after backfill | `grpc_<stream_id>` | `yb_grpc` | No | Yes | Stream-level `record_type` |
 
-After upgrade finalization, pre-existing gRPC streams are automatically backfilled with an auto-generated slot name (`grpc_<stream_id>`), the `yb_grpc` plugin name, and a `cdc_state` slot entry. They continue to use `record_type` and do not receive a `replica_identity_map`.
-
-**Record-format discriminator:** Logical replication streams and gRPC streams created via PostgreSQL syntax carry a `replica_identity_map` and no `record_type` option. gRPC streams created via yb-admin carry a `record_type` option and no `replica_identity_map`.
+**Record-format discriminator:** Logical replication streams and gRPC streams created via PostgreSQL syntax carry a `replica_identity_map` and no `record_type` option. gRPC streams created via yb-admin (and backfilled pre-existing streams) carry a `record_type` option and no `replica_identity_map`.
 
 Connector tasks can consume changes from multiple tablets. At least once delivery is guaranteed. In turn, connector tasks write to the Kafka cluster, and tasks don't need to match Kafka partitions. Tasks can be independently scaled up or down.
 
