@@ -107,7 +107,106 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t t
 
 DROP INDEX irv;
 
+-- Do not partially translate uniqkeys through a subquery scan.
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.r1 FROM (SELECT DISTINCT r1 FROM t WHERE r1 = r2) s;
+SELECT DISTINCT s.r1 FROM (SELECT DISTINCT r1 FROM t WHERE r1 = r2) s;
+
+-- Retain the outer distinct when the subquery has additional distinct keys.
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.r1 FROM (SELECT DISTINCT r1, r2 FROM t) s;
+SELECT DISTINCT s.r1 FROM (SELECT DISTINCT r1, r2 FROM t) s;
+
 DROP TABLE t;
+
+CREATE TABLE distinct_expr (a INT);
+INSERT INTO distinct_expr
+  SELECT i % 5 FROM GENERATE_SERIES(1, 1000) AS i;
+ANALYZE distinct_expr;
+
+-- Do not propagate uniqkeys when the subquery has no distinct pushdown.
+CREATE INDEX distinct_expr_a_idx ON distinct_expr (a ASC);
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.a FROM (SELECT DISTINCT a, a + 1 FROM distinct_expr) s ORDER BY 1;
+SELECT DISTINCT s.a FROM (SELECT DISTINCT a, a + 1 FROM distinct_expr) s ORDER BY 1;
+
+-- Preserve distinct pushdown through a subquery without DISTINCT.
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.a FROM (SELECT a FROM distinct_expr) s ORDER BY 1;
+SELECT DISTINCT s.a FROM (SELECT a FROM distinct_expr) s ORDER BY 1;
+
+-- Translate uniqkeys through nested subquery scans.
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s2.a FROM (SELECT DISTINCT s1.a FROM (SELECT DISTINCT a FROM distinct_expr) s1) s2 ORDER BY 1;
+SELECT DISTINCT s2.a FROM (SELECT DISTINCT s1.a FROM (SELECT DISTINCT a FROM distinct_expr) s1) s2 ORDER BY 1;
+
+DROP INDEX distinct_expr_a_idx;
+
+-- Drop uniqkeys when one key is not exposed by the subquery scan.
+CREATE INDEX distinct_expr_a_expr_idx
+  ON distinct_expr (a ASC, (a + 1) ASC);
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.a FROM (SELECT DISTINCT a, a + 1 FROM distinct_expr) s ORDER BY 1;
+SELECT DISTINCT s.a FROM (SELECT DISTINCT a, a + 1 FROM distinct_expr) s ORDER BY 1;
+
+DROP TABLE distinct_expr;
+
+CREATE DOMAIN dint AS INT4;
+CREATE TABLE td (x dint);
+CREATE INDEX td_x_idx ON td (x ASC);
+INSERT INTO td
+  SELECT (i % 5)::dint FROM GENERATE_SERIES(1, 1000) AS i;
+ANALYZE td;
+
+-- Translate a domain-to-base relabel through a subquery scan.
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.a FROM (SELECT DISTINCT x::INT4 AS a FROM td) s ORDER BY 1;
+SELECT DISTINCT s.a FROM (SELECT DISTINCT x::INT4 AS a FROM td) s ORDER BY 1;
+
+DROP TABLE td;
+DROP DOMAIN dint;
+
+-- Do not translate uniqkeys when collations do not match.
+CREATE TABLE distinct_collate (a TEXT);
+CREATE INDEX distinct_collate_c_idx ON distinct_collate (a COLLATE "C" ASC);
+INSERT INTO distinct_collate
+  SELECT (i % 5)::TEXT FROM GENERATE_SERIES(1, 1000) AS i;
+ANALYZE distinct_collate;
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.x FROM (SELECT DISTINCT a COLLATE "C" AS x FROM distinct_collate) s ORDER BY 1;
+SELECT DISTINCT s.x FROM (SELECT DISTINCT a COLLATE "C" AS x FROM distinct_collate) s ORDER BY 1;
+
+DROP TABLE distinct_collate;
+
+-- Regression test for untranslated uniqkeys leaking from subquery paths.
+CREATE TABLE distinct_outer(k INT);
+CREATE TABLE distinct_inner(a INT);
+CREATE INDEX distinct_outer_k_idx ON distinct_outer(k ASC);
+CREATE INDEX distinct_inner_a_idx ON distinct_inner(a ASC);
+
+INSERT INTO distinct_outer
+  SELECT CASE WHEN i <= 500 THEN 1 ELSE 2 END
+  FROM GENERATE_SERIES(1, 1000) AS i;
+INSERT INTO distinct_inner
+  SELECT i % 3
+  FROM GENERATE_SERIES(1, 1000) AS i;
+ANALYZE distinct_outer;
+ANALYZE distinct_inner;
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT o.k FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s ORDER BY 1;
+SELECT DISTINCT o.k FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s ORDER BY 1;
+
+-- Propagate uniqkeys from a subquery through a cross join.
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT o.k, s.a FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s ORDER BY 1, 2;
+SELECT DISTINCT o.k, s.a FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s ORDER BY 1, 2;
+
+-- Propagate uniqkeys from a subquery through an inner join.
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT o.k, s.a FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s WHERE o.k = s.a ORDER BY 1, 2;
+SELECT DISTINCT o.k, s.a FROM distinct_outer o, (SELECT DISTINCT a FROM distinct_inner) s WHERE o.k = s.a ORDER BY 1, 2;
+
+-- Handle propagated uniqkeys from the nullable side of a left join.
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT o.k, s.a FROM distinct_outer o LEFT JOIN (SELECT DISTINCT a FROM distinct_inner) s ON o.k = s.a AND s.a = 1 ORDER BY 1, 2;
+SELECT DISTINCT o.k, s.a FROM distinct_outer o LEFT JOIN (SELECT DISTINCT a FROM distinct_inner) s ON o.k = s.a AND s.a = 1 ORDER BY 1, 2;
+
+-- Preserve correct results through a UNION subquery.
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT s.x FROM (SELECT k FROM distinct_outer UNION SELECT a FROM distinct_inner) s(x) ORDER BY 1;
+SELECT DISTINCT s.x FROM (SELECT k FROM distinct_outer UNION SELECT a FROM distinct_inner) s(x) ORDER BY 1;
+
+DROP TABLE distinct_outer;
+DROP TABLE distinct_inner;
 
 -- Regression test case for GitHub issue #20827
 
