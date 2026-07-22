@@ -42,6 +42,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(enable_leader_failure_detection);
+DECLARE_bool(TEST_skip_election_when_fail_detected);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(quick_leader_election_on_create);
@@ -1422,7 +1423,39 @@ TEST_F(YSqlAsyncWriteTest, YB_DEBUG_ONLY_TEST(HandleLeaderStepDown)) {
       [&first_wait_blocked] { return first_wait_blocked.load(); }, 30s,
       "Wait for first async write to get blocked"));
 
+  // Freeze automatic failure detection before isolating the old leader. Otherwise both surviving
+  // followers race into an election, and a split vote bumps the raft term twice (term N -> N+1
+  // split -> N+2). That strands the still-blocked term-N async writes across more than one leader
+  // move, which the client rejects ("tablet leader moved more than once", transaction.cc), aborting
+  // the transaction and flaking the test. Instead drive exactly one election on a single chosen
+  // follower for a deterministic single-term handover.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_election_when_fail_detected) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
   ASSERT_OK(BreakConnectivityWithAll(cluster_.get(), old_leader_idx));
+
+  // Elect the surviving follower whose log is most up-to-date. A candidate whose log trails the
+  // other reachable follower loses the vote, and with failure detection off there is no retry, so
+  // a lagging target would hang until the 30s timeout.
+  size_t target_idx = old_leader_idx;
+  OpId best_received;
+  for (size_t i = 0; i < NumTabletServers(); ++i) {
+    if (i == old_leader_idx) {
+      continue;
+    }
+    auto peer = ASSERT_RESULT(GetTabletPeerOnTserver(i, tablet_id));
+    auto received = ASSERT_RESULT(ASSERT_RESULT(peer->GetRaftConsensus())->GetLastOpId(
+        consensus::RECEIVED_OPID));
+    if (target_idx == old_leader_idx || best_received < received) {
+      target_idx = i;
+      best_received = received;
+    }
+  }
+  auto target_peer = ASSERT_RESULT(GetTabletPeerOnTserver(target_idx, tablet_id));
+  // Force the election with ELECT_EVEN_IF_LEADER_IS_ALIVE.
+  ASSERT_OK(ASSERT_RESULT(target_peer->GetRaftConsensus())->StartElection(
+      consensus::LeaderElectionData{
+          .mode = consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
+          .must_be_committed_opid = {}}));
   size_t new_leader_idx = ASSERT_RESULT(WaitForNewTabletLeader(tablet_id, old_leader_idx));
   ASSERT_OK(SetupConnectivityWithAll(cluster_.get(), old_leader_idx));
 
