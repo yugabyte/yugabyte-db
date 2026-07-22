@@ -380,6 +380,8 @@ static void isDatabaseColocated(Archive *fout);
 static char *extractYbPresplitFromReloptions(const char *reloptions);
 static char *removeYbPresplitFromReloptions(const char *reloptions);
 static bool ybDumpPresplitInCreate(Archive *fout);
+static const char *ybFindIndexdefClause(const char *indexdef,
+										const char *clause);
 static char *ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
 										  const char *value);
 static char *getYbSplitClause(Archive *fout, const TableInfo *tbinfo);
@@ -20531,6 +20533,52 @@ extractYbPresplitFromReloptions(const char *reloptions)
 	return result;
 }
 
+/* Find a top-level clause, ignoring quoted text and parenthesized expressions. */
+static const char *
+ybFindIndexdefClause(const char *indexdef, const char *clause)
+{
+	const size_t clause_len = strlen(clause);
+	int			paren_depth = 0;
+	char		quote = '\0';
+
+	for (const char *p = indexdef; *p != '\0'; p++)
+	{
+		if (quote != '\0')
+		{
+			if (*p == quote)
+			{
+				if (p[1] == quote)
+					p++;
+				else
+					quote = '\0';
+			}
+			continue;
+		}
+
+		if (*p == '\'' || *p == '"')
+		{
+			quote = *p;
+			continue;
+		}
+		if (*p == '(')
+		{
+			paren_depth++;
+			continue;
+		}
+		if (*p == ')')
+		{
+			if (paren_depth > 0)
+				paren_depth--;
+			continue;
+		}
+
+		if (paren_depth == 0 && strncmp(p, clause, clause_len) == 0)
+			return p;
+	}
+
+	return NULL;
+}
+
 /*
  * YB: Return a newly-allocated copy of `indexdef` with a yb_presplit=<value>
  * entry folded into the WITH clause.
@@ -20542,11 +20590,15 @@ extractYbPresplitFromReloptions(const char *reloptions)
  *
  * `indexdef` is the string produced by pg_get_indexdef(), shaped roughly
  * as "CREATE [UNIQUE] INDEX ... ON tbl USING am (cols) [WITH (opts)]
- * [SPLIT ...]".  We splice the new option into the existing WITH clause
- * if present; otherwise we insert a fresh `WITH (yb_presplit='<value>')`
- * before the SPLIT keyword if present; otherwise we append it at the end
- * of the indexdef (e.g. for a single-tablet index that still has an
- * explicit reloption to preserve).
+ * [SPLIT ...] [WHERE ...]".  We splice the new option into the existing
+ * WITH clause if present; otherwise we insert a fresh
+ * `WITH (yb_presplit='<value>')` before SPLIT or WHERE, whichever comes
+ * first.  If neither is present, we append it at the end of the indexdef
+ * (e.g. for a single-tablet index that still has an explicit reloption to
+ * preserve).
+ *
+ * The SQL pg_get_indexdef() used by getIndexes() intentionally omits
+ * TABLESPACE; pg_dump carries it separately in the archive entry metadata.
  */
 static char *
 ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
@@ -20555,6 +20607,8 @@ ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
 	const char *with_start;
 	const char *with_close;
 	const char *split_start;
+	const char *where_start;
+	const char *insert_start;
 	PQExpBuffer buf;
 	char	   *result;
 
@@ -20563,7 +20617,7 @@ ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
 	if (!value)
 		value = "";
 
-	with_start = strstr(indexdef, " WITH (");
+	with_start = ybFindIndexdefClause(indexdef, " WITH (");
 	if (with_start != NULL)
 	{
 		/* Find the matching ')' after WITH ( -- the first ')'. */
@@ -20586,19 +20640,24 @@ ybInjectPresplitIntoIndexdef(Archive *fout, const char *indexdef,
 
 	/*
 	 * No existing WITH clause.  Insert a fresh `WITH (yb_presplit='...')`
-	 * before the SPLIT keyword if there is one, otherwise at the end of
-	 * the indexdef.
+	 * before the first SPLIT or WHERE clause, otherwise at the end of the
+	 * indexdef.
 	 */
-	split_start = strstr(indexdef, " SPLIT ");
-	if (split_start == NULL)
-		split_start = indexdef + strlen(indexdef);
+	split_start = ybFindIndexdefClause(indexdef, " SPLIT ");
+	where_start = ybFindIndexdefClause(indexdef, " WHERE ");
+	insert_start = split_start;
+	if (where_start != NULL &&
+		(insert_start == NULL || where_start < insert_start))
+		insert_start = where_start;
+	if (insert_start == NULL)
+		insert_start = indexdef + strlen(indexdef);
 
 	buf = createPQExpBuffer();
-	appendBinaryPQExpBuffer(buf, indexdef, split_start - indexdef);
+	appendBinaryPQExpBuffer(buf, indexdef, insert_start - indexdef);
 	appendPQExpBufferStr(buf, " WITH (yb_presplit=");
 	appendStringLiteralAH(buf, value, fout);
 	appendPQExpBufferChar(buf, ')');
-	appendPQExpBufferStr(buf, split_start);
+	appendPQExpBufferStr(buf, insert_start);
 	result = pg_strdup(buf->data);
 	destroyPQExpBuffer(buf);
 	return result;
