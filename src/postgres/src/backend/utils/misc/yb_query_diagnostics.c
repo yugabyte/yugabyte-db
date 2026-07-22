@@ -56,6 +56,7 @@
 #include "postmaster/interrupt.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
+#include "storage/shmem.h"
 #include "utils/builtins.h"
 #include "utils/wait_event.h"
 #include "yb_ash.h"
@@ -181,6 +182,16 @@ static YbBackgroundWorkerHandle *bg_worker_handle = NULL;
 static YbDatabaseConnectionWorkerInfo *database_connection_worker_info = NULL;
 static bool *bg_worker_should_be_active = NULL;
 
+/* Share memory callbacks */
+static void YbQueryDiagnosticsShmemRequest(void *arg);
+static void YbQueryDiagnosticsShmemInit(void *arg);
+static inline int CircularBufferMaxEntries(void);
+
+const ShmemCallbacks YbQueryDiagnosticsShmemCallbacks = {
+	.request_fn = YbQueryDiagnosticsShmemRequest,
+	.init_fn = YbQueryDiagnosticsShmemInit,
+};
+
 static void YbQueryDiagnostics_post_parse_analyze(ParseState *pstate, Query *query,
 												  const JumbleState *jstate);
 static void YbQueryDiagnostics_ExecutorStart(QueryDesc *queryDesc, int eflags);
@@ -271,96 +282,86 @@ YbQueryDiagnosticsBundlesShmemSize(void)
 	return size;
 }
 
-/*
- * YbQueryDiagnosticsShmemSize
- *		Compute space needed for QueryDiagnostics-related shared memory
- */
-Size
-YbQueryDiagnosticsShmemSize(void)
+static void
+YbQueryDiagnosticsShmemRequest(void *arg)
 {
-	Size		size;
+	if (!YBIsEnabledInPostgresEnvVar() || !yb_enable_query_diagnostics)
+		return;
 
-	size = MAXALIGN(sizeof(LWLock));
-	size = add_size(size, hash_estimate_size(max_bundles_in_progress,
-											 sizeof(YbQueryDiagnosticsEntry)));
-	size = add_size(size, YbQueryDiagnosticsBundlesShmemSize());
-	size = add_size(size, sizeof(TimestampTz));
-	size = add_size(size, sizeof(YbBackgroundWorkerHandle));	/* bg_worker_handle */
-	size = add_size(size, sizeof(YbDatabaseConnectionWorkerInfo));	/* database_connection_worker_info */
-	size = add_size(size, sizeof(bool));	/* bg_worker_should_be_active */
+	/* Create the hash table in shared memory */
+	ShmemRequestStruct(.name = "YbQueryDiagnostics Lock",
+					   .size = sizeof(LWLock),
+					   .ptr = (void **) &bundles_in_progress_lock);
 
-	return size;
+	ShmemRequestHash(.name = "YbQueryDiagnostics shared hash table",
+					 .nelems = max_bundles_in_progress,
+					 .ptr = &bundles_in_progress,
+					 .hash_info.keysize = sizeof(int64),
+					 .hash_info.entrysize = sizeof(YbQueryDiagnosticsEntry),
+					 .hash_flags = HASH_ELEM | HASH_BLOBS);
+
+	ShmemRequestStruct(.name = "YbQueryDiagnostics Status",
+					   .size = YbQueryDiagnosticsBundlesShmemSize(),
+					   .ptr = (void **) &bundles_completed);
+
+	ShmemRequestStruct(.name = "YbQueryDiagnostics pgss last reset time",
+					   .size = sizeof(TimestampTz),
+					   .ptr = (void **) &yb_pgss_last_reset_time);
+
+	ShmemRequestStruct(.name = "YbQueryDiagnostics bg worker handle",
+					   .size = sizeof(YbBackgroundWorkerHandle),
+					   .ptr = (void **) &bg_worker_handle);
+
+	ShmemRequestStruct(.name = "YbQueryDiagnostics db conn worker info",
+					   .size = sizeof(YbDatabaseConnectionWorkerInfo),
+					   .ptr = (void **) &database_connection_worker_info);
+
+	ShmemRequestStruct(.name = "YbQueryDiagnostics bg worker active flag",
+					   .size = sizeof(bool),
+					   .ptr = (void **) &bg_worker_should_be_active);
 }
 
 /*
  * YbQueryDiagnosticsShmemInit
- *		Allocate and initialize QueryDiagnostics-related shared memory
+ *      Allocate and initialize QueryDiagnostics-related shared memory
  */
-void
-YbQueryDiagnosticsShmemInit(void)
+static void
+YbQueryDiagnosticsShmemInit(void *arg)
 {
-	HASHCTL		ctl;
-	bool		found;
+	if (!YBIsEnabledInPostgresEnvVar() || !yb_enable_query_diagnostics)
+		return;
 
-	bundles_in_progress = NULL;
-	/* Initialize the hash table control structure */
-	MemSet(&ctl, 0, sizeof(ctl));
+	Assert(bundles_in_progress_lock != NULL);
+	Assert(bundles_in_progress != NULL);
+	Assert(bundles_completed != NULL);
+	Assert(yb_pgss_last_reset_time != NULL);
+	Assert(bg_worker_handle != NULL);
+	Assert(database_connection_worker_info != NULL);
+	Assert(bg_worker_should_be_active != NULL);
 
-	/* Set the key size and entry size */
-	ctl.keysize = sizeof(int64);
-	ctl.entrysize = sizeof(YbQueryDiagnosticsEntry);
+	LWLockInitialize(bundles_in_progress_lock,
+					 LWTRANCHE_YB_QUERY_DIAGNOSTICS);
 
-	/* Create the hash table in shared memory */
-	bundles_in_progress_lock = (LWLock *) ShmemInitStruct("YbQueryDiagnostics Lock",
-														  sizeof(LWLock), &found);
+	bundles_completed->index = 0;
+	bundles_completed->max_entries = CircularBufferMaxEntries();
 
-	if (!found)
-	{
-		/* First time through ... */
-		LWLockInitialize(bundles_in_progress_lock,
-						 LWTRANCHE_YB_QUERY_DIAGNOSTICS);
-	}
+	MemSet(bundles_completed->bundles, 0, sizeof(YbBundleInfo) * bundles_completed->max_entries);
 
-	bundles_in_progress = ShmemInitHash("YbQueryDiagnostics shared hash table",
-										max_bundles_in_progress,
-										&ctl,
-										HASH_ELEM | HASH_BLOBS);
+	LWLockInitialize(&bundles_completed->lock,
+					 LWTRANCHE_YB_QUERY_DIAGNOSTICS_CIRCULAR_BUFFER);
 
-	bundles_completed =
-		(YbQueryDiagnosticsBundles *) ShmemInitStruct("YbQueryDiagnostics Status",
-													  YbQueryDiagnosticsBundlesShmemSize(),
-													  &found);
+	YbRestoreQueryDiagnosticsStatusView();
 
-	if (!found)
-	{
-		/* First time through ... */
-		bundles_completed->index = 0;
-		bundles_completed->max_entries = CircularBufferMaxEntries();
-
-		MemSet(bundles_completed->bundles, 0, sizeof(YbBundleInfo) * bundles_completed->max_entries);
-
-		LWLockInitialize(&bundles_completed->lock,
-						 LWTRANCHE_YB_QUERY_DIAGNOSTICS_CIRCULAR_BUFFER);
-
-		YbRestoreQueryDiagnosticsStatusView();
-	}
-
-	yb_pgss_last_reset_time = (TimestampTz *) ShmemAlloc(sizeof(TimestampTz));
 	(*yb_pgss_last_reset_time) = 0;
 
 	/* Initialize the background worker handle */
-	bg_worker_handle = (YbBackgroundWorkerHandle *) ShmemAlloc(sizeof(YbBackgroundWorkerHandle));
 	bg_worker_handle->slot = -1;
 	bg_worker_handle->generation = -1;
 
 	/* Initialize the database connection worker info */
-	database_connection_worker_info = (YbDatabaseConnectionWorkerInfo *)
-		ShmemAlloc(sizeof(YbDatabaseConnectionWorkerInfo));
 	database_connection_worker_info->initialized = false;
 
 	/* Initialize bg_worker_should_be_active */
-	bg_worker_should_be_active = (bool *) ShmemAlloc(sizeof(bool));
-
 	/*
 	 * Initialize background worker as inactive until
 	 * explicitly triggered by a diagnostics request.

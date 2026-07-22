@@ -83,39 +83,37 @@ static YbTerminatedQuery *yb_fetch_terminated_queries(Oid db_oid, size_t *num_qu
 static void yb_save_terminated_queries(int code, Datum arg);
 static void yb_restore_terminated_queries();
 
-Size
-YbTerminatedQueriesShmemSize(void)
+/* Share memory callbacks */
+static void YbTerminatedQueriesShmemRequest(void *arg);
+static void YbTerminatedQueriesShmemInit(void *arg);
+
+const ShmemCallbacks YbTerminatedQueriesShmemCallbacks = {
+	.request_fn = YbTerminatedQueriesShmemRequest,
+	.init_fn = YbTerminatedQueriesShmemInit,
+};
+
+static void
+YbTerminatedQueriesShmemRequest(void *arg)
 {
-	Size		size;
+	ShmemRequestStruct(.name = "YbTerminatedQueries Lock",
+					   .size = sizeof(LWLock),
+					   .ptr = (void **) &yb_terminated_queries_lock);
 
-	size = MAXALIGN(sizeof(LWLock));
-	size = add_size(size, sizeof(YbTerminatedQueriesBuffer));
-
-	return size;
+	ShmemRequestStruct(.name = "YbTerminatedQueries",
+					   .size = sizeof(YbTerminatedQueriesBuffer),
+					   .ptr = (void **) &yb_terminated_queries);
 }
 
-void
-YbTerminatedQueriesShmemInit(void)
+static void
+YbTerminatedQueriesShmemInit(void *arg)
 {
-	bool		found;
+	Assert(yb_terminated_queries_lock != NULL);
+	Assert(yb_terminated_queries != NULL);
 
-	yb_terminated_queries_lock = (LWLock *) ShmemInitStruct("YbTerminatedQueries Lock",
-															sizeof(LWLock), &found);
-
-	if (!found)
-		LWLockInitialize(yb_terminated_queries_lock,
-						 LWTRANCHE_YB_TERMINATED_QUERIES);
-
-	yb_terminated_queries = (YbTerminatedQueriesBuffer *)
-		ShmemInitStruct("YbTerminatedQueries",
-						sizeof(YbTerminatedQueriesBuffer),
-						&found);
-
-	if (!found)
-	{
-		MemSet(yb_terminated_queries, 0, sizeof(YbTerminatedQueriesBuffer));
-		yb_restore_terminated_queries();
-	}
+	LWLockInitialize(yb_terminated_queries_lock,
+					 LWTRANCHE_YB_TERMINATED_QUERIES);
+	MemSet(yb_terminated_queries, 0, sizeof(YbTerminatedQueriesBuffer));
+	yb_restore_terminated_queries();
 
 	if (!IsUnderPostmaster)
 		on_shmem_exit(yb_save_terminated_queries, (Datum) 0);

@@ -31,6 +31,7 @@
 #include "access/hash.h"
 #include "access/htup_details.h"
 #include "common/ip.h"
+#include "common/pg_yb_common.h"
 #include "executor/executor.h"
 #include "funcapi.h"
 #include "libpq/libpq-be.h"
@@ -146,6 +147,16 @@ ShouldResolvePlanId(void)
 	return yb_qpm_configuration.track == YB_QPM_TRACK_ALL ||
 		(yb_qpm_configuration.track == YB_QPM_TRACK_TOP && nested_level == 0);
 }
+
+/* Shared memory callbacks */
+static void YbAshShmemRequest(void *arg);
+static void YbAshShmemInit(void *arg);
+static Size YbAshShmemSize(void);
+
+const ShmemCallbacks YbAshShmemCallbacks = {
+	.request_fn = YbAshShmemRequest,
+	.init_fn = YbAshShmemInit,
+};
 
 static void YbAshInstallHooks(void);
 static int	yb_ash_cb_max_entries(void);
@@ -330,7 +341,7 @@ YbAshQueryPlanPairStackPop(YbcAshQueryPlanPair expected_qp_pair)
  * YbAshShmemSize
  *		Compute space needed for ASH-related shared memory
  */
-Size
+static Size
 YbAshShmemSize(void)
 {
 	Size		size;
@@ -343,25 +354,36 @@ YbAshShmemSize(void)
 }
 
 /*
- * YbAshShmemInit
- *		Allocate and initialize ASH-related shared memory
+ * YbAshShmemRequest
+ *		Request ASH-related shared memory
  */
-void
-YbAshShmemInit(void)
+static void
+YbAshShmemRequest(void *arg)
 {
-	bool		found = false;
+	if (!YBIsEnabledInPostgresEnvVar() || !yb_enable_ash)
+		return;
 
-	yb_ash = ShmemInitStruct("yb_ash_circular_buffer",
-							 YbAshShmemSize(),
-							 &found);
+	ShmemRequestStruct(.name = "yb_ash_circular_buffer",
+					   .size = YbAshShmemSize(),
+					   .ptr = (void **) &yb_ash);
+}
 
-	if (!found)
-	{
-		LWLockInitialize(&yb_ash->lock, LWTRANCHE_YB_ASH_CIRCULAR_BUFFER);
-		yb_ash->index = 0;
-		yb_ash->max_entries = yb_ash_cb_max_entries();
-		MemSet(yb_ash->circular_buffer, 0, yb_ash->max_entries * sizeof(YbcAshSample));
-	}
+/*
+ * YbAshShmemInit
+ *		Initialize ASH-related shared memory
+ */
+static void
+YbAshShmemInit(void *arg)
+{
+	if (!YBIsEnabledInPostgresEnvVar() || !yb_enable_ash)
+		return;
+
+	Assert(yb_ash != NULL);
+
+	LWLockInitialize(&yb_ash->lock, LWTRANCHE_YB_ASH_CIRCULAR_BUFFER);
+	yb_ash->index = 0;
+	yb_ash->max_entries = yb_ash_cb_max_entries();
+	MemSet(yb_ash->circular_buffer, 0, yb_ash->max_entries * sizeof(YbcAshSample));
 }
 
 static YbcAshQueryPlanPair
@@ -703,12 +725,7 @@ YbAshSetOneTimeMetadata()
 	MemSet(MyProc->yb_ash_metadata.client_addr, 0, 16);
 	MyProc->yb_ash_metadata.client_port = 0;
 
-	/* Background workers and bootstrap processing may have null MyProcPort */
-	if (MyProcPort == NULL)
-	{
-		Assert(AmBackgroundWorkerProcess());
-		return;
-	}
+	Assert(MyProcPort != NULL);
 
 	MyProc->yb_ash_metadata.addr_family = MyProcPort->raddr.addr.ss_family;
 

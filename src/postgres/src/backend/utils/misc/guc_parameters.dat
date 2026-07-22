@@ -3997,10 +3997,7 @@
   short_desc => 'Enable Active Session History for sampling and instrumenting YSQL and YCQL queries, and various background activities.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_enable_ash',
-  # YB_TODO_PG19MERGE: boot_val flipped true->false -- with ASH on the autovacuum
-  # launcher crash-loops the cluster on pg19 (see the matching gflag in
-  # wait_state.cc). Restore once fixed.
-  boot_val => 'false',
+  boot_val => 'true',
 },
 
 { name => 'yb_enable_base_scans_cost_model', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',
@@ -4736,7 +4733,9 @@
   short_desc => 'Selects which statements are tracked by QPM.',
   flags => 'GUC_EXPLAIN',
   variable => 'yb_qpm_configuration.track',
-  boot_val => 'YB_QPM_TRACK_ALL',
+  # YB_TODO_PG19MERGE: boot_val flipped from YB_QPM_TRACK_ALL to YB_QPM_TRACK_NONE
+  # due to various crashes on pg19. Restore once fixed.
+  boot_val => 'YB_QPM_TRACK_NONE',
   options => 'yb_qpm_track_options',
 },
 

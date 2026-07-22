@@ -29,7 +29,5 @@
 
 /* Functions defined for yb_terminated_queries */
 extern void yb_report_query_termination(char *message, int pid);
-extern Size YbTerminatedQueriesShmemSize(void);
-extern void YbTerminatedQueriesShmemInit(void);
 
 #endif							/* YB_TERMINATED_QUERIES_H */

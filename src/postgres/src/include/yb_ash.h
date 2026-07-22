@@ -32,7 +32,8 @@
 #include "utils/timestamp.h"
 
 #define YbAshIsClientAddrSet() \
-	(yb_enable_ash && !IsBootstrapProcessingMode() && !YBIsInitDbModeEnvVarSet())
+	(yb_enable_ash && !IsBootstrapProcessingMode() && \
+	 !YBIsInitDbModeEnvVarSet() && MyProcPort != NULL)
 
 /*
  * query_id 0 is never produced by pg_stat_statements for a real query, so it
@@ -59,9 +60,6 @@ extern int	yb_ash_sample_size;
 
 typedef bool (*YbAshTrackNestedQueries) (void);
 extern YbAshTrackNestedQueries yb_ash_track_nested_queries;
-
-extern Size YbAshShmemSize(void);
-extern void YbAshShmemInit(void);
 
 extern void YbAshRegister(void);
 extern void YbAshMain(Datum main_arg);

@@ -37,8 +37,6 @@
 
 #define YbQpmIsEnabled() (yb_qpm_configuration.track != YB_QPM_TRACK_NONE)
 
-extern Size YbQpmShmemSize(void);
-extern void YbQpmShmemInit(void);
 extern void YbQpmInit(void);
 
 extern char *YbQpmExplainPlan(QueryDesc *queryDesc, ExplainFormat format);

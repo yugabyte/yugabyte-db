@@ -36,6 +36,7 @@
 #include "commands/explain_format.h"
 #include "commands/explain_state.h"
 #include "common/ip.h"
+#include "common/pg_yb_common.h"
 #include "executor/executor.h"
 #include "executor/spi.h"
 #include "fmgr.h"
@@ -167,7 +168,15 @@ static bool qpmUnderUtility = false;
 static ExecutorRun_hook_type prev_ExecutorRun = NULL;
 static ExecutorFinish_hook_type prev_ExecutorFinish = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
-static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
+
+/* Shared memory callbacks */
+static void YbQpmShmemRequest(void *arg);
+static void YbQpmShmemInit(void *arg);
+
+const ShmemCallbacks YbQpmShmemCallbacks = {
+	.request_fn = YbQpmShmemRequest,
+	.init_fn = YbQpmShmemInit,
+};
 
 static void YbQpmInstallHooks(void);
 
@@ -678,9 +687,6 @@ YbQpmInstallHooks(void)
 
 	prev_ProcessUtility = ProcessUtility_hook;
 	ProcessUtility_hook = yb_qpm_ProcessUtility;
-
-	prev_shmem_startup_hook = shmem_startup_hook;
-	shmem_startup_hook = YbQpmShmemInit;
 }
 
 static void
@@ -778,11 +784,8 @@ qpmReferencesCatalogRelation(QueryDesc *queryDesc)
 static void
 qpmProcess(QueryDesc *queryDesc)
 {
-	/*
-	 * YB_TODO_PG19MERGE: can be removed once the TODO in ipci.c is addressed
-	 * and YbQpmShmemInit is called.
-	 */
-	if (qpm == NULL || qpmHashTable == NULL || qpmLock == NULL || qpmLruClock == NULL)
+	/* Do not track or store query plans in initdb mode */
+	if (YBIsInitDbModeEnvVarSet())
 		return;
 
 	if (YbQpmIsEnabled() &&
@@ -1457,82 +1460,61 @@ YbQpmInit(void)
 	EnableQueryId();
 }
 
-/*
- * Compute the space needed for QPM-related shared memory.
- */
-Size
-YbQpmShmemSize(void)
+static void
+YbQpmShmemRequest(void *arg)
 {
-	Size		size = sizeof(YbQpmSharedState);
+	/* Disable QPM in initdb mode */
+	if (!YBIsEnabledInPostgresEnvVar() || YBIsInitDbModeEnvVarSet())
+		return;
 
-	size = add_size(size, qpmLruClockSize());
-	size = add_size(size, hash_estimate_size(yb_qpm_configuration.max_cache_size + 1,
-											 sizeof(YbQpmHashEntry)));
-	size = MAXALIGN(size);
+	ShmemRequestStruct(.name = "qpm",
+					   .size = sizeof(YbQpmSharedState),
+					   .ptr = (void **) &qpm);
 
-	return size;
+	/*
+	 * Allocate the LRU clock.
+	 */
+	ShmemRequestStruct(.name = "qpmLruClock",
+					   .size = qpmLruClockSize(),
+					   .ptr = (void **) &qpmLruClock);
+
+	/*
+	 * Initialize the hash table.
+	 */
+	ShmemRequestHash(.name = "qpm: hashtable",
+					 .nelems = yb_qpm_configuration.max_cache_size + 1,
+					 .ptr = &qpmHashTable,
+					 .hash_info.keysize = sizeof(YbQpmHashKey),
+					 .hash_info.entrysize = sizeof(YbQpmHashEntry),
+					 .hash_info.hash = qpmHash,
+					 .hash_info.match = qpmMatch,
+					 .hash_flags = HASH_ELEM | HASH_FUNCTION | HASH_COMPARE | HASH_CONTEXT);
 }
 
 /*
  * Allocate and initialize QPM-related shared memory.
  */
-void
-YbQpmShmemInit(void)
+static void
+YbQpmShmemInit(void *arg)
 {
-	bool		foundSharedState = false;
+	/* Disable QPM in initdb mode */
+	if (!YBIsEnabledInPostgresEnvVar() || YBIsInitDbModeEnvVarSet())
+		return;
 
-	if (prev_shmem_startup_hook)
-		prev_shmem_startup_hook();
-
-	qpm = NULL;
-	qpmHashTable = NULL;
-	qpmLruClock = NULL;
-	qpmLock = NULL;
-
-	LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
-
-	qpm = ShmemInitStruct("qpm", sizeof(YbQpmSharedState), &foundSharedState);
-
-	if (!foundSharedState)
-	{
-		/*
-		 * Initialize the QPM lock.
-		 */
-		qpmLock = &(qpm->lock);
-		int			trancheId = LWLockNewTrancheId("qpm");
-
-		LWLockInitialize(qpmLock, trancheId);
-
-		/*
-		 * Allocate the LRU clock.
-		 */
-		bool		foundLruClock;
-
-		qpmLruClock = ShmemInitStruct("qpmLruClock", qpmLruClockSize(), &foundLruClock);
-		(void) foundLruClock;
-
-		memset(qpmLruClock, 0, qpmLruClockSize());
-	}
-
-	HASHCTL		info;
-
-	memset(&info, 0, sizeof(info));
-	info.keysize = sizeof(YbQpmHashKey);
-	info.entrysize = sizeof(YbQpmHashEntry);
-	info.hash = qpmHash;
-	info.match = qpmMatch;
+	Assert(qpm != NULL);
+	Assert(qpmHashTable != NULL);
+	Assert(qpmLruClock != NULL);
 
 	/*
-	 * Initialize the hash table.
+	 * Initialize the QPM lock.
 	 */
-	qpmHashTable = ShmemInitHash("qpm: hashtable", yb_qpm_configuration.max_cache_size + 1,
-								 &info,
-								 HASH_ELEM | HASH_FUNCTION | HASH_COMPARE | HASH_CONTEXT);
+	qpmLock = &(qpm->lock);
+	LWLockInitialize(qpmLock, LWLockNewTrancheId("qpm"));
+
+	memset(qpmLruClock, 0, qpmLruClockSize());
 
 	qpm->totalTime = 0;
 	qpm->numCalls = 0;
-
-	LWLockRelease(AddinShmemInitLock);
 
 	/*
 	 * If we're in the postmaster (or a standalone backend...), set up a shmem
@@ -1540,12 +1522,6 @@ YbQpmShmemInit(void)
 	 */
 	if (!IsUnderPostmaster)
 		on_shmem_exit(qpm_shmem_shutdown, (Datum) 0);
-
-	/*
-	 * Done if some other process already completed our initialization.
-	 */
-	if (foundSharedState)
-		return;
 
 	/*
 	 * Read the QPM entry file (if any) and populate the QPM structures.
