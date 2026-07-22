@@ -4,8 +4,12 @@ import { ResilienceType } from '../steps/resilence-regions/dtos';
 export function getCreateUniverseSteps(
   t: TFunction,
   resilienceType?: ResilienceType,
-  isK8s = false
+  isK8s = false,
+  showOptional = true
 ) {
+  const withOptional = (key: string) =>
+    showOptional ? `${t(key)} ${t('optional')}` : t(key);
+
   return [
     {
       groupTitle: t('general'),
@@ -58,10 +62,10 @@ export function getCreateUniverseSteps(
       groupTitle: t('advanced'),
       subSteps: [
         {
-          title: t('proxySettings')
+          title: withOptional('proxySettings')
         },
         {
-          title: t('otherAdvancedSettings')
+          title: withOptional('otherAdvancedSettings')
         }
       ]
     },

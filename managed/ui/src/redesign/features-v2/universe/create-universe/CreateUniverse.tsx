@@ -67,7 +67,7 @@ export function CreateUniverse() {
   const isK8s =
     generalSettings?.cloud === CloudType.kubernetes ||
     generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
-  const steps = useMemo(() => getCreateUniverseSteps(t, resilienceType, isK8s), [
+  const steps = useMemo(() => getCreateUniverseSteps(t, resilienceType, isK8s, false), [
     t,
     resilienceType,
     isK8s
