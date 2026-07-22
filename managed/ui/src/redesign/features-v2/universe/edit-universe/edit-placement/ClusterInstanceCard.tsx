@@ -379,7 +379,10 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
         ]}
         options={{
           enableExpanding: true,
-          renderDetailPanel: renderExpandDetails
+          renderDetailPanel: renderExpandDetails,
+          initialState: {
+            expanded: true
+          }
         }}
       />
     </Box>
