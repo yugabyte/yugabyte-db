@@ -17,13 +17,27 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
-{{< warning title="Oracle live migration no longer supported" >}}
+## Source database support changes
 
-YugabyteDB Voyager no longer supports [live migration](../migrate/live-migrate/) from Oracle databases, including [live migration with fall-forward](../migrate/live-fall-forward/) and [live migration with fall-back](../migrate/live-fall-back/). Oracle remains supported for [offline migration](../migrate/migrate-steps/).
+| Source | Migration type | Status | Effective date |
+| :----- | :------------- | :----- | :------------- |
+| Oracle | [Live migration](../migrate/live-migrate/), including<br>[fall-forward](../migrate/live-fall-forward/) and [fall-back](../migrate/live-fall-back/) | Not supported | - |
+| Oracle | [Offline migration](../migrate/migrate-steps/) | Deprecated | Support ends October 13, 2026 |
+| MySQL | [Offline migration](../migrate/migrate-steps/) | Deprecated | Support ends October 13, 2026 |
 
-Contact {{% support-general %}} to discuss alternative tools and approaches.
+Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated on July 13, 2026. PostgreSQL migrations are unaffected.
 
-{{< /warning >}}
+Contact {{% support-general %}} to discuss alternative tools and migration approaches.
+
+## v2026.7.2 - July 22, 2026
+
+### Enhancements
+
+- Enhanced Live migration (CDC). Resolved unique-key NULL-NULL conflict handling accurately depending on the  NULLS DISTINCT / NULLS NOT DISTINCT property, using unique-index information read from the target database. This unblocks complex data patterns and speeds up the CDC phase.
+
+- Resuming import data file for Amazon S3 files now seeks directly to the last byte offset instead of re-reading and discarding previously imported lines, making resumption faster.
+
+- CLI help and configuration templates now warn that disabling `run-guardrails-checks` is unsafe because it skips critical pre-migration validations.
 
 ## v2026.7.1 - July 7, 2026
 

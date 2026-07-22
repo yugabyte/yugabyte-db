@@ -1976,7 +1976,9 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
   Status s;
   {
     auto file_number_holder = pending_outputs_->NewFileNumber();
-    meta.fd = FileDescriptor(file_number_holder.Last(), 0, 0, 0);
+    const uint32_t flush_path_id = SafePathId(
+        cfd->GetLatestMutableCFOptions()->target_path_id, db_options_.db_paths.size());
+    meta.fd = FileDescriptor(file_number_holder.Last(), flush_path_id, 0, 0);
     const auto* frontier = mem->Frontiers();
     if (frontier) {
       meta.smallest.user_frontier = frontier->Smallest().Clone();

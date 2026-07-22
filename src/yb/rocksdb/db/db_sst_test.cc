@@ -21,6 +21,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <unordered_set>
+
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/db/job_context.h"
 #include "yb/rocksdb/port/stack_trace.h"
@@ -1079,6 +1081,110 @@ TEST_F_EX(DBTest, SstTailZerosCheckCompactionRetries, SstTailZerosCheckTest) {
     ASSERT_EQ(3, corrupt_files.size()) << yb::AsString(corrupt_files);
     ASSERT_EQ(num_keys_written, ASSERT_RESULT(CountKeys()));
   }
+}
+
+// Tiered storage: verify that setting target_path_id routes both flushes and
+// auto-compaction output to the requested db_paths slot, and that the default
+// (0) is backward-compatible (all files land on the home disk).
+//
+// The per-CF target_path_id controls the *auto-compaction picker*
+// (UniversalCompactionPicker::GetPathId in YB's one-level RocksDB setup).
+// Manual compactions take an explicit target_path_id from CompactRangeOptions
+// and do NOT consult MutableCFOptions. So the compaction half of this test
+// explicitly uses universal auto-compaction by exceeding
+// level0_file_num_compaction_trigger.
+TEST_F(DBTest, TargetPathId) {
+  const std::string path2 = dbname_ + "_tier1";
+
+  Options options = CurrentOptions();
+  options.compaction_style = kCompactionStyleUniversal;
+  options.num_levels = 1;
+  options.compaction_options_universal.allow_trivial_move = false;
+  // Auto-compaction fires when L0 reaches 4 files; keep it off during setup.
+  options.disable_auto_compactions = true;
+  options.level0_file_num_compaction_trigger = 4;
+  options.db_paths.emplace_back(dbname_, std::numeric_limits<uint64_t>::max());
+  options.db_paths.emplace_back(path2,   std::numeric_limits<uint64_t>::max());
+  DestroyAndReopen(options);
+
+  // Part 1: default target (0), flushes land on path 0
+  ASSERT_OK(Put("k1", "v1"));
+  ASSERT_OK(Flush());
+  {
+    std::vector<LiveFileMetaData> meta;
+    db_->GetLiveFilesMetaData(&meta);
+    ASSERT_EQ(1u, meta.size());
+    ASSERT_EQ(dbname_, meta[0].db_path) << "default flush must land on path 0";
+  }
+
+  // Part 2: switch target to slot 1, flush goes to path 1
+  ASSERT_OK(db_->SetOptions({{"target_path_id", "1"}}));
+
+  ASSERT_OK(Put("k2", "v2"));
+  ASSERT_OK(Flush());
+  {
+    std::vector<LiveFileMetaData> meta;
+    db_->GetLiveFilesMetaData(&meta);
+    ASSERT_EQ(2u, meta.size());
+    bool found_on_tier1 = false;
+    for (const auto& f : meta) {
+      if (f.db_path == path2) {
+        found_on_tier1 = true;
+      }
+    }
+    ASSERT_TRUE(found_on_tier1) << "flush after SetOptions must land on path 1";
+  }
+
+  ASSERT_EQ("v1", Get("k1"));
+  ASSERT_EQ("v2", Get("k2"));
+
+  // Part 3: universal auto-compaction picker routes to target_path_id.
+  // Add enough L0 files to reach level0_file_num_compaction_trigger while
+  // auto-compaction is still disabled, then snapshot the file set and enable
+  // auto-compaction. The picker (UniversalCompactionPicker::GetPathId) must
+  // place the freshly produced compaction output on target_path_id=1.
+  for (int i = 3; i <= 5; ++i) {
+    ASSERT_OK(Put("k" + std::to_string(i), "v" + std::to_string(i)));
+    ASSERT_OK(Flush());
+  }
+
+  // Snapshot the file set before any compaction runs.
+  std::unordered_set<std::string> pre_compaction_files;
+  {
+    std::vector<LiveFileMetaData> meta;
+    db_->GetLiveFilesMetaData(&meta);
+    for (const auto& f : meta) {
+      pre_compaction_files.insert(f.Name());
+    }
+  }
+
+  // >= level0_file_num_compaction_trigger (4) L0 files now exist,so enabling
+  // auto-compaction fires the universal picker (GetPathId) immediately. Use
+  // EnableAutoCompaction (not SetOptions) because it both clears
+  // disable_auto_compactions and schedules background work.
+  ASSERT_OK(dbfull()->EnableAutoCompaction({db_->DefaultColumnFamily()}));
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
+
+  {
+    std::vector<LiveFileMetaData> meta;
+    db_->GetLiveFilesMetaData(&meta);
+    bool found_new_compaction_output = false;
+    for (const auto& f : meta) {
+      if (pre_compaction_files.count(f.Name())) {
+        continue;  // pre-existing flushed file, not a compaction output
+      }
+      // A file that did not exist before we enabled compaction => produced by it.
+      found_new_compaction_output = true;
+      ASSERT_EQ(path2, f.db_path)
+          << "auto-compaction output with target_path_id=1 must land on path 1 "
+          << "(file=" << f.Name() << ")";
+    }
+    ASSERT_TRUE(found_new_compaction_output)
+        << "expected a new SST produced by universal auto-compaction";
+  }
+
+  ASSERT_EQ("v1", Get("k1"));
+  ASSERT_EQ("v2", Get("k2"));
 }
 
 }  // namespace rocksdb

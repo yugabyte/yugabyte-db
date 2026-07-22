@@ -1914,6 +1914,12 @@ TEST_F(CompactionTest, BackgroundCompactionDuringPostSplitCompaction) {
   // Additional RocksDB listener to guarantee compaction flow.
   struct DBListener : public rocksdb::EventListener {
     bool background_compaction_in_progress = false;
+    // The two child tablets produced by the split share this single listener and increment (and
+    // reset) num_post_split_iterations concurrently. A sibling's no-op reset can bring the counter
+    // back to kTrigger just as the other child's final post-split iteration starts, which would
+    // misidentify that iteration as the background compaction and block it forever (no further
+    // iteration follows the last file). Trigger the background episode at most once to avoid this.
+    bool background_compaction_triggered = false;
     size_t num_post_split_iterations = 0;
     std::mutex mutex;
     std::condition_variable_any compaction_started_cv;
@@ -1922,7 +1928,9 @@ TEST_F(CompactionTest, BackgroundCompactionDuringPostSplitCompaction) {
       UniqueLock lock(mutex);
 
       // Background compaction will be always
-      if (num_post_split_iterations == kTrigger && !background_compaction_in_progress) {
+      if (num_post_split_iterations == kTrigger && !background_compaction_in_progress &&
+          !background_compaction_triggered) {
+        background_compaction_triggered = true;
         LOG(INFO) << "Background compaction started";
         background_compaction_in_progress = true;
 
