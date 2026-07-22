@@ -9435,9 +9435,14 @@ yb_stat_auto_analyze(PG_FUNCTION_ARGS)
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 		
-		HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId,
-						 				 row_info->table_oid,
-						 				 &ybc_tabledesc));
+		YbcStatus status = YBCPgGetTableDesc(MyDatabaseId,
+						 					 row_info->table_oid,
+						 					 &ybc_tabledesc);
+		if(status)
+		{
+			YBCFreeStatus(status);
+			continue;
+		}
 
 		HandleYBStatus(YBCPgGetTableOid(ybc_tabledesc, &ybc_tableoid));
 

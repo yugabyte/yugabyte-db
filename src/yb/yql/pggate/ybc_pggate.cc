@@ -1255,6 +1255,9 @@ YbcStatus YBCPgGetTableProperties(YbcPgTableDesc table_desc,
 
 YbcStatus YBCPgGetTableOid(YbcPgTableDesc desc,
                            YbcPgOid *YbcPgTableoid){
+  if (!desc || !YbcPgTableoid) {
+    return YBCStatusOK();
+  }
   *YbcPgTableoid = desc->pg_table_id().object_oid;
   return YBCStatusOK();
 }
