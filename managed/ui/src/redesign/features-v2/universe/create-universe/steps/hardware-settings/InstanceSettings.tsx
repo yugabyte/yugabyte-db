@@ -399,22 +399,6 @@ export const InstanceSettings = forwardRef<
                   <EBSKmsConfigField disabled={disableTserverFields || editMode} />
                 )}
               </InstanceBox>
-              {!showDedicatedNodesSection && !isK8s && (
-                <Box mt={4} sx={{ width: 480 }}>
-                  <Typography variant="subtitle1" color="textSecondary">
-                    <Trans i18nKey="masterNote">
-                      {t('masterNote', {
-                        cloudType: upperCase(provider?.code),
-                        ebs:
-                          ebsVolumeEnabled && provider?.code === CloudType.aws
-                            ? t('EBSVolume.title')
-                            : ''
-                      })}
-                      <b />
-                    </Trans>
-                  </Typography>
-                </Box>
-              )}
             </PanelWrapper>
           </Content>
         </Panel>
@@ -486,22 +470,6 @@ export const InstanceSettings = forwardRef<
                   </>
                 )}
               </InstanceBox>
-              {!isK8s && (
-                <Box mt={4} sx={{ width: 480 }}>
-                  <Typography variant="subtitle1" color="textSecondary">
-                    <Trans i18nKey="masterNote">
-                      {t('masterNote', {
-                        cloudType: upperCase(provider?.code),
-                        ebs:
-                          ebsVolumeEnabled && provider?.code === CloudType.aws
-                            ? t('EBSVolume.title')
-                            : ''
-                      })}
-                      <b />
-                    </Trans>
-                  </Typography>
-                </Box>
-              )}
             </PanelWrapper>
           );
 

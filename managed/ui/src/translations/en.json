@@ -4105,7 +4105,6 @@
         "totalMasterServerPods": "Total Master Server Pods",
         "keepMasterTserverSame": "Keep master server instance settings same as T-Server instance settings.",
         "cantChangeLater": "This CANNOT be changed after creation",
-        "masterNote": "<1>Note!</1> CPU Architecture, Linux version, {{ebs}} and {{cloudType}} Spot instance usage are global settings and can not be overridden. You can change these settings from the \"Default Instance Configuration\".",
         "EBSVolume": {
           "title": "EBS Volume Encryption"
         }
