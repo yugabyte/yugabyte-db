@@ -25,11 +25,11 @@ Contact {{% support-general %}} to discuss alternative tools and approaches.
 
 {{< /warning >}}
 
-## v2026.7.2 - July 21, 2026
+## v2026.7.2 - July 22, 2026
 
 ### Enhancements
 
-- Enhanced Live migration (CDC). Resolved unique-key NULL-NULL conflict handling accurately depending on the  NULLS DISTINCT / NULLS NOT DISTINCT property, using unique-index information read from the target database. This unblocks complex data patterns and significantly speeds up the CDC phase.
+- Enhanced Live migration (CDC). Resolved unique-key NULL-NULL conflict handling accurately depending on the  NULLS DISTINCT / NULLS NOT DISTINCT property, using unique-index information read from the target database. This unblocks complex data patterns and speeds up the CDC phase.
 
 - Resuming import data file for Amazon S3 files now seeks directly to the last byte offset instead of re-reading and discarding previously imported lines, making resumption faster.
 
