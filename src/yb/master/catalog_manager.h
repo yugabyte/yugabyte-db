@@ -90,6 +90,7 @@ namespace yb {
 class AddTransactionStatusTabletRequestPB;
 class AddTransactionStatusTabletResponsePB;
 class IsOperationDoneResult;
+struct ReadHybridTime;
 class Schema;
 class ThreadPool;
 class UniverseKeyRegistryPB;
@@ -2699,6 +2700,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Return the tablespaces in the system and their associated replication info from
   // pg catalog tables.
   Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> GetYsqlTablespaceInfo();
+
+  // Look up pg schema name from PG catalog for a YSQL table. Returns nullopt when lookup should
+  // be skipped (e.g. system_postgres.sequences_data) or fails.
+  std::optional<std::string> LookupPgSchemaNameForTable(
+      const TableInfo& table, const ReadHybridTime& read_time) const;
 
   // Return the table->tablespace mapping by reading the pg catalog tables.
   Result<std::shared_ptr<TableToTablespaceIdMap>> GetYsqlTableToTablespaceMap(

@@ -2273,12 +2273,7 @@ Result<bool> CatalogManager::CheckTableForImport(const scoped_refptr<TableInfo>&
   }
   // Check if table schemas match (if present in snapshot).
   if (!snapshot_data->pg_schema_name.empty()) {
-    if (table->GetTableType() != PGSQL_TABLE_TYPE) {
-      LOG_WITH_FUNC(DFATAL) << "ExternalTableSnapshotData.pg_schema_name set when table type is not"
-          << " PGSQL: schema name: " << snapshot_data->pg_schema_name
-          << ", table type: " << TableType_Name(table->GetTableType());
-      // If not a debug build, ignore pg_schema_name.
-    } else {
+    if (table->ShouldLookupPgSchemaName(table_lock)) {
       const string internal_schema_name = VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(
           VERIFY_RESULT(table->GetPgTableAllOids())));
       const string& external_schema_name = snapshot_data->pg_schema_name;
@@ -2288,6 +2283,16 @@ Result<bool> CatalogManager::CheckTableForImport(const scoped_refptr<TableInfo>&
                             << " for " << table->ToString();
         return false;
       }
+    } else {
+      // If not a debug build, ignore pg_schema_name.
+      LOG_WITH_FUNC(DFATAL)
+          << "ExternalTableSnapshotData.pg_schema_name is set but pg schema name lookup is not "
+          << "supported for table " << table->ToString()
+          << ": snapshot pg_schema_name=" << snapshot_data->pg_schema_name
+          << ", table_type=" << TableType_Name(table->GetTableType())
+          << ", is_system=" << table->is_system()
+          << ", is_sequences_system_table=" << table->IsSequencesSystemTable(table_lock)
+          << ", is_colocation_parent=" << table->IsColocationParentTable();
     }
   }
 
