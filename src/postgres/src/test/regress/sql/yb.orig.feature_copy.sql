@@ -188,6 +188,28 @@ BEGIN;
 COPY forcetest (d, e) FROM STDIN WITH (FORMAT csv, FORCE_NULL(b));
 ROLLBACK;
 
+-- Test NOT NULL constraint enforcement on columns omitted from the COPY column
+-- list.
+CREATE TABLE notnulltest (a INT PRIMARY KEY, b INT NOT NULL);
+-- should fail with not-null constraint violation on omitted column b
+BEGIN;
+COPY notnulltest (a) FROM STDIN;
+1
+\.
+ROLLBACK;
+SELECT * FROM notnulltest ORDER BY a;
+-- same through partition routing
+CREATE TABLE notnullpart (a INT, b INT NOT NULL, PRIMARY KEY (a)) PARTITION BY RANGE (a);
+CREATE TABLE notnullpart1 (a INT NOT NULL, b INT NOT NULL, PRIMARY KEY (a));
+ALTER TABLE notnullpart ATTACH PARTITION notnullpart1 FOR VALUES FROM (0) TO (100);
+-- should fail with not-null constraint violation on omitted column b
+BEGIN;
+COPY notnullpart (a) FROM STDIN;
+1
+\.
+ROLLBACK;
+SELECT * FROM notnullpart ORDER BY a;
+
 CREATE TABLE t(k INT PRIMARY KEY, v INT);
 CREATE UNIQUE INDEX ON t(v);
 

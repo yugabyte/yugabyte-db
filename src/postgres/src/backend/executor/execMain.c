@@ -2017,9 +2017,14 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 		/*
 		 * YB: When the plan does not fetch the target tuple (e.g. the
 		 * single-row UPDATE path), unmodified columns are absent from the
-		 * slot, so the NOT NULL check below must skip them.
+		 * slot, so the NOT NULL check below must skip them.  Skip only for
+		 * UPDATE and DELETE: an INSERT has no target tuple to fetch, and the
+		 * inserted tuple is always complete.  Any future operation (e.g.
+		 * MERGE) must opt in deliberately.
 		 */
 		bool		yb_skip_unmodified = (mtstate &&
+										  (mtstate->operation == CMD_UPDATE ||
+										   mtstate->operation == CMD_DELETE) &&
 										  !mtstate->yb_fetch_target_tuple);
 		Bitmapset  *yb_modifiedCols = NULL;
 
