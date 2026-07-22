@@ -21,15 +21,28 @@ import {
   getResilienceAndRegionsProps
 } from './EditPlacementUtils';
 
-const { styled, Grid2: Grid, Typography } = mui;
+const { styled, Grid2: Grid, Typography, Box } = mui;
 
 const EditPlacementRoot = styled('div')(() => ({
   backgroundColor: '#fff !important',
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  zIndex: 1299,
-  width: '100vw'
+  display: 'flex',
+  height: '100vh',
+  width: '100vw',
+  flexDirection: 'column',
+  position: 'relative',
+  overflow: 'hidden',
+  zIndex: 1299
+}));
+
+const EditPlacementsHeader = styled('div')(() => ({
+  display: 'flex',
+  flexDirection: 'row',
+  padding: '8px 24px 8px 20px',
+  height: '64px',
+  backgroundColor: '#E9EEF2',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  minWidth: '1200px'
 }));
 
 interface EditPlacementProps {
@@ -112,51 +125,73 @@ export const EditPlacement: FC<EditPlacementProps> = ({
     <EditPlacementRoot>
       <EditPlacementContext.Provider
         value={
-          ([
+          [
             ...editPlacementContext,
             { hideModal, selectedPartitionUUID, isSubmittingPlacementUpdate, onSubmit }
-          ] as unknown) as EditPlacementContextProps
+          ] as unknown as EditPlacementContextProps
         }
       >
-        <Grid
-          container
-          sx={{
-            backgroundColor: '#F7F9FB',
-            height: '64px',
-            padding: '8px 24px',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            borderBottom: '1px solid #E9EEF2'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center' }}>
+        <EditPlacementsHeader>
+          <Box sx={{ display: 'flex', flexDirection: 'row', gap: '16px', width: '100%' }}>
             <YBLogo />
             <Typography
               variant="h4"
-              sx={{ color: '#1E154B', fontSize: '18px', fontWeight: 600, marginLeft: '16px' }}
+              sx={{ color: '#1E154B', fontSize: '18px', fontWeight: 600, lineHeight: '24px' }}
             >
               {t('title', { keyPrefix: 'editUniverse.editResilienceAndRegions' })}
             </Typography>
-          </div>
+          </Box>
           <Close style={{ cursor: 'pointer' }} onClick={hideModal} />
-        </Grid>
-        <Grid container spacing={2}>
-          <Grid sx={{ borderRight: '1px solid #E9EEF2', height: '100vh' }}>
-            <YBMultiLevelStepper dataTestId="stepper" activeStep={activeStep} steps={steps} />
-          </Grid>
+        </EditPlacementsHeader>
+        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
           <Grid
             container
-            direction="column"
-            size="grow"
-            sx={{ padding: '16px', maxWidth: '1024px', minWidth: '856px', gap: 0 }}
+            spacing={{ xs: 3, md: 3, lg: 3, xl: 6 }}
+            sx={{ flex: 1, minHeight: 0, width: '100%', flexWrap: 'nowrap' }}
           >
-            {activeStep === EditPlacementSteps.RESILIENCE_AND_REGIONS ? (
-              <EditPlacementResilience />
-            ) : (
-              <EditPlacementNodesAndAvailability />
-            )}
+            <Grid
+              sx={{
+                borderRight: '1px solid #E9EEF2',
+                overflowY: 'auto',
+                flexShrink: 0,
+                backgroundColor: '#FBFCFD'
+              }}
+              size="auto"
+            >
+              <YBMultiLevelStepper
+                dataTestId="edit-placemment-stepper"
+                activeStep={activeStep}
+                steps={steps}
+              />
+            </Grid>
+            <Grid
+              container
+              direction="column"
+              size="grow"
+              spacing={0}
+              sx={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: 'auto' }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  maxWidth: '1024px',
+                  minWidth: '856px',
+                  width: '100%',
+                  gap: 3,
+                  mr: 1,
+                  pb: 3
+                }}
+              >
+                {activeStep === EditPlacementSteps.RESILIENCE_AND_REGIONS ? (
+                  <EditPlacementResilience />
+                ) : (
+                  <EditPlacementNodesAndAvailability />
+                )}
+              </Box>
+            </Grid>
           </Grid>
-        </Grid>
+        </Box>
       </EditPlacementContext.Provider>
     </EditPlacementRoot>
   );

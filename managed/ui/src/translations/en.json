@@ -4536,7 +4536,7 @@
         "ycqlAuthentication": "YCQL Authentication",
         "interface": "Interface",
         "features": "Features",
-        "advancedConfigFlags": "Advanced Config Flags",
+        "advancedConfigFlags": "Advanced DB Config Flags",
         "editYSQLSettings": "Edit YSQL Settings",
         "editYCQLSettings": "Edit YCQL Settings",
         "editConnectionPooling": "Edit Connection Pooling Settings",
@@ -4749,7 +4749,7 @@
       },
       "masterServerNodeAllocationModal": {
         "title": "Master Server Node Allocation",
-        "editMasterServer": "Edit Master Server Instance",
+        "editMasterServer": "Edit Master Server Instance (Optional)",
         "subText": "You can change master server instance settings at any time by going to:",
         "settingsAndHardware": "Settings > Hardware"
       }

@@ -121,7 +121,12 @@ export function CreateUniverse() {
               sx={{ flex: 1, minHeight: 0, width: '100%', flexWrap: 'nowrap' }}
             >
               <Grid
-                sx={{ borderRight: '1px solid #E9EEF2', overflowY: 'auto', flexShrink: 0 }}
+                sx={{
+                  borderRight: '1px solid #E9EEF2',
+                  overflowY: 'auto',
+                  flexShrink: 0,
+                  backgroundColor: '#FBFCFD'
+                }}
                 size="auto"
               >
                 <YBMultiLevelStepper dataTestId="stepper" activeStep={activeStep} steps={steps} />
@@ -158,39 +163,39 @@ export function CreateUniverse() {
                       justifyContent="space-between"
                       direction="row"
                     >
-                    <YBButton
-                      variant="secondary"
-                      size="large"
-                      dataTestId="create-universe-cancel-button"
-                      onClick={() => {
-                        window.location.href = '/';
-                      }}
-                    >
-                      {t('cancel', { keyPrefix: 'common' })}
-                    </YBButton>
-                    <Grid container alignItems="center" justifyContent="flex-end" spacing={2}>
                       <YBButton
-                        onClick={() => {
-                          currentStepRef.current?.onPrev();
-                        }}
-                        disabled={activeStep === 1}
                         variant="secondary"
                         size="large"
-                        dataTestId="create-universe-back-button"
-                      >
-                        {t('back', { keyPrefix: 'common' })}
-                      </YBButton>
-                      <YBButton
+                        dataTestId="create-universe-cancel-button"
                         onClick={() => {
-                          currentStepRef.current?.onNext();
+                          window.location.href = '/';
                         }}
-                        variant="ybaPrimary"
-                        size="large"
-                        dataTestId="create-universe-next-button"
                       >
-                        {getButtonLabel(resilienceType, activeStep)}
+                        {t('cancel', { keyPrefix: 'common' })}
                       </YBButton>
-                    </Grid>
+                      <Grid container alignItems="center" justifyContent="flex-end" spacing={2}>
+                        <YBButton
+                          onClick={() => {
+                            currentStepRef.current?.onPrev();
+                          }}
+                          disabled={activeStep === 1}
+                          variant="secondary"
+                          size="large"
+                          dataTestId="create-universe-back-button"
+                        >
+                          {t('back', { keyPrefix: 'common' })}
+                        </YBButton>
+                        <YBButton
+                          onClick={() => {
+                            currentStepRef.current?.onNext();
+                          }}
+                          variant="ybaPrimary"
+                          size="large"
+                          dataTestId="create-universe-next-button"
+                        >
+                          {getButtonLabel(resilienceType, activeStep)}
+                        </YBButton>
+                      </Grid>
                     </Grid>
                   </Box>
                 </Grid>

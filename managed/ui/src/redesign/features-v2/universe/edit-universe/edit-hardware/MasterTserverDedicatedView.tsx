@@ -24,13 +24,13 @@ export const MasterTserverDedicatedView = () => {
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   const readReplicaCluster = getClusterByType(universeData!, ClusterSpecClusterType.ASYNC);
   const isK8s = isKubernetesCluster(primaryCluster);
-  const tserverK8sResourceSpec = getK8sResourceSpecFromNodeSpec(primaryCluster?.node_spec, 'tserver');
+  const tserverK8sResourceSpec = getK8sResourceSpecFromNodeSpec(
+    primaryCluster?.node_spec,
+    'tserver'
+  );
   const masterK8sResourceSpec =
     getK8sResourceSpecFromNodeSpec(primaryCluster?.node_spec, 'master') ?? tserverK8sResourceSpec;
-  const masterTserverNodesCount = countMasterAndTServerNodes(
-    universeData!,
-    primaryCluster
-  );
+  const masterTserverNodesCount = countMasterAndTServerNodes(universeData!, primaryCluster);
   // Each instance card now has its own dedicated edit modal so that the
   // T-Server and Master edits show only their respective sections, per design.
   const [isTServerEditOpen, setTServerEditOpen] = useToggle(false);
@@ -40,12 +40,7 @@ export const MasterTserverDedicatedView = () => {
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <StyledPane>
         <Box sx={{ display: 'flex', flexDirection: 'row', gap: 2, alignItems: 'center' }}>
-          <Typography
-            variant="subtitle1"
-            fontWeight={500}
-            textTransform={'uppercase'}
-            color="#6D7C88"
-          >
+          <Typography variant="button" color="textSecondary">
             {t(isK8s ? 'totalClusterPods' : 'totalClusterNodes')}
           </Typography>
           <Typography variant="body2" color="#0B1117">
@@ -80,8 +75,7 @@ export const MasterTserverDedicatedView = () => {
             primaryCluster?.node_spec?.instance_type
         }}
         storageSpec={
-          primaryCluster?.node_spec?.master?.storage_spec ??
-          primaryCluster?.node_spec?.storage_spec
+          primaryCluster?.node_spec?.master?.storage_spec ?? primaryCluster?.node_spec?.storage_spec
         }
         isK8s={isK8s}
         k8sResourceSpec={masterK8sResourceSpec}

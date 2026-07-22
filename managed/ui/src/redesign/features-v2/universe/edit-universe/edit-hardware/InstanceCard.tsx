@@ -5,7 +5,10 @@ import type { K8NodeSpec } from '@app/redesign/features/universe/universe-form/u
 import { StyledContent, StyledHeader } from './Component';
 import { mui, YBButton } from '@yugabyte-ui-library/core';
 
-import { StyledInfoRow } from '../../create-universe/components/DefaultComponents';
+import {
+  StyledInfoRow,
+  StyledInfoRowNew
+} from '../../create-universe/components/DefaultComponents';
 import { LinuxVersion } from '../components';
 
 import EditIcon from '@app/redesign/assets/edit2.svg';

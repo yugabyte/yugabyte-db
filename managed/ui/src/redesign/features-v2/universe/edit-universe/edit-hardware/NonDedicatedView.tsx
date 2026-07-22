@@ -30,12 +30,7 @@ export const NonDedicatedView = () => {
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <StyledPane>
         <Box sx={{ display: 'flex', flexDirection: 'row', gap: 2, alignItems: 'center' }}>
-          <Typography
-            variant="subtitle1"
-            fontWeight={500}
-            textTransform={'uppercase'}
-            color="#6D7C88"
-          >
+          <Typography variant="button" color="textSecondary">
             {t(isK8s ? 'totalClusterPods' : 'totalClusterNodes')}
           </Typography>
           <Typography variant="body2" color="#0B1117">

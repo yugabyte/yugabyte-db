@@ -55,7 +55,6 @@ const StyledClusterInfo = styled(Box)(({ theme }) => ({
   border: `1px solid ${theme.palette.grey[200]}`,
   borderRadius: '8px',
   padding: `16px 24px`,
-  marginTop: '8px',
   background: '#FBFCFD',
   display: 'flex',
   justifyContent: 'space-between',
@@ -67,7 +66,8 @@ const StyledValue = styled(Typography)({
   marginTop: '8px',
   fontSize: '13px',
   color: '#0B1117',
-  fontWeight: 400
+  fontWeight: 400,
+  lineHeight: '16px'
 });
 
 export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
@@ -86,7 +86,11 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
   if (!universeData) return null;
   const isK8s = placement.cloud_list?.[0]?.code === CloudType.kubernetes;
   const regionStats = countRegionsAzsAndNodes(placement);
-  const resilientType = getResilientType(placement, parition?.replication_factor ?? cluster?.replication_factor, t);
+  const resilientType = getResilientType(
+    placement,
+    parition?.replication_factor ?? cluster?.replication_factor,
+    t
+  );
   const isReadReplicaCluster = cluster.cluster_type === ClusterSpecClusterType.ASYNC;
   const dedicatedFromSpec = !!cluster.node_spec?.dedicated_nodes;
   const regionList = placement.cloud_list.map((cloud) => cloud.region_list).flat();
@@ -125,8 +129,11 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
     if (!dedicatedFromSpec) {
       return (
         <YBTable
-          columns={[{ accessorKey: 'name', header: t('availabilityZone') }, { accessorKey: 'num_nodes_in_az', header: t(isK8s ? 'noOfPods' : 'noOfNodes') }]}
-          data={((placementRegion.az_list as unknown) as Record<string, string>[]) ?? []}
+          columns={[
+            { accessorKey: 'name', header: t('availabilityZone') },
+            { accessorKey: 'num_nodes_in_az', header: t(isK8s ? 'noOfPods' : 'noOfNodes') }
+          ]}
+          data={(placementRegion.az_list as unknown as Record<string, string>[]) ?? []}
           withBorder={false}
           options={{
             pagination: false
@@ -142,20 +149,17 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
         Cell: ({ row: azRow }: any) => azRow.original?.num_nodes_in_az ?? 0
       }
     ];
-    if(!isReadReplicaCluster) {
-      columns.push(
-        {
-          accessorKey: 'masters',
-          header: t('masters'),
-          Cell: ({ row: azRow }: any) =>
-            countMasterNodesInAz(universeData!, azRow.original?.uuid)
-        }
-      );
+    if (!isReadReplicaCluster) {
+      columns.push({
+        accessorKey: 'masters',
+        header: t('masters'),
+        Cell: ({ row: azRow }: any) => countMasterNodesInAz(universeData!, azRow.original?.uuid)
+      });
     }
     return (
       <YBTable
         columns={columns}
-        data={((placementRegion.az_list as unknown) as Record<string, string>[]) ?? []}
+        data={(placementRegion.az_list as unknown as Record<string, string>[]) ?? []}
         withBorder={false}
         options={{
           pagination: false
@@ -169,22 +173,23 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
       sx={{
         bgcolor: 'background.paper',
         mt: 2,
-        px: 3,
-        py: 1.25,
+        padding: '10px 24px 24px 24px',
         borderRadius: 1,
         display: 'flex',
         flexDirection: 'column',
+        width: '100%',
         gap: 2,
-        border: '1px solid #D7DEE4',
-        alignSelf: 'stretch'
+        border: '1px solid #E9EEF2'
       }}
     >
       <Box
         sx={{
           display: 'flex',
+          flexDirection: 'row',
           justifyContent: 'space-between',
           alignItems: 'center',
-          height: '64px'
+          height: '64px',
+          width: '100%'
         }}
       >
         <Typography sx={{ fontWeight: 600 }} variant="h5">
@@ -202,7 +207,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
           origin={
             <YBButton
               dataTestId="edit-placement-edit-button"
-              variant="secondary"
+              variant="ghost"
               startIcon={<EditIcon />}
               endIcon={<KeyboardArrowDown />}
             >
@@ -212,179 +217,199 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
         >
           {editMenuItems
             ? editMenuItems.map((item) => (
-              <Fragment key={item.id}>
-                {item.showDividerBefore ? (
-                  <Divider sx={{ borderColor: '#E9EEF2', my: 0.5 }} />
-                ) : null}
-                <MenuItem
-                  data-test-id={item.dataTestId}
-                  onClick={item.onClick}
-                  sx={{
-                    px: 2,
-                    py: 0.5,
-                    alignItems: 'flex-start',
-                    color: item.destructive ? '#DA1515' : '#0B1117'
-                  }}
-                  disabled={!isUniverseReady}
-                >
-                  <Box
+                <Fragment key={item.id}>
+                  {item.showDividerBefore ? (
+                    <Divider sx={{ borderColor: '#E9EEF2', my: 0.5 }} />
+                  ) : null}
+                  <MenuItem
+                    data-test-id={item.dataTestId}
+                    onClick={item.onClick}
                     sx={{
-                      display: 'flex',
+                      px: 2,
+                      py: 0.5,
                       alignItems: 'flex-start',
-                      gap: '4px',
-                      width: '100%'
+                      color: item.destructive ? '#DA1515' : '#0B1117'
                     }}
+                    disabled={!isUniverseReady}
                   >
-                    {item.startIcon ? (
-                      <Box
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '4px',
+                        width: '100%'
+                      }}
+                    >
+                      {item.startIcon ? (
+                        <Box
+                          sx={{
+                            width: 24,
+                            height: 24,
+                            flexShrink: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: item.destructive ? '#DA1515' : 'inherit',
+                            '& svg': { display: 'block' }
+                          }}
+                        >
+                          {item.startIcon}
+                        </Box>
+                      ) : null}
+                      <Typography
+                        component="span"
                         sx={{
-                          width: 24,
-                          height: 24,
-                          flexShrink: 0,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: item.destructive ? '#DA1515' : 'inherit',
-                          '& svg': { display: 'block' }
+                          fontSize: '13px',
+                          lineHeight: '16px',
+                          fontWeight: 400,
+                          py: 0.5,
+                          color: item.destructive ? '#DA1515' : '#0B1117'
                         }}
                       >
-                        {item.startIcon}
-                      </Box>
-                    ) : null}
-                    <Typography
-                      component="span"
-                      sx={{
-                        fontSize: '13px',
-                        lineHeight: '16px',
-                        fontWeight: 400,
-                        py: 0.5,
-                        color: item.destructive ? '#DA1515' : '#0B1117'
-                      }}
-                    >
-                      {item.label}
-                    </Typography>
-                  </Box>
-                </MenuItem>
-              </Fragment>
-            ))
+                        {item.label}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                </Fragment>
+              ))
             : [
-              <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT} isControl >
-                <MenuItem
-                  key="resilience"
-                  data-test-id="edit-placement-add-region"
-                  onClick={() => {
-                    editResilienceAndRegionsClicked?.();
-                  }}
-                  disabled={!isUniverseReady}
+                <RbacValidator
+                  accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT}
+                  isControl
                 >
-                  {<EditIcon />}
-                  {t('editResilienceAndRegions')}
-                </MenuItem>
-              </RbacValidator>
-              ,
-              <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT} isControl >
-
-                <MenuItem
-                  key="nodes-az"
-                  data-test-id="edit-placement-auto-balance"
-                  onClick={() => {
-                    editPlacementClicked?.();
-                  }}
-                  disabled={!isUniverseReady}
+                  <MenuItem
+                    key="resilience"
+                    data-test-id="edit-placement-add-region"
+                    onClick={() => {
+                      editResilienceAndRegionsClicked?.();
+                    }}
+                    disabled={!isUniverseReady}
+                  >
+                    {<EditIcon />}
+                    {t('editResilienceAndRegions')}
+                  </MenuItem>
+                </RbacValidator>,
+                <RbacValidator
+                  accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_PLACEMENT}
+                  isControl
                 >
-                  {<EditIcon />}
-                  {t(isK8s ? 'editPodsAndAvailabilityZones' : 'editNodesAndAvailabilityZones')}
-                </MenuItem>
-              </RbacValidator>,
-              ...(editMasterServerNodeAllocationClicked
-                ? [
-                  <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl >
-                    <MenuItem
-                      key="master-alloc"
-                      data-test-id="edit-placement-clear-affinities"
-                      onClick={() => {
-                        editMasterServerNodeAllocationClicked();
-                      }}
-                      disabled={!isUniverseReady}
-                    >
-                      {<EditIcon />}
-                      {t('editMasterServerNodeAllocation')}
-                    </MenuItem>
-                  </RbacValidator>
-                ]
-                : [])
-            ]}
+                  <MenuItem
+                    key="nodes-az"
+                    data-test-id="edit-placement-auto-balance"
+                    onClick={() => {
+                      editPlacementClicked?.();
+                    }}
+                    disabled={!isUniverseReady}
+                  >
+                    {<EditIcon />}
+                    {t(isK8s ? 'editPodsAndAvailabilityZones' : 'editNodesAndAvailabilityZones')}
+                  </MenuItem>
+                </RbacValidator>,
+                ...(editMasterServerNodeAllocationClicked
+                  ? [
+                      <RbacValidator
+                        accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER}
+                        isControl
+                      >
+                        <MenuItem
+                          key="master-alloc"
+                          data-test-id="edit-placement-clear-affinities"
+                          onClick={() => {
+                            editMasterServerNodeAllocationClicked();
+                          }}
+                          disabled={!isUniverseReady}
+                        >
+                          {<EditIcon />}
+                          {t('editMasterServerNodeAllocation')}
+                        </MenuItem>
+                      </RbacValidator>
+                    ]
+                  : [])
+              ]}
         </YBDropdown>
       </Box>
       <StyledClusterInfo>
         {!isReadReplicaCluster && (
           <>
-            <div>
-              <Typography variant="subtitle1" color="textSecondary">
+            <Box sx={{ gap: '4px' }}>
+              <Typography variant="button" color="textSecondary">
                 {t('resilienceLevel')}
               </Typography>
               <StyledValue>{resilientType}</StyledValue>
-            </div>
-            <div>
-              <Typography variant="subtitle1" color="textSecondary">
+            </Box>
+            <Box sx={{ gap: '4px' }}>
+              <Typography variant="button" color="textSecondary">
                 {t('replicationFactor')}
               </Typography>
-              <StyledValue>{parition?.replication_factor ?? cluster?.replication_factor ?? '-'}</StyledValue>
-            </div>
+              <StyledValue>
+                {parition?.replication_factor ?? cluster?.replication_factor ?? '-'}
+              </StyledValue>
+            </Box>
           </>
         )}
-        <div>
-          <Typography variant="subtitle1" color="textSecondary">
+        <Box sx={{ gap: '4px' }}>
+          <Typography variant="button" color="textSecondary">
             {t(isK8s ? 'totalPods' : 'totalNodes')}
           </Typography>
           <StyledValue>
             {dedicatedFromSpec && !isReadReplicaCluster
               ? t('totalNodesTServerMaster', {
-                total_nodes: dedicatedDisplayTotals.tserver + dedicatedDisplayTotals.master,
-                tservers: dedicatedDisplayTotals.tserver,
-                masters: dedicatedDisplayTotals.master,
-                keyPrefix: 'editUniverse.placement'
-              })
+                  total_nodes: dedicatedDisplayTotals.tserver + dedicatedDisplayTotals.master,
+                  tservers: dedicatedDisplayTotals.tserver,
+                  masters: dedicatedDisplayTotals.master,
+                  keyPrefix: 'editUniverse.placement'
+                })
               : regionStats.totalNodes}
           </StyledValue>
-        </div>
+        </Box>
       </StyledClusterInfo>
-      <YBTable
-        data={((regionList as unknown) as Record<string, string>[]) ?? []}
-        withBorder={false}
-        columns={[
-          {
-            accessorKey: 'code',
-            header: t('region'),
-            // eslint-disable-next-line react/display-name
-            Cell: ({ cell }: any) => (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>{getFlagFromRegion(cell.row.original.code)}</span>
-                <span>{cell.row.original.code}</span>
-              </Box>
-            )
-          },
-          { 
-            accessorKey: 'name', 
-            header: t('availabilityZone'),
-            Cell: ({ cell}: any) => {
-              return cell?.row?.original?.az_list?.length ?? '-';
-            }
-          },
-          {
-            accessorKey: 'uuid',
-            header: t(isK8s ? 'totalPods' : 'totalNodes'),
-            Cell: ({ cell }: any) => countTotalNodes(cell.row.original)
-          }
-        ]}
-        options={{
-          enableExpanding: true,
-          renderDetailPanel: renderExpandDetails,
-          initialState: {
-            expanded: true
-          }
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          width: '100%',
+          padding: '0px 16px 8px 16px',
+          alignSelf: 'strech'
         }}
-      />
+      >
+        <YBTable
+          data={(regionList as unknown as Record<string, string>[]) ?? []}
+          withBorder={false}
+          columns={[
+            {
+              accessorKey: 'code',
+              header: t('region'),
+              // eslint-disable-next-line react/display-name
+              Cell: ({ cell }: any) => (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>{getFlagFromRegion(cell.row.original.code)}</span>
+                  <span>{cell.row.original.code}</span>
+                </Box>
+              )
+            },
+            {
+              accessorKey: 'name',
+              header: t('availabilityZone'),
+              Cell: ({ cell }: any) => {
+                return cell?.row?.original?.az_list?.length ?? '-';
+              }
+            },
+            {
+              accessorKey: 'uuid',
+              header: t(isK8s ? 'totalPods' : 'totalNodes'),
+              Cell: ({ cell }: any) => countTotalNodes(cell.row.original)
+            }
+          ]}
+          options={{
+            enableExpanding: true,
+            renderDetailPanel: renderExpandDetails,
+            pagination: false,
+            initialState: {
+              expanded: true
+            }
+          }}
+        />
+      </Box>
     </Box>
   );
 };

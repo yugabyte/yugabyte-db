@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from 'react-query';
 import { yupResolver } from '@hookform/resolvers/yup';
 import {
   StyledContent,
-  StyledHeader,
+  StyledCardHeader,
   StyledInfoRow,
   StyledPanel
 } from '../../create-universe/components/DefaultComponents';
@@ -42,7 +42,6 @@ import {
   ClusterSpecClusterType
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { ReadOnlyGflagTable } from '@app/redesign/features/universe/universe-form/form/sections/gflags/ReadOnlyGflagsModal';
-import { GFlagsFieldNew } from '@app/redesign/features/universe/universe-form/form/fields/GflagsField/GflagsFieldNew';
 import { DatabaseSettingsProps } from '../../create-universe/steps/database-settings/dtos';
 import { DatabaseValidationSchema } from '../../create-universe/steps/database-settings/ValidationSchema';
 
@@ -58,7 +57,7 @@ import {
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 
-const { Box, Grid2: Grid, MenuItem, styled } = mui;
+const { Box, MenuItem, styled } = mui;
 
 const CheckedIcon = styled(Checked)({
   width: '24px',
@@ -151,67 +150,66 @@ export const DatabaseTab = () => {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <StyledPanel>
-        <StyledHeader>
-          <Grid alignContent={'center'} justifyContent={'space-between'} container>
-            {t('interface')}
-            <YBDropdown
-              sx={{ width: '340px' }}
-              dataTestId="edit-ysql-ycql-actions"
-              origin={
-                <YBButton
-                  variant="secondary"
-                  dataTestId="edit-ysql-ycql-actions-button"
-                  endIcon={<KeyboardArrowDown />}
+        <StyledCardHeader>
+          {t('interface')}
+          <YBDropdown
+            sx={{ width: '340px' }}
+            dataTestId="edit-ysql-ycql-actions"
+            origin={
+              <YBButton
+                variant="ghost"
+                startIcon={<EditIcon />}
+                dataTestId="edit-ysql-ycql-actions-button"
+                endIcon={<KeyboardArrowDown />}
+              >
+                {t('edit', { keyPrefix: 'common' })}
+              </YBButton>
+            }
+          >
+            <RbacValidator accessRequiredOn={ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL} isControl>
+              <MenuItem
+                data-test-id="edit-ysql-settings"
+                data-testid="edit-ysql-settings"
+                disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
+                onClick={() => setYsqlModalOpen(true)}
+              >
+                <Box
+                  sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
                 >
-                  {t('actions', { keyPrefix: 'common' })}
-                </YBButton>
-              }
-            >
-              <RbacValidator accessRequiredOn={ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL} isControl>
-                <MenuItem
-                  data-test-id="edit-ysql-settings"
-                  data-testid="edit-ysql-settings"
-                  disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
-                  onClick={() => setYsqlModalOpen(true)}
+                  <EditIcon />
+                </Box>
+                {t('editYSQLSettings')}
+              </MenuItem>
+            </RbacValidator>
+            <RbacValidator accessRequiredOn={ApiPermissionMap.UNIVERSE_CONFIGURE_YCQL} isControl>
+              <MenuItem
+                data-test-id="edit-ycql-settings"
+                data-testid="edit-ycql-settings"
+                disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
+                onClick={() => setYcqlModalOpen(true)}
+              >
+                <Box
+                  sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
                 >
-                  <Box
-                    sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
-                  >
-                    <EditIcon />
-                  </Box>
-                  {t('editYSQLSettings')}
-                </MenuItem>
-              </RbacValidator>
-              <RbacValidator accessRequiredOn={ApiPermissionMap.UNIVERSE_CONFIGURE_YCQL} isControl>
-                <MenuItem
-                  data-test-id="edit-ycql-settings"
-                  data-testid="edit-ycql-settings"
-                  disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
-                  onClick={() => setYcqlModalOpen(true)}
-                >
-                  <Box
-                    sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
-                  >
-                    <EditIcon />
-                  </Box>
-                  {t('editYCQLSettings')}
-                </MenuItem>
-              </RbacValidator>
-            </YBDropdown>
-          </Grid>
-        </StyledHeader>
+                  <EditIcon />
+                </Box>
+                {t('editYCQLSettings')}
+              </MenuItem>
+            </RbacValidator>
+          </YBDropdown>
+        </StyledCardHeader>
         <StyledContent sx={{ gap: '24px' }}>
           <StyledInfoRow sx={{ flexDirection: 'row', gap: '190px' }}>
             <div>
               <span className="header">{t('ysql')}</span>
-              <span className="value sameline nogap">
+              <span className="value sameline gap4">
                 {t(ysqlEnabed ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
                 {ysqlEnabed ? <CheckedIcon /> : <DisabledIcon />}
               </span>
             </div>
             <div>
               <span className="header">{t('ysqlAuthentication')}</span>{' '}
-              <span className="value sameline nogap">
+              <span className="value sameline gap4">
                 {t(ysqlAuthEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
                 {ysqlAuthEnabled ? <CheckedIcon /> : <DisabledIcon />}
               </span>
@@ -220,14 +218,14 @@ export const DatabaseTab = () => {
           <StyledInfoRow sx={{ flexDirection: 'row', gap: '190px' }}>
             <div>
               <span className="header">{t('ycql')}</span>
-              <span className="value sameline nogap">
+              <span className="value sameline gap4">
                 {t(ycqlEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
                 {ycqlEnabled ? <CheckedIcon /> : <DisabledIcon />}
               </span>
             </div>
             <div>
               <span className="header">{t('ycqlAuthentication')}</span>{' '}
-              <span className="value sameline nogap">
+              <span className="value sameline gap4">
                 {t(ycqlAuthEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
                 {ycqlAuthEnabled ? <CheckedIcon /> : <DisabledIcon />}
               </span>
@@ -236,60 +234,59 @@ export const DatabaseTab = () => {
         </StyledContent>
       </StyledPanel>
       <StyledPanel>
-        <StyledHeader>
-          <Grid alignContent={'center'} justifyContent={'space-between'} container>
-            {t('features')}
-            <YBDropdown
-              sx={{ width: '340px' }}
-              dataTestId="edit-features-actions"
-              origin={
-                <YBButton
-                  variant="secondary"
-                  dataTestId="edit-features-actions-button"
-                  endIcon={<KeyboardArrowDown />}
+        <StyledCardHeader>
+          {t('features')}
+          <YBDropdown
+            sx={{ width: '340px' }}
+            dataTestId="edit-features-actions"
+            origin={
+              <YBButton
+                variant="ghost"
+                startIcon={<EditIcon />}
+                dataTestId="edit-features-actions-button"
+                endIcon={<KeyboardArrowDown />}
+              >
+                {t('edit', { keyPrefix: 'common' })}
+              </YBButton>
+            }
+          >
+            <RbacValidator accessRequiredOn={ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL} isControl>
+              <MenuItem
+                data-test-id="edit-pooling-settings"
+                data-testid="edit-pooling-settings"
+                disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
+                onClick={() => setConnectionPoolModalOpen(true)}
+              >
+                <Box
+                  sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
                 >
-                  {t('actions', { keyPrefix: 'common' })}
-                </YBButton>
-              }
-            >
-              <RbacValidator accessRequiredOn={ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL} isControl>
-                <MenuItem
-                  data-test-id="edit-pooling-settings"
-                  data-testid="edit-pooling-settings"
-                  disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
-                  onClick={() => setConnectionPoolModalOpen(true)}
+                  <EditIcon />
+                </Box>
+                {t('editConnectionPooling')}
+              </MenuItem>
+            </RbacValidator>
+            <RbacValidator accessRequiredOn={ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL} isControl>
+              <MenuItem
+                data-test-id="edit-postgres-compatibility-settings"
+                data-testid="edit-postgres-compatibility-settings"
+                disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
+                onClick={() => setPgCompatibilityModalOpen(true)}
+              >
+                <Box
+                  sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
                 >
-                  <Box
-                    sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
-                  >
-                    <EditIcon />
-                  </Box>
-                  {t('editConnectionPooling')}
-                </MenuItem>
-              </RbacValidator>
-              <RbacValidator accessRequiredOn={ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL} isControl>
-                <MenuItem
-                  data-test-id="edit-postgres-compatibility-settings"
-                  data-testid="edit-postgres-compatibility-settings"
-                  disabled={isLegacyUniverseLoading || !legacyUniverse || !isUniverseReady}
-                  onClick={() => setPgCompatibilityModalOpen(true)}
-                >
-                  <Box
-                    sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '4px' }}
-                  >
-                    <EditIcon />
-                  </Box>
-                  {t('editPostgresCompatibility')}
-                </MenuItem>
-              </RbacValidator>
-            </YBDropdown>
-          </Grid>
-        </StyledHeader>
+                  <EditIcon />
+                </Box>
+                {t('editPostgresCompatibility')}
+              </MenuItem>
+            </RbacValidator>
+          </YBDropdown>
+        </StyledCardHeader>
         <StyledContent sx={{ gap: '24px' }}>
           <StyledInfoRow>
             <div>
               <span className="header">{t('connectionPooling')}</span>
-              <span className="value sameline nogap">
+              <span className="value sameline gap4">
                 {t(connectionPoolingEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
                 {connectionPoolingEnabled ? <CheckedIcon /> : <DisabledIcon />}
               </span>
@@ -298,7 +295,7 @@ export const DatabaseTab = () => {
           <StyledInfoRow>
             <div>
               <span className="header">{t('postgresCompatibility')}</span>
-              <span className="value sameline nogap">
+              <span className="value sameline gap4">
                 {t(postgresCompatibilityEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
                 {postgresCompatibilityEnabled ? <CheckedIcon /> : <DisabledIcon />}
               </span>
@@ -307,9 +304,7 @@ export const DatabaseTab = () => {
         </StyledContent>
       </StyledPanel>
       <StyledPanel>
-        <StyledHeader
-          sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-        >
+        <StyledCardHeader sx={{ padding: legacyGflags?.length <= 0 ? '24px' : '26px 24px' }}>
           {t('advancedConfigFlags')}
           {legacyGflags.length > 0 && (
             <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
@@ -324,7 +319,7 @@ export const DatabaseTab = () => {
               </YBButton>
             </RbacValidator>
           )}
-        </StyledHeader>
+        </StyledCardHeader>
         <StyledContent>
           {legacyGflags.length <= 0 ? (
             <Box
@@ -407,6 +402,7 @@ export const DatabaseTab = () => {
             }}
             universeData={legacyUniverse}
             isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
+            isNonRestartGFlagUpgradeOptionEnabled={false}
           />
         </>
       )}

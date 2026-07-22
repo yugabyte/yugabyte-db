@@ -972,14 +972,14 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
         }}
         onClose={resetAndClose}
         title={modalTitle}
-        dialogContentProps={{ sx: { padding: '16px !important' } }}
+        dialogContentProps={{ sx: { padding: '16px 16px 24px 16px !important' } }}
         size="md"
         submitLabel={submitLabel ?? t('submitLabel')}
         cancelLabel={t('cancel', { keyPrefix: 'common' })}
         overrideHeight={'fit-content'}
         titleSeparator
       >
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <TotalNodesBadge
             label={badgeLabel}
             count={badgeCount}

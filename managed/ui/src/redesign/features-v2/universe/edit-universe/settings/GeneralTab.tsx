@@ -10,7 +10,10 @@ import {
   extractGeoPartitionsFromUniverse,
   extractRegionsAndNodeDataFromUniverse
 } from '../../geo-partition/add/AddGeoPartitionUtils';
-import { StyledInfoRow } from '../../create-universe/components/DefaultComponents';
+import {
+  StyledInfoRow,
+  StyledInfoRowNew
+} from '../../create-universe/components/DefaultComponents';
 import { ClusterType } from '@app/redesign/helpers/dtos';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
@@ -51,6 +54,21 @@ const StyledGeneralInfo = styled('div')(() => ({
   flexDirection: 'row',
   height: '200px',
   justifyContent: 'space-between'
+}));
+
+const StyledGeneralInfoNew = styled(Box)(() => ({
+  display: 'flex',
+  flexDirection: 'column',
+  width: '100%',
+  gap: '40px'
+}));
+
+const StyledCardHeader = styled(Typography)(({ theme }) => ({
+  lineHeight: '20px',
+  fontSize: '15px',
+  fontWeight: 600,
+  fontStyle: 'normal',
+  color: theme.palette.common.black
 }));
 
 const StyledYBSelect = styled(YBSelect)(() => ({
@@ -99,15 +117,21 @@ export const GeneralTab = () => {
 
   let totalNodesCount = 0;
 
-  if(!hasDedicatedNodes(universeData!)) {
+  if (!hasDedicatedNodes(universeData!)) {
     const primaryRegionStats = countRegionsAzsAndNodes(primaryCluster!.placement_spec!);
     const readReplicaRegionStats = countRegionsAzsAndNodes(readReplicaCluster?.placement_spec);
     totalNodesCount = primaryRegionStats.totalNodes + readReplicaRegionStats.totalNodes;
-  }
-  else{
+  } else {
     const primaryTServerMasterCount = countMasterAndTServerNodes(universeData!, primaryCluster);
-    const readReplicaTServerMasterCount = countMasterAndTServerNodes(universeData!, readReplicaCluster);
-    totalNodesCount = primaryTServerMasterCount.TSERVER! + primaryTServerMasterCount.MASTER! + readReplicaTServerMasterCount.TSERVER! + readReplicaTServerMasterCount.MASTER!;
+    const readReplicaTServerMasterCount = countMasterAndTServerNodes(
+      universeData!,
+      readReplicaCluster
+    );
+    totalNodesCount =
+      primaryTServerMasterCount.TSERVER! +
+      primaryTServerMasterCount.MASTER! +
+      readReplicaTServerMasterCount.TSERVER! +
+      readReplicaTServerMasterCount.MASTER!;
   }
 
   const { data: providers } = useQuery(['providers'], () => fetchProviderList(), {
@@ -120,7 +144,6 @@ export const GeneralTab = () => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
-
       <YBMaps
         dataTestId="yb-edit-universe-regions"
         mapHeight={345}
@@ -143,40 +166,17 @@ export const GeneralTab = () => {
         {/* {mapViewMode === MapViewMode.GEO_PARTITIONS && <MapGeoPartitionView />} */}
       </YBMaps>
       <StyledArea>
-        <Typography variant="subtitle2" sx={{ fontSize: '15px' }}>
-          {t('title')}
-        </Typography>
-        <StyledGeneralInfo>
-          <StyledInfoRow>
+        <StyledCardHeader>{t('title')}</StyledCardHeader>
+        <StyledGeneralInfoNew>
+          <StyledInfoRowNew>
             <div>
               <span className="header">{t('databaseVersion')}</span>
               <span className="value">{universeData?.spec?.yb_software_version}</span>
             </div>
             <div>
-              <span className="header">{t('provider')}</span>{' '}
-              <span className="value">
-                <Grid2 container alignItems="center" gap={0.5}>
-                  {providerIcon}
-                  {toUpper(providerCode ?? '')}
-                </Grid2>
-              </span>
-            </div>
-            <div>
-              <span className="header">{t('faultTolerance')}</span>{' '}
-              <span className="value">
-                {getResilientType(
-                  primaryCluster!.placement_spec!,
-                  primaryCluster?.replication_factor,
-                  t
-                )}
-              </span>
-            </div>
-          </StyledInfoRow>
-          <StyledInfoRow>
-            <div>
               <span className="header">{t('clusterId')}</span>
               <span className="value sameline">
-                <Typography variant="body1" fontWeight={'400'} noWrap sx={{ width: '180px' }}>
+                <Typography variant="body1" fontWeight={'400'} noWrap sx={{ width: '220px' }}>
                   {primaryCluster?.uuid}
                 </Typography>
                 <CopyIcon
@@ -187,9 +187,37 @@ export const GeneralTab = () => {
                 />
               </span>
             </div>
+            <div></div>
+          </StyledInfoRowNew>
+          <StyledInfoRowNew>
+            <div>
+              <span className="header">{t('provider')}</span>{' '}
+              <span className="value">
+                <Grid2 container alignItems="center" gap={0.5}>
+                  {providerIcon}
+                  {toUpper(providerCode ?? '')}
+                </Grid2>
+              </span>
+            </div>
             <div>
               <span className="header">{t('providerConfig')}</span>{' '}
               <span className="value">{currentProvider?.name}</span>
+            </div>
+            <div>
+              <span className="header">{t(isK8s ? 'totalPods' : 'totalNodes')}</span>{' '}
+              <span className="value">{totalNodesCount}</span>
+            </div>
+          </StyledInfoRowNew>
+          <StyledInfoRowNew>
+            <div>
+              <span className="header">{t('faultTolerance')}</span>{' '}
+              <span className="value">
+                {getResilientType(
+                  primaryCluster!.placement_spec!,
+                  primaryCluster?.replication_factor,
+                  t
+                )}
+              </span>
             </div>
             <div>
               <span className="header">{t('encryption')}</span>{' '}
@@ -200,13 +228,6 @@ export const GeneralTab = () => {
                 {!encryptionAtRestEnabled && !encryptionAtTransitEnabled ? '-' : ''}
               </span>
             </div>
-          </StyledInfoRow>
-          <StyledInfoRow sx={{ justifyContent: 'flex-end' }}>
-            <div></div>
-            <div>
-              <span className="header">{t(isK8s ? 'totalPods' : 'totalNodes')}</span>{' '}
-              <span className="value">{totalNodesCount}</span>
-            </div>
             <div>
               <span className="header">{t('dateCreated')}</span>{' '}
               <span className="value">
@@ -215,54 +236,47 @@ export const GeneralTab = () => {
                   : '-'}
               </span>
             </div>
-          </StyledInfoRow>
-        </StyledGeneralInfo>
+          </StyledInfoRowNew>
+        </StyledGeneralInfoNew>
         <Divider />
-        <div>
-          <StyledInfoRow>
-            <div>
-              <span className="header">{t('primaryCluster')}</span>{' '}
-              <span className="value" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                {r.regions.map((region: Region) => {
-                  if ((region as any).clusterType !== ClusterType.PRIMARY) return null;
-                  return (
-                    <YBTag
-                      key={region.code}
-                      size="medium"
-                      endIcon={
-                        region.uuid ===
-                        primaryCluster?.placement_spec?.cloud_list[0].default_region ? (
-                          <Star />
-                        ) : undefined
-                      }
-                    >
-                      {getFlagFromRegion(region.code)} {region.name} ({region.code})
-                    </YBTag>
-                  );
-                })}
-              </span>
-            </div>
-          </StyledInfoRow>
-        </div>
+        <StyledInfoRowNew>
+          <div>
+            <span className="header">{t('primaryCluster')}</span>{' '}
+            <span className="value" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {r.regions.map((region: Region) => {
+                if ((region as any).clusterType !== ClusterType.PRIMARY) return null;
+                return (
+                  <YBTag
+                    key={region.code}
+                    variant="light"
+                    size="medium"
+                    endIcon={
+                      region.uuid ===
+                      primaryCluster?.placement_spec?.cloud_list[0].default_region ? (
+                        <Star />
+                      ) : undefined
+                    }
+                  >
+                    {getFlagFromRegion(region.code)} {region.name} ({region.code})
+                  </YBTag>
+                );
+              })}
+            </span>
+          </div>
+        </StyledInfoRowNew>
         <Divider />
-        <Box sx={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between' }}>
-          <StyledInfoRow>
-            <div>
-              <span className="header">{t('cpuArch')}</span>
-              <span className="value">{universeData?.info?.arch}</span>
-            </div>
-          </StyledInfoRow>
-          <StyledInfoRow>
-            <LinuxVersion />
-          </StyledInfoRow>
-          <StyledInfoRow>
-            <div>
-              <span className="header">{t('defaultInstanceType')}</span>
-              <span className="value">{primaryCluster?.node_spec?.instance_type ?? '-'}</span>
-            </div>
-          </StyledInfoRow>
-        </Box>
+        <StyledInfoRowNew>
+          <div>
+            <span className="header">{t('cpuArch')}</span>
+            <span className="value">{universeData?.info?.arch}</span>
+          </div>
+          <LinuxVersion />
+          <div>
+            <span className="header">{t('defaultInstanceType')}</span>
+            <span className="value">{primaryCluster?.node_spec?.instance_type ?? '-'}</span>
+          </div>
+        </StyledInfoRowNew>
       </StyledArea>
-    </Box >
+    </Box>
   );
 };
