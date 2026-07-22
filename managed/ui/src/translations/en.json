@@ -3808,8 +3808,9 @@
         "security": "Security",
         "securitySettings": "Security Settings",
         "advanced": "Advanced",
-        "proxySettings": "Proxy Settings (Optional)",
-        "otherAdvancedSettings": "Other Advanced Settings (Optional)",
+        "proxySettings": "Proxy Settings",
+        "otherAdvancedSettings": "Other Advanced Settings",
+        "optional": "(Optional)",
         "review": "Review",
         "summaryAndCost": "Summary and Cost"
       },
