@@ -1106,6 +1106,15 @@ bool TableInfo::IsSequencesSystemTable(const ReadLock& lock) const {
   return *table_oid == kPgSequencesDataTableOid;
 }
 
+bool TableInfo::ShouldLookupPgSchemaName() const {
+  return ShouldLookupPgSchemaName(LockForRead());
+}
+
+bool TableInfo::ShouldLookupPgSchemaName(const ReadLock& lock) const {
+  return lock->table_type() == PGSQL_TABLE_TYPE && !is_system() &&
+         !IsColocationParentTable() && !IsSequencesSystemTable(lock);
+}
+
 bool TableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
   return LockForRead()->IsXClusterDDLReplicationDDLQueueTable();
 }

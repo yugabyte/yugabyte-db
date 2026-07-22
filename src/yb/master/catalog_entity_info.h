@@ -927,6 +927,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsSecondaryTable() const;
   bool IsSequencesSystemTable() const;
   bool IsSequencesSystemTable(const ReadLock& lock) const;
+  // YSQL tables backed by PG catalog have a pg schema name. DocDB-only tables such as
+  // system_postgres.sequences_data are excluded.
+  bool ShouldLookupPgSchemaName() const;
+  bool ShouldLookupPgSchemaName(const ReadLock& lock) const;
   bool IsXClusterDDLReplicationDDLQueueTable() const;
   bool IsXClusterDDLReplicationReplicatedDDLsTable() const;
   bool IsXClusterDDLReplicationTable() const {
