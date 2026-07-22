@@ -383,6 +383,20 @@ EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
 /*+ Parallel(pctest3 3 hard) */
 SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
 
+-- #32778: parallel scan rescan with leader participation disabled
+set enable_material = off;
+set parallel_leader_participation = off;
+-- The cpu_operator_cost bump up below is to increase the cost of the regular scan and make the parallel scan more attractive.
+-- Without it optimizer sticks to the regular scan, despite the Parallel hint.
+EXPLAIN (costs off)
+/*+ IndexScan(pctest1 pctest1_pkey) Parallel(pctest1 2 hard) Set(cpu_operator_cost 1.0) */ SELECT * FROM (SELECT count(*) FROM pctest1 WHERE pctest1.k > (SELECT min(a) FROM pctest2)) ss RIGHT JOIN (VALUES (1),(2),(3)) v(x) ON true;
+/*+ IndexScan(pctest1 pctest1_pkey) Parallel(pctest1 2 hard) Set(cpu_operator_cost 1.0) */ SELECT * FROM (SELECT count(*) FROM pctest1 WHERE pctest1.k > (SELECT min(a) FROM pctest2)) ss RIGHT JOIN (VALUES (1),(2),(3)) v(x) ON true;
+EXPLAIN (costs off)
+/*+ SeqScan(pctest1) Parallel(pctest1 2 hard) Set(cpu_operator_cost 1.0) */ SELECT * FROM (SELECT count(*) FROM pctest1 WHERE pctest1.k > (SELECT min(a) FROM pctest2)) ss RIGHT JOIN (VALUES (1),(2),(3)) v(x) ON true;
+/*+ SeqScan(pctest1) Parallel(pctest1 2 hard) Set(cpu_operator_cost 1.0) */ SELECT * FROM (SELECT count(*) FROM pctest1 WHERE pctest1.k > (SELECT min(a) FROM pctest2)) ss RIGHT JOIN (VALUES (1),(2),(3)) v(x) ON true;
+reset enable_material;
+reset parallel_leader_participation;
+
 DROP TABLE pctest1;
 DROP TABLE pctest2;
 DROP TABLE pctest3;

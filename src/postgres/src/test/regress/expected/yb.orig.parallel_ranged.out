@@ -1407,6 +1407,75 @@ SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
    877 | 1000 | 124
 (1 row)
 
+-- #32778: parallel scan rescan with leader participation disabled
+set enable_material = off;
+set parallel_leader_participation = off;
+-- The cpu_operator_cost bump up below is to increase the cost of the regular scan and make the parallel scan more attractive.
+-- Without it optimizer sticks to the regular scan, despite the Parallel hint.
+EXPLAIN (costs off)
+/*+ IndexScan(pctest1 pctest1_pkey) Parallel(pctest1 2 hard) Set(cpu_operator_cost 1.0) */ SELECT * FROM (SELECT count(*) FROM pctest1 WHERE pctest1.k > (SELECT min(a) FROM pctest2)) ss RIGHT JOIN (VALUES (1),(2),(3)) v(x) ON true;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Nested Loop Left Join
+   ->  Values Scan on "*VALUES*"
+   ->  Finalize Aggregate
+         InitPlan 1 (returns $1)
+           ->  Finalize Aggregate
+                 ->  Gather
+                       Workers Planned: 2
+                       ->  Noop Aggregate
+                             ->  Parallel Seq Scan on pctest2
+                                   Partial Aggregate: true
+         ->  Gather
+               Workers Planned: 2
+               Params Evaluated: $1
+               ->  Noop Aggregate
+                     ->  Parallel Index Scan using pctest1_pkey on pctest1
+                           Index Cond: (k > $1)
+                           Partial Aggregate: true
+(17 rows)
+
+/*+ IndexScan(pctest1 pctest1_pkey) Parallel(pctest1 2 hard) Set(cpu_operator_cost 1.0) */ SELECT * FROM (SELECT count(*) FROM pctest1 WHERE pctest1.k > (SELECT min(a) FROM pctest2)) ss RIGHT JOIN (VALUES (1),(2),(3)) v(x) ON true;
+ count | x 
+-------+---
+   799 | 1
+   799 | 2
+   799 | 3
+(3 rows)
+
+EXPLAIN (costs off)
+/*+ SeqScan(pctest1) Parallel(pctest1 2 hard) Set(cpu_operator_cost 1.0) */ SELECT * FROM (SELECT count(*) FROM pctest1 WHERE pctest1.k > (SELECT min(a) FROM pctest2)) ss RIGHT JOIN (VALUES (1),(2),(3)) v(x) ON true;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Nested Loop Left Join
+   ->  Values Scan on "*VALUES*"
+   ->  Finalize Aggregate
+         InitPlan 1 (returns $1)
+           ->  Finalize Aggregate
+                 ->  Gather
+                       Workers Planned: 2
+                       ->  Noop Aggregate
+                             ->  Parallel Seq Scan on pctest2
+                                   Partial Aggregate: true
+         ->  Gather
+               Workers Planned: 2
+               Params Evaluated: $1
+               ->  Noop Aggregate
+                     ->  Parallel Seq Scan on pctest1
+                           Storage Filter: (k > $1)
+                           Partial Aggregate: true
+(17 rows)
+
+/*+ SeqScan(pctest1) Parallel(pctest1 2 hard) Set(cpu_operator_cost 1.0) */ SELECT * FROM (SELECT count(*) FROM pctest1 WHERE pctest1.k > (SELECT min(a) FROM pctest2)) ss RIGHT JOIN (VALUES (1),(2),(3)) v(x) ON true;
+ count | x 
+-------+---
+   799 | 1
+   799 | 2
+   799 | 3
+(3 rows)
+
+reset enable_material;
+reset parallel_leader_participation;
 DROP TABLE pctest1;
 DROP TABLE pctest2;
 DROP TABLE pctest3;
