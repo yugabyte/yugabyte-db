@@ -783,6 +783,13 @@ YBValidateOutputPlugin(char *plugin)
 {
 	OutputPluginCallbacks *callbacks;
 
+	/*
+	 * The sentinel YB_GRPC_STREAM_INDICATOR marks a slot as a gRPC stream slot.
+	 * gRPC streams have no output plugin, so skip the load attempt.
+	 */
+	if (strcmp(plugin, YB_GRPC_STREAM_INDICATOR) == 0)
+		return;
+
 	callbacks = palloc(sizeof(OutputPluginCallbacks));
 	LoadOutputPlugin(callbacks, plugin);
 	pfree(callbacks);

@@ -3084,8 +3084,7 @@ ybCreateNotifsReplicationSlot(void)
 						 /* yb_force = */ true, /* yb_if_exists = */ true);
 
 	YbReplicationSlotCreateForDB(slotname, /* two_phase = */ false,
-								  /* yb_plugin_name = */ "",
-								 CRS_NOEXPORT_SNAPSHOT,
+								 YB_OUTPUT_PLUGIN, CRS_NOEXPORT_SNAPSHOT,
 								 &yb_consistent_snapshot_time, CRS_SEQUENCE,
 								 YB_CRS_TRANSACTION, YbSystemDbOid());
 }

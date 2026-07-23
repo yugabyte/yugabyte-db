@@ -440,7 +440,7 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
 
 Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplicationSlot(
     const std::string& slot_name, CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name,
-    std::string namespace_name) {
+    std::string namespace_name, const std::string& output_plugin_name) {
   auto repl_conn = VERIFY_RESULT(test_cluster_.ConnectToDBWithReplication(namespace_name));
 
   std::string snapshot_action;
@@ -457,7 +457,7 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplic
   }
 
   auto result = VERIFY_RESULT(repl_conn.FetchFormat(
-      "CREATE_REPLICATION_SLOT $0 LOGICAL pgoutput $1", slot_name, snapshot_action));
+      "CREATE_REPLICATION_SLOT $0 LOGICAL $1 $2", slot_name, output_plugin_name, snapshot_action));
   auto snapshot_name =
       VERIFY_RESULT(pgwrapper::GetValue<std::optional<std::string>>(result.get(), 0, 2));
   LOG(INFO) << "Snapshot Name: " << (snapshot_name.has_value() ? *snapshot_name : "NULL");

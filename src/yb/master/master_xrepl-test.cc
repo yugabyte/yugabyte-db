@@ -17,6 +17,7 @@
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_state_table.h"
 
+#include "yb/common/constants.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -33,6 +34,7 @@ DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(disable_truncate_table);
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_bool(cdc_pg_create_grpc_stream);
 DECLARE_bool(cdc_enable_postgres_replica_identity);
 DECLARE_bool(enable_backfilling_cdc_stream_with_replication_slot);
 DECLARE_uint32(max_replication_slots);
@@ -87,8 +89,8 @@ class MasterTestXRepl  : public MasterTestBase {
 
   Result<xrepl::StreamId> CreateCDCStream(const TableId& table_id);
   Result<xrepl::StreamId> CreateCDCStreamForNamespace(
-      const std::string& namespace_name, const std::string& cdcsdk_ysql_replication_slot_name,
-      const std::string& cdcsdk_ysql_replication_slot_output_plugin);
+      const std::string& namespace_name, const std::string& cdcsdk_ysql_replication_slot_name = "",
+      const std::string& cdcsdk_ysql_replication_slot_output_plugin = "");
   Result<xrepl::StreamId> CreateCDCStreamForNamespaceOlderVersion(
       const std::string& namespace_name,
       cdc::CDCRecordType record_type = cdc::CDCRecordType::CHANGE);
@@ -153,14 +155,22 @@ Result<xrepl::StreamId> MasterTestXRepl::CreateCDCStreamForNamespace(
   CreateCDCStreamRequestPB req;
 
   req.set_namespace_id(namespace_id);
-  req.set_cdcsdk_ysql_replication_slot_name(cdcsdk_ysql_replication_slot_name);
-  req.set_cdcsdk_ysql_replication_slot_plugin_name(cdcsdk_ysql_replication_slot_output_plugin);
+  if (!cdcsdk_ysql_replication_slot_name.empty()) {
+    req.set_cdcsdk_ysql_replication_slot_name(cdcsdk_ysql_replication_slot_name);
+  }
+  if (!cdcsdk_ysql_replication_slot_output_plugin.empty()) {
+    req.set_cdcsdk_ysql_replication_slot_plugin_name(cdcsdk_ysql_replication_slot_output_plugin);
+  }
   return CreateCDCStreamForNamespace(&req);
 }
 
 Result<xrepl::StreamId> MasterTestXRepl::CreateCDCStreamForNamespaceOlderVersion(
     const std::string& namespace_id, cdc::CDCRecordType record_type) {
   CreateCDCStreamRequestPB req;
+
+  // Disabling the flag FLAGS_cdc_pg_create_grpc_stream to correctly simulate creation of an old
+  // versioned gRPC stream.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_pg_create_grpc_stream) = false;
 
   // In older versions, the namespace_id is passed into the table_id field.
   req.set_table_id(namespace_id);
@@ -774,6 +784,55 @@ TEST_F(MasterTestXRepl, TestCreateDropCDCStreamWithReplicationSlotName) {
   ASSERT_EQ(resp.stream().stream_id(), stream_id.ToString());
   ASSERT_EQ(resp.stream().cdcsdk_ysql_replication_slot_name(), kPgReplicationSlotName);
   ASSERT_EQ(resp.stream().cdcsdk_ysql_replication_slot_plugin_name(), kPgReplicationSlotPgOutput);
+}
+
+TEST_F(MasterTestXRepl, TestCreateCDCGrpcStream) {
+  CreateNamespaceResponsePB create_namespace_resp;
+  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
+  auto ns_id = create_namespace_resp.id();
+  for (auto i = 0; i < num_tables; ++i) {
+    ASSERT_OK(
+        CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchemaWithTypeOids));
+  }
+
+  // With flag cdc_pg_create_grpc_stream false, gRPC stream creation with plugin name 'yb_grpc'
+  // (i.e. mimicing the gRPC stream as if being created via PG syntax) should get rejected.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_pg_create_grpc_stream) = false;
+  auto result = CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName, kYbGrpcStreamIndicator);
+  ASSERT_NOK(result);
+  ASSERT_NE(result.status().ToString().find("not yet finalised"), std::string::npos)
+      << result.status();
+
+  // Setting the flag to true should allow creation of gRPC stream with plugin name 'yb_grpc'.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_pg_create_grpc_stream) = true;
+
+  auto stream_id_1 = ASSERT_RESULT(
+      CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName, kYbGrpcStreamIndicator));
+  auto resp = ASSERT_RESULT(GetCDCStream(stream_id_1));
+  ASSERT_EQ(resp.stream().cdcsdk_ysql_replication_slot_name(), kPgReplicationSlotName);
+  ASSERT_EQ(resp.stream().cdcsdk_ysql_replication_slot_plugin_name(), kYbGrpcStreamIndicator);
+  ASSERT_GT(resp.stream().replica_identity_map_size(), 0);
+  for (const auto& option : resp.stream().options()) {
+    ASSERT_NE(option.key(), cdc::kRecordType) << "Unexpected record_type option on gRPC stream";
+  }
+
+  // The gRPC stream without 'yb_grpc' plugin (i.e. mimicing gRPC streams as if being created via
+  // yb-admin) should also get created. Such stream will be auto populated with slot_name,
+  // plugin_name, however the replica_identity_map are not populated for such streams.
+  auto stream_id_2 = ASSERT_RESULT(CreateCDCStreamForNamespace(ns_id));
+  resp = ASSERT_RESULT(GetCDCStream(stream_id_2));
+  auto expected_slot = "grpc_" + stream_id_2.ToString();
+  ASSERT_EQ(resp.stream().cdcsdk_ysql_replication_slot_name(), expected_slot);
+  ASSERT_EQ(resp.stream().cdcsdk_ysql_replication_slot_plugin_name(), kYbGrpcStreamIndicator);
+  ASSERT_EQ(resp.stream().replica_identity_map_size(), 0);
+  bool has_record_type = false;
+  for (const auto& option : resp.stream().options()) {
+    if (option.key() == cdc::kRecordType) {
+      has_record_type = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(has_record_type) << "Expected record_type option on yb-admin style gRPC stream";
 }
 
 TEST_F(MasterTestXRepl, TestListCDCStreams) {

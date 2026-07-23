@@ -21,6 +21,7 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_util.h"
+#include "yb/common/constants.h"
 #include "yb/common/opid.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema_pbutil.h"
@@ -850,10 +851,13 @@ bool IsColocatedTableQualifiedForStreaming(
 
 Result<CDCRecordType> GetRecordTypeForPopulatingBeforeImage(
     const StreamMetadata& metadata, const TableId& table_id) {
-  if (FLAGS_ysql_yb_enable_replica_identity && IsReplicationSlotStream(metadata)) {
+  // record_type is set only for gRPC streams without a replica_identity_map (legacy/backfilled/
+  // yb-admin). Logical and PG-syntax gRPC streams use replica_identity_map instead.
+  auto record_type = metadata.GetRecordType();
+  if (FLAGS_ysql_yb_enable_replica_identity && !record_type.has_value()) {
     auto replica_identity_map = metadata.GetReplicaIdentities();
     if (replica_identity_map.find(table_id) != replica_identity_map.end()) {
-      PgReplicaIdentity replica_identity = metadata.GetReplicaIdentities().at(table_id);
+      PgReplicaIdentity replica_identity = replica_identity_map.at(table_id);
       switch (replica_identity) {
         case PgReplicaIdentity::CHANGE:
           return CDCRecordType::CHANGE;
@@ -871,7 +875,10 @@ Result<CDCRecordType> GetRecordTypeForPopulatingBeforeImage(
       return STATUS_FORMAT(InternalError, "Replica Identity not found for table: $0", table_id);
     }
   } else {
-    return metadata.GetRecordType();
+    RSTATUS_DCHECK(
+        record_type.has_value(), InternalError,
+        "record_type must be set for a stream that does not use replica identities");
+    return *record_type;
   }
 }
 
@@ -2610,11 +2617,6 @@ Status HandleGetChangesForSnapshotRequest(
   }
 
   return Status::OK();
-}
-
-bool IsReplicationSlotStream(const StreamMetadata& stream_metadata) {
-  return stream_metadata.GetReplicationSlotName().has_value() &&
-         !stream_metadata.GetReplicationSlotName()->empty();
 }
 
 // Response safe time follows the invaraint:

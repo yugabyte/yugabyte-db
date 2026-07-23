@@ -3709,7 +3709,7 @@ Status CatalogManager::XReplValidateSplitCandidateTableUnlocked(const TableId& t
   }
 
   if (!FLAGS_enable_tablet_split_of_replication_slot_streamed_tables &&
-      IsTablePartOfCDCSDK(table_id, /*require_replication_slot=*/true)) {
+      IsTablePartOfCDCSDK(table_id, /*require_logical_replication=*/true)) {
     return STATUS_FORMAT(
         NotSupported,
         "Tablet splitting is not supported for tables that are a part of a replication slot, "
@@ -12363,7 +12363,7 @@ Status CatalogManager::SendCreateTabletRequests(
         // one stream with replication slot consumption exists on the namespace.
         if (PREDICT_FALSE(FLAGS_TEST_cdc_add_dynamic_index_to_state_table) ||
             (stream->IsCDCSDKStream() && stream->namespace_id() == namespace_id &&
-             !stream->GetCdcsdkYsqlReplicationSlotName().empty() &&
+             IsCdcLogicalReplicationStream(*stream) &&
              IsTableEligibleForCDCSDKStream(
                  tablet->table(), tablet->table()->LockForRead(), /*check_schema=*/true,
                  stream->IsTablesWithoutPrimaryKeyAllowed(),
@@ -13944,6 +13944,13 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
   master_->snapshot_coordinator().SysCatalogLoaded(state.epoch.leader_term);
 
   xcluster_manager_->SysCatalogLoaded(state.epoch);
+
+  WARN_NOT_OK(BackfillLegacyGrpcStreams(state.epoch), "Failed to backfill legacy gRPC CDC streams");
+
+  WARN_NOT_OK(
+      BackfillNotificationsStreamsPluginName(state.epoch),
+      "Failed to backfill plugin name for notifications CDC streams");
+
   SchedulePostTabletCreationTasksForPendingTables(state.epoch);
   restoring_sys_catalog_ = false;
 

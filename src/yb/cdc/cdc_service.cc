@@ -2694,7 +2694,7 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
        tablet_peer->tablet_metadata()->IsSysCatalog())) {
     // For replication slot consumption we can set the cdc_sdk_safe_time to the minimum
     // acknowledged commit time among all the slots on the namespace.
-    if (IsReplicationSlotStream(stream_metadata) &&
+    if (stream_metadata.IsLogicalReplicationStream() &&
         FLAGS_ysql_yb_enable_replication_slot_consumption) {
       if (slot_entries_to_be_deleted && !slot_entries_to_be_deleted->contains(stream_id)) {
         // This is possible when Update Peers and Metrics thread comes into action before the slot
@@ -2847,7 +2847,10 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
     const TabletId& tablet_id, const StreamMetadata& stream_metadata,
     const tablet::TabletPeerPtr& tablet_peer) {
   bool is_before_image_active = false;
-  if (FLAGS_ysql_yb_enable_replica_identity && IsReplicationSlotStream(stream_metadata)) {
+  // record_type is set only for gRPC streams without a replica_identity_map (legacy/backfilled/
+  // yb-admin). Logical and PG-syntax gRPC streams use replica_identity_map instead.
+  auto stream_record_type = stream_metadata.GetRecordType();
+  if (FLAGS_ysql_yb_enable_replica_identity && !stream_record_type.has_value()) {
     auto replica_identity_map = stream_metadata.GetReplicaIdentities();
     bool is_colocated_tablet = tablet_peer->tablet_metadata()->colocated();
     bool is_sys_catalog_tablet = tablet_peer->tablet_metadata()->IsSysCatalog();
@@ -2908,9 +2911,11 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
     }
 
   } else {
-    auto stream_record_type = stream_metadata.GetRecordType();
-    is_before_image_active = stream_record_type != CDCRecordType::CHANGE &&
-                             stream_record_type != CDCRecordType::PG_NOTHING;
+    RSTATUS_DCHECK(
+        stream_record_type.has_value(), InternalError,
+        "record_type must be set for a stream that does not use replica identities");
+    is_before_image_active = *stream_record_type != CDCRecordType::CHANGE &&
+                             *stream_record_type != CDCRecordType::PG_NOTHING;
   }
 
   return is_before_image_active;
@@ -3703,7 +3708,7 @@ CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* exp
     // Streams of type 2 and 3 won't have stream_metadata.GetDetectPublicationChangesImplicitly()
     // set to true.
 
-    const bool is_logical_replication_stream = stream_metadata.GetReplicationSlotName().has_value();
+    const bool is_logical_replication_stream = stream_metadata.IsLogicalReplicationStream();
     // To update the restart time of a gRPC stream entry, we need to track min(cdc_sdk_safe_time)
     // from all the gRPC tablet-stream entries for each gRPC stream.
     if (!is_logical_replication_stream && entry.key.tablet_id != kCDCSDKSlotEntryTabletId &&

@@ -11,6 +11,7 @@
 // under the License.
 
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/common/constants.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
@@ -856,7 +857,8 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitBeforeBoots
                     << " and stream_id: " << row.key.stream_id
                     << ", with checkpoint: " << checkpoint;
 
-          if (row.key.tablet_id != tablets[0].tablet_id()) {
+          if (row.key.tablet_id != tablets[0].tablet_id() &&
+              row.key.tablet_id != kCDCSDKSlotEntryTabletId) {
             // Both children should have the min OpId(-1.-1) as the checkpoint.
             ++seen_rows;
           }
@@ -928,6 +930,10 @@ void CDCSDKTabletSplitTest::TestCDCStateTableAfterTabletSplit(CDCCheckpointType 
     auto& checkpoint = *row.checkpoint;
     LOG(INFO) << "Read cdc_state table row for tablet_id: " << row.key.tablet_id
               << " and stream_id: " << row.key.stream_id << ", with checkpoint: " << checkpoint;
+
+    if (row.key.tablet_id == kCDCSDKSlotEntryTabletId) {
+      continue;
+    }
 
     if (row.key.tablet_id != tablets[0].tablet_id()) {
       // Both children should have the min OpId(0.0) as the checkpoint.
@@ -1401,7 +1407,8 @@ void CDCSDKTabletSplitTest::TestTabletSplitOnAddedTableForCDC(CDCCheckpointType 
   for (const auto& tablet : tablets_2) {
     expected_tablet_ids.insert(tablet.tablet_id());
   }
-  ASSERT_EQ(expected_tablet_ids.size(), num_tablets * 2);
+  expected_tablet_ids.insert(kCDCSDKSlotEntryTabletId);
+  ASSERT_EQ(expected_tablet_ids.size(), num_tablets * 2 + 1);
 
   // Verify that table_2's tablets have been added to the cdc_state table.
   CheckTabletsInCDCStateTable(expected_tablet_ids, test_client());
@@ -1875,6 +1882,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestSplitAfterSplit)) {
   for (int i = 0; i < final_tablets.size(); ++i) {
     expected_tablet_ids.insert(final_tablets.Get(i).tablet_id());
   }
+  expected_tablet_ids.insert(kCDCSDKSlotEntryTabletId);
 
   // Verify that the cdc_state has only current set of children tablets.
   auto cdc_state_table = MakeCDCStateTable(test_client());
@@ -2028,6 +2036,7 @@ void CDCSDKTabletSplitTest::TestStreamMetaDataCleanupDropTableAfterTabletSplit(
   for (const auto& tablet : table1_tablets_after_split) {
     expected_tablet_ids.insert(tablet.tablet_id());
   }
+  expected_tablet_ids.insert(kCDCSDKSlotEntryTabletId);
 
   auto cdc_state_table = MakeCDCStateTable(test_client());
   ASSERT_OK(WaitFor(
@@ -2195,8 +2204,8 @@ void CDCSDKTabletSplitTest::TestCleanUpCDCStreamsMetadataDuringTabletSplit(
       },
       MonoDelta::FromSeconds(30), "Waiting for stream metadata cleanup."));
 
-  // Verify that cdc_state table contains 3 entries i.e. parent tablet + 2 children tablets
-  // of table1.
+  // Verify that cdc_state table contains 4 entries i.e. parent tablet + 2 children tablets
+  // of table1 + slot entry.
   std::unordered_set<TabletId> expected_tablet_ids;
   expected_tablet_ids.insert(tablets[0].Get(0).tablet_id()); // parent tablet of table1
 
@@ -2206,6 +2215,7 @@ void CDCSDKTabletSplitTest::TestCleanUpCDCStreamsMetadataDuringTabletSplit(
   for (const auto& tablet : table1_tablets_after_split) {
     expected_tablet_ids.insert(tablet.tablet_id()); // Children tablets of table1
   }
+  expected_tablet_ids.insert(kCDCSDKSlotEntryTabletId);
 
   // Incase there is some lag in completing the execution of delete operation on cdc_state table
   // triggered by the CleanUpCDCStreamMetadata thread.
@@ -2364,7 +2374,8 @@ TEST_F(CDCSDKTabletSplitTest, TestProgressivePollingAcrossThreeLevels) {
   auto child_c_id = gen1_tablets[1].tablet_id();
 
   // Wait for Gen 1 children entries to appear in cdc_state.
-  CheckTabletsInCDCStateTable({parent_id, child_b_id, child_c_id}, test_client(), stream_id);
+  CheckTabletsInCDCStateTable(
+      {parent_id, child_b_id, child_c_id, kCDCSDKSlotEntryTabletId}, test_client(), stream_id);
 
   // Poll only B (not C). Verify that GetTabletListToPollForCDC returns {parent}
   // since child_C is not polled (the ancestor Gen 0 is still active).
@@ -2393,7 +2404,8 @@ TEST_F(CDCSDKTabletSplitTest, TestProgressivePollingAcrossThreeLevels) {
   ASSERT_EQ(gen2_tablets.size(), 3);
 
   // Assert that all tablets from all generations are present in cdc_state.
-  std::unordered_set<TabletId> all_tablet_ids = {parent_id, child_b_id, child_c_id};
+  std::unordered_set<TabletId> all_tablet_ids = {
+      parent_id, child_b_id, child_c_id, kCDCSDKSlotEntryTabletId};
   for (const auto& t : gen2_tablets) {
     all_tablet_ids.insert(t.tablet_id());
   }
@@ -2495,6 +2507,7 @@ TEST_F(CDCSDKTabletSplitTest, TestNoEmptyBeginCommitAfterTabletSplit) {
 
   std::unordered_set<TabletId> expected_tablets;
   expected_tablets.insert(tablets[t1_idx].tablet_id());
+  expected_tablets.insert(kCDCSDKSlotEntryTabletId);
   for (const auto& t : post_split) {
     expected_tablets.insert(t.tablet_id());
   }

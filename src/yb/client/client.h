@@ -720,7 +720,9 @@ class YBClient {
       std::vector<TableId>* unqualified_table_ids = nullptr,
       std::optional<ReplicationSlotLsnType>* lsn_type = nullptr,
       std::optional<ReplicationSlotOrderingMode>* ordering_mode = nullptr,
-      std::optional<bool>* detect_publication_changes_implicitly = nullptr);
+      std::optional<bool>* detect_publication_changes_implicitly = nullptr,
+      std::optional<std::string>* replication_slot_plugin_name = nullptr,
+      bool* is_notification_slot = nullptr);
 
   Result<CDCSDKStreamInfo> GetCDCStream(
       const ReplicationSlotName& replication_slot_name,

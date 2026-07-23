@@ -72,7 +72,7 @@ class StreamMetadata {
     DCHECK(loaded_);
     return namespace_id_;
   }
-  CDCRecordType GetRecordType() const {
+  std::optional<CDCRecordType> GetRecordType() const {
     std::lock_guard l_table(mutex_);
     DCHECK(loaded_);
     return record_type_;
@@ -133,6 +133,11 @@ class StreamMetadata {
     DCHECK(loaded_);
     return replication_slot_name_;
   }
+  std::optional<std::string> GetReplicationSlotPluginName() const {
+    std::lock_guard l_table(mutex_);
+    DCHECK(loaded_);
+    return replication_slot_plugin_name_;
+  }
   std::optional<ReplicationSlotLsnType> GetReplicationSlotLsnType() const {
     std::lock_guard l_table(mutex_);
     DCHECK(loaded_);
@@ -148,6 +153,14 @@ class StreamMetadata {
     DCHECK(loaded_);
     return detect_publication_changes_implicitly_;
   }
+  bool IsNotificationSlot() const {
+    std::lock_guard l_table(mutex_);
+    DCHECK(loaded_);
+    return is_notification_slot_;
+  }
+
+  // Returns true if this is a logical replication stream.
+  bool IsLogicalReplicationStream() const EXCLUDES(mutex_);
 
   std::optional<uint32_t> GetDbOidToGetSequencesFor() const {
     std::lock_guard l_table(mutex_);
@@ -177,7 +190,7 @@ class StreamMetadata {
   mutable std::mutex mutex_;
   xrepl::StreamId stream_id_ GUARDED_BY(mutex_) {xrepl::StreamId::Nil()};
   NamespaceId namespace_id_ GUARDED_BY(mutex_);
-  CDCRecordType record_type_ GUARDED_BY(mutex_);
+  std::optional<CDCRecordType> record_type_ GUARDED_BY(mutex_);
   CDCRecordFormat record_format_ GUARDED_BY(mutex_);
   CDCRequestSource source_type_ GUARDED_BY(mutex_);
   CDCCheckpointType checkpoint_type_ GUARDED_BY(mutex_);
@@ -185,7 +198,9 @@ class StreamMetadata {
   std::optional<ReplicationSlotLsnType> replication_slot_lsn_type_ GUARDED_BY(mutex_);
   std::optional<ReplicationSlotOrderingMode> replication_slot_ordering_mode_ GUARDED_BY(mutex_);
   std::optional<std::string> replication_slot_name_ GUARDED_BY(mutex_);
+  std::optional<std::string> replication_slot_plugin_name_ GUARDED_BY(mutex_);
   std::optional<bool> detect_publication_changes_implicitly_ GUARDED_BY(mutex_);
+  bool is_notification_slot_ GUARDED_BY(mutex_) = false;
   // xCluster: if we are a sequences_data stream, then this holds the OID of the DB we are supposed
   // to be getting sequences for.
   std::optional<uint32_t> db_oid_to_get_sequences_for_ GUARDED_BY(mutex_);
