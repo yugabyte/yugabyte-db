@@ -12,6 +12,7 @@
 //
 
 #include <algorithm>
+#include <numeric>
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
@@ -318,6 +319,31 @@ TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithNondefaultMinNumReplicas)
   ASSERT_EQ(counts_per_ts[1], num_tablets()); // z1
   ASSERT_EQ(counts_per_ts[2], 0);             // z2
   ASSERT_EQ(counts_per_ts[3], num_tablets()); // z0
+}
+
+TEST_F(LoadBalancerPlacementPolicyTest, CreateTableRespectsMaxNumReplicas) {
+  AddNewTserverToZone("z0", 4);
+  AddNewTserverToZone("z1", 5);
+  AddNewTserverToZone("z2", 6);
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
+      "c.r.z0:1:2,c.r.z1:1:2,c.r.z2:1:2", 5, ""));
+
+  const string table_name = "max-replicas-creation-test";
+  const yb::client::YBTableName placement_table(
+      YQL_DATABASE_CQL, this->table_name().namespace_name(), table_name);
+  yb::client::YBSchemaBuilder builder;
+  yb::client::YBSchema schema;
+  builder.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
+  ASSERT_OK(builder.Build(&schema));
+  ASSERT_OK(NewTableCreator()->table_name(placement_table).schema(&schema).Create());
+
+  vector<int> counts_per_ts;
+  GetLoadOnTservers(table_name, 6, &counts_per_ts);
+  ASSERT_EQ(std::accumulate(counts_per_ts.begin(), counts_per_ts.end(), 0), 5 * num_tablets());
+  for (const auto& [first, second] :
+       {std::pair(0, 3), std::pair(1, 4), std::pair(2, 5)}) {
+    ASSERT_LE(counts_per_ts[first] + counts_per_ts[second], 2 * num_tablets());
+  }
 }
 
 TEST_F(LoadBalancerPlacementPolicyTest, PlacementPolicyTest) {

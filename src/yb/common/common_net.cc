@@ -19,6 +19,8 @@
 #include <string>
 #include <utility>
 
+#include "yb/common/common_flags.h"
+
 #include "yb/util/logging.h"
 
 namespace yb {
@@ -36,6 +38,13 @@ CloudInfoPB MakeCloudInfoPB(std::string&& cloud, std::string&& region, std::stri
   if (region != "*") *result.mutable_placement_region() = std::move(region);
   if (zone != "*") *result.mutable_placement_zone() = std::move(zone);
   return result;
+}
+
+int32_t GetEffectiveMaxNumReplicas(
+    const PlacementBlockPB& placement_block, int32_t resolved_placement_rf) {
+  return FLAGS_enable_placement_block_max_num_replicas && placement_block.has_max_num_replicas()
+      ? placement_block.max_num_replicas()
+      : resolved_placement_rf;
 }
 
 bool IsCloudInfoEqual(const CloudInfoPB& lhs, const CloudInfoPB& rhs) {
@@ -160,6 +169,33 @@ bool PlacementInfoContainsPlacementInfo(const PlacementInfoPB& lhs, const Placem
 
   if (lhs.num_replicas() < rhs.num_replicas()) {
     return false;
+  }
+
+  const auto has_explicit_max = [](const PlacementInfoPB& placement) {
+    return std::ranges::any_of(
+        placement.placement_blocks(),
+        [](const auto& block) { return block.has_max_num_replicas(); });
+  };
+  if (has_explicit_max(lhs) || has_explicit_max(rhs)) {
+    if (lhs.num_replicas() != rhs.num_replicas() ||
+        lhs.placement_blocks_size() != rhs.placement_blocks_size()) {
+      return false;
+    }
+    for (const auto& lhs_block : lhs.placement_blocks()) {
+      const auto rhs_block = std::ranges::find_if(
+          rhs.placement_blocks(), [&lhs_block](const auto& block) {
+            return IsCloudInfoEqual(lhs_block.cloud_info(), block.cloud_info());
+          });
+      if (rhs_block == rhs.placement_blocks().end() ||
+          lhs_block.min_num_replicas() != rhs_block->min_num_replicas() ||
+          (lhs_block.has_max_num_replicas() ? lhs_block.max_num_replicas()
+                                            : lhs.num_replicas()) !=
+              (rhs_block->has_max_num_replicas() ? rhs_block->max_num_replicas()
+                                                 : rhs.num_replicas())) {
+        return false;
+      }
+    }
+    return true;
   }
 
   // Basic idea is to try to match replicas of RHS to as specific as possible replicas of LHS.
