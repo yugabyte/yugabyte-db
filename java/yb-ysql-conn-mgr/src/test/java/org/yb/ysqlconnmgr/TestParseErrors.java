@@ -24,6 +24,8 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -33,6 +35,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.pgsql.ConnectionEndpoint;
 
 /*
  * Tests for correct Odyssey behaviour when handling parse errors.
@@ -248,6 +251,107 @@ public class TestParseErrors extends BaseYsqlConnMgr {
       // Clean up
       out.write(buildTerminate());
       out.flush();
+    }
+  }
+
+  @Test
+  public void testClientHashmapHandling() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
+    tserverFlags.put("ysql_conn_mgr_enable_multi_route_pool", "true");
+    tserverFlags.put("ysql_conn_mgr_log_settings", "log_query,log_debug");
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+
+    InetSocketAddress addr = miniCluster.getYsqlConnMgrContactPoints().get(0);
+    LOG.info("Connecting raw socket to Odyssey at " + addr);
+
+    try (Socket socket = new Socket()) {
+      socket.setTcpNoDelay(true);
+      socket.setSoTimeout(SOCKET_TIMEOUT_MS);
+      socket.connect(addr);
+
+      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+      DataInputStream in = new DataInputStream(socket.getInputStream());
+
+      // 1. Startup handshake
+      out.write(buildStartupMessage("yugabyte", "yugabyte"));
+      out.flush();
+      readUntilReady(in);
+      LOG.info("Startup complete, connection is ready");
+
+      ByteArrayOutputStream pipeline = new ByteArrayOutputStream();
+      pipeline.write(buildParse("S1", "SELECT 1", new int[0]));
+      pipeline.write(buildBind("S1", new String[0]));
+      pipeline.write(buildExecute());
+      pipeline.write(buildSync());
+      out.write(pipeline.toByteArray());
+      out.flush();
+      LOG.info("Sent pipeline: P(S1)+B(S1)+E(S1)+Sync");
+      char[] expectedTypes = {
+        BE_PARSE_COMPLETE,
+        BE_BIND_COMPLETE,
+        BE_DATA_ROW,
+        BE_COMMAND_COMPLETE,
+        BE_READY_FOR_QUERY,
+      };
+      for (int i = 0; i < expectedTypes.length; ++i) {
+        PgMessage response = readMessage(in);
+        LOG.info("response for initial S1 [" + i + "]: " + response);
+        assertEquals("Unexpected initial S1 response at position " + i,
+            expectedTypes[i], response.type);
+      }
+
+      pipeline.reset();
+      try (Connection conn = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+              .connect()) {
+        try (PreparedStatement stmt = conn.prepareStatement("BEGIN")) {
+          stmt.execute();
+        }
+
+        pipeline.write(buildParse("random_synatax_error;"));
+        pipeline.write(buildBind());
+        pipeline.write(buildExecute());
+        pipeline.write(buildBind("S1", new String[0]));
+        pipeline.write(buildExecute());
+        pipeline.write(buildSync());
+        out.write(pipeline.toByteArray());
+        out.flush();
+        LOG.info("Sent pipeline: P(Error)+B+E+B(S1)+E+Sync");
+
+        // PostgreSQL reports the Parse error, ignores every subsequent extended
+        // query message (including Bind(S1) and Execute), and resumes at Sync.
+        expectedTypes = new char[] {
+          BE_ERROR_RESPONSE,
+          BE_READY_FOR_QUERY,
+        };
+        for (int i = 0; i < expectedTypes.length; ++i) {
+          PgMessage response = readMessage(in);
+          LOG.info("response for error pipeline [" + i + "]: " + response);
+          assertEquals("Unexpected error-pipeline response at position " + i,
+              expectedTypes[i], response.type);
+        }
+
+        pipeline.reset();
+        pipeline.write(buildBind("S1", new String[0]));
+        pipeline.write(buildExecute());
+        pipeline.write(buildSync());
+        out.write(pipeline.toByteArray());
+        out.flush();
+        LOG.info("Sent pipeline: B(S1)+E+Sync");
+        expectedTypes = new char[] {
+          BE_BIND_COMPLETE,
+          BE_DATA_ROW,
+          BE_COMMAND_COMPLETE,
+          BE_READY_FOR_QUERY,
+        };
+        for (int i = 0; i < expectedTypes.length; ++i) {
+          PgMessage response = readMessage(in);
+          LOG.info("response for final S1 [" + i + "]: " + response);
+          assertEquals("Unexpected final S1 response at position " + i,
+              expectedTypes[i], response.type);
+        }
+      }
     }
   }
 
