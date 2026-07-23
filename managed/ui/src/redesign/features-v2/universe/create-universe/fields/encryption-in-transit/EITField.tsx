@@ -29,7 +29,7 @@ import {
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-import InfoIcon from '../../../../../assets/approved/info-new.svg';
+// import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { Box, Typography, styled } = mui;
 
@@ -97,7 +97,7 @@ const CERTComponent: FC<CertCompProps> = ({ toggleFieldPath, certFieldPath, cert
             dataTestId={`enable-encryption-in-transit-field`}
           />
         </Box>
-        <InfoIcon />
+        {/* <InfoIcon /> */}
       </Box>
 
       {isOptionEnabled && (
@@ -171,7 +171,6 @@ export const EITField: FC<EARProps> = ({ disabled }) => {
   });
 
   const useSameCertValue = useWatch({ name: USE_SAME_CERT_FIELD });
-  const enableBothValue = useWatch({ name: ENABLE_BOTH_ENCRYPTION });
   const nTonValue = useWatch({ name: ENABLE_NTON_FIELD });
   const cTonValue = useWatch({ name: ENABLE_CTON_FIELD });
 

@@ -49,9 +49,11 @@ export const YSQLField: FC<YSQLProps> = ({ disabled }) => {
               dataTestId="ysql-settings-field"
               disabled={disabled}
             />
-            <span>
-              <InfoIcon />
-            </span>
+            <YBTooltip title={t('ysqlSettings.enableYSQLHelper')}>
+              <span>
+                <InfoIcon />
+              </span>
+            </YBTooltip>
           </div>
         </Box>
       </Box>

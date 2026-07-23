@@ -21,13 +21,31 @@ import { getReadReplicaExitRoute } from '../readReplicaUtils';
 import YBLogo from '../../../../assets/yb_logo.svg';
 import Close from '../../../../assets/close rounded inverted.svg';
 
-const { Grid2: Grid, Typography } = mui;
+const { Grid2: Grid, Typography, Box } = mui;
 const { YBButton } = yba;
 
 const ReadReplicaRoot = styled('div')(() => ({
   '& .full-height-container': {
-    backgroundColor: '#fff !important'
+    backgroundColor: '#fff !important',
+    display: 'flex',
+    height: '100vh',
+    width: '100%',
+    flexDirection: 'column',
+    position: 'relative',
+    overflow: 'hidden'
   }
+}));
+
+const RRHeader = styled('div')(() => ({
+  display: 'flex',
+  flexDirection: 'row',
+  padding: '8px 24px 8px 20px',
+  height: '64px',
+  backgroundColor: '#F7F9FB',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  minWidth: '1200px',
+  borderBottom: '1px solid #E9EEF2'
 }));
 
 interface AddRRProps {
@@ -48,10 +66,10 @@ export const AddReadReplica: FC<AddRRProps> = (props) => {
 
   const [addRRContext, addRRMethods] = addRRContextData;
   const { activeStep, isEditPlacementOnly } = addRRContext;
-  const steps = useMemo(() => getRRSteps(t, { editPlacementOnly: isEditPlacementOnly }), [
-    t,
-    isEditPlacementOnly
-  ]);
+  const steps = useMemo(
+    () => getRRSteps(t, { editPlacementOnly: isEditPlacementOnly }),
+    [t, isEditPlacementOnly]
+  );
   const totalSubSteps = useMemo(
     () => steps.reduce((count, step) => count + step.subSteps.length, 0),
     [steps]
@@ -78,18 +96,8 @@ export const AddReadReplica: FC<AddRRProps> = (props) => {
     <ReadReplicaRoot>
       <AuthenticatedArea simpleMode>
         <AddRRContext.Provider value={addRRContextData as unknown as AddRRContextProps}>
-          <Grid
-            container
-            sx={{
-              backgroundColor: '#F7F9FB',
-              height: '64px',
-              padding: '8px 24px',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              borderBottom: '1px solid #E9EEF2'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center' }}>
+          <RRHeader>
+            <Box sx={{ display: 'flex', flexDirection: 'row', gap: '16px', width: '100%' }}>
               <YBLogo />
               <Typography
                 variant="h4"
@@ -97,74 +105,105 @@ export const AddReadReplica: FC<AddRRProps> = (props) => {
               >
                 {t(isEditPlacementOnly ? 'editPlacementTitle' : 'title')}
               </Typography>
-            </div>
+            </Box>
             <Close
               style={{ cursor: 'pointer' }}
               onClick={() => {
                 window.location.href = exitRoute;
               }}
             />
-          </Grid>
-          <Grid container spacing={2}>
-            <Grid sx={{ borderRight: '1px solid #E9EEF2', height: '100vh' }}>
-              <YBMultiLevelStepper dataTestId="stepper" activeStep={activeStep} steps={steps} />
-            </Grid>
+          </RRHeader>
+          <Box sx={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
             <Grid
               container
-              direction="column"
-              size="grow"
-              sx={{ padding: '16px', maxWidth: '1144px', minWidth: '856px', gap: 0 }}
+              spacing={{ xs: 3, md: 3, lg: 3, xl: 6 }}
+              sx={{ flex: 1, minHeight: 0, width: '100%', flexWrap: 'nowrap' }}
             >
-              <SwitchRRSteps ref={currentStepRef} />
+              <Grid
+                sx={{
+                  borderRight: '1px solid #E9EEF2',
+                  overflowY: 'auto',
+                  flexShrink: 0,
+                  backgroundColor: '#FBFCFD'
+                }}
+                size="auto"
+              >
+                <YBMultiLevelStepper dataTestId="stepper" activeStep={activeStep} steps={steps} />
+              </Grid>
               <Grid
                 container
-                alignItems="center"
-                justifyContent="space-between"
-                direction="row"
-                sx={{ marginTop: '32px' }}
+                direction={'column'}
+                size="grow"
+                spacing={0}
+                sx={{ flex: 1, minHeight: 0, minWidth: 0 }}
               >
-                <YBButton
-                  variant="secondary"
-                  size="large"
-                  dataTestId="add-rr-cancel-button"
-                  onClick={() => {
-                    window.location.href = exitRoute;
-                  }}
-                >
-                  {t('cancel', { keyPrefix: 'common' })}
-                </YBButton>
-                <Grid container alignItems="center" justifyContent="flex-end" spacing={2}>
-                  {!isEditPlacementOnly && (
-                    <YBButton
-                      onClick={() => {
-                        currentStepRef.current?.onPrev();
-                      }}
-                      disabled={activeStep === 1}
-                      variant="secondary"
-                      size="large"
-                      dataTestId="add-rr-back-button"
-                    >
-                      {t('back', { keyPrefix: 'common' })}
-                    </YBButton>
-                  )}
-                  <YBButton
-                    onClick={() => {
-                      currentStepRef.current?.onNext();
+                <Grid size="grow" sx={{ minHeight: 0, overflowY: 'auto' }}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      maxWidth: '1024px',
+                      minWidth: '856px',
+                      width: '100%',
+                      gap: 3,
+                      mr: 1,
+                      pb: 3
                     }}
-                    variant="ybaPrimary"
-                    size="large"
-                    dataTestId="add-rr-next-button"
                   >
-                    {isLastStep
-                      ? isEditPlacementOnly
-                        ? t('confirmAndApply')
-                        : t('create', { keyPrefix: 'common' })
-                      : t('next', { keyPrefix: 'common' })}
-                  </YBButton>
+                    <SwitchRRSteps ref={currentStepRef} />
+                    {/* Footer */}
+                    <Grid
+                      container
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="space-between"
+                      direction="row"
+                    >
+                      <YBButton
+                        variant="secondary"
+                        size="large"
+                        dataTestId="add-rr-cancel-button"
+                        onClick={() => {
+                          window.location.href = exitRoute;
+                        }}
+                      >
+                        {t('cancel', { keyPrefix: 'common' })}
+                      </YBButton>
+                      <Grid container alignItems="center" justifyContent="flex-end" spacing={2}>
+                        {!isEditPlacementOnly && (
+                          <YBButton
+                            onClick={() => {
+                              currentStepRef.current?.onPrev();
+                            }}
+                            disabled={activeStep === 1}
+                            variant="secondary"
+                            size="large"
+                            dataTestId="add-rr-back-button"
+                          >
+                            {t('back', { keyPrefix: 'common' })}
+                          </YBButton>
+                        )}
+                        <YBButton
+                          onClick={() => {
+                            currentStepRef.current?.onNext();
+                          }}
+                          variant="ybaPrimary"
+                          size="large"
+                          dataTestId="add-rr-next-button"
+                        >
+                          {isLastStep
+                            ? isEditPlacementOnly
+                              ? t('confirmAndApply')
+                              : t('create', { keyPrefix: 'common' })
+                            : t('next', { keyPrefix: 'common' })}
+                        </YBButton>
+                      </Grid>
+                    </Grid>
+                  </Box>
                 </Grid>
               </Grid>
             </Grid>
-          </Grid>
+          </Box>
         </AddRRContext.Provider>
       </AuthenticatedArea>
     </ReadReplicaRoot>

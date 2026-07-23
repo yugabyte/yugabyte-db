@@ -11,7 +11,7 @@ import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
 import { PG_COMPATIBILITY_FIELD } from '../FieldNames';
 
 //icons
-import InfoIcon from '../../../../../assets/approved/info-new.svg';
+// import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { Box, Typography, Link, styled } = mui;
 
@@ -101,7 +101,7 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled, db
               />
             </div>
           </YBTooltip>
-          <InfoIcon />
+          {/* <InfoIcon /> */}
           <YBEarlyAccessTag />
         </Box>
         <Box sx={{ ml: 5 }}>

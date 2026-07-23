@@ -26,10 +26,9 @@ const { styled, Grid2: Grid, Typography, Box } = mui;
 const EditPlacementRoot = styled('div')(() => ({
   backgroundColor: '#fff !important',
   display: 'flex',
-  height: '100vh',
-  width: '100vw',
+  inset: 0,
   flexDirection: 'column',
-  position: 'relative',
+  position: 'fixed',
   overflow: 'hidden',
   zIndex: 1299
 }));
@@ -93,6 +92,17 @@ export const EditPlacement: FC<EditPlacementProps> = ({
     if (!visible) {
       resetContext();
     }
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, [visible]);
 
   useEffect(() => {
@@ -169,26 +179,28 @@ export const EditPlacement: FC<EditPlacementProps> = ({
               direction="column"
               size="grow"
               spacing={0}
-              sx={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: 'auto' }}
+              sx={{ flex: 1, minHeight: 0, minWidth: 0 }}
             >
-              <Box
-                sx={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  maxWidth: '1024px',
-                  minWidth: '856px',
-                  width: '100%',
-                  gap: 3,
-                  mr: 1,
-                  pb: 3
-                }}
-              >
-                {activeStep === EditPlacementSteps.RESILIENCE_AND_REGIONS ? (
-                  <EditPlacementResilience />
-                ) : (
-                  <EditPlacementNodesAndAvailability />
-                )}
-              </Box>
+              <Grid size="grow" sx={{ minHeight: 0, overflowY: 'auto' }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    maxWidth: '1114px',
+                    minWidth: '856px',
+                    width: '100%',
+                    gap: 3,
+                    mr: 1,
+                    pb: 3
+                  }}
+                >
+                  {activeStep === EditPlacementSteps.RESILIENCE_AND_REGIONS ? (
+                    <EditPlacementResilience />
+                  ) : (
+                    <EditPlacementNodesAndAvailability />
+                  )}
+                </Box>
+              </Grid>
             </Grid>
           </Grid>
         </Box>

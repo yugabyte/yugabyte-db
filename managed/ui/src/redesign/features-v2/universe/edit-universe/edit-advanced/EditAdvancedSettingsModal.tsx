@@ -25,7 +25,9 @@ interface EditAdvancedSettingsModalProps {
 }
 
 export const EditAdvancedSettingsModal = ({ visible, onClose }: EditAdvancedSettingsModalProps) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'editUniverse.advanced'
+  });
   const { universeData } = useEditUniverseContext();
   const updateProxy = useUpdateProxyConfig();
   const universeUUID = universeData?.info?.universe_uuid;
@@ -96,7 +98,7 @@ export const EditAdvancedSettingsModal = ({ visible, onClose }: EditAdvancedSett
     <YBModal
       open={visible}
       onClose={onClose}
-      title={t('editProxyConfiguration')}
+      title={t('proxyConfiguration')}
       submitLabel={t('save', { keyPrefix: 'common' })}
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
       titleSeparator

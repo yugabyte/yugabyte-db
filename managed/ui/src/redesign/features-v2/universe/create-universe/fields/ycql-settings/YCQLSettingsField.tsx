@@ -49,9 +49,11 @@ export const YCQField: FC<YCQLProps> = ({ disabled }) => {
               dataTestId="ycql-settings-field"
               disabled={disabled}
             />
-            <span>
-              <InfoIcon />
-            </span>
+            <YBTooltip title={t('ycqlSettings.enableYCQLHelper')}>
+              <span>
+                <InfoIcon />
+              </span>
+            </YBTooltip>
           </div>
         </Box>
       </Box>

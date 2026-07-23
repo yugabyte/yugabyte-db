@@ -4119,13 +4119,15 @@
           "toggleLabel": "Enable YSQL End Point",
           "authToggleLabel": "Enable YSQL Authentication",
           "authPwd": "YSQL Auth Password",
-          "authConfirmPwd": "Confirm YSQL Auth Password"
+          "authConfirmPwd": "Confirm YSQL Auth Password",
+          "enableYSQLHelper": "Enable the YSQL API endpoint to run postgres compatible workloads."
         },
         "ycqlSettings": {
           "toggleLabel": "Enable YCQL End Point",
           "authToggleLabel": "Enable YCQL Authentication",
           "authPwd": "YCQL Auth Password",
-          "authConfirmPwd": "Confirm YCQL Auth Password"
+          "authConfirmPwd": "Confirm YCQL Auth Password",
+          "enableYCQLHelper": "Enable the YCQL API endpoint to run cassandra compatible workloads."
         },
         "conPool": {
           "label": "Enable Connection Pooling",
@@ -4562,7 +4564,8 @@
         "awsArn": "INSTANCE PROFILE ARN",
         "networkPorts": "Network Ports",
         "enableProxyServer": "Enable Proxy Server",
-        "proxyHelper": "Configure web proxies as gateways for traffic from your database nodes. <a>Learn more</a>"
+        "proxyHelper": "Configure web proxies as gateways for traffic from your database nodes. <a>Learn more</a>",
+        "unableToApplyChanges": "Unable to apply changes."
       },
       "logs": {
         "troubleshootingLogs": "Troubleshooting Logs",

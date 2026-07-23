@@ -12,7 +12,7 @@ import { YSQL_FIELD, CONNECTION_POOLING_FIELD } from '../FieldNames';
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-import InfoIcon from '../../../../../assets/approved/info-new.svg';
+// import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { Box, Typography, styled, Link } = mui;
 
@@ -140,7 +140,7 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
               />
             </div>
           </YBTooltip>
-          <InfoIcon />
+          {/* <InfoIcon /> */}
           <YBEarlyAccessTag />
         </Box>
         <Box sx={{ ml: 6 }}>
@@ -198,7 +198,7 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
                         label={
                           <StyledLabelIcon>
                             <span>{item.label}</span>
-                            <InfoIcon />
+                            {/* <InfoIcon /> */}
                           </StyledLabelIcon>
                         }
                         helperText={item.helperText}

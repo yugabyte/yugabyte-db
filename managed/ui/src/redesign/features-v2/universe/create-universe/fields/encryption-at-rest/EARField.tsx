@@ -11,7 +11,7 @@ import { KmsConfig } from '../../../../../features/universe/universe-form/utils/
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-import InfoIcon from '../../../../../assets/approved/info-new.svg';
+// import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { Box } = mui;
 
@@ -64,7 +64,7 @@ export const EARField: FC<EARProps> = ({ disabled, ebsKMSConfig }) => {
             dataTestId="enable-encryption-at-rest-field"
           />
         </Box>
-        <InfoIcon />
+        {/* <InfoIcon /> */}
       </Box>
       {encryptionEnabled && (
         <Box
