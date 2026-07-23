@@ -861,6 +861,15 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // (dirty copy is modified) and yet to be persisted.
   Result<bool> AreAllTabletsRunning(const std::set<TabletId>& new_running_tablets = {});
 
+  // Atomically claims the right to schedule the post tablet create task set for this table.
+  // Returns true only for the first caller, and subsequent callers get false until
+  // ClearPostTabletCreateTasksScheduled() is called.
+  bool TrySetPostTabletCreateTasksScheduled();
+
+  // Clears the post tablet create tasks scheduled atomic, allowing the next caller to
+  // schedule the post tablet create task.
+  void ClearPostTabletCreateTasksScheduled();
+
   // Returns true if the table is backfilling an index.
   bool IsBackfilling() const {
     SharedLock l(lock_);
@@ -994,6 +1003,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // In memory state set during backfill to prevent multiple backfill jobs.
   bool is_backfilling_ = false;
+
+  // In-memory guard ensuring the post-tablet-create task set is scheduled at most once per table.
+  std::atomic<bool> post_tablet_create_tasks_scheduled_{false};
 
   TransactionId exclude_aborting_transaction_id_ GUARDED_BY(lock_) {TransactionId::Nil()};
 
