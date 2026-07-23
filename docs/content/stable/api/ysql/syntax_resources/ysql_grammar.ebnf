@@ -274,6 +274,26 @@ alter_column_constraint = [ 'CONSTRAINT' constraint_name ] \
                              references_clause )
                           [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ] ;
 
+(* 'ALTER' 'TYPE' *)
+alter_type_rename = 'ALTER' 'TYPE' type_name 'RENAME' 'TO' new_name ;
+
+alter_type_owner = 'ALTER' 'TYPE' type_name 'OWNER' 'TO'
+                     ( new_owner | 'CURRENT_ROLE' | 'CURRENT_USER' | 'SESSION_USER' ) ;
+
+alter_type_set_schema = 'ALTER' 'TYPE' type_name 'SET' 'SCHEMA' schema_name ;
+
+alter_type_rename_value = 'ALTER' 'TYPE' type_name 'RENAME' 'VALUE'
+                            existing_enum_value 'TO' new_enum_value ;
+
+alter_type_add_value = 'ALTER' 'TYPE' type_name 'ADD' 'VALUE' [ 'IF' 'NOT' 'EXISTS' ]
+                         new_enum_value [ ( 'BEFORE' | 'AFTER' ) existing_enum_value ] ;
+
+alter_type_drop_attribute = 'ALTER' 'TYPE' type_name
+                              drop_attribute_action { ',' drop_attribute_action } ;
+
+drop_attribute_action = 'DROP' 'ATTRIBUTE' [ 'IF' 'EXISTS' ] attribute_name
+                          [ 'CASCADE' | 'RESTRICT' ] ;
+
 (* 'ALTER' 'INDEX' *)
 alter_index = 'ALTER' 'INDEX' [ 'IF' 'EXISTS' ] index_name
                         alter_index_action { ',' alter_index_action } ;
@@ -1577,6 +1597,8 @@ using_expression = expression ;
 check_expression = expression ;
 condition = expression ;
 new_name = name ;
+new_enum_value = text_literal ;
+existing_enum_value = text_literal ;
 version = text_literal ;
 extension_name = name ;
 
