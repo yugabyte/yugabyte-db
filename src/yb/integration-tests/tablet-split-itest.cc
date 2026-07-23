@@ -3057,6 +3057,91 @@ TEST_F(TabletSplitSingleServerITest, TestRetryableWriteWithPersistedStructure) {
   TestRetryableWrite();
 }
 
+TEST_F(TabletSplitSingleServerITest, RetryableWriteAfterSplitChildRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_copy_retryable_requests_from_parent) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
+
+  constexpr int kNumRows = 2;
+  CreateSingleTablet();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+  const auto parent_peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
+  const auto parent_tablet_id = parent_peer->tablet_id();
+
+  ASSERT_OK(SplitSingleTablet(split_hash_code));
+  ASSERT_OK(WaitForTabletSplitCompletion(2, 1, 1));
+  const auto child_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
+  ASSERT_EQ(child_peers.size(), 2);
+  ASSERT_OK(WriteRow(NewSession(), kNumRows + 1, 0));
+  std::vector<OpId> child_committed_op_ids;
+  for (const auto& child_peer : child_peers) {
+    child_committed_op_ids.push_back(
+        ASSERT_RESULT(child_peer->GetRaftConsensus())->GetLastCommittedOpId());
+  }
+
+#ifndef NDEBUG
+  SyncPoint::GetInstance()->LoadDependency({
+      {"AsyncRpc::Finished:SetTimedOut:1",
+       "TabletSplitSingleServerITest::RetryableWriteAfterSplitChildRestart:WriteTimedOut"},
+      {"TabletSplitSingleServerITest::RetryableWriteAfterSplitChildRestart:RetryWrite",
+       "AsyncRpc::Finished:SetTimedOut:2"},
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+#endif
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = true;
+  std::thread write_thread([&] {
+    CHECK_OK(WriteRow(NewSession(), kNumRows + 1, kNumRows + 1));
+  });
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (size_t i = 0; i != child_peers.size(); ++i) {
+          if (VERIFY_RESULT(child_peers[i]->GetRaftConsensus())->GetLastCommittedOpId() >
+              child_committed_op_ids[i]) {
+            return true;
+          }
+        }
+        return false;
+      },
+      10s, "post-split update is applied"));
+  TEST_SYNC_POINT(
+      "TabletSplitSingleServerITest::RetryableWriteAfterSplitChildRestart:WriteTimedOut");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = false;
+
+  for (const auto& child_peer : child_peers) {
+    ASSERT_OK(child_peer->log()->AllocateSegmentAndRollOver());
+    ASSERT_OK(WaitFor([&] { return child_peer->TEST_HasBootstrapStateOnDisk(); },
+                      10s, "child retryable requests flushed to disk"));
+    ASSERT_OK(ASSERT_RESULT(child_peer->shared_tablet())->Flush(
+        tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+  }
+
+  auto* tablet_server = cluster_->mini_tablet_server(0);
+  ASSERT_OK(tablet_server->Restart());
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto peer = tablet_server->server()->tablet_manager()->GetTablet(parent_tablet_id);
+        return peer.ok() && (*peer)->state() == tablet::RaftGroupStatePB::RUNNING;
+      },
+      10s, "split parent is running"));
+  ASSERT_OK(WaitFor(
+      [&] { return ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id()).size() == 2; },
+      10s, "split children are running after restart"));
+
+  ASSERT_OK(DeleteRow(NewSession(), kNumRows + 1));
+  TEST_SYNC_POINT(
+      "TabletSplitSingleServerITest::RetryableWriteAfterSplitChildRestart:RetryWrite");
+  write_thread.join();
+
+  ASSERT_OK(CheckRowsCount(kNumRows));
+
+#ifndef NDEBUG
+  SyncPoint::GetInstance()->DisableProcessing();
+  SyncPoint::GetInstance()->ClearTrace();
+#endif
+}
+
 TEST_F(TabletSplitExternalMiniClusterITest, Simple) {
   CreateSingleTablet();
   CHECK_OK(WriteRowsAndFlush());
