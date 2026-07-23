@@ -424,8 +424,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.WaitForFlush();
   }
 
-  ConsensusFrontierPtr GetFlushedFrontier() override {
-    return down_cast<ConsensusFrontier>(lsm_.GetFlushedFrontier());
+  storage::FrontierInfo GetFrontiers(storage::FrontierKinds kinds) override {
+    return lsm_.GetFrontiers(kinds);
   }
 
   rocksdb::FlushAbility GetFlushAbility() override {
@@ -502,6 +502,26 @@ Result<Slice> DocVectorIndexReverseMappingReader::FetchYbctid(
 
   auto decoded = VERIFY_RESULT(dockv::EncodedDocVectorMetaValue::Decode(value));
   return decoded.IsTombstone() ? Slice{} : decoded.ybctid;
+}
+
+ConsensusFrontierPtr DocVectorIndex::GetFlushedFrontier() {
+  return down_cast<ConsensusFrontier>(
+      GetFrontiers(storage::FrontierKinds{storage::FrontierKind::kFlushed}).flushed);
+}
+
+storage::UserFrontierRange DocVectorIndex::GetInMemoryFrontiers() {
+  return GetFrontiers(storage::FrontierKinds{
+      storage::FrontierKind::kInMemorySmallest,
+      storage::FrontierKind::kInMemoryLargest}).in_memory;
+}
+
+storage::UserFrontierPtr DocVectorIndex::GetInMemoryFrontier(storage::UpdateUserValueType type) {
+  if (type == storage::UpdateUserValueType::kSmallest) {
+    return GetFrontiers(storage::FrontierKinds{
+        storage::FrontierKind::kInMemorySmallest}).in_memory.smallest;
+  }
+  return GetFrontiers(storage::FrontierKinds{
+      storage::FrontierKind::kInMemoryLargest}).in_memory.largest;
 }
 
 bool DocVectorIndex::BackfillDone() {

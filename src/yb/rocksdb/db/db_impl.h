@@ -232,7 +232,7 @@ class DBImpl : public DB {
 
   void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) override;
 
-  yb::storage::UserFrontierPtr GetFlushedFrontier() override;
+  yb::storage::FrontierInfo GetFrontiers(yb::storage::FrontierKinds kinds) override;
 
   Status ModifyFlushedFrontier(
       yb::storage::UserFrontierPtr frontier,
@@ -242,12 +242,6 @@ class DBImpl : public DB {
 
   yb::storage::UserFrontierPtr GetMutableMemTableFrontier(
       yb::storage::UpdateUserValueType type) override;
-
-  // Calculates specified frontier_type for all mem tables (active and immutable).
-  yb::storage::UserFrontierPtr CalcMemTableFrontier(
-      yb::storage::UpdateUserValueType frontier_type) override;
-
-  UserFrontierRange CalcMemTableFrontiers() override;
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have

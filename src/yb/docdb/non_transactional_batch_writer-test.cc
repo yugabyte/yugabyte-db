@@ -68,7 +68,9 @@ class CountingVectorIndex : public DocVectorIndex {
   Status WaitForCompaction() override { LOG(FATAL) << "Unexpected call"; }
   Status Flush() override { LOG(FATAL) << "Unexpected call"; }
   Status WaitForFlush() override { LOG(FATAL) << "Unexpected call"; }
-  ConsensusFrontierPtr GetFlushedFrontier() override { LOG(FATAL) << "Unexpected call"; }
+  storage::FrontierInfo GetFrontiers(storage::FrontierKinds) override {
+    LOG(FATAL) << "Unexpected call";
+  }
   storage::FlushAbility GetFlushAbility() override { LOG(FATAL) << "Unexpected call"; }
   Status CreateCheckpoint(const std::string&) override { LOG(FATAL) << "Unexpected call"; }
   const std::string& ToString() const override { LOG(FATAL) << "Unexpected call"; }

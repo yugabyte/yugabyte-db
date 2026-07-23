@@ -148,7 +148,17 @@ class DocVectorIndex {
   virtual Status WaitForCompaction() = 0;
   virtual Status Flush() = 0;
   virtual Status WaitForFlush() = 0;
-  virtual docdb::ConsensusFrontierPtr GetFlushedFrontier() = 0;
+  // Computes the requested frontiers (flushed and/or in-memory) atomically, so the views are
+  // mutually consistent. This is the single primitive subclasses override; the accessors below are
+  // expressed in terms of it.
+  virtual storage::FrontierInfo GetFrontiers(storage::FrontierKinds kinds) = 0;
+
+  docdb::ConsensusFrontierPtr GetFlushedFrontier();
+  // Returns the (smallest, largest) frontiers of the in-memory (not yet flushed) state. The
+  // smallest frontier is used to determine how much of the index is durably flushed.
+  storage::UserFrontierRange GetInMemoryFrontiers();
+  storage::UserFrontierPtr GetInMemoryFrontier(storage::UpdateUserValueType type);
+
   virtual storage::FlushAbility GetFlushAbility() = 0;
   virtual Status CreateCheckpoint(const std::string& out) = 0;
   virtual const std::string& ToString() const = 0;

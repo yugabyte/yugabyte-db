@@ -22,6 +22,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 
 using namespace std::literals;
 
@@ -71,6 +72,8 @@ void ApplyIntentsTask::Run() {
       SleepFor(pause_and_skip_ms * 1ms);
       continue;
     }
+
+    TEST_SYNC_POINT("ApplyIntentsTask::Run:Loop");
 
     auto apply_data = applier_.ApplyIntents(apply_data_);
 

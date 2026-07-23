@@ -119,7 +119,13 @@ class VectorLSM {
   Status Destroy();
   Status CreateCheckpoint(const std::string& out);
 
+  // Computes the requested frontiers atomically under the LSM lock so the flushed and in-memory
+  // views are mutually consistent.
+  storage::FrontierInfo GetFrontiers(storage::FrontierKinds kinds);
   storage::UserFrontierPtr GetFlushedFrontier();
+  // Returns the (smallest, largest) frontiers over the in-memory state that has not been flushed
+  // to disk yet (the mutable chunk and immutable chunks not yet in the manifest).
+  storage::UserFrontierRange GetInMemoryFrontiers();
   storage::FlushAbility GetFlushAbility();
 
   Status Insert(std::vector<InsertEntry> entries, const VectorLSMInsertContext& context);

@@ -689,7 +689,7 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
       return;
     }
     {
-      auto smallest = db->CalcMemTableFrontier(storage::UpdateUserValueType::kSmallest);
+      auto smallest = db->GetInMemoryFrontier(storage::UpdateUserValueType::kSmallest);
       if (smallest) {
         down_cast<docdb::ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(
             table_id_to_min_schema_version);
@@ -930,14 +930,22 @@ struct Tablet::IntentsDbFlushFilterState {
   boost::container::small_vector<int64_t, 4> largest_flushed_index;
   boost::container::small_vector<rocksdb::FlushAbility, 4> flush_ability;
 
-  void AddLargestFlushedIndex(const storage::UserFrontierPtr& flushed_frontier) {
-    if (!flushed_frontier) {
-      largest_flushed_index.push_back(std::numeric_limits<int64_t>::min());
-      return;
+  void AddLargestFlushedIndex(
+      const storage::UserFrontierPtr& flushed_frontier,
+      const storage::UserFrontierPtr& smallest_mem_frontier) {
+    int64_t flushed_index = std::numeric_limits<int64_t>::min();
+    if (flushed_frontier) {
+      flushed_index = static_cast<const docdb::ConsensusFrontier&>(*flushed_frontier).op_id().index;
     }
-    const auto& consensus_frontier =
-        static_cast<const docdb::ConsensusFrontier&>(*flushed_frontier);
-    largest_flushed_index.push_back(consensus_frontier.op_id().index);
+    // The flushed frontier alone could overstate what is durable: a single apply op id may span
+    // both a flushed and an unflushed batch of a large transaction. So clamp the largest flushed
+    // index to one below the smallest op id that is still only in memory.
+    if (smallest_mem_frontier) {
+      auto mem_index =
+          static_cast<const docdb::ConsensusFrontier&>(*smallest_mem_frontier).op_id().index;
+      flushed_index = std::min(flushed_index, mem_index - 1);
+    }
+    largest_flushed_index.push_back(flushed_index);
   }
 
   bool HasNewData(int64_t memtable_op_index) const {
@@ -984,10 +992,16 @@ Result<bool> Tablet::IntentsDbFlushFilter(
       // We allow to flush intents DB only after regular DB.
       // Otherwise we could lose applied intents when corresponding regular records were not
       // flushed.
-      state->AddLargestFlushedIndex(regular_db_->GetFlushedFrontier());
+      const storage::FrontierKinds frontier_kinds{
+          storage::FrontierKind::kFlushed, storage::FrontierKind::kInMemorySmallest};
+      auto regular_frontiers = regular_db_->GetFrontiers(frontier_kinds);
+      state->AddLargestFlushedIndex(
+          regular_frontiers.flushed, regular_frontiers.in_memory.smallest);
       if (state->vector_indexes) {
         for (const auto& vector_index : *state->vector_indexes) {
-          state->AddLargestFlushedIndex(vector_index->GetFlushedFrontier());
+          auto vector_frontiers = vector_index->GetFrontiers(frontier_kinds);
+          state->AddLargestFlushedIndex(
+              vector_frontiers.flushed, vector_frontiers.in_memory.smallest);
         }
       }
       VLOG_WITH_PREFIX_AND_FUNC(4)
@@ -5484,13 +5498,13 @@ docdb::CompactionHybridTimeConstraints Tablet::CompactionHybridTimeConstraints(
     result.HandleOtherRange(min_running_ht, HybridTime::kMax);
   }
 
-  auto frontiers = regular_db_->CalcMemTableFrontiers();
-  if (frontiers.first) {
-    DCHECK_ONLY_NOTNULL(frontiers.second.get());
+  auto frontiers = regular_db_->GetInMemoryFrontiers();
+  if (frontiers.smallest) {
+    DCHECK_ONLY_NOTNULL(frontiers.largest.get());
     VLOG_WITH_PREFIX_AND_FUNC(4)
-        << "Mem table frontiers: " << frontiers.first->ToString()
-        << "-" << frontiers.second->ToString();
-    result.HandleOtherRange(*frontiers.first, *frontiers.second);
+        << "Mem table frontiers: " << frontiers.smallest->ToString()
+        << "-" << frontiers.largest->ToString();
+    result.HandleOtherRange(*frontiers.smallest, *frontiers.largest);
   }
 
   auto files = regular_db_->GetLiveFilesMetaData();
