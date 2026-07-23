@@ -108,8 +108,6 @@ struct Range {
 typedef std::unordered_map<std::string, std::shared_ptr<const TableProperties>>
     TablePropertiesCollection;
 
-using UserFrontierRange = std::pair<UserFrontierPtr, UserFrontierPtr>;
-
 // A DB is a persistent ordered map from keys to values.
 // A DB is safe for concurrent access from multiple threads without
 // any external synchronization.
@@ -838,7 +836,30 @@ class DB {
     return result;
   }
 
-  virtual UserFrontierPtr GetFlushedFrontier() { return nullptr; }
+  // Computes the requested frontiers atomically (under a single lock) so the returned views are
+  // mutually consistent. This is the single primitive subclasses override; the accessors below are
+  // expressed in terms of it.
+  virtual FrontierInfo GetFrontiers(FrontierKinds kinds) {
+    return {};
+  }
+
+  UserFrontierPtr GetFlushedFrontier() {
+    return GetFrontiers(FrontierKinds{FrontierKind::kFlushed}).flushed;
+  }
+
+  // Returns the (smallest, largest) frontiers of the in-memory (not yet flushed) state.
+  UserFrontierRange GetInMemoryFrontiers() {
+    return GetFrontiers(FrontierKinds{
+        FrontierKind::kInMemorySmallest, FrontierKind::kInMemoryLargest}).in_memory;
+  }
+
+  // Returns the smallest or largest frontier of the in-memory (not yet flushed) state.
+  UserFrontierPtr GetInMemoryFrontier(UpdateUserValueType type) {
+    if (type == UpdateUserValueType::kSmallest) {
+      return GetFrontiers(FrontierKinds{FrontierKind::kInMemorySmallest}).in_memory.smallest;
+    }
+    return GetFrontiers(FrontierKinds{FrontierKind::kInMemoryLargest}).in_memory.largest;
+  }
 
   virtual Status ModifyFlushedFrontier(
       UserFrontierPtr values,
@@ -851,14 +872,6 @@ class DB {
   // Might return stale frontiers if invoked after records have been written to the memtable, but
   // before frontiers are updated.
   virtual UserFrontierPtr GetMutableMemTableFrontier(UpdateUserValueType type) { return nullptr; }
-
-  virtual UserFrontierPtr CalcMemTableFrontier(UpdateUserValueType type) {
-    return nullptr;
-  }
-
-  virtual UserFrontierRange CalcMemTableFrontiers() {
-    return {};
-  }
 
   virtual void ListenFilesChanged(std::function<void()> listener) {}
 

@@ -1929,19 +1929,61 @@ Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-rocksdb::UserFrontierPtr VectorLSM<Vector, DistanceResult>::GetFlushedFrontier() {
-  rocksdb::UserFrontierPtr result;
+rocksdb::FrontierInfo VectorLSM<Vector, DistanceResult>::GetFrontiers(
+    rocksdb::FrontierKinds kinds) {
+  const bool need_flushed = kinds.Test(rocksdb::FrontierKind::kFlushed);
+  const bool need_in_memory_smallest = kinds.Test(rocksdb::FrontierKind::kInMemorySmallest);
+  const bool need_in_memory_largest = kinds.Test(rocksdb::FrontierKind::kInMemoryLargest);
+  const bool need_in_memory = need_in_memory_smallest || need_in_memory_largest;
+
+  rocksdb::FrontierInfo result;
+  auto update = [](const rocksdb::UserFrontiersPtr& user_frontiers,
+                   rocksdb::UpdateUserValueType type, rocksdb::UserFrontierPtr* out) {
+    if (!user_frontiers) {
+      return;
+    }
+    const auto& frontier =
+        type == rocksdb::UpdateUserValueType::kSmallest
+            ? user_frontiers->Smallest() : user_frontiers->Largest();
+    rocksdb::UserFrontier::Update(&frontier, type, out);
+  };
+  auto update_in_memory = [&](const rocksdb::UserFrontiersPtr& user_frontiers) {
+    if (need_in_memory_smallest) {
+      update(user_frontiers, rocksdb::UpdateUserValueType::kSmallest, &result.in_memory.smallest);
+    }
+    if (need_in_memory_largest) {
+      update(user_frontiers, rocksdb::UpdateUserValueType::kLargest, &result.in_memory.largest);
+    }
+  };
+
   std::lock_guard lock(mutex_);
   VLOG_WITH_PREFIX_AND_FUNC(5) << "immutable_chunks: " << AsString(immutable_chunks_);
 
   for (const auto& chunk : immutable_chunks_) {
-    if (!chunk->IsInManifest()) {
-      continue;
+    if (chunk->IsInManifest()) {
+      if (need_flushed) {
+        update(chunk->user_frontiers, rocksdb::UpdateUserValueType::kLargest, &result.flushed);
+      }
+    } else if (need_in_memory) {
+      update_in_memory(chunk->user_frontiers);
     }
-    rocksdb::UserFrontier::Update(
-        &chunk->user_frontiers->Largest(), rocksdb::UpdateUserValueType::kLargest, &result);
+  }
+  if (need_in_memory && mutable_chunk_ && mutable_chunk_->num_entries) {
+    update_in_memory(mutable_chunk_->user_frontiers);
   }
   return result;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+rocksdb::UserFrontierPtr VectorLSM<Vector, DistanceResult>::GetFlushedFrontier() {
+  return GetFrontiers(rocksdb::FrontierKinds{rocksdb::FrontierKind::kFlushed}).flushed;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+rocksdb::UserFrontierRange VectorLSM<Vector, DistanceResult>::GetInMemoryFrontiers() {
+  return GetFrontiers(rocksdb::FrontierKinds{
+      rocksdb::FrontierKind::kInMemorySmallest,
+      rocksdb::FrontierKind::kInMemoryLargest}).in_memory;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

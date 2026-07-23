@@ -78,4 +78,23 @@ YB_STRONGLY_TYPED_BOOL(SkipCorruptDataBlocksUnsafe);
 // modified the copied value, the original value would also change.
 using UserFrontierPtr = yb::clone_ptr<UserFrontier>;
 
+// A {smallest, largest} pair of frontiers.
+struct UserFrontierRange {
+  UserFrontierPtr smallest;
+  UserFrontierPtr largest;
+};
+
+// Which parts of FrontierInfo should be computed by GetFrontiers.
+YB_DEFINE_ENUM(FrontierKind, (kFlushed)(kInMemorySmallest)(kInMemoryLargest));
+using FrontierKinds = yb::EnumBitSet<FrontierKind>;
+
+// Aggregated frontier information that GetFrontiers computes atomically (under a single lock), so
+// that the flushed and in-memory views are mutually consistent.
+struct FrontierInfo {
+  // Frontier of the data that has already been flushed to disk.
+  UserFrontierPtr flushed;
+  // {smallest, largest} frontiers of the in-memory (not yet flushed) state.
+  UserFrontierRange in_memory;
+};
+
 } // namespace rocksdb

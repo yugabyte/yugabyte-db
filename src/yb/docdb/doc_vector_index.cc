@@ -431,8 +431,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.WaitForFlush();
   }
 
-  ConsensusFrontierPtr GetFlushedFrontier() override {
-    return down_cast<ConsensusFrontier>(lsm_.GetFlushedFrontier());
+  rocksdb::FrontierInfo GetFrontiers(rocksdb::FrontierKinds kinds) override {
+    return lsm_.GetFrontiers(kinds);
   }
 
   rocksdb::FlushAbility GetFlushAbility() override {
@@ -509,6 +509,26 @@ Result<Slice> DocVectorIndexReverseMappingReader::FetchYbctid(
 
   auto decoded = VERIFY_RESULT(dockv::EncodedDocVectorMetaValue::Decode(value));
   return decoded.IsTombstone() ? Slice{} : decoded.ybctid;
+}
+
+ConsensusFrontierPtr DocVectorIndex::GetFlushedFrontier() {
+  return down_cast<ConsensusFrontier>(
+      GetFrontiers(rocksdb::FrontierKinds{rocksdb::FrontierKind::kFlushed}).flushed);
+}
+
+rocksdb::UserFrontierRange DocVectorIndex::GetInMemoryFrontiers() {
+  return GetFrontiers(rocksdb::FrontierKinds{
+      rocksdb::FrontierKind::kInMemorySmallest,
+      rocksdb::FrontierKind::kInMemoryLargest}).in_memory;
+}
+
+rocksdb::UserFrontierPtr DocVectorIndex::GetInMemoryFrontier(rocksdb::UpdateUserValueType type) {
+  if (type == rocksdb::UpdateUserValueType::kSmallest) {
+    return GetFrontiers(rocksdb::FrontierKinds{
+        rocksdb::FrontierKind::kInMemorySmallest}).in_memory.smallest;
+  }
+  return GetFrontiers(rocksdb::FrontierKinds{
+      rocksdb::FrontierKind::kInMemoryLargest}).in_memory.largest;
 }
 
 bool DocVectorIndex::BackfillDone() {

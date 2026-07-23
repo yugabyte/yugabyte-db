@@ -273,8 +273,8 @@ class StackableDB : public DB {
     db_->GetLiveFilesMetaData(metadata);
   }
 
-  UserFrontierPtr GetFlushedFrontier() override {
-    return db_->GetFlushedFrontier();
+  FrontierInfo GetFrontiers(FrontierKinds kinds) override {
+    return db_->GetFrontiers(kinds);
   }
 
   Status ModifyFlushedFrontier(

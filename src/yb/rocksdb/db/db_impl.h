@@ -234,7 +234,7 @@ class DBImpl : public DB {
 
   void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) override;
 
-  UserFrontierPtr GetFlushedFrontier() override;
+  FrontierInfo GetFrontiers(FrontierKinds kinds) override;
 
   Status ModifyFlushedFrontier(
       UserFrontierPtr frontier,
@@ -243,11 +243,6 @@ class DBImpl : public DB {
   FlushAbility GetFlushAbility() override;
 
   UserFrontierPtr GetMutableMemTableFrontier(UpdateUserValueType type) override;
-
-  // Calculates specified frontier_type for all mem tables (active and immutable).
-  UserFrontierPtr CalcMemTableFrontier(UpdateUserValueType frontier_type) override;
-
-  UserFrontierRange CalcMemTableFrontiers() override;
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
