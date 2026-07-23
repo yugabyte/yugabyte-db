@@ -647,6 +647,49 @@ TEST_F(PgTxnTest, CleanupIntentsDuringShutdown) {
   ASSERT_EQ(sum, kExpectedSum);
 }
 
+// A large transaction is applied in several batches bounded by txn_max_apply_batch_records. The
+// first batch is applied synchronously during replicated apply, the rest by the async apply task.
+// This test flushes the regular DB after the first batch (so the persisted apply state points past
+// the first batch), lets the transaction apply fully, then flushes only the intents DB. After a
+// restart that skips the flush-on-shutdown, the records applied in the later batches live only in
+// the (lost) regular DB memtable while their intents are already gone, so they must still be
+// recoverable. All inserted records must be present.
+TEST_F_EX(PgTxnTest, ApplyLargeTransactionPartialFlush, PgTxnRF1Test) {
+  constexpr int kBatchRecords = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = kBatchRecords;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+
+  constexpr int kNumRows = kBatchRecords * 3 / 2;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (id INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+
+  // Block the apply task right before it applies the second batch. By the time the task loop is
+  // reached, the first batch has already been applied synchronously to the regular DB memtable.
+  SyncPoint::GetInstance()->SetCallBack(
+      "ApplyIntentsTask::Run:Loop", [this](void*) {
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test SELECT generate_series(1, $0), 0", kNumRows));
+  ASSERT_OK(conn.CommitTransaction());
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  // Flush only the intents DB; records applied after the regular flush stay in the regular DB
+  // memtable.
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kIntents));
+
+  DisableFlushOnShutdown(*cluster_, true);
+  ASSERT_OK(RestartCluster());
+
+  conn = ASSERT_RESULT(Connect());
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test"));
+  ASSERT_EQ(count, kNumRows);
+}
+
 TEST_F(PgTxnTest, FlushLargeTransaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 14;

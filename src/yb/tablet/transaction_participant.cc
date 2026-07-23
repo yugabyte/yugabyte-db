@@ -1877,7 +1877,8 @@ class TransactionParticipant::Impl
         for (const auto& [txn_id, pending_apply] : pending_applies) {
           auto it = transactions_.find(txn_id);
           if (it == transactions_.end()) {
-            LOG_WITH_PREFIX(INFO) << "Unknown transaction for pending apply: " << AsString(txn_id);
+            LOG_WITH_PREFIX(DFATAL)
+                << "Unknown transaction for pending apply: " << AsString(txn_id);
             continue;
           }
 
