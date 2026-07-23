@@ -5734,6 +5734,12 @@ AbortSubTransaction(void)
 	}
 
 	/*
+	 * YB: Clear buffered operations before AtSubAbort_Snapshot to avoid
+	 * flushing operations that will be rolled back anyway.
+	 */
+	YBCRollbackToSubTransaction(s->subTransactionId);
+
+	/*
 	 * We can skip all this stuff if the subxact failed before creating a
 	 * ResourceOwner...
 	 */
@@ -5784,8 +5790,6 @@ AbortSubTransaction(void)
 		AtEOSubXact_PgStat(false, s->nestingLevel);
 		AtSubAbort_Snapshot(s->nestingLevel);
 	}
-
-	YBCRollbackToSubTransaction(s->subTransactionId);
 
 	/*
 	 * Restore the upper transaction's read-only state, too.  This should be
