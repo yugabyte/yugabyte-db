@@ -178,6 +178,11 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
 
+  void SetActiveTableMetrics(
+      std::unordered_set<std::string> table_ids, MonoDelta lease_duration) override;
+
+  void ConfigurePrometheusMetricsOptions(MetricPrometheusOptions* options) const override;
+
   TSTabletManager* tablet_manager() const override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
 
@@ -638,6 +643,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   };
 
   ClusterConfig cluster_config_;
+
+  mutable std::mutex active_table_metrics_mutex_;
+  std::shared_ptr<const std::unordered_set<std::string>> active_table_ids_
+      GUARDED_BY(active_table_metrics_mutex_);
+  CoarseTimePoint active_table_metrics_lease_expiration_
+      GUARDED_BY(active_table_metrics_mutex_) = CoarseTimePoint::min();
 
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();

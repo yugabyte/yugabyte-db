@@ -14,7 +14,9 @@
 #pragma once
 
 #include <future>
+#include <string>
 #include <string_view>
+#include <unordered_set>
 
 #include "yb/ash/wait_state.h"
 
@@ -162,6 +164,9 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const = 0;
   virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const = 0;
+
+  virtual void SetActiveTableMetrics(
+      std::unordered_set<std::string> table_ids, MonoDelta lease_duration) = 0;
 
   virtual Result<pgwrapper::PGConn> CreateInternalPGConn(
       const std::string& database_name, std::string_view user = kDefaultInternalPgUser,

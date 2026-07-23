@@ -337,6 +337,22 @@ TEST_F(MetricsTest, AggregationTest) {
     CheckPreStoredAndScrapeTimeAttributes(writer, "table_2_id", attributes, attributes);
   }
   {
+    opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>(
+        std::initializer_list<std::string>{"table_1_id"});
+    std::stringstream filtered_output;
+    PrometheusWriter writer(&filtered_output, opts);
+    ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+    ASSERT_STR_CONTAINS(filtered_output.str(), R"#(table_id="table_1_id")#");
+    ASSERT_STR_NOT_CONTAINS(filtered_output.str(), R"#(table_id="table_2_id")#");
+
+    opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>();
+    std::stringstream empty_output;
+    PrometheusWriter empty_writer(&empty_output, opts);
+    ASSERT_OK(registry_.WriteForPrometheus(&empty_writer, opts));
+    ASSERT_STR_NOT_CONTAINS(empty_output.str(), "table_id=");
+    opts.active_table_ids.reset();
+  }
+  {
     // Check server level aggregation
     opts.priority_regex_string = "";
     PrometheusWriter writer(&output, opts);
