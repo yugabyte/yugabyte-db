@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
@@ -40,7 +41,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import play.mvc.Http.Request;
@@ -48,8 +48,9 @@ import play.test.Helpers;
 
 public class UniverseUpgradesManagementHandlerTest extends FakeDBApplication {
 
-  @InjectMocks private UniverseUpgradesManagementHandler handler;
+  private UniverseUpgradesManagementHandler handler;
 
+  @Mock private AuditService auditService;
   @Mock private UpgradeUniverseHandler v1Handler;
   @Mock private Commissioner commissioner;
   @Mock private RuntimeConfGetter confGetter;
@@ -58,20 +59,27 @@ public class UniverseUpgradesManagementHandlerTest extends FakeDBApplication {
 
   private Customer customer;
   private Universe universe;
+  private AutoCloseable mocks;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(customer);
     universe = ModelFactory.createUniverse(customer.getId());
-    MockitoAnnotations.openMocks(this);
+    mocks = MockitoAnnotations.openMocks(this);
+    handler =
+        new UniverseUpgradesManagementHandler(
+            auditService, v1Handler, confGetter, telemetryProviderService);
     // The v1 params mappers stamp creatingUser from the request context, so it must be populated.
     TestUtils.setFakeHttpContext(user);
   }
 
   @After
-  public void tearDown() {
+  public void tearDown() throws Exception {
     RequestContext.clean(Set.of(TokenAuthenticator.USER));
+    if (mocks != null) {
+      mocks.close();
+    }
   }
 
   private Request createRequest() {

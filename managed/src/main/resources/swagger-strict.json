@@ -2183,7 +2183,8 @@
             "RunScript",
             "CreateFileCollection",
             "DownloadFileCollection",
-            "DeleteFileCollection"
+            "DeleteFileCollection",
+            "UpdateClusters"
           ],
           "example" : "Create User",
           "readOnly" : true,
