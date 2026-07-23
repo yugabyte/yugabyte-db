@@ -20,6 +20,7 @@ static constexpr int kAutoDetectNumShardsPerTServer = -1;
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_bool(enable_ysql);
+DECLARE_bool(enable_placement_block_max_num_replicas);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(log_ysql_catalog_versions);
 DECLARE_bool(ysql_enable_pg_per_database_oid_allocator);

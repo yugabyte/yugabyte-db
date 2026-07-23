@@ -160,6 +160,12 @@ class LoadBalancerMockedBase : public YBTest {
     return cb_.HandleRemoveReplicas(out_tablet_id, out_from_ts);
   }
 
+  Result<bool> CanAddTabletToTabletServer(
+      const TabletId& tablet_id, const TabletServerId& to_ts,
+      const TabletServerId& from_ts = "") NO_THREAD_SAFETY_ANALYSIS {
+    return cb_.state_->CanAddTabletToTabletServer(tablet_id, to_ts, from_ts);
+  }
+
   Result<bool> HandleLeaderMoves(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts)
       NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {

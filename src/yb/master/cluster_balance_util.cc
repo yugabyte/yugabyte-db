@@ -14,6 +14,9 @@
 #include "yb/master/cluster_balance_util.h"
 
 #include <algorithm>
+#include <limits>
+#include <queue>
+#include <tuple>
 
 #include "yb/gutil/map-util.h"
 
@@ -395,6 +398,10 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
       }
     }
 
+    for (const auto& [cloud_info, replicas] : placement_to_replicas) {
+      tablet_meta.placement_replica_counts[cloud_info] = replicas.size();
+    }
+
     if (VLOG_IS_ON(3)) {
       std::stringstream out;
       out << "Dumping placement to replica map for tablet " << tablet_id;
@@ -412,23 +419,46 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
       VLOG(3) << out.str();
     }
 
+    std::set<TabletServerId> generic_removal_candidates;
     // Loop over the data and populate extra replica as well as missing replica information.
     for (const auto& [cloud_info, replicas] : placement_to_replicas) {
       const size_t min_num_replicas = placement_to_min_replicas[cloud_info];
+      const auto placement_block = std::find_if(
+          placement_.placement_blocks().begin(), placement_.placement_blocks().end(),
+          [&cloud_info](const auto& block) {
+            return cloud_equal_to()(block.cloud_info(), cloud_info);
+          });
+      DCHECK(placement_block != placement_.placement_blocks().end());
+      const size_t max_num_replicas = GetEffectiveMaxNumReplicas(
+          *placement_block, placement_.num_replicas());
       if (min_num_replicas > replicas.size()) {
         VLOG(3) << "Placement " << cloud_info.ShortDebugString() << " is under-replicated by"
                 << " " << min_num_replicas - replicas.size() << " count";
         // Placements that are under-replicated should be handled ASAP.
         tablet_meta.under_replicated_placements.insert(cloud_info);
+      }
+      if (replicas.size() > max_num_replicas) {
+        VLOG(3) << "Placement " << cloud_info.ShortDebugString() << " exceeds its maximum by "
+                << replicas.size() - max_num_replicas << " replicas";
+        for (const auto& [ts_uuid, _] : replicas) {
+          tablet_meta.over_max_replicated_tablet_servers.insert(ts_uuid);
+        }
       } else if (tablet_meta.is_over_replicated && min_num_replicas < replicas.size()) {
         // If this tablet is over-replicated, consider all the placements that have more than the
         // minimum number of tablets, as candidates for removing a replica.
         VLOG(3) << "Placement " << cloud_info.ShortDebugString() << " is over-replicated by"
                 << " " << replicas.size() - min_num_replicas << " count";
         for (const auto& [ts_uuid, _] : replicas) {
-          tablet_meta.over_replicated_tablet_servers.insert(ts_uuid);
+          generic_removal_candidates.insert(ts_uuid);
         }
       }
+    }
+    if (!tablet_meta.over_max_replicated_tablet_servers.empty()) {
+      tablet_meta.over_replicated_tablet_servers =
+          tablet_meta.over_max_replicated_tablet_servers;
+      tablets_over_max_placements_.insert(tablet_id);
+    } else {
+      tablet_meta.over_replicated_tablet_servers = std::move(generic_removal_candidates);
     }
   }
   tablet->GetLeaderStepDownFailureTimes(
@@ -539,7 +569,7 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
 }
 
 Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
-    const TabletId& tablet_id, const TabletServerId& to_ts) {
+    const TabletId& tablet_id, const TabletServerId& to_ts, const TabletServerId& from_ts) {
   const auto& ts_meta = per_ts_meta_[to_ts];
 
   // If this server is deemed DEAD then don't add it.
@@ -568,10 +598,35 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   }
 
   // If we ask to use placement information, check against it.
-  if (placement_.placement_blocks_size() > 0 && !GetValidPlacement(to_ts).has_value()) {
+  const auto to_placement = GetValidPlacement(to_ts);
+  if (placement_.placement_blocks_size() > 0 && !to_placement.has_value()) {
     YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 30, 4) << "tablet server " << to_ts << " has placement info "
         << "incompatible with tablet " << tablet_id << ". Not allowing it to host this tablet.";
     return false;
+  }
+
+  if (to_placement) {
+    auto projected_count = FindWithDefault(
+        per_tablet_meta_.at(tablet_id).placement_replica_counts, *to_placement, 0uz);
+    if (!from_ts.empty()) {
+      const auto from_placement = GetValidPlacement(from_ts);
+      if (from_placement && cloud_equal_to()(*from_placement, *to_placement)) {
+        DCHECK_GT(projected_count, 0);
+        --projected_count;
+      }
+    }
+    const auto placement_block = std::find_if(
+        placement_.placement_blocks().begin(), placement_.placement_blocks().end(),
+        [&to_placement](const auto& block) {
+          return cloud_equal_to()(block.cloud_info(), *to_placement);
+        });
+    DCHECK(placement_block != placement_.placement_blocks().end());
+    if (projected_count >= implicit_cast<size_t>(
+            GetEffectiveMaxNumReplicas(*placement_block, placement_.num_replicas()))) {
+      VLOG(4) << "Placement " << to_placement->ShortDebugString()
+              << " is at its maximum for tablet " << tablet_id;
+      return false;
+    }
   }
 
   auto& ts_global_meta = global_state_->per_ts_global_meta_.at(to_ts);
@@ -649,12 +704,12 @@ Result<bool> PerTableLoadState::CanSelectWrongPlacementReplicaToMove(
       // just try to move the load to the same placement. However, if the from_uuid was
       // previously invalidly placed, then we should ignore its placement.
       if (invalid_placement &&
-          VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid))) {
+          VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid, from_uuid))) {
         VLOG(3) << "Found destination " << to_uuid << " where replica can be added"
                 << ". Blacklisted tserver is also in an invalid placement";
         found_match = true;
       } else {
-        if (VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid))) {
+        if (VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid, from_uuid))) {
           // If we have placement information, we want to only pick the tablet if it's moving
           // to the same placement, so we guarantee we're keeping the same type of distribution.
           // Since we allow prefixes as well, we can still respect the placement of this tablet
@@ -718,8 +773,9 @@ Result<bool> PerTableLoadState::CanSelectWrongPlacementReplicaToMove(
       VLOG(3) << out.str();
     }
     for (const auto& to_uuid : sorted_load_) {
-      if (VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid))) {
-        *out_from_ts = *tablet_meta.wrong_placement_tablet_servers.begin();
+      const auto& from_uuid = *tablet_meta.wrong_placement_tablet_servers.begin();
+      if (VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid, from_uuid))) {
+        *out_from_ts = from_uuid;
         *out_to_ts = to_uuid;
         VLOG(3) << "Found " << to_uuid << " for tablet " << tablet_id << " source "
                 << *out_from_ts;
@@ -760,6 +816,7 @@ Status PerTableLoadState::RemoveReplica(const TabletId& tablet_id, const TabletS
   // It's possible that the tablet is over-replicated multiple times, but we won't remove multiple
   // replicas in one run anyways because we only iterate over the over-replicated tablets once.
   tablets_over_replicated_.erase(tablet_id_key);
+  tablets_over_max_placements_.erase(tablet_id_key);
   per_tablet_meta_[tablet_id].is_over_replicated = false;
   tablets_wrong_placement_.erase(tablet_id_key);
   SortLoad();
@@ -1065,14 +1122,21 @@ Result<TsTableLoadMap> CalculateOptimalLoadDistribution(
 
   // Find the (unique) placement block that each tserver belongs to.
   TServerAndLoadVector optimal_load_distribution;
+  std::vector<size_t> tserver_block_indexes;
+  std::vector<size_t> remaining_block_capacities;
   size_t slack = placement_info.num_replicas() * num_tablets;
   for (auto& block : placement_info.placement_blocks()) {
     auto block_replicas = block.min_num_replicas() * num_tablets;
     slack -= block_replicas;
+    const auto block_index = remaining_block_capacities.size();
+    remaining_block_capacities.push_back(
+        (GetEffectiveMaxNumReplicas(block, placement_info.num_replicas()) -
+         block.min_num_replicas()) * num_tablets);
     auto start_idx = optimal_load_distribution.size();
     for (const auto& ts : valid_tservers) {
       if (ts->MatchesCloudInfo(block.cloud_info())) {
         optimal_load_distribution.emplace_back(ts->permanent_uuid(), 0);
+        tserver_block_indexes.push_back(block_index);
       }
     }
     auto end_idx = optimal_load_distribution.size();
@@ -1089,51 +1153,32 @@ Result<TsTableLoadMap> CalculateOptimalLoadDistribution(
         current_loads, optimal_load_distribution, start_idx, end_idx, block_replicas);
   }
 
-  // If there is slack, spread it across the least loaded tservers.
+  // If there is slack, spread it across the least loaded tservers without exceeding a block max.
   if (slack > 0) {
-    // Sort tservers by increasing load.
-    std::sort(optimal_load_distribution.begin(), optimal_load_distribution.end(),
-        [](const auto& a, const auto& b) { return a.second < b.second; });
-
-    // For some geometric intuition, picture the sorted tablet load of the tservers as a bar graph:
-    //          *
-    //    *  *  *
-    // *  *  *  *
-    // T0 T1 T2 T3
-    //
-    // The slack we want to add is like water: it should be added to the least loaded tservers.
-    // The slack will always be distributed on a prefix of the sorted list because the tablet loads
-    // are sorted. Computationally, we want to iterate from left to right and increase the load of
-    // all tservers seen so far until we have either:
-    //  1. Added all the slack OR
-    //  2. Increased the load of all tservers seen so far to the load of the current tserver.
-    //
-    // The above computation is equivalent to the following calculation:
-    //  i * load = the area of the rectangle from the tserver 0 to tserver i-1. It is the total load
-    //             those tservers could be assigned without exceeding the load on tserver i.
-    //  prefix_load = the ACTUAL sum of the load of tservers 0 to i-1.
-    //
-    // If i * load > prefix_load + slack, then we can put both the existing load of tservers 0 to
-    // i-1 PLUS all the slack into this rectangle.
-    // In the above chart, if 2 <= slack <= 4 then the algorithm halts at i == 3 because we can add
-    // the slack to T0, T1, and T2 without their load exceeding T3's load of 3.
-    // However if slack is 5 or greater than we cannot fit these 5 additional tablet replicas into
-    // this rectangle, which means we cannot evenly distribute slack across T0, T1, and T2 without
-    // their load exceeding that of T3's. So the loop iterates past i == 3.
-    size_t prefix_load = 0, i = 0;
-    for (; i < optimal_load_distribution.size(); ++i) {
-      auto& [_, load] = optimal_load_distribution[i];
-      if (i * load >= prefix_load + slack) {
-        // If the tservers in the prefix [0,i-1] can take all the slack without exceeding the load
-        // on the tserver i, we can stop.
-        break;
-      }
-      prefix_load += load;
+    using Candidate = std::tuple<size_t, size_t, size_t>;
+    std::priority_queue<Candidate, std::vector<Candidate>, std::greater<Candidate>> candidates;
+    for (size_t i = 0; i != optimal_load_distribution.size(); ++i) {
+      candidates.emplace(
+          optimal_load_distribution[i].second,
+          std::numeric_limits<size_t>::max() -
+              FindWithDefault(current_loads, optimal_load_distribution[i].first, 0),
+          i);
     }
-    // The load of each tserver in the prefix after distributing slack is at least the load on
-    // tserver i-1. Otherwise, we would have stopped earlier. So the minimum loads are still
-    // respected.
-    DistributeReplicas(current_loads, optimal_load_distribution, 0, i, prefix_load + slack);
+    while (slack > 0 && !candidates.empty()) {
+      const auto [load, current_load_rank, index] = candidates.top();
+      candidates.pop();
+      const auto block_index = tserver_block_indexes[index];
+      if (remaining_block_capacities[block_index] == 0 || load >= num_tablets) {
+        continue;
+      }
+      ++optimal_load_distribution[index].second;
+      --remaining_block_capacities[block_index];
+      --slack;
+      candidates.emplace(load + 1, current_load_rank, index);
+    }
+    if (slack > 0) {
+      return STATUS(InvalidArgument, "Placement maximums cannot accommodate all tablet replicas");
+    }
   }
 
   TsTableLoadMap result;

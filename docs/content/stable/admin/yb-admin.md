@@ -1546,7 +1546,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *placement-info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Optionally, after each placement block, you can also specify a minimum replica count separated by a colon. This count indicates how many minimum replicas of each tablet we want in that placement block. Its default value is 1. It is not recommended to repeat the same placement multiple times but instead specify the total count after the colon. However, if you specify a placement multiple times, the total count from all mentions is taken.
+* *placement-info*: Comma-delimited list of placements in the form *cloud*.*region*.*zone*`[:min[:max]]`. The minimum defaults to 1. The optional maximum limits how many replicas of one tablet can be placed in the block; when omitted, it defaults to the replication factor. It is not recommended to repeat the same placement multiple times. Repeated placements sum their explicit minimums and maximums; if any occurrence omits the maximum, the aggregate maximum is omitted.
 * *replication-factor*: The number of replicas for each tablet. This value should be greater than or equal to the total of replica counts specified in *placement-info*.
 * *placement-id*: The identifier of the primary cluster, which can be any unique string. Optional; if not set, a randomly-generated ID is used.
 
@@ -1556,14 +1556,14 @@ yb-admin \
 ./bin/yb-admin \
     --master_addresses $MASTER_RPC_ADDRS \
     modify_placement_info  \
-    aws.us-west.us-west-2a:2,aws.us-west.us-west-2b:2,aws.us-west.us-west-2c 5
+    aws.us-west.us-west-2a:1:2,aws.us-west.us-west-2b:1:2,aws.us-west.us-west-2c:1:2 5
 ```
 
-This will place a minimum of:
+This permits:
 
-1. 2 replicas in aws.us-west.us-west-2a
-2. 2 replicas in aws.us-west.us-west-2b
-3. 1 replica in aws.us-west.us-west-2c
+1. Between 1 and 2 replicas in aws.us-west.us-west-2a
+2. Between 1 and 2 replicas in aws.us-west.us-west-2b
+3. Between 1 and 2 replicas in aws.us-west.us-west-2c
 
 You can verify the new placement information by running the following `curl` command:
 
