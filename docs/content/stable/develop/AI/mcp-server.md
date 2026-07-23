@@ -18,7 +18,8 @@ With the YugabyteDB MCP Server, developers can:
 
 - Explore YugabyteDB data using natural language prompts
 - Generate AI-powered visualizations from query results
-- Enable LLMs to safely issue read-only SQL queries
+- Enable LLMs to safely issue read-only SQL queries (and optionally guarded writes)
+- Map authenticated users to database roles via OIDC identity mapping
 - Integrate instantly with tools like Claude Desktop, Cursor, and Windsurf
 
 Learn more about the YugabyteDB MCP Server:
@@ -29,28 +30,67 @@ Learn more about the YugabyteDB MCP Server:
 - [Build a Retail Agent with MCP Toolbox, YugabyteDB, and Google ADK](https://www.yugabyte.com/blog/build-a-retail-agent/)
 - [How to Integrate the YugabyteDB MCP Server with Visual Studio Code](https://www.yugabyte.com/blog/integrate-yugabytedb-mcp-server-with-vs-code/)
 
+## Example: Claude Desktop
+
 This tutorial walks you through using the YugabyteDB MCP Server to allow an AI application to access, query, analyze, and interpret data in your YugabyteDB database, using only natural language prompts.
 
 The tutorial uses a YugabyteDB cluster running the [Northwind dataset](/stable/develop/sample-data/northwind/). You connect [Claude](https://claude.com/product/overview) to this database using MCP, and then explore it using natural language prompts.
 
-## Prerequisites
+### Prerequisites
 
 - YugabyteDB {{<release "2025.2">}} or later
 - Python 3.10+
-- [uv](https://docs.astral.sh/uv/) for dependency management
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip / pipx
 - [Claude Desktop](https://claude.ai/download)
 
-## Set up YugabyteDB MCP Server
+### MCP tools
 
-Clone the repository and install dependencies:
+The server exposes three tools that MCP clients can call:
+
+| Tool | Description |
+| ---- | ----------- |
+| `summarize_database` | Lists tables in a schema (default `public`) with columns and row counts. Read-only. |
+| `run_read_only_query` | Executes a SQL query inside `BEGIN READ ONLY` and returns rows as JSON. Read-only. |
+| `run_write_query` | Runs INSERT/UPDATE/DELETE/MERGE/TRUNCATE/DDL behind a guardrail blocklist. Destructive; **disabled by default**. Enable with `--enable-write-query` or `YB_MCP_ENABLE_WRITE_QUERY=true`. |
+
+All three tools accept an optional `requested_role` parameter. When [OIDC is enabled](#oidc-and-per-user-database-roles) and the caller's identity claim resolves to multiple mapped database roles (for example, Cognito groups or Keycloak realm roles), the agent can pass `requested_role` to pick one. The server clamps the choice to the JWT's mapped candidates; the agent cannot SET ROLE to a role that is not in the token.
+
+Claude Desktop surfaces read-only badges on the read tools and a confirmation prompt before each `run_write_query` call (`destructiveHint: true`).
+
+### Set up YugabyteDB MCP Server
+
+Install and run the server using one of the following options.
+
+**Option 1: `uvx` (no install)**
+
+```sh
+uvx yugabytedb-mcp-server --help
+```
+
+**Option 2: Install the package**
+
+```sh
+pipx install yugabytedb-mcp-server
+# or: uv tool install yugabytedb-mcp-server
+# or: pip install yugabytedb-mcp-server
+
+yugabytedb-mcp --help
+```
+
+**Option 3: From source (development)**
 
 ```sh
 git clone https://github.com/yugabyte/yugabytedb-mcp-server.git
 cd yugabytedb-mcp-server
 uv sync
+uv run yugabytedb-mcp --help
 ```
 
-## Set up YugabyteDB
+{{< note title="Note" >}}
+There is no longer a `src/server.py` entry point. Always invoke the server via the `yugabytedb-mcp` (or `yugabytedb-mcp-server`) console script.
+{{< /note >}}
+
+### Set up YugabyteDB
 
 1. [Download and install](https://download.yugabyte.com) YugabyteDB {{<release "2025.2">}} or later.
 
@@ -62,22 +102,21 @@ uv sync
 
 1. [Install the Northwind sample database](/stable/develop/sample-data/northwind/#install-the-northwind-sample-database).
 
-## Connect Claude to the server
+### Connect Claude to the server
 
 1. In Claude Desktop, navigate to **Settings > Developer > Edit Config**.
 
-1. Add a new mcpServer entry in the `claude_desktop_config.json`:
+1. Add a new `mcpServers` entry in the `claude_desktop_config.json`.
+
+    **Via `uvx` (no install):**
 
     ```json
     {
         "mcpServers": {
             "yugabytedb-mcp": {
-                "command": "/Users/<username>/.local/bin/uv",
+                "command": "uvx",
                 "args": [
-                    "--directory",
-                    "/path/to/cloned/yugabytedb-mcp-server/",
-                    "run",
-                    "src/server.py"
+                    "yugabytedb-mcp-server"
                 ],
                 "env": {
                     "YUGABYTEDB_URL": "dbname=northwind host=localhost port=5433 user=yugabyte password=yugabyte"
@@ -87,11 +126,33 @@ uv sync
     }
     ```
 
-    Replace the path, and database user and password as appropriate.
+    **Via an installed script** (after `pipx install` or `uv tool install`):
+
+    ```json
+    {
+        "mcpServers": {
+            "yugabytedb-mcp": {
+                "command": "yugabytedb-mcp",
+                "env": {
+                    "YUGABYTEDB_URL": "dbname=northwind host=localhost port=5433 user=yugabyte password=yugabyte"
+                }
+            }
+        }
+    }
+    ```
+
+    Replace the database user and password as appropriate.
+
+    Configuration file locations:
+
+    - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+    - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
 1. Restart Claude to apply changes.
 
-## Prompt 1: Summarize the database
+The same configuration works with **Cursor** (Settings → MCP) and **Windsurf** (Settings → Cascade → MCP Servers).
+
+### Prompt 1: Summarize the database
 
 Prompt:
 
@@ -143,7 +204,7 @@ inventory tracking, employee territories, and supplier relationships. Would
 you like me to run any specific queries or analysis on this data?
 ```
 
-## Prompt 2: Build a dashboard
+### Prompt 2: Build a dashboard
 
 Prompt:
 
@@ -157,7 +218,7 @@ Build a dashboard with 3 visualizations:
 
 Claude does the following:
 
-- Executes safe, read-only SQL queries.
+- Calls `run_read_only_query` with safe, read-only SQL.
 - Aggregates and structures the results.
 - Creates an interactive dashboard for the results.
 
@@ -188,8 +249,27 @@ All data is pulled directly from your Northwind database and shows real sales pa
 over the ~2-year period covered by the dataset.
 ```
 
+## OIDC and per-user database roles
+
+For shared or remote deployments (HTTP transport), you can enable OIDC (AWS Cognito or a generic OIDC provider) so each authenticated caller runs SQL under their own YugabyteDB role via `SET ROLE`.
+
+Identity mapping mirrors YSQL's native OIDC → role mapping (`ysql_ident_conf_csv` / `matching_claim_key`):
+
+| Environment variable | Purpose |
+| -------------------- | ------- |
+| `YB_MCP_IDENTITY_CLAIM` | JWT claim used as the identity (default `email`). Supports dotted paths (for example, `realm_access.roles`) and Cognito-style keys (`cognito:groups`). |
+| `YB_MCP_IDENTITY_TRANSFORM` | `none` or `strip_domain` when no map file is set. |
+| `YB_MCP_IDENTITY_MAP` | Path to a `pg_ident.conf`-style map file (the allowlist of claim value → DB role). |
+| `YB_MCP_IDENTITY_MAP_NAME` | Named map inside the file to apply (default `default`). |
+| `YB_MCP_REQUIRE_ACCESS_TOKEN` | Cognito-only. When `true`, reject tokens with `token_use` other than `access`. Default `false` for backward compatibility. |
+
+When `YB_MCP_IDENTITY_MAP` is set, unmapped claim values are rejected (`IdentityError`) — the map is the allowlist. JWT audience validation is always on for Cognito and OIDC.
+
+For full provider setup, map file format, worked examples (Cognito, Keycloak, Azure AD), and a migration checklist, see [OIDC.md](https://github.com/yugabyte/yugabytedb-mcp-server/blob/main/OIDC.md) in the MCP server repository.
+
 ## Read more
 
 - [YugabyteDB MCP Server repository](https://github.com/yugabyte/yugabytedb-mcp-server)
+- [OIDC authentication and identity mapping](https://github.com/yugabyte/yugabytedb-mcp-server/blob/main/OIDC.md)
 - [Unlock AI-Driven Data Experiences with YugabyteDB MCP Server on AWS Marketplace](https://www.yugabyte.com/blog/yugabytedb-mcp-server-on-aws-marketplace/)
 - [Architecting GenAI and RAG Apps with YugabyteDB](https://www.yugabyte.com/ai/)
