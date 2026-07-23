@@ -68,6 +68,7 @@ DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 
+DECLARE_int32(TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_pause_at_start_of_setup_replication_group_ms);
 DECLARE_string(TEST_skip_async_insert_packed_schema_for_tablet_id);
@@ -4736,6 +4737,38 @@ TEST_F(XClusterDDLReplicationTest, ReconnectAfterTargetPostgresRestart) {
   ASSERT_OK(producer_conn_->Execute("INSERT INTO test_table VALUES (1, 10)"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{"test_table"}));
+}
+
+// Regression for the SchedulePostTabletCreationTasks check-then-act race. Concurrent heartbeat
+// threads can each schedule AddTableToXClusterTargetTask for the same multi-tablet table, and
+// the duplicates fail with "N:1 replication topology not supported", aborting the target CREATE.
+TEST_F(XClusterDDLReplicationTest, CreateMultiTabletTableDoesNotScheduleDuplicateTasks) {
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.replication_factor = 3;
+  ASSERT_OK(SetUpClustersAndReplication(params));
+  ASSERT_OK(MoveDdlQueueTabletLeaderToPgProxy(consumer_cluster_));
+
+  // The normal check-then-act window is tiny, so we widen it with a delay to make the real
+  // concurrent heartbeat race reproduce reliably.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms) =
+      3000;
+
+  StringWaiterLogSink n1_error_sink("N:1 replication topology not supported");
+
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE many_tablets (key int PRIMARY KEY) SPLIT INTO 16 TABLETS;"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        SCHECK(
+            !n1_error_sink.IsEventOccurred(), IllegalState,
+            "Duplicate AddTableToXClusterTargetTask scheduled for the target table: hit 'N:1 "
+            "replication topology not supported'.");
+        return VERIFY_RESULT(consumer_conn_->FetchRow<bool>(
+            "SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = 'many_tablets')"));
+      },
+      180s * kTimeMultiplier, "CREATE TABLE replicates to target"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 }
 
 }  // namespace yb
