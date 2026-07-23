@@ -30,11 +30,14 @@
 // under the License.
 //
 
+#include <algorithm>
+#include <future>
 #include <map>
 #include <string>
 #include <utility>
 
 #include "yb/util/flags.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
@@ -46,6 +49,7 @@
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
@@ -73,12 +77,15 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/faststring.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
@@ -92,6 +99,8 @@ DECLARE_int32(ht_lease_duration_ms);
 DECLARE_int32(replication_factor);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(catalog_manager_report_batch_size);
+DECLARE_string(TEST_block_alter_table);
+DECLARE_bool(TEST_fail_alter_table_sys_catalog_write);
 
 METRIC_DECLARE_counter(sys_catalog_peer_write_count);
 
@@ -113,6 +122,10 @@ using std::vector;
 using std::string;
 using std::max;
 using tablet::TabletPeer;
+
+MATCHER_P(EqualsCode, expected_status, "") {
+  return arg.code() == expected_status.code();
+}
 
 class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
                        public ::testing::WithParamInterface<int> {
@@ -273,6 +286,28 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
     return GetSysCatalogMetric(METRIC_sys_catalog_peer_write_count);
   }
 
+  Result<bool> TableHasColumn(const YBTableName& table_name, const string& column_name) {
+    YBSchema schema;
+    dockv::PartitionSchema partition_schema;
+    RETURN_NOT_OK(client_->GetTableSchema(table_name, &schema, &partition_schema));
+    return std::ranges::any_of(schema.columns(), [&](const auto& column) {
+      return column.name() == column_name;
+    });
+  }
+
+  Result<bool> TableNameResolves(const YBTableName& table_name) {
+    YBSchema schema;
+    dockv::PartitionSchema partition_schema;
+    Status s = client_->GetTableSchema(table_name, &schema, &partition_schema);
+    if (s.ok()) {
+      return true;
+    }
+    if (s.IsNotFound()) {
+      return false;
+    }
+    return s;
+  }
+
  protected:
   virtual int num_replicas() const { return 1; }
 
@@ -298,10 +333,17 @@ class ReplicatedAlterTableTest : public AlterTableTest {
   virtual int num_replicas() const override { return 3; }
 };
 
+// Subclass for the tests that target the sys-catalog write step of an alter. The tablet-report
+// batch size that parameterizes AlterTableTest does not affect these tests, so they run at a
+// single value.
+class AlterTableSysCatalogWriteTest : public AlterTableTest {};
+
 const YBTableName AlterTableTest::kTableName(YQL_DATABASE_CQL, "my_keyspace", "fake-table");
 
 INSTANTIATE_TEST_CASE_P(BatchSize, AlterTableTest, ::testing::Values(1, 10));
 INSTANTIATE_TEST_CASE_P(BatchSize, ReplicatedAlterTableTest, ::testing::Values(1, 10));
+INSTANTIATE_TEST_CASE_P(
+    SingleBatchSize, AlterTableSysCatalogWriteTest, ::testing::Values(1));
 
 // Simple test to verify that the "alter table" command sent and executed
 // on the TS handling the tablet of the altered table.
@@ -613,7 +655,212 @@ TEST_P(AlterTableTest, TestRenameTableAndAdd) {
   ASSERT_OK(table_alterer->RenameTo(new_name)
             ->Alter());
 
+  // After a successful rename the old name must not resolve. The commit erased it.
+  ASSERT_FALSE(ASSERT_RESULT(TableNameResolves(kTableName)));
+
   ASSERT_OK(AddNewI32Column(new_name, "new"));
+}
+
+// An ALTER TABLE whose sys-catalog write fails must surface an error instead of wedging the
+// master. If AlterTable held CatalogManager::mutex_ across the write, the failure-path rollback
+// would re-acquire that same non-recursive mutex and self-deadlock, so the write must run with
+// mutex_ released.
+//
+// This is the rename variant. The new name is reserved under mutex_ before the write. After the
+// injected failure the reservation must be rolled back, and the old name must still resolve
+// because only a commit erases it.
+TEST_P(AlterTableSysCatalogWriteTest, TestRenameSysCatalogWriteFailureDoesNotDeadlock) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_alter_table_sys_catalog_write) = true;
+
+  YBTableName new_name(kTableName.namespace_type(), kTableName.namespace_name(), "renamed-table");
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  Status s = table_alterer->RenameTo(new_name)->timeout(MonoDelta::FromSeconds(30))->Alter();
+  // The injected write failure must surface as an error instead of hanging.
+  ASSERT_NOK(s);
+
+  // Confirm mutex_ is not wedged. A subsequent alter acquires the same mutex and must complete.
+  // The old name must still resolve because a failure never erases it, and the reserved new name
+  // must be rolled back.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_alter_table_sys_catalog_write) = false;
+  ASSERT_OK(AddNewI32Column(kTableName, "added-after-rename-failure"));
+
+  ASSERT_TRUE(ASSERT_RESULT(TableNameResolves(kTableName)));
+  ASSERT_FALSE(ASSERT_RESULT(TableNameResolves(new_name)));
+}
+
+// The non-rename variant of the sys-catalog write-failure test above. A column add reserves no
+// name, so its failure path must not touch the by-name map. A rollback that erases a name anyway
+// hits the table's live entry and drops its mapping. The test verifies that the table stays
+// reachable by its original name after an injected write failure.
+TEST_P(AlterTableSysCatalogWriteTest, TestAddColumnSysCatalogWriteFailureKeepsNameMapping) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_alter_table_sys_catalog_write) = true;
+
+  Status s = AddNewI32Column(kTableName, "doomed-column", MonoDelta::FromSeconds(30));
+  ASSERT_NOK(s);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_alter_table_sys_catalog_write) = false;
+
+  // The live mapping must be intact. A name lookup and a subsequent alter both succeed.
+  ASSERT_TRUE(ASSERT_RESULT(TableNameResolves(kTableName)));
+  ASSERT_OK(AddNewI32Column(kTableName, "added-after-add-failure"));
+}
+
+// The three tests below open the window that the sys-catalog write for an alter runs in.
+// FLAGS_TEST_block_alter_table = "sys_catalog_write" parks the alter after it has released
+// CatalogManager::mutex_ and before it starts the write, holding the table's COW write lock.
+// That is the exact state a concurrent RPC observes while a real write is in flight. Each test
+// drives client operations through the open window and asserts what they see.
+
+// Catalog operations must not block while an alter's sys-catalog write is in flight, because
+// mutex_ is released across the write. While the alter is parked, a schema read of the altering
+// table returns its committed schema without the new column, a listing shows the table once, and
+// a CREATE of an unrelated table completes. Each of these operations acquires mutex_, so if an
+// alter ever again held mutex_ across the write, they would block behind the parked alter and
+// this test would time out.
+TEST_P(AlterTableSysCatalogWriteTest, TestCatalogOpsProceedWhileAlterWritesSysCatalog) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_alter_table) = "sys_catalog_write";
+  StringWaiterLogSink parked_sink("Blocking AlterTableWithBatchTracker");
+
+  auto alter_future = std::async(std::launch::async, [&] {
+    return AddNewI32Column(kTableName, "column-added-during-park");
+  });
+  auto release_alter = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_alter_table) = "";
+  });
+  ASSERT_OK(parked_sink.WaitFor(30s * kTimeMultiplier));
+
+  ASSERT_FALSE(ASSERT_RESULT(TableHasColumn(kTableName, "column-added-during-park")));
+
+  auto tables = ASSERT_RESULT(client_->ListTables());
+  ASSERT_EQ(1, std::ranges::count_if(tables, [](const YBTableName& name) {
+    return name.table_name() == kTableName.table_name();
+  }));
+
+  YBTableName other_name(
+      kTableName.namespace_type(), kTableName.namespace_name(), "created-during-park");
+  ASSERT_OK(CreateTable(other_name));
+
+  // The alter is still parked, so the operations above overlapped its write window instead of
+  // running after it completed.
+  ASSERT_EQ(alter_future.wait_for(0s), std::future_status::timeout);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_alter_table) = "";
+  ASSERT_OK(alter_future.get());
+  ASSERT_TRUE(ASSERT_RESULT(TableHasColumn(kTableName, "column-added-during-park")));
+}
+
+// A YCQL rename reserves the new name in the by-name map before mutex_ is released and erases
+// the old name only after the in-memory commit. While the rename is parked before its write,
+// both names resolve to the same table, a CREATE targeting either name is rejected with
+// AlreadyPresent, and a listing shows the table exactly once, under its committed old name.
+// After the rename commits, the old name is free and a CREATE reusing it succeeds.
+TEST_P(AlterTableSysCatalogWriteTest, TestRenameWindowBothNamesResolve) {
+  YBTableName new_name(
+      kTableName.namespace_type(), kTableName.namespace_name(), "renamed-during-park");
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_alter_table) = "sys_catalog_write";
+  StringWaiterLogSink parked_sink("Blocking AlterTableWithBatchTracker");
+
+  auto rename_future = std::async(std::launch::async, [&] {
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    return table_alterer->RenameTo(new_name)->Alter();
+  });
+  auto release_alter = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_alter_table) = "";
+  });
+  ASSERT_OK(parked_sink.WaitFor(30s * kTimeMultiplier));
+
+  // The reservation that blocks CREATE collisions is an ordinary by-name map entry, and name
+  // lookups read through it, so the new name resolves before the rename commits. If the rename
+  // fails, the rollback removes the reservation and the new name stops resolving.
+  auto info_by_old_name = ASSERT_RESULT(client_->GetYBTableInfo(kTableName));
+  auto info_by_new_name = ASSERT_RESULT(client_->GetYBTableInfo(new_name));
+  ASSERT_EQ(info_by_old_name.table_id, info_by_new_name.table_id);
+
+  // A lookup through the reservation returns committed table state. The returned identifier
+  // carries the committed old name, not the uncommitted new one.
+  ASSERT_EQ(kTableName.table_name(), info_by_new_name.table_name.table_name());
+
+  // The listing iterates the by-id map and reports committed names, so the renaming table shows
+  // up exactly once, under the old name.
+  auto tables = ASSERT_RESULT(client_->ListTables());
+  ASSERT_EQ(1, std::ranges::count_if(tables, [](const YBTableName& name) {
+    return name.table_name() == kTableName.table_name();
+  }));
+  ASSERT_EQ(0, std::ranges::count_if(tables, [&](const YBTableName& name) {
+    return name.table_name() == new_name.table_name();
+  }));
+
+  ASSERT_THAT(CreateTable(new_name), EqualsCode(STATUS(AlreadyPresent, "")));
+  ASSERT_THAT(CreateTable(kTableName), EqualsCode(STATUS(AlreadyPresent, "")));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_alter_table) = "";
+  ASSERT_OK(rename_future.get());
+
+  // The commit erased the old name and the table stays reachable under the new one, so the old
+  // name is free for a fresh table.
+  ASSERT_TRUE(ASSERT_RESULT(TableNameResolves(new_name)));
+  ASSERT_OK(CreateTable(kTableName));
+}
+
+// A DROP that arrives through the old name while the rename is parked resolves the table and
+// then waits on its COW write lock. The drop must not complete while the rename holds that
+// lock, and once the rename commits the drop deletes the renamed table, so afterwards neither
+// name resolves. The rename's post-commit erase removes the old name and the drop removes the
+// new name, so this interleaving leaves nothing behind in the by-name map.
+//
+// TODO: The delete path resolves the name before it takes any lock and never
+// revalidates it, so the drop deletes the renamed table through its stale old name. A fix that
+// revalidates the name once the delete holds the table lock would reject the stale old name,
+// and the assertions below should flip with it.
+TEST_P(AlterTableSysCatalogWriteTest, TestDropByOldNameWaitsForRenameCommit) {
+  YBTableName new_name(
+      kTableName.namespace_type(), kTableName.namespace_name(), "renamed-before-drop");
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_alter_table) = "sys_catalog_write";
+  StringWaiterLogSink parked_sink("Blocking AlterTableWithBatchTracker");
+  StringWaiterLogSink drop_started_sink("Servicing DeleteTable request");
+
+  auto rename_future = std::async(std::launch::async, [&] {
+    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    // The drop deletes the table as soon as the rename commits, so waiting for the new schema to
+    // reach the tablets cannot succeed. Return once the master has committed the rename.
+    return table_alterer->RenameTo(new_name)->wait(false)->Alter();
+  });
+  std::future<Status> drop_future;  // Assigned once the rename is parked.
+  auto release_alter = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_alter_table) = "";
+  });
+  ASSERT_OK(parked_sink.WaitFor(30s * kTimeMultiplier));
+
+  drop_future = std::async(std::launch::async, [&] {
+    return client_->DeleteTable(kTableName);
+  });
+
+  // Once the master logs the drop it resolves the old name within the same handler, with mutex_
+  // free, and then waits on the COW write lock that the parked rename holds. Give it a moment to
+  // prove it stays blocked.
+  ASSERT_OK(drop_started_sink.WaitFor(30s * kTimeMultiplier));
+  ASSERT_EQ(drop_future.wait_for(1s * kTimeMultiplier), std::future_status::timeout);
+
+  // The drop waits on the COW write lock without holding mutex_. An unrelated CREATE acquires
+  // mutex_ and completes while the drop stays blocked.
+  YBTableName probe_name(
+      kTableName.namespace_type(), kTableName.namespace_name(), "created-during-blocked-drop");
+  ASSERT_OK(CreateTable(probe_name));
+  ASSERT_EQ(drop_future.wait_for(0s), std::future_status::timeout);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_alter_table) = "";
+  ASSERT_OK(rename_future.get());
+  ASSERT_OK(drop_future.get());
+
+  ASSERT_FALSE(ASSERT_RESULT(TableNameResolves(kTableName)));
+  ASSERT_FALSE(ASSERT_RESULT(TableNameResolves(new_name)));
+
+  // A leftover entry in the by-name map would fail a CREATE with AlreadyPresent. Both creates
+  // succeeding proves the rename erased the old name and the drop erased the new one.
+  ASSERT_OK(CreateTable(kTableName));
+  ASSERT_OK(CreateTable(new_name));
 }
 
 // Test restarting a tablet server several times after various
