@@ -18,8 +18,15 @@ else
         sudo "$pkg_mgr" install -y "${packages[@]}"
         ;;
       apt)
-        sudo apt-get update
-        sudo apt-get install -y "${packages[@]}"
+        # Run non-interactively: apt-get configures any pending package (e.g. a half-configured
+        # grub-pc/shim-signed) and an interactive debconf prompt would block provisioning forever.
+        # `sudo env` sets the frontend regardless of sudoers policy; --force-conf* keeps existing
+        # config files.
+        sudo env DEBIAN_FRONTEND=noninteractive apt-get update
+        sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+          -o Dpkg::Options::="--force-confdef" \
+          -o Dpkg::Options::="--force-confold" \
+          "${packages[@]}"
         ;;
       zypper)
         sudo zypper install -y "${packages[@]}"
