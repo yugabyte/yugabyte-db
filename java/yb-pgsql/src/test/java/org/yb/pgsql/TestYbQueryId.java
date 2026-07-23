@@ -374,6 +374,12 @@ public class TestYbQueryId extends BasePgSQLTest {
     // After granting pg_read_all_stats, queryid is visible for all entries.
     suStmt.execute("GRANT pg_read_all_stats TO user1");
 
+    // Reconnect so the new backend reads the updated role membership; an open
+    // session may not see a shared-role grant under per-database catalog versions.
+    user1Connection = getConnectionBuilder().withDatabase("db1").
+                          withUser("user1").withPassword("password123").connect();
+    user1Stmt = user1Connection.createStatement();
+
     List<List<Object>> user1RsList;
     try (ResultSet rs = user1Stmt.executeQuery(pgStatsQuery1)) {
       user1RsList = resultSetToList(rs);
@@ -383,6 +389,11 @@ public class TestYbQueryId extends BasePgSQLTest {
     assertEquals(suRsList, user1RsList);
 
     suStmt.execute("GRANT pg_read_all_stats TO user2");
+
+    // Reconnect user2 for the same reason as user1 above.
+    user2Connection = getConnectionBuilder().withDatabase("db3").
+                          withUser("user2").withPassword("password123").connect();
+    user2Stmt = user2Connection.createStatement();
 
     List<List<Object>> user2RsList;
     try (ResultSet rs = user2Stmt.executeQuery(pgStatsQuery1)) {
