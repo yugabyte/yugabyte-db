@@ -57,12 +57,11 @@ YB_DEFINE_ENUM(ReadTimeAction, (ENSURE_IS_SET)(RESET));
 YB_STRONGLY_TYPED_BOOL(IsLocalObjectLockOp);
 YB_STRONGLY_TYPED_BOOL(NonTransactionalWrites);
 YB_STRONGLY_TYPED_BOOL(SkipReadTimeOptions);
+YB_STRONGLY_TYPED_BOOL(IsCatalogSnapshot);
 
 struct TxnReadPoint {
   uint64_t txn; // Transaction serial number
   uint64_t read_time_serial_no; // Read time serial number
-  bool is_clamped; // Whether the uncertainty window is clamped
-  std::optional<uint64_t> follower_read_staleness_ms; // Follower read time staleness
 };
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
@@ -143,7 +142,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status SetupPerformOptions(SetupPerformOptionsAccessorTag tag,
       tserver::PgPerformOptionsPB& options, NonTransactionalWrites ops_has_non_transactional_writes,
       std::optional<ReadTimeAction> read_time_action = {},
-      SkipReadTimeOptions skip_read_time_options = SkipReadTimeOptions::kFalse);
+      SkipReadTimeOptions skip_read_time_options = SkipReadTimeOptions::kFalse,
+      IsCatalogSnapshot is_catalog_snapshot = IsCatalogSnapshot::kFalse);
 
   double GetTransactionPriority() const;
   YbcTxnPriorityRequirement GetTransactionPriorityType() const;
@@ -198,7 +198,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool ShouldEnableTableLocking() const;
 
   void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
-  void ResetFollowerReadTime() { follower_read_staleness_ms_ = std::nullopt; }
 
  private:
   class SerialNo {
@@ -241,9 +240,12 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
       std::optional<ReadTimeAction> read_time_action,
       NonTransactionalWrites ops_has_non_transactional_writes,
-      SkipReadTimeOptions skip_read_time_options);
+      SkipReadTimeOptions skip_read_time_options,
+      IsCatalogSnapshot is_catalog_snapshot);
   bool ShouldResetReadTime(std::optional<ReadTimeAction> read_time_action) const;
   bool ShouldClamp() const;
+  void ClampCatalogReadTime(
+      tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options) const;
   Status CheckConflictsAcrossReadTimeOptions(
       const tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
       std::optional<ReadTimeAction> read_time_action,
@@ -267,7 +269,10 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   Status ExitSeparateDdlTxnMode(const std::optional<PgDdlCommitInfo>& commit_info);
 
-  Status CheckConflictWithCrossTxnSnapshotTime() const;
+  Status CheckConflictWithCrossTxnSnapshotTime(
+      std::optional<ReadTimeAction> read_time_action = {},
+      NonTransactionalWrites ops_has_non_transactional_writes = NonTransactionalWrites::kFalse,
+      bool has_read_time = false, bool restart_transaction = false) const;
 
   // ----------------------------------------------------------------------------------------------
 

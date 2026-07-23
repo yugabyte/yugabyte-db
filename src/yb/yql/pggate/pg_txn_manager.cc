@@ -745,7 +745,7 @@ Status PgTxnManager::CheckConflictsAcrossReadTimeOptions(
         !UsesFollowerReads(), IllegalState, "Follower reads do not face read restart errors.");
   }
 
-  if (ShouldResetReadTime(read_time_action)) {
+  if (ShouldResetReadTime(read_time_action) || ops_has_non_transactional_writes) {
     RSTATUS_DCHECK(
         manipulation != tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET, IllegalState,
         "Reset picks the read time in the storage layer, incompatible with "
@@ -777,11 +777,36 @@ Status PgTxnManager::CheckConflictsAcrossReadTimeOptions(
   return Status::OK();
 }
 
+void PgTxnManager::ClampCatalogReadTime(
+    tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options) const {
+  // Clamp the uncertainty window for catalog reads.
+  //
+  // User table reads need an uncertainty window to guarantee read-after-commit-visibility because
+  // clock skew can cause a write's commit timestamp to exceed the reader's chosen read time.
+  //
+  // Catalog reads do not need this. Catalog operations use object locks (shared for reads,
+  // exclusive for writes) instead of relying solely on MVCC. A concurrent DDL writer must hold
+  // an exclusive lock, and the catalog reader can only acquire its shared lock after that
+  // exclusive lock is released. The lock release happens strictly after the DDL transaction
+  // commits, so it propagates the commit hybrid time. By the time the reader picks its catalog
+  // snapshot read time, that time is guaranteed to be >= the commit time of any concurrent DDL.
+  //
+  // The guarantee is also maintained when postgres uses AcceptInvalidationMessages instead of
+  // share locks: the exclusive lock release still propagates the commit time before invalidation
+  // messages are applied and a new catalog read time is chosen. The object lock release
+  // happens before postgres acknowledges the catalog write, maintaining the same guarantee.
+  //
+  // Without clamping, the uncertainty window causes spurious read restart errors on catalog
+  // tables that are unnecessary given the object-lock / invalidation-messages protocol.
+  read_time_options.set_clamp_uncertainty_window(true);
+}
+
 Status PgTxnManager::SetupReadTimeOptions(
     tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
     std::optional<ReadTimeAction> read_time_action,
     NonTransactionalWrites ops_has_non_transactional_writes,
-    SkipReadTimeOptions skip_read_time_options) {
+    SkipReadTimeOptions skip_read_time_options,
+    IsCatalogSnapshot is_catalog_snapshot) {
   if (need_restart_) {
     read_time_options.set_restart_transaction(true);
     need_restart_ = false;
@@ -802,25 +827,21 @@ Status PgTxnManager::SetupReadTimeOptions(
   // read_time may be set by
   // - PgSession::SetReadTimeIfPresent.
   // - cross txn snapshot mechanism below.
-  if (crosstxn_snapshot_read_time_is_used_) {
-    RETURN_NOT_OK(CheckConflictWithCrossTxnSnapshotTime());
-    if (auto it = crosstxn_explicit_snapshot_read_time_.find(serial_no_.read_time());
-        it != crosstxn_explicit_snapshot_read_time_.end()) {
-      // i.e., the "USE SNAPSHOT" option is set with the CREATE REPLICATION SLOT command
-      SCHECK(
-          !read_time_options.has_read_time(), NotSupported,
-          "Cannot use a snapshot if a read time is already passed");
-      ReadHybridTime::FromUint64(it->second).ToPB(read_time_options.mutable_read_time());
-      return Status::OK();
-    }
+  // cross txn snapshot does not apply to catalog snapshot.
+  if (crosstxn_snapshot_read_time_is_used_ && !is_catalog_snapshot) {
+    RETURN_NOT_OK(CheckConflictWithCrossTxnSnapshotTime(
+        read_time_action, ops_has_non_transactional_writes, read_time_options.has_read_time(),
+        read_time_options.restart_transaction()));
   }
 
   const auto manipulation =
       GetActualReadTimeManipulator(isolation_level_, read_time_manipulation_, read_time_action);
-  if (!IsDdlModeWithSeparateTransaction()) {
+  if (!IsDdlModeWithSeparateTransaction() && !is_catalog_snapshot) {
     // The state in read_time_manipulation_ is only for kPlain transactions. And if YSQL switches to
     // kDdl mode for sometime, we should keep read_time_manipulation_ as is so that once YSQL
-    // switches back to kDdl mode, the read_time_manipulation_ is not lost.
+    // switches back to kPlain mode, the read_time_manipulation_ is not lost.
+    //
+    // read_time_manipulation_ is not intended for catalog ops but for user table ops.
     read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   }
 
@@ -839,6 +860,20 @@ Status PgTxnManager::SetupReadTimeOptions(
       ops_has_non_transactional_writes ||
       read_time_options.has_read_time()) {
     return Status::OK(); // Other read time options below do not apply.
+  }
+
+  if (is_catalog_snapshot) {
+    ClampCatalogReadTime(read_time_options);
+    return Status::OK();
+  }
+
+  if (crosstxn_snapshot_read_time_is_used_) {
+    if (auto it = crosstxn_explicit_snapshot_read_time_.find(serial_no_.read_time());
+        it != crosstxn_explicit_snapshot_read_time_.end()) {
+      // i.e., the "USE SNAPSHOT" option is set with the CREATE REPLICATION SLOT command
+      ReadHybridTime::FromUint64(it->second).ToPB(read_time_options.mutable_read_time());
+      return Status::OK();
+    }
   }
 
   if (UsesFollowerReads()) {
@@ -888,7 +923,7 @@ Status PgTxnManager::SetupPerformOptions(
     SetupPerformOptionsAccessorTag, tserver::PgPerformOptionsPB& options,
     NonTransactionalWrites ops_has_non_transactional_writes,
     std::optional<ReadTimeAction> read_time_action,
-    SkipReadTimeOptions skip_read_time_options) {
+    SkipReadTimeOptions skip_read_time_options, IsCatalogSnapshot is_catalog_snapshot) {
   if (!IsDdlModeWithSeparateTransaction() && !txn_in_progress_) {
     IncTxnSerialNo();
   }
@@ -902,7 +937,8 @@ Status PgTxnManager::SetupPerformOptions(
   options.set_xcluster_target_ddl_bypass(yb_xcluster_target_ddl_bypass);
   options.set_pg_txn_start_us(pg_txn_start_us_);
   options.set_is_using_table_locks(using_table_locks_);
-  options.set_read_from_followers(UsesFollowerReads());
+  // Follower reads are applicable on user tables and as such catalog ops bypass it.
+  options.set_read_from_followers(UsesFollowerReads() && !is_catalog_snapshot);
 
   if (use_saved_priority_) {
     options.set_use_existing_priority(true);
@@ -912,7 +948,7 @@ Status PgTxnManager::SetupPerformOptions(
 
   RETURN_NOT_OK(SetupReadTimeOptions(
       *options.mutable_read_time_options(), read_time_action, ops_has_non_transactional_writes,
-      skip_read_time_options));
+      skip_read_time_options, is_catalog_snapshot));
 
   options.set_force_global_transaction(yb_force_global_transaction);
   options.set_force_tablespace_locality(yb_force_tablespace_locality);
@@ -979,9 +1015,7 @@ YbcReadPointHandle PgTxnManager::GetCurrentReadPoint() const {
 YbcReadPointHandle PgTxnManager::GetMaxReadPoint() const { return serial_no_.max_read_time(); }
 
 TxnReadPoint PgTxnManager::GetCurrentReadPointState() const {
-  return TxnReadPoint{
-      serial_no_.txn(), serial_no_.read_time(), clamp_uncertainty_window_,
-      follower_read_staleness_ms_};
+  return TxnReadPoint{serial_no_.txn(), serial_no_.read_time()};
 }
 
 // Requires that any pending buffered entities are flushed at
@@ -1004,8 +1038,6 @@ Status PgTxnManager::RestoreReadPoint(const TxnReadPoint& saved_read_point) {
     }
     return Status::OK();
   }
-  clamp_uncertainty_window_ = saved_read_point.is_clamped;
-  follower_read_staleness_ms_ = saved_read_point.follower_read_staleness_ms;
   return RestoreReadPoint(saved_read_point.read_time_serial_no);
 }
 
@@ -1070,7 +1102,10 @@ Result<YbcPgTxnSnapshot> PgTxnManager::ImportSnapshot(
       .read_only = snapshot.read_only()};
 }
 
-Status PgTxnManager::CheckConflictWithCrossTxnSnapshotTime() const {
+Status PgTxnManager::CheckConflictWithCrossTxnSnapshotTime(
+    std::optional<ReadTimeAction> read_time_action,
+    NonTransactionalWrites ops_has_non_transactional_writes, bool has_read_time,
+    bool restart_transaction) const {
   SCHECK(
       !UsesFollowerReads(), NotSupported,
       "Cannot set both 'transaction snapshot' and 'yb_read_from_followers' in the same "
@@ -1089,6 +1124,16 @@ Status PgTxnManager::CheckConflictWithCrossTxnSnapshotTime() const {
   SCHECK(
       !deferrable_,
       NotSupported, "Deferred read point can't be used with exported/imported snapshot.");
+  RSTATUS_DCHECK(
+      !need_restart_ && !restart_transaction &&
+          read_time_manipulation_ != tserver::ReadTimeManipulation::RESTART,
+      IllegalState,
+      "Exported/imported snapshots must not be retried at a different read point.");
+  SCHECK(
+      !ShouldResetReadTime(read_time_action) && !ops_has_non_transactional_writes, NotSupported,
+      "Cannot pick a read time in the storage layer with exported/imported snapshot.");
+  SCHECK(
+      !has_read_time, NotSupported, "Cannot use a snapshot if a read time is already passed");
   return Status::OK();
 }
 
