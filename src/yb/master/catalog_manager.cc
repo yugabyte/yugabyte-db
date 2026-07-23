@@ -313,6 +313,10 @@ DEFINE_test_flag(bool, fail_alter_table_after_commit, false,
     "If true, return an error after in-memory commit of the ALTER TABLE operation."
     "Used to force ALTER to fail at a deterministic spot.");
 
+DEFINE_test_flag(bool, fail_alter_table_sys_catalog_write, false,
+    "If true, force the sys-catalog Upsert in UpdateSysCatalogWithNewSchema to fail. Exercises the "
+    "ALTER TABLE IO-failure rollback path.");
+
 DEFINE_test_flag(bool, pause_before_send_hinted_election, false,
     "Inside StartElectionIfReady, pause before sending request for hinted election");
 
@@ -587,7 +591,8 @@ DEFINE_NON_RUNTIME_bool(enable_heartbeat_pg_catalog_versions_cache, true,
 
 DEFINE_test_flag(string, block_alter_table, "",
     "If non-empty, the specified alter table step is blocked. Possible values are "
-    "\"alter_schema\" (blocks the schema from being altered) and \"completion\","
+    "\"alter_schema\" (blocks the schema from being altered), \"sys_catalog_write\" (blocks "
+    "after mutex_ is released and before the sys-catalog write starts), and \"completion\" "
     "(blocks the service completion of the alter table request)");
 
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
@@ -8309,6 +8314,16 @@ Status CatalogManager::AlterTableWithBatchTracker(
     has_changes = true;
   }
 
+  // Release mutex_. The collision check and name reservation above are the last steps that need
+  // it. Everything below operates on the table's COW state or performs IO. The failure rollback
+  // and the deferred old-name erase below re-acquire mutex_ only after the COW lock is released,
+  // which preserves the lock order between mutex_ and the COW lock. While the sys-catalog write
+  // runs, a YCQL rename is visible to concurrent RPCs under both names. Anything that resolves
+  // the table still serializes on its COW lock and sees the outcome at commit or rollback.
+  // CreateTable already has the same uncommitted-name window. A follow-up is to revalidate the
+  // resolved name against the committed pb at the delete and lookup choke points.
+  lock.unlock();
+
   // Check if there has been any changes to the placement policies for this table.
   if (req->has_replication_info()) {
     if (table->GetTableType() == PGSQL_TABLE_TYPE) {
@@ -8377,13 +8392,6 @@ Status CatalogManager::AlterTableWithBatchTracker(
         Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
   }
 
-  // Remove the old name. Not present if PGSQL.
-  if (table->GetTableType() != PGSQL_TABLE_TYPE && req->has_new_table_name()) {
-    TRACE("Removing (namespace, table) combination ($0, $1) from by-name map",
-          namespace_id, table_name);
-    table_names_map_.erase({namespace_id, table_name});
-  }
-
   // Update a task to rollback alter if the corresponding YSQL transaction
   // rolls back.
   TransactionMetadata txn;
@@ -8434,14 +8442,46 @@ Status CatalogManager::AlterTableWithBatchTracker(
     }
   }
 
-  RETURN_NOT_OK(UpdateSysCatalogWithNewSchema(
-      table, ddl_log_entries, namespace_id, new_table_name, epoch, resp));
+  while (FLAGS_TEST_block_alter_table == "sys_catalog_write") {
+    constexpr auto kSleepFor = 100ms;
+    LOG(INFO) << Format("Blocking $0 for $1ms", __func__, kSleepFor);
+    SleepFor(kSleepFor);
+  }
+
+  Status update_status = UpdateSysCatalogWithNewSchema(table, ddl_log_entries, epoch, resp);
+  if (!update_status.ok()) {
+    // The write failed. Discard the staged COW changes and drop the reserved new name. The old
+    // name was never erased, so the table stays reachable by it.
+    l.Unlock();
+    if (table->GetTableType() != PGSQL_TABLE_TYPE && req->has_new_table_name()) {
+      LockGuard map_lock(mutex_);
+      // Tolerate an entry that is already absent. Both mutex_ and the COW lock were released
+      // above, so a concurrent mutation could have removed it.
+      if (table_names_map_.erase({namespace_id, new_table_name}) != 1) {
+        LOG(WARNING) << "ALTER TABLE rollback: reserved new name " << namespace_id << "."
+                     << new_table_name << " was already absent from the by-name map";
+      }
+    }
+    return update_status;
+  }
+
   // Update the in-memory state.
   TRACE("Committing in-memory state");
   VLOG_WITH_FUNC(3) << "SysTablesEntryPB for " << table->id()
                     << " after the after table operation is: " << table_pb.DebugString();
   l.Commit();
-  lock.unlock();
+
+  // A committed rename erases its old name here rather than before the write, so that a failed
+  // write leaves the table reachable by the old name. Tolerate an entry that is already absent.
+  // Both mutex_ and the COW lock were released above, so a concurrent mutation could have
+  // removed it.
+  if (table->GetTableType() != PGSQL_TABLE_TYPE && req->has_new_table_name()) {
+    LockGuard map_lock(mutex_);
+    if (table_names_map_.erase({namespace_id, table_name}) != 1) {
+      LOG(WARNING) << "ALTER TABLE: old name " << namespace_id << "." << table_name
+                   << " was already absent from the by-name map when clearing it after a rename";
+    }
+  }
 
   TEST_SYNC_POINT("YBBackupTestWithColocationParam::AlterTableDocDBTableCommitted");
   TEST_SYNC_POINT("YBBackupTestWithColocationParam::ContinueAlterTable");
@@ -8480,8 +8520,6 @@ Status CatalogManager::AlterTableWithBatchTracker(
 Status CatalogManager::UpdateSysCatalogWithNewSchema(
     const scoped_refptr<TableInfo>& table,
     const std::vector<DdlLogEntry>& ddl_log_entries,
-    const string& new_namespace_id,
-    const string& new_table_name,
     const LeaderEpoch& epoch,
     AlterTableResponsePB* resp) {
   TRACE("Updating metadata on disk");
@@ -8490,18 +8528,17 @@ Status CatalogManager::UpdateSysCatalogWithNewSchema(
   for (const auto& entry : ddl_log_entries) {
     ddl_log_entry_pointers.push_back(&entry);
   }
-  Status s = sys_catalog_->Upsert(epoch, ddl_log_entry_pointers, table);
+  Status s;
+  if (PREDICT_FALSE(FLAGS_TEST_fail_alter_table_sys_catalog_write)) {
+    s = STATUS(IOError, "Injected sys-catalog write failure for ALTER TABLE");
+  } else {
+    s = sys_catalog_->Upsert(epoch, ddl_log_entry_pointers, table);
+  }
   if (!s.ok()) {
     s = s.CloneAndPrepend(
         Substitute("An error occurred while updating sys-catalog tables entry: $0",
                    s.ToString()));
     LOG(WARNING) << s.ToString();
-    if (table->GetTableType() != PGSQL_TABLE_TYPE &&
-        (!new_namespace_id.empty() || !new_table_name.empty())) {
-      LockGuard lock(mutex_);
-      VLOG_WITH_FUNC(3) << "Acquired the catalog manager lock";
-      CHECK_EQ(table_names_map_.erase({new_namespace_id, new_table_name}), 1);
-    }
     if (resp)
       return CheckIfNoLongerLeaderAndSetupError(s, resp);
 
