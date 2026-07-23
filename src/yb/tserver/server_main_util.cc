@@ -47,10 +47,11 @@ DEFINE_NON_RUNTIME_bool(use_memory_defaults_optimized_for_ysql, false,
     "for YCQL but do not take into account the amount of RAM and cores available.");
 
 DECLARE_double(default_memory_limit_to_ram_ratio);
-DECLARE_int32(db_block_cache_size_percentage);
-DECLARE_int32(tablet_overhead_size_percentage);
 DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_int32(db_block_cache_size_percentage);
+DECLARE_int64(global_memstore_size_mb_max);
 DECLARE_int64(memory_limit_hard_bytes);
+DECLARE_int32(tablet_overhead_size_percentage);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_auto_analyze_service);
 DECLARE_bool(ysql_enable_table_mutation_counter);
@@ -61,9 +62,19 @@ namespace yb {
 
 namespace {
 
+constexpr int64_t kDefaultGlobalMemstoreSizeMbMax = 2048;
+constexpr int64_t kLargeNodeGlobalMemstoreSizeMbMax = 4096;
+
+int64_t GetRecommendedGlobalMemstoreSizeMbMax(bool is_master, size_t total_ram) {
+  return !is_master && total_ram >= 64_GB
+             ? kLargeNodeGlobalMemstoreSizeMbMax
+             : kDefaultGlobalMemstoreSizeMbMax;
+}
+
 struct RecommendedMemoryValues {
   double default_memory_limit_to_ram_ratio;
   int32_t db_block_cache_size_percentage;
+  int64_t global_memstore_size_mb_max;
   int32_t tablet_overhead_size_percentage;
 };
 
@@ -75,6 +86,7 @@ RecommendedMemoryValues GetLegacyMemoryValues(bool is_master) {
   //   kDefaultMasterBlockCacheSizePercentage  = 25 on master
   //   kDefaultTserverBlockCacheSizePercentage = 50 on TServer
   result.db_block_cache_size_percentage = DB_CACHE_SIZE_USE_DEFAULT;
+  result.global_memstore_size_mb_max = kDefaultGlobalMemstoreSizeMbMax;
   result.tablet_overhead_size_percentage = 0;
 
   if (is_master) {
@@ -97,23 +109,23 @@ RecommendedMemoryValues GetLegacyMemoryValues(bool is_master) {
     }                                                                                            \
   } while (false)
 
-void AdjustMemoryLimits(const RecommendedMemoryValues& values) {
+void ApplyMemoryLimits(const RecommendedMemoryValues& values) {
   SET_MEMORY_FLAG_IF_NEEDED(db_block_cache_size_percentage, values.db_block_cache_size_percentage);
   SET_MEMORY_FLAG_IF_NEEDED(
       default_memory_limit_to_ram_ratio, values.default_memory_limit_to_ram_ratio);
+  SET_MEMORY_FLAG_IF_NEEDED(global_memstore_size_mb_max, values.global_memstore_size_mb_max);
   SET_MEMORY_FLAG_IF_NEEDED(
       tablet_overhead_size_percentage, values.tablet_overhead_size_percentage);
 }
 
-void AdjustMemoryLimitsIfNeeded(bool is_master) {
-  int64_t signed_total_ram;
-  CHECK_OK(Env::Default()->GetTotalRAMBytes(&signed_total_ram));
-  size_t total_ram = signed_total_ram;
-  LOG(INFO) << StringPrintf(
-      "Total available RAM is %.6f GiB",
-      (static_cast<float>(total_ram) / (1024.0 * 1024.0 * 1024.0)));
+}  // namespace
 
+namespace internal {
+
+void AdjustMemoryLimits(bool is_master, size_t total_ram) {
   auto values = GetLegacyMemoryValues(is_master);
+  values.global_memstore_size_mb_max =
+      GetRecommendedGlobalMemstoreSizeMbMax(is_master, total_ram);
 
   if (FLAGS_use_memory_defaults_optimized_for_ysql) {
     values.tablet_overhead_size_percentage = is_master ? 0 : 10;
@@ -129,7 +141,22 @@ void AdjustMemoryLimitsIfNeeded(bool is_master) {
     }
   }
 
-  AdjustMemoryLimits(values);
+  ApplyMemoryLimits(values);
+}
+
+}  // namespace internal
+
+namespace {
+
+void AdjustMemoryLimitsIfNeeded(bool is_master) {
+  int64_t signed_total_ram;
+  CHECK_OK(Env::Default()->GetTotalRAMBytes(&signed_total_ram));
+  size_t total_ram = signed_total_ram;
+  LOG(INFO) << StringPrintf(
+      "Total available RAM is %.6f GiB",
+      (static_cast<float>(total_ram) / (1024.0 * 1024.0 * 1024.0)));
+
+  internal::AdjustMemoryLimits(is_master, total_ram);
 }
 
 // Return the lower case value of a GUC set in a CSV string (FLAGS_ysql_pg_conf_csv),
@@ -255,6 +282,7 @@ Status MasterTServerParseFlagsAndInit(
   FLAGS_default_memory_limit_to_ram_ratio = USE_RECOMMENDED_MEMORY_VALUE;
   FLAGS_db_block_cache_size_bytes = DB_CACHE_SIZE_USE_PERCENTAGE;
   FLAGS_db_block_cache_size_percentage = USE_RECOMMENDED_MEMORY_VALUE;
+  FLAGS_global_memstore_size_mb_max = USE_RECOMMENDED_MEMORY_VALUE;
   FLAGS_tablet_overhead_size_percentage = USE_RECOMMENDED_MEMORY_VALUE;
 
   ParseCommandLineFlags(argc, argv, /* remove_flag= */ true);
