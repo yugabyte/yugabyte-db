@@ -30,6 +30,10 @@ test: yb.orig.merge_scan_partition
 test: yb.orig.merge_scan_colocated
 test: yb.orig.merge_scan_relabel
 
+# This test uses tv_tbl like the relabel test on an earlier line, adding an
+# index that it tears down.
+test: yb.orig.merge_scan_collation
+
 # This test uses bkt_tbl, adding an index and RLS state that it tears down for
 # tests in later lines.
 test: yb.orig.merge_scan_rls
