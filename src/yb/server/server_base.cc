@@ -737,7 +737,9 @@ Status RpcAndWebServerBase::Start() {
 
   AddDefaultPathHandlers(web_server_.get());
   AddRpczPathHandlers(messenger_.get(), ShouldExportLocalCalls(), web_server_.get());
-  RegisterMetricsJsonHandler(web_server_.get(), metric_registry_.get());
+  RegisterMetricsJsonHandler(
+      web_server_.get(), metric_registry_.get(),
+      [this](MetricPrometheusOptions* options) { ConfigurePrometheusMetricsOptions(options); });
   RegisterPathUsageHandler(web_server_.get(), fs_manager_.get());
   RegisterTlsHandler(web_server_.get(), this);
   TracingPathHandlers::RegisterHandlers(web_server_.get());
