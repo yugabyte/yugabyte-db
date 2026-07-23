@@ -2112,8 +2112,9 @@ Status GetConsistentWALRecords(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const MemTrackerPtr& mem_tracker,
     consensus::ReplicateMsgsHolder* msgs_holder, ScopedTrackedConsumption* consumption,
     uint64_t* consistent_safe_time, const OpId& historical_max_op_id,
-    bool* wait_for_wal_update, OpId* last_seen_op_id, int64_t& last_readable_opid_index,
-    const int64_t& safe_hybrid_time_req, const CoarseTimePoint& deadline,
+    bool* wait_for_wal_update, OpId* last_seen_op_id, OpId* last_skipped_op_id,
+    int64_t& last_readable_opid_index, const int64_t& safe_hybrid_time_req,
+    const CoarseTimePoint& deadline,
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* consistent_wal_records,
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* all_checkpoints,
     HybridTime* last_read_wal_op_record_time, bool* is_entire_wal_read) {
@@ -2160,6 +2161,8 @@ Status GetConsistentWALRecords(
 
       if (IsIntent(msg) || (IsUpdateTransactionOp(msg) &&
                             msg->transaction_state().status() != TransactionStatus::APPLYING)) {
+        last_skipped_op_id->term = msg->id().term();
+        last_skipped_op_id->index = msg->id().index();
         continue;
       }
 
@@ -2734,6 +2737,7 @@ Status GetChangesForCDCSDK(
     OpId last_seen_op_id;
     last_seen_op_id.term = from_op_id.term();
     last_seen_op_id.index = from_op_id.index();
+    OpId last_skipped_op_id = OpId::Invalid();
     HybridTime commit_timestamp;
     uint32_t xrepl_origin_id = 0;
 
@@ -2744,8 +2748,8 @@ Status GetChangesForCDCSDK(
     if (FLAGS_cdc_enable_consistent_records)
       RETURN_NOT_OK(GetConsistentWALRecords(
           tablet_peer, mem_tracker, msgs_holder, &consumption, &consistent_stream_safe_time,
-          historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, *last_readable_opid_index,
-          safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints,
+          historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, &last_skipped_op_id,
+          *last_readable_opid_index, safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints,
           &last_read_wal_op_record_time, &is_entire_wal_read));
     else
       // 'skip_intents' is true here because we want the first transaction to be the partially
@@ -2830,6 +2834,7 @@ Status GetChangesForCDCSDK(
     }
   } else {
     OpId last_seen_op_id = op_id;
+    OpId last_skipped_op_id = OpId::Invalid();
     bool saw_non_actionable_message = false;
     std::unordered_set<std::string> streamed_txns;
 
@@ -2864,9 +2869,9 @@ Status GetChangesForCDCSDK(
       if (FLAGS_cdc_enable_consistent_records)
         RETURN_NOT_OK(GetConsistentWALRecords(
             tablet_peer, mem_tracker, msgs_holder, &consumption, &consistent_stream_safe_time,
-            historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, *last_readable_opid_index,
-            safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints,
-            &last_read_wal_op_record_time, &is_entire_wal_read));
+            historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, &last_skipped_op_id,
+            *last_readable_opid_index, safe_hybrid_time_req, deadline, &wal_records,
+            &all_checkpoints, &last_read_wal_op_record_time, &is_entire_wal_read));
       else
         // 'skip_intents' is false otherwise in case the complete wal segment is filled with
         // intents we will break the loop thinking that WAL has no more records.
@@ -2889,7 +2894,19 @@ Status GetChangesForCDCSDK(
                           << "last_seen_op_id: " << last_seen_op_id << ", last_readable_opid_index "
                           << *last_readable_opid_index << ", safe_hybrid_time "
                           << safe_hybrid_time_req << ", consistent_safe_time "
-                          << consistent_stream_safe_time;
+                          << consistent_stream_safe_time << ", last_skipped_op_id: "
+                          << last_skipped_op_id;
+
+        // This means that all the records read from the WAL were either intents or aborted
+        // transactions' UPDATE_TRANSACTION_OPs. These would always be filtered out, so we move the
+        // cdc_sdk_checkpoint forward to the last skipped op id.
+        if (last_skipped_op_id.valid()) {
+          checkpoint_updated = true;
+          checkpoint.set_term(last_skipped_op_id.term);
+          checkpoint.set_index(last_skipped_op_id.index);
+          VLOG_WITH_FUNC(1) << "Advancing checkpoint to last skipped op id: " << last_skipped_op_id
+                            << " on tablet: " << tablet_id;
+        }
         break;
       }
 
