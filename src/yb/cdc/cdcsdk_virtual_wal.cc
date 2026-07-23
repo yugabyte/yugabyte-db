@@ -20,6 +20,7 @@
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
 
 // TODO(22655): Remove the below macro once YB_LOG_EVERY_N_SECS_OR_VLOG() is fixed.
 #define YB_CDC_LOG_WITH_PREFIX_EVERY_N_SECS_OR_VLOG(oss, n_secs, verbose_level) \

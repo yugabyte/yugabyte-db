@@ -73,6 +73,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 #include "yb/util/trace.h"
@@ -1250,7 +1251,8 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     // synthesized a single in-memory home entry). Rebuild the full per-disk pin list for this node
     // via BuildTierPaths so an existing tablet can participate in tiered storage after a binary
     // upgrade, and persist it (Flush() below) so this runs once rather than on every restart.
-    if (local_superblock && superblock.kv_store().tier_paths_size() == 0 &&
+    if (local_superblock && !raft_group_id_.empty() &&
+        superblock.kv_store().tier_paths_size() == 0 &&
         fs_manager_ != nullptr && !kv_store_.rocksdb_dir.empty()) {
       kv_store_.tier_paths = BuildTierPaths(fs_manager_, kv_store_.rocksdb_dir);
       migrated_tier_paths = true;

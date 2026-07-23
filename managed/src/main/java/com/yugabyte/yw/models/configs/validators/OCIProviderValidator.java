@@ -45,8 +45,9 @@ public class OCIProviderValidator extends ProviderFieldsValidator {
     if (!ociCloudImpl.isValidCreds(provider)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Invalid OCI credentials or configuration: ensure tenancy, user, fingerprint, private"
-              + " key, and compartment are set [check logs for details]");
+          "Invalid OCI credentials or configuration: ensure compartment and region are set,"
+              + " and API key or instance principal auth is configured correctly [check logs for"
+              + " details]");
     }
 
     SetMultimap<String, String> validationErrorsMap = HashMultimap.create();

@@ -16,6 +16,7 @@
 #include <string>
 
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 
 using std::string;
 

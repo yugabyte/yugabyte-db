@@ -34,6 +34,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
 #include "yb/util/flags/flag_tags.h"

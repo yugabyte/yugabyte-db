@@ -1861,7 +1861,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         OverridenDetails overridenDetails =
             getOverridenDetails(UniverseTaskBase.ServerType.MASTER, azUUID);
         if (overridenDetails.getDeviceInfo() != null) {
-          return mergeDeviceInfos(deviceInfo, overridenDetails.getDeviceInfo());
+          // Dedicated masters use `masterDeviceInfo` (not `deviceInfo`, which describes tservers)
+          // as
+          // the base for AZ-level overrides. Using `deviceInfo` here silently drops any master-only
+          // customization (e.g. a different `volumeSize` or `numVolumes`) whenever an AZ override
+          // is
+          // configured, and can produce Helm values that disagree with what's on the cluster - most
+          // visibly during volume resize, where the resulting StatefulSet template diverges from
+          // the
+          // resized PVCs and the next helm upgrade attempts an immutable-field update.
+          return mergeDeviceInfos(masterDeviceInfo, overridenDetails.getDeviceInfo());
         }
         return masterDeviceInfo;
       }

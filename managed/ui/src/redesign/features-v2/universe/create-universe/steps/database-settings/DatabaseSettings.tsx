@@ -1,4 +1,4 @@
-import { forwardRef, useContext, useImperativeHandle, useEffect, useState } from 'react';
+import { forwardRef, useContext, useImperativeHandle, useState } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import { useUpdateEffect } from 'react-use';
 import { FormProvider, useForm } from 'react-hook-form';
@@ -13,13 +13,17 @@ import {
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
+import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
 import { DatabaseSettingsProps } from './dtos';
-import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
+import { getConnectionPoolingPortsFromAdvanced } from '../../helpers/syncConnectionPoolingPorts';
 import {
   YSQL_FIELD,
   YCQL_FIELD,
+  YSQL_AUTH_FIELD,
+  YCQL_AUTH_FIELD,
   YSQL_CONFIRM_PWD,
-  YCQL_CONFIRM_PWD
+  YCQL_CONFIRM_PWD,
+  GFLAGS_FIELD
 } from '../../fields/FieldNames';
 
 //icons
@@ -36,7 +40,7 @@ export const StyledError = styled(Typography)(({ theme }) => ({
 
 export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
-    { databaseSettings, generalSettings },
+    { databaseSettings, generalSettings, otherAdvancedSettings },
     { moveToNextPage, moveToPreviousPage, saveDatabaseSettings }
   ] = useContext(CreateUniverseContext) as unknown as CreateUniverseContextMethods;
 
@@ -44,24 +48,36 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
     keyPrefix: 'createUniverseV2'
   });
 
+  // Prefer Advanced ports when remounting only if CP + override ports are enabled.
+  const shouldSyncCpPorts =
+    !!databaseSettings?.enableConnectionPooling && !!databaseSettings?.overrideCPPorts;
+  const syncedCpPorts = shouldSyncCpPorts
+    ? getConnectionPoolingPortsFromAdvanced(otherAdvancedSettings)
+    : {};
   const methods = useForm<DatabaseSettingsProps>({
     resolver: yupResolver(DatabaseValidationSchema()),
     defaultValues: {
-      ysqlServerRpcPort: DEFAULT_COMMUNICATION_PORTS.ysqlServerRpcPort,
-      internalYsqlServerRpcPort: DEFAULT_COMMUNICATION_PORTS.internalYsqlServerRpcPort,
-      ...databaseSettings
+      overrideCPPorts: false,
+      ...databaseSettings,
+      ...syncedCpPorts
     },
     mode: 'onChange'
   });
 
+  usePersistStepFormValues(methods.watch, methods.getValues, saveDatabaseSettings);
+
   const [showErrorsAfterSubmit, setShowErrorsAfterSubmit] = useState(false);
   const { trigger, formState, watch, control, setError, clearErrors } = methods;
-  const { errors, isSubmitted } = formState;
+  const { errors } = formState;
+  const hasErrors = Object.keys(errors).length > 0;
 
   const enableYSQLVal = watch(YSQL_FIELD);
   const enableYCQLVal = watch(YCQL_FIELD);
+  const enableYSQLAuth = watch(YSQL_AUTH_FIELD);
+  const enableYCQLAuth = watch(YCQL_AUTH_FIELD);
   const ysqlConfirmPwd = watch(YSQL_CONFIRM_PWD);
   const ycqlConfirmPwd = watch(YCQL_CONFIRM_PWD);
+  const gflagVal = watch(GFLAGS_FIELD);
 
   useUpdateEffect(() => {
     if (!enableYCQLVal && !enableYSQLVal) {
@@ -73,20 +89,27 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
   }, [enableYSQLVal, enableYCQLVal]);
 
   useUpdateEffect(() => {
-    if (isSubmitted) {
-      trigger().then((isValid) => {
-        if (isValid) setShowErrorsAfterSubmit(false);
-      });
-    }
-  }, [ysqlConfirmPwd, ycqlConfirmPwd]);
+    if (!showErrorsAfterSubmit) return;
+    trigger().then((isValid) => {
+      if (isValid) setShowErrorsAfterSubmit(false);
+    });
+  }, [
+    showErrorsAfterSubmit,
+    enableYSQLVal,
+    enableYCQLVal,
+    ysqlConfirmPwd,
+    ycqlConfirmPwd,
+    enableYSQLAuth,
+    enableYCQLAuth,
+    trigger
+  ]);
 
   useImperativeHandle(
     forwardRef,
     () => ({
       onNext: () => {
         setShowErrorsAfterSubmit(true);
-        return methods.handleSubmit((data) => {
-          saveDatabaseSettings(data);
+        return methods.handleSubmit(() => {
           moveToNextPage();
         })();
       },
@@ -126,10 +149,14 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
             />
           </StyledContent>
         </StyledPanel>
-        <YBAccordion titleContent={t('databaseSettings.advFlags')} sx={{ width: '100%' }}>
+        <YBAccordion
+          titleContent={t('databaseSettings.advFlags')}
+          sx={{ width: '100%' }}
+          defaultExpanded={gflagVal?.length > 0 ? true : false}
+        >
           <GFlagsFieldNew
             control={control}
-            fieldPath={'gFlags'}
+            fieldPath={GFLAGS_FIELD}
             dbVersion={generalSettings?.databaseVersion ?? ''}
             isReadReplica={false}
             editMode={false}
@@ -139,7 +166,7 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
           />
         </YBAccordion>
       </Box>
-      {showErrorsAfterSubmit && errors && (
+      {showErrorsAfterSubmit && hasErrors && (
         <Box>
           <YBAlert
             open

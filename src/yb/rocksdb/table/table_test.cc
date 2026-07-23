@@ -69,6 +69,7 @@
 #include "yb/rocksdb/utilities/checkpoint.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 

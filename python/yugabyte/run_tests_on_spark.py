@@ -134,8 +134,7 @@ REPEAT_FAILURE_LIMIT = 50
 # executor churn (symptom: "Master removed our application: FAILED"). Submit the job for the
 # not-yet-completed test attempts up to SPARK_JOB_MAX_SUBMITS times, re-creating the Spark context
 # if needed.
-SPARK_JOB_MAX_SUBMITS = 5
-SPARK_JOB_RESUBMIT_WAIT_SEC = 120
+SPARK_JOB_MAX_SUBMITS = 3
 
 # Special Jenkins environment variables. They are propagated to tasks running in a distributed way
 # on Spark.
@@ -352,6 +351,19 @@ def spark_context_is_stopped() -> bool:
     except Exception:
         logging.exception("Could not check if the Spark context is stopped, assuming it is")
         return True
+
+
+# py4j is only importable once pyspark has been set up (pyspark puts it on sys.path), and it is
+# absent entirely in the unit-test environment, so we resolve it lazily and cache the result. When
+# py4j cannot be imported this is an empty tuple and unit-tests fall back to
+# spark_context_is_stopped().
+@functools.lru_cache(maxsize=1)
+def spark_bridge_error_types() -> Tuple[type, ...]:
+    try:
+        from py4j.protocol import Py4JError  # type: ignore
+        return (Py4JError,)
+    except ImportError:
+        return ()
 
 
 # Stop and re-create the Spark context after the application was lost, e.g. when the standalone
@@ -1359,13 +1371,23 @@ def run_tests_job_with_resubmits(test_descriptors: List[yb_dist_tests.TestDescri
     for submit_index in range(1, SPARK_JOB_MAX_SUBMITS + 1):
         if submit_index > 1:
             logging.info(
-                "Waiting %d sec before re-submitting the job for %d test attempts with missing "
-                "results (submission %d of at most %d)",
-                SPARK_JOB_RESUBMIT_WAIT_SEC, len(pending), submit_index, SPARK_JOB_MAX_SUBMITS)
-            time.sleep(SPARK_JOB_RESUBMIT_WAIT_SEC)
+                "Re-submitting the job for %d test attempts with missing results "
+                "(submission %d of at most %d)",
+                len(pending), submit_index, SPARK_JOB_MAX_SUBMITS)
+        try:
             if spark_context_is_stopped():
                 restart_spark_context()
-        results = run_tests_job(pending, rerun=rerun)
+            results = run_tests_job(pending, rerun=rerun)
+        except Exception as e:
+            # Retry this submission only if it failed because the Spark application was lost or
+            # due to another transient Spark error. In case of a genuine bug don't retry and
+            # re-raise the exception.
+            if not (isinstance(e, spark_bridge_error_types()) or spark_context_is_stopped()):
+                raise
+            logging.exception("Rerun submission %d could not run on Spark (%s), re-creating the "
+                              "context and re-submitting", submit_index,
+                              type(e).__name__)
+            results = []
         results = maybe_inject_rerun_fault(submit_index, results)
         all_results.extend(results)
         if g_spark_job_cancelled:

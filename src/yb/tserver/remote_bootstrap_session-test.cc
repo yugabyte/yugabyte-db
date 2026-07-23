@@ -30,6 +30,7 @@
 #include "yb/tserver/tserver.messages.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_log.h"
 
 using std::string;
 

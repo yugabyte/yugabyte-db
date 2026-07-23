@@ -80,6 +80,8 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"

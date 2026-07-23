@@ -20,6 +20,8 @@
 
 #include "yb/qlexpr/ql_expr.h"
 
+#include "yb/util/status_format.h"
+
 namespace yb::qlexpr {
 
 namespace {

@@ -341,9 +341,10 @@ interface GCPCloudInfo extends GCPCloudInfoBase {
 }
 
 interface OCICloudInfoBase {
-  ociTenancyId: string;
-  ociUserId: string;
-  ociFingerprint: string;
+  ociAuthType?: 'API_KEY' | 'INSTANCE_PRINCIPAL';
+  ociTenancyId?: string;
+  ociUserId?: string;
+  ociFingerprint?: string;
   ociPrivateKeyContent?: string;
   ociCompartmentId: string;
   ociRegion: string;

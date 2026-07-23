@@ -82,6 +82,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.time.temporal.ChronoUnit;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
@@ -745,7 +746,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    ArgumentCaptor<Map<String, String>> additionalFilters =
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
         setupMetricQueryHelperAndCaptureFilters(response);
     Result result =
         doRequestWithAuthTokenAndBody(
@@ -784,7 +785,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    ArgumentCaptor<Map<String, String>> additionalFilters =
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
         setupMetricQueryHelperAndCaptureFilters(response);
     Result result =
         doRequestWithAuthTokenAndBody(
@@ -830,7 +831,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    ArgumentCaptor<Map<String, String>> additionalFilters =
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
         setupMetricQueryHelperAndCaptureFilters(response);
     Result result =
         doRequestWithAuthTokenAndBody(
@@ -883,7 +884,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    ArgumentCaptor<Map<String, String>> additionalFilters =
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
         setupMetricQueryHelperAndCaptureFilters(response);
     routeWithYWErrHandler(
         fakeRequest("POST", baseRoute + customer.getUuid() + "/metrics")
@@ -906,7 +907,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    ArgumentCaptor<Map<String, String>> additionalFilters =
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
         setupMetricQueryHelperAndCaptureFilters(response);
 
     ObjectNode params = Json.newObject();
@@ -934,7 +935,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    ArgumentCaptor<Map<String, String>> additionalFilters =
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
         setupMetricQueryHelperAndCaptureFilters(response);
 
     ObjectNode params = Json.newObject();
@@ -976,7 +977,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    ArgumentCaptor<Map<String, String>> additionalFilters =
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
         setupMetricQueryHelperAndCaptureFilters(response);
 
     ObjectNode params = Json.newObject();
@@ -1047,7 +1048,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    ArgumentCaptor<Map<String, String>> additionalFilters =
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
         setupMetricQueryHelperAndCaptureFilters(response);
 
     routeWithYWErrHandler(
@@ -1074,7 +1075,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    ArgumentCaptor<Map<String, String>> additionalFilters =
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
         setupMetricQueryHelperAndCaptureFilters(response);
 
     ObjectNode params = Json.newObject();
@@ -1100,7 +1101,7 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
-    ArgumentCaptor<Map<String, String>> additionalFilters =
+    ArgumentCaptor<Map<String, Map<String, String>>> additionalFilters =
         setupMetricQueryHelperAndCaptureFilters(response);
 
     ObjectNode params = Json.newObject();
@@ -1140,24 +1141,30 @@ public class CustomerControllerTest extends FakeDBApplication {
   }
 
   @SuppressWarnings("unchecked")
-  private ArgumentCaptor<Map<String, String>> setupMetricQueryHelperAndCaptureFilters(
+  private ArgumentCaptor<Map<String, Map<String, String>>> setupMetricQueryHelperAndCaptureFilters(
       JsonNode response) {
-    ArgumentCaptor<Map<String, String>> additionalFiltersCaptor =
+    // MetricQueryHelper no longer takes a separate `additionalFilters` map; filters shared across
+    // every metric are now put under the {@link MetricQueryHelper#ALL} bucket of the
+    // {@code filterOverrides} argument. Capture that map and extract the ALL bucket in
+    // {@link #capturedFiltersAsJson}.
+    ArgumentCaptor<Map<String, Map<String, String>>> filterOverridesCaptor =
         ArgumentCaptor.forClass(Map.class);
     MetricQueryHelper delegate = spy(createMetricQueryHelper());
     doReturn(response)
         .when(delegate)
-        .query(
-            any(), anyList(), anyMap(), anyMap(), anyBoolean(), additionalFiltersCaptor.capture());
+        .query(any(), anyList(), anyMap(), filterOverridesCaptor.capture(), anyBoolean(), any());
     doAnswer(invocation -> delegate.query(invocation.getArgument(0), invocation.getArgument(1)))
         .when(mockMetricQueryHelper)
         .query(any(Customer.class), any(MetricQueryParams.class));
-    return additionalFiltersCaptor;
+    return filterOverridesCaptor;
   }
 
-  private JsonNode capturedFiltersAsJson(ArgumentCaptor<Map<String, String>> additionalFilters) {
-    assertThat(additionalFilters.getValue(), is(notNullValue()));
-    return Json.toJson(additionalFilters.getValue());
+  private JsonNode capturedFiltersAsJson(
+      ArgumentCaptor<Map<String, Map<String, String>>> filterOverrides) {
+    assertThat(filterOverrides.getValue(), is(notNullValue()));
+    Map<String, String> allFilters =
+        filterOverrides.getValue().getOrDefault(MetricQueryHelper.ALL, Collections.emptyMap());
+    return Json.toJson(allFilters);
   }
 
   private Result getHostInfo(UUID customerUUID) {

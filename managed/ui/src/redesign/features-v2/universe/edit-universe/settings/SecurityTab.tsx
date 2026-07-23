@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from 'react-query';
 import { mui, YBButton } from '@yugabyte-ui-library/core';
 import {
   StyledContent,
-  StyledHeader,
+  StyledCardHeader,
   StyledInfoRow,
   StyledPanel
 } from '../../create-universe/components/DefaultComponents';
@@ -25,7 +25,7 @@ import Disabled from '@app/redesign/assets/revoke.svg';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 
-const { styled, Box, CircularProgress } = mui;
+const { styled, Box, CircularProgress, Typography } = mui;
 
 const CheckedIcon = styled(Checked)({
   width: '24px',
@@ -81,9 +81,7 @@ export const SecurityTab = () => {
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         {providerCode !== CloudType.onprem && (
           <StyledPanel>
-            <StyledHeader
-              sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            >
+            <StyledCardHeader>
               {t('networkAccess')}
               <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
                 <YBButton
@@ -98,13 +96,13 @@ export const SecurityTab = () => {
                   {t('edit', { keyPrefix: 'common' })}
                 </YBButton>
               </RbacValidator>
-            </StyledHeader>
+            </StyledCardHeader>
             <StyledContent>
               <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
                 {isCloudVendorCloudType(providerCode) && (
                   <div>
                     <span className="header">{t('publicIP')}</span>
-                    <span className="value sameline nogap">
+                    <span className="value sameline gap4">
                       {t(isPublicIPAssigned ? 'assigned' : 'notAssigned', { keyPrefix: 'common' })}
                       {isPublicIPAssigned ? <CheckedIcon /> : <DisabledIcon />}
                     </span>
@@ -114,14 +112,14 @@ export const SecurityTab = () => {
                   <>
                     <div>
                       <span className="header">{t('ipv6')}</span>
-                      <span className="value sameline nogap">
+                      <span className="value sameline gap4">
                         {t(isIPV6Enabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
                         {isIPV6Enabled ? <CheckedIcon /> : <DisabledIcon />}
                       </span>
                     </div>
                     <div>
                       <span className="header">{t('publicIP')}</span>
-                      <span className="value sameline nogap">
+                      <span className="value sameline gap4">
                         {t(isK8sPublicIPAssigned ? 'assigned' : 'notAssigned', {
                           keyPrefix: 'common'
                         })}
@@ -135,9 +133,7 @@ export const SecurityTab = () => {
           </StyledPanel>
         )}
         <StyledPanel>
-          <StyledHeader
-            sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-          >
+          <StyledCardHeader>
             {t('encryptionInTransit')}
             <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_UNIVERSE_TLS} isControl>
               <YBButton
@@ -150,19 +146,19 @@ export const SecurityTab = () => {
                 {t('edit', { keyPrefix: 'common' })}
               </YBButton>
             </RbacValidator>
-          </StyledHeader>
+          </StyledCardHeader>
           <StyledContent>
             <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
               <div>
                 <span className="header">{t('nodeToNode')}</span>
-                <span className="value sameline nogap">
+                <span className="value sameline gap4">
                   {t(nodeToNodeEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
                   {nodeToNodeEnabled ? <CheckedIcon /> : <DisabledIcon />}
                 </span>
               </div>
               <div>
                 <span className="header">{t('clientToNode')}</span>
-                <span className="value sameline nogap">
+                <span className="value sameline gap4">
                   {t(clientToNodeEnabled ? 'enabled' : 'disabled', { keyPrefix: 'common' })}
                   {clientToNodeEnabled ? <CheckedIcon /> : <DisabledIcon />}
                 </span>
@@ -171,9 +167,7 @@ export const SecurityTab = () => {
           </StyledContent>
         </StyledPanel>
         <StyledPanel>
-          <StyledHeader
-            sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-          >
+          <StyledCardHeader>
             {t('encryptionAtRest')}
             <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_UNIVERSE_TLS} isControl>
               <YBButton
@@ -188,12 +182,12 @@ export const SecurityTab = () => {
                 {t('edit', { keyPrefix: 'common' })}
               </YBButton>
             </RbacValidator>
-          </StyledHeader>
+          </StyledCardHeader>
           <StyledContent>
             <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
               <div>
                 <span className="header">{t('encryption')}</span>
-                <span className="value sameline nogap">
+                <span className="value sameline gap4">
                   {isLegacyUniverseLoading ? (
                     <CircularProgress size={18} />
                   ) : (

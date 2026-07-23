@@ -23,6 +23,7 @@
 
 #include "yb/master/master_ddl.pb.h"
 
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
 #include "yb/yql/pggate/pg_read_range.h"

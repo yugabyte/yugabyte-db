@@ -4,7 +4,8 @@ export {
   getGuidedNodesStepReplicationFactor,
   getEffectiveReplicationFactorForResilience,
   canSelectMultipleRegions,
-  computeResilienceTypeFromProvider
+  computeResilienceTypeFromProvider,
+  isCurrentConfigSupportedByGuidedMode
 } from './utils/resilienceReplication';
 export type {
   DedicatedTserverMasterCounts,

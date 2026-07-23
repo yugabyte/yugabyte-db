@@ -832,6 +832,26 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   public void restartYcqlMiniCluster() throws Exception {
     miniCluster.restart();
     waitForYcqlConnectivity();
+    // A full cluster restart severs the class-level CQL client's connections; the driver marks its
+    // hosts down and can back off long enough that they are still down during teardown, producing a
+    // spurious NoHostAvailableException. Rebuild the client so a live session is guaranteed for the
+    // remainder of the test and for teardown.
+    final String logPrefix = "BaseCQLTest.restartYcqlMiniCluster: ";
+    closeIfNotNull(logPrefix, "session", session);
+    closeIfNotNull(logPrefix, "cluster", cluster);
+    session = null;
+    cluster = null;
+    // Best-effort: rebuilding the client relies on the default credentials, which a test may
+    // have invalidated before the restart (e.g. by dropping the 'cassandra' role). If reconnecting
+    // fails, leave the client null and let the test proceed; teardown tolerates a null
+    // session/cluster, and tests that need the client again rebuild it explicitly via a subsequent
+    // restart helper.
+    try {
+      setUpCqlClient();
+    } catch (Exception ex) {
+      LOG.warn(logPrefix + "could not rebuild the CQL client after restart; continuing without it",
+          ex);
+    }
   }
 
   protected boolean doesQueryPlanContainSubstring(String query, String substring)

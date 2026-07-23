@@ -43,19 +43,21 @@ export const EditPlacementResilience = () => {
       universeData!,
       selectedPartitionUUID
     );
-    return isCurrentConfigSupportedByGuidedMode(resilienceProps, nodesAndAvailability);
+    return isCurrentConfigSupportedByGuidedMode(resilienceProps, nodesAndAvailability).isSupported;
   }, [resilienceProps, selectedPartitionUUID]);
 
   return (
     <CreateUniverseContext.Provider
       value={
-        ([
+        [
           {
             activeStep: 1,
             resilienceAndRegionsSettings: resilience ?? resilienceProps,
             generalSettings: {
+              cloud: primaryCluster?.placement_spec?.cloud_list?.[0]?.code,
               providerConfiguration: {
-                uuid: primaryCluster?.provider_spec?.provider ?? ''
+                uuid: primaryCluster?.provider_spec?.provider ?? '',
+                code: primaryCluster?.placement_spec?.cloud_list?.[0]?.code
               }
             }
           },
@@ -73,24 +75,28 @@ export const EditPlacementResilience = () => {
               addEditPlacementMethods.setNodesAndAvailability(data);
             },
             moveToNextPage: () => {
-              addEditPlacementMethods.setActiveStep(EditPlacementSteps.NODES_AND_AVAILABILITY_ZONES);
+              addEditPlacementMethods.setActiveStep(
+                EditPlacementSteps.NODES_AND_AVAILABILITY_ZONES
+              );
             },
             moveToPreviousPage: () => {}
           }
-        ] as unknown) as createUniverseFormProps
+        ] as unknown as createUniverseFormProps
       }
     >
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column' }}>
         <GeoPartitionBreadCrumb
           groupTitle={<>{t('placement')}</>}
           subTitle={<>{t('resilienceAndRegions')}</>}
         />
-        <ResilienceAndRegions
-          isGeoPartition={isGeoPartitionUniverse}
-          hideHelpText
-          ref={resilienceRef}
-          disableGuidedMode={!enableGuidedMode}
-        />
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: '16px', mb: 3 }}>
+          <ResilienceAndRegions
+            isGeoPartition={isGeoPartitionUniverse}
+            hideHelpText
+            ref={resilienceRef}
+            disableGuidedMode={!enableGuidedMode}
+          />
+        </Box>
         <UniverseActionButtons
           cancelButton={{
             text: t('cancel', { keyPrefix: 'common' }),

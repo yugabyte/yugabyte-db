@@ -550,7 +550,7 @@ ybcinparallel_prepare(IndexScanDesc scan)
 		else if (IsA(scan->yb_scan_plan, IndexOnlyScan))
 			direction = ((IndexOnlyScan *) scan->yb_scan_plan)->indexorderdir;
 	}
-	ybParallelPrepare(pscan, rel, scan->yb_exec_params, !ScanDirectionIsBackward(direction));
+	ybParallelPrepare(pscan, rel, !ScanDirectionIsBackward(direction));
 	return pscan;
 }
 

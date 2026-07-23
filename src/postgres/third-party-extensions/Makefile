@@ -1,12 +1,12 @@
 DIRS = \
-	documentdb \
+	$(if $(filter 1,$(YB_SKIP_EXTRA_PG_EXTENSIONS)),,documentdb) \
 	hypopg \
 	mage \
 	orafce \
 	pg_cron \
 	$(if $(findstring YB_ENABLE_YSQL_PG_DUCKDB_EXT,$(CXXFLAGS)),pg_duckdb,) \
 	pg_hint_plan \
-	$(if $(filter 1,$(YB_SKIP_PG_PARQUET_BUILD)),,pg_parquet) \
+	$(if $(filter 1,$(YB_SKIP_PG_PARQUET_BUILD) $(YB_SKIP_EXTRA_PG_EXTENSIONS)),,pg_parquet) \
 	pg_partman \
 	pg_stat_monitor \
 	pgaudit \

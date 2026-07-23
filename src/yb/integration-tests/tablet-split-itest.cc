@@ -3136,6 +3136,43 @@ TEST_F(TabletSplitExternalMiniClusterITest, FaultedSplitNodeRejectsRemoteBootstr
   EXPECT_OK(WaitForTablets(2));
   EXPECT_OK(WaitForTablets(2, faulted_follower_idx));
 
+  // After the delayed split apply, the faulted follower's child replicas may fail to bootstrap
+  // locally ("Found rowsets but no log segments") and are recovered by the child leaders evicting
+  // the FAILED replica and re-replicating it via remote bootstrap. A freshly re-bootstrapped
+  // replica rejoins the config as PRE_VOTER and is only later promoted to VOTER once it catches up.
+  // Shutting down the healthy follower below leaves a child tablet with quorum only if the faulted
+  // follower is already a committed VOTER; while it is still a PRE_VOTER the child is left with a
+  // single voter, cannot elect a leader, and the write never succeeds. So wait until the faulted
+  // follower is a committed VOTER in both child tablets while all three servers are still up.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto tablets = VERIFY_RESULT(cluster_->GetTablets(faulted_follower));
+    size_t voter_children = 0;
+    for (const auto& tablet : tablets) {
+      if (tablet.table_name() != table_->name().table_name() || tablet.tablet_id() == tablet_id) {
+        continue;
+      }
+      consensus::GetConsensusStateRequestPB cstate_req;
+      consensus::GetConsensusStateResponsePB cstate_resp;
+      rpc::RpcController controller;
+      controller.set_timeout(kRpcTimeout);
+      cstate_req.set_dest_uuid(faulted_follower->uuid());
+      cstate_req.set_tablet_id(tablet.tablet_id());
+      cstate_req.set_type(consensus::CONSENSUS_CONFIG_COMMITTED);
+      if (!cluster_->GetConsensusProxy(faulted_follower)
+               .GetConsensusState(cstate_req, &cstate_resp, &controller).ok() ||
+          cstate_resp.has_error()) {
+        return false;
+      }
+      for (const auto& peer : cstate_resp.cstate().config().peers()) {
+        if (peer.permanent_uuid() == faulted_follower->uuid() &&
+            peer.member_type() == consensus::PeerMemberType::VOTER) {
+          ++voter_children;
+        }
+      }
+    }
+    return voter_children == 2;
+  }, 60s * kTimeMultiplier, "Wait for faulted follower to become a voter in both child tablets"));
+
   // By shutting down the healthy follower and writing rows to the table, we ensure the faulted
   // follower is eventually able to rejoin the raft group.
   auto healthy_follower = cluster_->tablet_server(healthy_follower_idx);

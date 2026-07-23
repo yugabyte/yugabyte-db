@@ -17,7 +17,6 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderEdit;
-import com.yugabyte.yw.commissioner.tasks.CreatePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.DeletePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
@@ -25,10 +24,8 @@ import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
-import com.yugabyte.yw.commissioner.tasks.RestoreSnapshotSchedule;
 import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
 import com.yugabyte.yw.commissioner.tasks.SendUserNotification;
-import com.yugabyte.yw.commissioner.tasks.UpdatePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.YsqlQueryExecutor.ConsistencyInfoResp;
@@ -1055,55 +1052,33 @@ public class CustomerTaskManager {
       case RemoveNodeFromUniverse:
       case DeleteNodeFromUniverse:
       case ReleaseInstanceFromUniverse:
-      case RebootNodeInUniverse:
       case StartNodeInUniverse:
       case StopNodeInUniverse:
       case StartMasterOnNode:
       case ReprovisionNode:
       case MasterFailover:
-        String nodeName = oldTaskParams.get("nodeName").textValue();
-        String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
-        UUID universeUUID = UUID.fromString(universeUUIDStr);
-        // Build node task params for node actions.
-        NodeTaskParams nodeTaskParams = new NodeTaskParams();
-        if (taskType == TaskType.RebootNodeInUniverse) {
-          nodeTaskParams = new RebootNodeInUniverse.Params();
-          ((RebootNodeInUniverse.Params) nodeTaskParams).isHardReboot =
-              oldTaskParams.get("isHardReboot").asBoolean();
-        }
-        nodeTaskParams.nodeName = nodeName;
-        nodeTaskParams.setUniverseUUID(universeUUID);
-
+      case ReplaceNodeInUniverse:
+      case DecommissionNode:
+        NodeTaskParams nodeTaskParams = Json.fromJson(oldTaskParams, NodeTaskParams.class);
         // Populate the user intent for software upgrades like gFlag upgrades.
-        Universe universe = Universe.getOrBadRequest(universeUUID, customer);
-        nodeTaskParams.clusters.addAll(universe.getUniverseDetails().clusters);
-
-        nodeTaskParams.expectedUniverseVersion = -1;
-        if (oldTaskParams.has("rootCA")) {
-          nodeTaskParams.rootCA = UUID.fromString(oldTaskParams.get("rootCA").textValue());
-        }
+        Universe universe = Universe.getOrBadRequest(nodeTaskParams.getUniverseUUID(), customer);
         if (universe.isYbcEnabled()) {
           nodeTaskParams.setEnableYbc(true);
           nodeTaskParams.setYbcInstalled(true);
           nodeTaskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
         }
-        if (taskType == TaskType.MasterFailover) {
-          nodeTaskParams.azUuid = UUID.fromString(oldTaskParams.get("azUuid").textValue());
-        }
+        nodeTaskParams.expectedUniverseVersion = -1;
         taskParams = nodeTaskParams;
         break;
-      case ReplaceNodeInUniverse:
-      case DecommissionNode:
-        // TODO: Revisit to avoid sending the whole payload.
-        nodeTaskParams = Json.fromJson(oldTaskParams, NodeTaskParams.class);
-        nodeName = oldTaskParams.get("nodeName").textValue();
-        nodeTaskParams.nodeName = nodeName;
+      case RebootNodeInUniverse:
+        nodeTaskParams = Json.fromJson(oldTaskParams, RebootNodeInUniverse.Params.class);
+        nodeTaskParams.expectedUniverseVersion = -1;
         taskParams = nodeTaskParams;
         break;
       case BackupUniverse:
         // V1 Restore Task
-        universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
-        universeUUID = UUID.fromString(universeUUIDStr);
+        String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
+        UUID universeUUID = UUID.fromString(universeUUIDStr);
         // Build restore V1 task params for restore task.
         BackupTableParams backupTableParams = new BackupTableParams();
         backupTableParams.setUniverseUUID(universeUUID);

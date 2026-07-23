@@ -36,6 +36,7 @@
 #include "yb/client/client_error.h"
 #include "yb/client/error.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/namespace_info.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/stateful_services/pg_cron_leader_service_client.h"
@@ -44,6 +45,7 @@
 #include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
+#include "yb/client/transaction_status_tablets.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/pg_types.h"

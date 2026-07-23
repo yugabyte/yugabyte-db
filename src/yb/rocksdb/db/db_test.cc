@@ -64,6 +64,7 @@
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/random_util.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
@@ -8664,7 +8665,7 @@ TEST_F(DBTest, CancelBackgroundWorkWithFlush) {
       ASSERT_OK(Put(Key(++key), RandomString(&rnd, kValueSize), wo));
     }
 
-    db_->SetDisableFlushOnShutdown(true);
+    db_->SetDisableFlushOnShutdown();
     CancelAllBackgroundWork(db_);
 
     // Write one more key, that should trigger scheduling flush.

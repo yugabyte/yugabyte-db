@@ -172,6 +172,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           .thenReturn(mockServerReadyResponse);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
+      mockDbNodePortConnectivityResponse(mockNodeUniverseManager);
     } catch (Exception e) {
       fail();
     }

@@ -33,6 +33,7 @@
 
 #include "yb/gutil/once.h"
 #include "yb/util/errno.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace threadlocal {

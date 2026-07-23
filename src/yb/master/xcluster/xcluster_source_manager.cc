@@ -42,6 +42,7 @@
 
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 
 DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
     "When set, it enables automatic tablet splitting for tables that are part of an "

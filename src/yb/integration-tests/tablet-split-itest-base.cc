@@ -61,6 +61,7 @@
 
 #include "yb/tserver/tserver_types.pb.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 

@@ -28,74 +28,74 @@ INSERT INTO gin_pushdown
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Use pushdown filter
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status <> '9';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status = '9';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Pushdown filter that may seem to be pushed with the index scan, however ybgin index
 -- does not store the indexed value, hence filter goes to the main relation
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' <> '"9"';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' = '"9"';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Expression that does not refer any columns can go to the index.
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() > 2.0;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() < 2.0;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Find row using regular index
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE guid = '9';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Use pushdown filter
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE guid = '9' AND status <> '9';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE guid = '9' AND status = '9';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Pushdown filter that goes with the index scan, since json_content is included
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' <> '"9"';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' = '"9"';
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Expression that does not refer any columns can go to the index.
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE guid = '9' AND random() > 2.0;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 SELECT $$
 :P SELECT * FROM gin_pushdown WHERE guid = '9' AND random() < 2.0;
 $$ AS query \gset
-\i :iter_P2
+\i :run_query
 
 -- Cleanup
 DROP TABLE gin_pushdown;

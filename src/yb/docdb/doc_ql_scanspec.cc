@@ -26,6 +26,7 @@
 #include "yb/util/range.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 using std::vector;
 

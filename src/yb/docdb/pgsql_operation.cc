@@ -2164,6 +2164,8 @@ class PgsqlReadRequestYbctidProvider {
       : request_(request), response_(response) {
     const auto& batch_args = request_.batch_arguments();
 
+    VLOG_WITH_FUNC(3) << "batch_args.size(): " << batch_args.size();
+
     Slice min_arg;
     Slice max_arg;
 
@@ -2744,7 +2746,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
         .filter = std::ref(filter),
       },
       could_have_missing_entries,
-      data_.read_operation_data.statistics
+      data_.read_operation_data
   ));
   RETURN_NOT_OK(filter.status());
   VLOG_WITH_FUNC(2) << "Search results: " << result.ToString();

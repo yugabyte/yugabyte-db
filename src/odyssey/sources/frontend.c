@@ -777,7 +777,8 @@ void yb_drain_parse_queue_till_sync(od_server_t *server, od_client_t *client)
 				}
 				return;
 			}
-			case YB_PARSE_QUEUE_STMT_NAME:
+			case YB_PARSE_QUEUE_PARSE_COMPLETE:
+			case YB_PARSE_QUEUE_NO_PARSE_COMPLETE:
 				break;
 		}
 
@@ -790,7 +791,7 @@ void yb_drain_parse_queue_till_sync(od_server_t *server, od_client_t *client)
 						server, "failed to dequeue parse queue");
 			}
 			// TODO(GH#31147): Full unnamed prepared-statement support.
-			od_log(&instance->logger, "parse queue cleanup", client,
+			od_debug(&instance->logger, "parse queue cleanup", client,
 					server, "unnamed prepared statement support not implemented");
 			continue;
 		}
@@ -844,13 +845,15 @@ void yb_drain_parse_queue_till_sync(od_server_t *server, od_client_t *client)
 		yb_evict_prep_stmt_by_keyhash(server, "parse queue cleanup", yb_stmt_hash);
 		free(server_key);
 
-		od_hashmap_list_item_t *item = yb_od_hashmap_find_item(
-			client->prep_stmt_ids, keyhash, &key);
-		if (item) {
-			od_hashmap_list_item_free(item);
-			od_debug(&instance->logger, "parse queue cleanup",
-				 client, server,
-				 "evicted %s from client hashmap", stmt_name);
+		if (entry.kind == YB_PARSE_QUEUE_PARSE_COMPLETE) {
+			od_hashmap_list_item_t *item = yb_od_hashmap_find_item(
+				client->prep_stmt_ids, keyhash, &key);
+			if (item) {
+				od_hashmap_list_item_free(item);
+				od_debug(&instance->logger, "parse queue cleanup",
+					client, server,
+					"evicted %s from client hashmap", stmt_name);
+			}
 		}
 
 		int res = yb_od_parse_queue_dequeue(parse_queue);
@@ -1434,7 +1437,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				 * queue only tracks counts (empty string is not in prep_stmt_ids).
 				 */
 				if (yb_od_parse_queue_enqueue_stmt_name(&server->parse_queue,
-									"") == -1)
+									"", YB_PARSE_QUEUE_NO_PARSE_COMPLETE) == -1)
 					return OD_EOOM;
 
 				rc = machine_iov_add(relay->iov, msg_new);
@@ -1557,7 +1560,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 				if (yb_od_parse_queue_enqueue_stmt_name(
 					    &server->parse_queue,
-					    operator_name) == -1)
+					    operator_name,
+						YB_PARSE_QUEUE_NO_PARSE_COMPLETE) == -1)
 					return OD_EOOM;
 			} else {
 				yb_lru_on_cache_hit(server, yb_stmt_hash,
@@ -1619,7 +1623,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 
 				/* TODO(GH#31147): See unnamed Describe path — placeholder queue entry. */
-				if (yb_od_parse_queue_enqueue_stmt_name(&server->parse_queue, "") == -1)
+				if (yb_od_parse_queue_enqueue_stmt_name(&server->parse_queue, "",
+					YB_PARSE_QUEUE_PARSE_COMPLETE) == -1)
 					return OD_EOOM;
 
 				server->yb_unnamed_prep_stmt_client_id = client->id;
@@ -1810,7 +1815,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 				if (yb_od_parse_queue_enqueue_stmt_name(
 					    &server->parse_queue,
-					    desc.operator_name) == -1)
+					    desc.operator_name,
+						YB_PARSE_QUEUE_PARSE_COMPLETE) == -1)
 					return OD_EOOM;
 			} else {
 				yb_lru_on_cache_hit(server, yb_stmt_hash,
@@ -1831,7 +1837,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 						KIWI_FE_PARSE);
 					if (yb_od_parse_queue_enqueue_stmt_name(
 						    &server->parse_queue,
-						    desc.operator_name) == -1)
+						    desc.operator_name,
+						    YB_PARSE_QUEUE_PARSE_COMPLETE) == -1)
 						return OD_EOOM;
 				}
 				else {
@@ -1933,7 +1940,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 				/* TODO(GH#31147): See unnamed Describe path — placeholder queue entry. */
 				if (yb_od_parse_queue_enqueue_stmt_name(&server->parse_queue,
-									"") == -1)
+									"",
+									YB_PARSE_QUEUE_NO_PARSE_COMPLETE) == -1)
 					return OD_EOOM;
 
 				rc = machine_iov_add(relay->iov, msg_new);
@@ -2055,7 +2063,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 				if (yb_od_parse_queue_enqueue_stmt_name(
 					    &server->parse_queue,
-					    operator_name) == -1)
+					    operator_name,
+						YB_PARSE_QUEUE_NO_PARSE_COMPLETE) == -1)
 					return OD_EOOM;
 			} else {
 				yb_lru_on_cache_hit(server, yb_stmt_hash,

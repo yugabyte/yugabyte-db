@@ -35,6 +35,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"

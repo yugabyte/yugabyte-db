@@ -1366,6 +1366,29 @@ DefineIndex(Oid relationId,
 	{
 		bool		index_is_copartitioned = amRoutine->yb_amiscopartitioned;
 
+		/*
+		 * YB: A copartitioned index (e.g. the ybhnsw vector index) is stored on
+		 * the indexed table's own tablets, so -- like a YB primary key index --
+		 * its placement always follows the indexed table.  For a non-colocated
+		 * indexed table, force the index's tablespace to match the indexed table
+		 * so that pg_class.reltablespace stays consistent with where the index
+		 * physically lives.  An explicit TABLESPACE clause is rejected outright,
+		 * consistent with ALTER INDEX ... SET TABLESPACE: the index cannot be
+		 * placed anywhere other than with its indexed table, so its tablespace
+		 * can only be chosen by choosing the indexed table's.  When the indexed
+		 * table is colocated the index instead follows the indexed table's
+		 * implicit tablegroup and keeps the colocated convention of
+		 * reltablespace = 0, so this does not apply.
+		 */
+		if (index_is_copartitioned && !is_colocated)
+		{
+			if (stmt->tableSpace)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("cannot set tablespace for a vector index")));
+			tablespaceId = rel->rd_rel->reltablespace;
+		}
+
 		if (OidIsValid(colocation_id))
 		{
 			if (!is_colocated && !index_is_copartitioned)

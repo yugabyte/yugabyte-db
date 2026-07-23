@@ -1976,7 +1976,9 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
   Status s;
   {
     auto file_number_holder = pending_outputs_->NewFileNumber();
-    meta.fd = FileDescriptor(file_number_holder.Last(), 0, 0, 0);
+    const uint32_t flush_path_id = SafePathId(
+        cfd->GetLatestMutableCFOptions()->target_path_id, db_options_.db_paths.size());
+    meta.fd = FileDescriptor(file_number_holder.Last(), flush_path_id, 0, 0);
     const auto* frontier = mem->Frontiers();
     if (frontier) {
       meta.smallest.user_frontier = frontier->Smallest().Clone();
@@ -2678,15 +2680,10 @@ void DBImpl::NotifyOnNoOpCompactionCompleted(
   mutex_.Lock();
 }
 
-void DBImpl::SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {
-  // disable_flush_on_shutdown_ can only transition from false to true. This location
-  // can be called multiple times with arg as false. It is only called once with arg
-  // as true. Subsequently, the destructor reads this flag. Setting this flag
-  // to true and the destructor are expected to run on the same thread and hence
-  // it is not required for disable_flush_on_shutdown_ to be atomic.
-  if (disable_flush_on_shutdown) {
-    disable_flush_on_shutdown_ = disable_flush_on_shutdown;
-  }
+void DBImpl::SetDisableFlushOnShutdown() {
+  // Setting this flag and the destructor that reads it are expected to run on the same thread,
+  // hence it is not required for disable_flush_on_shutdown_ to be atomic.
+  disable_flush_on_shutdown_ = true;
 }
 
 Status DBImpl::SetOptions(

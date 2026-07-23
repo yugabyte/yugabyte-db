@@ -65,6 +65,11 @@ const uint32_t kMaxPathId      = (1u   << kFilePathIdBits)  - 1;  // 2^5 - 1
 
 extern uint64_t PackFileNumberAndPathId(uint64_t number, uint64_t path_id);
 
+// Ensures target is a valid db_paths index. Used by flush/compaction code paths that honor
+// ColumnFamilyOptions::target_path_id (tiered storage) but must fall back to path 0 if the
+// configured target is out of range.
+uint32_t SafePathId(uint32_t target, size_t num_paths);
+
 // A copyable structure contains information needed to read data from an SST
 // file. It can contains a pointer to a table reader opened for the file, or
 // file number and size, which can be used to create a new table reader for it.

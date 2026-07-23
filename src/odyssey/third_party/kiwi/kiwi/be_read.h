@@ -11,6 +11,7 @@ typedef struct kiwi_be_startup kiwi_be_startup_t;
 
 struct kiwi_be_startup {
 	int is_ssl_request;
+	int yb_ssl_established;
 	int unsupported_request;
 	int is_cancel;
 	kiwi_key_t key;
@@ -23,6 +24,7 @@ static inline void kiwi_be_startup_init(kiwi_be_startup_t *su)
 {
 	su->is_cancel = 0;
 	su->is_ssl_request = 0;
+	su->yb_ssl_established = 0;
 	su->unsupported_request = 0;
 	kiwi_key_init(&su->key);
 	kiwi_var_init(&su->user, NULL, 0);

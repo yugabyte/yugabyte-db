@@ -18,7 +18,13 @@ menu:
 
 The following sections provide workarounds for issues detected by the Voyager [migration assessment](../reference/assess-migration/) and [schema analysis](../reference/schema-migration/analyze-schema/) commands.
 
-Review the unsupported features and limitations, and implement the suggested workarounds to successfully migrate data from MySQL, Oracle, or PostgreSQL to YugabyteDB.
+{{< warning title="MySQL and Oracle offline migration deprecated" >}}
+
+MySQL and Oracle offline migration using YugabyteDB Voyager is deprecated and will no longer be supported after October 13, 2026. The workarounds in this section remain applicable for in-progress migrations. Contact {{% support-general %}} for guidance on migration options.
+
+{{< /warning >}}
+
+Review the unsupported features and limitations, and implement the suggested workarounds to successfully migrate data from PostgreSQL to YugabyteDB. For MySQL and Oracle, refer to the following sections only if you have an in-progress migration.
 
 - [Workarounds for PostgreSQL issues](./postgresql/)
 - [Workarounds for Oracle issues](./oracle/)

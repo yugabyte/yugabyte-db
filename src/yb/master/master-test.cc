@@ -84,6 +84,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"

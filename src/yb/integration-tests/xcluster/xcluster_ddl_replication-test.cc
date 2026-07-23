@@ -2016,7 +2016,7 @@ TEST_F(XClusterDDLReplicationTest, SingleDDLQueueHandler) {
   ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
 
   // Use a syncpoint to block the first DDL queue handler.
-  int sync_point_count = 0;
+  std::atomic<int> sync_point_count = 0;
   SyncPoint::GetInstance()->SetCallBack(
       "XClusterDDLQueueHandler::AdvisoryLockAcquired",
       [&sync_point_count](void*) { sync_point_count++; });
@@ -2024,7 +2024,15 @@ TEST_F(XClusterDDLReplicationTest, SingleDDLQueueHandler) {
       {{.predecessor = "XClusterDDLReplicationTest::ResumeDDLQueueHandler",
         .successor = "XClusterDDLQueueHandler::AdvisoryLockAcquired"}});
   SyncPoint::GetInstance()->EnableProcessing();
-  // Now that we've set up replication, we can cache the connection and hold the advisory lock.
+
+  // Wait for a handler to create a fresh connection, acquire the advisory lock and block at the
+  // sync point.
+  ASSERT_OK(WaitFor(
+      [&sync_point_count] { return sync_point_count.load() == 1; }, kTimeout,
+      "DDL queue handler to acquire advisory lock and block"));
+
+  // Now that a handler is holding the advisory lock, we can cache the connection so the lock is
+  // held across the ddl_queue tablet stepdown below.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) = true;
 
   // Run some DDLs on the producer (don't run anything that uses xcluster_context as this is rf3).
@@ -2038,14 +2046,14 @@ TEST_F(XClusterDDLReplicationTest, SingleDDLQueueHandler) {
   auto original_propagation_timeout = propagation_timeout_;
   propagation_timeout_ = 10s;
   ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
-  ASSERT_EQ(sync_point_count, 1);
+  ASSERT_EQ(sync_point_count.load(), 1);
 
   // Step down the ddl_queue tablet.
   ASSERT_OK(StepDownDdlQueueTablet(consumer_cluster_));
 
   // Replication should still be stuck, even with a new queue handler.
   ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
-  ASSERT_EQ(sync_point_count, 1);  // The new poller should not have tried to process the queue.
+  ASSERT_EQ(sync_point_count.load(), 1);  // The new poller should not have tried to process queue.
 
   // Resume the ddl_queue handler.
   TEST_SYNC_POINT("XClusterDDLReplicationTest::ResumeDDLQueueHandler");

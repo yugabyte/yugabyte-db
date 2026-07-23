@@ -283,7 +283,7 @@ libraryDependencies ++= Seq(
   "io.grpc" % "grpc-inprocess" % "1.67.1" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "1.4.0" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.5.0" % Test,
   "io.fabric8" % "kubernetes-server-mock" % "6.14.0" % Test
 )
 
@@ -715,7 +715,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
-    version := "1.4.0",
+    version := "1.5.0",
     target := file("client/java/target/v2"),
   )
 
@@ -1023,7 +1023,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.118-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b5"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b7"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(

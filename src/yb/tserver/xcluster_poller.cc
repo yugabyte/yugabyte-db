@@ -35,6 +35,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/unique_lock.h"

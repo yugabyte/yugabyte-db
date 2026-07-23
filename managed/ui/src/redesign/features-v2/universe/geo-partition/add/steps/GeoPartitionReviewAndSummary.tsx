@@ -11,7 +11,7 @@ import {
   ReviewItem
 } from '../../../create-universe/steps/review-summary/ReviewAndSummaryComponent';
 
-import { ClusterType, Region } from '@app/redesign/helpers/dtos';
+import { CloudType, ClusterType, Region } from '@app/redesign/helpers/dtos';
 
 import GeoPartitionBreadCrumb from '../GeoPartitionBreadCrumbs';
 
@@ -36,6 +36,9 @@ export const GeoPartitionReviewAndSummary = () => {
   const { geoPartitions, universeData } = addGeoPartitionContext;
   const regions: Region[] = geoPartitions.map((gp) => gp.resilience!.regions).flat();
   const { t } = useTranslation('translation', { keyPrefix: 'geoPartition.reviewAndSummary' });
+  const { t: tSteps } = useTranslation('translation', { keyPrefix: 'geoPartition.steps' });
+  const isK8s =
+    universeData?.spec?.clusters?.[0]?.placement_spec?.cloud_list?.[0]?.code === CloudType.kubernetes;
   const { moveToPreviousPage } = useGeoPartitionNavigation();
 
   const geoPartitionData = prepareAddGeoPartitionPayload(addGeoPartitionContext);
@@ -67,14 +70,14 @@ export const GeoPartitionReviewAndSummary = () => {
     name: geoPartitions[i].name,
     attributes: [
       {
-        name: 'Nodes',
+        name: t(isK8s ? 'pods' : 'nodes'),
         value: geoPartitionData[i]?.placement
           ? String(sumNumNodesInClusterPartitionPlacement(geoPartitionData[i]))
           : '-'
       },
-      { name: 'Cores', value: costs[i]?.data?.num_cores ?? '-' },
-      { name: 'Total Memory', value: costs[i]?.data?.mem_size_gb ?? '-' },
-      { name: 'Total Storage', value: costs[i]?.data?.volume_size_gb ?? '-' }
+      { name: t('cores'), value: costs[i]?.data?.num_cores ?? '-' },
+      { name: t('totalMemory'), value: costs[i]?.data?.mem_size_gb ?? '-' },
+      { name: t('totalStorage'), value: costs[i]?.data?.volume_size_gb ?? '-' }
     ],
     dailyCost: costs[i]?.data?.price_per_hour
       ? ((costs[i]?.data?.price_per_hour ?? 0) * 24).toFixed(2)
@@ -141,7 +144,10 @@ export const GeoPartitionReviewAndSummary = () => {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div style={{ padding: '24px 24px 0 0' }}>
-        <GeoPartitionBreadCrumb groupTitle={<>{'Review'}</>} subTitle={<>Summary and Cost</>} />
+        <GeoPartitionBreadCrumb
+          groupTitle={<>{tSteps('review')}</>}
+          subTitle={<>{tSteps('summaryAndCost')}</>}
+        />
       </div>
       <ReviewAndSummaryComponent
         regions={regions}

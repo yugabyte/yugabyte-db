@@ -385,3 +385,14 @@ ROLLBACK;
 -- atttypmod should revert to 104 (varchar(100)) after rollback.
 SELECT atttypmod FROM pg_attribute
     WHERE attrelid = 'idx_rollback'::regclass AND attnum = 1;
+
+-- #28502: After a DDL in a SERIALIZABLE transaction, DML with NO WAIT / SKIP
+-- LOCKED must still warn that those clauses are unsupported.
+CREATE TABLE test_nowait (id int PRIMARY KEY);
+INSERT INTO test_nowait VALUES (1);
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+CREATE TABLE dummy_nowait (id int);
+SELECT * FROM test_nowait FOR UPDATE NOWAIT;
+SELECT * FROM test_nowait FOR UPDATE SKIP LOCKED;
+ROLLBACK;
+DROP TABLE test_nowait;

@@ -153,6 +153,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jboss.logging.MDC;
 import org.junit.Before;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
@@ -1089,6 +1090,29 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     lenient()
         .when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
         .thenReturn(shellResponse2);
+  }
+
+  /**
+   * Mocks shell responses for {@code CheckDbNodePortConnectivity} subtasks created by {@code
+   * createDbNodePortConnectivityCheckTasksForCreatedNodes} (bash + python3 connect_ex script).
+   */
+  protected void mockDbNodePortConnectivityResponse(NodeUniverseManager mockNodeUniverseManager) {
+    ShellResponse response =
+        ShellResponse.create(0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + "ok");
+    lenient()
+        .when(
+            mockNodeUniverseManager.runCommand(
+                any(),
+                any(),
+                ArgumentMatchers.<List<String>>argThat(
+                    cmd ->
+                        cmd != null
+                            && !cmd.isEmpty()
+                            && "bash".equals(cmd.get(0))
+                            && cmd.stream()
+                                .anyMatch(arg -> arg != null && arg.contains("python3"))),
+                any()))
+        .thenReturn(response);
   }
 
   protected void mockClockSyncResponse(NodeUniverseManager nodeUniverseManager) {

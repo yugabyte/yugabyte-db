@@ -81,6 +81,11 @@ enum class PrefetchFilter {
 
 YB_DEFINE_ENUM(BlockType, (kData)(kIndex));
 
+// Per-iterator cache of the last-resolved fixed-size bloom filter block. Defined in
+// block_based_table_reader.cc; declared here so BloomFilterAwareFileFilter and BlockBasedTable
+// can type their signatures against it.
+struct FilterBlockCache;
+
 // BloomFilterAwareFileFilter should only be used when scanning within the same hashed components of
 // the key and it should be used together with DocDbAwareFilterPolicy which only takes into account
 // hashed components of key for filtering.
@@ -90,13 +95,14 @@ class BloomFilterAwareFileFilter : public IteratorFilter {
  public:
   bool Filter(
       const QueryOptions& options, Slice user_key, FilterKeyCache* filter_key_cache,
-      void* context) const override {
-    return Filter(options, user_key, filter_key_cache, static_cast<TableReader*>(context));
+      FilterBlockCache* filter_cache, void* context) const override {
+    return Filter(
+        options, user_key, filter_key_cache, filter_cache, static_cast<TableReader*>(context));
   }
 
   bool Filter(
       const QueryOptions& options, Slice user_key, FilterKeyCache* filter_key_cache,
-      TableReader* reader) const;
+      FilterBlockCache* filter_cache, TableReader* reader) const;
 };
 
 class BinarySearchIndexReader;
@@ -230,8 +236,13 @@ class BlockBasedTable : public TableReader {
   uint64_t ApproximateOffsetOfDataEnd() const;
 
   // Returns filter block handle for fixed-size bloom filter using filter index and filter key.
+  // On success, also returns the inclusive upper bound (filter_block_key_upper_bound) of the key
+  // range covered by the returned filter block. Slices returned via out-params point into
+  // filter_index_iter's internal buffer and are invalidated by any subsequent movement of that
+  // iterator - copy them before re-seeking.
   Status GetFixedSizeFilterBlockHandle(
-      const Slice& filter_key, BlockHandle* filter_block_handle, Statistics* statistics) const;
+      BlockIter& filter_index_iter, Slice filter_key, BlockHandle& filter_block_handle,
+      Slice& filter_block_key_upper_bound, Statistics* statistics) const;
 
   // Returns key to be added to filter or verified against filter based on internal_key.
   Slice GetFilterKeyFromInternalKey(Slice internal_key) const;
@@ -247,8 +258,9 @@ class BlockBasedTable : public TableReader {
   // to get the correct filter block.
   // Note: even if we check prefix match we still need to get filter based on filter_key, not its
   // prefix, because prefix for the key goes to the same filter block as key itself.
-  CachableEntry<FilterBlockReader> GetFilter(const QueryOptions& options,
-                                             const Slice* filter_key = nullptr) const;
+  CachableEntry<FilterBlockReader> GetFilter(
+      const QueryOptions& options, const Slice* filter_key = nullptr,
+      FilterBlockCache* filter_block_cache = nullptr) const;
 
   // Returns index reader.
   // If index reader is not stored in either block or internal cache:

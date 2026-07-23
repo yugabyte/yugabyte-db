@@ -27,6 +27,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/uuid.h"
 
 DECLARE_bool(ysql_yb_enable_ash);

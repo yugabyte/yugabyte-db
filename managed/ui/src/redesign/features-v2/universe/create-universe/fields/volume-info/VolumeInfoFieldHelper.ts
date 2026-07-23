@@ -18,36 +18,46 @@ import {
 import { isEphemeralAwsStorageInstance } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 
+// iops / throughput limits (same as backend StorageType ranges)
 export const IO1_DEFAULT_DISK_IOPS = 1000;
+export const IO1_MIN_DISK_IOPS = 100;
 export const IO1_MAX_DISK_IOPS = 64000;
 export const IO2_DEFAULT_DISK_IOPS = 1000;
+export const IO2_MIN_DISK_IOPS = 100;
 export const IO2_MAX_DISK_IOPS = 256000;
 
 export const GP3_DEFAULT_DISK_IOPS = 3000;
-export const GP3_MAX_IOPS = 16000;
+export const GP3_MIN_DISK_IOPS = 3000;
+export const GP3_MAX_IOPS = 80000;
 export const GP3_DEFAULT_DISK_THROUGHPUT = 125;
-export const GP3_MAX_THROUGHPUT = 1000;
+export const GP3_MIN_THROUGHPUT = 125;
+export const GP3_MAX_THROUGHPUT = 2000;
 export const GP3_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
 
 export const UltraSSD_DEFAULT_DISK_IOPS = 3000;
 export const UltraSSD_DEFAULT_DISK_THROUGHPUT = 125;
 export const UltraSSD_MIN_DISK_IOPS = 100;
+export const UltraSSD_MAX_DISK_IOPS = 160000;
+export const UltraSSD_MIN_THROUGHPUT = 1;
 export const UltraSSD_DISK_IOPS_MAX_PER_GB = 300;
 export const UltraSSD_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
-export const UltraSSD_DISK_THROUGHPUT_CAP = 2500;
+export const UltraSSD_DISK_THROUGHPUT_CAP = 3814;
 
 export const PremiumV2_LRS_DEFAULT_DISK_IOPS = 3000;
 export const PremiumV2_LRS_DEFAULT_DISK_THROUGHPUT = 125;
 export const PremiumV2_LRS_MIN_DISK_IOPS = 3000;
+export const PremiumV2_LRS_MAX_DISK_IOPS = 80000;
+export const PremiumV2_LRS_MIN_THROUGHPUT = 1;
 export const PremiumV2_LRS_DISK_IOPS_MAX_PER_GB = 500;
 export const PremiumV2_LRS_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
-export const PremiumV2_LRS_DISK_THROUGHPUT_CAP = 2500;
+export const PremiumV2_LRS_DISK_THROUGHPUT_CAP = 1200;
 
 export const HB_DEFAULT_DISK_IOPS = 3600;
 export const HB_DEFAULT_DISK_THROUGHPUT = 290;
 export const HB_MIN_DISK_IOPS = 3000;
 export const HB_DISK_IOPS_MAX_PER_GB = 500;
 export const HB_MAX_DISK_IOPS = 160000;
+export const HB_MIN_THROUGHPUT = 250;
 export const HB_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
 export const HB_DISK_THROUGHPUT_CAP = 2400;
 
@@ -55,6 +65,49 @@ export const HE_DEFAULT_DISK_IOPS = 25000;
 export const HE_MIN_DISK_IOPS = 2;
 export const HE_MAX_DISK_IOPS = 350000;
 export const HE_DISK_IOPS_MAX_PER_GB = 1000;
+
+export type NumericRange = { min: number; max: number };
+
+// same ranges as PublicCloudConstants.StorageType
+export const getDiskIopsRange = (
+  storageType: StorageType | null | undefined
+): NumericRange | null => {
+  switch (storageType) {
+    case StorageType.IO1:
+      return { min: IO1_MIN_DISK_IOPS, max: IO1_MAX_DISK_IOPS };
+    case StorageType.IO2:
+      return { min: IO2_MIN_DISK_IOPS, max: IO2_MAX_DISK_IOPS };
+    case StorageType.GP3:
+      return { min: GP3_MIN_DISK_IOPS, max: GP3_MAX_IOPS };
+    case StorageType.Hyperdisk_Balanced:
+      return { min: HB_MIN_DISK_IOPS, max: HB_MAX_DISK_IOPS };
+    case StorageType.Hyperdisk_Extreme:
+      return { min: HE_MIN_DISK_IOPS, max: HE_MAX_DISK_IOPS };
+    case StorageType.PremiumV2_LRS:
+      return { min: PremiumV2_LRS_MIN_DISK_IOPS, max: PremiumV2_LRS_MAX_DISK_IOPS };
+    case StorageType.UltraSSD_LRS:
+      return { min: UltraSSD_MIN_DISK_IOPS, max: UltraSSD_MAX_DISK_IOPS };
+    default:
+      return null;
+  }
+};
+
+export const getThroughputRange = (
+  storageType: StorageType | null | undefined
+): NumericRange | null => {
+  switch (storageType) {
+    case StorageType.GP3:
+      return { min: GP3_MIN_THROUGHPUT, max: GP3_MAX_THROUGHPUT };
+    case StorageType.Hyperdisk_Balanced:
+      return { min: HB_MIN_THROUGHPUT, max: HB_DISK_THROUGHPUT_CAP };
+    case StorageType.PremiumV2_LRS:
+      return { min: PremiumV2_LRS_MIN_THROUGHPUT, max: PremiumV2_LRS_DISK_THROUGHPUT_CAP };
+    case StorageType.UltraSSD_LRS:
+      return { min: UltraSSD_MIN_THROUGHPUT, max: UltraSSD_DISK_THROUGHPUT_CAP };
+    default:
+      return null;
+  }
+};
 
 export interface StorageTypeOption {
   value: StorageType;
@@ -98,37 +151,48 @@ export const OCI_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
 export const DEFAULT_OCI_VOLUME_SIZE_GB = 250;
 
 export const getMinDiskIops = (storageType: StorageType, volumeSize: number) => {
+  const range = getDiskIopsRange(storageType);
+  if (!range) return 0;
+  // azure also floors iops by volume size
   switch (storageType) {
     case StorageType.UltraSSD_LRS:
-      return Math.max(UltraSSD_MIN_DISK_IOPS, volumeSize);
     case StorageType.PremiumV2_LRS:
-      return Math.max(PremiumV2_LRS_MIN_DISK_IOPS, volumeSize);
-    case StorageType.Hyperdisk_Balanced:
-      return HB_MIN_DISK_IOPS;
-    case StorageType.Hyperdisk_Extreme:
-      return HE_MIN_DISK_IOPS;
+      return Math.max(range.min, volumeSize);
     default:
-      return 0;
+      return range.min;
   }
 };
 
-export const getMaxDiskIops = (storageType: StorageType, volumeSize: number) => {
-  switch (storageType) {
-    case StorageType.IO1:
-      return IO1_MAX_DISK_IOPS;
-    case StorageType.IO2:
-      return IO2_MAX_DISK_IOPS;
-    case StorageType.UltraSSD_LRS:
-      return volumeSize * UltraSSD_DISK_IOPS_MAX_PER_GB;
-    case StorageType.PremiumV2_LRS:
-      return volumeSize * PremiumV2_LRS_DISK_IOPS_MAX_PER_GB;
-    case StorageType.Hyperdisk_Balanced:
-      return Math.min(HB_MAX_DISK_IOPS, HB_DISK_IOPS_MAX_PER_GB * volumeSize);
-    case StorageType.Hyperdisk_Extreme:
-      return Math.min(HE_MAX_DISK_IOPS, HE_DISK_IOPS_MAX_PER_GB * volumeSize);
-    default:
-      return GP3_MAX_IOPS;
+export const getMaxDiskIops = (storageType: StorageType, volumeSize?: number | null) => {
+  const range = getDiskIopsRange(storageType);
+  if (!range) return undefined;
+  if (volumeSize == null || !Number.isFinite(volumeSize) || volumeSize <= 0) {
+    return range.max;
   }
+  // don't clamp below the backend min (small volumes)
+  const clampMax = (perGbCap: number) =>
+    Math.max(range.min, Math.min(range.max, perGbCap * volumeSize));
+
+  switch (storageType) {
+    case StorageType.UltraSSD_LRS:
+      return clampMax(UltraSSD_DISK_IOPS_MAX_PER_GB);
+    case StorageType.PremiumV2_LRS:
+      return clampMax(PremiumV2_LRS_DISK_IOPS_MAX_PER_GB);
+    case StorageType.Hyperdisk_Balanced:
+      return clampMax(HB_DISK_IOPS_MAX_PER_GB);
+    case StorageType.Hyperdisk_Extreme:
+      return clampMax(HE_DISK_IOPS_MAX_PER_GB);
+    default:
+      return range.max;
+  }
+};
+
+export const getMinThroughput = (storageType: StorageType) => {
+  return getThroughputRange(storageType)?.min ?? 0;
+};
+
+export const getMaxThroughput = (storageType: StorageType) => {
+  return getThroughputRange(storageType)?.max;
 };
 
 export const getStorageTypeOptions = (
@@ -202,39 +266,68 @@ export const getThroughputByStorageType = (storageType: StorageType) => {
   return null;
 };
 
+const clampThroughputToIopsRatio = (
+  currentThroughput: number,
+  diskIops: number,
+  iopsToThroughputRatio: number,
+  absoluteMax: number,
+  storageType: StorageType
+) => {
+  const range = getThroughputRange(storageType);
+  const maxThroughput = Math.min(
+    Math.floor(diskIops / iopsToThroughputRatio),
+    absoluteMax
+  );
+  if (range && maxThroughput < range.min) {
+    return currentThroughput;
+  }
+  return Math.max(0, Math.min(maxThroughput, currentThroughput));
+};
+
 export const getThroughputByIops = (
   currentThroughput: number,
   diskIops: number,
   storageType: StorageType
 ) => {
+  // keep throughput as int
   if (storageType === StorageType.GP3) {
     if (
+      currentThroughput > 0 &&
       (diskIops > GP3_DEFAULT_DISK_IOPS || currentThroughput > GP3_DEFAULT_DISK_THROUGHPUT) &&
       diskIops / currentThroughput < GP3_IOPS_TO_MAX_DISK_THROUGHPUT
     ) {
       return Math.min(
         GP3_MAX_THROUGHPUT,
-        Math.max(diskIops / GP3_IOPS_TO_MAX_DISK_THROUGHPUT, GP3_DEFAULT_DISK_THROUGHPUT)
+        Math.max(
+          Math.floor(diskIops / GP3_IOPS_TO_MAX_DISK_THROUGHPUT),
+          GP3_DEFAULT_DISK_THROUGHPUT
+        )
       );
     }
   } else if (storageType === StorageType.UltraSSD_LRS) {
-    const maxThroughput = Math.min(
-      diskIops / UltraSSD_IOPS_TO_MAX_DISK_THROUGHPUT,
-      UltraSSD_DISK_THROUGHPUT_CAP
+    return clampThroughputToIopsRatio(
+      currentThroughput,
+      diskIops,
+      UltraSSD_IOPS_TO_MAX_DISK_THROUGHPUT,
+      UltraSSD_DISK_THROUGHPUT_CAP,
+      storageType
     );
-    return Math.max(0, Math.min(maxThroughput, currentThroughput));
   } else if (storageType === StorageType.PremiumV2_LRS) {
-    const maxThroughput = Math.min(
-      diskIops / PremiumV2_LRS_IOPS_TO_MAX_DISK_THROUGHPUT,
-      PremiumV2_LRS_DISK_THROUGHPUT_CAP
+    return clampThroughputToIopsRatio(
+      currentThroughput,
+      diskIops,
+      PremiumV2_LRS_IOPS_TO_MAX_DISK_THROUGHPUT,
+      PremiumV2_LRS_DISK_THROUGHPUT_CAP,
+      storageType
     );
-    return Math.max(0, Math.min(maxThroughput, currentThroughput));
   } else if (storageType === StorageType.Hyperdisk_Balanced) {
-    const maxThroughput = Math.min(
-      diskIops / HB_IOPS_TO_MAX_DISK_THROUGHPUT,
-      HB_DISK_THROUGHPUT_CAP
+    return clampThroughputToIopsRatio(
+      currentThroughput,
+      diskIops,
+      HB_IOPS_TO_MAX_DISK_THROUGHPUT,
+      HB_DISK_THROUGHPUT_CAP,
+      storageType
     );
-    return Math.max(0, Math.min(maxThroughput, currentThroughput));
   }
 
   return currentThroughput;
@@ -306,9 +399,12 @@ export const getDeviceInfoFromInstance = (
   // Throughput does not exist for all storage types
   const throughput = getThroughputByStorageType(storageType);
 
+  const resolvedVolumeSize = Number(defaultInstanceVolumeSize ?? volumeSize);
+
   return {
     numVolumes: volumeDetailsList.length,
-    volumeSize: defaultInstanceVolumeSize ?? volumeSize,
+    // runtime configs come back as strings
+    volumeSize: Number.isFinite(resolvedVolumeSize) ? resolvedVolumeSize : null,
     storageClass: 'standard',
     storageType,
     mountPoints:

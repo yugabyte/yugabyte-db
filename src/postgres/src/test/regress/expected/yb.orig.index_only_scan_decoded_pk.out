@@ -2,7 +2,7 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 ':explain'
 \set P2
@@ -17,15 +17,17 @@ ANALYZE t_hash;
 SELECT $$
 :P SELECT id FROM t_hash WHERE v = 'val_1';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_hash WHERE v = 'val_1';
                 QUERY PLAN                
 ------------------------------------------
  Index Only Scan using t_hash_v on t_hash
    Index Cond: (v = 'val_1'::text)
 (2 rows)
 
+SELECT id FROM t_hash WHERE v = 'val_1';
  id 
 ----
   1
@@ -34,15 +36,17 @@ $$ AS query \gset
 SELECT $$
 :P SELECT id, v FROM t_hash WHERE v = 'val_3';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id, v FROM t_hash WHERE v = 'val_3';
                 QUERY PLAN                
 ------------------------------------------
  Index Only Scan using t_hash_v on t_hash
    Index Cond: (v = 'val_3'::text)
 (2 rows)
 
+SELECT id, v FROM t_hash WHERE v = 'val_3';
  id |   v   
 ----+-------
   3 | val_3
@@ -72,15 +76,17 @@ ANALYZE t_range;
 SELECT $$
 :P SELECT id FROM t_range WHERE v = 'val_5';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_range WHERE v = 'val_5';
                  QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using t_range_v on t_range
    Index Cond: (v = 'val_5'::text)
 (2 rows)
 
+SELECT id FROM t_range WHERE v = 'val_5';
  id 
 ----
   5
@@ -89,15 +95,17 @@ $$ AS query \gset
 SELECT $$
 :P SELECT id, v FROM t_range WHERE v >= 'val_10' AND v < 'val_15' ORDER BY v;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id, v FROM t_range WHERE v >= 'val_10' AND v < 'val_15' ORDER BY v;
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Index Only Scan using t_range_v on t_range
    Index Cond: ((v >= 'val_10'::text) AND (v < 'val_15'::text))
 (2 rows)
 
+SELECT id, v FROM t_range WHERE v >= 'val_10' AND v < 'val_15' ORDER BY v;
  id  |    v    
 -----+---------
   10 | val_10
@@ -111,15 +119,17 @@ $$ AS query \gset
 SELECT $$
 :P SELECT id FROM t_range WHERE id = 5;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_range WHERE id = 5;
                 QUERY PLAN                
 ------------------------------------------
  Index Scan using t_range_pkey on t_range
    Index Cond: (id = 5)
 (2 rows)
 
+SELECT id FROM t_range WHERE id = 5;
  id 
 ----
   5
@@ -133,15 +143,17 @@ ANALYZE t_composite;
 SELECT $$
 :P SELECT a, b FROM t_composite WHERE v = 'v_15';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT a, b FROM t_composite WHERE v = 'v_15';
                      QUERY PLAN                     
 ----------------------------------------------------
  Index Only Scan using t_composite_v on t_composite
    Index Cond: (v = 'v_15'::text)
 (2 rows)
 
+SELECT a, b FROM t_composite WHERE v = 'v_15';
  a | b 
 ---+---
  1 | 5
@@ -150,15 +162,17 @@ $$ AS query \gset
 SELECT $$
 :P SELECT a, b, v FROM t_composite WHERE v = 'v_15';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT a, b, v FROM t_composite WHERE v = 'v_15';
                      QUERY PLAN                     
 ----------------------------------------------------
  Index Only Scan using t_composite_v on t_composite
    Index Cond: (v = 'v_15'::text)
 (2 rows)
 
+SELECT a, b, v FROM t_composite WHERE v = 'v_15';
  a | b |  v   
 ---+---+------
  1 | 5 | v_15
@@ -179,15 +193,17 @@ ANALYZE t_pk_in_idx;
 SELECT $$
 :P SELECT id FROM t_pk_in_idx WHERE v1 = 100;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_pk_in_idx WHERE v1 = 100;
                        QUERY PLAN                       
 --------------------------------------------------------
  Index Only Scan using t_pk_in_idx_v1_id on t_pk_in_idx
    Index Cond: (v1 = 100)
 (2 rows)
 
+SELECT id FROM t_pk_in_idx WHERE v1 = 100;
  id 
 ----
  10
@@ -207,15 +223,17 @@ ANALYZE t_uniq;
 SELECT $$
 :P SELECT id FROM t_uniq WHERE email = 'user5@test.com';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_uniq WHERE email = 'user5@test.com';
                     QUERY PLAN                    
 --------------------------------------------------
  Index Only Scan using t_uniq_email_key on t_uniq
    Index Cond: (email = 'user5@test.com'::text)
 (2 rows)
 
+SELECT id FROM t_uniq WHERE email = 'user5@test.com';
  id 
 ----
   5
@@ -264,15 +282,17 @@ ANALYZE t_multi_col;
 SELECT $$
 :P SELECT id FROM t_multi_col WHERE a = 2 AND b = 2;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_multi_col WHERE a = 2 AND b = 2;
                      QUERY PLAN                      
 -----------------------------------------------------
  Index Only Scan using t_multi_col_ab on t_multi_col
    Index Cond: ((a = 2) AND (b = 2))
 (2 rows)
 
+SELECT id FROM t_multi_col WHERE a = 2 AND b = 2;
  id 
 ----
  72
@@ -322,15 +342,17 @@ ANALYZE t_hash_comp;
 SELECT $$
 :P SELECT h1, h2 FROM t_hash_comp WHERE v = 50;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT h1, h2 FROM t_hash_comp WHERE v = 50;
                      QUERY PLAN                     
 ----------------------------------------------------
  Index Only Scan using t_hash_comp_v on t_hash_comp
    Index Cond: (v = 50)
 (2 rows)
 
+SELECT h1, h2 FROM t_hash_comp WHERE v = 50;
  h1 | h2  
 ----+-----
   5 | 105
@@ -339,15 +361,17 @@ $$ AS query \gset
 SELECT $$
 :P SELECT h1, h2, v FROM t_hash_comp WHERE v = 50;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT h1, h2, v FROM t_hash_comp WHERE v = 50;
                      QUERY PLAN                     
 ----------------------------------------------------
  Index Only Scan using t_hash_comp_v on t_hash_comp
    Index Cond: (v = 50)
 (2 rows)
 
+SELECT h1, h2, v FROM t_hash_comp WHERE v = 50;
  h1 | h2  | v  
 ----+-----+----
   5 | 105 | 50
@@ -361,15 +385,17 @@ ANALYZE t_mixed_pk;
 SELECT $$
 :P SELECT h, r FROM t_mixed_pk WHERE v = 'v_7';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT h, r FROM t_mixed_pk WHERE v = 'v_7';
                     QUERY PLAN                    
 --------------------------------------------------
  Index Only Scan using t_mixed_pk_v on t_mixed_pk
    Index Cond: (v = 'v_7'::text)
 (2 rows)
 
+SELECT h, r FROM t_mixed_pk WHERE v = 'v_7';
  h | r 
 ---+---
  1 | 7
@@ -379,9 +405,10 @@ $$ AS query \gset
 SELECT $$
 :P SELECT id FROM t_range WHERE v = 'val_5' AND id % 2 = 1;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_range WHERE v = 'val_5' AND id % 2 = 1;
                  QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using t_range_v on t_range
@@ -389,6 +416,7 @@ $$ AS query \gset
    Filter: ((id % 2) = 1)
 (3 rows)
 
+SELECT id FROM t_range WHERE v = 'val_5' AND id % 2 = 1;
  id 
 ----
   5
@@ -397,9 +425,10 @@ $$ AS query \gset
 SELECT $$
 :P SELECT id, v FROM t_range WHERE v >= 'val_10' AND v < 'val_20' AND id % 3 = 1 ORDER BY v;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id, v FROM t_range WHERE v >= 'val_10' AND v < 'val_20' AND id % 3 = 1 ORDER BY v;
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Index Only Scan using t_range_v on t_range
@@ -407,6 +436,7 @@ $$ AS query \gset
    Filter: ((id % 3) = 1)
 (3 rows)
 
+SELECT id, v FROM t_range WHERE v >= 'val_10' AND v < 'val_20' AND id % 3 = 1 ORDER BY v;
  id  |    v    
 -----+---------
   10 | val_10
@@ -420,9 +450,10 @@ $$ AS query \gset
 SELECT $$
 :P SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Aggregate
@@ -430,6 +461,7 @@ $$ AS query \gset
          Index Cond: ((v >= 'val_10'::text) AND (v < 'val_20'::text))
 (3 rows)
 
+SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
  count 
 -------
     12
@@ -438,9 +470,10 @@ $$ AS query \gset
 SELECT $$
 :P SELECT MIN(id), MAX(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT MIN(id), MAX(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Aggregate
@@ -448,6 +481,7 @@ $$ AS query \gset
          Index Cond: ((v >= 'val_10'::text) AND (v < 'val_20'::text))
 (3 rows)
 
+SELECT MIN(id), MAX(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
  min | max 
 -----+-----
    2 | 100
@@ -457,15 +491,17 @@ $$ AS query \gset
 SELECT $$
 :P SELECT id FROM t_range WHERE v >= 'val_10' AND v < 'val_15';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_range WHERE v >= 'val_10' AND v < 'val_15';
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Index Only Scan using t_range_v on t_range
    Index Cond: ((v >= 'val_10'::text) AND (v < 'val_15'::text))
 (2 rows)
 
+SELECT id FROM t_range WHERE v >= 'val_10' AND v < 'val_15';
  id  
 -----
   10
@@ -480,9 +516,10 @@ $$ AS query \gset
 SELECT $$
 :P SELECT COUNT(*) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Finalize Aggregate
@@ -491,6 +528,7 @@ $$ AS query \gset
          Partial Aggregate: true
 (4 rows)
 
+SELECT COUNT(*) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
  count 
 -------
     12
@@ -519,15 +557,17 @@ SELECT id FROM t_null_idx WHERE v IS NULL ORDER BY id;
 SELECT $$
 :P SELECT id FROM t_null_idx WHERE v = 10;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_null_idx WHERE v = 10;
                     QUERY PLAN                    
 --------------------------------------------------
  Index Only Scan using t_null_idx_v on t_null_idx
    Index Cond: (v = 10)
 (2 rows)
 
+SELECT id FROM t_null_idx WHERE v = 10;
  id 
 ----
   2
@@ -541,15 +581,17 @@ ANALYZE t_text_pk;
 SELECT $$
 :P SELECT id FROM t_text_pk WHERE v = 3;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_text_pk WHERE v = 3;
                    QUERY PLAN                   
 ------------------------------------------------
  Index Only Scan using t_text_pk_v on t_text_pk
    Index Cond: (v = 3)
 (2 rows)
 
+SELECT id FROM t_text_pk WHERE v = 3;
   id   
 -------
  key_3
@@ -573,15 +615,17 @@ ANALYZE t_float_pk;
 SELECT $$
 :P SELECT id FROM t_float_pk WHERE v = 3;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_float_pk WHERE v = 3;
                     QUERY PLAN                    
 --------------------------------------------------
  Index Only Scan using t_float_pk_v on t_float_pk
    Index Cond: (v = 3)
 (2 rows)
 
+SELECT id FROM t_float_pk WHERE v = 3;
  id  
 -----
  4.5
@@ -594,15 +638,17 @@ ANALYZE t_double_pk;
 SELECT $$
 :P SELECT id FROM t_double_pk WHERE v = 3;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_double_pk WHERE v = 3;
                      QUERY PLAN                     
 ----------------------------------------------------
  Index Only Scan using t_double_pk_v on t_double_pk
    Index Cond: (v = 3)
 (2 rows)
 
+SELECT id FROM t_double_pk WHERE v = 3;
  id  
 -----
  3.3
@@ -616,15 +662,17 @@ ANALYZE t_ts_pk;
 SELECT $$
 :P SELECT id FROM t_ts_pk WHERE v = 3;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_ts_pk WHERE v = 3;
                  QUERY PLAN                 
 --------------------------------------------
  Index Only Scan using t_ts_pk_v on t_ts_pk
    Index Cond: (v = 3)
 (2 rows)
 
+SELECT id FROM t_ts_pk WHERE v = 3;
             id            
 --------------------------
  Mon Jan 01 03:00:00 2024
@@ -637,15 +685,17 @@ ANALYZE t_bool_pk;
 SELECT $$
 :P SELECT id, extra FROM t_bool_pk WHERE v = 3;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id, extra FROM t_bool_pk WHERE v = 3;
                    QUERY PLAN                   
 ------------------------------------------------
  Index Only Scan using t_bool_pk_v on t_bool_pk
    Index Cond: (v = 3)
 (2 rows)
 
+SELECT id, extra FROM t_bool_pk WHERE v = 3;
  id | extra 
 ----+-------
  t  |     3
@@ -662,9 +712,10 @@ ANALYZE t_join_child;
 SELECT $$
 :P SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 ORDER BY i.item_id;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 ORDER BY i.item_id;
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Sort
@@ -677,6 +728,7 @@ $$ AS query \gset
                Index Cond: (tag_id = ANY (ARRAY[i.item_id, $1, $2, ..., $1023]))
 (8 rows)
 
+SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 ORDER BY i.item_id;
  item_id |   label   
 ---------+-----------
        1 | label_1
@@ -695,9 +747,10 @@ $$ AS query \gset
 SELECT $$
 :P SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 AND i.item_id % 500 = 1 ORDER BY i.item_id;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 AND i.item_id % 500 = 1 ORDER BY i.item_id;
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Sort
@@ -710,6 +763,7 @@ $$ AS query \gset
                Index Cond: (tag_id = i.item_id)
 (8 rows)
 
+SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 AND i.item_id % 500 = 1 ORDER BY i.item_id;
  item_id |  label  
 ---------+---------
        1 | label_1
@@ -725,9 +779,10 @@ ANALYZE t_include_cmp;
 SELECT $$
 :P SELECT id FROM t_include_cmp WHERE v = 50 AND id > 5000;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_include_cmp WHERE v = 50 AND id > 5000;
                       QUERY PLAN                       
 -------------------------------------------------------
  Index Only Scan using idx_include_pk on t_include_cmp
@@ -735,6 +790,7 @@ $$ AS query \gset
    Storage Filter: (id > 5000)
 (3 rows)
 
+SELECT id FROM t_include_cmp WHERE v = 50 AND id > 5000;
   id  
 ------
  5050
@@ -792,9 +848,10 @@ $$ AS query \gset
 SELECT $$
 :P SELECT COUNT(id) FROM t_include_cmp WHERE v = 50;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT COUNT(id) FROM t_include_cmp WHERE v = 50;
                          QUERY PLAN                          
 -------------------------------------------------------------
  Finalize Aggregate
@@ -803,6 +860,7 @@ $$ AS query \gset
          Partial Aggregate: true
 (4 rows)
 
+SELECT COUNT(id) FROM t_include_cmp WHERE v = 50;
  count 
 -------
    100
@@ -811,9 +869,10 @@ $$ AS query \gset
 SELECT $$
 :P SELECT COUNT(id) FROM t_include_cmp WHERE v >= 20 AND v < 80;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT COUNT(id) FROM t_include_cmp WHERE v >= 20 AND v < 80;
                          QUERY PLAN                          
 -------------------------------------------------------------
  Finalize Aggregate
@@ -822,6 +881,7 @@ $$ AS query \gset
          Partial Aggregate: true
 (4 rows)
 
+SELECT COUNT(id) FROM t_include_cmp WHERE v >= 20 AND v < 80;
  count 
 -------
   6000
@@ -836,9 +896,10 @@ ANALYZE t_partial_include;
 SELECT $$
 :P SELECT h1, h2 FROM t_partial_include WHERE v = 25 AND h1 > 5 AND h2 > 800 ORDER BY h2;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT h1, h2 FROM t_partial_include WHERE v = 25 AND h1 > 5 AND h2 > 800 ORDER BY h2;
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Sort
@@ -849,6 +910,7 @@ $$ AS query \gset
          Filter: (h2 > 800)
 (6 rows)
 
+SELECT h1, h2 FROM t_partial_include WHERE v = 25 AND h1 > 5 AND h2 > 800 ORDER BY h2;
  h1 | h2  
 ----+-----
   9 | 825
@@ -860,9 +922,10 @@ $$ AS query \gset
 SELECT $$
 :P SELECT COUNT(h1), COUNT(h2) FROM t_partial_include WHERE v >= 20 AND v < 30;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT COUNT(h1), COUNT(h2) FROM t_partial_include WHERE v >= 20 AND v < 30;
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Aggregate
@@ -870,6 +933,7 @@ $$ AS query \gset
          Index Cond: ((v >= 20) AND (v < 30))
 (3 rows)
 
+SELECT COUNT(h1), COUNT(h2) FROM t_partial_include WHERE v >= 20 AND v < 30;
  count | count 
 -------+-------
    200 |   200
@@ -879,9 +943,10 @@ $$ AS query \gset
 SELECT $$
 :P SELECT c.h1, c.h2, p.label FROM t_partial_include c JOIN t_join_parent p ON c.h1 = p.tag_id WHERE c.v = 25 ORDER BY c.h2;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT c.h1, c.h2, p.label FROM t_partial_include c JOIN t_join_parent p ON c.h1 = p.tag_id WHERE c.v = 25 ORDER BY c.h2;
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Sort
@@ -894,6 +959,7 @@ $$ AS query \gset
                Index Cond: (tag_id = ANY (ARRAY[c.h1, $1, $2, ..., $1023]))
 (8 rows)
 
+SELECT c.h1, c.h2, p.label FROM t_partial_include c JOIN t_join_parent p ON c.h1 = p.tag_id WHERE c.v = 25 ORDER BY c.h2;
  h1 | h2  |  label   
 ----+-----+----------
   1 |  25 | label_1
@@ -926,15 +992,17 @@ ANALYZE t_expr;
 SELECT $$
 :P SELECT id FROM t_expr WHERE lower(name) = 'name_5';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_expr WHERE lower(name) = 'name_5';
                     QUERY PLAN                    
 --------------------------------------------------
  Seq Scan on t_expr
    Storage Filter: (lower(name) = 'name_5'::text)
 (2 rows)
 
+SELECT id FROM t_expr WHERE lower(name) = 'name_5';
  id 
 ----
   5
@@ -943,15 +1011,17 @@ $$ AS query \gset
 SELECT $$
 :P SELECT id, lower(name) FROM t_expr WHERE lower(name) = 'name_3';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id, lower(name) FROM t_expr WHERE lower(name) = 'name_3';
                     QUERY PLAN                    
 --------------------------------------------------
  Seq Scan on t_expr
    Storage Filter: (lower(name) = 'name_3'::text)
 (2 rows)
 
+SELECT id, lower(name) FROM t_expr WHERE lower(name) = 'name_3';
  id | lower  
 ----+--------
   3 | name_3
@@ -961,9 +1031,10 @@ $$ AS query \gset
 SELECT $$
 :P SELECT id FROM t_range WHERE v IN ('val_3', 'val_7', 'val_15') ORDER BY id;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_range WHERE v IN ('val_3', 'val_7', 'val_15') ORDER BY id;
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Sort
@@ -972,6 +1043,7 @@ $$ AS query \gset
          Index Cond: (v = ANY ('{val_3,val_7,val_15}'::text[]))
 (4 rows)
 
+SELECT id FROM t_range WHERE v IN ('val_3', 'val_7', 'val_15') ORDER BY id;
  id 
 ----
   3
@@ -982,9 +1054,10 @@ $$ AS query \gset
 SELECT $$
 :P SELECT id FROM t_multi_col WHERE a IN (1, 3) AND b = 2 ORDER BY id;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_multi_col WHERE a IN (1, 3) AND b = 2 ORDER BY id;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Sort
@@ -993,6 +1066,7 @@ $$ AS query \gset
          Index Cond: ((a = ANY ('{1,3}'::integer[])) AND (b = 2))
 (4 rows)
 
+SELECT id FROM t_multi_col WHERE a IN (1, 3) AND b = 2 ORDER BY id;
  id 
 ----
 (0 rows)
@@ -1001,9 +1075,10 @@ $$ AS query \gset
 SELECT $$
 :P SELECT id FROM t_range WHERE v LIKE 'val\_1%' ESCAPE '\' ORDER BY v;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_range WHERE v LIKE 'val\_1%' ESCAPE '\' ORDER BY v;
                           QUERY PLAN                          
 --------------------------------------------------------------
  Index Only Scan using t_range_v on t_range
@@ -1011,6 +1086,7 @@ $$ AS query \gset
    Storage Filter: (v ~~ 'val\_1%'::text)
 (3 rows)
 
+SELECT id FROM t_range WHERE v LIKE 'val\_1%' ESCAPE '\' ORDER BY v;
  id  
 -----
    1
@@ -1038,9 +1114,10 @@ ANALYZE t_partial_comp;
 SELECT $$
 :P SELECT id FROM t_partial_comp WHERE cat = 'A' AND sub = 2 AND val > 10 ORDER BY id;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_partial_comp WHERE cat = 'A' AND sub = 2 AND val > 10 ORDER BY id;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Sort
@@ -1049,6 +1126,7 @@ $$ AS query \gset
          Index Cond: ((sub = 2) AND (val > 10))
 (4 rows)
 
+SELECT id FROM t_partial_comp WHERE cat = 'A' AND sub = 2 AND val > 10 ORDER BY id;
  id 
 ----
  12
@@ -1074,15 +1152,17 @@ ANALYZE t_jsonb_expr;
 SELECT $$
 :P SELECT id FROM t_jsonb_expr WHERE (data->>'key')::int = 5;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_jsonb_expr WHERE (data->>'key')::int = 5;
                       QUERY PLAN                       
 -------------------------------------------------------
  Index Scan using t_jsonb_expr_key on t_jsonb_expr
    Index Cond: (((data ->> 'key'::text))::integer = 5)
 (2 rows)
 
+SELECT id FROM t_jsonb_expr WHERE (data->>'key')::int = 5;
  id 
 ----
   5
@@ -1096,15 +1176,17 @@ ANALYZE t_temp;
 SELECT $$
 :P SELECT id FROM t_temp WHERE v = 50;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_temp WHERE v = 50;
      QUERY PLAN     
 --------------------
  Seq Scan on t_temp
    Filter: (v = 50)
 (2 rows)
 
+SELECT id FROM t_temp WHERE v = 50;
  id 
 ----
   5
@@ -1141,15 +1223,17 @@ SET yb_enable_primary_key_decode_from_index = off;
 SELECT $$
 :P SELECT id FROM t_range WHERE v = 'val_5';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_range WHERE v = 'val_5';
               QUERY PLAN               
 ---------------------------------------
  Seq Scan on t_range
    Storage Filter: (v = 'val_5'::text)
 (2 rows)
 
+SELECT id FROM t_range WHERE v = 'val_5';
  id 
 ----
   5
@@ -1158,15 +1242,17 @@ $$ AS query \gset
 SELECT $$
 :P SELECT a, b FROM t_composite WHERE v = 'v_15';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT a, b FROM t_composite WHERE v = 'v_15';
               QUERY PLAN              
 --------------------------------------
  Seq Scan on t_composite
    Storage Filter: (v = 'v_15'::text)
 (2 rows)
 
+SELECT a, b FROM t_composite WHERE v = 'v_15';
  a | b 
 ---+---
  1 | 5
@@ -1175,9 +1261,10 @@ $$ AS query \gset
 SELECT $$
 :P SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Finalize Aggregate
@@ -1186,6 +1273,7 @@ $$ AS query \gset
          Partial Aggregate: true
 (4 rows)
 
+SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20';
  count 
 -------
     12
@@ -1194,15 +1282,17 @@ $$ AS query \gset
 SELECT $$
 :P SELECT id FROM t_range WHERE v = 'val_5' AND id % 2 = 1;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_range WHERE v = 'val_5' AND id % 2 = 1;
                          QUERY PLAN                         
 ------------------------------------------------------------
  Seq Scan on t_range
    Storage Filter: ((v = 'val_5'::text) AND ((id % 2) = 1))
 (2 rows)
 
+SELECT id FROM t_range WHERE v = 'val_5' AND id % 2 = 1;
  id 
 ----
   5
@@ -1211,9 +1301,10 @@ $$ AS query \gset
 SELECT $$
 :P SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 ORDER BY i.item_id;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 ORDER BY i.item_id;
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Sort
@@ -1226,6 +1317,7 @@ $$ AS query \gset
                Index Cond: (tag_id = ANY (ARRAY[i.item_id, $1, $2, ..., $1023]))
 (8 rows)
 
+SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 ORDER BY i.item_id;
  item_id |   label   
 ---------+-----------
        1 | label_1
@@ -1273,7 +1365,7 @@ CREATE DATABASE colo_ios_test WITH COLOCATION = true;
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\set _echo_pq :ECHO
+\set _echo_parameterized_query :ECHO
 \set ECHO none
 \set P1 ':explain'
 \set P2
@@ -1288,15 +1380,17 @@ ANALYZE t_colocated;
 SELECT $$
 :P SELECT id FROM t_colocated WHERE v = 5;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id FROM t_colocated WHERE v = 5;
                      QUERY PLAN                     
 ----------------------------------------------------
  Index Only Scan using t_colocated_v on t_colocated
    Index Cond: (v = 5)
 (2 rows)
 
+SELECT id FROM t_colocated WHERE v = 5;
  id 
 ----
   5
@@ -1310,15 +1404,17 @@ $$ AS query \gset
 SELECT $$
 :P SELECT id, v FROM t_colocated WHERE v >= 10 AND v < 15 ORDER BY v;
 $$ AS query \gset
-\i :iter_P2
-\set _echo_P :ECHO
+\i :run_query
+\set _echo_run_query :ECHO
 \set ECHO none
+EXPLAIN (COSTS OFF) SELECT id, v FROM t_colocated WHERE v >= 10 AND v < 15 ORDER BY v;
                      QUERY PLAN                     
 ----------------------------------------------------
  Index Only Scan using t_colocated_v on t_colocated
    Index Cond: ((v >= 10) AND (v < 15))
 (2 rows)
 
+SELECT id, v FROM t_colocated WHERE v >= 10 AND v < 15 ORDER BY v;
  id | v  
 ----+----
  10 | 10

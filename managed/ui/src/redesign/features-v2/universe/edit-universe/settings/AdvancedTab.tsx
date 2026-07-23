@@ -331,7 +331,7 @@ export const AdvancedTab = () => {
             )}
           </StyledHeader>
           {
-            <StyledContent>
+            <StyledContent sx={{ gap: '24px' }}>
               {isProxyEnabled ? (
                 <>
                   <StyledInfoRow sx={{ flexDirection: 'row', gap: '90px' }}>
@@ -484,7 +484,7 @@ export const AdvancedTab = () => {
                   </RbacValidator>
                 )}
               </StyledHeader>
-              <StyledContent>
+              <StyledContent sx={{ paddingTop: '0px' }}>
                 {userTags.length <= 0 ? (
                   <StyledEmptyState>
                     <Typography variant="body2" sx={{ color: '#4E5F6D' }}>

@@ -20,6 +20,7 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/flags.h"
+#include "yb/util/status_format.h"
 
 DEFINE_UNKNOWN_int64(reset_master_leader_timeout_ms, 15000,
              "Timeout to reset master leader in milliseconds.");

@@ -1226,80 +1226,87 @@ class UniverseDetail extends Component {
                         </YBTooltip>
                       </RbacValidator>
                     )}
-                    {
-                      !isReadOnlyUniverse &&
-                      !universePaused &&
-                      isV2EditUniverseUIEnabled &&
-                      isNotHidden(
-                        currentCustomer.data.features,
-                        'universes.details.overview.editUniverse'
-                      ) && (
-                        <>
-                          <MenuItem divider />
-                          <RbacValidator
-                            isControl
-                            accessRequiredOn={{
-                              onResource: uuid,
-                              ...ApiPermissionMap.GET_UNIVERSES_BY_ID
-                            }}
+                  {!isReadOnlyUniverse &&
+                    !universePaused &&
+                    isV2EditUniverseUIEnabled &&
+                    isNotHidden(
+                      currentCustomer.data.features,
+                      'universes.details.overview.editUniverse'
+                    ) && (
+                      <>
+                        <MenuItem divider />
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
+                        >
+                          <YBTooltip
+                            title={
+                              hasAsymmetricPrimaryCluster &&
+                              !(isKubernetesUniverse && enableAzOverridesK8s)
+                                ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
+                                : ''
+                            }
+                            placement="left"
                           >
-                            <YBTooltip
-                              title={
-                                hasAsymmetricPrimaryCluster &&
-                                  !(isKubernetesUniverse && enableAzOverridesK8s)
-                                  ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
-                                  : ''
-                              }
-                              placement="left"
-                            >
-                              <span>
-                                <YBMenuItem
-                                  to={getEditUniverseSettingsRoute(uuid, EditUniverseTabs.PLACEMENT)}
-                                  availability={getFeatureState(
-                                    currentCustomer.data.features,
-                                    'universes.details.overview.editUniverse'
-                                  )}
-                                  disabled={isEditUniverseDisabled}
-                                  className="no-border-bottom"
+                            <span>
+                              <YBMenuItem
+                                to={getEditUniverseSettingsRoute(uuid, EditUniverseTabs.PLACEMENT)}
+                                availability={getFeatureState(
+                                  currentCustomer.data.features,
+                                  'universes.details.overview.editUniverse'
+                                )}
+                                disabled={isEditUniverseDisabled}
+                                className="no-border-bottom"
+                              >
+                                <YBLabelWithIcon
+                                  icon="fa fa-pencil"
+                                  className="menu-item-subtext-container"
                                 >
-                                  <YBLabelWithIcon icon="fa fa-pencil" className="menu-item-subtext-container">
-                                    Edit Universe Placement
-                                    <span className="menu-item-subtext">Regions, Availability Zones, and Nodes</span>
-                                  </YBLabelWithIcon>
-                                </YBMenuItem>
-                              </span>
-                            </YBTooltip>
-                          </RbacValidator>
-                          <RbacValidator
-                            isControl
-                            accessRequiredOn={{
-                              onResource: uuid,
-                              ...ApiPermissionMap.GET_UNIVERSES_BY_ID
-                            }}
+                                  Edit Universe Placement
+                                  <span className="menu-item-subtext">
+                                    Regions, Availability Zones, and Nodes
+                                  </span>
+                                </YBLabelWithIcon>
+                              </YBMenuItem>
+                            </span>
+                          </YBTooltip>
+                        </RbacValidator>
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
+                        >
+                          <YBTooltip
+                            title={
+                              hasAsymmetricPrimaryCluster &&
+                              !(isKubernetesUniverse && enableAzOverridesK8s)
+                                ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
+                                : ''
+                            }
+                            placement="left"
                           >
-                            <YBTooltip
-                              title={
-                                hasAsymmetricPrimaryCluster &&
-                                  !(isKubernetesUniverse && enableAzOverridesK8s)
-                                  ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
-                                  : ''
-                              }
-                              placement="left"
-                            >
-                              <span>
-                                <YBMenuItem
-                                  to={getEditUniverseSettingsRoute(uuid, EditUniverseTabs.HARDWARE)}
-                                  availability={getFeatureState(
-                                    currentCustomer.data.features,
-                                    'universes.details.overview.editUniverse'
-                                  )}
-                                  disabled={isEditUniverseDisabled}
-                                  className="no-border-bottom"
+                            <span>
+                              <YBMenuItem
+                                to={getEditUniverseSettingsRoute(uuid, EditUniverseTabs.HARDWARE)}
+                                availability={getFeatureState(
+                                  currentCustomer.data.features,
+                                  'universes.details.overview.editUniverse'
+                                )}
+                                disabled={isEditUniverseDisabled}
+                                className="no-border-bottom"
+                              >
+                                <YBLabelWithIcon
+                                  icon="fa fa-pencil"
+                                  className="menu-item-subtext-container"
                                 >
-                                  <YBLabelWithIcon icon="fa fa-pencil" className="menu-item-subtext-container">
-                                    Edit Hardware
-                                    <span className="menu-item-subtext">Instances and storage</span>
-                                  </YBLabelWithIcon>
+                                  Edit Hardware
+                                  <span className="menu-item-subtext">Instances and storage</span>
+                                </YBLabelWithIcon>
                               </YBMenuItem>
                             </span>
                           </YBTooltip>
@@ -2193,7 +2200,9 @@ class UniverseDetail extends Component {
             activeTab={activeTab}
             routePrefix={`/universes/${currentUniverse.data.universeUUID}/`}
             id={'universe-tab-panel'}
-            className={'universe-detail'}
+            className={`universe-detail${
+              activeTab === 'settings' ? ' universe-detail-settings' : ''
+            }`}
           >
             {[...tabElements, <div title={actionMenuButtons} />]}
           </YBTabsWithLinksPanel>

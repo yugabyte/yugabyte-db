@@ -234,6 +234,12 @@ Lists tables and indexes in database tablegroups matching the *pattern*. If the 
 
 Alias for [`\lo_list`](#lo-list), which shows a list of large objects.
 
+{{< note title="Note" >}}
+
+This command is inherited from psql, but large objects are not supported in YugabyteDB.
+
+{{< /note >}}
+
 ##### \dL[S+] [ [pattern](#patterns) ]
 
 Lists procedural languages. If *pattern* is specified, only languages whose names match the pattern are listed. By default, only user-created languages are shown; supply the *S* modifier to include system objects. If *+* is appended to the command name, each language is listed with its call handler, validator, access privileges, and whether it is a system object.
@@ -490,36 +496,39 @@ List the databases in the server and show their names, owners, character set enc
 
 Reads the large object with OID *loid* from the database and writes it to *filename*. Note that this is subtly different from the server function `lo_export`, which acts with the permissions of the user that the database server runs as and on the server's filesystem.
 
-{{< note title="Tip" >}}
+{{< note title="Note" >}}
 
-Use [\lo_list](#lo-list) to find out the large object's OID.
+This command is inherited from psql, but large objects are not supported in YugabyteDB.
 
 {{< /note >}}
 
 ##### \lo_import *filename* [ *comment* ]
 
-Stores the file into a YugabyteDB large object. Optionally, it associates the given comment with the object. Example:
+Stores the file into a large object. Optionally, it associates the given comment with the object. 
 
-```sql
-foo=> \lo_import '/home/peter/pictures/photo.xcf' 'a picture of me'
-lo_import 152801
-```
+{{< note title="Note" >}}
 
-The response indicates that the large object received object ID `152801`, which can be used to access the newly-created large object in the future. For the sake of readability, it is recommended to always associate a human-readable comment with every object. Both OIDs and comments can be viewed with the [\lo_list](#lo-list) command.
+This command is inherited from psql, but large objects are not supported in YugabyteDB.
 
-Note that this command is subtly different from the server-side `lo_import` because it acts as the local user on the local filesystem, rather than the server's user and filesystem.
+{{< /note >}}
 
 ##### \lo_list
 
-Shows a list of all YugabyteDB large objects currently stored in the database, along with any comments provided for them.
+Shows a list of all large objects currently stored in the database, along with any comments provided for them.
+
+{{< note title="Note" >}}
+
+This command is inherited from psql, but large objects are not supported in YugabyteDB.
+
+{{< /note >}}
 
 ##### \lo_unlink *loid*
 
 Deletes the large object with OID *loid* from the database.
 
-{{< note title="Tip" >}}
+{{< note title="Note" >}}
 
-To find out the large object's OID, use [\lo_list](#lo-list).
+This command is inherited from psql, but large objects are not supported in YugabyteDB.
 
 {{< /note >}}
 

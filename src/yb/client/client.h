@@ -44,6 +44,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/common_types.fwd.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/retryable_request.h"
 #include "yb/common/snapshot.h"
@@ -55,14 +56,20 @@
 
 #include "yb/gutil/macros.h"
 
+#include "yb/master/catalog_entity_info.fwd.h"
+#include "yb/master/master_backup.fwd.h"
 #include "yb/master/master_client.fwd.h"
+#include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_types.pb.h"
-#include "yb/tablet/tablet.pb.h"
+#include "yb/master/master_replication.fwd.h"
+#include "yb/master/master_types.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/server/clock.h"
+#include "yb/tablet/operations.fwd.h"
+#include "yb/tablet/tablet.fwd.h"
+
+#include "yb/server/server_fwd.h"
 
 #include "yb/tserver/pg_client.fwd.h"
 
@@ -105,11 +112,13 @@ namespace client {
 
 YB_STRONGLY_TYPED_BOOL(IncludeNonrunningNamespaces);
 
-struct NamespaceInfo {
-    master::NamespaceIdentifierPB id;
-    master::SysNamespaceEntryPB_State state;
-    bool colocated;
-};
+// Returns the default CDCSDK dynamic-tables option value
+// (CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED). Declared here so that
+// CreateCDCSDKStreamForNamespace can use it as a default argument without
+// dragging yb/common/common_types.pb.h into this header.
+const CDCSDKDynamicTablesOption& DefaultDynamicTablesOption();
+
+struct NamespaceInfo;
 
 struct CDCSDKStreamInfo {
   std::string stream_id;
@@ -176,15 +185,10 @@ using OpenTableAsyncCallback = std::function<void(const Result<YBTablePtr>&)>;
 using CreateSnapshotCallback = std::function<void(Result<TxnSnapshotId>)>;
 using MasterAddressSource = std::function<std::vector<std::string>()>;
 
-struct TransactionStatusTablets {
-  std::vector<TabletId> global_tablets;
-  std::vector<TabletId> region_local_tablets;
-  struct TablespaceInfo {
-    PlacementInfoPB placement_info;
-    std::vector<TabletId> tablets;
-  };
-  std::unordered_map<PgOid, TablespaceInfo> tablespaces;
-};
+// Defined in yb/client/transaction_status_tablets.h. Forward-declared here so this header
+// does not need to drag in yb/common/common_net.pb.h (and the rest of the common.pb.h chain)
+// for the sole sake of PlacementInfoPB in the nested TablespaceInfo struct.
+struct TransactionStatusTablets;
 
 struct TabletReplicaFullCompactionStatus {
   TabletServerId ts_id;
@@ -667,8 +671,7 @@ class YBClient {
       const std::optional<std::string>& replication_slot_plugin_name = std::nullopt,
       const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option = std::nullopt,
       CoarseTimePoint deadline = CoarseTimePoint(),
-      const CDCSDKDynamicTablesOption& dynamic_tables_option =
-          CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
+      const CDCSDKDynamicTablesOption& dynamic_tables_option = DefaultDynamicTablesOption(),
       uint64_t* consistent_snapshot_time_out = nullptr,
       const std::optional<ReplicationSlotLsnType>& lsn_type = std::nullopt,
       const std::optional<ReplicationSlotOrderingMode>& ordering_mode = std::nullopt,

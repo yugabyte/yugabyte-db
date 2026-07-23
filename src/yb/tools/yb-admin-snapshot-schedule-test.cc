@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/namespace_info.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"

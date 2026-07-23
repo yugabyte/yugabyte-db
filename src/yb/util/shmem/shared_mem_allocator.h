@@ -21,6 +21,7 @@
 
 #include "yb/util/shmem/reserved_address_segment.h"
 #include "yb/util/shmem/shared_mem_segment.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 

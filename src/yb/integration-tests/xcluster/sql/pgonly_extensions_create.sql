@@ -1,14 +1,13 @@
 -- Preinstalled extensions that don't need to be created explicitly
 -- CREATE EXTENSION plpgsql;
 -- CREATE EXTENSION pg_stat_statements;
+-- CREATE EXTENSION postgres_fdw;
 
 CREATE EXTENSION file_fdw;
 
 CREATE EXTENSION fuzzystrmatch;
 
 CREATE EXTENSION pgcrypto;
-
-CREATE EXTENSION postgres_fdw;
 
 CREATE EXTENSION sslinfo;
 

@@ -68,6 +68,7 @@
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"

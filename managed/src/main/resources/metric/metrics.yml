@@ -238,7 +238,7 @@ container_cpu_usage:
       type: "date"
     yaxis:
       alias:
-        "container_cpu_usage": "cpu_usage"
+        "container_cpu_usage": "Usage"
       ticksuffix: "&nbsp;%"
 
 container_memory_usage:
@@ -257,7 +257,7 @@ container_memory_usage:
     yaxis:
       ticksuffix: "&nbsp;GB"
       alias:
-        "container_memory_working_set_bytes": "memory_usage"
+        "container_memory_working_set_bytes": "Usage"
 
 container_volume_stats:
   metric: "kubelet_volume_stats_used_bytes"
@@ -273,7 +273,7 @@ container_volume_stats:
     yaxis:
       ticksuffix: "&nbsp;GB"
       alias:
-        "kubelet_volume_stats_used_bytes": "used"
+        "kubelet_volume_stats_used_bytes": "Used"
 
 container_volume_max_usage:
   metric: "kubelet_volume_stats_capacity_bytes"
@@ -289,7 +289,7 @@ container_volume_max_usage:
     yaxis:
       ticksuffix: "&nbsp;GB"
       alias:
-        "kubelet_volume_stats_capacity_bytes": "used"
+        "kubelet_volume_stats_capacity_bytes": "Used"
 
 container_volume_usage_percent:
   metric: "container_volume_stats/container_volume_max_usage"
@@ -302,7 +302,7 @@ container_volume_usage_percent:
       type: "date"
     yaxis:
       alias:
-        "container_volume_stats/container_volume_max_usage": "Container Usage"
+        "container_volume_stats/container_volume_max_usage": "Used"
       ticksuffix: "&nbsp;%"
 
 network_bytes:

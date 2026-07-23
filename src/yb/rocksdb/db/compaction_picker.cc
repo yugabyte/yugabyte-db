@@ -1217,6 +1217,13 @@ std::unique_ptr<Compaction> LevelCompactionPicker::PickCompaction(
 uint32_t LevelCompactionPicker::GetPathId(
     const ImmutableCFOptions& ioptions,
     const MutableCFOptions& mutable_cf_options, int level) {
+  // Tiered storage: honor the per-CF target set by the reconcile worker.
+  // Every db_paths slot has target_size = UINT64_MAX (set at DB::Open from
+  // tier_paths), so the capacity-based fallback below would always return 0.
+  if (mutable_cf_options.target_path_id != 0) {
+    return SafePathId(mutable_cf_options.target_path_id, ioptions.db_paths.size());
+  }
+
   uint32_t p = 0;
   assert(!ioptions.db_paths.empty());
 
@@ -1699,7 +1706,14 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::DoPickCompaction(
 }
 
 uint32_t UniversalCompactionPicker::GetPathId(
-    const ImmutableCFOptions& ioptions, uint64_t file_size) {
+    const ImmutableCFOptions& ioptions,
+    const MutableCFOptions& mutable_cf_options,
+    uint64_t file_size) {
+  // Tiered storage: honor the per-CF target set by the reconcile worker.
+  if (mutable_cf_options.target_path_id != 0) {
+    return SafePathId(mutable_cf_options.target_path_id, ioptions.db_paths.size());
+  }
+
   // Two conditions need to be satisfied:
   // (1) the target path needs to be able to hold the file's size
   // (2) Total size left in this and previous paths need to be not
@@ -1878,7 +1892,7 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompactionUniversalRe
   for (unsigned int i = 0; i < first_index_after; i++) {
     estimated_total_size += sorted_runs[i].size;
   }
-  uint32_t path_id = GetPathId(ioptions_, estimated_total_size);
+  uint32_t path_id = GetPathId(ioptions_, mutable_cf_options, estimated_total_size);
   int start_level = sorted_runs[start_index].level;
   int output_level;
   if (first_index_after == sorted_runs.size()) {
@@ -2076,7 +2090,7 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompactionUniversalSi
   for (size_t loop = start_index; loop < sorted_runs.size(); loop++) {
     estimated_total_size += sorted_runs[loop].size;
   }
-  uint32_t path_id = GetPathId(ioptions_, estimated_total_size);
+  uint32_t path_id = GetPathId(ioptions_, mutable_cf_options, estimated_total_size);
   int start_level = sorted_runs[start_index].level;
 
   std::vector<CompactionInputFiles> inputs(vstorage->num_levels());

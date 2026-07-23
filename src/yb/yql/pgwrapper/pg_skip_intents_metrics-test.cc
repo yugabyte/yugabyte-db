@@ -18,6 +18,7 @@
 #include "yb/client/snapshot_test_util.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/util/physical_time.h"
+#include "yb/util/status_log.h"
 #include "yb/util/timestamp.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"

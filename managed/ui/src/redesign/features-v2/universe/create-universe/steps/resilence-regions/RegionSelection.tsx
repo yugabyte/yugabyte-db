@@ -84,7 +84,7 @@ export const RegionSelection = ({ showErrorsAfterSubmit = true }: RegionSelectio
   
   const icon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
   const allowmultipleRegionsSelection =
-    canSelectMultipleRegions(resilienceType) && faultToleranceType !== FaultToleranceType.NONE || formMode === ResilienceFormMode.EXPERT_MODE;
+    canSelectMultipleRegions(resilienceType) && (faultToleranceType !== FaultToleranceType.NONE || formMode === ResilienceFormMode.EXPERT_MODE);
 
   const mapCoordinates = useCallback(() => {
     const coordinates = regions?.map((region) => [region.latitude ?? [0], region.longitude ?? [0]]);
@@ -126,6 +126,8 @@ export const RegionSelection = ({ showErrorsAfterSubmit = true }: RegionSelectio
             dataTestId="region-selection-autocomplete-parent"
             options={((regionsList as unknown) as Record<string, string>[]) ?? []}
             getOptionLabel={(r) => (typeof r === 'string' ? r : r.name ?? '')}
+            filterSelectedOptions={true}
+            isOptionEqualToValue={(option, value) => option.code === value.code}
             renderOption={(props, row) => {
               return (
                 <StyledMenu {...props}>

@@ -25,6 +25,8 @@
 #include "yb/server/async_client_initializer.h"
 #include "yb/server/clock.h"
 
+#include "yb/master/master_types.pb.h"
+
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/tserver_shared_mem.h"
 

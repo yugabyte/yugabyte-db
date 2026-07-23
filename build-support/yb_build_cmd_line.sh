@@ -97,6 +97,9 @@ Build options:
 
   --skip-pg-parquet
     Skip pg_parquet extension build.
+  --skip-extra-pg-extensions
+    Skip building extra (non-essential) PG extensions: documentdb (also skips its pgrx/Rust build)
+    and pg_parquet.
 
   --target, --targets
     Pass the given target or set of targets to make or ninja.
@@ -644,6 +647,9 @@ parse_yb_build_cmd_line() {
       ;;
       --skip-pg-parquet)
         export YB_SKIP_PG_PARQUET_BUILD=1
+      ;;
+      --skip-extra-pg-extensions)
+        export YB_SKIP_EXTRA_PG_EXTENSIONS=1
       ;;
       --num-repetitions|--num-reps|-n)
         ensure_option_has_arg "$@"

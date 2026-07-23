@@ -27,6 +27,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
+#include "yb/client/transaction_status_tablets.h"
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
@@ -1636,7 +1637,7 @@ class TransactionParticipant::Impl
   }
 
   void RecordConflictResolutionScanLatency(MonoDelta latency) {
-    metric_conflict_resolution_latency_->Increment(latency.ToMilliseconds());
+    metric_conflict_resolution_latency_->Increment(latency.ToMicroseconds());
   }
 
   Result<HybridTime> SimulateProcessRecentlyAppliedTransactions(

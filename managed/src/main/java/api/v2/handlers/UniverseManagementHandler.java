@@ -66,6 +66,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -134,20 +135,54 @@ import play.mvc.Http.Request;
 
 @Slf4j
 public class UniverseManagementHandler extends ApiControllerUtils {
-  @Inject private RuntimeConfGetter confGetter;
-  @Inject private ReleaseManager releaseManager;
-  @Inject private SwamperHelper swamperHelper;
-  @Inject private ConfigHelper configHelper;
-  @Inject private UniverseCRUDHandler universeCRUDHandler;
-  @Inject private UniverseInfoHandler universeInfoHandler;
-  @Inject private Commissioner commissioner;
-  @Inject private YsqlQueryExecutor ysqlQueryExecutor;
-  @Inject private NodeScriptRunner nodeScriptRunner;
-  @Inject private NodeFileCollector nodeFileCollector;
-  @Inject private FileCollectionDownloader fileCollectionDownloader;
-  @Inject private LocalhostAccessChecker localhostChecker;
-  @Inject private RoleBindingUtil roleBindingUtil;
-  @Inject private KubernetesOverridesHandler kubernetesOverridesHandler;
+  private final RuntimeConfGetter confGetter;
+  private final ReleaseManager releaseManager;
+  private final SwamperHelper swamperHelper;
+  private final ConfigHelper configHelper;
+  private final UniverseCRUDHandler universeCRUDHandler;
+  private final UniverseInfoHandler universeInfoHandler;
+  private final Commissioner commissioner;
+  private final YsqlQueryExecutor ysqlQueryExecutor;
+  private final NodeScriptRunner nodeScriptRunner;
+  private final NodeFileCollector nodeFileCollector;
+  private final FileCollectionDownloader fileCollectionDownloader;
+  private final LocalhostAccessChecker localhostChecker;
+  private final RoleBindingUtil roleBindingUtil;
+  private final KubernetesOverridesHandler kubernetesOverridesHandler;
+
+  @Inject
+  public UniverseManagementHandler(
+      AuditService auditService,
+      RuntimeConfGetter confGetter,
+      ReleaseManager releaseManager,
+      SwamperHelper swamperHelper,
+      ConfigHelper configHelper,
+      UniverseCRUDHandler universeCRUDHandler,
+      UniverseInfoHandler universeInfoHandler,
+      Commissioner commissioner,
+      YsqlQueryExecutor ysqlQueryExecutor,
+      NodeScriptRunner nodeScriptRunner,
+      NodeFileCollector nodeFileCollector,
+      FileCollectionDownloader fileCollectionDownloader,
+      LocalhostAccessChecker localhostChecker,
+      RoleBindingUtil roleBindingUtil,
+      KubernetesOverridesHandler kubernetesOverridesHandler) {
+    super(auditService);
+    this.confGetter = confGetter;
+    this.releaseManager = releaseManager;
+    this.swamperHelper = swamperHelper;
+    this.configHelper = configHelper;
+    this.universeCRUDHandler = universeCRUDHandler;
+    this.universeInfoHandler = universeInfoHandler;
+    this.commissioner = commissioner;
+    this.ysqlQueryExecutor = ysqlQueryExecutor;
+    this.nodeScriptRunner = nodeScriptRunner;
+    this.nodeFileCollector = nodeFileCollector;
+    this.fileCollectionDownloader = fileCollectionDownloader;
+    this.localhostChecker = localhostChecker;
+    this.roleBindingUtil = roleBindingUtil;
+    this.kubernetesOverridesHandler = kubernetesOverridesHandler;
+  }
 
   private static final String RELEASES_PATH = "yb.releases.path";
 
@@ -277,6 +312,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     boolean isNewUI = isNewUI();
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID);
+    JsonNode dbUniverseJson = Json.toJson(dbUniverse);
     UniverseCRUDHandler.checkInstanceTypeConsistency(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
     // inherit RR cluster properties from primary cluster in given edit spec
@@ -359,6 +395,16 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         CustomerTask.TaskType.Update,
         dbUniverse.getName(),
         CustomerTaskManager.getCustomTaskName(CustomerTask.TaskType.Update, v1Params, null));
+    // Additional audit call so that old UI can show changes for edit operation.
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            dbUniverse.getUniverseUUID().toString(),
+            Audit.ActionType.Update,
+            Json.toJson(v1Params),
+            taskUUID,
+            dbUniverseJson);
     return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
   }
 

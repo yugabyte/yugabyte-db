@@ -16,6 +16,7 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"

@@ -15,7 +15,8 @@
 
 typedef enum {
 	YB_PARSE_QUEUE_SYNC,
-	YB_PARSE_QUEUE_STMT_NAME,
+	YB_PARSE_QUEUE_PARSE_COMPLETE,
+	YB_PARSE_QUEUE_NO_PARSE_COMPLETE,
 } yb_od_parse_queue_kind_t;
 
 typedef struct yb_od_parse_queue_entry {
@@ -39,7 +40,8 @@ static inline void yb_od_parse_queue_entry_release(yb_od_parse_queue_entry_t *en
 	switch (entry->kind) {
 	case YB_PARSE_QUEUE_SYNC:
 		break;
-	case YB_PARSE_QUEUE_STMT_NAME:
+	case YB_PARSE_QUEUE_PARSE_COMPLETE:
+	case YB_PARSE_QUEUE_NO_PARSE_COMPLETE:
 		free(entry->stmt_name);
 		entry->stmt_name = NULL;
 		break;
@@ -158,7 +160,7 @@ static inline int yb_od_parse_queue_enqueue_sync(yb_od_parse_queue_t *q)
 }
 
 static inline int yb_od_parse_queue_enqueue_stmt_name(yb_od_parse_queue_t *q,
-						   const char *stmt_name)
+						   const char *stmt_name, yb_od_parse_queue_kind_t kind)
 {
 	if (!q->enabled)
 		return 0;
@@ -166,7 +168,7 @@ static inline int yb_od_parse_queue_enqueue_stmt_name(yb_od_parse_queue_t *q,
 	if (copy == NULL)
 		return -1;
 	yb_od_parse_queue_entry_t entry = {
-		.kind = YB_PARSE_QUEUE_STMT_NAME,
+		.kind = kind,
 		.stmt_name = copy,
 	};
 	if (yb_od_circular_queue_enqueue(&q->q, &entry) == -1) {

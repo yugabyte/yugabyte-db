@@ -14,7 +14,7 @@ tags:
 type: docs
 ---
 
-The Voyager Migration Assessment feature streamlines database migration from PostgreSQL and Oracle to YugabyteDB. It analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB.
+Voyager Migration Assessment streamlines database migration: it analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB.
 
 ## Overview
 
@@ -85,6 +85,13 @@ Before you run a migration assessment, do the following:
       {{% includeMarkdown "./postgresql.md" %}}
       </div>
       <div id="oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="oracle-tab">
+
+      {{< warning title="Oracle offline migration deprecated" >}}
+
+Oracle offline migration using YugabyteDB Voyager is deprecated and will no longer be supported after October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
+
+      {{< /warning >}}
+
       {{% includeMarkdown "./oracle.md" %}}
       </div>
     </div>

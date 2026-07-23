@@ -697,8 +697,8 @@ public class UniverseCRUDHandler {
     return UniverseResp.create(universe, taskUuid, confGetter);
   }
 
-  private void validateAndInitKubernetesCluster(
-      Cluster c, UniverseDefinitionTaskParams taskParams) {
+  @VisibleForTesting
+  void validateAndInitKubernetesCluster(Cluster c, UniverseDefinitionTaskParams taskParams) {
     if (!taskParams.rootAndClientRootCASame) {
       throw new PlatformServiceException(
           BAD_REQUEST, "root and clientRootCA cannot be different for Kubernetes env.");
@@ -722,12 +722,11 @@ public class UniverseCRUDHandler {
           UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED;
     }
 
-    // Update device info in userIntent for Kubernetes
-    KubernetesUtil.applyVolumeChanges(
-        c.userIntent,
-        c.placementInfo,
-        taskParams.getPrimaryCluster().userIntent.universeOverrides,
-        taskParams.getPrimaryCluster().userIntent.azOverrides);
+    // Note: volume/userIntentOverrides handling for Kubernetes is intentionally NOT done here.
+    // It happens later in createUniverse once the placement has been finalized (and is guarded so
+    // that operator-controlled universes, whose overrides are computed by the reconciler, are not
+    // clobbered). Calling applyVolumeChanges here would run against a not-yet-finalized placement
+    // and, for operator universes, overwrite the reconciler-computed per-AZ overrides.
 
     // Setting dedicatedNodes to true for k8s universes.
     c.userIntent.dedicatedNodes = true;

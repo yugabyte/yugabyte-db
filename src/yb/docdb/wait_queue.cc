@@ -59,6 +59,7 @@
 #include "yb/util/operation_counter.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"

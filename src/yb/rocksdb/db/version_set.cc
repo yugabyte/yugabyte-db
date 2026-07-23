@@ -76,6 +76,7 @@
 #include "yb/util/format.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_kill.h"
 
@@ -854,7 +855,7 @@ void Version::AddLevel0Iterators(
         if (!read_options.iterator_filter || read_options.defer_iterator_filter ||
             read_options.iterator_filter->Filter(
                 filter_options, read_options.user_key_for_filter, &filter_key_cache,
-                trwh.table_reader)) {
+                /* filter_cache = */ nullptr, trwh.table_reader)) {
           file_iter = create_iterator_func(&trwh, i);
         } else {
           file_iter = nullptr;

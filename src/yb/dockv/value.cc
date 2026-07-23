@@ -24,6 +24,7 @@
 #include "yb/util/fast_varint.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb::dockv {
 

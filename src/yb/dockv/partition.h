@@ -46,6 +46,7 @@
 #include "yb/util/result.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/memory/arena_list.h"
+#include "yb/util/status_format.h"
 #include "yb/util/yb_partition.h"
 
 namespace yb::dockv {

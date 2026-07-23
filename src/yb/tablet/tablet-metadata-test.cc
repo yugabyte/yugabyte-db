@@ -54,6 +54,7 @@
 
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 
@@ -418,6 +419,80 @@ TEST_F(TestRaftGroupMetadata, MigrateOldSuperblockOnMultiDrivePopulatesAllDisks)
   RaftGroupReplicaSuperBlockPB after_migration;
   ASSERT_OK(reloaded->ReadSuperBlockFromDisk(&after_migration));
   ASSERT_EQ(after_migration.kv_store().tier_paths_size(), 2);
+}
+
+// Test for a colocated-restore: RaftGroupMetadata::LoadFromPath() (used by
+// TabletSnapshots::GetCotableIdsMap() to read a snapshot's superblock file during
+// RESTORE_ON_TABLET) constructs its RaftGroupMetadata with an empty raft_group_id_, since the
+// object isn't a locally-owned, FsManager-registered tablet.
+TEST_F(TestRaftGroupMetadata, LoadFromPathDoesNotMigrateOrFlushOldSuperblock) {
+  const auto ssd = GetTestPath("lfp_ssd");
+  const auto hdd = GetTestPath("lfp_hdd");
+  auto fs = MakeMultiDriveFsManager({{ssd, "ssd"}, {hdd, "hdd"}});
+
+  const RaftGroupId kTabletId = "0123456789abcdef0123456789abcde3";
+  const ColocationId kColocationId = 123456789;
+  Schema colocated_schema(schema_);
+  colocated_schema.set_colocation_id(kColocationId);
+
+  auto home_roots = fs->GetDataRootDirsForTier("ssd");
+  ASSERT_FALSE(home_roots.empty());
+  fs->SetTabletPathByDataPath(kTabletId, home_roots[0]);
+  auto partition = CreateDefaultPartition(colocated_schema);
+  auto table_info = TableInfo::TEST_Create(
+      "table_md", "test_ns", "table_md", YQL_TABLE_TYPE, colocated_schema, partition.first);
+  auto meta = ASSERT_RESULT(RaftGroupMetadata::CreateNew(
+      RaftGroupMetadataData{
+          .fs_manager = fs.get(),
+          .table_info = table_info,
+          .raft_group_id = kTabletId,
+          .partition = partition.second,
+          .tablet_data_state = TABLET_DATA_READY,
+          .colocated = true,
+          .snapshot_schedules = {},
+          .hosted_services = {},
+      },
+      home_roots[0], home_roots[0]));
+  ASSERT_EQ(meta->tier_paths().size(), 2u);
+  ASSERT_EQ(meta->GetColocatedTableInfos().size(), 1u);
+  const auto original_rocksdb_dir = meta->rocksdb_dir();
+
+  // Build a pre-tiered-storage superblock (no tier_paths) and write it directly to a standalone
+  // file, simulating a snapshot's "tablet.metadata" file.
+  RaftGroupReplicaSuperBlockPB sb;
+  meta->ToSuperBlock(&sb);
+  sb.mutable_kv_store()->clear_tier_paths();
+  const auto snapshot_metadata_file = GetTestPath("simulated_snapshot_tablet.metadata");
+  ASSERT_OK(pb_util::WritePBContainerToPath(
+      env_.get(), snapshot_metadata_file, sb, pb_util::OVERWRITE, pb_util::SYNC));
+
+  auto loaded = ASSERT_RESULT(RaftGroupMetadata::LoadFromPath(fs.get(), snapshot_metadata_file));
+
+  // Empty id confirms this object is (correctly) not treated as a locally-owned tablet.
+  ASSERT_TRUE(loaded->raft_group_id().empty());
+
+  // Migration must not have run: tier_paths is the single synthesized home entry from
+  // KvStoreInfo::LoadFromPB's backward-compatibility fallback, not BuildTierPaths' 2-disk result.
+  // This fallback is purely an in-memory default applied while parsing the PB into the KvStoreInfo
+  // struct below -- it never touches the serialized bytes, so it has no bearing on whether the
+  // file on disk was rewritten.
+  ASSERT_EQ(loaded->tier_paths().size(), 1u);
+  ASSERT_EQ(loaded->tier_paths()[0].path, original_rocksdb_dir);
+
+  // The migration's Flush() must not have run either: the standalone snapshot file's raw
+  // serialized bytes must still show 0 tier_paths, exactly as written above. If Flush() had run,
+  // this would instead read back 2 (BuildTierPaths' result for this 2-disk FsManager).
+  RaftGroupReplicaSuperBlockPB on_disk;
+  ASSERT_OK(RaftGroupMetadata::ReadSuperBlockFromDisk(
+      env_.get(), snapshot_metadata_file, &on_disk));
+  ASSERT_EQ(on_disk.kv_store().tier_paths_size(), 0);
+
+  // The actual purpose of LoadFromPath() in the restore path -- reading colocated table info to
+  // build the cotable-ids map -- must still work, unaffected by any of the above.
+  auto loaded_colocated = loaded->GetColocatedTableInfos();
+
+  ASSERT_EQ(loaded_colocated.size(), 1u);
+  ASSERT_EQ(loaded_colocated[0]->schema().colocation_id(), kColocationId);
 }
 
 } // namespace tablet

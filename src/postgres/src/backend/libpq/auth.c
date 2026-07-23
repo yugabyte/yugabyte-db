@@ -580,7 +580,10 @@ ClientAuthentication(Port *port)
 					(port->gss && port->gss->enc) ? _("GSS encryption") :
 #endif
 #ifdef USE_SSL
-					port->ssl_in_use ? _("SSL encryption") :
+					((YbIsClientYsqlConnMgr() &&
+					(port->yb_is_auth_passthrough_req || yb_is_auth_backend)) ?
+					port->yb_is_ssl_enabled_in_logical_conn :
+					port->ssl_in_use) ? _("SSL encryption") :
 #endif
 					_("no encryption");
 
@@ -635,7 +638,10 @@ ClientAuthentication(Port *port)
 					(port->gss && port->gss->enc) ? _("GSS encryption") :
 #endif
 #ifdef USE_SSL
-					port->ssl_in_use ? _("SSL encryption") :
+					((YbIsClientYsqlConnMgr() &&
+					(port->yb_is_auth_passthrough_req || yb_is_auth_backend)) ?
+					port->yb_is_ssl_enabled_in_logical_conn :
+					port->ssl_in_use) ? _("SSL encryption") :
 #endif
 					_("no encryption");
 

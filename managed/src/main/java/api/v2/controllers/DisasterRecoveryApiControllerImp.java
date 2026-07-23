@@ -10,6 +10,9 @@ import api.v2.models.DrConfigPagedResp;
 import api.v2.models.DrConfigTableDetailPagedQuerySpec;
 import api.v2.models.DrConfigTableDetailPagedResp;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import java.util.UUID;
 import play.mvc.Http.Request;
 
@@ -18,7 +21,12 @@ public class DisasterRecoveryApiControllerImp extends DisasterRecoveryApiControl
   private final DrConfigHandler handler;
 
   @Inject
-  public DisasterRecoveryApiControllerImp(DrConfigHandler handler) {
+  public DisasterRecoveryApiControllerImp(
+      AuditService auditService,
+      Config config,
+      GFlagsAuditHandler gFlagsAuditHandler,
+      DrConfigHandler handler) {
+    super(auditService, config, gFlagsAuditHandler);
     this.handler = handler;
   }
 

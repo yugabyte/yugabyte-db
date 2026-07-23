@@ -474,6 +474,7 @@ PgBouncer
 pgLoader
 pgvector
 pg_hint_plan
+pg_partman
 pg_stat_activity
 pg_stat_statements
 pg_stats

@@ -3720,10 +3720,19 @@ TEST_F_EX(PgLibPqTest, LoadBalanceSingleLegacyColocatedDB,
   TestLoadBalanceSingleColocatedDB(GetLegacyColocatedDBTabletLocations);
 }
 
+// Like PgLibPqLoadBalanceMultipleDBsTest but for legacy colocated databases.
+class PgLibPqLegacyLoadBalanceMultipleDBsTest : public PgLibPqLoadBalanceMultipleDBsTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqLoadBalanceMultipleDBsTest::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=true");
+  }
+};
+
 // Test that adding a tserver causes colocation tablets of legacy colocated databases to offload
 // tablet-peers to the new tserver.
 TEST_F_EX(PgLibPqTest, LoadBalanceMultipleLegacyColocatedDB,
-    PgLibPqLegacyColocatedDBTest) {
+    PgLibPqLegacyLoadBalanceMultipleDBsTest) {
   TestLoadBalanceMultipleColocatedDB(GetLegacyColocatedDBTabletLocations);
 }
 

@@ -9,6 +9,7 @@ import {
   useEditUniverseContext
 } from '../EditUniverseUtils';
 import { ClusterType } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { CloudType } from '@app/redesign/helpers/dtos';
 import { buildPrimaryPlacementEditPayload, useGetEditPlacementContext } from './EditPlacementUtils';
 import {
   getEffectiveReplicationFactorForResilience,
@@ -102,6 +103,7 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
 
   if (!visible) return null;
   const primaryCluster = getClusterByType(universeData!, ClusterType.PRIMARY);
+  const isK8s = primaryCluster?.placement_spec?.cloud_list?.[0]?.code === CloudType.kubernetes;
   const stats = countRegionsAzsAndNodes(primaryCluster!.placement_spec!);
   const placementSpec = getPlacementSpecForCluster(primaryCluster!);
   const resilientType = getResilientType(
@@ -169,7 +171,7 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
               </YBTag>
             </StyledItem>
             <StyledItem>
-              <Typography variant="body2">{t('totalNodes')}</Typography>
+              <Typography variant="body2">{t(isK8s ? 'totalPods' : 'totalNodes')}</Typography>
               <YBTag size="medium" variant="dark" color="primary">
                 {stats.totalNodes}
               </YBTag>
@@ -186,7 +188,8 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
                       <Typography variant="body2">{az?.name}</Typography>
                     </Box>
                     <YBTag size="medium" variant="dark" color="primary">
-                      {az?.num_nodes_in_az}&nbsp;{pluralize(t('node'), az?.num_nodes_in_az)}
+                      {az?.num_nodes_in_az}&nbsp;
+                      {pluralize(t(isK8s ? 'pod' : 'node'), az?.num_nodes_in_az)}
                     </YBTag>
                     {(az?.leader_preference ?? AZ_NOT_PREFERRED) > AZ_NOT_PREFERRED ? (
                       <YBTag size="medium" variant="dark" color="primary">
@@ -217,7 +220,7 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
               </YBTag>
             </StyledItem>
             <StyledItem>
-              <Typography variant="body2">{t('totalNodes')}</Typography>
+              <Typography variant="body2">{t(isK8s ? 'totalPods' : 'totalNodes')}</Typography>
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 <YBTag size="medium" variant="dark" color="primary">
                   {newNodeCount}
@@ -245,7 +248,7 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
                       </Box>
                       <div style={{ display: 'flex', alignItems: 'center' }}>
                         <YBTag size="medium" variant="dark" color="primary">
-                          {az?.nodeCount}&nbsp;{pluralize(t('node'), az?.nodeCount)}
+                          {az?.nodeCount}&nbsp;{pluralize(t(isK8s ? 'pod' : 'node'), az?.nodeCount)}
                         </YBTag>
                       </div>
                       {az?.preffered > AZ_NOT_PREFERRED ? (

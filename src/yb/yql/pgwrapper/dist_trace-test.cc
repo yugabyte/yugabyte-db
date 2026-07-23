@@ -45,6 +45,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"

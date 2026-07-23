@@ -633,9 +633,7 @@ DEFINE_validator(vector_index_backend,
 TAG_FLAG(vector_index_backend, hidden);
 TAG_FLAG(vector_index_backend, advanced);
 
-// TODO(GH31886): this flag will be coverted into an auto-flag when all ownership and
-// new value format changes are completed.
-DEFINE_RUNTIME_bool(enable_table_owned_vector_reverse_mapping, false,
+DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
     "Such tables write vector reverse mappings on row insert/update regardless of "
     "whether a vector index exists, and vector index backfill skips reverse mapping.");
@@ -4559,10 +4557,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       "Colocated table should specify a table ID");
 
   // If ysql_enable_colocated_tables_with_tablespaces is not enabled then tablespaces cannot be
-  // specified for indexes on colocated tables.
+  // specified for indexes on colocated tables. Vector indexes are exempt: they are copartitioned
+  // with (and stored on) the indexed table's tablets, so a tablespace recorded for them only
+  // mirrors the indexed table's tablespace for catalog consistency and is never used for the
+  // vector index's (shared) placement.
   SCHECK(
       FLAGS_ysql_enable_colocated_tables_with_tablespaces || !colocated || !IsIndex(req) ||
-          !req.has_tablespace_id(),
+          is_vector_index || !req.has_tablespace_id(),
       InvalidArgument, "TABLESPACE is not supported for indexes on colocated tables.");
 
   // TODO: If this is a colocated index table, convert any hash partition columns into
@@ -12740,7 +12741,7 @@ Status CatalogManager::BuildLocationsForTablet(
       std::vector<TabletId> split_tablet_ids(
           l_tablet->pb.split_tablet_ids().begin(), l_tablet->pb.split_tablet_ids().end());
       return STATUS(
-          NotFound, "Tablet deleted", l_tablet->pb.state_msg(),
+          Deleted, "Tablet deleted", l_tablet->pb.state_msg(),
           SplitChildTabletIdsData(split_tablet_ids));
     }
     if (PREDICT_FALSE(!l_tablet->is_running())) {
@@ -12813,12 +12814,7 @@ Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(Table
 
 Status CatalogManager::GetTabletLocations(
     TabletIdView tablet_id, TabletLocationsPB* locs_pb, IncludeHidden include_hidden) {
-  auto tablet_info_result = GetTabletInfo(tablet_id);
-  if (!tablet_info_result.ok()) {
-    // Some clients expect non-ok statuses to have a certain form.
-    return STATUS_FORMAT(NotFound, "Unknown tablet $0", tablet_id);
-  }
-  const auto& tablet_info = *tablet_info_result;
+  auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
   Status s = GetTabletLocations(tablet_info, locs_pb, include_hidden);
   auto num_replicas = GetNumTabletReplicas(tablet_info);
   if (num_replicas.ok() && *num_replicas > 0 &&
@@ -12890,7 +12886,8 @@ Status CatalogManager::GetTableLocations(
     TabletLocationsPB* locs_pb = resp->add_tablet_locations();
     locs_pb->set_expected_live_replicas(expected_live_replicas);
     locs_pb->set_expected_read_replicas(expected_read_replicas);
-    auto status = BuildLocationsForTablet(tablet, locs_pb, IncludeHidden::kTrue, partitions_only);
+    auto status = BuildLocationsForTablet(
+        tablet, locs_pb, IncludeHidden::kTrue, partitions_only);
     if (!status.ok()) {
       // Not running.
       if (require_tablets_runnings) {
@@ -13207,13 +13204,9 @@ Result<size_t> CatalogManager::GetNumTabletReplicas(const TabletInfoPtr& tablet)
 
 Status CatalogManager::GetExpectedNumberOfReplicasForTablet(
     const TabletId& tablet_id, int* num_live_replicas, int* num_read_replicas) {
-  auto tablet_info_result = GetTabletInfo(tablet_id);
-  if (!tablet_info_result.ok()) {
-    // Some clients expect non-ok statuses to have a certain form.
-    return STATUS_FORMAT(NotFound, "Unknown tablet $0", tablet_id);
-  }
+  auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
   return GetExpectedNumberOfReplicasForTable(
-      (*tablet_info_result)->table(), num_live_replicas, num_read_replicas);
+      tablet_info->table(), num_live_replicas, num_read_replicas);
 }
 
 Status CatalogManager::GetExpectedNumberOfReplicasForTable(

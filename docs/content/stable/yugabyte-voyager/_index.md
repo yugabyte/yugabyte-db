@@ -20,7 +20,7 @@ menu:
 breadcrumbDisable: true
 ---
 
-Use YugabyteDB Voyager to manage end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager safely migrates data from PostgreSQL, MySQL, and Oracle databases to YugabyteDB Aeon, YugabyteDB Anywhere, and the core open source database, YugabyteDB.
+Use YugabyteDB Voyager to manage your end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager safely migrates data from your source database to YugabyteDB Aeon, YugabyteDB Anywhere, and the core open-source YugabyteDB database. For the list of supported source databases and migration types, see [Source databases](introduction/#source-databases).
 
 {{< sections/text-with-right-image
   title="Get Started"

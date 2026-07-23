@@ -20,6 +20,7 @@
 #include "yb/util/json_document.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"

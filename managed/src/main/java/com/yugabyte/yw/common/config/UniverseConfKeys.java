@@ -1588,6 +1588,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " top of the hardcoded redaction list.",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> tserverLogsAdditionalDropPatterns =
+      new ConfKeyInfo<>(
+          "yb.universe.telemetry.tserver_logs_additional_drop_patterns",
+          ScopeType.UNIVERSE,
+          "Additional tserver log redaction drop patterns",
+          "Comma-separated substrings; matching yb-tserver log lines are dropped before export, on"
+              + " top of the hardcoded redaction list.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowDisableMasterOnNonMasterNodeSubtask =
       new ConfKeyInfo<>(
           "yb.universe.allow_disable_master_on_non_master_node_subtask",

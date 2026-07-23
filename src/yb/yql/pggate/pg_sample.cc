@@ -26,6 +26,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 
 #include "yb/util/flags/flag_tags.h"
 

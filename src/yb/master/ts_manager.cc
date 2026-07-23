@@ -50,6 +50,8 @@
 #include "yb/server/clock.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 DEFINE_NON_RUNTIME_bool(master_register_ts_check_desired_host_port, true,
     "When set to true, master will only do duplicate address checks on the used host/port instead "

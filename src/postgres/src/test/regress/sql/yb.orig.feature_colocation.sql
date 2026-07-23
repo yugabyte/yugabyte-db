@@ -550,5 +550,21 @@ SET yb_format_funcs_include_yb_metadata = on;
 SELECT * FROM get_table_indexes('tbl3');
 SET yb_format_funcs_include_yb_metadata = off;
 
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
+\i :filename
+\set R1 true
+\set R2 false
+\set query 'CREATE TABLE row_cmp_colo_:R (a int, b int, PRIMARY KEY (a ASC, b ASC)) WITH (colocation = :R);'
+\i :run_query
+\set query 'INSERT INTO row_cmp_colo_:R VALUES (1, 1), (1, 9), (2, 5), (3, 2), (3, 8);'
+\i :run_query
+\set Q1 '> (1, 9)'
+\set Q2 '>= (2, 5)'
+\set Q3 '< (2, 5)'
+\set Q4 '<= (1, 9)'
+\set query 'SELECT a, b FROM row_cmp_colo_:R WHERE (a, b) :Q ORDER BY a, b;'
+\i :run_query
+
 \c yugabyte
 DROP DATABASE colocation_test;

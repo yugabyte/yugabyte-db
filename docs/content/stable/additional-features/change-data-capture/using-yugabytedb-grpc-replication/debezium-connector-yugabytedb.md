@@ -24,17 +24,21 @@ The YugabyteDB gRPC Connector is based on the Debezium Connector, and captures r
 
 ## Connector compatibility
 
-The connector is compatible with the following versions of YugabyteDB.
-
-Starting with YugabyteDB v2024.1, the connector uses the following naming convention:
+Starting with YugabyteDB v2024.1, connector versions follow this scheme:
 
 ```output
-dz.<Debezium Release>.yb.grpc.<YugabyteDB Version>.<Patch>
+dz.<debezium-base>.yb.grpc.<yugabytedb-series>.<connector-patch>[.SNAPSHOT.<n>]
 ```
 
-* *Debezium Release* - Debezium release the connector is based on
-* *YugabyteDB Version* - version of YugabyteDB the connector works with
-* *Patch* - patch release version, if applicable
+| Component | Example | Description |
+| :---- | :------ | :------ |
+| `dz.<debezium-base>` | `dz.1.9.5` | Upstream Debezium release the connector is built on (the gRPC connector uses Debezium 1.9.5). |
+| `yb.grpc` | `yb.grpc` | Identifies the gRPC-protocol connector (distinct from the logical replication connector). |
+| `<yugabytedb-series>` | `2025.2` | YugabyteDB release series the build is aligned to. |
+| `<connector-patch>` | `.3` | Connector patch in that series. Higher is more recent. |
+| `.SNAPSHOT.<n>` | `.SNAPSHOT.1` | Pre-release. Don't use in production. |
+
+Release tags carry a leading `v`. For example, version `dz.1.9.5.yb.grpc.2025.2` is tagged `vdz.1.9.5.yb.grpc.2025.2`.
 
 The connector is *backward compatible only*; a connector release supports the YugabyteDB version it was built for, and all earlier releases, but *not newer releases* (forward compatibility is not supported). For example, connector release `dz.1.9.5.yb.grpc.2025.2.3` supports YugabyteDB v2025.2.3.0 and earlier, but not v2026.1.0.0 or later.
 

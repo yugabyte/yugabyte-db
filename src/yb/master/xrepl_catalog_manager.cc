@@ -59,6 +59,8 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"

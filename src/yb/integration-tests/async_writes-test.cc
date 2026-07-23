@@ -42,6 +42,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(enable_leader_failure_detection);
+DECLARE_bool(TEST_skip_election_when_fail_detected);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(quick_leader_election_on_create);
@@ -109,9 +110,11 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
         tablet_id);
   }
 
-  size_t GetLeaderIdx(const TabletId& tablet_id) {
+  Result<size_t> GetLeaderIdx(const TabletId& tablet_id) {
     size_t leader_idx;
-    GetLeaderForTablet(cluster_.get(), tablet_id, &leader_idx);
+    SCHECK(
+        GetLeaderForTablet(cluster_.get(), tablet_id, &leader_idx) != nullptr, IllegalState,
+        Format("No leader for tablet $0", tablet_id));
     return leader_idx;
   }
 
@@ -153,7 +156,8 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
 
     return LoggedWaitFor(
         [this, new_leader_idx, tablet_id]() -> Result<bool> {
-          return GetLeaderIdx(tablet_id) == new_leader_idx;
+          auto leader_idx = GetLeaderIdx(tablet_id);
+          return leader_idx.ok() && *leader_idx == new_leader_idx;
         },
         30s, Format("Wait for tablet $0 leader to be $1", tablet_id, new_leader_idx));
   }
@@ -241,7 +245,7 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
     // Pg is running on tserver 0, so move the leader to tserver 1, so that we can break
     // connectivity to it.
     const size_t old_leader_idx = 1;
-    RETURN_NOT_OK(StepDown(GetLeaderIdx(tablet_id), old_leader_idx, tablet_id));
+    RETURN_NOT_OK(StepDown(VERIFY_RESULT(GetLeaderIdx(tablet_id)), old_leader_idx, tablet_id));
     return old_leader_idx;
   }
 
@@ -404,8 +408,15 @@ void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read) {
 
   const size_t old_leader_idx = ASSERT_RESULT(PrepareToBreakConnectivity(tablet_id));
 
-  // Reject non-empty UpdateConsensus on followers so the entry can't replicate via a
-  // racing heartbeat between queue_->AppendOperations and BreakConnectivityWithAll.
+  // Record the term old_leader_idx leads in. PrepareToBreakConnectivity only returns once
+  // old_leader_idx actually holds leadership, so its leader term is already established.
+  auto leader_peer = ASSERT_RESULT(GetTabletPeerOnTserver(old_leader_idx, tablet_id));
+  auto leader_consensus = ASSERT_RESULT(leader_peer->GetRaftConsensus());
+  const int64_t old_leader_term = leader_consensus->LeaderTerm();
+  ASSERT_GT(old_leader_term, 0);
+
+  // Reject non-empty UpdateConsensus on followers so the INSERT can't replicate via a racing
+  // heartbeat between queue_->AppendOperations and BreakConnectivityWithAll.
   std::vector<tablet::TabletPeerPtr> follower_peers;
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     if (i == old_leader_idx) {
@@ -428,8 +439,21 @@ void YSqlAsyncWriteTest::LeaderStepDownAfterWriteAckTest(bool perform_read) {
   // Client has received the async write ack, but it is not yet replicated to followers.
 
   ASSERT_OK(BreakConnectivityWithAll(cluster_.get(), old_leader_idx));
+  // Clear reject mode on each follower only after it advances past old_leader_idx's term. An
+  // UpdateConsensus carrying the unreplicated INSERT can race ahead of BreakConnectivityWithAll and
+  // sit in a follower's queue; if reject mode is cleared while that follower is still in the old
+  // term, the queued update is accepted, the INSERT survives on the new leader, and COMMIT
+  // spuriously succeeds. Until the follower advances the update is dropped by reject mode, and once
+  // it has advanced it is dropped by the stale-term check, so this leaves no accepting window.
   for (auto& peer : follower_peers) {
-    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNone);
+    auto follower_consensus = ASSERT_RESULT(peer->GetRaftConsensus());
+    ASSERT_OK(LoggedWaitFor(
+        [&follower_consensus, old_leader_term]() -> Result<bool> {
+          return follower_consensus->ConsensusState(consensus::CONSENSUS_CONFIG_ACTIVE, nullptr)
+                     .current_term() > old_leader_term;
+        },
+        30s, "Wait for follower to advance past old leader term before clearing reject mode"));
+    follower_consensus->TEST_RejectMode(consensus::RejectMode::kNone);
   }
   TEST_SYNC_POINT("LeaderStepDownAfterWriteAck::LeaderConnectivityBroken");
 
@@ -1399,7 +1423,39 @@ TEST_F(YSqlAsyncWriteTest, YB_DEBUG_ONLY_TEST(HandleLeaderStepDown)) {
       [&first_wait_blocked] { return first_wait_blocked.load(); }, 30s,
       "Wait for first async write to get blocked"));
 
+  // Freeze automatic failure detection before isolating the old leader. Otherwise both surviving
+  // followers race into an election, and a split vote bumps the raft term twice (term N -> N+1
+  // split -> N+2). That strands the still-blocked term-N async writes across more than one leader
+  // move, which the client rejects ("tablet leader moved more than once", transaction.cc), aborting
+  // the transaction and flaking the test. Instead drive exactly one election on a single chosen
+  // follower for a deterministic single-term handover.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_election_when_fail_detected) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
   ASSERT_OK(BreakConnectivityWithAll(cluster_.get(), old_leader_idx));
+
+  // Elect the surviving follower whose log is most up-to-date. A candidate whose log trails the
+  // other reachable follower loses the vote, and with failure detection off there is no retry, so
+  // a lagging target would hang until the 30s timeout.
+  size_t target_idx = old_leader_idx;
+  OpId best_received;
+  for (size_t i = 0; i < NumTabletServers(); ++i) {
+    if (i == old_leader_idx) {
+      continue;
+    }
+    auto peer = ASSERT_RESULT(GetTabletPeerOnTserver(i, tablet_id));
+    auto received = ASSERT_RESULT(ASSERT_RESULT(peer->GetRaftConsensus())->GetLastOpId(
+        consensus::RECEIVED_OPID));
+    if (target_idx == old_leader_idx || best_received < received) {
+      target_idx = i;
+      best_received = received;
+    }
+  }
+  auto target_peer = ASSERT_RESULT(GetTabletPeerOnTserver(target_idx, tablet_id));
+  // Force the election with ELECT_EVEN_IF_LEADER_IS_ALIVE.
+  ASSERT_OK(ASSERT_RESULT(target_peer->GetRaftConsensus())->StartElection(
+      consensus::LeaderElectionData{
+          .mode = consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
+          .must_be_committed_opid = {}}));
   size_t new_leader_idx = ASSERT_RESULT(WaitForNewTabletLeader(tablet_id, old_leader_idx));
   ASSERT_OK(SetupConnectivityWithAll(cluster_.get(), old_leader_idx));
 
@@ -1443,7 +1499,7 @@ TEST_F(YSqlAsyncWriteTest, VerifyAsyncWriteCompletion) {
   auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id));
   auto leader_consensus = ASSERT_RESULT(leader_peer->GetRaftConsensus());
   auto committed_op_id = ASSERT_RESULT(leader_consensus->GetLastOpId(consensus::COMMITTED_OPID));
-  const auto leader_idx = GetLeaderIdx(tablet_id);
+  const auto leader_idx = ASSERT_RESULT(GetLeaderIdx(tablet_id));
 
   LOG(INFO) << "Committed op_id on leader: " << committed_op_id;
 
@@ -1546,7 +1602,7 @@ TEST_F(YSqlAsyncWriteTest, RepeatedStepDownsWithAsyncWrites) {
     ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ($1, 'v$1')", kTableName, i));
 
     // Step down to the rotating protege.
-    size_t leader_idx = GetLeaderIdx(tablet_id);
+    size_t leader_idx = ASSERT_RESULT(GetLeaderIdx(tablet_id));
     const size_t protege_idx = (leader_idx + 1) % NumTabletServers();
     auto leader_peer = ASSERT_RESULT(GetTabletPeerOnTserver(leader_idx, tablet_id));
     const auto& protege_uuid =
@@ -1603,7 +1659,7 @@ TEST_F(YSqlAsyncWriteLongLeaseTest, GracefulStepDownWithExtendedProtegeSyncWait)
       "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS", kTableName));
 
   auto tablet_id = ASSERT_RESULT(GetTabletId());
-  const size_t leader_idx = GetLeaderIdx(tablet_id);
+  const size_t leader_idx = ASSERT_RESULT(GetLeaderIdx(tablet_id));
   auto leader_peer = ASSERT_RESULT(GetTabletPeerOnTserver(leader_idx, tablet_id));
   const size_t protege_idx = (leader_idx + 1) % NumTabletServers();
   const auto& protege_uuid = cluster_->mini_tablet_server(protege_idx)->server()->permanent_uuid();
@@ -1642,7 +1698,8 @@ TEST_F(YSqlAsyncWriteLongLeaseTest, GracefulStepDownWithExtendedProtegeSyncWait)
 
   ASSERT_OK(LoggedWaitFor(
       [this, &tablet_id, leader_idx]() -> Result<bool> {
-        return GetLeaderIdx(tablet_id) != leader_idx;
+        auto current_leader_idx = GetLeaderIdx(tablet_id);
+        return current_leader_idx.ok() && *current_leader_idx != leader_idx;
       },
       10s, "Wait for stepdown to complete"));
 

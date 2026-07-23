@@ -108,15 +108,12 @@ export const InstanceTypeField = ({
         defaultInstanceType && instanceExists(defaultInstanceType)
           ? defaultInstanceType
           : data[0].instanceTypeCode;
-      setValue(UPDATE_FIELD, code, { shouldValidate: true });
+      setValue(UPDATE_FIELD, code);
       const option = data.find((i) => i.instanceTypeCode === code);
       if (option) {
         setValue(
           UPDATE_DEVICE_INFO_FIELD,
-          getDeviceInfoFromInstance(option, providerRuntimeConfigs),
-          {
-            shouldValidate: true
-          }
+          getDeviceInfoFromInstance(option, providerRuntimeConfigs)
         );
       }
     } else if (!isEditMode && !getValues(UPDATE_DEVICE_INFO_FIELD)) {
@@ -124,10 +121,7 @@ export const InstanceTypeField = ({
       if (option) {
         setValue(
           UPDATE_DEVICE_INFO_FIELD,
-          getDeviceInfoFromInstance(option, providerRuntimeConfigs),
-          {
-            shouldValidate: true
-          }
+          getDeviceInfoFromInstance(option, providerRuntimeConfigs)
         );
       }
     }
@@ -147,7 +141,7 @@ export const InstanceTypeField = ({
   const handleChange = (e: ChangeEvent<{}>, option: any) => {
     setValue(UPDATE_FIELD, option?.instanceTypeCode, { shouldValidate: true });
     const deviceInfo = getDeviceInfoFromInstance(option, providerRuntimeConfigs);
-    setValue(UPDATE_DEVICE_INFO_FIELD, deviceInfo, { shouldValidate: true });
+    setValue(UPDATE_DEVICE_INFO_FIELD, deviceInfo);
   };
 
   return (

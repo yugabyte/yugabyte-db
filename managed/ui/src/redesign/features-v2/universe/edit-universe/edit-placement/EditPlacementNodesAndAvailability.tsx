@@ -14,13 +14,18 @@ import {
   StepsRef
 } from '../../create-universe/CreateUniverseContext';
 import { normalizeEditPlacementNodesAvailability } from './normalizeEditPlacementNodesAvailability';
+import { isKubernetesUniverse, useEditUniverseContext } from '../EditUniverseUtils';
+import { CloudType } from '@app/redesign/helpers/dtos';
 
 const { Box } = mui;
 
 export const EditPlacementNodesAndAvailability = () => {
   const nodesAndAvailabilityRef = useRef<StepsRef>(null);
-  const [addEditPlacementData, addEditPlacementMethods, extraMethods] = useGetEditPlacementContext();
+  const [addEditPlacementData, addEditPlacementMethods, extraMethods] =
+    useGetEditPlacementContext();
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.steps' });
+  const { universeData } = useEditUniverseContext();
+  const isK8s = isKubernetesUniverse(universeData!);
   const [showEditPlacementModal, setShowEditPlacementModal] = useToggle(false);
   const { setNodesAndAvailability, setResilience, setActiveStep } = addEditPlacementMethods;
 
@@ -34,11 +39,17 @@ export const EditPlacementNodesAndAvailability = () => {
   return (
     <CreateUniverseContext.Provider
       value={
-        ([
+        [
           {
             activeStep: 1,
             resilienceAndRegionsSettings: addEditPlacementData.resilience,
-            nodesAvailabilitySettings: calculateNodesandAvailability
+            nodesAvailabilitySettings: calculateNodesandAvailability,
+            generalSettings: isK8s
+              ? {
+                  cloud: CloudType.kubernetes,
+                  providerConfiguration: { code: CloudType.kubernetes }
+                }
+              : undefined
           },
           {
             saveNodesAvailabilitySettings: (
@@ -49,25 +60,21 @@ export const EditPlacementNodesAndAvailability = () => {
             moveToNextPage: () => {
               setShowEditPlacementModal(true);
             },
-            saveResilienceAndRegionsSettings: (
-              data: EditPlacementContextProps['resilience']
-            ) => {
+            saveResilienceAndRegionsSettings: (data: EditPlacementContextProps['resilience']) => {
               data && setResilience(data);
             }
           }
-        ] as unknown) as createUniverseFormProps
+        ] as unknown as createUniverseFormProps
       }
     >
-      <Box sx={{ display: 'flex', gap: '24px', flexDirection: 'column' }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column' }}>
         <GeoPartitionBreadCrumb
           groupTitle={<>{t('placement')}</>}
-          subTitle={<>{t('nodesAndAvailabilityZone')}</>}
+          subTitle={<>{t(isK8s ? 'podsAndAvailabilityZone' : 'nodesAndAvailabilityZone')}</>}
         />
-        <NodesAvailability
-          ref={nodesAndAvailabilityRef}
-          isGeoPartition
-          hideDedicatedNodes
-        />
+        <Box sx={{ display: 'flex', gap: '24px', flexDirection: 'column', mb: 3 }}>
+          <NodesAvailability ref={nodesAndAvailabilityRef} isGeoPartition hideDedicatedNodes />
+        </Box>
         <UniverseActionButtons
           prevButton={{
             text: t('back', { keyPrefix: 'common' }),

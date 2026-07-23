@@ -8,11 +8,12 @@ import { YBEarlyAccessTag } from '../../../../../components';
 import { isVersionConnectionPoolSupported } from '../../../../../features/universe/universe-form/utils/helpers';
 import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
 import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
+import { DEFAULT_CONNECTION_POOLING_PORTS } from '../../helpers/syncConnectionPoolingPorts';
 import { YSQL_FIELD, CONNECTION_POOLING_FIELD } from '../FieldNames';
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-import InfoIcon from '../../../../../assets/approved/info-new.svg';
+// import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { Box, Typography, styled, Link } = mui;
 
@@ -103,6 +104,26 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
     if (!isYSQLEnabled) setValue(CONNECTION_POOLING_FIELD, false);
   }, [isYSQLEnabled]);
 
+  // Disabling the override (or CP itself) must restore default CP ports.
+  useUpdateEffect(() => {
+    if (!isConPoolEnabled) {
+      setValue('overrideCPPorts', false);
+      setValue('ysqlServerRpcPort', DEFAULT_CONNECTION_POOLING_PORTS.ysqlServerRpcPort);
+      setValue(
+        'internalYsqlServerRpcPort',
+        DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
+      );
+      return;
+    }
+    if (!isOverrideCPEnabled) {
+      setValue('ysqlServerRpcPort', DEFAULT_CONNECTION_POOLING_PORTS.ysqlServerRpcPort);
+      setValue(
+        'internalYsqlServerRpcPort',
+        DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
+      );
+    }
+  }, [isOverrideCPEnabled, isConPoolEnabled, setValue]);
+
   return (
     <FieldContainer>
       <Box sx={{ display: 'flex', flexDirection: 'column', padding: '16px 24px', gap: '4px' }}>
@@ -140,7 +161,7 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
               />
             </div>
           </YBTooltip>
-          <InfoIcon />
+          {/* <InfoIcon /> */}
           <YBEarlyAccessTag />
         </Box>
         <Box sx={{ ml: 6 }}>
@@ -198,7 +219,7 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
                         label={
                           <StyledLabelIcon>
                             <span>{item.label}</span>
-                            <InfoIcon />
+                            {/* <InfoIcon /> */}
                           </StyledLabelIcon>
                         }
                         helperText={item.helperText}

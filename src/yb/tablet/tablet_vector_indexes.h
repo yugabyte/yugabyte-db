@@ -99,6 +99,8 @@ class TabletVectorIndexes :
   VectorIndexList Collect(
       const std::vector<TableId>& table_ids) EXCLUDES(vector_indexes_mutex_);
 
+  // Returns the current list of vector indexes. The list stays valid while shutdown is in progress
+  // and becomes empty only after CompleteShutdown tears the indexes down.
   VectorIndexList List() const EXCLUDES(vector_indexes_mutex_);
 
   // Returns true if at least one vector index on this tablet has not finished backfilling. Used to
@@ -164,10 +166,6 @@ class TabletVectorIndexes :
   std::unordered_map<TableId, docdb::DocVectorIndexPtr> vector_indexes_map_
       GUARDED_BY(vector_indexes_mutex_);
   docdb::DocVectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
-
-  // Populated from vector_indexes_list_ on shutting down.
-  // The access is synchronized by shutdown_controller_ state.
-  docdb::DocVectorIndexesPtr vector_indexes_cleanup_list_;
 
   ShutdownController shutdown_controller_;
 };

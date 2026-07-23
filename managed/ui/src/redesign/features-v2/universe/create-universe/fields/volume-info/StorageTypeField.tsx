@@ -16,10 +16,7 @@ import {
   getThroughputByStorageType,
   getStorageTypeOptions,
   getIopsByStorageType,
-  useVolumeControls,
-  getMaxDiskIops,
-  getMinDiskIops,
-  getThroughputByIops
+  useVolumeControls
 } from '@app/redesign/features-v2/universe/create-universe/fields/volume-info/VolumeInfoFieldHelper';
 import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/utils/api';
 import { StorageType, CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
@@ -70,25 +67,48 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled, provider
   );
 
   // watchers
-  const { watch, setValue } = useFormContext<InstanceSettingProps>();
+  const {
+    watch,
+    setValue,
+    formState: { errors, isSubmitted }
+  } = useFormContext<InstanceSettingProps>();
   const fieldValue = watch(DEVICE_INFO_FIELD);
   const masterFieldValue = watch(MASTER_DEVICE_INFO_FIELD);
   const instanceType = watch(INSTANCE_TYPE_FIELD);
   const cpuArch = watch(CPU_ARCHITECTURE_FIELD);
   const { disableStorageType } = useVolumeControls();
+  const deviceFieldErrors = errors.deviceInfo as
+    | {
+        diskIops?: { message?: string };
+        throughput?: { message?: string };
+      }
+    | undefined;
+
+  const setDeviceInfos = (
+    nextDevice: NonNullable<typeof fieldValue>,
+    nextMaster: NonNullable<typeof masterFieldValue>
+  ) => {
+    setValue(DEVICE_INFO_FIELD, nextDevice, { shouldValidate: isSubmitted, shouldDirty: true });
+    setValue(MASTER_DEVICE_INFO_FIELD, nextMaster, {
+      shouldValidate: isSubmitted,
+      shouldDirty: true
+    });
+  };
 
   //field actions
   const onStorageTypeChanged = (storageType: StorageType) => {
     if (!fieldValue || !masterFieldValue) return;
     const throughput = getThroughputByStorageType(storageType);
     const diskIops = getIopsByStorageType(storageType);
-    setValue(DEVICE_INFO_FIELD, { ...fieldValue, throughput, diskIops, storageType });
-    setValue(MASTER_DEVICE_INFO_FIELD, {
-      ...masterFieldValue,
-      throughput,
-      diskIops,
-      storageType
-    });
+    setDeviceInfos(
+      { ...fieldValue, throughput, diskIops, storageType },
+      {
+        ...masterFieldValue,
+        throughput,
+        diskIops,
+        storageType
+      }
+    );
   };
 
   // Update storage type to persistent when instance is changed in either TServer or Master
@@ -143,34 +163,28 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled, provider
 
   const onDiskIopsChanged = (value: any) => {
     if (!fieldValue || !masterFieldValue) return;
-    const { storageType, volumeSize } = fieldValue;
-    if (!storageType || !volumeSize) return;
-    const maxDiskIops = getMaxDiskIops(storageType, volumeSize);
-    const minDiskIops = getMinDiskIops(storageType, volumeSize);
-    const defaultIops = getIopsByStorageType(storageType) ?? (minDiskIops > 0 ? minDiskIops : 1);
-    const parsed = parsePositiveIntegerInput(String(value), defaultIops, maxDiskIops);
-    const diskIops = Math.max(minDiskIops, Math.min(maxDiskIops, parsed));
-    setValue(DEVICE_INFO_FIELD, { ...fieldValue, diskIops });
-    setValue(MASTER_DEVICE_INFO_FIELD, {
-      ...masterFieldValue,
-      diskIops
-    });
+    if (!fieldValue.storageType) return;
+    const diskIops = parsePositiveIntegerInput(String(value));
+    setDeviceInfos(
+      { ...fieldValue, diskIops },
+      {
+        ...masterFieldValue,
+        diskIops
+      }
+    );
   };
 
   const onThroughputChange = (value: any) => {
     if (!fieldValue || !masterFieldValue) return;
-    const { storageType, diskIops } = fieldValue;
-    if (!diskIops || !storageType) return;
-    const defaultThroughput =
-      getThroughputByStorageType(storageType) ??
-      (fieldValue.throughput && fieldValue.throughput > 0 ? fieldValue.throughput : 125);
-    const numeric = parsePositiveIntegerInput(String(value), defaultThroughput);
-    const throughput = getThroughputByIops(numeric, diskIops, storageType);
-    setValue(DEVICE_INFO_FIELD, { ...fieldValue, throughput });
-    setValue(MASTER_DEVICE_INFO_FIELD, {
-      ...masterFieldValue,
-      throughput
-    });
+    if (!fieldValue.storageType) return;
+    const throughput = parsePositiveIntegerInput(String(value));
+    setDeviceInfos(
+      { ...fieldValue, throughput },
+      {
+        ...masterFieldValue,
+        throughput
+      }
+    );
   };
 
   const renderStorageType = () => {
@@ -275,8 +289,10 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled, provider
             label={t('createUniverseV2.instanceSettings.provisionedIopsPerNode')}
             type="number"
             fullWidth
+            error={!!deviceFieldErrors?.diskIops}
+            helperText={deviceFieldErrors?.diskIops?.message}
             slotProps={{
-              htmlInput: { min: 1, 'data-testid': `StorageTypeField-DiskIopsInput`, disabled }
+              htmlInput: { 'data-testid': `StorageTypeField-DiskIopsInput`, disabled }
             }}
             value={convertToString(fieldValue?.diskIops ?? '')}
             onChange={(event) => onDiskIopsChanged(event.target.value)}
@@ -306,16 +322,20 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled, provider
       <Box display="flex" flexDirection="column" mt={2}>
         <Box display="flex">
           <Box>
-            <YBLabel>{t('createUniverseV2.instanceSettings.provisionedThroughputPerNode')}</YBLabel>
+            <YBLabel error={!!deviceFieldErrors?.throughput}>
+              {t('createUniverseV2.instanceSettings.provisionedThroughputPerNode')}
+            </YBLabel>
           </Box>
         </Box>
-        <Box display="flex" width="100%">
+        <Box display="flex" width="100%" alignItems="flex-start">
           <Box display="flex" sx={{ width: 198 }}>
             <YBInput
               type="number"
               fullWidth
+              error={!!deviceFieldErrors?.throughput}
+              helperText={deviceFieldErrors?.throughput?.message}
               slotProps={{
-                htmlInput: { min: 1, 'data-testid': `StorageTypeField-ThroughputInput`, disabled }
+                htmlInput: { 'data-testid': `StorageTypeField-ThroughputInput`, disabled }
               }}
               value={convertToString(fieldValue?.throughput ?? '')}
               onChange={(event) => onThroughputChange(event.target.value)}
@@ -328,8 +348,10 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled, provider
             component="span"
             sx={(theme) => ({
               marginLeft: theme.spacing(2),
-              alignSelf: 'flex-end',
-              marginBottom: 8
+              height: 40,
+              display: 'flex',
+              alignItems: 'center',
+              flexShrink: 0
             })}
           >
             {t('createUniverseV2.instanceSettings.throughputUnit')}

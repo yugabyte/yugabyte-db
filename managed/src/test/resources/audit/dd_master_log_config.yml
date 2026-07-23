@@ -48,14 +48,14 @@ receivers:
         "Intent for transaction w/o metadata" or body contains "Colocated Tablet not
         found for table" or (body contains "READ_REPLICA" or (body contains "Skipping
         add replicas" and body contains "Currently remote bootstrapping")), type: filter}
-    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
-      drop_ratio: 0.99, expr: (body contains "Found uninitialized path" or body contains
-        "Not allowing it to take more tablets" or body contains "Processing tablet"),
-      type: filter}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$RegexOperator {
       if: 'body matches "^[IWEF]"', on_error: send, regex: '(?P<log_level>[IWEF])(?P<log_time>\d{4}
         \d{2}:\d{2}:\d{2}[.]\d{6})\s*(?P<thread_id>\d+) (?P<file_name>[^:]+):(?P<file_line>\d+)[]]
         (?P<message>.*)', type: regex_parser}
+    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
+      drop_ratio: 0.99, expr: (body contains "Found uninitialized path" or body contains
+        "Not allowing it to take more tablets" or body contains "Processing tablet"),
+      type: filter}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$RegexOperator {
       on_error: send, parse_from: 'attributes["log.file.name"]', regex: 'yb-master[.].*[.]log[.]INFO[.](?P<log_year>\d{4}).*',
       type: regex_parser}

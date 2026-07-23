@@ -516,6 +516,48 @@ public class ModelFactory {
     return CustomerConfig.createWithFormData(customer.getUuid(), formData);
   }
 
+  public static CustomerConfig createOCIStorageConfig(
+      Customer customer, String configName, String backupLocation) {
+    JsonNode formData =
+        Json.parse(
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"OCI\","
+                + " \"type\": \"STORAGE\", \"data\": {"
+                + "\"BACKUP_LOCATION\": \""
+                + backupLocation
+                + "\","
+                + " \"OCI_REGION\": \"us-sanjose-1\","
+                + " \"OCI_NAMESPACE\": \"test-namespace\","
+                + " \"USE_OCI_IAM\": true}}");
+    return CustomerConfig.createWithFormData(customer.getUuid(), formData);
+  }
+
+  public static CustomerConfig createOCIStorageConfigWithS3Compat(
+      Customer customer, String configName) {
+    return createOCIStorageConfigWithS3Compat(customer, configName, "s3://test-bucket/prefix");
+  }
+
+  public static CustomerConfig createOCIStorageConfigWithS3Compat(
+      Customer customer, String configName, String backupLocation) {
+    JsonNode formData =
+        Json.parse(
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"OCI\","
+                + " \"type\": \"STORAGE\", \"data\": {"
+                + "\"BACKUP_LOCATION\": \""
+                + backupLocation
+                + "\","
+                + " \"OCI_S3_ACCESS_KEY_ID\": \"test-access-key\","
+                + " \"OCI_S3_SECRET_ACCESS_KEY\": \"test-secret-key\","
+                + " \"OCI_REGION\": \"us-sanjose-1\","
+                + " \"OCI_S3_HOST_BASE\":"
+                + " \"test-namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com\","
+                + " \"USE_OCI_IAM\": false}}");
+    return CustomerConfig.createWithFormData(customer.getUuid(), formData);
+  }
+
   public static Backup createBackup(UUID customerUUID, UUID universeUUID, UUID configUUID) {
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = configUUID;

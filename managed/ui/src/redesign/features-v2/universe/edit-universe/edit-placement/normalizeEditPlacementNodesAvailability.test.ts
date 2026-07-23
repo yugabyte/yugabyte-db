@@ -159,6 +159,53 @@ describe('normalizeEditPlacementNodesAvailability', () => {
     expect(result?.availabilityZones.r0.map((zone) => zone.name)).toEqual(['Z0', 'Z1', 'Z2']);
   });
 
+  it('preserves existing non-first AZ by identity when expanding regions (no duplicate names)', () => {
+    const resilience = guidedBase({
+      faultToleranceType: FaultToleranceType.AZ_LEVEL,
+      resilienceFactor: 2,
+      regions: [makeRegion('r0', 5), makeRegion('r1', 5)]
+    });
+    const nodesAndAvailability: NodeAvailabilityProps = {
+      availabilityZones: {
+        r0: [{ uuid: 'r0-z1', name: 'Z1', nodeCount: 5, preffered: 0 }]
+      },
+      useDedicatedNodes: false
+    };
+
+    const result = normalizeEditPlacementNodesAvailability({ resilience, nodesAndAvailability });
+    const r0Names = result?.availabilityZones.r0.map((zone) => zone.name) ?? [];
+    const allNodeCounts = Object.values(result?.availabilityZones ?? {})
+      .flat()
+      .map((zone) => zone.nodeCount);
+
+    // Existing universe AZ is listed first; remaining slots filled without duplicates.
+    expect(r0Names[0]).toBe('Z1');
+    expect(new Set(r0Names).size).toBe(r0Names.length);
+    expect(r0Names.filter((name) => name === 'Z1')).toHaveLength(1);
+    // Guided mode: all AZs follow the first (existing) AZ's node count.
+    expect(allNodeCounts.every((count) => count === 5)).toBe(true);
+    expect(Object.keys(result?.availabilityZones ?? {}).sort()).toEqual(['r0', 'r1']);
+  });
+
+  it('expands from first-AZ existing count and syncs that count across all guided AZs', () => {
+    const resilience = guidedBase({
+      faultToleranceType: FaultToleranceType.AZ_LEVEL,
+      resilienceFactor: 1,
+      regions: [makeRegion('r0', 5)]
+    });
+    const nodesAndAvailability: NodeAvailabilityProps = {
+      availabilityZones: {
+        r0: [{ uuid: 'r0-z0', name: 'Z0', nodeCount: 3, preffered: 0 }]
+      },
+      useDedicatedNodes: false
+    };
+
+    const result = normalizeEditPlacementNodesAvailability({ resilience, nodesAndAvailability });
+
+    expect(result?.availabilityZones.r0.map((zone) => zone.name)).toEqual(['Z0', 'Z1', 'Z2']);
+    expect(result?.availabilityZones.r0.map((zone) => zone.nodeCount)).toEqual([3, 3, 3]);
+  });
+
   it('removes stale region keys when selected regions change', () => {
     const resilience = guidedBase({
       faultToleranceType: FaultToleranceType.AZ_LEVEL,

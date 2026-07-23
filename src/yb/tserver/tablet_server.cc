@@ -115,6 +115,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 

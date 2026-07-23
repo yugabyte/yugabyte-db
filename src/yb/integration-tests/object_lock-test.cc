@@ -46,6 +46,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_callback.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"

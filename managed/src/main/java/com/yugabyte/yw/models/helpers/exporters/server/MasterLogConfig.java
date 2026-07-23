@@ -28,7 +28,7 @@ public class MasterLogConfig {
   @ApiModelProperty(
       value = "Minimum yb-master glog severity to export. Lines below this level are dropped.",
       accessMode = READ_WRITE)
-  private MasterLogLevel minLevel = MasterLogLevel.INFO;
+  private ServerLogLevel minLevel = ServerLogLevel.INFO;
 
   @DecimalMin("0.0")
   @DecimalMax("1.0")

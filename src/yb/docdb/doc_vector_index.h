@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/entity_ids_types.h"
 
@@ -140,7 +141,7 @@ class DocVectorIndex {
 
   virtual Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
-      DocDBStatistics* statistics) = 0;
+      const ReadOperationData& read_operation_data) = 0;
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
   virtual void EnableAutoCompactions() = 0;
   virtual Status Compact() = 0;
@@ -166,8 +167,11 @@ class DocVectorIndex {
 
   bool BackfillDone();
 
+  // Writes reverse mapping for the vector id in `value`.
+  // kInvalidColumnId means legacy raw-ybctid format; otherwise V1 value format.
   static void ApplyReverseEntry(
-      rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht);
+      rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht,
+      ColumnId column_id = kInvalidColumnId, Slice table_key_prefix = {});
 
  private:
   std::atomic<bool> backfill_done_cache_{false};

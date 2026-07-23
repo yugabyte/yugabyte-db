@@ -26,7 +26,7 @@ import {
   ClusterSpecClusterType,
   UniverseRespResponse
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { CloudType, Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
 import { getClusterByType } from '../../../../edit-universe/EditUniverseUtils';
 import { RRBreadCrumbs } from '../../ReadReplicaBreadCrumbs';
@@ -47,6 +47,7 @@ import { RRRegionsAndAZValidationSchema } from './ValidationSchema';
 import { RRRegionCard } from './RRRegionCard';
 import { NodeInstanceDetails } from '@app/redesign/features-v2/universe/geo-partition/add/NodeInstanceDetails';
 import { sumReadReplicaNodeCounts } from '../../addReadReplicaClusterPayload';
+import { useSubmitReadReplica } from '../../useSubmitReadReplica';
 
 const { Box, styled, Typography } = mui;
 
@@ -205,15 +206,23 @@ function RRPlacementMap({
 }
 
 export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
-  const [
-    { regionsAndAZ, regionsAndAZBaseline, readReplicaPlacementFromUniverse, universeData, activeStep },
-    {
-      moveToNextPage,
-      moveToPreviousPage,
-      saveRegionsAndAZSettings,
-      spliceRegionsAndAZBaseline
-    }
-  ] = (useContext(AddRRContext) as unknown) as AddRRContextMethods;
+  const [rrContext, rrMethods] = (useContext(AddRRContext) as unknown) as AddRRContextMethods;
+  const {
+    regionsAndAZ,
+    regionsAndAZBaseline,
+    readReplicaPlacementFromUniverse,
+    universeData,
+    activeStep,
+    isEditPlacementOnly
+  } = rrContext;
+  const {
+    moveToNextPage,
+    moveToPreviousPage,
+    saveRegionsAndAZSettings,
+    spliceRegionsAndAZBaseline
+  } = rrMethods;
+
+  const { submit } = useSubmitReadReplica();
 
   const { t } = useTranslation('translation', { keyPrefix: 'readReplica.addRR' });
   const { t: tc } = useTranslation('translation', { keyPrefix: 'common' });
@@ -225,6 +234,8 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
     : undefined;
   const providerUUID = primaryCluster?.provider_spec?.provider ?? '';
   const useDedicatedNodes = Boolean(primaryCluster?.node_spec?.dedicated_nodes);
+  const isK8s =
+    primaryCluster?.placement_spec?.cloud_list?.[0]?.code === CloudType.kubernetes;
 
   const { data: regionsList = [], isLoading: isRegionsLoading } = useQuery(
     [QUERY_KEY.getRegionsList, providerUUID],
@@ -273,14 +284,28 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
       onNext: () => {
         return handleSubmit((data) => {
           saveRegionsAndAZSettings(data);
+          if (isEditPlacementOnly) {
+            // Placement-only edit: submit from this page using fresh form data (context update is async).
+            return submit({ ...rrContext, regionsAndAZ: data }, regionsList as Region[]);
+          }
           moveToNextPage();
+          return undefined;
         })();
       },
       onPrev: () => {
         moveToPreviousPage();
       }
     }),
-    [handleSubmit, saveRegionsAndAZSettings, moveToNextPage, moveToPreviousPage]
+    [
+      handleSubmit,
+      saveRegionsAndAZSettings,
+      moveToNextPage,
+      moveToPreviousPage,
+      isEditPlacementOnly,
+      submit,
+      rrContext,
+      regionsList
+    ]
   );
 
   return (
@@ -340,6 +365,7 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
                     baselineRegion={regionsAndAZBaseline?.regions?.[index]}
                     allowAzUndo={Boolean(readReplicaPlacementFromUniverse)}
                     useDedicatedNodes={useDedicatedNodes}
+                    isK8s={isK8s}
                     showRemoveRegion={regionFields.length > 1}
                     onRemoveRegion={
                       regionFields.length > 1
@@ -376,8 +402,8 @@ export const RRRegionsAndAZ = forwardRef<StepsRef>((_, ref) => {
                     }}
                   >
                     {useDedicatedNodes
-                      ? t('totalNodesPlacementTserver')
-                      : t('totalNodesPlacement')}
+                      ? t(isK8s ? 'totalPodsPlacementTserver' : 'totalNodesPlacementTserver')
+                      : t(isK8s ? 'totalPodsPlacement' : 'totalNodesPlacement')}
                   </Typography>
                   <Typography
                     sx={{

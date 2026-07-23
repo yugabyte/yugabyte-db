@@ -99,6 +99,7 @@ type Props = {
   onRemoveRegion?: () => void;
   /** When primary uses dedicated nodes, AZ node inputs are labeled as T-Server counts. */
   useDedicatedNodes?: boolean;
+  isK8s?: boolean;
 };
 
 export const RRRegionCard: FC<Props> = ({
@@ -107,7 +108,8 @@ export const RRRegionCard: FC<Props> = ({
   baselineRegion,
   allowAzUndo = false,
   showRemoveRegion,
-  onRemoveRegion
+  onRemoveRegion,
+  isK8s = false
 }) => {
   const { control, watch, setValue, getValues } = useFormContext<RRRegionsAndAZFormValues>();
   const { t } = useTranslation('translation', { keyPrefix: 'readReplica.addRR' });
@@ -437,7 +439,7 @@ export const RRRegionCard: FC<Props> = ({
                         minHeight: 20
                       }}
                     >
-                      {t('nodes')}
+                      {t(isK8s ? 'pods' : 'nodes')}
                     </Typography>
                     <Controller
                       control={control}

@@ -18,7 +18,6 @@
 -- - merge index scan using SAOP stream columns
 SELECT $$= '1'$$ AS "R1" \gset
 SELECT $$IN ('1', '1')$$ AS "R2" \gset
-\set Qnext :iter_R2
 
 --
 -- Index 1: v and t merge streams on bare leading columns.
@@ -36,12 +35,12 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
 --   and must be stripped to match the redundant v columns.  t's stored LHS is
 --   bare.
 \set query ':P :Q SELECT i2, i4, n, v, t::varchar FROM relabel_tbl WHERE v :R AND t :R ORDER BY i2, i4, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- Explicit-cast predicates behave identically: v::text parses to the same
 -- wrapped LHS as bare v, and t::varchar is const-folded back to bare t.
 \set query ':P :Q SELECT i2, i4, n, v::text, t::varchar FROM relabel_tbl WHERE v::text :R AND t::varchar :R ORDER BY i2, i4, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 DROP INDEX idx;
 
@@ -57,7 +56,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
 -- - The (t::varchar) stream column is wrapped on the index expression side
 --   only.
 \set query ':P :Q SELECT i2, i4, n, v, t FROM relabel_tbl WHERE v :R AND t :R ORDER BY i2, i4, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 DROP INDEX idx;
 
@@ -74,9 +73,8 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
 
 SELECT $$= '1'::varchar$$ AS "R3" \gset
 SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
-\set Qnext :iter_R4
 
 \set query ':P :Q SELECT i2, i4, n, v FROM relabel_tbl WHERE v :R ORDER BY i2, i4, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 DROP INDEX idx;
