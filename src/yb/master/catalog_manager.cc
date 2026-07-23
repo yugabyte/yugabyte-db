@@ -8522,9 +8522,15 @@ std::optional<std::string> CatalogManager::LookupPgSchemaNameForTable(
 
   auto pgschema_name = ysql_manager_->GetPgSchemaName(*pg_tbl_oids, read_time);
   if (!pgschema_name.ok() || pgschema_name->empty()) {
-    LOG(WARNING) << "Unable to find schema name for YSQL table " << table.namespace_name()
-                 << "." << table.name() << " id " << table.id()
-                 << " due to error: " << pgschema_name;
+    // DOCDB_TABLE_NOT_COMMITTED is expected for orphaned / mid-DDL DocDB tables.
+    const bool expected_not_committed = !pgschema_name.ok()
+        && MasterError(pgschema_name.status()) == MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED;
+    (expected_not_committed ? LOG(INFO) : LOG(WARNING))
+        << "Unable to find schema name for "
+        << (expected_not_committed ? "not committed " : "")
+        << "YSQL table " << table.namespace_name()
+        << "." << table.name() << " id " << table.id()
+        << " due to error: " << pgschema_name;
     return std::nullopt;
   }
 
@@ -8894,8 +8900,14 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       const auto pgschema_name_res =
           ysql_manager_->GetCachedPgSchemaName(*pg_tbl_oids_res, pg_rel_nsp_cache);
       if (!pgschema_name_res.ok() || pgschema_name_res->empty()) {
-        LOG(WARNING) << "Unable to find schema name for YSQL table " << table.namespace_().name()
-                     << "." << table.name() << " due to error: " << pgschema_name_res;
+        // DOCDB_TABLE_NOT_COMMITTED is expected for orphaned / mid-DDL DocDB tables.
+        const bool expected_not_committed = !pgschema_name_res.ok()
+            && MasterError(pgschema_name_res.status()) == MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED;
+        (expected_not_committed ? LOG(INFO) : LOG(WARNING))
+            << "Unable to find schema name for "
+            << (expected_not_committed ? "not committed " : "")
+            << "YSQL table " << table.namespace_().name()
+            << "." << table.name() << " due to error: " << pgschema_name_res;
       } else {
         table.set_pgschema_name(*pgschema_name_res);
       }
