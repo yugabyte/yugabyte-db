@@ -15610,7 +15610,7 @@ dropconstraint_internal(Relation rel, HeapTuple constraintTup, DropBehavior beha
 		}
 
 		if (pkattrs &&
-			bms_is_member(attnum - FirstLowInvalidHeapAttributeNumber, pkattrs))
+			bms_is_member(attnum - YBGetFirstLowInvalidAttributeNumber(rel), pkattrs))
 			ereport(ERROR,
 					errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					errmsg("column \"%s\" is in a primary key",
@@ -15618,7 +15618,7 @@ dropconstraint_internal(Relation rel, HeapTuple constraintTup, DropBehavior beha
 
 		/* Disallow if it's in the replica identity */
 		irattrs = RelationGetIndexAttrBitmap(rel, INDEX_ATTR_BITMAP_IDENTITY_KEY);
-		if (bms_is_member(attnum - FirstLowInvalidHeapAttributeNumber, irattrs))
+		if (bms_is_member(attnum - YBGetFirstLowInvalidAttributeNumber(rel), irattrs))
 			ereport(ERROR,
 					errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					errmsg("column \"%s\" is in index used as replica identity",
