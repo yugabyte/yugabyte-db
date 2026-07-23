@@ -1216,6 +1216,8 @@ class Tablet : public AbstractTablet,
   void TEST_DocDBDumpToContainerImpl(
       Out& out, docdb::IncludeIntents include_intents, docdb::IncludeWriteTime include_write_time);
 
+  void RefreshMetricsAttributes();
+
   std::unique_ptr<const Schema> key_schema_;
 
   RaftGroupMetadataPtr metadata_;
