@@ -664,15 +664,21 @@ YbDatumToDecimalText(Datum datum, char *plaintext[], int64 *bytes)
 	Numeric		num = DatumGetNumeric(datum);
 
 	*plaintext = numeric_normalize(num);
-	/* NaN and infinity support is tracked under GH issue #23075 */
-	if (strncmp(*plaintext, "NaN", 3) == 0)
-		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("DECIMAL does not support NaN yet")));
-	else if (strcmp(*plaintext, "Infinity") == 0 ||
-			 strcmp(*plaintext, "-Infinity") == 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("DECIMAL does not support Infinity yet")));
+	/*
+	 * NaN and Infinity require new DocDB key/value entry types. Gated by
+	 * AutoFlag yb_enable_decimal_infinity_nan (GH #23075).
+	 */
+	if (!yb_enable_decimal_infinity_nan)
+	{
+		if (strncmp(*plaintext, "NaN", 3) == 0)
+			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("DECIMAL does not support NaN yet")));
+		else if (strcmp(*plaintext, "Infinity") == 0 ||
+				 strcmp(*plaintext, "-Infinity") == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("DECIMAL does not support Infinity yet")));
+	}
 }
 
 Datum

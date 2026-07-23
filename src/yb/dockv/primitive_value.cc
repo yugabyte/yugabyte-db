@@ -48,6 +48,11 @@
 #include "yb/util/status_log.h"
 
 using std::string;
+using yb::util::IsComparableSpecialEncoding;
+using yb::util::kDecimalNaNSentinel;
+using yb::util::kDecimalNegInfinitySentinel;
+using yb::util::kDecimalPosInfinitySentinel;
+
 using strings::Substitute;
 using yb::util::CompareUsingLessThan;
 using yb::util::kInt32SignBitFlipMask;
@@ -103,6 +108,22 @@ namespace yb::dockv {
 namespace {
 
 using VectorEndian = LittleEndian;
+
+KeyEntryType DecimalSpecialKeyEntryType(char sentinel, SortOrder sort_order) {
+  const bool desc = sort_order == SortOrder::kDescending;
+  switch (sentinel) {
+    case kDecimalNegInfinitySentinel:
+      return desc ? KeyEntryType::kDecimalNegInfinityDescending
+                  : KeyEntryType::kDecimalNegInfinity;
+    case kDecimalPosInfinitySentinel:
+      return desc ? KeyEntryType::kDecimalPosInfinityDescending
+                  : KeyEntryType::kDecimalPosInfinity;
+    case kDecimalNaNSentinel:
+      return desc ? KeyEntryType::kDecimalNaNDescending : KeyEntryType::kDecimalNaN;
+    default:
+      LOG(FATAL) << "Unexpected decimal special sentinel: " << static_cast<int>(sentinel);
+  }
+}
 
 bool IsTrue(ValueEntryType type) {
   return type == ValueEntryType::kTrue;
@@ -490,11 +511,16 @@ Slice EncodedKeyEntryValueImpl(Arena& arena, const PB& value, SortingType sortin
           appender.Bind(SELECT_VALUE_TYPE(Double, sort_order)),
           sort_order == SortOrder::kDescending);
       break;
-    case QLValuePB::kDecimalValue:
-      appender.AppendBigNumber(
-          value.decimal_value(), sort_order, KeyEntryType::kDecimal,
-          KeyEntryType::kDecimalDescending);
+    case QLValuePB::kDecimalValue: {
+      const auto& dec = value.decimal_value();
+      if (IsComparableSpecialEncoding(dec)) {
+        appender.TypeOnly(DecimalSpecialKeyEntryType(dec[0], sort_order));
+      } else {
+        appender.AppendBigNumber(
+            dec, sort_order, KeyEntryType::kDecimal, KeyEntryType::kDecimalDescending);
+      }
       break;
+    }
     case QLValuePB::kVarintValue:
       appender.AppendBigNumber(
           value.varint_value(), sort_order, KeyEntryType::kVarInt, KeyEntryType::kVarIntDescending);
@@ -752,6 +778,12 @@ std::string PrimitiveValue::ValueToString() const {
 #define CASE_EMPTY_KEY_ENTRY_TYPES \
     case KeyEntryType::kVectorIndexMetadata: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kCounter: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kDecimalNaN: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kDecimalNaNDescending: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kDecimalNegInfinity: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kDecimalNegInfinityDescending: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kDecimalPosInfinity: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kDecimalPosInfinityDescending: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kFalse: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kFalseDescending: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kHighest: FALLTHROUGH_INTENDED; \
@@ -2141,6 +2173,9 @@ PrimitiveValue PrimitiveValue::Decimal(const Slice& decimal_str) {
 }
 
 KeyEntryValue KeyEntryValue::Decimal(const Slice& decimal_str, SortOrder sort_order) {
+  if (IsComparableSpecialEncoding(decimal_str)) {
+    return KeyEntryValue(DecimalSpecialKeyEntryType(decimal_str[0], sort_order));
+  }
   KeyEntryValue primitive_value;
   primitive_value.type_ = SELECT_VALUE_TYPE(Decimal, sort_order);
   new(&primitive_value.str_val_) string(decimal_str.cdata(), decimal_str.size());
@@ -3270,6 +3305,15 @@ std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {
     case KeyEntryType::kDecimalDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kDecimal:
       return DecimalToString(str_val_);
+    case KeyEntryType::kDecimalNaN: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kDecimalNaNDescending:
+      return "NaN";
+    case KeyEntryType::kDecimalPosInfinity: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kDecimalPosInfinityDescending:
+      return "Infinity";
+    case KeyEntryType::kDecimalNegInfinity: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kDecimalNegInfinityDescending:
+      return "-Infinity";
     case KeyEntryType::kVarIntDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kVarInt:
       return VarIntToString(str_val_);
@@ -3439,6 +3483,30 @@ int KeyEntryValue::CompareTo(const KeyEntryValue& other) const {
 }
 
 void KeyEntryValue::ToQLValuePB(const std::shared_ptr<QLType>& ql_type, QLValuePB* ql_value) const {
+  // DECIMAL specials are payload-less KeyEntryTypes; map them back to QLValue sentinels.
+  if (ql_type->main() == DataType::DECIMAL) {
+    char sentinel = 0;
+    switch (type_) {
+      case KeyEntryType::kDecimalNaN: FALLTHROUGH_INTENDED;
+      case KeyEntryType::kDecimalNaNDescending:
+        sentinel = kDecimalNaNSentinel;
+        break;
+      case KeyEntryType::kDecimalPosInfinity: FALLTHROUGH_INTENDED;
+      case KeyEntryType::kDecimalPosInfinityDescending:
+        sentinel = kDecimalPosInfinitySentinel;
+        break;
+      case KeyEntryType::kDecimalNegInfinity: FALLTHROUGH_INTENDED;
+      case KeyEntryType::kDecimalNegInfinityDescending:
+        sentinel = kDecimalNegInfinitySentinel;
+        break;
+      default:
+        break;
+    }
+    if (sentinel != 0) {
+      ql_value->set_decimal_value(std::string(1, sentinel));
+      return;
+    }
+  }
   if (SharedToQLValuePB(*this, ql_type, ql_value)) {
     return;
   }

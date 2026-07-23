@@ -3676,6 +3676,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_decimal_infinity_nan", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Autoflag to enable DECIMAL Infinity and NaN support. "
+						 "Not to be touched by users."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_decimal_infinity_nan,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_allow_block_based_sampling_algorithm", PGC_SUSET, CUSTOM_OPTIONS,
 			gettext_noop("Autoflag to allow "
 						 "YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING. Not to "
