@@ -281,13 +281,14 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 */
 
 	/*
-	 * YB expects system tables to be created only during YSQL cluster upgrade.
-	 * Both table_oid and row_type_oid should be specified for CREATE statment.
-	 * They should match the ones defined in pg_xxx.h headers, but I don't
-	 * see an easy way to do a sanity check.
+	 * YB expects system tables to be created only during YSQL cluster upgrade
+	 * and global initDB. Both table_oid and row_type_oid should be specified
+	 * for CREATE statement. They should match the ones defined in pg_xxx.h headers,
+	 * but I don't see an easy way to do a sanity check.
 	 */
 	cxt.isSystem = IsCatalogNamespace(namespaceid);
-	if (IsYugaByteEnabled() && cxt.isSystem && !IsYsqlUpgrade)
+	if (IsYugaByteEnabled() && cxt.isSystem && !IsYsqlUpgrade &&
+		!(YBCIsInitDbModeEnvVarSet() && cxt.isforeign))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to create \"%s.%s\"",
@@ -473,7 +474,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 				 errmsg("'colocated' syntax is deprecated and will be removed in a future release"),
 				 errhint("Use 'colocation' instead of 'colocated'.")));
 
-	if (IsYsqlUpgrade && cxt.isSystem &&
+	if (IsYsqlUpgrade && cxt.isSystem && !cxt.isforeign &&
 		(!OidIsValid(cxt.relOid) || !specifies_type_oid))
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 						errmsg("system tables must specify both table_oid and row_type_oid "
@@ -2562,7 +2563,11 @@ transformIndexConstraints(CreateStmtContext *cxt)
 
 	Bitmapset  *oids_used = NULL;
 
-	if (cxt->isSystem)
+	/*
+	 * YB: Foreign tables in pg_catalog (created for global views
+	 * during initdb) don't have a table_oid
+	 */
+	if (cxt->isSystem && !cxt->isforeign)
 	{
 		Assert(OidIsValid(cxt->relOid));
 		oids_used = bms_make_singleton(cxt->relOid);

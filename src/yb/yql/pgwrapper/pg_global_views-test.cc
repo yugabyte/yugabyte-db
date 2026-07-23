@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <signal.h>
 #include <gmock/gmock.h>
 
 #include "yb/integration-tests/external_mini_cluster.h"
@@ -18,10 +19,12 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/debug.h"
 #include "yb/util/monotime.h"
+#include "yb/util/subprocess.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -37,7 +40,7 @@ class PgGlobalViewsTest : public LibPqTestBase {
   void SetUp() override {
     LibPqTestBase::SetUp();
     conn_ = ASSERT_RESULT(ConnectToDB(kInitialDB));
-    ASSERT_OK(conn_->Execute("CREATE EXTENSION postgres_fdw"));
+    ASSERT_OK(conn_->Execute("CREATE EXTENSION IF NOT EXISTS postgres_fdw"));
     ASSERT_OK(conn_->Execute(
         "CREATE SERVER IF NOT EXISTS gv_server FOREIGN DATA WRAPPER postgres_fdw "
         "OPTIONS (server_type 'federatedYugabyteDB')"));
@@ -229,6 +232,59 @@ class PgGlobalViewsExceedRpcMaxSizeTest : public PgGlobalViewsTest {
     options->extra_tserver_flags.push_back(Format(
         "--consensus_max_batch_size_bytes=$0", kRpcMaxMessageSize - 2048));
   }
+};
+
+class PgBuiltinGlobalViewsTest : public LibPqTestBase {
+ public:
+  void SetUp() override {
+    LibPqTestBase::SetUp();
+    conn_ = ASSERT_RESULT(Connect());
+    expected_uuids_ = ASSERT_RESULT(GetExpectedTserverUuids());
+  }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    constexpr auto kYsqlPgConfCsv = "ysql_pg_conf_csv";
+    auto& tserver_flags = options->extra_tserver_flags;
+    AppendCsvFlagValue(tserver_flags, kYsqlPgConfCsv, "yb_enable_global_views=true");
+    AppendCsvFlagValue(tserver_flags, kYsqlPgConfCsv, "yb_pg_stat_plans_track=top");
+    AppendCsvFlagValue(tserver_flags, kYsqlPgConfCsv, "track_functions='all'");
+    tserver_flags.push_back("--ysql_yb_ash_sampling_interval_ms=50");
+    tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+
+    // CDC decoding transiently misses schema packing; silence the debug DCHECK
+    // (no-op in release), as other CDC consumption tests do.
+    tserver_flags.push_back("--TEST_dcheck_for_missing_schema_packing=false");
+    options->extra_master_flags.push_back("--TEST_dcheck_for_missing_schema_packing=false");
+  }
+
+ protected:
+  Result<boost::container::small_vector<Uuid, 3>> GetExpectedTserverUuids() {
+    boost::container::small_vector<Uuid, 3> uuids;
+    for (int i = 0; i < GetNumTabletServers(); ++i) {
+      uuids.push_back(VERIFY_RESULT(
+          Uuid::FromHexStringBigEndian(cluster_->tablet_server(i)->uuid())));
+    }
+    std::sort(uuids.begin(), uuids.end());
+    return uuids;
+  }
+
+  Status VerifyTserverUuidsInView(
+      const std::string& view_name) {
+    auto rows = VERIFY_RESULT(conn_->FetchRows<Uuid>(Format(
+        "SELECT DISTINCT server_uuid FROM gv$$$0 ORDER BY server_uuid", view_name)));
+    boost::container::small_vector<Uuid, 3> actual_uuids(rows.begin(), rows.end());
+    SCHECK_EQ(expected_uuids_, actual_uuids, IllegalState,
+        Format("tserver UUIDs from gv$$$0 do not match expected set", view_name));
+    return Status::OK();
+  }
+
+  Result<bool> DoesRelExist(const std::string& relation) {
+    return conn_->FetchRow<bool>(
+        Format("SELECT to_regclass('$0') IS NOT NULL", relation));
+  }
+
+  std::optional<PGConn> conn_;
+  boost::container::small_vector<Uuid, 3> expected_uuids_;
 };
 
 } // anonymous namespace
@@ -910,6 +966,275 @@ TEST_F(PgGlobalViewsTest, TestRemoteCannotSignalBackends) {
 
   // The target backend must still be alive and usable.
   ASSERT_EQ(ASSERT_RESULT(target_conn.FetchRow<std::string>("SELECT (1)::text")), "1");
+}
+
+TEST_F(PgBuiltinGlobalViewsTest, TestSimpleGvs) {
+  ASSERT_OK(VerifyTserverUuidsInView("pg_stat_all_tables"));
+  ASSERT_OK(VerifyTserverUuidsInView("pg_stat_database"));
+  ASSERT_OK(VerifyTserverUuidsInView("pg_stat_activity"));
+  ASSERT_OK(VerifyTserverUuidsInView("pg_stat_all_indexes"));
+
+  ASSERT_OK(conn_->Execute("CREATE TABLE tbl (k INT)"));
+  ASSERT_OK(VerifyTserverUuidsInView("pg_stat_user_tables"));
+
+  ASSERT_OK(conn_->Execute(
+    "INSERT INTO tbl SELECT generate_series(1, 10000)"));
+  ASSERT_OK(VerifyTserverUuidsInView("yb_active_session_history"));
+
+  ASSERT_OK(conn_->Execute(
+      "CREATE FUNCTION gv_test_func() RETURNS INT AS $$ BEGIN RETURN 1; "
+      "END; $$ LANGUAGE plpgsql"));
+
+  for (int i = 0; i < GetNumTabletServers(); ++i) {
+    auto ts_conn = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(i)));
+    ASSERT_OK(ts_conn.Fetch("SELECT * FROM tbl WHERE k = 1"));
+    ASSERT_OK(ts_conn.Fetch("SELECT * FROM gv_test_func()"));
+  }
+
+  ASSERT_OK(VerifyTserverUuidsInView("pg_stat_user_functions"));
+  ASSERT_OK(VerifyTserverUuidsInView("pg_stat_statements"));
+  ASSERT_OK(VerifyTserverUuidsInView("yb_pg_stat_plans"));
+  ASSERT_OK(VerifyTserverUuidsInView("yb_pg_stat_plans_insights"));
+
+  ASSERT_OK(conn_->Execute("CREATE INDEX tbl_idx ON tbl (k)"));
+  ASSERT_OK(VerifyTserverUuidsInView("pg_stat_user_indexes"));
+}
+
+TEST_F(PgBuiltinGlobalViewsTest, TestGvYbTerminatedQueries) {
+  constexpr auto kSleepDuration = 5 * kTimeMultiplier;
+  for (int i = 0; i < GetNumTabletServers(); ++i) {
+    auto* ts = cluster_->tablet_server(i);
+
+    TestThreadHolder thread_holder;
+    thread_holder.AddThreadFunctor([this, ts, kSleepDuration] {
+      auto ts_conn = ASSERT_RESULT(ConnectToTs(*ts));
+      ASSERT_NOK(ts_conn.FetchFormat("SELECT pg_sleep($0)", kSleepDuration));
+    });
+
+    auto observer_conn = ASSERT_RESULT(ConnectToTs(*ts));
+    int32_t backend_pid;
+    ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      auto result = observer_conn.FetchRow<int32_t>(Format(R"#(
+          SELECT pid FROM pg_stat_activity
+          WHERE query LIKE '%pg_sleep($0)%' AND pid != pg_backend_pid())#",
+          kSleepDuration));
+      if (result.ok()) {
+        backend_pid = *result;
+        return true;
+      }
+      return false;
+    }, 30s * kTimeMultiplier, "Waiting for pg_sleep query in pg_stat_activity"));
+
+    ASSERT_EQ(kill(backend_pid, SIGKILL), 0);
+  }
+
+  ASSERT_OK(VerifyTserverUuidsInView("yb_terminated_queries"));
+}
+
+TEST_F(PgBuiltinGlobalViewsTest, TestGvPgStatProgressCopy) {
+  ASSERT_OK(conn_->Execute("CREATE TABLE gv_copy_tbl (k INT)"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "TEST_tablet_inject_latency_on_apply_write_txn_ms",
+      Format("$0", 5000 * kTimeMultiplier)));
+
+  constexpr int kNumRows = 1000;
+  TestThreadHolder thread_holder;
+  for (int i = 0; i < GetNumTabletServers(); ++i) {
+    thread_holder.AddThreadFunctor([this, i] {
+      auto ts_conn = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(i)));
+      ASSERT_OK(ts_conn.CopyFromStdin(
+          "gv_copy_tbl", [](PGConn::RowMaker<int32_t>& row) {
+        for (int j = 0; j < kNumRows; ++j) {
+          row(j);
+        }
+      }));
+    });
+  }
+
+  ASSERT_OK(LoggedWaitFor([this]() -> Result<bool> {
+    return VerifyTserverUuidsInView("pg_stat_progress_copy").ok();
+  }, 30s * kTimeMultiplier, "Waiting for all tserver UUIDs in pg_stat_progress_copy"));
+}
+
+TEST_F(PgBuiltinGlobalViewsTest, TestGvPgStatProgressIndexAndAnalyze) {
+  // Slow down DocDB row fetches scoped to our test table's "k" column so both
+  // CREATE INDEX (backfill scan) and ANALYZE (sample acquisition) stay in
+  // progress long enough for all tservers to appear in their respective
+  // pg_stat_progress views. This is a tserver-side flag, so SetFlagOnTServers
+  // (RPC to running tservers) takes effect immediately.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_fetch_next_delay_column", "k"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_fetch_next_delay_ms", "200"));
+
+  // Use separate databases per tserver so concurrent CREATE INDEX operations
+  // don't conflict on catalog version writes.
+  constexpr int kNumRows = 100;
+  for (int i = 0; i < GetNumTabletServers(); ++i) {
+    ASSERT_OK(conn_->ExecuteFormat("CREATE DATABASE gv_progress_db_$0", i));
+    auto db_conn = ASSERT_RESULT(ConnectToDB(Format("gv_progress_db_$0", i)));
+    ASSERT_OK(db_conn.Execute("CREATE TABLE gv_progress_tbl (k INT)"));
+    ASSERT_OK(db_conn.ExecuteFormat(
+        "INSERT INTO gv_progress_tbl SELECT generate_series(1, $0)", kNumRows));
+  }
+
+  const auto run_phase = [this](
+      const std::string& stmt, const std::string& view_name) {
+    TestThreadHolder thread_holder;
+    for (int i = 0; i < GetNumTabletServers(); ++i) {
+      thread_holder.AddThreadFunctor([this, i, &stmt] {
+        auto ts_conn = ASSERT_RESULT(ConnectToTsForDB(
+            *cluster_->tablet_server(i), Format("gv_progress_db_$0", i)));
+        ASSERT_OK(ts_conn.Execute(stmt));
+      });
+    }
+    ASSERT_OK(LoggedWaitFor([this, &view_name]() -> Result<bool> {
+      return VerifyTserverUuidsInView(view_name).ok();
+    }, 60s * kTimeMultiplier,
+       Format("Waiting for all tserver UUIDs in $0", view_name)));
+    thread_holder.JoinAll();
+  };
+
+  run_phase("CREATE INDEX gv_progress_tbl_idx ON gv_progress_tbl (k)",
+            "pg_stat_progress_create_index");
+  run_phase("ANALYZE gv_progress_tbl", "pg_stat_progress_analyze");
+}
+
+TEST_F(PgBuiltinGlobalViewsTest, TestGvPgStatReplication) {
+  const auto num_tservers = GetNumTabletServers();
+
+  // The virtual WAL needs a user table to decode, else walsenders never start.
+  ASSERT_OK(conn_->Execute("CREATE TABLE gv_repl_tbl (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn_->Execute("INSERT INTO gv_repl_tbl VALUES (1)"));
+
+  std::vector<std::string> slot_names;
+  for (int i = 0; i < num_tservers; ++i) {
+    slot_names.push_back(Format("gv_repl_slot_$0", i));
+    ASSERT_OK(conn_->FetchFormat(
+        "SELECT * FROM pg_create_logical_replication_slot('$0', 'test_decoding')",
+        slot_names.back()));
+  }
+
+  // Slots take time to propagate to every tserver, so poll until all report.
+  ASSERT_OK(LoggedWaitFor([this]() -> Result<bool> {
+    return VerifyTserverUuidsInView("pg_stat_replication_slots").ok();
+  }, 30s * kTimeMultiplier,
+     "Waiting for all tserver UUIDs in pg_stat_replication_slots"));
+
+  const auto pg_recvlogical = GetPgToolPath("pg_recvlogical");
+  std::vector<std::unique_ptr<Subprocess>> recv_procs;
+  for (int i = 0; i < num_tservers; ++i) {
+    auto* ts = cluster_->tablet_server(i);
+    std::vector<std::string> argv = {
+        pg_recvlogical,
+        "--dbname=yugabyte",
+        "--username=yugabyte",
+        Format("--host=$0", ts->bind_host()),
+        Format("--port=$0", ts->ysql_port()),
+        Format("--slot=$0", slot_names[i]),
+        "--file=/dev/null",
+        "--start"
+    };
+    auto proc = std::make_unique<Subprocess>(pg_recvlogical, argv);
+    ASSERT_OK(proc->Start());
+    recv_procs.push_back(std::move(proc));
+  }
+
+  // pg_stat_replication reads every slot's active_pid, which is persisted only
+  // once a walsender attaches. Wait for all slots to go active first (via
+  // pg_replication_slots, which does not read active_pid) so the subsequent
+  // global-view query sees a fully populated active_pid for every slot.
+  ASSERT_OK(LoggedWaitFor([this, num_tservers]() -> Result<bool> {
+    auto active_slots = VERIFY_RESULT(conn_->FetchRow<int64_t>(
+        "SELECT count(*) FROM pg_replication_slots WHERE active"));
+    return active_slots == static_cast<int64_t>(num_tservers);
+  }, 30s * kTimeMultiplier,
+     "Waiting for all replication slots to become active"));
+
+  ASSERT_OK(LoggedWaitFor([this]() -> Result<bool> {
+    return VerifyTserverUuidsInView("pg_stat_replication").ok();
+  }, 30s * kTimeMultiplier,
+     "Waiting for all tserver UUIDs in pg_stat_replication"));
+}
+
+TEST_F(PgBuiltinGlobalViewsTest, TestGvPermissions) {
+  constexpr auto kUser = "test_builtin_gv_user";
+  constexpr auto kQuery = "SELECT * FROM gv$pg_stat_activity LIMIT 1";
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE USER $0", kUser));
+
+  // Built-in gv$ tables are granted only to pg_read_all_stats at creation, so a
+  // plain user is denied at the table-level ACL.
+  auto user_conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", kUser));
+  auto result = user_conn.Fetch(kQuery);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "permission denied");
+
+  // pg_read_all_stats membership grants both the table SELECT and the federated
+  // read privilege, so access is now allowed.
+  ASSERT_OK(conn_->ExecuteFormat("GRANT pg_read_all_stats TO $0", kUser));
+  user_conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", kUser));
+  ASSERT_OK(user_conn.Fetch(kQuery));
+}
+
+TEST_F(PgBuiltinGlobalViewsTest, TestCreateGlobalViewRequiresPrivilege) {
+  constexpr auto kUser = "test_gv_create_user";
+  constexpr auto kQuery =
+      "SELECT yb_create_global_view('public', 'pg_stat_statements_info')";
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE USER $0", kUser));
+
+  // EXECUTE on yb_create_global_view is revoked from PUBLIC. A regular user must
+  // not be able to run it, else a partial failure could leave catalog objects
+  // behind.
+  auto user_conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", kUser));
+  auto result = user_conn.Fetch(kQuery);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "permission denied");
+}
+
+TEST_F(PgBuiltinGlobalViewsTest, TestGvDroppedWithSourceExtension) {
+  ASSERT_TRUE(ASSERT_RESULT(DoesRelExist("pg_catalog.gv$pg_stat_statements")));
+  ASSERT_TRUE(ASSERT_RESULT(DoesRelExist("pg_catalog.pg_stat_statements_with_server_uuid")));
+
+  ASSERT_OK(conn_->Execute("DROP EXTENSION pg_stat_statements CASCADE"));
+
+  ASSERT_FALSE(ASSERT_RESULT(DoesRelExist("pg_catalog.pg_stat_statements_with_server_uuid")));
+  ASSERT_FALSE(ASSERT_RESULT(DoesRelExist("pg_catalog.gv$pg_stat_statements")));
+}
+
+TEST_F(PgBuiltinGlobalViewsTest, TestAdHocCreation) {
+  constexpr auto kBaseView = "pg_stat_statements_info";
+  constexpr auto kSchema = "public";
+  const auto kAuxView = Format("$0.$1_with_server_uuid", kSchema, kBaseView);
+  const auto kGlobalView = Format("$0.gv$$$1", kSchema, kBaseView);
+
+  // rollback should delete all catalog objects
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  ASSERT_OK(conn_->FetchFormat("SELECT yb_create_global_view('$0', '$1')", kSchema, kBaseView));
+  ASSERT_OK(conn_->Execute("ROLLBACK"));
+  ASSERT_FALSE(ASSERT_RESULT(DoesRelExist(kAuxView)));
+  ASSERT_FALSE(ASSERT_RESULT(DoesRelExist(kGlobalView)));
+
+  // commit should preserve all catalog objects
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  ASSERT_OK(conn_->FetchFormat("SELECT yb_create_global_view('$0', '$1')", kSchema, kBaseView));
+  ASSERT_OK(conn_->Execute("COMMIT"));
+  ASSERT_TRUE(ASSERT_RESULT(DoesRelExist(kAuxView)));
+  ASSERT_TRUE(ASSERT_RESULT(DoesRelExist(kGlobalView)));
+
+  // yb_create_global_view can be run outside of a txn
+  ASSERT_OK(conn_->ExecuteFormat("DROP VIEW $0 CASCADE", kAuxView));
+  ASSERT_OK(conn_->FetchFormat("SELECT yb_create_global_view('$0', '$1')", kSchema, kBaseView));
+  ASSERT_TRUE(ASSERT_RESULT(DoesRelExist(kAuxView)));
+  ASSERT_TRUE(ASSERT_RESULT(DoesRelExist(kGlobalView)));
+
+  // yb_create_global_view can only be used on top views on pg_catalog
+  constexpr auto kTmpView = "temp_view";
+  ASSERT_OK(conn_->ExecuteFormat("CREATE VIEW $0 AS SELECT 1 AS x", kTmpView));
+  ASSERT_NOK(conn_->FetchFormat("SELECT yb_create_global_view('$0', '$1')", kSchema, kTmpView));
+
+  // can't create views on pg_catalog
+  ASSERT_NOK(conn_->Execute("SELECT yb_create_global_view('pg_catalog', 'pg_tables')"));
 }
 
 } // namespace yb::pgwrapper

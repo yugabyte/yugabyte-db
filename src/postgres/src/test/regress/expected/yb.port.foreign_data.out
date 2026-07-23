@@ -26,16 +26,18 @@ COMMENT ON FOREIGN DATA WRAPPER dummy IS 'useless';
 CREATE FOREIGN DATA WRAPPER postgresql VALIDATOR postgresql_fdw_validator;
 -- At this point we should have 2 built-in wrappers and no servers.
 SELECT fdwname, fdwhandler::regproc, fdwvalidator::regproc, fdwoptions FROM pg_foreign_data_wrapper ORDER BY 1, 2, 3;
-  fdwname   | fdwhandler |       fdwvalidator       | fdwoptions 
-------------+------------+--------------------------+------------
- dummy      | -          | -                        | 
- postgresql | -          | postgresql_fdw_validator | 
-(2 rows)
+   fdwname    |      fdwhandler      |       fdwvalidator       | fdwoptions 
+--------------+----------------------+--------------------------+------------
+ dummy        | -                    | -                        | 
+ postgres_fdw | postgres_fdw_handler | postgres_fdw_validator   | 
+ postgresql   | -                    | postgresql_fdw_validator | 
+(3 rows)
 
 SELECT srvname, srvoptions FROM pg_foreign_server;
- srvname | srvoptions 
----------+------------
-(0 rows)
+        srvname         |            srvoptions             
+------------------------+-----------------------------------
+ yb_global_views_server | {server_type=federatedYugabyteDB}
+(1 row)
 
 SELECT * FROM pg_user_mapping;
  oid | umuser | umserver | umoptions 
@@ -47,39 +49,42 @@ CREATE FOREIGN DATA WRAPPER foo VALIDATOR bar;            -- ERROR
 ERROR:  function bar(text[], oid) does not exist
 CREATE FOREIGN DATA WRAPPER foo;
 \dew
-                        List of foreign-data wrappers
-    Name    |           Owner           | Handler |        Validator         
-------------+---------------------------+---------+--------------------------
- dummy      | regress_foreign_data_user | -       | -
- foo        | regress_foreign_data_user | -       | -
- postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator
-(3 rows)
+                               List of foreign-data wrappers
+     Name     |           Owner           |       Handler        |        Validator         
+--------------+---------------------------+----------------------+--------------------------
+ dummy        | regress_foreign_data_user | -                    | -
+ foo          | regress_foreign_data_user | -                    | -
+ postgres_fdw | postgres                  | postgres_fdw_handler | postgres_fdw_validator
+ postgresql   | regress_foreign_data_user | -                    | postgresql_fdw_validator
+(4 rows)
 
 CREATE FOREIGN DATA WRAPPER foo; -- duplicate
 ERROR:  foreign-data wrapper "foo" already exists
 DROP FOREIGN DATA WRAPPER foo;
 CREATE FOREIGN DATA WRAPPER foo OPTIONS (testing '1');
 \dew+
-                                                 List of foreign-data wrappers
-    Name    |           Owner           | Handler |        Validator         | Access privileges |  FDW options  | Description 
-------------+---------------------------+---------+--------------------------+-------------------+---------------+-------------
- dummy      | regress_foreign_data_user | -       | -                        |                   |               | useless
- foo        | regress_foreign_data_user | -       | -                        |                   | (testing '1') | 
- postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |               | 
-(3 rows)
+                                                        List of foreign-data wrappers
+     Name     |           Owner           |       Handler        |        Validator         | Access privileges |  FDW options  | Description 
+--------------+---------------------------+----------------------+--------------------------+-------------------+---------------+-------------
+ dummy        | regress_foreign_data_user | -                    | -                        |                   |               | useless
+ foo          | regress_foreign_data_user | -                    | -                        |                   | (testing '1') | 
+ postgres_fdw | postgres                  | postgres_fdw_handler | postgres_fdw_validator   |                   |               | 
+ postgresql   | regress_foreign_data_user | -                    | postgresql_fdw_validator |                   |               | 
+(4 rows)
 
 DROP FOREIGN DATA WRAPPER foo;
 CREATE FOREIGN DATA WRAPPER foo OPTIONS (testing '1', testing '2');   -- ERROR
 ERROR:  option "testing" provided more than once
 CREATE FOREIGN DATA WRAPPER foo OPTIONS (testing '1', another '2');
 \dew+
-                                                       List of foreign-data wrappers
-    Name    |           Owner           | Handler |        Validator         | Access privileges |        FDW options         | Description 
-------------+---------------------------+---------+--------------------------+-------------------+----------------------------+-------------
- dummy      | regress_foreign_data_user | -       | -                        |                   |                            | useless
- foo        | regress_foreign_data_user | -       | -                        |                   | (testing '1', another '2') | 
- postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |                            | 
-(3 rows)
+                                                               List of foreign-data wrappers
+     Name     |           Owner           |       Handler        |        Validator         | Access privileges |        FDW options         | Description 
+--------------+---------------------------+----------------------+--------------------------+-------------------+----------------------------+-------------
+ dummy        | regress_foreign_data_user | -                    | -                        |                   |                            | useless
+ foo          | regress_foreign_data_user | -                    | -                        |                   | (testing '1', another '2') | 
+ postgres_fdw | postgres                  | postgres_fdw_handler | postgres_fdw_validator   |                   |                            | 
+ postgresql   | regress_foreign_data_user | -                    | postgresql_fdw_validator |                   |                            | 
+(4 rows)
 
 DROP FOREIGN DATA WRAPPER foo;
 SET ROLE regress_test_role;
@@ -89,13 +94,14 @@ HINT:  Must be superuser or a member of the yb_fdw role to create a foreign-data
 RESET ROLE;
 CREATE FOREIGN DATA WRAPPER foo VALIDATOR postgresql_fdw_validator;
 \dew+
-                                                List of foreign-data wrappers
-    Name    |           Owner           | Handler |        Validator         | Access privileges | FDW options | Description 
-------------+---------------------------+---------+--------------------------+-------------------+-------------+-------------
- dummy      | regress_foreign_data_user | -       | -                        |                   |             | useless
- foo        | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |             | 
- postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |             | 
-(3 rows)
+                                                       List of foreign-data wrappers
+     Name     |           Owner           |       Handler        |        Validator         | Access privileges | FDW options | Description 
+--------------+---------------------------+----------------------+--------------------------+-------------------+-------------+-------------
+ dummy        | regress_foreign_data_user | -                    | -                        |                   |             | useless
+ foo          | regress_foreign_data_user | -                    | postgresql_fdw_validator |                   |             | 
+ postgres_fdw | postgres                  | postgres_fdw_handler | postgres_fdw_validator   |                   |             | 
+ postgresql   | regress_foreign_data_user | -                    | postgresql_fdw_validator |                   |             | 
+(4 rows)
 
 -- HANDLER related checks
 CREATE FUNCTION invalid_fdw_handler() RETURNS int LANGUAGE SQL AS 'SELECT 1;';
@@ -119,13 +125,14 @@ ALTER FOREIGN DATA WRAPPER foo VALIDATOR bar;               -- ERROR
 ERROR:  function bar(text[], oid) does not exist
 ALTER FOREIGN DATA WRAPPER foo NO VALIDATOR;
 \dew+
-                                                List of foreign-data wrappers
-    Name    |           Owner           | Handler |        Validator         | Access privileges | FDW options | Description 
-------------+---------------------------+---------+--------------------------+-------------------+-------------+-------------
- dummy      | regress_foreign_data_user | -       | -                        |                   |             | useless
- foo        | regress_foreign_data_user | -       | -                        |                   |             | 
- postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |             | 
-(3 rows)
+                                                       List of foreign-data wrappers
+     Name     |           Owner           |       Handler        |        Validator         | Access privileges | FDW options | Description 
+--------------+---------------------------+----------------------+--------------------------+-------------------+-------------+-------------
+ dummy        | regress_foreign_data_user | -                    | -                        |                   |             | useless
+ foo          | regress_foreign_data_user | -                    | -                        |                   |             | 
+ postgres_fdw | postgres                  | postgres_fdw_handler | postgres_fdw_validator   |                   |             | 
+ postgresql   | regress_foreign_data_user | -                    | postgresql_fdw_validator |                   |             | 
+(4 rows)
 
 ALTER FOREIGN DATA WRAPPER foo OPTIONS (a '1', b '2');
 ALTER FOREIGN DATA WRAPPER foo OPTIONS (SET c '4');         -- ERROR
@@ -134,35 +141,38 @@ ALTER FOREIGN DATA WRAPPER foo OPTIONS (DROP c);            -- ERROR
 ERROR:  option "c" not found
 ALTER FOREIGN DATA WRAPPER foo OPTIONS (ADD x '1', DROP x);
 \dew+
-                                                 List of foreign-data wrappers
-    Name    |           Owner           | Handler |        Validator         | Access privileges |  FDW options   | Description 
-------------+---------------------------+---------+--------------------------+-------------------+----------------+-------------
- dummy      | regress_foreign_data_user | -       | -                        |                   |                | useless
- foo        | regress_foreign_data_user | -       | -                        |                   | (a '1', b '2') | 
- postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |                | 
-(3 rows)
+                                                         List of foreign-data wrappers
+     Name     |           Owner           |       Handler        |        Validator         | Access privileges |  FDW options   | Description 
+--------------+---------------------------+----------------------+--------------------------+-------------------+----------------+-------------
+ dummy        | regress_foreign_data_user | -                    | -                        |                   |                | useless
+ foo          | regress_foreign_data_user | -                    | -                        |                   | (a '1', b '2') | 
+ postgres_fdw | postgres                  | postgres_fdw_handler | postgres_fdw_validator   |                   |                | 
+ postgresql   | regress_foreign_data_user | -                    | postgresql_fdw_validator |                   |                | 
+(4 rows)
 
 ALTER FOREIGN DATA WRAPPER foo OPTIONS (DROP a, SET b '3', ADD c '4');
 \dew+
-                                                 List of foreign-data wrappers
-    Name    |           Owner           | Handler |        Validator         | Access privileges |  FDW options   | Description 
-------------+---------------------------+---------+--------------------------+-------------------+----------------+-------------
- dummy      | regress_foreign_data_user | -       | -                        |                   |                | useless
- foo        | regress_foreign_data_user | -       | -                        |                   | (b '3', c '4') | 
- postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |                | 
-(3 rows)
+                                                         List of foreign-data wrappers
+     Name     |           Owner           |       Handler        |        Validator         | Access privileges |  FDW options   | Description 
+--------------+---------------------------+----------------------+--------------------------+-------------------+----------------+-------------
+ dummy        | regress_foreign_data_user | -                    | -                        |                   |                | useless
+ foo          | regress_foreign_data_user | -                    | -                        |                   | (b '3', c '4') | 
+ postgres_fdw | postgres                  | postgres_fdw_handler | postgres_fdw_validator   |                   |                | 
+ postgresql   | regress_foreign_data_user | -                    | postgresql_fdw_validator |                   |                | 
+(4 rows)
 
 ALTER FOREIGN DATA WRAPPER foo OPTIONS (a '2');
 ALTER FOREIGN DATA WRAPPER foo OPTIONS (b '4');             -- ERROR
 ERROR:  option "b" provided more than once
 \dew+
-                                                     List of foreign-data wrappers
-    Name    |           Owner           | Handler |        Validator         | Access privileges |      FDW options      | Description 
-------------+---------------------------+---------+--------------------------+-------------------+-----------------------+-------------
- dummy      | regress_foreign_data_user | -       | -                        |                   |                       | useless
- foo        | regress_foreign_data_user | -       | -                        |                   | (b '3', c '4', a '2') | 
- postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |                       | 
-(3 rows)
+                                                            List of foreign-data wrappers
+     Name     |           Owner           |       Handler        |        Validator         | Access privileges |      FDW options      | Description 
+--------------+---------------------------+----------------------+--------------------------+-------------------+-----------------------+-------------
+ dummy        | regress_foreign_data_user | -                    | -                        |                   |                       | useless
+ foo          | regress_foreign_data_user | -                    | -                        |                   | (b '3', c '4', a '2') | 
+ postgres_fdw | postgres                  | postgres_fdw_handler | postgres_fdw_validator   |                   |                       | 
+ postgresql   | regress_foreign_data_user | -                    | postgresql_fdw_validator |                   |                       | 
+(4 rows)
 
 SET ROLE regress_test_role;
 ALTER FOREIGN DATA WRAPPER foo OPTIONS (ADD d '5');         -- ERROR
@@ -171,13 +181,14 @@ HINT:  Must be superuser or a member of the yb_fdw role to alter a foreign-data 
 SET ROLE regress_test_role_super;
 ALTER FOREIGN DATA WRAPPER foo OPTIONS (ADD d '5');
 \dew+
-                                                        List of foreign-data wrappers
-    Name    |           Owner           | Handler |        Validator         | Access privileges |         FDW options          | Description 
-------------+---------------------------+---------+--------------------------+-------------------+------------------------------+-------------
- dummy      | regress_foreign_data_user | -       | -                        |                   |                              | useless
- foo        | regress_foreign_data_user | -       | -                        |                   | (b '3', c '4', a '2', d '5') | 
- postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |                              | 
-(3 rows)
+                                                                List of foreign-data wrappers
+     Name     |           Owner           |       Handler        |        Validator         | Access privileges |         FDW options          | Description 
+--------------+---------------------------+----------------------+--------------------------+-------------------+------------------------------+-------------
+ dummy        | regress_foreign_data_user | -                    | -                        |                   |                              | useless
+ foo          | regress_foreign_data_user | -                    | -                        |                   | (b '3', c '4', a '2', d '5') | 
+ postgres_fdw | postgres                  | postgres_fdw_handler | postgres_fdw_validator   |                   |                              | 
+ postgresql   | regress_foreign_data_user | -                    | postgresql_fdw_validator |                   |                              | 
+(4 rows)
 
 ALTER FOREIGN DATA WRAPPER foo OWNER TO regress_test_role;  -- ERROR
 ERROR:  permission denied to change owner of foreign-data wrapper "foo"
@@ -190,23 +201,25 @@ ERROR:  permission denied to alter foreign-data wrapper "foo"
 HINT:  Must be superuser or a member of the yb_fdw role to alter a foreign-data wrapper.
 RESET ROLE;
 \dew+
-                                                        List of foreign-data wrappers
-    Name    |           Owner           | Handler |        Validator         | Access privileges |         FDW options          | Description 
-------------+---------------------------+---------+--------------------------+-------------------+------------------------------+-------------
- dummy      | regress_foreign_data_user | -       | -                        |                   |                              | useless
- foo        | regress_test_role_super   | -       | -                        |                   | (b '3', c '4', a '2', d '5') | 
- postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |                              | 
-(3 rows)
+                                                                List of foreign-data wrappers
+     Name     |           Owner           |       Handler        |        Validator         | Access privileges |         FDW options          | Description 
+--------------+---------------------------+----------------------+--------------------------+-------------------+------------------------------+-------------
+ dummy        | regress_foreign_data_user | -                    | -                        |                   |                              | useless
+ foo          | regress_test_role_super   | -                    | -                        |                   | (b '3', c '4', a '2', d '5') | 
+ postgres_fdw | postgres                  | postgres_fdw_handler | postgres_fdw_validator   |                   |                              | 
+ postgresql   | regress_foreign_data_user | -                    | postgresql_fdw_validator |                   |                              | 
+(4 rows)
 
 ALTER FOREIGN DATA WRAPPER foo RENAME TO foo1;
 \dew+
-                                                        List of foreign-data wrappers
-    Name    |           Owner           | Handler |        Validator         | Access privileges |         FDW options          | Description 
-------------+---------------------------+---------+--------------------------+-------------------+------------------------------+-------------
- dummy      | regress_foreign_data_user | -       | -                        |                   |                              | useless
- foo1       | regress_test_role_super   | -       | -                        |                   | (b '3', c '4', a '2', d '5') | 
- postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |                              | 
-(3 rows)
+                                                                List of foreign-data wrappers
+     Name     |           Owner           |       Handler        |        Validator         | Access privileges |         FDW options          | Description 
+--------------+---------------------------+----------------------+--------------------------+-------------------+------------------------------+-------------
+ dummy        | regress_foreign_data_user | -                    | -                        |                   |                              | useless
+ foo1         | regress_test_role_super   | -                    | -                        |                   | (b '3', c '4', a '2', d '5') | 
+ postgres_fdw | postgres                  | postgres_fdw_handler | postgres_fdw_validator   |                   |                              | 
+ postgresql   | regress_foreign_data_user | -                    | postgresql_fdw_validator |                   |                              | 
+(4 rows)
 
 ALTER FOREIGN DATA WRAPPER foo1 RENAME TO foo;
 -- HANDLER related checks
@@ -225,13 +238,14 @@ ERROR:  foreign-data wrapper "nonexistent" does not exist
 DROP FOREIGN DATA WRAPPER IF EXISTS nonexistent;
 NOTICE:  foreign-data wrapper "nonexistent" does not exist, skipping
 \dew+
-                                                             List of foreign-data wrappers
-    Name    |           Owner           |     Handler      |        Validator         | Access privileges |         FDW options          | Description 
-------------+---------------------------+------------------+--------------------------+-------------------+------------------------------+-------------
- dummy      | regress_foreign_data_user | -                | -                        |                   |                              | useless
- foo        | regress_test_role_super   | test_fdw_handler | -                        |                   | (b '3', c '4', a '2', d '5') | 
- postgresql | regress_foreign_data_user | -                | postgresql_fdw_validator |                   |                              | 
-(3 rows)
+                                                                List of foreign-data wrappers
+     Name     |           Owner           |       Handler        |        Validator         | Access privileges |         FDW options          | Description 
+--------------+---------------------------+----------------------+--------------------------+-------------------+------------------------------+-------------
+ dummy        | regress_foreign_data_user | -                    | -                        |                   |                              | useless
+ foo          | regress_test_role_super   | test_fdw_handler     | -                        |                   | (b '3', c '4', a '2', d '5') | 
+ postgres_fdw | postgres                  | postgres_fdw_handler | postgres_fdw_validator   |                   |                              | 
+ postgresql   | regress_foreign_data_user | -                    | postgresql_fdw_validator |                   |                              | 
+(4 rows)
 
 DROP ROLE regress_test_role_super;                          -- ERROR
 ERROR:  role "regress_test_role_super" cannot be dropped because some objects depend on it
@@ -241,12 +255,13 @@ DROP FOREIGN DATA WRAPPER foo;
 RESET ROLE;
 DROP ROLE regress_test_role_super;
 \dew+
-                                                List of foreign-data wrappers
-    Name    |           Owner           | Handler |        Validator         | Access privileges | FDW options | Description 
-------------+---------------------------+---------+--------------------------+-------------------+-------------+-------------
- dummy      | regress_foreign_data_user | -       | -                        |                   |             | useless
- postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |             | 
-(2 rows)
+                                                       List of foreign-data wrappers
+     Name     |           Owner           |       Handler        |        Validator         | Access privileges | FDW options | Description 
+--------------+---------------------------+----------------------+--------------------------+-------------------+-------------+-------------
+ dummy        | regress_foreign_data_user | -                    | -                        |                   |             | useless
+ postgres_fdw | postgres                  | postgres_fdw_handler | postgres_fdw_validator   |                   |             | 
+ postgresql   | regress_foreign_data_user | -                    | postgresql_fdw_validator |                   |             | 
+(3 rows)
 
 CREATE FOREIGN DATA WRAPPER foo;
 CREATE SERVER s1 FOREIGN DATA WRAPPER foo;
@@ -257,20 +272,22 @@ ERROR:  user mapping for "regress_foreign_data_user" already exists for server "
 CREATE USER MAPPING IF NOT EXISTS FOR current_user SERVER s1; -- NOTICE
 NOTICE:  user mapping for "regress_foreign_data_user" already exists for server "s1", skipping
 \dew+
-                                                List of foreign-data wrappers
-    Name    |           Owner           | Handler |        Validator         | Access privileges | FDW options | Description 
-------------+---------------------------+---------+--------------------------+-------------------+-------------+-------------
- dummy      | regress_foreign_data_user | -       | -                        |                   |             | useless
- foo        | regress_foreign_data_user | -       | -                        |                   |             | 
- postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |             | 
-(3 rows)
+                                                       List of foreign-data wrappers
+     Name     |           Owner           |       Handler        |        Validator         | Access privileges | FDW options | Description 
+--------------+---------------------------+----------------------+--------------------------+-------------------+-------------+-------------
+ dummy        | regress_foreign_data_user | -                    | -                        |                   |             | useless
+ foo          | regress_foreign_data_user | -                    | -                        |                   |             | 
+ postgres_fdw | postgres                  | postgres_fdw_handler | postgres_fdw_validator   |                   |             | 
+ postgresql   | regress_foreign_data_user | -                    | postgresql_fdw_validator |                   |             | 
+(4 rows)
 
 \des+
-                                                   List of foreign servers
- Name |           Owner           | Foreign-data wrapper | Access privileges | Type | Version | FDW options |  Description   
-------+---------------------------+----------------------+-------------------+------+---------+-------------+----------------
- s1   | regress_foreign_data_user | foo                  |                   |      |         |             | foreign server
-(1 row)
+                                                                        List of foreign servers
+          Name          |           Owner           | Foreign-data wrapper | Access privileges | Type | Version |             FDW options             |  Description   
+------------------------+---------------------------+----------------------+-------------------+------+---------+-------------------------------------+----------------
+ s1                     | regress_foreign_data_user | foo                  |                   |      |         |                                     | foreign server
+ yb_global_views_server | postgres                  | postgres_fdw         |                   |      |         | (server_type 'federatedYugabyteDB') | 
+(2 rows)
 
 \deu+
               List of user mappings
@@ -293,18 +310,20 @@ NOTICE:  drop cascades to 2 other objects
 DETAIL:  drop cascades to server s1
 drop cascades to user mapping for regress_foreign_data_user on server s1
 \dew+
-                                                List of foreign-data wrappers
-    Name    |           Owner           | Handler |        Validator         | Access privileges | FDW options | Description 
-------------+---------------------------+---------+--------------------------+-------------------+-------------+-------------
- dummy      | regress_foreign_data_user | -       | -                        |                   |             | useless
- postgresql | regress_foreign_data_user | -       | postgresql_fdw_validator |                   |             | 
-(2 rows)
+                                                       List of foreign-data wrappers
+     Name     |           Owner           |       Handler        |        Validator         | Access privileges | FDW options | Description 
+--------------+---------------------------+----------------------+--------------------------+-------------------+-------------+-------------
+ dummy        | regress_foreign_data_user | -                    | -                        |                   |             | useless
+ postgres_fdw | postgres                  | postgres_fdw_handler | postgres_fdw_validator   |                   |             | 
+ postgresql   | regress_foreign_data_user | -                    | postgresql_fdw_validator |                   |             | 
+(3 rows)
 
 \des+
-                                       List of foreign servers
- Name | Owner | Foreign-data wrapper | Access privileges | Type | Version | FDW options | Description 
-------+-------+----------------------+-------------------+------+---------+-------------+-------------
-(0 rows)
+                                                              List of foreign servers
+          Name          |  Owner   | Foreign-data wrapper | Access privileges | Type | Version |             FDW options             | Description 
+------------------------+----------+----------------------+-------------------+------+---------+-------------------------------------+-------------
+ yb_global_views_server | postgres | postgres_fdw         |                   |      |         | (server_type 'federatedYugabyteDB') | 
+(1 row)
 
 \deu+
       List of user mappings
@@ -332,18 +351,19 @@ ERROR:  invalid option "foo"
 HINT:  Valid options in this context are: authtype, service, connect_timeout, dbname, host, hostaddr, port, tty, options, requiressl, sslmode, gsslib
 CREATE SERVER s8 FOREIGN DATA WRAPPER postgresql OPTIONS (host 'localhost', dbname 's8db');
 \des+
-                                                             List of foreign servers
- Name |           Owner           | Foreign-data wrapper | Access privileges |  Type  | Version |            FDW options            | Description 
-------+---------------------------+----------------------+-------------------+--------+---------+-----------------------------------+-------------
- s1   | regress_foreign_data_user | foo                  |                   |        |         |                                   | 
- s2   | regress_foreign_data_user | foo                  |                   |        |         | (host 'a', dbname 'b')            | 
- s3   | regress_foreign_data_user | foo                  |                   | oracle |         |                                   | 
- s4   | regress_foreign_data_user | foo                  |                   | oracle |         | (host 'a', dbname 'b')            | 
- s5   | regress_foreign_data_user | foo                  |                   |        | 15.0    |                                   | 
- s6   | regress_foreign_data_user | foo                  |                   |        | 16.0    | (host 'a', dbname 'b')            | 
- s7   | regress_foreign_data_user | foo                  |                   | oracle | 17.0    | (host 'a', dbname 'b')            | 
- s8   | regress_foreign_data_user | postgresql           |                   |        |         | (host 'localhost', dbname 's8db') | 
-(8 rows)
+                                                                       List of foreign servers
+          Name          |           Owner           | Foreign-data wrapper | Access privileges |  Type  | Version |             FDW options             | Description 
+------------------------+---------------------------+----------------------+-------------------+--------+---------+-------------------------------------+-------------
+ s1                     | regress_foreign_data_user | foo                  |                   |        |         |                                     | 
+ s2                     | regress_foreign_data_user | foo                  |                   |        |         | (host 'a', dbname 'b')              | 
+ s3                     | regress_foreign_data_user | foo                  |                   | oracle |         |                                     | 
+ s4                     | regress_foreign_data_user | foo                  |                   | oracle |         | (host 'a', dbname 'b')              | 
+ s5                     | regress_foreign_data_user | foo                  |                   |        | 15.0    |                                     | 
+ s6                     | regress_foreign_data_user | foo                  |                   |        | 16.0    | (host 'a', dbname 'b')              | 
+ s7                     | regress_foreign_data_user | foo                  |                   | oracle | 17.0    | (host 'a', dbname 'b')              | 
+ s8                     | regress_foreign_data_user | postgresql           |                   |        |         | (host 'localhost', dbname 's8db')   | 
+ yb_global_views_server | postgres                  | postgres_fdw         |                   |        |         | (server_type 'federatedYugabyteDB') | 
+(9 rows)
 
 SET ROLE regress_test_role;
 CREATE SERVER t1 FOREIGN DATA WRAPPER foo;                 -- ERROR: no usage on FDW
@@ -354,19 +374,20 @@ SET ROLE regress_test_role;
 CREATE SERVER t1 FOREIGN DATA WRAPPER foo;
 RESET ROLE;
 \des+
-                                                             List of foreign servers
- Name |           Owner           | Foreign-data wrapper | Access privileges |  Type  | Version |            FDW options            | Description 
-------+---------------------------+----------------------+-------------------+--------+---------+-----------------------------------+-------------
- s1   | regress_foreign_data_user | foo                  |                   |        |         |                                   | 
- s2   | regress_foreign_data_user | foo                  |                   |        |         | (host 'a', dbname 'b')            | 
- s3   | regress_foreign_data_user | foo                  |                   | oracle |         |                                   | 
- s4   | regress_foreign_data_user | foo                  |                   | oracle |         | (host 'a', dbname 'b')            | 
- s5   | regress_foreign_data_user | foo                  |                   |        | 15.0    |                                   | 
- s6   | regress_foreign_data_user | foo                  |                   |        | 16.0    | (host 'a', dbname 'b')            | 
- s7   | regress_foreign_data_user | foo                  |                   | oracle | 17.0    | (host 'a', dbname 'b')            | 
- s8   | regress_foreign_data_user | postgresql           |                   |        |         | (host 'localhost', dbname 's8db') | 
- t1   | regress_test_role         | foo                  |                   |        |         |                                   | 
-(9 rows)
+                                                                       List of foreign servers
+          Name          |           Owner           | Foreign-data wrapper | Access privileges |  Type  | Version |             FDW options             | Description 
+------------------------+---------------------------+----------------------+-------------------+--------+---------+-------------------------------------+-------------
+ s1                     | regress_foreign_data_user | foo                  |                   |        |         |                                     | 
+ s2                     | regress_foreign_data_user | foo                  |                   |        |         | (host 'a', dbname 'b')              | 
+ s3                     | regress_foreign_data_user | foo                  |                   | oracle |         |                                     | 
+ s4                     | regress_foreign_data_user | foo                  |                   | oracle |         | (host 'a', dbname 'b')              | 
+ s5                     | regress_foreign_data_user | foo                  |                   |        | 15.0    |                                     | 
+ s6                     | regress_foreign_data_user | foo                  |                   |        | 16.0    | (host 'a', dbname 'b')              | 
+ s7                     | regress_foreign_data_user | foo                  |                   | oracle | 17.0    | (host 'a', dbname 'b')              | 
+ s8                     | regress_foreign_data_user | postgresql           |                   |        |         | (host 'localhost', dbname 's8db')   | 
+ t1                     | regress_test_role         | foo                  |                   |        |         |                                     | 
+ yb_global_views_server | postgres                  | postgres_fdw         |                   |        |         | (server_type 'federatedYugabyteDB') | 
+(10 rows)
 
 REVOKE USAGE ON FOREIGN DATA WRAPPER foo FROM regress_test_role;
 GRANT USAGE ON FOREIGN DATA WRAPPER foo TO regress_test_indirect;
@@ -378,20 +399,21 @@ GRANT regress_test_indirect TO regress_test_role;
 SET ROLE regress_test_role;
 CREATE SERVER t2 FOREIGN DATA WRAPPER foo;
 \des+
-                                                             List of foreign servers
- Name |           Owner           | Foreign-data wrapper | Access privileges |  Type  | Version |            FDW options            | Description 
-------+---------------------------+----------------------+-------------------+--------+---------+-----------------------------------+-------------
- s1   | regress_foreign_data_user | foo                  |                   |        |         |                                   | 
- s2   | regress_foreign_data_user | foo                  |                   |        |         | (host 'a', dbname 'b')            | 
- s3   | regress_foreign_data_user | foo                  |                   | oracle |         |                                   | 
- s4   | regress_foreign_data_user | foo                  |                   | oracle |         | (host 'a', dbname 'b')            | 
- s5   | regress_foreign_data_user | foo                  |                   |        | 15.0    |                                   | 
- s6   | regress_foreign_data_user | foo                  |                   |        | 16.0    | (host 'a', dbname 'b')            | 
- s7   | regress_foreign_data_user | foo                  |                   | oracle | 17.0    | (host 'a', dbname 'b')            | 
- s8   | regress_foreign_data_user | postgresql           |                   |        |         | (host 'localhost', dbname 's8db') | 
- t1   | regress_test_role         | foo                  |                   |        |         |                                   | 
- t2   | regress_test_role         | foo                  |                   |        |         |                                   | 
-(10 rows)
+                                                                       List of foreign servers
+          Name          |           Owner           | Foreign-data wrapper | Access privileges |  Type  | Version |             FDW options             | Description 
+------------------------+---------------------------+----------------------+-------------------+--------+---------+-------------------------------------+-------------
+ s1                     | regress_foreign_data_user | foo                  |                   |        |         |                                     | 
+ s2                     | regress_foreign_data_user | foo                  |                   |        |         | (host 'a', dbname 'b')              | 
+ s3                     | regress_foreign_data_user | foo                  |                   | oracle |         |                                     | 
+ s4                     | regress_foreign_data_user | foo                  |                   | oracle |         | (host 'a', dbname 'b')              | 
+ s5                     | regress_foreign_data_user | foo                  |                   |        | 15.0    |                                     | 
+ s6                     | regress_foreign_data_user | foo                  |                   |        | 16.0    | (host 'a', dbname 'b')              | 
+ s7                     | regress_foreign_data_user | foo                  |                   | oracle | 17.0    | (host 'a', dbname 'b')              | 
+ s8                     | regress_foreign_data_user | postgresql           |                   |        |         | (host 'localhost', dbname 's8db')   | 
+ t1                     | regress_test_role         | foo                  |                   |        |         |                                     | 
+ t2                     | regress_test_role         | foo                  |                   |        |         |                                     | 
+ yb_global_views_server | postgres                  | postgres_fdw         |                   |        |         | (server_type 'federatedYugabyteDB') | 
+(11 rows)
 
 RESET ROLE;
 REVOKE regress_test_indirect FROM regress_test_role;
@@ -408,22 +430,23 @@ ALTER SERVER s3 OPTIONS ("tns name" 'orcl', port '1521');
 GRANT USAGE ON FOREIGN SERVER s1 TO regress_test_role;
 GRANT USAGE ON FOREIGN SERVER s6 TO regress_test_role2 WITH GRANT OPTION;
 \des+
-                                                                               List of foreign servers
- Name |           Owner           | Foreign-data wrapper |                   Access privileges                   |  Type  | Version |            FDW options            | Description 
-------+---------------------------+----------------------+-------------------------------------------------------+--------+---------+-----------------------------------+-------------
- s1   | regress_foreign_data_user | foo                  | regress_foreign_data_user=U/regress_foreign_data_user+|        | 1.0     | (servername 's1')                 | 
-      |                           |                      | regress_test_role=U/regress_foreign_data_user         |        |         |                                   | 
- s2   | regress_foreign_data_user | foo                  |                                                       |        | 1.1     | (host 'a', dbname 'b')            | 
- s3   | regress_foreign_data_user | foo                  |                                                       | oracle |         | ("tns name" 'orcl', port '1521')  | 
- s4   | regress_foreign_data_user | foo                  |                                                       | oracle |         | (host 'a', dbname 'b')            | 
- s5   | regress_foreign_data_user | foo                  |                                                       |        | 15.0    |                                   | 
- s6   | regress_foreign_data_user | foo                  | regress_foreign_data_user=U/regress_foreign_data_user+|        | 16.0    | (host 'a', dbname 'b')            | 
-      |                           |                      | regress_test_role2=U*/regress_foreign_data_user       |        |         |                                   | 
- s7   | regress_foreign_data_user | foo                  |                                                       | oracle | 17.0    | (host 'a', dbname 'b')            | 
- s8   | regress_foreign_data_user | postgresql           |                                                       |        |         | (host 'localhost', dbname 's8db') | 
- t1   | regress_test_role         | foo                  |                                                       |        |         |                                   | 
- t2   | regress_test_role         | foo                  |                                                       |        |         |                                   | 
-(10 rows)
+                                                                                         List of foreign servers
+          Name          |           Owner           | Foreign-data wrapper |                   Access privileges                   |  Type  | Version |             FDW options             | Description 
+------------------------+---------------------------+----------------------+-------------------------------------------------------+--------+---------+-------------------------------------+-------------
+ s1                     | regress_foreign_data_user | foo                  | regress_foreign_data_user=U/regress_foreign_data_user+|        | 1.0     | (servername 's1')                   | 
+                        |                           |                      | regress_test_role=U/regress_foreign_data_user         |        |         |                                     | 
+ s2                     | regress_foreign_data_user | foo                  |                                                       |        | 1.1     | (host 'a', dbname 'b')              | 
+ s3                     | regress_foreign_data_user | foo                  |                                                       | oracle |         | ("tns name" 'orcl', port '1521')    | 
+ s4                     | regress_foreign_data_user | foo                  |                                                       | oracle |         | (host 'a', dbname 'b')              | 
+ s5                     | regress_foreign_data_user | foo                  |                                                       |        | 15.0    |                                     | 
+ s6                     | regress_foreign_data_user | foo                  | regress_foreign_data_user=U/regress_foreign_data_user+|        | 16.0    | (host 'a', dbname 'b')              | 
+                        |                           |                      | regress_test_role2=U*/regress_foreign_data_user       |        |         |                                     | 
+ s7                     | regress_foreign_data_user | foo                  |                                                       | oracle | 17.0    | (host 'a', dbname 'b')              | 
+ s8                     | regress_foreign_data_user | postgresql           |                                                       |        |         | (host 'localhost', dbname 's8db')   | 
+ t1                     | regress_test_role         | foo                  |                                                       |        |         |                                     | 
+ t2                     | regress_test_role         | foo                  |                                                       |        |         |                                     | 
+ yb_global_views_server | postgres                  | postgres_fdw         |                                                       |        |         | (server_type 'federatedYugabyteDB') | 
+(11 rows)
 
 SET ROLE regress_test_role;
 ALTER SERVER s1 VERSION '1.1';                              -- ERROR
@@ -459,39 +482,41 @@ ERROR:  role "regress_test_indirect" cannot be dropped because some objects depe
 DETAIL:  owner of server s1
 privileges for foreign-data wrapper foo
 \des+
-                                                                                 List of foreign servers
- Name |           Owner           | Foreign-data wrapper |                   Access privileges                   |  Type  | Version |             FDW options              | Description 
-------+---------------------------+----------------------+-------------------------------------------------------+--------+---------+--------------------------------------+-------------
- s1   | regress_test_indirect     | foo                  | regress_test_indirect=U/regress_test_indirect         |        | 1.1     | (servername 's1')                    | 
- s2   | regress_foreign_data_user | foo                  |                                                       |        | 1.1     | (host 'a', dbname 'b')               | 
- s3   | regress_foreign_data_user | foo                  |                                                       | oracle |         | ("tns name" 'orcl', port '1521')     | 
- s4   | regress_foreign_data_user | foo                  |                                                       | oracle |         | (host 'a', dbname 'b')               | 
- s5   | regress_foreign_data_user | foo                  |                                                       |        | 15.0    |                                      | 
- s6   | regress_foreign_data_user | foo                  | regress_foreign_data_user=U/regress_foreign_data_user+|        | 16.0    | (host 'a', dbname 'b')               | 
-      |                           |                      | regress_test_role2=U*/regress_foreign_data_user       |        |         |                                      | 
- s7   | regress_foreign_data_user | foo                  |                                                       | oracle | 17.0    | (host 'a', dbname 'b')               | 
- s8   | regress_foreign_data_user | postgresql           |                                                       |        |         | (dbname 'db1', connect_timeout '30') | 
- t1   | regress_test_role         | foo                  |                                                       |        |         |                                      | 
- t2   | regress_test_role         | foo                  |                                                       |        |         |                                      | 
-(10 rows)
+                                                                                          List of foreign servers
+          Name          |           Owner           | Foreign-data wrapper |                   Access privileges                   |  Type  | Version |             FDW options              | Description 
+------------------------+---------------------------+----------------------+-------------------------------------------------------+--------+---------+--------------------------------------+-------------
+ s1                     | regress_test_indirect     | foo                  | regress_test_indirect=U/regress_test_indirect         |        | 1.1     | (servername 's1')                    | 
+ s2                     | regress_foreign_data_user | foo                  |                                                       |        | 1.1     | (host 'a', dbname 'b')               | 
+ s3                     | regress_foreign_data_user | foo                  |                                                       | oracle |         | ("tns name" 'orcl', port '1521')     | 
+ s4                     | regress_foreign_data_user | foo                  |                                                       | oracle |         | (host 'a', dbname 'b')               | 
+ s5                     | regress_foreign_data_user | foo                  |                                                       |        | 15.0    |                                      | 
+ s6                     | regress_foreign_data_user | foo                  | regress_foreign_data_user=U/regress_foreign_data_user+|        | 16.0    | (host 'a', dbname 'b')               | 
+                        |                           |                      | regress_test_role2=U*/regress_foreign_data_user       |        |         |                                      | 
+ s7                     | regress_foreign_data_user | foo                  |                                                       | oracle | 17.0    | (host 'a', dbname 'b')               | 
+ s8                     | regress_foreign_data_user | postgresql           |                                                       |        |         | (dbname 'db1', connect_timeout '30') | 
+ t1                     | regress_test_role         | foo                  |                                                       |        |         |                                      | 
+ t2                     | regress_test_role         | foo                  |                                                       |        |         |                                      | 
+ yb_global_views_server | postgres                  | postgres_fdw         |                                                       |        |         | (server_type 'federatedYugabyteDB')  | 
+(11 rows)
 
 ALTER SERVER s8 RENAME to s8new;
 \des+
-                                                                                 List of foreign servers
- Name  |           Owner           | Foreign-data wrapper |                   Access privileges                   |  Type  | Version |             FDW options              | Description 
--------+---------------------------+----------------------+-------------------------------------------------------+--------+---------+--------------------------------------+-------------
- s1    | regress_test_indirect     | foo                  | regress_test_indirect=U/regress_test_indirect         |        | 1.1     | (servername 's1')                    | 
- s2    | regress_foreign_data_user | foo                  |                                                       |        | 1.1     | (host 'a', dbname 'b')               | 
- s3    | regress_foreign_data_user | foo                  |                                                       | oracle |         | ("tns name" 'orcl', port '1521')     | 
- s4    | regress_foreign_data_user | foo                  |                                                       | oracle |         | (host 'a', dbname 'b')               | 
- s5    | regress_foreign_data_user | foo                  |                                                       |        | 15.0    |                                      | 
- s6    | regress_foreign_data_user | foo                  | regress_foreign_data_user=U/regress_foreign_data_user+|        | 16.0    | (host 'a', dbname 'b')               | 
-       |                           |                      | regress_test_role2=U*/regress_foreign_data_user       |        |         |                                      | 
- s7    | regress_foreign_data_user | foo                  |                                                       | oracle | 17.0    | (host 'a', dbname 'b')               | 
- s8new | regress_foreign_data_user | postgresql           |                                                       |        |         | (dbname 'db1', connect_timeout '30') | 
- t1    | regress_test_role         | foo                  |                                                       |        |         |                                      | 
- t2    | regress_test_role         | foo                  |                                                       |        |         |                                      | 
-(10 rows)
+                                                                                          List of foreign servers
+          Name          |           Owner           | Foreign-data wrapper |                   Access privileges                   |  Type  | Version |             FDW options              | Description 
+------------------------+---------------------------+----------------------+-------------------------------------------------------+--------+---------+--------------------------------------+-------------
+ s1                     | regress_test_indirect     | foo                  | regress_test_indirect=U/regress_test_indirect         |        | 1.1     | (servername 's1')                    | 
+ s2                     | regress_foreign_data_user | foo                  |                                                       |        | 1.1     | (host 'a', dbname 'b')               | 
+ s3                     | regress_foreign_data_user | foo                  |                                                       | oracle |         | ("tns name" 'orcl', port '1521')     | 
+ s4                     | regress_foreign_data_user | foo                  |                                                       | oracle |         | (host 'a', dbname 'b')               | 
+ s5                     | regress_foreign_data_user | foo                  |                                                       |        | 15.0    |                                      | 
+ s6                     | regress_foreign_data_user | foo                  | regress_foreign_data_user=U/regress_foreign_data_user+|        | 16.0    | (host 'a', dbname 'b')               | 
+                        |                           |                      | regress_test_role2=U*/regress_foreign_data_user       |        |         |                                      | 
+ s7                     | regress_foreign_data_user | foo                  |                                                       | oracle | 17.0    | (host 'a', dbname 'b')               | 
+ s8new                  | regress_foreign_data_user | postgresql           |                                                       |        |         | (dbname 'db1', connect_timeout '30') | 
+ t1                     | regress_test_role         | foo                  |                                                       |        |         |                                      | 
+ t2                     | regress_test_role         | foo                  |                                                       |        |         |                                      | 
+ yb_global_views_server | postgres                  | postgres_fdw         |                                                       |        |         | (server_type 'federatedYugabyteDB')  | 
+(11 rows)
 
 ALTER SERVER s8new RENAME to s8;
 -- DROP SERVER
@@ -500,20 +525,21 @@ ERROR:  server "nonexistent" does not exist
 DROP SERVER IF EXISTS nonexistent;
 NOTICE:  server "nonexistent" does not exist, skipping
 \des
-                 List of foreign servers
- Name |           Owner           | Foreign-data wrapper 
-------+---------------------------+----------------------
- s1   | regress_test_indirect     | foo
- s2   | regress_foreign_data_user | foo
- s3   | regress_foreign_data_user | foo
- s4   | regress_foreign_data_user | foo
- s5   | regress_foreign_data_user | foo
- s6   | regress_foreign_data_user | foo
- s7   | regress_foreign_data_user | foo
- s8   | regress_foreign_data_user | postgresql
- t1   | regress_test_role         | foo
- t2   | regress_test_role         | foo
-(10 rows)
+                          List of foreign servers
+          Name          |           Owner           | Foreign-data wrapper 
+------------------------+---------------------------+----------------------
+ s1                     | regress_test_indirect     | foo
+ s2                     | regress_foreign_data_user | foo
+ s3                     | regress_foreign_data_user | foo
+ s4                     | regress_foreign_data_user | foo
+ s5                     | regress_foreign_data_user | foo
+ s6                     | regress_foreign_data_user | foo
+ s7                     | regress_foreign_data_user | foo
+ s8                     | regress_foreign_data_user | postgresql
+ t1                     | regress_test_role         | foo
+ t2                     | regress_test_role         | foo
+ yb_global_views_server | postgres                  | postgres_fdw
+(11 rows)
 
 SET ROLE regress_test_role;
 DROP SERVER s2;                                             -- ERROR
@@ -521,37 +547,39 @@ ERROR:  must be owner of foreign server s2
 DROP SERVER s1;
 RESET ROLE;
 \des
-                 List of foreign servers
- Name |           Owner           | Foreign-data wrapper 
-------+---------------------------+----------------------
- s2   | regress_foreign_data_user | foo
- s3   | regress_foreign_data_user | foo
- s4   | regress_foreign_data_user | foo
- s5   | regress_foreign_data_user | foo
- s6   | regress_foreign_data_user | foo
- s7   | regress_foreign_data_user | foo
- s8   | regress_foreign_data_user | postgresql
- t1   | regress_test_role         | foo
- t2   | regress_test_role         | foo
-(9 rows)
+                          List of foreign servers
+          Name          |           Owner           | Foreign-data wrapper 
+------------------------+---------------------------+----------------------
+ s2                     | regress_foreign_data_user | foo
+ s3                     | regress_foreign_data_user | foo
+ s4                     | regress_foreign_data_user | foo
+ s5                     | regress_foreign_data_user | foo
+ s6                     | regress_foreign_data_user | foo
+ s7                     | regress_foreign_data_user | foo
+ s8                     | regress_foreign_data_user | postgresql
+ t1                     | regress_test_role         | foo
+ t2                     | regress_test_role         | foo
+ yb_global_views_server | postgres                  | postgres_fdw
+(10 rows)
 
 ALTER SERVER s2 OWNER TO regress_test_role;
 SET ROLE regress_test_role;
 DROP SERVER s2;
 RESET ROLE;
 \des
-                 List of foreign servers
- Name |           Owner           | Foreign-data wrapper 
-------+---------------------------+----------------------
- s3   | regress_foreign_data_user | foo
- s4   | regress_foreign_data_user | foo
- s5   | regress_foreign_data_user | foo
- s6   | regress_foreign_data_user | foo
- s7   | regress_foreign_data_user | foo
- s8   | regress_foreign_data_user | postgresql
- t1   | regress_test_role         | foo
- t2   | regress_test_role         | foo
-(8 rows)
+                          List of foreign servers
+          Name          |           Owner           | Foreign-data wrapper 
+------------------------+---------------------------+----------------------
+ s3                     | regress_foreign_data_user | foo
+ s4                     | regress_foreign_data_user | foo
+ s5                     | regress_foreign_data_user | foo
+ s6                     | regress_foreign_data_user | foo
+ s7                     | regress_foreign_data_user | foo
+ s8                     | regress_foreign_data_user | postgresql
+ t1                     | regress_test_role         | foo
+ t2                     | regress_test_role         | foo
+ yb_global_views_server | postgres                  | postgres_fdw
+(9 rows)
 
 CREATE USER MAPPING FOR current_user SERVER s3;
 \deu
@@ -568,17 +596,18 @@ HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP SERVER s3 CASCADE;
 NOTICE:  drop cascades to user mapping for regress_foreign_data_user on server s3
 \des
-                 List of foreign servers
- Name |           Owner           | Foreign-data wrapper 
-------+---------------------------+----------------------
- s4   | regress_foreign_data_user | foo
- s5   | regress_foreign_data_user | foo
- s6   | regress_foreign_data_user | foo
- s7   | regress_foreign_data_user | foo
- s8   | regress_foreign_data_user | postgresql
- t1   | regress_test_role         | foo
- t2   | regress_test_role         | foo
-(7 rows)
+                          List of foreign servers
+          Name          |           Owner           | Foreign-data wrapper 
+------------------------+---------------------------+----------------------
+ s4                     | regress_foreign_data_user | foo
+ s5                     | regress_foreign_data_user | foo
+ s6                     | regress_foreign_data_user | foo
+ s7                     | regress_foreign_data_user | foo
+ s8                     | regress_foreign_data_user | postgresql
+ t1                     | regress_test_role         | foo
+ t2                     | regress_test_role         | foo
+ yb_global_views_server | postgres                  | postgres_fdw
+(8 rows)
 
 \deu
 List of user mappings
@@ -748,11 +777,28 @@ Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 
 \det+
-                                 List of foreign tables
- Schema | Table | Server |                   FDW options                   | Description 
---------+-------+--------+-------------------------------------------------+-------------
- public | ft1   | s0     | (delimiter ',', quote '"', "be quoted" 'value') | ft1
-(1 row)
+                                                                             List of foreign tables
+   Schema   |              Table               |         Server         |                                       FDW options                                       | Description 
+------------+----------------------------------+------------------------+-----------------------------------------------------------------------------------------+-------------
+ pg_catalog | gv$pg_stat_activity              | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_activity_with_server_uuid')              | 
+ pg_catalog | gv$pg_stat_all_indexes           | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_all_indexes_with_server_uuid')           | 
+ pg_catalog | gv$pg_stat_all_tables            | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_all_tables_with_server_uuid')            | 
+ pg_catalog | gv$pg_stat_database              | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_database_with_server_uuid')              | 
+ pg_catalog | gv$pg_stat_progress_analyze      | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_progress_analyze_with_server_uuid')      | 
+ pg_catalog | gv$pg_stat_progress_copy         | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_progress_copy_with_server_uuid')         | 
+ pg_catalog | gv$pg_stat_progress_create_index | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_progress_create_index_with_server_uuid') | 
+ pg_catalog | gv$pg_stat_replication           | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_replication_with_server_uuid')           | 
+ pg_catalog | gv$pg_stat_replication_slots     | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_replication_slots_with_server_uuid')     | 
+ pg_catalog | gv$pg_stat_statements            | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_statements_with_server_uuid')            | 
+ pg_catalog | gv$pg_stat_user_functions        | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_user_functions_with_server_uuid')        | 
+ pg_catalog | gv$pg_stat_user_indexes          | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_user_indexes_with_server_uuid')          | 
+ pg_catalog | gv$pg_stat_user_tables           | yb_global_views_server | (schema_name 'pg_catalog', table_name 'pg_stat_user_tables_with_server_uuid')           | 
+ pg_catalog | gv$yb_active_session_history     | yb_global_views_server | (schema_name 'pg_catalog', table_name 'yb_active_session_history_with_server_uuid')     | 
+ pg_catalog | gv$yb_pg_stat_plans              | yb_global_views_server | (schema_name 'pg_catalog', table_name 'yb_pg_stat_plans_with_server_uuid')              | 
+ pg_catalog | gv$yb_pg_stat_plans_insights     | yb_global_views_server | (schema_name 'pg_catalog', table_name 'yb_pg_stat_plans_insights_with_server_uuid')     | 
+ pg_catalog | gv$yb_terminated_queries         | yb_global_views_server | (schema_name 'pg_catalog', table_name 'yb_terminated_queries_with_server_uuid')         | 
+ public     | ft1                              | s0                     | (delimiter ',', quote '"', "be quoted" 'value')                                         | ft1
+(18 rows)
 
 CREATE INDEX id_ft1_c2 ON ft1 (c2);                             -- ERROR
 ERROR:  cannot create index on relation "ft1"
@@ -991,8 +1037,9 @@ SELECT * FROM information_schema.foreign_data_wrappers ORDER BY 1, 2;
 ------------------------------+---------------------------+---------------------------+--------------+-------------------------------
  yugabyte                     | dummy                     | regress_foreign_data_user |              | c
  yugabyte                     | foo                       | regress_foreign_data_user |              | c
+ yugabyte                     | postgres_fdw              | postgres                  |              | c
  yugabyte                     | postgresql                | regress_foreign_data_user |              | c
-(3 rows)
+(4 rows)
 
 SELECT * FROM information_schema.foreign_data_wrapper_options ORDER BY 1, 2, 3;
  foreign_data_wrapper_catalog | foreign_data_wrapper_name | option_name  | option_value 
@@ -1001,27 +1048,29 @@ SELECT * FROM information_schema.foreign_data_wrapper_options ORDER BY 1, 2, 3;
 (1 row)
 
 SELECT * FROM information_schema.foreign_servers ORDER BY 1, 2;
- foreign_server_catalog | foreign_server_name | foreign_data_wrapper_catalog | foreign_data_wrapper_name | foreign_server_type | foreign_server_version | authorization_identifier  
-------------------------+---------------------+------------------------------+---------------------------+---------------------+------------------------+---------------------------
- yugabyte               | s0                  | yugabyte                     | dummy                     |                     |                        | regress_foreign_data_user
- yugabyte               | s4                  | yugabyte                     | foo                       | oracle              |                        | regress_foreign_data_user
- yugabyte               | s5                  | yugabyte                     | foo                       |                     | 15.0                   | regress_test_role
- yugabyte               | s6                  | yugabyte                     | foo                       |                     | 16.0                   | regress_test_indirect
- yugabyte               | s8                  | yugabyte                     | postgresql                |                     |                        | regress_foreign_data_user
- yugabyte               | t1                  | yugabyte                     | foo                       |                     |                        | regress_test_indirect
- yugabyte               | t2                  | yugabyte                     | foo                       |                     |                        | regress_test_role
-(7 rows)
+ foreign_server_catalog |  foreign_server_name   | foreign_data_wrapper_catalog | foreign_data_wrapper_name | foreign_server_type | foreign_server_version | authorization_identifier  
+------------------------+------------------------+------------------------------+---------------------------+---------------------+------------------------+---------------------------
+ yugabyte               | s0                     | yugabyte                     | dummy                     |                     |                        | regress_foreign_data_user
+ yugabyte               | s4                     | yugabyte                     | foo                       | oracle              |                        | regress_foreign_data_user
+ yugabyte               | s5                     | yugabyte                     | foo                       |                     | 15.0                   | regress_test_role
+ yugabyte               | s6                     | yugabyte                     | foo                       |                     | 16.0                   | regress_test_indirect
+ yugabyte               | s8                     | yugabyte                     | postgresql                |                     |                        | regress_foreign_data_user
+ yugabyte               | t1                     | yugabyte                     | foo                       |                     |                        | regress_test_indirect
+ yugabyte               | t2                     | yugabyte                     | foo                       |                     |                        | regress_test_role
+ yugabyte               | yb_global_views_server | yugabyte                     | postgres_fdw              |                     |                        | postgres
+(8 rows)
 
 SELECT * FROM information_schema.foreign_server_options ORDER BY 1, 2, 3;
- foreign_server_catalog | foreign_server_name |   option_name   | option_value 
-------------------------+---------------------+-----------------+--------------
- yugabyte               | s4                  | dbname          | b
- yugabyte               | s4                  | host            | a
- yugabyte               | s6                  | dbname          | b
- yugabyte               | s6                  | host            | a
- yugabyte               | s8                  | connect_timeout | 30
- yugabyte               | s8                  | dbname          | db1
-(6 rows)
+ foreign_server_catalog |  foreign_server_name   |   option_name   |    option_value     
+------------------------+------------------------+-----------------+---------------------
+ yugabyte               | s4                     | dbname          | b
+ yugabyte               | s4                     | host            | a
+ yugabyte               | s6                     | dbname          | b
+ yugabyte               | s6                     | host            | a
+ yugabyte               | s8                     | connect_timeout | 30
+ yugabyte               | s8                     | dbname          | db1
+ yugabyte               | yb_global_views_server | server_type     | federatedYugabyteDB
+(7 rows)
 
 SELECT * FROM information_schema.user_mappings ORDER BY lower(authorization_identifier), 2, 3;
  authorization_identifier  | foreign_server_catalog | foreign_server_name 
@@ -1067,18 +1116,69 @@ SELECT * FROM information_schema.role_usage_grants WHERE object_type LIKE 'FOREI
 (4 rows)
 
 SELECT * FROM information_schema.foreign_tables ORDER BY 1, 2, 3;
- foreign_table_catalog | foreign_table_schema | foreign_table_name | foreign_server_catalog | foreign_server_name 
------------------------+----------------------+--------------------+------------------------+---------------------
- yugabyte              | foreign_schema       | foreign_table_1    | yugabyte               | s0
-(1 row)
+ foreign_table_catalog | foreign_table_schema |        foreign_table_name        | foreign_server_catalog |  foreign_server_name   
+-----------------------+----------------------+----------------------------------+------------------------+------------------------
+ yugabyte              | foreign_schema       | foreign_table_1                  | yugabyte               | s0
+ yugabyte              | pg_catalog           | gv$pg_stat_activity              | yugabyte               | yb_global_views_server
+ yugabyte              | pg_catalog           | gv$pg_stat_all_indexes           | yugabyte               | yb_global_views_server
+ yugabyte              | pg_catalog           | gv$pg_stat_all_tables            | yugabyte               | yb_global_views_server
+ yugabyte              | pg_catalog           | gv$pg_stat_database              | yugabyte               | yb_global_views_server
+ yugabyte              | pg_catalog           | gv$pg_stat_progress_analyze      | yugabyte               | yb_global_views_server
+ yugabyte              | pg_catalog           | gv$pg_stat_progress_copy         | yugabyte               | yb_global_views_server
+ yugabyte              | pg_catalog           | gv$pg_stat_progress_create_index | yugabyte               | yb_global_views_server
+ yugabyte              | pg_catalog           | gv$pg_stat_replication           | yugabyte               | yb_global_views_server
+ yugabyte              | pg_catalog           | gv$pg_stat_replication_slots     | yugabyte               | yb_global_views_server
+ yugabyte              | pg_catalog           | gv$pg_stat_statements            | yugabyte               | yb_global_views_server
+ yugabyte              | pg_catalog           | gv$pg_stat_user_functions        | yugabyte               | yb_global_views_server
+ yugabyte              | pg_catalog           | gv$pg_stat_user_indexes          | yugabyte               | yb_global_views_server
+ yugabyte              | pg_catalog           | gv$pg_stat_user_tables           | yugabyte               | yb_global_views_server
+ yugabyte              | pg_catalog           | gv$yb_active_session_history     | yugabyte               | yb_global_views_server
+ yugabyte              | pg_catalog           | gv$yb_pg_stat_plans              | yugabyte               | yb_global_views_server
+ yugabyte              | pg_catalog           | gv$yb_pg_stat_plans_insights     | yugabyte               | yb_global_views_server
+ yugabyte              | pg_catalog           | gv$yb_terminated_queries         | yugabyte               | yb_global_views_server
+(18 rows)
 
 SELECT * FROM information_schema.foreign_table_options ORDER BY 1, 2, 3, 4;
- foreign_table_catalog | foreign_table_schema | foreign_table_name | option_name | option_value 
------------------------+----------------------+--------------------+-------------+--------------
- yugabyte              | foreign_schema       | foreign_table_1    | be quoted   | value
- yugabyte              | foreign_schema       | foreign_table_1    | escape      | @
- yugabyte              | foreign_schema       | foreign_table_1    | quote       | ~
-(3 rows)
+ foreign_table_catalog | foreign_table_schema |        foreign_table_name        | option_name |                  option_value                  
+-----------------------+----------------------+----------------------------------+-------------+------------------------------------------------
+ yugabyte              | foreign_schema       | foreign_table_1                  | be quoted   | value
+ yugabyte              | foreign_schema       | foreign_table_1                  | escape      | @
+ yugabyte              | foreign_schema       | foreign_table_1                  | quote       | ~
+ yugabyte              | pg_catalog           | gv$pg_stat_activity              | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$pg_stat_activity              | table_name  | pg_stat_activity_with_server_uuid
+ yugabyte              | pg_catalog           | gv$pg_stat_all_indexes           | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$pg_stat_all_indexes           | table_name  | pg_stat_all_indexes_with_server_uuid
+ yugabyte              | pg_catalog           | gv$pg_stat_all_tables            | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$pg_stat_all_tables            | table_name  | pg_stat_all_tables_with_server_uuid
+ yugabyte              | pg_catalog           | gv$pg_stat_database              | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$pg_stat_database              | table_name  | pg_stat_database_with_server_uuid
+ yugabyte              | pg_catalog           | gv$pg_stat_progress_analyze      | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$pg_stat_progress_analyze      | table_name  | pg_stat_progress_analyze_with_server_uuid
+ yugabyte              | pg_catalog           | gv$pg_stat_progress_copy         | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$pg_stat_progress_copy         | table_name  | pg_stat_progress_copy_with_server_uuid
+ yugabyte              | pg_catalog           | gv$pg_stat_progress_create_index | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$pg_stat_progress_create_index | table_name  | pg_stat_progress_create_index_with_server_uuid
+ yugabyte              | pg_catalog           | gv$pg_stat_replication           | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$pg_stat_replication           | table_name  | pg_stat_replication_with_server_uuid
+ yugabyte              | pg_catalog           | gv$pg_stat_replication_slots     | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$pg_stat_replication_slots     | table_name  | pg_stat_replication_slots_with_server_uuid
+ yugabyte              | pg_catalog           | gv$pg_stat_statements            | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$pg_stat_statements            | table_name  | pg_stat_statements_with_server_uuid
+ yugabyte              | pg_catalog           | gv$pg_stat_user_functions        | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$pg_stat_user_functions        | table_name  | pg_stat_user_functions_with_server_uuid
+ yugabyte              | pg_catalog           | gv$pg_stat_user_indexes          | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$pg_stat_user_indexes          | table_name  | pg_stat_user_indexes_with_server_uuid
+ yugabyte              | pg_catalog           | gv$pg_stat_user_tables           | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$pg_stat_user_tables           | table_name  | pg_stat_user_tables_with_server_uuid
+ yugabyte              | pg_catalog           | gv$yb_active_session_history     | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$yb_active_session_history     | table_name  | yb_active_session_history_with_server_uuid
+ yugabyte              | pg_catalog           | gv$yb_pg_stat_plans              | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$yb_pg_stat_plans              | table_name  | yb_pg_stat_plans_with_server_uuid
+ yugabyte              | pg_catalog           | gv$yb_pg_stat_plans_insights     | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$yb_pg_stat_plans_insights     | table_name  | yb_pg_stat_plans_insights_with_server_uuid
+ yugabyte              | pg_catalog           | gv$yb_terminated_queries         | schema_name | pg_catalog
+ yugabyte              | pg_catalog           | gv$yb_terminated_queries         | table_name  | yb_terminated_queries_with_server_uuid
+(37 rows)
 
 SET ROLE regress_test_role;
 SELECT * FROM information_schema.user_mapping_options ORDER BY 1, 2, 3, 4;
@@ -2135,15 +2235,18 @@ NOTICE:  drop cascades to server s0
 \c
 DROP ROLE regress_foreign_data_user;
 -- At this point we should have no wrappers, no servers, and no mappings.
-SELECT fdwname, fdwhandler, fdwvalidator, fdwoptions FROM pg_foreign_data_wrapper;
+-- YB: postgres_fdw is installed by default
+SELECT fdwname, fdwhandler, fdwvalidator, fdwoptions FROM pg_foreign_data_wrapper
+    WHERE fdwname <> 'postgres_fdw';
  fdwname | fdwhandler | fdwvalidator | fdwoptions 
 ---------+------------+--------------+------------
 (0 rows)
 
 SELECT srvname, srvoptions FROM pg_foreign_server;
- srvname | srvoptions 
----------+------------
-(0 rows)
+        srvname         |            srvoptions             
+------------------------+-----------------------------------
+ yb_global_views_server | {server_type=federatedYugabyteDB}
+(1 row)
 
 SELECT * FROM pg_user_mapping;
  oid | umuser | umserver | umoptions 

@@ -582,7 +582,7 @@ Status UpgradeTestBase::PerformYsqlUpgrade() {
   tserver::UpgradeYsqlRequestPB req;
   tserver::UpgradeYsqlResponsePB resp;
   rpc::RpcController rpc;
-  rpc.set_timeout(2min * kTimeMultiplier);
+  rpc.set_timeout(4min * kTimeMultiplier);
 
   RETURN_NOT_OK(cluster_->GetTServerProxy<tserver::TabletServerAdminServiceProxy>(0).UpgradeYsql(
       req, &resp, &rpc));

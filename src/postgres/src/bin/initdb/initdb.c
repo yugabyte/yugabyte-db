@@ -182,6 +182,7 @@ static char *pgdata_native;
 
 static char *yb_system_views_file;
 static char *yb_system_functions_file;
+static char *yb_global_views_file;
 
 /* defaults */
 static int	n_connections = 10;
@@ -2761,6 +2762,7 @@ setup_data_file_paths(void)
 
 	set_input(&yb_system_functions_file, "yb_system_functions.sql");
 	set_input(&yb_system_views_file, "yb_system_views.sql");
+	set_input(&yb_global_views_file, "yb_global_views.sql");
 
 	if (show_setting || debug)
 	{
@@ -2793,6 +2795,7 @@ setup_data_file_paths(void)
 	{
 		check_input(yb_system_functions_file);
 		check_input(yb_system_views_file);
+		check_input(yb_global_views_file);
 	}
 }
 
@@ -3131,6 +3134,9 @@ initialize_data_directory(void)
 	load_plpgsql(cmdfd);
 
 	enable_pg_stat_statements(cmdfd);
+
+	if (IsYugaByteGlobalClusterInitdb())
+		setup_run_file(cmdfd, yb_global_views_file);
 
 	/*
 	 * YB: we used to skip the call of vacuum_db() because we don't need

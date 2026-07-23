@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V101.4__32098__yb_global_views_user_role.sql
-{ major => '101', minor => '4', name => '<baseline>', time_applied => '_null_' }
+# here: V101.5__30591__yb_global_views.sql
+{ major => '101', minor => '5', name => '<baseline>', time_applied => '_null_' }
 
 ]

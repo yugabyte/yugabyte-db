@@ -2077,15 +2077,16 @@ TEST_F(PgCatalogVersionTest, AnalyzeAllTables) {
   LOG(INFO) << "result:\n" << result;
   string expected = IsTransactionalDdlEnabled()
       ? "$0, 2, 120; $0, 3, 768; $0, 4, 624; $0, 5, 720; "
-        "$0, 6, 792; $0, 7, 504; $0, 8, 96; $0, 9, 600; $0, 10, 216; "
-        "$0, 11, 528; $0, 12, 96; $0, 13, 216; $0, 14, 144; $0, 15, 144; "
-        "$0, 16, 624; $0, 17, 192; $0, 18, 168; $0, 19, 96; $0, 20, 504; "
-        "$0, 21, 216; $0, 22, 96; $0, 23, 216; $0, 24, 360; $0, 25, 192; "
-        "$0, 26, 120; $0, 27, 192; $0, 28, 120; $0, 29, 264; $0, 30, 168; "
-        "$0, 31, 144; $0, 32, 192; $0, 33, 120; $0, 34, 96; $0, 35, 120; "
-        "$0, 36, 216; $0, 37, 96; $0, 38, 48; $0, 39, 240; $0, 40, 168; "
-        "$0, 41, 120; $0, 42, 120; $0, 43, 96"
-      : "$0, 2, 10632";
+        "$0, 6, 792; $0, 7, 504; $0, 8, 96; $0, 9, 600; $0, 10, 192; "
+        "$0, 11, 168; $0, 12, 216; $0, 13, 528; $0, 14, 96; $0, 15, 216; "
+        "$0, 16, 144; $0, 17, 144; $0, 18, 624; $0, 19, 192; $0, 20, 168; "
+        "$0, 21, 96; $0, 22, 504; $0, 23, 216; $0, 24, 96; $0, 25, 216; "
+        "$0, 26, 360; $0, 27, 192; $0, 28, 120; $0, 29, 192; $0, 30, 72; "
+        "$0, 31, 120; $0, 32, 264; $0, 33, 168; $0, 34, 144; $0, 35, 192; "
+        "$0, 36, 120; $0, 37, 96; $0, 38, 120; $0, 39, 216; $0, 40, 96; "
+        "$0, 41, 48; $0, 42, 240; $0, 43, 168; $0, 44, 120; $0, 45, 120; "
+        "$0, 46, 96"
+      : "$0, 2, 11064";
   expected = Format(expected, yugabyte_db_oid);
   if (result != expected) {
     LOG(INFO) << ASSERT_RESULT(conn_yugabyte.FetchAllAsString(
@@ -2667,52 +2668,57 @@ TEST_F(PgCatalogVersionTest, InvalMessageYsqlUpgradeCommit3) {
   auto v = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
   ASSERT_EQ(v, 1);
 
+  ASSERT_OK(conn_yugabyte.Execute("SET ysql_upgrade_mode TO true"));
+  // V77 predates global views and does DROP VIEW pg_catalog.yb_terminated_queries.
+  // On a fresh cluster the global view wrapper
+  // yb_terminated_queries_with_server_uuid (created at initdb) depends on that
+  // view and would block the DROP. Drop the wrapper first to mimic the
+  // pre-global-views state the migration was written for. This standalone DDL
+  // bumps the catalog version from 1 to 2 in both transactional and
+  // non-transactional DDL modes (a lone autocommit statement is its own version)
+  ASSERT_OK(conn_yugabyte.Execute(
+      "DROP VIEW pg_catalog.yb_terminated_queries_with_server_uuid CASCADE"));
+
   // Now run the migrate sql under YSQL upgrade mode.
   // V77__26590__query_id_yb_terminated_queries_view.sql
   const string migrate_sql =
     ReadMigrationFile("V77__26590__query_id_yb_terminated_queries_view.sql");
-  ASSERT_OK(conn_yugabyte.Execute("SET ysql_upgrade_mode TO true"));
   ASSERT_OK(conn_yugabyte.Execute(migrate_sql));
-  // The migrate sql is run under YSQL upgrade mode. Therefore its COMMIT is
-  // considered as a DDL. There are two COMMIT statements. The first COMMIT
-  // has got invalidation messages so it causes catalog version to increment
-  // from 1 to 2.
+  // The dropped wrapper above occupies version 2. The migrate sql then runs
+  // under YSQL upgrade mode; its COMMITs are DDLs. The first COMMIT increments
+  // the version from 2 to 3.
   //
   // For the second transaction block:
   // If Transactional DDL is enabled: the COMMIT is counted as a DDL and causes
-  // catalog version to increment from 2 to 3.
-  // Otherwise, the DROP VIEW statement causes catalog version to
-  // increment from 2 to 3, the next CREATE OR REPLACE VIEW statement causes
-  // catalog version to increment from 3 to 4. The last COMMIT statement got
-  // 1 invalidation messages because even though there is no catalog table
-  // writes between the CREATE OR REPLACE VIEW and the last COMMIT, the call
-  // to increment catalog version does generate one message that is not
-  // captured by the call itself. Therefore the last COMMIT still causes
-  // catalog version to increment.
+  // catalog version to increment from 3 to 4.
+  // Otherwise, the DROP VIEW statement increments from 3 to 4, the next
+  // CREATE OR REPLACE VIEW from 4 to 5, and the last COMMIT from 5 to 6 (the
+  // call to increment catalog version itself generates one message that is not
+  // captured by the call).
   v = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
-  ASSERT_EQ(v, IsTransactionalDdlEnabled() ? 3 : 5);
+  ASSERT_EQ(v, IsTransactionalDdlEnabled() ? 4 : 6);
   const auto count = ASSERT_RESULT(conn_yugabyte.FetchRow<PGUint64>(
       "SELECT COUNT(*) FROM pg_yb_invalidation_messages"));
-  ASSERT_EQ(count, IsTransactionalDdlEnabled() ? 2 : 4);
+  ASSERT_EQ(count, IsTransactionalDdlEnabled() ? 3 : 5);
   auto query = "SELECT encode(messages, 'hex') FROM pg_yb_invalidation_messages "
                "WHERE current_version=$0"s;
 
-  // version 2 messages.
-  auto result2 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 2)));
-  ASSERT_EQ(result2.size(), 144U);
-
   // version 3 messages.
   auto result3 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 3)));
-  ASSERT_EQ(result3.size(), IsTransactionalDdlEnabled() ? 2544U : 1248U);
+  ASSERT_EQ(result3.size(), 144U);
+
+  // version 4 messages.
+  auto result4 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 4)));
+  ASSERT_EQ(result4.size(), IsTransactionalDdlEnabled() ? 2544U : 1248U);
 
   if (!IsTransactionalDdlEnabled()) {
-    // version 4 messages.
-    auto result4 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 4)));
-    ASSERT_EQ(result4.size(), 1344U);
-
     // version 5 messages.
     auto result5 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 5)));
-    ASSERT_EQ(result5.size(), 48U);
+    ASSERT_EQ(result5.size(), 1344U);
+
+    // version 6 messages.
+    auto result6 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 6)));
+    ASSERT_EQ(result6.size(), 48U);
   }
 }
 
@@ -2934,7 +2940,11 @@ TEST_F(PgCatalogVersionTest, InvalMessageWaitOnVersionGap) {
   // conn1 connects to node 1
   auto conn1 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   auto v = ASSERT_RESULT(GetCatalogVersion(&conn1));
-  ASSERT_EQ(v, IsTransactionalDdlEnabled() ? 88 : 4);
+  // ANALYZE bumps the catalog version once per non-empty relation it writes stats
+  // for. The global views populate three formerly-empty FDW catalogs
+  // (pg_foreign_data_wrapper, pg_foreign_server, pg_foreign_table), so each ANALYZE
+  // now updates 3 more relations. This test runs ANALYZE twice: +6, so 88 -> 94.
+  ASSERT_EQ(v, IsTransactionalDdlEnabled() ? 94 : 4);
   auto result = ASSERT_RESULT(conn1.FetchAllAsString("SELECT id FROM test_table"));
   ASSERT_EQ(result, "1");
 
@@ -3227,11 +3237,11 @@ TEST_P(PgCatalogVersionConnManagerTest,
   // slot is not warm), so the CM count is usually 6 but can be 7 depending on timings.
   auto rebuild_delta = master_read_count_after - master_read_count_before;
   if (enable_ysql_conn_mgr) {
+    ASSERT_GE(rebuild_delta, 7);
+    ASSERT_LE(rebuild_delta, 8);
+  } else {
     ASSERT_GE(rebuild_delta, 6);
     ASSERT_LE(rebuild_delta, 7);
-  } else {
-    ASSERT_GE(rebuild_delta, 5);
-    ASSERT_LE(rebuild_delta, 6);
   }
 }
 
