@@ -322,6 +322,7 @@ GetBackendTypeDesc(BackendType backendType)
 			break;
 		case YB_AUTO_ANALYZE_BACKEND:
 		case YB_RELCACHE_INIT_BACKEND:
+		case YB_GLOBAL_VIEW_BACKEND:
 			/*
 			 * Registered YB internal-connection kinds are handled by the
 			 * registry lookup at the top of this function; these cases exist

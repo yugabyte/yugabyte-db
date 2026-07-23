@@ -796,6 +796,7 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
   lines.insert(lines.begin(), {
       "# Internal configuration:",
       "# local all postgres yb-tserver-key",
+      "# local all yb_global_views_user yb-tserver-key",
   });
 
   const auto conf_path = JoinPathSegments(conf.data_dir, "ysql_hba.conf");

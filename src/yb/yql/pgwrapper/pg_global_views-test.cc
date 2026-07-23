@@ -15,6 +15,8 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
 #include "yb/util/monotime.h"
@@ -124,7 +126,7 @@ class PgGlobalViewsTest : public LibPqTestBase {
                 schemaname,
                 relname
             FROM pg_stat_all_tables)"));
-    return conn_->Execute(R"(
+    RETURN_NOT_OK(conn_->Execute(R"(
         CREATE FOREIGN TABLE IF NOT EXISTS "gv$partial_pg_stat_all_tables" (
             server_uuid UUID,
             schemaname NAME,
@@ -132,7 +134,15 @@ class PgGlobalViewsTest : public LibPqTestBase {
         )
         SERVER gv_server
         OPTIONS (schema_name 'public',
-                 table_name 'partial_pg_stat_all_tables'))");
+                 table_name 'partial_pg_stat_all_tables'))"));
+    // Remote partial-view queries run as the non-superuser yb_global_views_user role
+    // (a member of pg_read_all_stats), so the partial views must grant it read
+    // access.
+    return conn_->Execute(R"(
+        GRANT SELECT ON partial_pgss_with_server_uuid,
+                        partial_ash_with_server_uuid,
+                        partial_pg_stat_all_tables
+            TO pg_read_all_stats)");
   }
 
   Status LoadData() {
@@ -760,6 +770,146 @@ TEST_F(PgGlobalViewsTest, TestPruneByTserverUuidFilter) {
   ASSERT_EQ(rows, expected_uuids);
   ASSERT_THAT(rpcs_per_tserver(two_tservers_query_with_or_clause),
               ::testing::ElementsAre(1, 1, 1));
+}
+
+// The remote query on each tserver must run as the dedicated non-superuser
+// yb_global_views_user role, not the postgres superuser the internal connection used to
+// authenticate as. It is also registered as the YB_INTERNAL_CONN_KIND_GLOBAL_VIEW
+// internal-connection kind, so it reports a distinct pg_stat_activity backend_type.
+TEST_F(PgGlobalViewsTest, TestRemoteRunsAsReadOnlyRole) {
+  // The remote backend reports its own role and backend_type from its
+  // pg_stat_activity row.
+  ASSERT_OK(conn_->Execute(R"(
+      CREATE VIEW partial_current_user AS
+          SELECT yb_get_local_tserver_uuid() AS server_uuid,
+                 current_user::text AS rolename,
+                 (SELECT backend_type FROM pg_stat_activity
+                  WHERE pid = pg_backend_pid()) AS backend_type)"));
+  ASSERT_OK(conn_->Execute(R"(
+      CREATE FOREIGN TABLE "gv$current_user" (
+          server_uuid UUID,
+          rolename TEXT,
+          backend_type TEXT
+      )
+      SERVER gv_server
+      OPTIONS (schema_name 'public', table_name 'partial_current_user'))"));
+  ASSERT_OK(conn_->Execute(
+      "GRANT SELECT ON partial_current_user TO pg_read_all_stats"));
+
+  auto rows = ASSERT_RESULT((conn_->FetchRows<std::string, std::string>(
+      "SELECT rolename, backend_type FROM gv$current_user")));
+  ASSERT_EQ(rows, (decltype(rows){
+      {"yb_global_views_user", "yb global view backend"},
+      {"yb_global_views_user", "yb global view backend"},
+      {"yb_global_views_user", "yb global view backend"}}));
+}
+
+// The read-only reader cannot read superuser-only catalogs such as pg_authid;
+// the remote query fails permission and the tserver is skipped with a WARNING.
+TEST_F(PgGlobalViewsTest, TestRemoteCannotReadPgAuthid) {
+  // SECURITY INVOKER function, so the pg_authid read is checked against the
+  // running role (yb_global_views_user) rather than the view owner.
+  ASSERT_OK(conn_->Execute(R"(
+      CREATE FUNCTION read_authid() RETURNS text
+      LANGUAGE plpgsql AS $$
+      DECLARE v text;
+      BEGIN
+        SELECT string_agg(rolname, ',') INTO v FROM pg_authid;
+        RETURN v;
+      END $$)"));
+  ASSERT_OK(conn_->Execute(R"(
+      CREATE VIEW partial_authid AS
+          SELECT yb_get_local_tserver_uuid() AS server_uuid,
+                 read_authid() AS rolenames)"));
+  ASSERT_OK(conn_->Execute(R"(
+      CREATE FOREIGN TABLE "gv$authid" (
+          server_uuid UUID,
+          rolenames TEXT
+      )
+      SERVER gv_server
+      OPTIONS (schema_name 'public', table_name 'partial_authid'))"));
+  ASSERT_OK(conn_->Execute(
+      "GRANT SELECT ON partial_authid TO pg_read_all_stats"));
+
+  std::vector<std::string> warnings;
+  conn_->SetNoticeProcessor(
+      [](void* arg, const char* message) {
+        static_cast<std::vector<std::string>*>(arg)->emplace_back(message);
+      },
+      &warnings);
+
+  auto rows = ASSERT_RESULT(conn_->FetchRows<std::string>(
+      "SELECT rolenames FROM gv$authid"));
+  // Every tserver is skipped (permission denied), so no rows come back.
+  ASSERT_TRUE(rows.empty()) << "pg_authid was readable: " << AsString(rows);
+  ASSERT_EQ(warnings.size(), GetNumTabletServers());
+  for (const auto& w : warnings) {
+    ASSERT_STR_CONTAINS(w, "permission denied");
+  }
+}
+
+// A directly-injected DML query must be rejected: the remote backend runs as
+// the non-superuser yb_global_views_user, which has no write privileges.
+// postgres_fdw never generates write queries, so the RemoteExec RPC is crafted
+// by hand to exercise the raw query path an attacker could attempt.
+TEST_F(PgGlobalViewsTest, TestRemoteRejectsWrites) {
+  // template1 (conn_'s db) disallows CREATE TABLE, so use the default db.
+  auto db_conn = ASSERT_RESULT(Connect());
+  const auto db_name = ASSERT_RESULT(db_conn.FetchRow<std::string>(
+      "SELECT current_database()::text"));
+  ASSERT_OK(db_conn.Execute("CREATE TABLE write_target (k INT)"));
+
+  rpc::RpcController controller;
+  controller.set_timeout(30s);
+  auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(
+      cluster_->tablet_server(0));
+
+  tserver::PgRemoteExecRequestPB req;
+  req.set_database_name(db_name);
+  req.set_query("INSERT INTO write_target VALUES (1)");
+  tserver::PgRemoteExecResponsePB resp;
+  ASSERT_OK(proxy.PgRemoteExec(req, &resp, &controller));
+
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  ASSERT_EQ(resp.pg_result().exec_status(), PGRES_FATAL_ERROR);
+  ASSERT_STR_CONTAINS(resp.pg_result().error_message(), "permission denied");
+
+  // The write must not have taken effect.
+  ASSERT_EQ(ASSERT_RESULT(db_conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM write_target")), 0);
+}
+
+// A remote query must not be able to signal other backends on the tserver.
+// yb_global_views_user is not a superuser nor a member of pg_signal_backend, so
+// pg_terminate_backend against a backend it does not own is rejected.
+TEST_F(PgGlobalViewsTest, TestRemoteCannotSignalBackends) {
+  // Keep a live backend owned by an unrelated non-superuser on tserver 0 to be
+  // the (failed) signal target.
+  ASSERT_OK(conn_->Execute("CREATE ROLE signal_target LOGIN"));
+  // ConnectToTsAsUser uses the simple query protocol, so results come back in
+  // text format; fetch the pid as a string.
+  auto target_conn = ASSERT_RESULT(
+      ConnectToTsAsUser(*cluster_->tablet_server(0), "signal_target"));
+  const auto target_pid = ASSERT_RESULT(target_conn.FetchRow<std::string>(
+      "SELECT pg_backend_pid()::text"));
+
+  rpc::RpcController controller;
+  controller.set_timeout(30s);
+  auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(
+      cluster_->tablet_server(0));
+
+  tserver::PgRemoteExecRequestPB req;
+  req.set_database_name(kInitialDB);
+  req.set_query(Format("SELECT pg_terminate_backend($0)", target_pid));
+  tserver::PgRemoteExecResponsePB resp;
+  ASSERT_OK(proxy.PgRemoteExec(req, &resp, &controller));
+
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  ASSERT_EQ(resp.pg_result().exec_status(), PGRES_FATAL_ERROR);
+  ASSERT_STR_CONTAINS(resp.pg_result().error_message(), "pg_signal_backend");
+
+  // The target backend must still be alive and usable.
+  ASSERT_EQ(ASSERT_RESULT(target_conn.FetchRow<std::string>("SELECT (1)::text")), "1");
 }
 
 } // namespace yb::pgwrapper

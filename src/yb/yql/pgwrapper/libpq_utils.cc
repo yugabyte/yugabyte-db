@@ -996,7 +996,8 @@ PGConnPerf::~PGConnPerf() {
 
 PGConnBuilder CreateInternalPGConnBuilder(
     const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
-    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline,
+    std::string_view user, uint64_t postgres_auth_key,
+    const std::optional<CoarseTimePoint>& deadline,
     std::string_view yb_internal_conn_kind) {
   size_t connect_timeout = 0;
   if (deadline && *deadline != CoarseTimePoint::max()) {
@@ -1012,7 +1013,7 @@ PGConnBuilder CreateInternalPGConnBuilder(
       {.host = PgDeriveSocketDir(pgsql_proxy_bind_address),
        .port = pgsql_proxy_bind_address.port(),
        .dbname = database_name,
-       .user = "postgres",
+       .user = std::string(user),
        .password = UInt64ToString(postgres_auth_key),
        .connect_timeout = connect_timeout,
        .yb_internal_conn_kind = std::string(yb_internal_conn_kind)});

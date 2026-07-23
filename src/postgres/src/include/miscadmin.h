@@ -371,6 +371,7 @@ typedef enum BackendType
 	YB_INDEX_BACKFILL_DDL,
 	YB_MATVIEW_REFRESH_DDL,
 	YB_RELCACHE_INIT_BACKEND,
+	YB_GLOBAL_VIEW_BACKEND,
 } BackendType;
 
 extern PGDLLIMPORT BackendType MyBackendType;
