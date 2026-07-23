@@ -663,6 +663,9 @@ DEFINE_test_flag(bool, enable_multi_way_tablet_split, false,
 DEFINE_test_flag(bool, cdcsdk_disable_stream_drop_during_db_drop, false,
     "When enabled, the DeleteNamespace workflow won't mark associated CDCSDK streams as DELETING.");
 
+DEFINE_test_flag(int32, delay_at_start_of_schedule_post_tablet_create_tasks_ms, 0,
+    "Sleep at the start of SchedulePostTabletCreationTasks.");
+
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
@@ -14102,11 +14105,22 @@ void CatalogManager::WriteTabletToSysCatalog(const TabletId& tablet_id) {
 void CatalogManager::SchedulePostTabletCreationTasks(
     const TableInfoPtr& table_info, const LeaderEpoch& epoch,
     const std::set<TabletId>& new_running_tablets) {
+  if (PREDICT_FALSE(FLAGS_TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms > 0)) {
+    SleepFor(MonoDelta::FromMilliseconds(
+        FLAGS_TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms));
+  }
+
   if (!table_info->LockForRead()->IsPreparing()) {
     return;
   }
   auto tablets_running_result = table_info->AreAllTabletsRunning(new_running_tablets);
   if (!tablets_running_result.ok() || !*tablets_running_result) {
+    return;
+  }
+
+  if (!table_info->TrySetPostTabletCreateTasksScheduled()) {
+    VLOG(1) << "PostTabletCreateTasks already scheduled for table: " << table_info->ToString()
+            << " skipping scheduling";
     return;
   }
 
@@ -14120,9 +14134,13 @@ void CatalogManager::SchedulePostTabletCreationTasks(
         *this, *AsyncTaskPool(), *master_->messenger(), table_info, epoch));
   }
 
-  WARN_NOT_OK(
-      PostTabletCreateTaskBase::StartTasks(table_creation_tasks, this, table_info, epoch),
-      "Failed to schedule PostTabletCreateTasks");
+  auto status = PostTabletCreateTaskBase::StartTasks(table_creation_tasks, this, table_info, epoch);
+  if (!status.ok()) {
+    table_info->SetCreateTableErrorStatus(status);
+    LOG_WITH_FUNC(WARNING) << Format(
+        "Failed to schedule PostTabletCreateTasks for table: $0. Reason: $1",
+        table_info->ToString(), status.ToString());
+  }
 }
 
 Status CatalogManager::PromoteTableToRunningState(
@@ -14136,6 +14154,10 @@ Status CatalogManager::PromoteTableToRunningState(
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Upsert(epoch, table_info.get()), "Promote table to RUNNING state");
   l.Commit();
+
+  // A RUNNING table can be moved back to PREPARING later (e.g. repartitions table),
+  // and then needs to be able to schedule the post tablet create tasks again.
+  table_info->ClearPostTabletCreateTasksScheduled();
   return Status::OK();
 }
 
