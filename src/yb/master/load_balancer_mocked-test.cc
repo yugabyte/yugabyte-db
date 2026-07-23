@@ -11,8 +11,11 @@
 // under the License.
 //
 
+#include <numeric>
+
 #include <gflags/gflags_declare.h>
 #include <gtest/gtest.h>
+#include "yb/common/common_flags.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/consensus/metadata.pb.h"
@@ -909,6 +912,67 @@ class LoadBalancerRF5MockedTest : public LoadBalancerMockedTest {
   int NumReplicas() const override { return 5; }
 };
 
+class LoadBalancerRF5MaxReplicasMockedTest : public LoadBalancerRF5MockedTest {
+  int NumTablets() const override { return 1; }
+};
+
+TEST_F(LoadBalancerRF5MaxReplicasMockedTest, RepairPlacementAboveMaximum) {
+  TSDescriptorVector tservers = {
+      SetupTS("a000", "a"), SetupTS("a001", "a"), SetupTS("a002", "a"), SetupTS("a003", "a"),
+      SetupTS("b000", "b"), SetupTS("b001", "b"),
+      SetupTS("c000", "c"), SetupTS("c001", "c")};
+  PrepareTestState(tservers);
+  SetupClusterConfig({"a", "b", "c"}, &replication_info_, /* num_replicas */ 5);
+  for (auto& block : *replication_info_.mutable_live_replicas()->mutable_placement_blocks()) {
+    block.set_max_num_replicas(2);
+  }
+
+  RemoveReplica(tablets_[0].get(), tservers[3]);
+  RemoveReplica(tablets_[0].get(), tservers[5]);
+  RemoveReplica(tablets_[0].get(), tservers[7]);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  std::string tablet_id, from_ts, to_ts;
+  ASSERT_FALSE(ASSERT_RESULT(CanAddTabletToTabletServer(tablets_[0]->tablet_id(), "a003")));
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(tablets_[0]->tablet_id(), tablet_id);
+  ASSERT_TRUE(from_ts == "a000" || from_ts == "a001" || from_ts == "a002");
+  ASSERT_TRUE(to_ts == "b001" || to_ts == "c001");
+
+  auto find_tserver = [&tservers](const TabletServerId& uuid) {
+    return *std::find_if(tservers.begin(), tservers.end(), [&uuid](const auto& ts) {
+      return ts->permanent_uuid() == uuid;
+    });
+  };
+  AddRunningReplica(tablets_[0].get(), find_tserver(to_ts));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  ASSERT_TRUE(ASSERT_RESULT(HandleRemoveReplicas(&tablet_id, &from_ts)));
+  ASSERT_TRUE(from_ts == "a000" || from_ts == "a001" || from_ts == "a002");
+  RemoveReplica(tablets_[0].get(), find_tserver(from_ts));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+
+  const auto remaining_source = from_ts == "a000" ? "a001" : "a000";
+  ASSERT_FALSE(ASSERT_RESULT(CanAddTabletToTabletServer(tablets_[0]->tablet_id(), "a003")));
+  ASSERT_TRUE(ASSERT_RESULT(
+      CanAddTabletToTabletServer(tablets_[0]->tablet_id(), "a003", remaining_source)));
+}
+
+TEST_F(LoadBalancerRF5MaxReplicasMockedTest, RejectInvalidMaximumsOnActivation) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_placement_block_max_num_replicas) = false;
+  PrepareTestStateMultiAz();
+  SetupClusterConfig({"a", "b", "c"}, &replication_info_, /* num_replicas */ 5);
+  for (auto& block : *replication_info_.mutable_live_replicas()->mutable_placement_blocks()) {
+    block.set_max_num_replicas(1);
+  }
+  ASSERT_NOK_STR_CONTAINS(
+      ResetLoadBalancerAndAnalyzeTablets(), "total maximum replica count (3)");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_placement_block_max_num_replicas) = true;
+  ASSERT_NOK_STR_CONTAINS(
+      ResetLoadBalancerAndAnalyzeTablets(), "total maximum replica count (3)");
+}
+
 TEST_F(LoadBalancerRF5MockedTest, TestUnderReplicatedPriority) {
   // Test that we prioritize more under-replicated tablets when adding replicas.
   PrepareTestStateMultiAz();
@@ -1069,6 +1133,31 @@ TEST_F(OptimalLoadDistributionTest, Slack) {
   map = ASSERT_RESULT(CalculateOptimalLoadDistribution(
       ts_descs, replication_info.live_replicas(), current_load, 6));
   ASSERT_OK(AssertLoadDistribution(ts_descs, map, {4, 4, 6, 4}));
+}
+
+TEST_F(OptimalLoadDistributionTest, MaxNumReplicas) {
+  auto ts_descs = SetupTservers(3);
+  ts_descs.push_back(SetupTS("3333", "a"));
+  ts_descs.push_back(SetupTS("4444", "b"));
+  ts_descs.push_back(SetupTS("5555", "c"));
+  auto replication_info = GetReplicationInfo({"a", "b", "c"});
+  replication_info.mutable_live_replicas()->set_num_replicas(5);
+  for (auto& block : *replication_info.mutable_live_replicas()->mutable_placement_blocks()) {
+    block.set_max_num_replicas(2);
+  }
+
+  const auto distribution = ASSERT_RESULT(CalculateOptimalLoadDistribution(
+      ts_descs, replication_info.live_replicas(), {}, /* num_tablets */ 2));
+  ASSERT_EQ(std::accumulate(
+                distribution.begin(), distribution.end(), 0uz,
+                [](size_t total, const auto& entry) { return total + entry.second; }),
+            10);
+  for (const auto& [first, second] :
+       {std::pair(0, 3), std::pair(1, 4), std::pair(2, 5)}) {
+    ASSERT_LE(distribution.at(ts_descs[first]->permanent_uuid()) +
+                  distribution.at(ts_descs[second]->permanent_uuid()),
+              4);
+  }
 }
 
 TEST_F(OptimalLoadDistributionTest, SlackManyTservers) {
