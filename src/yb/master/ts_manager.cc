@@ -480,6 +480,9 @@ Status TSManager::RemoveTabletServer(
     for (const auto& table : tables) {
       for (const auto& tablet : VERIFY_RESULT(
                table->GetTabletsIncludeInactive())) {
+        if (tablet->LockForRead()->is_deleted()) {
+          continue;
+        }
         auto replicas_map = tablet->GetReplicaLocations();
         if (replicas_map->contains(desc->id())) {
           return STATUS_FORMAT(
