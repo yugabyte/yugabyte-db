@@ -3301,6 +3301,9 @@ void CatalogManager::CleanupHiddenTablets(
   }
 
   if (!tablets_to_delete.empty()) {
+    std::sort(
+        tablets_to_delete.begin(), tablets_to_delete.end(),
+        [](const auto& lhs, const auto& rhs) { return lhs->tablet_id() < rhs->tablet_id(); });
     LOG_WITH_PREFIX(INFO) << "Cleanup hidden tablets: " << AsString(tablets_to_delete);
     WARN_NOT_OK(
         DeleteOrHideTabletsAndSendRequests(

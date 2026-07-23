@@ -11627,6 +11627,12 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
 
   // Grab tablets and tablet write locks. The list should already be in tablet_id sorted order.
   for (const auto& tablet : tablets) {
+    if (!tablets_data.empty()) {
+      // Aborts in debug builds and returns IllegalState in release builds.
+      RSTATUS_DCHECK_LT(
+          tablets_data.back().tablet->tablet_id(), tablet->tablet_id(), IllegalState,
+          "Tablets must be sorted by tablet id");
+    }
     auto tablet_data = TabletData{
         .tablet = tablet,
         .lock = tablet->LockForWrite(),
