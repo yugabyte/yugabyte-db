@@ -63,11 +63,11 @@ The columns of the pg_stat_statements view are described in the following table.
 | conflict_retries    | bigint           | Number of internal query retries caused by transaction conflicts between overlapping transactions.              |
 | read_restart_retries | bigint          | Number of internal query retries for reads (possibly because of a concurrent update).                            |
 | total_retries       | bigint           | Total number of query retries of any type.                                                                       |
-| docdb_seeks | bigint | The number of DocDB seek operations |
-| docdb_nexts | bigint | The number of DocDB next operations |
-| docdb_prevs | bigint | The number of DocDB prev operations |
-| docdb_read_time | double | Aggregate read time (in ms) in storage layer |
-| docdb_write_time | double | Aggregate write time (in ms) in storage layer |
+| docdb_seeks | bigint | Number of DocDB seek operations. |
+| docdb_nexts | bigint | Number of DocDB next operations. |
+| docdb_prevs | bigint | Number of DocDB prev operations. |
+| docdb_read_time | double | Aggregate read time (in ms) in storage layer. |
+| docdb_write_time | double | Aggregate write time (in ms) in storage layer. |
 | docdb_obsolete_rows_scanned | bigint | Number of obsolete (tombstoned) rows scanned by DocDB while executing the statement. |
 
 ## Configuration parameters
@@ -315,183 +315,250 @@ yugabyte=# \d pg_stat_statements;
 ```
 
 ```caddyfile{.nocopy}
-                     View "public.pg_stat_statements"
-       Column         |       Type       | Collation | Nullable | Default
-----------------------+------------------+-----------+----------+---------
- userid               | oid              |           |          |
- dbid                 | oid              |           |          |
- queryid              | bigint           |           |          |
- query                | text             |           |          |
- calls                | bigint           |           |          |
- total_time           | double precision |           |          |
- min_time             | double precision |           |          |
- max_time             | double precision |           |          |
- mean_time            | double precision |           |          |
- stddev_time          | double precision |           |          |
- rows                 | bigint           |           |          |
- shared_blks_hit      | bigint           |           |          |
- shared_blks_read     | bigint           |           |          |
- shared_blks_dirtied  | bigint           |           |          |
- shared_blks_written  | bigint           |           |          |
- local_blks_hit       | bigint           |           |          |
- local_blks_read      | bigint           |           |          |
- local_blks_dirtied   | bigint           |           |          |
- local_blks_written   | bigint           |           |          |
- temp_blks_read       | bigint           |           |          |
- temp_blks_written    | bigint           |           |          |
- blk_read_time        | double precision |           |          |
- blk_write_time       | double precision |           |          |
- yb_latency_histogram | jsonb            |           |          |
-```
-
-### I/O-intensive queries
-
-```sql
-yugabyte=# SELECT userid::regrole, dbid, query
-    FROM pg_stat_statements
-    ORDER BY (blk_read_time+blk_write_time)/calls desc
-    LIMIT 10;
-```
-
-```caddyfile{.nocopy}
-  userid  | dbid  |                                                          query
-----------+-------+--------------------------------------------------------------------------------------------------------
- yugabyte | 12463 | select pg_stat_statements_reset()
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
-ls desc limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit $1
-(3 rows)
-```
-
-```sql
-yugabyte=# SELECT userid::regrole, dbid, query
-    FROM pg_stat_statements
-    ORDER BY (blk_read_time+blk_write_time) desc
-    LIMIT 10;
-```
-
-```caddyfile{.nocopy}
-  userid  | dbid  |                                                          query
-----------+-------+--------------------------------------------------------------------------------------------------------
- yugabyte | 12463 | select pg_stat_statements_reset()
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
-ls desc limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) des
-c limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit $1
-(4 rows)
+           Column            |       Type       | Collation | Nullable | Default 
+-----------------------------+------------------+-----------+----------+---------
+ userid                      | oid              |           |          | 
+ dbid                        | oid              |           |          | 
+ toplevel                    | boolean          |           |          | 
+ queryid                     | bigint           |           |          | 
+ query                       | text             |           |          | 
+ plans                       | bigint           |           |          | 
+ total_plan_time             | double precision |           |          | 
+ min_plan_time               | double precision |           |          | 
+ max_plan_time               | double precision |           |          | 
+ mean_plan_time              | double precision |           |          | 
+ stddev_plan_time            | double precision |           |          | 
+ calls                       | bigint           |           |          | 
+ total_exec_time             | double precision |           |          | 
+ min_exec_time               | double precision |           |          | 
+ max_exec_time               | double precision |           |          | 
+ mean_exec_time              | double precision |           |          | 
+ stddev_exec_time            | double precision |           |          | 
+ rows                        | bigint           |           |          | 
+ shared_blks_hit             | bigint           |           |          | 
+ shared_blks_read            | bigint           |           |          | 
+ shared_blks_dirtied         | bigint           |           |          | 
+ shared_blks_written         | bigint           |           |          | 
+ local_blks_hit              | bigint           |           |          | 
+ local_blks_read             | bigint           |           |          | 
+ local_blks_dirtied          | bigint           |           |          | 
+ local_blks_written          | bigint           |           |          | 
+ temp_blks_read              | bigint           |           |          | 
+ temp_blks_written           | bigint           |           |          | 
+ blk_read_time               | double precision |           |          | 
+ blk_write_time              | double precision |           |          | 
+ temp_blk_read_time          | double precision |           |          | 
+ temp_blk_write_time         | double precision |           |          | 
+ wal_records                 | bigint           |           |          | 
+ wal_fpi                     | bigint           |           |          | 
+ wal_bytes                   | numeric          |           |          | 
+ jit_functions               | bigint           |           |          | 
+ jit_generation_time         | double precision |           |          | 
+ jit_inlining_count          | bigint           |           |          | 
+ jit_inlining_time           | double precision |           |          | 
+ jit_optimization_count      | bigint           |           |          | 
+ jit_optimization_time       | double precision |           |          | 
+ jit_emission_count          | bigint           |           |          | 
+ jit_emission_time           | double precision |           |          | 
+ yb_latency_histogram        | jsonb            |           |          | 
+ docdb_read_rpcs             | bigint           |           |          | 
+ docdb_write_rpcs            | bigint           |           |          | 
+ catalog_wait_time           | double precision |           |          | 
+ docdb_read_operations       | bigint           |           |          | 
+ docdb_write_operations      | bigint           |           |          | 
+ docdb_rows_scanned          | bigint           |           |          | 
+ docdb_rows_returned         | bigint           |           |          | 
+ docdb_wait_time             | double precision |           |          | 
+ conflict_retries            | bigint           |           |          | 
+ read_restart_retries        | bigint           |           |          | 
+ total_retries               | bigint           |           |          | 
+ docdb_obsolete_rows_scanned | bigint           |           |          | 
+ docdb_seeks                 | bigint           |           |          | 
+ docdb_nexts                 | bigint           |           |          | 
+ docdb_prevs                 | bigint           |           |          | 
+ docdb_read_time             | double precision |           |          | 
+ docdb_write_time            | double precision |           |          |
 ```
 
 ### Time-consuming queries
 
 ```sql
-yugabyte=# SELECT userid::regrole, dbid, query
+yugabyte=# SELECT userid::regrole AS username, dbid, query
     FROM pg_stat_statements
     ORDER BY mean_time desc
     LIMIT 10;
 ```
 
 ```caddyfile{.nocopy}
-  userid  | dbid  |                                                          query
+ username | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
-ls desc limit $1
  yugabyte | 12463 | select pg_stat_statements_reset()
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) des
-c limit $1
-(4 rows)
+(1 row)
 ```
 
 ```sql
-yugabyte=# SELECT userid::regrole, dbid, query
+yugabyte=# SELECT userid::regrole AS username, dbid, query
     FROM pg_stat_statements
     ORDER BY total_time desc
     LIMIT 10;
 ```
 
 ```caddyfile{.nocopy}
-  userid  | dbid  |                                                          query
+ username | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
-ls desc limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) des
-c limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by mean_time desc limit $1
  yugabyte | 12463 | select pg_stat_statements_reset()
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit $1
-(5 rows)
+ yugabyte | 12463 | select userid::regrole as username, dbid, query from pg_stat_statements order by mean_time desc limit
+ $1
+(2 rows)
 ```
 
 ### Response-time outliers
 
 ```sql
-yugabyte=# SELECT userid::regrole, dbid, query
+yugabyte=# SELECT userid::regrole AS username, dbid, query
     FROM pg_stat_statements
     ORDER BY stddev_time desc
     LIMIT 10;
 ```
 
 ```caddyfile{.nocopy}
-  userid  | dbid  |                                                          query
+ username | dbid  |                                                          query
 ----------+-------+--------------------------------------------------------------------------------------------------------
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
-ls desc limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) des
-c limit $1
  yugabyte | 12463 | select pg_stat_statements_reset()
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by mean_time desc limit $1
-(5 rows)
+ yugabyte | 12463 | select userid::regrole as username, dbid, query from pg_stat_statements order by mean_time desc limit
+ $1
+ yugabyte | 12463 | select userid::regrole as username, dbid, query from pg_stat_statements order by total_time desc limi
+t $1
+(3 rows)
 ```
 
-### Queries by memory usage
+### DocDB metrics for an UPDATE query
+
+The following example shows how the DocDB-related columns in `pg_stat_statements` help you understand the work done by an UPDATE statement.
 
 ```sql
-yugabyte=# SELECT userid::regrole, dbid, query
-    FROM pg_stat_statements
-    ORDER BY (shared_blks_hit+shared_blks_dirtied) desc
-    LIMIT 10;
+UPDATE customers SET name = name || ' Updated' WHERE name LIKE 'Customer 1%';
 ```
 
-```caddyfile{.nocopy}
-  userid  | dbid  |                                                          query
-----------+-------+--------------------------------------------------------------------------------------------------------
- yugabyte | 12463 | select pg_stat_statements_reset()
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by stddev_time desc limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
-ls desc limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) des
-c limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by mean_time desc limit $1
-(6 rows)
-```
-
-### Consumers of temporary space
+Extract the relevant DocDB metrics for this query from `pg_stat_statements`:
 
 ```sql
-yugabyte=# SELECT userid::regrole, dbid, query
-    FROM pg_stat_statements
-    ORDER BY temp_blks_written desc
-    LIMIT 10;
+SELECT
+    rows,
+    docdb_read_rpcs,
+    docdb_write_rpcs,
+    catalog_wait_time,
+    docdb_rows_scanned,
+    docdb_rows_returned,
+    docdb_obsolete_rows_scanned,
+    docdb_seeks,
+    docdb_nexts,
+    docdb_prevs,
+    docdb_wait_time,
+    docdb_read_time,
+    docdb_write_time,
+    conflict_retries,
+    read_restart_retries,
+    total_retries,
+    docdb_read_operations,
+    docdb_write_operations
+FROM
+    pg_stat_statements;
 ```
 
-```caddyfile{.nocopy}
-  userid  | dbid  |                                                          query
-----------+-------+--------------------------------------------------------------------------------------------------------
- yugabyte | 12463 | select pg_stat_statements_reset()
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by stddev_time desc limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time)/cal
-ls desc limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (blk_read_time+blk_write_time) des
-c limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by total_time desc limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by mean_time desc limit $1
- yugabyte | 12463 | select userid::regrole, dbid, query from pg_stat_statements order by (shared_blks_hit+shared_blks_dirti
-ed) desc limit $1
-(7 rows)
+```output
+-[ RECORD 1 ]----------+-------------------------------------------------------
+rows                        | 12
+docdb_read_rpcs             | 1
+docdb_write_rpcs            | 1
+catalog_wait_time           | 0
+docdb_rows_scanned          | 100
+docdb_rows_returned         | 12
+docdb_obsolete_rows_scanned | 0
+docdb_seeks                 | 14
+docdb_nexts                 | 312
+docdb_prevs                 | 0
+docdb_wait_time             | 8.402
+docdb_read_time             | 3.660
+docdb_write_time            | 2.880
+conflict_retries            | 0
+read_restart_retries        | 0
+total_retries               | 0
+docdb_read_operations       | 2
+docdb_write_operations      | 12
 ```
+
+You can correlate these values with the EXPLAIN plan for the same query:
+
+```sql
+EXPLAIN (ANALYZE, DIST, DEBUG) UPDATE customers SET name = name || ' Updated' WHERE name LIKE 'Customer 1%';
+```
+
+```yaml{linenos=inline, .nocopy}
+                                    QUERY PLAN
+------------------------------------------------------------------------------------
+ Update on customers  (cost=0.00..105.00 rows=0 width=0) (actual time=59.807..59.807 rows=0 loops=1)
+   ->  Seq Scan on customers  (cost=0.00..105.00 rows=1000 width=156) (actual time=12.519..12.610 rows=12 loops=1)
+         Storage Filter: (name ~~ 'Customer 1%'::text)
+         Storage Table Read Requests: 1
+         Storage Table Read Execution Time: 4.753 ms
+         Storage Table Rows Scanned: 100
+         Storage Table Write Requests: 12
+         Metric rocksdb_number_db_seek: 14.000
+         Metric rocksdb_number_db_next: 312.000
+         Metric docdb_keys_found: 100.000
+         Metric ql_read_latency: sum: 3660.000, count: 2.000
+ Planning Time: 0.288 ms
+ Execution Time: 68.010 ms
+ Storage Read Requests: 1
+ Storage Read Execution Time: 4.753 ms
+ Storage Rows Scanned: 100
+ Storage Write Requests: 12
+ Catalog Read Requests: 0
+ Catalog Write Requests: 0
+ Storage Flush Requests: 1
+ Storage Flush Execution Time: 3.648 ms
+ Metric rocksdb_number_db_seek: 14
+ Metric rocksdb_number_db_next: 312
+ Metric docdb_keys_found: 100
+ Metric ql_read_latency: sum: 3660, count: 2
+ Storage Execution Time: 8.402 ms
+ Peak Memory Usage: 24 kB
+```
+
+The `Storage Table Rows Scanned: 100` in the plan matches `docdb_rows_scanned` (100) in `pg_stat_statements`, and the seek and next counts (14 and 312) match `docdb_seeks` and `docdb_nexts` respectively.
+
+### Retries due to concurrent conflicts
+
+If two queries from different transactions try to update the same row at the same time, one of the transactions retries until the other commits. `pg_stat_statements` tracks these retries in the `conflict_retries` column.
+
+```sql
+UPDATE customers SET name = name || '_updated' WHERE customer_id = 1;
+```
+
+```output
+-[ RECORD 1 ]-------------------+-------
+rows                            | 1
+docdb_read_rpcs                 | 1
+docdb_write_rpcs                | 1
+catalog_wait_time               | 0
+docdb_rows_scanned              | 1
+docdb_rows_returned             | 1
+docdb_obsolete_rows_scanned     | 0
+docdb_seeks                     | 2
+docdb_nexts                     | 4
+docdb_prevs                     | 0
+docdb_wait_time                 | 7.955
+docdb_read_time                 | 0.794
+docdb_write_time                | 2.650
+conflict_retries                | 9
+read_restart_retries            | 0
+total_retries                   | 9
+docdb_read_operations           | 1
+docdb_write_operations          | 1
+```
+
+`conflict_retries` (9) shows that this update had to retry 9 times before it could complete, because a concurrent transaction was updating the same row at the same time.
 
 ## Learn more
 
