@@ -170,6 +170,9 @@ class LogTest : public LogTestBase {
 
   void DoReuseLastSegmentTest(bool durable_wal_write);
 
+  void DoCopyToFromInitializedStateWithReuseThresholdTest(
+      int64_t reuse_unclosed_segment_threshold_bytes);
+
   Result<std::vector<OpId>> AppendAndCopy(size_t num_batches, size_t num_entries_per_batch);
 
   std::string GetLogCopyPath(size_t copy_idx) {
@@ -1879,6 +1882,141 @@ TEST_F(LogTest, CopyUpTo) {
     ASSERT_OK(CheckLogIndex(
         log_copy_reader.get(), op_id_with_entry_meta_by_idx, max_included_op_id.index));
   }
+
+  ASSERT_OK(log_->Close());
+}
+
+struct RaftLogData {
+  LogEntries entries;
+  std::vector<LogEntryMetadata> entries_metadata;
+};
+
+Result<RaftLogData> ReadRaftLogData(LogReader* log_reader) {
+  SegmentSequence segments;
+  RETURN_NOT_OK(log_reader->GetSegmentsSnapshot(&segments));
+  RaftLogData result;
+  for (const auto& segment : segments) {
+    auto read_entries = segment->ReadEntries();
+    RETURN_NOT_OK(read_entries.status);
+    for (size_t i = 0; i < read_entries.entries.size(); ++i) {
+      result.entries.push_back(read_entries.entries[i]);
+      result.entries_metadata.push_back(read_entries.entry_metadata[i]);
+    }
+  }
+  return result;
+}
+
+// Verifies a Raft log holds exactly the expected entries in the same order and that the on-disk log
+// index is correct.
+void VerifyRaftLogOps(LogReader* log_reader, const LogEntries& expected_entries) {
+  auto log_data = ASSERT_RESULT(ReadRaftLogData(log_reader));
+
+  const auto num_entries = log_data.entries.size();
+  ASSERT_EQ(num_entries, expected_entries.size());
+  for (size_t i = 0; i < num_entries; ++i) {
+    ASSERT_EQ(log_data.entries[i]->ShortDebugString(), expected_entries[i]->ShortDebugString());
+  }
+
+  std::map<int64_t, std::pair<OpId, LogEntryMetadata>> meta_by_index;
+  for (size_t i = 0; i < num_entries; ++i) {
+    if (!log_data.entries[i]->has_replicate()) {
+      continue;
+    }
+    const auto op_id = OpId::FromPB(log_data.entries[i]->replicate().id());
+    meta_by_index[op_id.index] = std::make_pair(op_id, log_data.entries_metadata[i]);
+  }
+  const int64_t last_op_index = meta_by_index.empty() ? 0 : meta_by_index.rbegin()->first;
+  ASSERT_OK(CheckLogIndex(log_reader, meta_by_index, last_op_index));
+}
+
+// Parametrized on reuse_unclosed_segment_threshold_bytes to test both Log::CopyTo ->
+// EnsureSegmentInitialized branches when it closes the footerless last segment before rolling over:
+// large threshold -> the segment is reused as the writable active segment.
+// small threshold -> the segment's footer is rebuilt and a fresh active segment is allocated.
+void LogTest::DoCopyToFromInitializedStateWithReuseThresholdTest(
+    int64_t reuse_unclosed_segment_threshold_bytes) {
+  constexpr auto kFirstSegmentEntries = 5;
+  constexpr auto kLastSegmentEntries = 5;
+
+  // Rollovers are triggered manually below.
+  options_.segment_size_bytes = std::numeric_limits<size_t>::max();
+
+  BuildLog();
+
+  // First segment: append then roll over cleanly so it gets a proper footer.
+  AppendReplicateBatchToLog(kFirstSegmentEntries, AppendSync::kTrue);
+  ASSERT_OK(log_->AllocateSegmentAndRollOver());
+
+  // Last segment: append, then crash without closing it, so it is left without a footer.
+  AppendReplicateBatchToLog(kLastSegmentEntries, AppendSync::kTrue);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_file_close) = true;
+  ASSERT_OK(log_->Close());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reuse_unclosed_segment_threshold_bytes) =
+      reuse_unclosed_segment_threshold_bytes;
+
+  // Reopen lazily so CopyTo runs in kLogInitialized state.
+  BuildLog(/* byte_limit = */ -1, CreateNewSegment::kFalse);
+
+  const auto total_entries = kFirstSegmentEntries + kLastSegmentEntries;
+
+  auto* source_reader = ASSERT_RESULT(log_->GetLogReader());
+  const auto expected = ASSERT_RESULT(ReadRaftLogData(source_reader));
+  ASSERT_EQ(expected.entries.size(), static_cast<size_t>(total_entries));
+
+  const auto copy_idx = 0;
+  ASSERT_OK(log_->CopyTo(GetLogCopyPath(copy_idx)));
+
+  auto log_reader = ASSERT_RESULT(GetLogCopyReader(copy_idx));
+  VerifyRaftLogOps(log_reader.get(), expected.entries);
+
+  ASSERT_OK(log_->Close());
+}
+
+// Large threshold: the footerless last segment is reused as the active segment.
+TEST_F(LogTest, CopyToFromInitializedStateReusingLastSegment) {
+  DoCopyToFromInitializedStateWithReuseThresholdTest(
+      /* reuse_unclosed_segment_threshold_bytes = */ std::numeric_limits<int64_t>::max());
+}
+
+// Zero threshold: the footerless last segment's footer is rebuilt and a new segment is allocated.
+TEST_F(LogTest, CopyToFromInitializedStateRebuildingLastSegment) {
+  DoCopyToFromInitializedStateWithReuseThresholdTest(
+      /* reuse_unclosed_segment_threshold_bytes = */ 0);
+}
+
+// All operations live in a single footerless segment.  Reopens the log lazily (kLogInitialized,
+// as tablet bootstrap does), and verifies Log::CopyTo copies every operation - including those
+// in the reopened footerless last segment.
+TEST_F(LogTest, CopyToFromInitializedStateFooterlessSingleSegment) {
+  constexpr auto kNumEntries = 10;
+
+  options_.segment_size_bytes = std::numeric_limits<size_t>::max();
+
+  BuildLog();
+
+  AppendReplicateBatchToLog(kNumEntries, AppendSync::kTrue);
+
+  // Crash without closing the only segment, leaving it footerless.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_file_close) = true;
+  ASSERT_OK(log_->Close());
+
+  // Reopen lazily: the log stays in kLogInitialized (no active segment) until first append, so the
+  // subsequent CopyTo exercises the kLogInitialized code path.
+  BuildLog(/* byte_limit = */ -1, CreateNewSegment::kFalse);
+
+  auto* source_reader = ASSERT_RESULT(log_->GetLogReader());
+  const auto source_log_entries = ASSERT_RESULT(ReadRaftLogData(source_reader)).entries;
+  ASSERT_EQ(source_log_entries.size(), static_cast<size_t>(kNumEntries));
+
+  // Copy while still in kLogInitialized state.
+  const auto copy_idx = 0;
+  ASSERT_OK(log_->CopyTo(GetLogCopyPath(copy_idx)));
+
+  auto log_reader = ASSERT_RESULT(GetLogCopyReader(copy_idx));
+  VerifyRaftLogOps(log_reader.get(), source_log_entries);
 
   ASSERT_OK(log_->Close());
 }
