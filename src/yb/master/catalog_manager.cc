@@ -12874,7 +12874,7 @@ Status CatalogManager::GetTableLocations(
 
   std::vector<TabletInfoPtr> tablets = VERIFY_RESULT(table->GetTabletsInRange(req));
   PartitionsOnly partitions_only(req->partitions_only());
-  bool require_tablets_runnings = req->require_tablets_running();
+  bool require_tablets_running = req->require_tablets_running();
 
   int expected_live_replicas = 0;
   int expected_read_replicas = 0;
@@ -12890,7 +12890,7 @@ Status CatalogManager::GetTableLocations(
         tablet, locs_pb, IncludeHidden::kTrue, partitions_only);
     if (!status.ok()) {
       // Not running.
-      if (require_tablets_runnings) {
+      if (require_tablets_running) {
         resp->mutable_tablet_locations()->Clear();
         return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, status);
       }
