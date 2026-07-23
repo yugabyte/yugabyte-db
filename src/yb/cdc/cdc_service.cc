@@ -538,27 +538,22 @@ class CDCServiceImpl::Impl {
   std::optional<int64_t> GetLastActiveTime(const TabletStreamInfo& producer_tablet) {
     SharedLock<rw_spinlock> lock(mutex_);
     auto it = tablet_checkpoints_.find(producer_tablet);
-    if (it != tablet_checkpoints_.end()) {
-      // Use last_active_time from cache only if it is current.
-      if (it->cdc_state_checkpoint.last_active_time > 0) {
-        if (!it->cdc_state_checkpoint.ExpiredAt(
-                FLAGS_cdc_state_checkpoint_update_interval_ms * 1ms, CoarseMonoClock::Now())) {
-          VLOG(2) << "Found recent entry in cache with active time: "
-                  << it->cdc_state_checkpoint.last_active_time
-                  << ", for tablet: " << producer_tablet.tablet_id
-                  << ", and stream: " << producer_tablet.stream_id;
-          return it->cdc_state_checkpoint.last_active_time;
-        } else {
-          VLOG(2) << "Found stale entry in cache with active time: "
-                  << it->cdc_state_checkpoint.last_active_time
-                  << ", for tablet: " << producer_tablet.tablet_id
-                  << ", and stream: " << producer_tablet.stream_id
-                  << ". We will read from the cdc_state table";
-        }
-      }
-    } else {
+    if (it == tablet_checkpoints_.end()) {
       VLOG(1) << "Did not find entry in 'tablet_checkpoints_' cache for tablet: "
               << producer_tablet.tablet_id << ", stream: " << producer_tablet.stream_id;
+      return std::nullopt;
+    }
+
+    // Return whatever the cache holds, without a staleness check. Callers that need the latest
+    // value (e.g. before declaring a tablet expired or not-of-interest) re-read from the cdc_state
+    // table via GetLastActiveTime(..., ignore_cache=true). Rejecting a "stale" cached value here
+    // only forced redundant cdc_state reads.
+    if (it->cdc_state_checkpoint.last_active_time > 0) {
+      VLOG(2) << "Found entry in cache with active time: "
+              << it->cdc_state_checkpoint.last_active_time
+              << ", for tablet: " << producer_tablet.tablet_id
+              << ", and stream: " << producer_tablet.stream_id;
+      return it->cdc_state_checkpoint.last_active_time;
     }
 
     return std::nullopt;
