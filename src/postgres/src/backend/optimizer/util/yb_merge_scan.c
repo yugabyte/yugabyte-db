@@ -55,6 +55,7 @@ static bool
 ybIsClauseEligibleSaop(Node *clause,
 					   Expr *expr,
 					   Oid opfamily,
+					   Oid idxcollation,
 					   int *num_elems)
 {
 	/*
@@ -104,7 +105,19 @@ ybIsClauseEligibleSaop(Node *clause,
 		return false;
 
 	/*
-	 * 5. Check operator (part 2).
+	 * 5. Check collation.
+	 *
+	 * As in match_saopclause_to_indexcol (see IndexCollMatchesExprColl),
+	 * reject the clause unless the index collation matches the clause's
+	 * comparison collation.  A SAOP pinned here is expected to reach the
+	 * executor among the index conditions, but match_saopclause_to_indexcol
+	 * drops such a clause from them.
+	 */
+	if (OidIsValid(idxcollation) && idxcollation != opexpr->inputcollid)
+		return false;
+
+	/*
+	 * 6. Check operator (part 2).
 	 *
 	 * This is last as it is more expensive than the other checks.
 	 */
@@ -112,7 +125,7 @@ ybIsClauseEligibleSaop(Node *clause,
 		return false;
 
 	/*
-	 * 6. Checks passed.  Collect data.
+	 * 7. Checks passed.  Collect data.
 	 */
 	ArrayType  *arrayval;
 	int16		elmlen;
@@ -359,6 +372,7 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 		 */
 		if (ybIsClauseEligibleSaop((Node *) rinfo->clause, expr,
 									   index->opfamily[indexcol],
+									   index->indexcollations[indexcol],
 									   &num_elems) &&
 			(num_elems < best_num_elems || best_num_elems == -1))
 		{
