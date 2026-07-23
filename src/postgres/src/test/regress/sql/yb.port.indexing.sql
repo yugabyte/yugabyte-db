@@ -70,6 +70,7 @@ create table idxpart1 partition of idxpart for values from (0) to (10);
 -- depends on the partition table itself and on the index created on the parent
 -- table, and either of the two error messages are possible.
 -- drop index idxpart1_a_idx;	-- no way
+drop index concurrently idxpart_a_idx;	-- unsupported
 drop index idxpart_a_idx;	-- both indexes go away
 select relname, relkind from pg_class
   where relname like 'idxpart%' order by relname;
