@@ -2396,6 +2396,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createYNPProvisioningTask(
       Universe universe, Collection<NodeDetails> nodes, boolean isYbPrebuiltImage) {
+    return createYNPProvisioningTask(universe, nodes, isYbPrebuiltImage, false /* isReprovision */);
+  }
+
+  public SubTaskGroup createYNPProvisioningTask(
+      Universe universe,
+      Collection<NodeDetails> nodes,
+      boolean isYbPrebuiltImage,
+      boolean isReprovision) {
     Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
     SubTaskGroup subTaskGroup =
         createSubTaskGroup(YNPProvisioning.class.getSimpleName(), SubTaskGroupType.Provisioning);
@@ -2429,6 +2437,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           params.nodeAgentInstallDir = installPath;
           params.remotePackagePath = taskParams().remotePackagePath;
           params.isYbPrebuiltImage = isYbPrebuiltImage;
+          params.isReprovision = isReprovision;
           if (StringUtils.isNotEmpty(n.sshUserOverride)) {
             params.sshUser = n.sshUserOverride;
           }
