@@ -1140,10 +1140,13 @@ yb_extract_tserver_indexes_from_clause(Expr *clause, Index relid,
 
 		/*
 		 * The planner normalizes equality clauses so that the Var is the
-		 * left arg and the Const is the right arg.
+		 * left arg and the Const is the right arg. The rhs is only a Const
+		 * for a custom/one-off plan; a generic (prepared) plan leaves it as
+		 * a Param.
 		 */
-		Assert(IsA(linitial(opexpr->args), Var) &&
-			   IsA(lsecond(opexpr->args), Const));
+		Assert(IsA(linitial(opexpr->args), Var));
+		if (!IsA(lsecond(opexpr->args), Const))
+			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
 
 		var = (Var *) linitial(opexpr->args);
 		con = (Const *) lsecond(opexpr->args);
@@ -1179,8 +1182,11 @@ yb_extract_tserver_indexes_from_clause(Expr *clause, Index relid,
 
 		/* A ScalarArrayOpExpr always has exactly two args. */
 		Assert(list_length(saop->args) == 2);
-		Assert(IsA(linitial(saop->args), Var) &&
-			   IsA(lsecond(saop->args), Const));
+
+		/* As above: only a plain Const array is prunable at plan time. */
+		Assert(IsA(linitial(saop->args), Var));
+		if (!IsA(lsecond(saop->args), Const))
+			return YB_TS_UUID_CLAUSE_UNSUPPORTED;
 
 		var = (Var *) linitial(saop->args);
 		con = (Const *) lsecond(saop->args);

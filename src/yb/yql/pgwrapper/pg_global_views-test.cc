@@ -1237,4 +1237,13 @@ TEST_F(PgBuiltinGlobalViewsTest, TestAdHocCreation) {
   ASSERT_NOK(conn_->Execute("SELECT yb_create_global_view('pg_catalog', 'pg_tables')"));
 }
 
+TEST_F(PgGlobalViewsTest, TestPrepareServerUuidParam) {
+  ASSERT_OK(conn_->Execute("SET plan_cache_mode = force_generic_plan"));
+  ASSERT_OK(conn_->Execute(R"(
+      PREPARE gv_eq(uuid) AS
+      SELECT server_uuid FROM gv$partial_pg_stat_statements
+      WHERE server_uuid = $1)"));
+  ASSERT_OK(conn_->Fetch("EXECUTE gv_eq('00000000-0000-0000-0000-000000000000')"));
+}
+
 } // namespace yb::pgwrapper
