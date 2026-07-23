@@ -115,6 +115,8 @@ class PrometheusWriter {
 
   void InvalidAggregationFunction(AggregationFunction aggregation_function);
 
+  bool ShouldExportTableMetrics(const MetricEntity::AttributeMap& attributes) const;
+
   void AddScrapeTimeAggregatedEntry(const std::string& key,
                           const char* type, const char* description,
                           const MetricEntity::AttributeMap& attributes,
@@ -142,6 +144,8 @@ class PrometheusWriter {
   ExportHelpAndType export_help_and_type_ = ExportHelpAndType::kFalse;
 
   std::unique_ptr<PrometheusMetricFilter> prometheus_metric_filter_;
+
+  const std::shared_ptr<const std::unordered_set<std::string>> active_table_ids_;
 
   uint32_t remaining_allowed_entries_;
 
