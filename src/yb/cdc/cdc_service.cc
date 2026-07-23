@@ -3322,6 +3322,10 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
           .IncludeCDCSDKSafeTime(),
       &iteration_status));
 
+  // Materialize the stream's rows in a single scan. Iterating the range a second time would issue
+  // another full scan of cdc_state (CDCStateTableRange::begin() starts a fresh table scan), so we
+  // collect the rows once here and reuse them for the selection pass below.
+  std::vector<CDCStateTableEntry> stream_entries;
   for (auto entry_result : entries) {
     if (!entry_result) {
       LOG(WARNING) << "GetTabletIdsToPoll failed to parse row :" << entry_result.status();
@@ -3334,30 +3338,20 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
 
     auto& tablet_id = entry.key.tablet_id;
     auto is_cur_tablet_polled = entry.last_replication_time.has_value();
-    if (!is_cur_tablet_polled) {
-      continue;
+    if (is_cur_tablet_polled) {
+      polled_tablets.insert(tablet_id);
+
+      auto iter = child_to_parent_mapping.find(tablet_id);
+      if (iter != child_to_parent_mapping.end()) {
+        parent_to_polled_child_count[iter->second] += 1;
+      }
     }
 
-    polled_tablets.insert(tablet_id);
-
-    auto iter = child_to_parent_mapping.find(tablet_id);
-    if (iter != child_to_parent_mapping.end()) {
-      parent_to_polled_child_count[iter->second] += 1;
-    }
+    stream_entries.push_back(std::move(entry));
   }
   RETURN_NOT_OK(iteration_status);
 
-  for (const auto& entry_result : entries) {
-    if (!entry_result) {
-      LOG(WARNING) << "GetTabletIdsToPoll failed to parse row :" << entry_result.status();
-      continue;
-    }
-
-    auto& entry = *entry_result;
-    if (entry.key.stream_id != stream_id) {
-      continue;
-    }
-
+  for (const auto& entry : stream_entries) {
     auto& tablet_id = entry.key.tablet_id;
     auto is_active_or_hidden =
         (active_or_hidden_tablets.find(tablet_id) != active_or_hidden_tablets.end());
