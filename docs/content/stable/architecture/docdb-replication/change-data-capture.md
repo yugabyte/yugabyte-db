@@ -49,7 +49,27 @@ The YugabyteDB Debezium connector captures row-level changes in the schemas of a
 
 The core primitive of CDC is the _stream_. Streams can be enabled and disabled on databases. You can specify which tables to include or exclude. Every change to a watched database table is emitted as a record in a configurable format to a configurable sink. Streams scale to any YugabyteDB cluster independent of its size and are designed to impact production traffic as little as possible.
 
-Creating a new CDC stream returns a stream UUID. This is facilitated via the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) tool. A stream ID is created first, per database. You configure the maximum batch side in YugabyteDB, while the polling frequency is configured on the connector side.
+{{<tags/feature/ea idea="2762">}}Prefer creating a gRPC CDC stream through the PostgreSQL replication-slot interface with the `yb_grpc` output plugin (available in v2026.1.2.0 and later). Creating a slot returns a user-chosen `slot_name` and a stream UUID (`yb_stream_id` in `pg_replication_slots`) for the connector. The legacy [yb-admin](../../../admin/yb-admin/#create-change-data-stream) `create_change_data_stream` command still works but is deprecated. See [Create a gRPC CDC stream](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#create-a-grpc-cdc-stream).
+
+You configure the maximum batch size in YugabyteDB, while the polling frequency is configured on the connector side.
+
+### Stream classification and metadata
+
+A CDCSDK stream is treated as a _gRPC stream_ when its replication-slot plugin name is absent, empty, or `yb_grpc`; otherwise it is a logical replication stream.
+
+gRPC streams carry different metadata depending on how (and when) they were created:
+
+- **PostgreSQL syntax (`yb_grpc`)**: User-provided slot name, `yb_grpc` plugin, a `replica_identity_map`, and a `cdc_state` slot entry. [Before-image](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#before-image) format comes from per-table replica identity (no stream-level `record_type`).
+- **yb-admin `create_change_data_stream`**: Auto-generated slot name (`grpc_<stream_id>`), `yb_grpc` plugin, and a `cdc_state` slot entry. No `replica_identity_map`; before-image format still comes from the stream-level `record_type` passed to yb-admin.
+- **Pre-existing gRPC streams (created in versions earlier than v2026.1.2.0)**: On master leader bringup after upgrading to v2026.1.2.0 or later, these streams are automatically backfilled to match the yb-admin shape above: auto-generated slot name (`grpc_<stream_id>`), `yb_grpc` plugin, and a `cdc_state` slot entry. They keep using `record_type` and do **not** receive a `replica_identity_map`.
+
+| Creation method | Replication slot name | Plugin | `replica_identity_map` | Slot entry in `cdc_state` | Before-image source |
+| :-------------- | :-------------------- | :----- | :--------------------- | :------------------------ | :------------------ |
+| PostgreSQL syntax (`yb_grpc`) | User-provided | `yb_grpc` | Yes | Yes | Per-table replica identity |
+| yb-admin `create_change_data_stream` (after finalization) | `grpc_<stream_id>` | `yb_grpc` | No | Yes | Stream-level `record_type` |
+| Pre-existing streams after backfill | `grpc_<stream_id>` | `yb_grpc` | No | Yes | Stream-level `record_type` |
+
+**Record-format discriminator:** Logical replication streams and gRPC streams created via PostgreSQL syntax carry a `replica_identity_map` and no `record_type` option. gRPC streams created via yb-admin (and backfilled pre-existing streams) carry a `record_type` option and no `replica_identity_map`.
 
 Connector tasks can consume changes from multiple tablets. At least once delivery is guaranteed. In turn, connector tasks write to the Kafka cluster, and tasks don't need to match Kafka partitions. Tasks can be independently scaled up or down.
 
