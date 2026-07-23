@@ -4,6 +4,8 @@ linkTitle: Sample datasets
 description: Sample datasets
 headcontent: Explore the YugabyteDB YSQL API using sample datasets.
 type: indexpage
+aliases:
+  - /stable/sample-data/
 cascade:
   unversioned: true
 ---
