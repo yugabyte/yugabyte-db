@@ -3777,9 +3777,11 @@ SetRelationTableSpace(Relation rel,
 	table_close(pg_class, RowExclusiveLock);
 
 	/*
-	 * YB: For YB relations, the PK index is the same as the base table.
-	 * Also update the primary key index's pg_class.reltablespace and
-	 * pg_shdepend entries.
+	 * YB: For YB relations, the PK index is the same as the base table, and a
+	 * copartitioned index (e.g. the ybhnsw vector index) is stored on the
+	 * table's own tablets.  Both kinds of index always follow the table's
+	 * placement, so keep their pg_class.reltablespace and pg_shdepend entries
+	 * in sync with the table's tablespace.
 	 */
 	if (IsYBRelation(rel) &&
 		(rel->rd_rel->relkind == RELKIND_RELATION ||
@@ -3787,7 +3789,7 @@ SetRelationTableSpace(Relation rel,
 	{
 		List	   *indexIds = RelationGetIndexList(rel);
 		ListCell   *lc;
-		Oid			newPrimaryKeyTableSpaceId = (newTableSpaceId == MyDatabaseTableSpace) ?
+		Oid			newIndexTableSpaceId = (newTableSpaceId == MyDatabaseTableSpace) ?
 			InvalidOid : newTableSpaceId;
 
 		foreach(lc, indexIds)
@@ -3797,10 +3799,14 @@ SetRelationTableSpace(Relation rel,
 			bool		isPrimaryIndex = (idxRel != NULL &&
 										  idxRel->rd_index &&
 										  idxRel->rd_index->indisprimary);
+			bool		isCopartitionedIndex = (idxRel != NULL &&
+												idxRel->rd_indam &&
+												idxRel->rd_indam->yb_amiscopartitioned);
 
 			RelationClose(idxRel);
 
-			if (!isPrimaryIndex)
+			/* Only PK and copartitioned indexes follow the table's tablespace. */
+			if (!isPrimaryIndex && !isCopartitionedIndex)
 				continue;
 
 			Relation	idx_pg_class = table_open(RelationRelationId,
@@ -3812,20 +3818,17 @@ SetRelationTableSpace(Relation rel,
 				elog(ERROR, "cache lookup failed for relation %u", idxOid);
 			Form_pg_class idx_rd_rel = (Form_pg_class) GETSTRUCT(idx_tuple);
 
-			/* Update PK's pg_class entry */
-			idx_rd_rel->reltablespace = newPrimaryKeyTableSpaceId;
+			/* Update the index's pg_class entry */
+			idx_rd_rel->reltablespace = newIndexTableSpaceId;
 			CatalogTupleUpdate(idx_pg_class, &idx_tuple->t_self, idx_tuple);
 			UnlockTuple(idx_pg_class, &idx_tuple->t_self, InplaceUpdateTupleLock);
 
-			/* Update PK's pg_shdepend entry */
+			/* Update the index's pg_shdepend entry */
 			changeDependencyOnTablespace(RelationRelationId, idxOid,
-										 newPrimaryKeyTableSpaceId);
+										 newIndexTableSpaceId);
 
 			heap_freetuple(idx_tuple);
 			table_close(idx_pg_class, RowExclusiveLock);
-
-			/* Only one primary key index per table */
-			break;
 		}
 
 		list_free(indexIds);
@@ -15964,6 +15967,19 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, const char *tablespacen
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot set tablespace for primary key index")));
 
+	if (IsYugaByteEnabled() && tablespacename &&
+		rel->rd_index &&
+		rel->rd_indam && rel->rd_indam->yb_amiscopartitioned)
+		/*
+		 * YB: Disable setting a tablespace directly on a copartitioned index
+		 * (e.g. the ybhnsw vector index).  It is stored on the indexed table's
+		 * own tablets and always follows the indexed table's tablespace, so it
+		 * can only be moved by moving the indexed table.
+		 */
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot set tablespace for a vector index")));
+
 	if (IsYugaByteEnabled() && !yb_cascade && MyDatabaseColocated &&
 		YbGetTableProperties(rel)->is_colocated)
 	{
@@ -16589,9 +16605,11 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 			continue;
 
 		/*
-		 * In YB, a primary key index is an intrinsic part of its base table.
-		 * For a primary key index, we only need to update the
-		 * new_tablespaceoid field in pg_class.
+		 * In YB, a primary key index is an intrinsic part of its base table,
+		 * and a copartitioned index (e.g. the ybhnsw vector index) is stored on
+		 * its base table's tablets.  Neither owns separate tablets, so we only
+		 * update their new_tablespaceoid field in pg_class rather than moving
+		 * them independently.
 		 */
 		if (relForm->relkind == RELKIND_INDEX ||
 			relForm->relkind == RELKIND_PARTITIONED_INDEX)
@@ -16599,15 +16617,19 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 			yb_index_rel = RelationIdGetRelation(relOid);
 			bool		isPrimaryIndex = (yb_index_rel != NULL &&
 										  yb_index_rel->rd_index->indisprimary);
+			bool		isCopartitionedIndex = (yb_index_rel != NULL &&
+												yb_index_rel->rd_indam &&
+												yb_index_rel->rd_indam->yb_amiscopartitioned);
 
 			RelationClose(yb_index_rel);
 
-			if (isPrimaryIndex)
+			if (isPrimaryIndex || isCopartitionedIndex)
 			{
 				/*
-				 * We move the primary key indexes along with the tables that
-				 * they are associated with when using the following commands
-				 * ALTER TABLE/INDEX/MATERIALIZED VIEW ... SET TABLESPACE ...
+				 * We move primary key and copartitioned indexes along with the
+				 * tables that they are associated with when using the following
+				 * commands ALTER TABLE/INDEX/MATERIALIZED VIEW ... SET
+				 * TABLESPACE ...
 				 */
 				if (yb_cascade || (!yb_cascade && stmt->objtype == OBJECT_TABLE))
 				{

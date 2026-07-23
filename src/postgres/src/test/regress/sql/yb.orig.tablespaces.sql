@@ -161,6 +161,37 @@ CREATE INDEX foo_idx on testschema.foo(i) TABLESPACE regress_tblspace;
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
     where c.reltablespace = t.oid AND c.relname = 'foo_idx';
 
+-- YB: Vector (ybhnsw) indexes are copartitioned with the indexed table -- they
+-- are stored on the table's own tablets -- so, like primary key indexes, their
+-- tablespace always follows the indexed table.  Verify that pg_class.reltablespace
+-- stays consistent with the indexed table.
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE TABLE testschema.vectbl (id int PRIMARY KEY, embedding vector(3))
+    TABLESPACE regress_tblspace;
+-- Without a TABLESPACE clause, the vector index inherits the indexed table's
+-- tablespace (rather than recording reltablespace = 0).
+CREATE INDEX vec_idx_inherit ON testschema.vectbl USING ybhnsw (embedding vector_l2_ops);
+-- The table and its vector index report the same tablespace.
+SELECT relname, spcname FROM pg_catalog.pg_class c
+    LEFT JOIN pg_catalog.pg_tablespace t ON c.reltablespace = t.oid
+    WHERE c.relname IN ('vectbl', 'vec_idx_inherit') ORDER BY relname;
+-- Fail: a vector index's tablespace cannot be set directly; it always follows
+-- the indexed table.  An explicit TABLESPACE clause is rejected even when it
+-- matches the indexed table's tablespace.
+CREATE INDEX vec_idx_match ON testschema.vectbl USING ybhnsw (embedding vector_l2_ops)
+    TABLESPACE regress_tblspace;
+CREATE INDEX vec_idx_mismatch ON testschema.vectbl USING ybhnsw (embedding vector_l2_ops)
+    TABLESPACE regress_tblspace_2;
+-- ALTER TABLE ... SET TABLESPACE moves the vector index with the table and
+-- keeps the index's reltablespace in sync.
+ALTER TABLE testschema.vectbl SET TABLESPACE regress_tblspace_2;
+SELECT relname, spcname FROM pg_catalog.pg_class c
+    LEFT JOIN pg_catalog.pg_tablespace t ON c.reltablespace = t.oid
+    WHERE c.relname IN ('vectbl', 'vec_idx_inherit') ORDER BY relname;
+-- Fail: a vector index's tablespace cannot be set directly; it follows the table.
+ALTER INDEX testschema.vec_idx_inherit SET TABLESPACE regress_tblspace;
+DROP TABLE testschema.vectbl;
+
 -- partitioned table
 CREATE TABLE testschema.part (a int) PARTITION BY LIST (a);
 CREATE TABLE testschema.part12 PARTITION OF testschema.part FOR VALUES IN(1,2) PARTITION BY LIST (a) TABLESPACE regress_tblspace;
