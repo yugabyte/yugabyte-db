@@ -33,6 +33,8 @@
 #include <string>
 #include <gtest/gtest.h>
 
+#include "yb/common/common_net.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/tablespace_parser.h"
 
 #include "yb/gutil/strings/substitute.h"
@@ -584,6 +586,84 @@ TEST(TablespaceParserTest, ReadReplicaPlacementParsingErrors) {
     auto result = TablespaceParser::FromString(kLivePlacement, valid_case.read_replica_json);
     ASSERT_OK(result);
   }
+}
+
+TEST(TablespaceParserTest, MaxNumReplicasParsing) {
+  const string live_placement = R"({
+    "num_replicas":3,
+    "placement_blocks":[
+      {"cloud":"c","region":"r","zone":"z1","min_num_replicas":1,
+       "max_num_replicas":2},
+      {"cloud":"c","region":"r","zone":"z2","min_num_replicas":1}
+    ]
+  })";
+  const string read_placement = R"({
+    "num_replicas":3,
+    "placement_uuid":"read",
+    "placement_blocks":[
+      {"cloud":"c","region":"rr","zone":"z1","min_num_replicas":1,
+       "max_num_replicas":2},
+      {"cloud":"c","region":"rr","zone":"z2","min_num_replicas":1}
+    ]
+  })";
+
+  const auto replication_info =
+      ASSERT_RESULT(TablespaceParser::FromString(live_placement, read_placement));
+  const auto& live = replication_info.live_replicas();
+  ASSERT_EQ(live.placement_blocks(0).max_num_replicas(), 2);
+  ASSERT_FALSE(live.placement_blocks(1).has_max_num_replicas());
+  ASSERT_EQ(GetEffectiveMaxNumReplicas(live.placement_blocks(1), live.num_replicas()), 3);
+
+  const auto& read = replication_info.read_replicas(0);
+  ASSERT_EQ(read.placement_blocks(0).max_num_replicas(), 2);
+  ASSERT_FALSE(read.placement_blocks(1).has_max_num_replicas());
+  ASSERT_EQ(GetEffectiveMaxNumReplicas(read.placement_blocks(1), read.num_replicas()), 3);
+}
+
+TEST(TablespaceParserTest, MaxNumReplicasValidation) {
+  const std::vector<std::pair<string, string>> invalid_placements = {
+      {R"({"num_replicas":1,"placement_blocks":[
+         {"cloud":"c","region":"r","zone":"z","min_num_replicas":1,
+          "max_num_replicas":"one"}]})",
+       "Invalid type for \"max_num_replicas\""},
+      {R"({"num_replicas":1,"placement_blocks":[
+         {"cloud":"c","region":"r","zone":"z","min_num_replicas":1,
+          "max_num_replicas":0}]})",
+       "max_num_replicas (0) must be > 0"},
+      {R"({"num_replicas":2,"placement_blocks":[
+         {"cloud":"c","region":"r","zone":"z","min_num_replicas":2,
+          "max_num_replicas":1}]})",
+       "max_num_replicas (1) must be greater than or equal to min_num_replicas (2)"},
+      {R"({"num_replicas":3,"placement_blocks":[
+         {"cloud":"c","region":"r","zone":"z1","min_num_replicas":1,
+          "max_num_replicas":1},
+         {"cloud":"c","region":"r","zone":"z2","min_num_replicas":1,
+          "max_num_replicas":1}]})",
+       "Sum of effective max_num_replicas fields (2) is less than the total replication factor"},
+  };
+
+  for (const auto& [placement, expected_error] : invalid_placements) {
+    ASSERT_NOK_STR_CONTAINS(TablespaceParser::FromString(placement, ""), expected_error);
+  }
+
+  ASSERT_OK(TablespaceParser::FromString(
+      R"({"num_replicas":1,"placement_blocks":[
+        {"cloud":"c","region":"r","zone":"z","min_num_replicas":1,
+         "max_num_replicas":2}]})",
+      ""));
+}
+
+TEST(TablespaceParserTest, MaxNumReplicasDisabledBeforeAutoFlagPromotion) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_placement_block_max_num_replicas) = false;
+  const auto replication_info = ASSERT_RESULT(TablespaceParser::FromString(
+      R"({"num_replicas":3,"placement_blocks":[
+        {"cloud":"c","region":"r","zone":"z","min_num_replicas":1,
+         "max_num_replicas":1}]})",
+      ""));
+  const auto& block = replication_info.live_replicas().placement_blocks(0);
+  ASSERT_EQ(block.max_num_replicas(), 1);
+  ASSERT_EQ(GetEffectiveMaxNumReplicas(block, 3), 3);
 }
 
 // Test the tablespace preferred zone info parsing.

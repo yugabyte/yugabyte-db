@@ -75,6 +75,12 @@ struct CBTabletMetadata {
   // Set of placement ids that have less replicas available than the configured minimums.
   std::unordered_set<CloudInfoPB, cloud_hash, cloud_equal_to> under_replicated_placements;
 
+  // Current running and starting replica counts per placement block.
+  std::unordered_map<CloudInfoPB, size_t, cloud_hash, cloud_equal_to> placement_replica_counts;
+
+  // Replicas in placement blocks that exceed their configured maximum.
+  std::set<TabletServerId> over_max_replicated_tablet_servers;
+
   // If this tablet has more replicas than the configured number in the PlacementInfoPB.
   bool is_over_replicated;
 
@@ -395,7 +401,9 @@ class PerTableLoadState {
     initialized_ = true;
   }
 
-  Result<bool> CanAddTabletToTabletServer(const TabletId& tablet_id, const TabletServerId& to_ts);
+  Result<bool> CanAddTabletToTabletServer(
+      const TabletId& tablet_id, const TabletServerId& to_ts,
+      const TabletServerId& from_ts = "");
 
   // For a TS specified by ts_uuid, this function checks if there is a placement
   // block in placement_info where this TS can be placed. If there doesn't exist
@@ -522,6 +530,9 @@ class PerTableLoadState {
   // to potentially bring back down to their proper configured size, if there are more running than
   // expected.
   std::set<TabletId> tablets_over_replicated_;
+
+  // Tablets whose total RF is correct but at least one placement block exceeds its maximum.
+  std::set<TabletId> tablets_over_max_placements_;
 
   // Set of tablet ids that have been determined to have replicas in incorrect placements.
   std::set<TabletId> tablets_wrong_placement_;

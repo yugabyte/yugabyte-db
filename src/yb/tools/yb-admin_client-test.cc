@@ -12,6 +12,7 @@
 
 #include <gmock/gmock.h>
 
+#include "yb/common/common_flags.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_ddl.pb.h"
@@ -312,6 +313,42 @@ TEST(ListTabletServerSortTest, AliveBeforeDeadThenHost) {
   EXPECT_EQ("uuid-alive-30-b", servers.Get(2).instance_id().permanent_uuid());
   EXPECT_EQ("uuid-dead-10", servers.Get(3).instance_id().permanent_uuid());
   EXPECT_EQ("uuid-dead-20", servers.Get(4).instance_id().permanent_uuid());
+}
+
+TEST(CatalogManagerUtilTest, MaxNumReplicasValidation) {
+  auto make_placement = [](int32_t num_replicas, int32_t first_max, int32_t second_max) {
+    PlacementInfoPB placement_info;
+    placement_info.set_num_replicas(num_replicas);
+    for (const auto [zone, max_num_replicas] :
+         {std::pair("z1", first_max), std::pair("z2", second_max)}) {
+      auto* block = placement_info.add_placement_blocks();
+      block->set_min_num_replicas(1);
+      if (max_num_replicas >= 0) {
+        block->set_max_num_replicas(max_num_replicas);
+      }
+      auto* cloud_info = block->mutable_cloud_info();
+      cloud_info->set_placement_cloud("c");
+      cloud_info->set_placement_region("r");
+      cloud_info->set_placement_zone(zone);
+    }
+    return placement_info;
+  };
+
+  ASSERT_NOK_STR_CONTAINS(
+      master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(2, 0, 2)),
+      "max_num_replicas (0) must be greater than or equal to 1");
+  ASSERT_NOK_STR_CONTAINS(
+      master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(3, 1, 1)),
+      "total maximum replica count (2)");
+  {
+    google::FlagSaver flag_saver;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_placement_block_max_num_replicas) = false;
+    ASSERT_NOK_STR_CONTAINS(
+        master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(3, 1, 1)),
+        "total maximum replica count (2)");
+  }
+  ASSERT_OK(master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(3, 1, -1)));
+  ASSERT_OK(master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(2, 3, 3)));
 }
 
 }  // namespace tools
