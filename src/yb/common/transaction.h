@@ -44,7 +44,20 @@ namespace yb {
 
 YB_STRONGLY_TYPED_UUID_DECL(TransactionId);
 using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
-using TransactionIdApplyOpIdMap = std::unordered_map<TransactionId, OpId, TransactionIdHash>;
+
+// Per-transaction cleanup info surfaced by the IntentsDB compaction filter and consumed by
+// TransactionParticipant::Cleanup. `apply_op_id` is the transaction's apply record OpId (used by
+// the lease-based CDC checkpoint barrier). `commit_ht` is the transaction's commit hybrid time,
+// read from the on-disk PostApplyTransactionMetadata; it is the wall-clock reference used by the
+// time-based intent-retention path (--intents_min_seconds_to_retain). It is
+// HybridTime::kInvalid when no post-apply metadata was seen for the transaction (e.g. an aborted
+// transaction, or a committed transaction that predates post-apply metadata being written).
+struct TransactionApplyOpIdInfo {
+  OpId apply_op_id = OpId::Invalid();
+  HybridTime commit_ht = HybridTime::kInvalid;
+};
+using TransactionIdApplyOpIdMap =
+    std::unordered_map<TransactionId, TransactionApplyOpIdInfo, TransactionIdHash>;
 using SubTransactionId = uint32_t;
 // When session level advisory locks are enabled, we created a docdb transaction for a pg session
 // on a session advisory lock request, if one doesn't already exist. This transaction lives for the

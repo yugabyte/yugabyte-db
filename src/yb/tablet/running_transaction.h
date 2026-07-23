@@ -136,6 +136,17 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   void SetApplyOpId(const OpId& id);
 
+  // Stamp the commit / apply (log_ht) hybrid times that came with the APPLYING op onto the
+  // transaction's apply_data_ slot. Used so that callers reading {@link GetApplyHybridTime}
+  // / {@link GetCommitHybridTime} get a real value even when SetApplyData() is never invoked
+  // (the case for transactions whose apply fits in a single batch -- the common case for
+  // YSQL inserts touching a primary table plus a unique index). Without this, the
+  // ScheduleRemoveIntents gating in `intents_min_seconds_to_retain` runs against an invalid
+  // HybridTime and trips its `!apply_ht.is_valid() => return false` short-circuit, causing
+  // intents to be GC'd despite the retention window. See the comment block at the call site
+  // for the full diagnosis.
+  void SetApplyHybridTimes(HybridTime commit_ht, HybridTime log_ht);
+
   const OpId& GetApplyOpId() const {
     return apply_record_op_id_;
   }

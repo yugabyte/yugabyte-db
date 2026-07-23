@@ -357,6 +357,7 @@ DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_uint64(cdc_intent_retention_ms);
+DECLARE_uint32(intents_min_seconds_to_retain);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_string(regular_tablets_data_block_key_value_encoding);
 
@@ -1535,6 +1536,31 @@ void Tablet::DoCleanupIntentFiles() {
         break;
       }
     }
+
+    // Wall-clock intent retention (--intents_min_seconds_to_retain). When no CDC SDK stream is
+    // registered (is_under_cdc_sdk_replication() is false), the stream barrier above does not
+    // engage. DoCleanupIntentFiles deletes whole intents SST files based only on
+    // MinRunningHybridTime, which advances past committed-and-applied transactions -- so without
+    // this gate it reclaims committed intents inside the retention window, bypassing the per-txn
+    // gating in transaction_participant.cc. Retain any intents SST file whose newest write is
+    // still inside the --intents_min_seconds_to_retain wall-clock window so a CDC consumer relying
+    // on wall-clock retention can read the committed intents at APPLYING time. best_file is the
+    // oldest live intents file, so once it is within the window every newer file is too: break.
+    const auto cdc_intents_retain_secs = FLAGS_intents_min_seconds_to_retain;
+    if (cdc_intents_retain_secs > 0 && best_file_max_ht.is_valid() &&
+        best_file_max_ht != HybridTime::kMax) {
+      const auto now_micros = clock_->Now().GetPhysicalValueMicros();
+      const auto file_micros = best_file_max_ht.GetPhysicalValueMicros();
+      const auto window_micros = static_cast<uint64_t>(
+          MonoDelta::FromSeconds(cdc_intents_retain_secs).ToMicroseconds());
+      if (now_micros <= file_micros || (now_micros - file_micros) < window_micros) {
+        VLOG_WITH_PREFIX_AND_FUNC(4)
+            << "Cannot delete intents SST file: within --intents_min_seconds_to_retain window, "
+            << "best file max ht: " << best_file_max_ht;
+        break;
+      }
+    }
+
     if (best_file->name_id == previous_name_id) {
       LOG_WITH_PREFIX_AND_FUNC(INFO)
           << "Attempt to delete same file: " << previous_name_id << ", stopping cleanup";

@@ -668,6 +668,18 @@ void RunningTransaction::SetApplyOpId(const OpId& op_id) {
   apply_record_op_id_ = op_id;
 }
 
+void RunningTransaction::SetApplyHybridTimes(HybridTime commit_ht, HybridTime log_ht) {
+  // Single-batch applies bypass SetApplyData (it's only called when apply_state.active()),
+  // which means apply_data_.log_ht stays at the default-constructed invalid HT. The CDC
+  // intent-retention check in HandleTransactionCleanup reads exactly that field, so without
+  // an explicit stamp here it always sees an invalid HT and refuses to honour
+  // --intents_min_seconds_to_retain. This setter is the minimum we need to stamp the times
+  // from the inbound TransactionApplyData onto the running transaction so the retention
+  // gating works for the common case.
+  apply_data_.commit_ht = commit_ht;
+  apply_data_.log_ht = log_ht;
+}
+
 bool RunningTransaction::ProcessingApply() const {
   return processing_apply_.load(std::memory_order_acquire);
 }
