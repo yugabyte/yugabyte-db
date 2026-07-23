@@ -1471,6 +1471,9 @@ Status ClusterAdminClient::ListAllMasters() {
 Status ClusterAdminClient::ListTabletServersLogLocations() {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
+  // Sort alive tservers first so unreachable (DEAD/unknown) nodes appear last,
+  // matching the ordering of list_all_tablet_servers.
+  SortListTabletServerEntries(servers);
 
   if (!servers.empty()) {
     cout << RightPadToUuidWidth("TS UUID") << kColumnSep
@@ -1480,17 +1483,38 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
   }
 
   for (const ListTabletServersResponsePB::Entry& server : servers) {
-    auto ts_uuid = server.instance_id().permanent_uuid();
+    const auto& ts_uuid = server.instance_id().permanent_uuid();
+    const auto ts_addr_str = FormatFirstHostPort(
+        server.registration().common().private_rpc_addresses());
 
-    HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS(ts_uuid));
+    // Skip RPCs to known-dead tservers and report them as unavailable so one
+    // unreachable node does not abort listing for the rest of the cluster.
+    if (server.has_alive() && !server.alive()) {
+      cout << ts_uuid << kColumnSep << ts_addr_str << kColumnSep << "N/A" << endl;
+      continue;
+    }
 
+    if (!server.has_registration() ||
+        server.registration().common().private_rpc_addresses().empty()) {
+      LOG(WARNING) << "Tablet server " << ts_uuid << " has no RPC address registered";
+      cout << ts_uuid << kColumnSep << ts_addr_str << kColumnSep << "N/A" << endl;
+      continue;
+    }
+
+    HostPort ts_addr = HostPortFromPB(server.registration().common().private_rpc_addresses(0));
     TabletServerServiceProxy ts_proxy(proxy_cache_.get(), ts_addr);
 
-    const auto resp = VERIFY_RESULT(InvokeRpc(
-        &TabletServerServiceProxy::GetLogLocation, ts_proxy, tserver::GetLogLocationRequestPB()));
+    auto resp = InvokeRpc(
+        &TabletServerServiceProxy::GetLogLocation, ts_proxy, tserver::GetLogLocationRequestPB());
+    if (!resp.ok()) {
+      LOG(WARNING) << "Unable to get log location from tablet server " << ts_uuid
+                   << " at " << ts_addr << ": " << resp.status();
+      cout << ts_uuid << kColumnSep << ts_addr_str << kColumnSep << "N/A" << endl;
+      continue;
+    }
     cout << ts_uuid << kColumnSep
-         << ts_addr << kColumnSep
-         << resp.log_location() << endl;
+         << ts_addr_str << kColumnSep
+         << resp->log_location() << endl;
   }
 
   return Status::OK();
