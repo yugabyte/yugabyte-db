@@ -1888,9 +1888,7 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 	}
 	else
 	{
-		/*
-		 * If we already have a PPI for this parameterization, just return it
-		 */
+		/* If we already have a PPI for this parameterization, just return it */
 		if ((ppi = find_param_path_info(baserel, required_outer)))
 			return ppi;
 	}
@@ -1965,6 +1963,7 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 
 	/* Estimate the number of rows returned by the parameterized scan */
 	rows = get_parameterized_baserel_size(root, baserel, sel_clauses);
+
 	/* And now we can build the ParamPathInfo */
 	ppi = makeNode(ParamPathInfo);
 	ppi->ppi_req_outer = required_outer;

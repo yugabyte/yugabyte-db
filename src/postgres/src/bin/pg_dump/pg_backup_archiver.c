@@ -3563,45 +3563,43 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 	else
 		ahprintf(AH, "SET row_security = off;\n");
 
+	static bool first_run = true;
+
+	if (AH->public.dopt->include_yb_metadata && first_run)
 	{
-		static bool first_run = true;
+		first_run = false;
 
-		if (AH->public.dopt->include_yb_metadata && first_run)
+		/* YB: these meta commands must run outside restricted mode. */
+		ybBeginUnrestrictedMeta(AH);
+		ahprintf(AH,
+				 "\n-- Set variable use_tablespaces (if not already set)\n"
+				 "\\if :{?use_tablespaces}\n"
+				 "\\else\n"
+				 "\\set use_tablespaces true\n"
+				 "\\endif\n");
+		ahprintf(AH,
+				 "\n-- Set variable use_roles (if not already set)\n"
+				 "\\if :{?use_roles}\n"
+				 "\\else\n"
+				 "\\set use_roles true\n"
+				 "\\endif\n");
+
+		/*
+		 * If the --create option is specified, the target database will be
+		 * created and connected to. The current connection is to another
+		 * database and we don't want to disable auto analyze on that.
+		 *
+		 * TODO: If --create is specified, disable auto analyze after the
+		 * target database is created and we connect to it.
+		 */
+		if (!AH->public.ropt->createDB)
 		{
-			first_run = false;
-
-			/* YB: these meta commands must run outside restricted mode. */
-			ybBeginUnrestrictedMeta(AH);
 			ahprintf(AH,
-					 "\n-- Set variable use_tablespaces (if not already set)\n"
-					 "\\if :{?use_tablespaces}\n"
-					 "\\else\n"
-					 "\\set use_tablespaces true\n"
-					 "\\endif\n");
-			ahprintf(AH,
-					 "\n-- Set variable use_roles (if not already set)\n"
-					 "\\if :{?use_roles}\n"
-					 "\\else\n"
-					 "\\set use_roles true\n"
-					 "\\endif\n");
-
-			/*
-			 * If the --create option is specified, the target database will be
-			 * created and connected to. The current connection is to another
-			 * database and we don't want to disable auto analyze on that.
-			 *
-			 * TODO: If --create is specified, disable auto analyze after the
-			 * target database is created and we connect to it.
-			 */
-			if (!AH->public.ropt->createDB)
-			{
-				ahprintf(AH,
-						 "\n-- YB: disable auto analyze to avoid conflicts with catalog changes\n");
-				YbBackwardCompatibleSetGuc(AH, "yb_disable_auto_analyze", "on", true);
-			}
-
-			ybEndUnrestrictedMeta(AH);
+					 "\n-- YB: disable auto analyze to avoid conflicts with catalog changes\n");
+			YbBackwardCompatibleSetGuc(AH, "yb_disable_auto_analyze", "on", true);
 		}
+
+		ybEndUnrestrictedMeta(AH);
 	}
 
 	/*
@@ -4272,6 +4270,13 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 				pg_fatal("AH->sqlparse not 0 before printing definition");
 			AH->outputKind = OUTPUT_OTHERDATA;
 			ahprintf(AH, "%s\n\n", te->defn);
+			/*
+			 * We've ended on a statement boundary or whitespace (after all,
+			 * in upstream Postgres, this sequence of SQL statements is sent
+			 * to the backend as one block), so reset the state of sqlparse,
+			 * which is normally meant to be stitching together strings with
+			 * arbitrary boundaries.
+			 */
 			memset(&AH->sqlparse, 0, sizeof(AH->sqlparse));
 			AH->outputKind = yb_saved_output_kind;
 		}

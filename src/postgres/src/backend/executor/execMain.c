@@ -2001,7 +2001,7 @@ ExecPartitionCheckEmitError(ResultRelInfo *resultRelInfo,
 							TupleTableSlot *slot,
 							EState *estate)
 {
-	Relation	rel;
+	Oid			root_relid;
 	TupleDesc	tupdesc;
 	char	   *val_desc;
 	Bitmapset  *modifiedCols;
@@ -2018,7 +2018,7 @@ ExecPartitionCheckEmitError(ResultRelInfo *resultRelInfo,
 		TupleDesc	old_tupdesc;
 		AttrMap    *map;
 
-		rel = rootrel->ri_RelationDesc;
+		root_relid = RelationGetRelid(rootrel->ri_RelationDesc);
 		tupdesc = RelationGetDescr(rootrel->ri_RelationDesc);
 
 		old_tupdesc = RelationGetDescr(resultRelInfo->ri_RelationDesc);
@@ -2037,13 +2037,13 @@ ExecPartitionCheckEmitError(ResultRelInfo *resultRelInfo,
 	}
 	else
 	{
-		rel = resultRelInfo->ri_RelationDesc;
+		root_relid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
 		tupdesc = RelationGetDescr(resultRelInfo->ri_RelationDesc);
 		modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo, estate),
 								 ExecGetUpdatedCols(resultRelInfo, estate));
 	}
 
-	val_desc = ExecBuildSlotValueDescription(RelationGetRelid(rel),
+	val_desc = ExecBuildSlotValueDescription(root_relid,
 											 slot,
 											 tupdesc,
 											 modifiedCols,
@@ -2440,7 +2440,6 @@ ExecWithCheckOptions(WCOKind kind, ResultRelInfo *resultRelInfo,
 					else
 						modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo, estate),
 												 ExecGetUpdatedCols(resultRelInfo, estate));
-
 					val_desc = ExecBuildSlotValueDescription(RelationGetRelid(rel),
 															 slot,
 															 tupdesc,

@@ -158,6 +158,11 @@ static void accumulate_append_subpath(Path *path,
 									  List **subpaths,
 									  List **special_subpaths,
 									  List **child_append_relid_sets);
+/*
+ * YB: exposed for use in createplan.c:
+ * static Path *get_singleton_append_subpath(Path *path,
+ *										  List **child_append_relid_sets);
+ */
 static void set_dummy_rel_pathlist(RelOptInfo *rel);
 static void set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 								  Index rti, RangeTblEntry *rte);
@@ -2434,6 +2439,7 @@ accumulate_append_subpath(Path *path, List **subpaths, List **special_subpaths,
  *
  * Note: 'path' must not be a parallel-aware path.
  */
+/* YB: exposed for use in createplan.c */
 Path *
 get_singleton_append_subpath(Path *path, List **child_append_relid_sets)
 {

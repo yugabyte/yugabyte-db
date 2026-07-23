@@ -1398,6 +1398,40 @@ CatalogCacheInitializeCache(CatCache *cache)
 }
 
 /*
+ * YbCatalogCacheAddListToBucket
+ *		Add a completed CatCList to the cache's hashed list buckets, lazily
+ *		allocating cc_lbucket[] on first use and enlarging it when it becomes
+ *		too full.
+ */
+static inline void
+YbCatalogCacheAddListToBucket(CatCache *cache, CatCList *cl, uint32 hashValue)
+{
+	if (cache->cc_lbucket == NULL)
+	{
+		/* Arbitrary initial size --- must be a power of 2 */
+		int			nbuckets = 16;
+
+		cache->cc_lbucket = (dlist_head *)
+			MemoryContextAllocZero(CacheMemoryContext,
+								   nbuckets * sizeof(dlist_head));
+		/* Don't set cc_nlbuckets if we get OOM allocating cc_lbucket */
+		cache->cc_nlbuckets = nbuckets;
+	}
+	else
+	{
+		/*
+		 * If the hash table has become too full, enlarge the buckets array.
+		 * Quite arbitrarily, we enlarge when fill factor > 2.
+		 */
+		if (cache->cc_nlist > cache->cc_nlbuckets * 2)
+			RehashCatCacheLists(cache);
+	}
+	dlist_push_head(&cache->cc_lbucket[HASH_INDEX(hashValue, cache->cc_nlbuckets)],
+					&cl->cache_elem);
+	cache->cc_nlist++;
+}
+
+/*
  * YugaByte utility method to set the data for a cache list entry.
  * Used during InitCatCachePhase2 (specifically for the procedure name list
  * and for rewrite rules).
@@ -1629,22 +1663,7 @@ SetCatCacheList(CatCache *cache,
 	}
 	Assert(i == nmembers);
 
-	/*
-	 * YB_TODO_PG19MERGE: PG replaced cc_lists with a hashed cc_lbucket[].
-	 * Allocate lazily and push into the correct bucket.
-	 */
-	if (cache->cc_lbucket == NULL)
-	{
-		int			nbuckets = 16;
-
-		cache->cc_lbucket = (dlist_head *)
-			MemoryContextAllocZero(CacheMemoryContext,
-								   nbuckets * sizeof(dlist_head));
-		cache->cc_nlbuckets = nbuckets;
-	}
-	dlist_push_head(&cache->cc_lbucket[HASH_INDEX(lHashValue, cache->cc_nlbuckets)],
-					&cl->cache_elem);
-	cache->cc_nlist++;
+	YbCatalogCacheAddListToBucket(cache, cl, lHashValue);
 }
 
 /*
@@ -2501,22 +2520,7 @@ YbBuildCatCacheListFromPreloadedCache(CatCache *cache, int nkeys,
 	}
 	Assert(i == nmembers);
 
-	/*
-	 * YB_TODO_PG19MERGE: PG replaced cc_lists with a hashed cc_lbucket[].
-	 * Allocate lazily and push into the correct bucket.
-	 */
-	if (cache->cc_lbucket == NULL)
-	{
-		int			nbuckets = 16;
-
-		cache->cc_lbucket = (dlist_head *)
-			MemoryContextAllocZero(CacheMemoryContext,
-								   nbuckets * sizeof(dlist_head));
-		cache->cc_nlbuckets = nbuckets;
-	}
-	dlist_push_head(&cache->cc_lbucket[HASH_INDEX(lHashValue, cache->cc_nlbuckets)],
-					&cl->cache_elem);
-	cache->cc_nlist++;
+	YbCatalogCacheAddListToBucket(cache, cl, lHashValue);
 
 	cl->refcount++;
 	ResourceOwnerEnlarge(CurrentResourceOwner);
@@ -3362,7 +3366,6 @@ RelationHasCachedLists(Relation relation)
 	{
 		CatCache   *ccp = slist_container(CatCache, cc_next, iter.cur);
 
-		/* YB_TODO_PG19MERGE: cc_lists -> cc_lbucket[]; check via cc_nlist counter. */
 		if (ccp->cc_reloid == reloid && ccp->cc_nlist > 0)
 			return true;
 	}

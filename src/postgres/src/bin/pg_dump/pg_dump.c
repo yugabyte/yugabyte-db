@@ -918,6 +918,14 @@ main(int argc, char **argv)
 	 * callers should pass `--sequence-data` instead.
 	 */
 #if 0
+	/*
+	 * Binary upgrade mode implies dumping sequence data even in schema-only
+	 * mode.  This is not exposed as a separate option, but kept separate
+	 * internally for clarity.
+	 * YB: Before, during, and after online upgrade, we use the same sequence
+	 * data table, so we don't want to write anything to sequence data during
+	 * the restore.
+	 */
 	if ((!IsYugabyteEnabled && dopt.binary_upgrade) || dopt.include_yb_metadata)
 		dopt.sequence_data = 1;
 #endif
@@ -18125,18 +18133,18 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 									 tbinfo->attrdefs[j]->dobj.dump &&
 									 !tbinfo->attrdefs[j]->separate);
 
-				/*
-				 * Not Null constraint --- print it if it is locally
-				 * defined, or if binary upgrade.  (In the latter case, we
-				 * reset conislocal below.)
-				 * YB: For backups, follow binary-upgrade mode
-				 * for inherited child tables to preserve col order.
-				 */
-				print_notnull = (tbinfo->notnull_constrs[j] != NULL &&
-								 (tbinfo->notnull_islocal[j] ||
-								  dopt->binary_upgrade ||
-								  tbinfo->ispartition ||
-								  dopt->include_yb_metadata));
+					/*
+					 * Not Null constraint --- print it if it is locally
+					 * defined, or if binary upgrade.  (In the latter case, we
+					 * reset conislocal below.)
+					 * YB: For backups, follow binary-upgrade mode
+					 * for inherited child tables to preserve col order.
+					 */
+					print_notnull = (tbinfo->notnull_constrs[j] != NULL &&
+									 (tbinfo->notnull_islocal[j] ||
+									  dopt->binary_upgrade ||
+									  tbinfo->ispartition ||
+									  dopt->include_yb_metadata));
 
 					/*
 					 * Skip column if fully defined by reloftype, except in
@@ -19891,14 +19899,14 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 		}
 		else
 		{
-			appendPQExpBuffer(q, "%s ",
-							  coninfo->contype == 'p' ? "PRIMARY KEY" : "UNIQUE");
+			appendPQExpBufferStr(q,
+								 coninfo->contype == 'p' ? "PRIMARY KEY" : "UNIQUE");
 			/*
 			 * YB: See note on #13603 #24260 above.
 			 */
 			if (dump_index_for_constraint)
 			{
-				appendPQExpBuffer(q, "USING INDEX %s",
+				appendPQExpBuffer(q, " USING INDEX %s",
 								  fmtId(indxinfo->dobj.name));
 			}
 			/*

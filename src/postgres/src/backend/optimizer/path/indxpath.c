@@ -141,6 +141,10 @@ static PathClauseUsage *classify_index_clause_usage(Path *path,
 static void find_indexpath_quals(Path *bitmapqual, List **quals, List **preds);
 static int	find_list_position(Node *node, List **nodelist);
 static bool check_index_only(RelOptInfo *rel, IndexOptInfo *index);
+/*
+ * YB: exposed for use in costsize.c and selfuncs.c:
+ * static double get_loop_count(PlannerInfo *root, Index cur_relid, Relids outer_relids);
+ */
 static double adjust_rowcount_for_semijoins(PlannerInfo *root,
 											Index cur_relid,
 											Index outer_relid,
@@ -664,7 +668,6 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 {
 	List	   *indexpaths;
 	bool		skip_nonnative_saop = false;
-	bool		skip_lower_saop = false;
 	ListCell   *lc;
 
 	Relids		batchedrelids = NULL;
@@ -752,7 +755,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 															  index->rel->relids),
 													batchedrelids,
 													rel,
-													NULL /* sjinfo */);
+													NULL /* sjinfo */ );
 
 		/*
 		 * Anything in joininfo that can be pushed down to this scan
@@ -839,34 +842,14 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 
 	/*
 	 * Build simple index paths using the clauses.  Allow ScalarArrayOpExpr
-	 * clauses only if the index AM supports them natively, and skip any such
-	 * clauses for index columns after the first (so that we produce ordered
-	 * paths if possible).
+	 * clauses only if the index AM supports them natively.
 	 */
-	/* YB_TODO_PG19MERGE: PG19 dropped the trailing skip_lower_saop out-param. */
 	indexpaths = build_index_paths(root, rel,
 								   index, clauses,
 								   NIL /* yb_bitmap_idx_pushdowns */ ,
 								   index->predOK,
 								   ST_ANYSCAN,
 								   &skip_nonnative_saop);
-
-	/*
-	 * If we skipped any lower-order ScalarArrayOpExprs on an index with an AM
-	 * that supports them, then try again including those clauses. This will
-	 * produce paths with more selectivity but no ordering.
-	 */
-	if (skip_lower_saop)
-	{
-		/* YB_TODO_PG19MERGE: PG19 dropped the trailing skip_lower_saop out-param. */
-		indexpaths = list_concat(indexpaths,
-								 build_index_paths(root, rel,
-												   index, clauses,
-												   NIL /* yb_bitmap_idx_pushdowns */ ,
-												   index->predOK,
-												   ST_ANYSCAN,
-												   &skip_nonnative_saop));
-	}
 
 	/*
 	 * Submit all the ones that can form plain IndexScan plans to add_path. (A
@@ -890,8 +873,12 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			add_path(rel, (Path *) ipath);
 		}
 
+		/*
+		 * YB_TODO_PG19MERGE: PG removed UpperUniquePath (renamed to UniquePath to
+		 * compile); distinct-pushdown task should replace this indirect marker.
+		 */
 		if (((index->amhasgetbitmap || index->yb_amhasgetbitmap) &&
-			 !IsA(ipath, UniquePath) /* YB_TODO_PG19MERGE */) &&
+			 !IsA(ipath, UniquePath)) &&
 			(ipath->path.pathkeys == NIL ||
 			 ipath->indexselectivity < 1.0))
 			*bitindexpaths = lappend(*bitindexpaths, ipath);
@@ -1082,28 +1069,6 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 								   &skip_nonnative_saop);
 
 	/*
-	 * YB_TODO_PG19MERGE: upstream PG commit 5bf748b86bc6786a3fc57fc7ce296c37da6564b0
-	 * removed skip_lower_saop and the block below. Does this affect YB?
-	 */
-#if 0
-	/*
-	 * If we skipped any lower-order ScalarArrayOpExprs on an index with an AM
-	 * that supports them, then try again including those clauses.  This will
-	 * produce paths with more selectivity but no ordering.
-	 */
-	if (skip_lower_saop)
-	{
-		indexpaths = list_concat(indexpaths,
-								 build_index_paths(root, rel,
-												   index, clauses,
-												   yb_bitmap_idx_pushdowns,
-												   index->predOK,
-												   ST_ANYSCAN,
-												   &skip_nonnative_saop,
-												   NULL));
-	}
-#endif
-	/*
 	 * Submit all the ones that can form plain IndexScan plans to add_path. (A
 	 * plain IndexPath can represent either a plain IndexScan or an
 	 * IndexOnlyScan, but for our purposes here that distinction does not
@@ -1122,8 +1087,12 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		if (index->amhasgettuple)
 			add_path(rel, (Path *) ipath);
 
+		/*
+		 * YB_TODO_PG19MERGE: PG removed UpperUniquePath (renamed to UniquePath to
+		 * compile); distinct-pushdown task should replace this indirect marker.
+		 */
 		if (((index->amhasgetbitmap || index->yb_amhasgetbitmap) &&
-			 !IsA(ipath, UniquePath) /* YB_TODO_PG19MERGE */) &&
+			 !IsA(ipath, UniquePath)) &&
 			(ipath->path.pathkeys == NIL ||
 			 ipath->indexselectivity < 1.0))
 			*bitindexpaths = lappend(*bitindexpaths, ipath);
@@ -1148,10 +1117,7 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 
 /*
  * Return TRUE if yb_hash_code() is LHS input, FALSE otherwise.
- * YB_TODO_PG19MERGE: only caller is currently under #if 0 pending PG19
- * saop-skip-lower restructuring; keep the helper but silence the unused warning.
  */
-pg_attribute_unused()
 static bool
 yb_hash_code_on_left(ScalarArrayOpExpr *saop)
 {
@@ -1283,6 +1249,14 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			IndexClause *iclause = (IndexClause *) lfirst(lc);
 			RestrictInfo *rinfo = iclause->rinfo;
 
+			/*
+			 * YB: Do not consider SAOP exprs with yb_hash_code() in the LHS
+			 * as index clauses, e.g. "WHERE yb_hash_code(i) in (1, 2, 3)".
+			 */
+			if (IsA(rinfo->clause, ScalarArrayOpExpr) &&
+				yb_hash_code_on_left((ScalarArrayOpExpr *) (rinfo->clause)))
+				continue;
+
 			if (skip_nonnative_saop && !index->amsearcharray &&
 				IsA(rinfo->clause, ScalarArrayOpExpr))
 			{
@@ -1295,51 +1269,6 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 				 */
 				*skip_nonnative_saop = true;
 				continue;
-				/*
-				 * YB_TODO_PG19MERGE: upstream PG commit
-				 * 5bf748b86bc6786a3fc57fc7ce296c37da6564b0 removed
-				 * `skip_lower_saop`. YB code below needs to updated.
-				 */
-#if 0
-				/*
-				 * YB: Do not consider SAOP exprs with yb_hash_code() in the LHS as index clauses,
-				 * e.g. "WHERE yb_hash_code(i) in (1, 2, 3)".
-				*/
-				if (yb_hash_code_on_left((ScalarArrayOpExpr *) (rinfo->clause)))
-					continue;
-
-				if (!index->amsearcharray)
-				{
-					if (skip_nonnative_saop)
-					{
-						/* Ignore because not supported by index */
-						*skip_nonnative_saop = true;
-						continue;
-					}
-					/* Caller had better intend this only for bitmap scan */
-					Assert(scantype == ST_BITMAPSCAN);
-				}
-				/*
-				 * YB: No reason to believe lower saop prevents ordering.
-				 * LSM index uses skip based scan, a machinery that also
-				 * enables distinct index scans.
-				 * Moreover, LSM index supports scalar array ops as
-				 * index clauses without sacrificing ordering.
-				 */
-				bool		is_yb_index = (IsYugaByteEnabled() &&
-										   index->relam == LSM_AM_OID);
-
-				if (!is_yb_index && indexcol > 0)
-				{
-					if (skip_lower_saop)
-					{
-						/* Caller doesn't want to lose index ordering */
-						*skip_lower_saop = true;
-						continue;
-					}
-					found_lower_saop_clause = true;
-				}
-#endif
 			}
 
 			/* OK to include this clause */
@@ -2547,8 +2476,12 @@ choose_bitmap_and(PlannerInfo *root, RelOptInfo *rel, List *paths)
 	{
 		Path	   *ipath = (Path *) lfirst(l);
 
-		/* YB: TODO(#21039): Support Distinct Bitmap Scans */
-		if (IsA(ipath, UniquePath) /* YB_TODO_PG19MERGE */)
+		/*
+		 * YB: TODO(#21039): Support Distinct Bitmap Scans.
+		 * YB_TODO_PG19MERGE: PG removed UpperUniquePath (renamed to UniquePath to
+		 * compile); distinct-pushdown task should replace this indirect marker.
+		 */
+		if (IsA(ipath, UniquePath))
 			continue;
 
 		pathinfo = classify_index_clause_usage(ipath, &clauselist);
@@ -3081,6 +3014,7 @@ check_index_only(RelOptInfo *rel, IndexOptInfo *index)
  * estimates before it begins to compute paths, or at least before it
  * calls create_index_paths().
  */
+/* YB: exposed for use in costsize.c and selfuncs.c */
 double
 get_loop_count(PlannerInfo *root, Index cur_relid, Relids outer_relids)
 {
@@ -5563,7 +5497,7 @@ yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index)
 															bms_union(index->rel->relids, otherrels),
 															otherrels,
 															index->rel,
-															NULL /* sjinfo */));
+															NULL /* sjinfo */ ));
 
 	clause_list = NIL;
 	foreach(lc, joininfo)
