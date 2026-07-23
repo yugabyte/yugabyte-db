@@ -32,9 +32,13 @@ CONFIG_EMBEDED_NAME:=$(CURDIR)/pkg/config/yba-ctl.yml
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 
 # get the perf advisor version to bundle
-PERF_ADVISOR_VERSION ?= 1.0.0-b23
+PERF_ADVISOR_VERSION ?= 1.2.0-b16
 PA_BINARY_NAME ?= perf_advisor-$(PERF_ADVISOR_VERSION).tar.gz
 PA_BINARY_URL := https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/perf-advisor/$(PERF_ADVISOR_VERSION)/$(PA_BINARY_NAME)
+PA_BINARY_SHA_URL := $(PA_BINARY_URL).sha
+
+# Prefer coreutils' sha1sum (Linux); fall back to `shasum -a 1` (macOS).
+SHA1SUM ?= $(shell command -v sha1sum >/dev/null 2>&1 && echo sha1sum || echo shasum -a 1)
 
 #pre-reqs
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
@@ -60,6 +64,10 @@ YBDB_BINARY_URL ?= https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/rel
 
 
 
+# Remove partially built targets on recipe failure so the next build re-runs
+# the recipe from scratch instead of picking up a stale/truncated file.
+.DELETE_ON_ERROR:
+
 all: test package
 
 prereqs: postgres jdk perf_advisor
@@ -69,23 +77,42 @@ echo:
 
 perf_advisor: ${PREREQS_DIR}/${PA_BINARY_NAME}
 ${PREREQS_DIR}/${PA_BINARY_NAME}:
-	curl -Lo $@ ${PA_BINARY_URL}
+	curl -fLo $@ ${PA_BINARY_URL}
 	@echo downloaded $@
+	@echo "attempting to download SHA1 checksum from ${PA_BINARY_SHA_URL}"
+	@if curl -fLo $@.sha ${PA_BINARY_SHA_URL}; then \
+	    actual=$$($(SHA1SUM) $@ | awk '{print $$1}'); \
+	    expected=$$(awk '{print $$1}' $@.sha); \
+	    rm -f $@.sha; \
+	    if [ -z "$$expected" ]; then \
+	        echo "ERROR: could not parse SHA1 from $(PA_BINARY_NAME).sha"; \
+	        exit 1; \
+	    fi; \
+	    if [ "$$actual" != "$$expected" ]; then \
+	        echo "ERROR: SHA1 mismatch for $(PA_BINARY_NAME): expected=$$expected actual=$$actual"; \
+	        exit 1; \
+	    fi; \
+	    echo "SHA1 verified for $(PA_BINARY_NAME) ($$expected)"; \
+	else \
+	    rm -f $@.sha; \
+	    echo "ERROR: could not download ${PA_BINARY_SHA_URL}"; \
+	    exit 1; \
+	fi
 
 postgres: ${PREREQS_DIR}/${PG_BINARY_NAME}
 ${PREREQS_DIR}/${PG_BINARY_NAME}:
-	curl -Lo $@ ${PG_BINARY_URL}
+	curl -fLo $@ ${PG_BINARY_URL}
 	@echo downloaded $@
 
 
 jdk: ${PREREQS_DIR}/${JDK_BINARY_NAME}
 ${PREREQS_DIR}/${JDK_BINARY_NAME}:
-	curl -Lo $@ ${JDK_BINARY_URL}
+	curl -fLo $@ ${JDK_BINARY_URL}
 	@echo downloaded $@
 
 ybdb: ${PREREQS_DIR}/${YBDB_BINARY_NAME}
 ${PREREQS_DIR}/${YBDB_BINARY_NAME}:
-	curl -Lo $@ ${YBDB_BINARY_URL}
+	curl -fLo $@ ${YBDB_BINARY_URL}
 	@echo downloaded $@
 
 yba-ctl: config test ${BIN_DIR}/${BIN_NAME}
