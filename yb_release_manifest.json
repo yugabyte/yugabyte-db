@@ -102,10 +102,12 @@
   },
   "yugabyte-client": {
     "%symlinks%": {
+      "bin/ysql_dump": "../postgres/bin/ysql_dump",
       "bin/ysqlsh": "../postgres/bin/ysqlsh"
     },
     ".": ["$BUILD_ROOT/version_metadata.json"],
     "bin": [
+      "$BUILD_ROOT/postgres/bin/ysql_dump",
       "$BUILD_ROOT/postgres/bin/ysqlsh",
       "build-support/post_install.sh",
       "scripts/installation/bin/fips_install.sh",
