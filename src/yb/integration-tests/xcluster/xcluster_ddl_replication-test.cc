@@ -72,6 +72,7 @@ DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 DECLARE_bool(TEST_block_apply_intent);
+DECLARE_int32(TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_pause_at_start_of_setup_replication_group_ms);
 DECLARE_string(TEST_skip_async_insert_packed_schema_for_tablet_id);
@@ -5493,6 +5494,37 @@ TEST_F(XClusterDDLReplicationTest, AddForeignKeySkipsValidationOnTarget) {
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_EQ(
       ASSERT_RESULT(consumer_conn_->FetchRow<int32_t>("SELECT id FROM parent WHERE id = 6")), 6);
+}
+
+// Regression for the SchedulePostTabletCreationTasks check-then-act race. Concurrent heartbeat
+// threads can each schedule AddTableToXClusterTargetTask for the same multi-tablet table, and
+// the duplicates fail with "N:1 replication topology not supported", aborting the target CREATE.
+TEST_F(XClusterDDLReplicationTest, CreateMultiTabletTableDoesNotScheduleDuplicateTasks) {
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.replication_factor = 3;
+  ASSERT_OK(SetUpClustersAndReplication(params));
+  ASSERT_OK(MoveDdlQueueTabletLeaderToPgProxy(consumer_cluster_));
+
+  // The normal check-then-act window is tiny, so we widen it with a delay to make the real
+  // concurrent heartbeat race reproduce reliably.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms) =
+      3000;
+
+  StringWaiterLogSink n1_error_sink("N:1 replication topology not supported");
+
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE many_tablets (key int PRIMARY KEY) SPLIT INTO 16 TABLETS;"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        SCHECK(
+            !n1_error_sink.IsEventOccurred(), IllegalState,
+            "Duplicate AddTableToXClusterTargetTask scheduled for the target table: hit 'N:1 "
+            "replication topology not supported'.");
+        return VERIFY_RESULT(CountConsumerTables({"many_tablets"})) == 1;
+      },
+      180s * kTimeMultiplier, "CREATE TABLE replicates to target"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 }
 
 }  // namespace yb

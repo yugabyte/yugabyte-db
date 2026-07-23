@@ -909,6 +909,15 @@ Status TableInfo::SetIsBackfilling() {
   return Status::OK();
 }
 
+bool TableInfo::TrySetPostTabletCreateTasksScheduled() {
+  bool expected = false;
+  return post_tablet_create_tasks_scheduled_.compare_exchange_strong(expected, true);
+}
+
+void TableInfo::ClearPostTabletCreateTasksScheduled() {
+  post_tablet_create_tasks_scheduled_.store(false);
+}
+
 void TableInfo::SetCreateTableErrorStatus(const Status& status) {
   VLOG_WITH_FUNC(1) << status;
   std::lock_guard l(lock_);
