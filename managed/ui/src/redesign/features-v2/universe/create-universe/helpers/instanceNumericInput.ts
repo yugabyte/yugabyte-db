@@ -1,22 +1,17 @@
+// Parse number inputs; empty -> null. Min/max checked on submit.
+
 export const sanitizeUnsignedIntegerString = (raw: string): string => {
   return raw.replace(/\D/g, '');
 };
 
-export const parsePositiveIntegerInput = (
-  raw: string,
-  defaultValue: number,
-  max?: number
-): number => {
+export const parsePositiveIntegerInput = (raw: string): number | null => {
   const digits = sanitizeUnsignedIntegerString(raw);
   if (digits === '') {
-    return defaultValue;
+    return null;
   }
-  let n = parseInt(digits, 10);
-  if (!Number.isFinite(n) || n <= 0) {
-    return defaultValue;
-  }
-  if (max !== undefined && n > max) {
-    n = max;
+  const n = parseInt(digits, 10);
+  if (!Number.isFinite(n)) {
+    return null;
   }
   return n;
 };
@@ -35,23 +30,18 @@ export const sanitizePositiveDecimalString = (raw: string): string => {
   return out;
 };
 
-export const parsePositiveDecimalInput = (
-  raw: string,
-  defaultValue: number,
-  min: number,
-  max: number
-): number => {
+export const parsePositiveDecimalInput = (raw: string): number | null => {
   let s = sanitizePositiveDecimalString(raw);
   const parts = s.split('.');
   if (parts.length > 2) {
     s = parts[0] + '.' + parts.slice(1).join('');
   }
   if (s === '' || s === '.') {
-    return defaultValue;
+    return null;
   }
   const n = Number(s);
-  if (!Number.isFinite(n) || n <= 0) {
-    return defaultValue;
+  if (!Number.isFinite(n) || n < 0) {
+    return null;
   }
-  return Math.min(max, Math.max(min, n));
+  return n;
 };

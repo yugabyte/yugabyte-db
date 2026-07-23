@@ -1,6 +1,5 @@
 import { FC, useEffect } from 'react';
 import { useQuery } from 'react-query';
-import { useUpdateEffect } from 'react-use';
 import { Trans, useTranslation } from 'react-i18next';
 import { Controller, useFormContext } from 'react-hook-form';
 import {
@@ -15,10 +14,7 @@ import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/ut
 import {
   getDeviceInfoFromInstance,
   getIopsByStorageType,
-  getMaxDiskIops,
-  getMinDiskIops,
   getStorageTypeOptions,
-  getThroughputByIops,
   getThroughputByStorageType,
   useVolumeControls
 } from '@app/redesign/features-v2/universe/create-universe/fields/volume-info/VolumeInfoFieldHelper';
@@ -86,7 +82,7 @@ const menuProps = {
 export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   isEditMode = false,
   isMaster,
-  maxVolumeCount,
+  maxVolumeCount: _maxVolumeCount,
   disabled,
   provider,
   useDedicatedNodes,
@@ -96,15 +92,34 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   const dataTag = isMaster ? 'Master' : 'TServer';
 
   // watchers
-  const { watch, control, setValue } = useFormContext<InstanceSettingProps>();
+  const {
+    watch,
+    control,
+    setValue,
+    getValues,
+    formState: { errors, isSubmitted }
+  } = useFormContext<InstanceSettingProps>();
   const fieldValue = isMaster ? watch(MASTER_DEVICE_INFO_FIELD) : watch(DEVICE_INFO_FIELD);
   const instanceType = isMaster ? watch(MASTER_INSTANCE_TYPE_FIELD) : watch(INSTANCE_TYPE_FIELD);
   const cpuArch = watch(CPU_ARCHITECTURE_FIELD);
 
+  const deviceFieldErrors = (isMaster ? errors.masterDeviceInfo : errors.deviceInfo) as
+    | {
+        volumeSize?: { message?: string };
+        numVolumes?: { message?: string };
+        diskIops?: { message?: string };
+        throughput?: { message?: string };
+      }
+    | undefined;
+
+  // validate after submit so errors clear while typing
+  const setDeviceInfo = (next: NonNullable<typeof fieldValue>) => {
+    setValue(UPDATE_FIELD, next, { shouldValidate: isSubmitted, shouldDirty: true });
+  };
+
   const {
     numVolumesDisable,
     volumeSizeDisable,
-    minVolumeSize,
     disableIops,
     disableThroughput,
     disableStorageType
@@ -145,116 +160,46 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   const convertToString = (str: string | number) => str?.toString() ?? '';
 
-  //reset methods
-  const resetThroughput = () => {
-    if (!fieldValue) return;
-    const { storageType, throughput, diskIops, volumeSize } = fieldValue;
-    if (
-      storageType &&
-      diskIops &&
-      [
-        StorageType.IO1,
-        StorageType.IO2,
-        StorageType.GP3,
-        StorageType.UltraSSD_LRS,
-        StorageType.PremiumV2_LRS
-      ].includes(storageType)
-    ) {
-      //resetting throughput
-      const throughputVal = getThroughputByIops(Number(throughput), diskIops, storageType);
-      setValue(UPDATE_FIELD, {
-        ...fieldValue,
-        throughput: throughputVal,
-        volumeSize: volumeSize < minVolumeSize ? minVolumeSize : volumeSize
-      });
-    } else
-      setValue(UPDATE_FIELD, {
-        ...fieldValue,
-        volumeSize: volumeSize < minVolumeSize ? minVolumeSize : volumeSize
-      });
-  };
-
   //field actions
   const onStorageTypeChanged = (storageType: StorageType) => {
-    if (!fieldValue) return;
+    const current = getValues(UPDATE_FIELD);
+    if (!current) return;
     const throughput = getThroughputByStorageType(storageType);
     const diskIops = getIopsByStorageType(storageType);
-    setValue(UPDATE_FIELD, { ...fieldValue, throughput, diskIops, storageType });
+    setDeviceInfo({ ...current, throughput, diskIops, storageType });
   };
 
   const onVolumeSizeChanged = (value: any) => {
-    if (!fieldValue || !instance) return;
-    const fromInstance = getDeviceInfoFromInstance(instance, providerRuntimeConfigs)?.volumeSize;
-    const parsedInstanceVol = Number(fromInstance);
-    const freshDefault = Math.max(
-      minVolumeSize,
-      Number.isFinite(parsedInstanceVol) && parsedInstanceVol > 0
-        ? parsedInstanceVol
-        : fieldValue.volumeSize && fieldValue.volumeSize > 0
-          ? fieldValue.volumeSize
-          : minVolumeSize
-    );
-    const volumeSize = Math.max(
-      minVolumeSize,
-      parsePositiveIntegerInput(String(value), freshDefault)
-    );
-    setValue(UPDATE_FIELD, {
-      ...fieldValue,
+    const current = getValues(UPDATE_FIELD);
+    if (!current || !instance) return;
+    const volumeSize = parsePositiveIntegerInput(String(value));
+    setDeviceInfo({
+      ...current,
       volumeSize
     });
   };
 
-  /*
-    When storage type is UltraSSD_LRS, disk IOPS is calculated based on volume size.
-    Hence, when volume size is changed, disk IOPS should be recalculated.
-  */
-  useUpdateEffect(() => {
-    if (
-      fieldValue?.storageType === StorageType.UltraSSD_LRS ||
-      fieldValue?.storageType === StorageType.PremiumV2_LRS
-    ) {
-      onDiskIopsChanged(fieldValue?.diskIops);
-    }
-  }, [fieldValue?.volumeSize]);
-
   const onDiskIopsChanged = (value: any) => {
-    if (!fieldValue) return;
-    const { storageType, volumeSize } = fieldValue;
-    if (!storageType) return;
-    const maxDiskIops = getMaxDiskIops(storageType, volumeSize);
-    const minDiskIops = getMinDiskIops(storageType, volumeSize);
-    const defaultIops = getIopsByStorageType(storageType) ?? (minDiskIops > 0 ? minDiskIops : 1);
-    const parsed = parsePositiveIntegerInput(String(value), defaultIops, maxDiskIops);
-    const diskIops = Math.max(minDiskIops, Math.min(maxDiskIops, parsed));
-    setValue(UPDATE_FIELD, { ...fieldValue, diskIops });
+    const current = getValues(UPDATE_FIELD);
+    if (!current) return;
+    if (!current.storageType) return;
+    const diskIops = parsePositiveIntegerInput(String(value ?? ''));
+    setDeviceInfo({ ...current, diskIops });
   };
 
   const onThroughputChange = (value: any) => {
-    if (!fieldValue) return;
-    const { storageType, diskIops } = fieldValue;
-    if (!diskIops || !storageType) return;
-    const defaultThroughput =
-      getThroughputByStorageType(storageType) ??
-      (fieldValue.throughput && fieldValue.throughput > 0 ? fieldValue.throughput : 125);
-    const numeric = parsePositiveIntegerInput(String(value), defaultThroughput);
-    const throughput = getThroughputByIops(numeric, diskIops, storageType);
-    setValue(UPDATE_FIELD, { ...fieldValue, throughput });
+    const current = getValues(UPDATE_FIELD);
+    if (!current) return;
+    if (!current.storageType) return;
+    const throughput = parsePositiveIntegerInput(String(value));
+    setDeviceInfo({ ...current, throughput });
   };
 
   const onNumVolumesChanged = (numVolumes: any) => {
-    if (!fieldValue || !instance) return;
-    const fromInstance = getDeviceInfoFromInstance(instance, providerRuntimeConfigs)?.numVolumes;
-    const parsedInstanceNv = Number(fromInstance);
-    const freshDefault = Math.max(
-      1,
-      Number.isFinite(parsedInstanceNv) && parsedInstanceNv > 0
-        ? parsedInstanceNv
-        : fieldValue.numVolumes && fieldValue.numVolumes > 0
-          ? fieldValue.numVolumes
-          : 1
-    );
-    const volumeCount = parsePositiveIntegerInput(String(numVolumes), freshDefault, maxVolumeCount);
-    setValue(UPDATE_FIELD, { ...fieldValue, numVolumes: volumeCount });
+    const current = getValues(UPDATE_FIELD);
+    if (!current || !instance) return;
+    const volumeCount = parsePositiveIntegerInput(String(numVolumes));
+    setDeviceInfo({ ...current, numVolumes: volumeCount });
   };
 
   //render
@@ -296,15 +241,16 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             <YBLabel>{t('createUniverseV2.instanceSettings.volumeInfoPerNode')}</YBLabel>
           </Box>
         </Box>
-        <Box sx={{ gap: '16px', display: 'flex' }}>
+        <Box sx={{ gap: '16px', display: 'flex', alignItems: 'flex-start' }}>
           <Box flex={1} sx={{ width: 198 }}>
             <YBInput
               type="number"
               fullWidth
               disabled={fixedNumVolumes || numVolumesDisable || isEphemeralStorage || disabled}
+              error={!!deviceFieldErrors?.numVolumes}
+              helperText={deviceFieldErrors?.numVolumes?.message}
               slotProps={{
                 htmlInput: {
-                  min: 1,
                   'data-testid': `VolumeInfoField-${dataTag}-VolumeInput`,
                   disabled: fixedNumVolumes || numVolumesDisable || isEphemeralStorage || disabled
                 }
@@ -316,38 +262,36 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             />
           </Box>
 
-          <Box display="flex" alignItems="center" justifyContent="center">
+          <Box
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            sx={{ height: 40, flexShrink: 0 }}
+          >
             <Close />
           </Box>
 
-          <Box display="flex" alignItems="flex-end" flex={1} sx={{ width: 198 }}>
+          <Box flex={1} sx={{ width: 198 }}>
             <YBInput
               type="number"
               fullWidth
               disabled={isEphemeralStorage || fixedVolumeSize || volumeSizeDisable || disabled}
+              error={!!deviceFieldErrors?.volumeSize}
+              helperText={deviceFieldErrors?.volumeSize?.message}
               slotProps={{
                 htmlInput: {
-                  min: 1,
                   'data-testid': `VolumeInfoField-${dataTag}-VolumeSizeInput`,
                   disabled: isEphemeralStorage || fixedVolumeSize || volumeSizeDisable || disabled
                 }
               }}
               value={convertToString(fieldValue?.volumeSize ?? '')}
               onChange={(event) => onVolumeSizeChanged(event.target.value)}
-              onBlur={resetThroughput}
               inputMode="numeric"
               dataTestId={`VolumeInfoField-${dataTag}-VolumeSizeInput`}
             />
           </Box>
 
-          <Box
-            display="flex"
-            alignItems="center"
-            sx={(theme) => ({
-              alignSelf: 'flex-end',
-              marginBottom: 1
-            })}
-          >
+          <Box display="flex" alignItems="center" sx={{ height: 40, flexShrink: 0 }}>
             {provider?.code === CloudType.kubernetes
               ? t('createUniverseV2.instanceSettings.k8VolumeSizeUnit')
               : t('createUniverseV2.instanceSettings.volumeSizeUnit')}
@@ -465,16 +409,16 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             label={t('createUniverseV2.instanceSettings.provisionedIopsPerNode')}
             fullWidth
             disabled={disableIops || disabled}
+            error={!!deviceFieldErrors?.diskIops}
+            helperText={deviceFieldErrors?.diskIops?.message}
             slotProps={{
               htmlInput: {
-                min: 1,
                 'data-testid': `VolumeInfoField-${dataTag}-DiskIopsInput`,
                 disabled: disableIops || disabled
               }
             }}
             value={convertToString(fieldValue?.diskIops ?? '')}
             onChange={(event) => onDiskIopsChanged(event.target.value)}
-            onBlur={resetThroughput}
             inputMode="numeric"
             dataTestId={`VolumeInfoField-${dataTag}-DiskIopsInput`}
           />
@@ -503,15 +447,16 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             <YBLabel>{t('createUniverseV2.instanceSettings.provisionedThroughputPerNode')}</YBLabel>
           </Box>
         </Box>
-        <Box display="flex" width="100%">
+        <Box display="flex" width="100%" alignItems="flex-start">
           <Box display="flex" sx={{ width: 198 }}>
             <YBInput
               type="number"
               fullWidth
               disabled={disableThroughput || disabled}
+              error={!!deviceFieldErrors?.throughput}
+              helperText={deviceFieldErrors?.throughput?.message}
               slotProps={{
                 htmlInput: {
-                  min: 1,
                   'data-testid': `VolumeInfoField-${dataTag}-ThroughputInput`,
                   disabled: disableThroughput || disabled
                 }
@@ -528,8 +473,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             alignItems="center"
             sx={(theme) => ({
               marginLeft: theme.spacing(2),
-              alignSelf: 'flex-end',
-              marginBottom: 1
+              height: 40,
+              flexShrink: 0
             })}
           >
             {t('createUniverseV2.instanceSettings.throughputUnit')}

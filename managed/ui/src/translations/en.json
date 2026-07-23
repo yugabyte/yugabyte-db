@@ -4084,6 +4084,7 @@
         "useTimeSyncHelper2": "Syncs node clocks using {{provider}} Time Sync Service.",
         "volumeInfoPerNode": "Volume Info / Node",
         "volumeInfoPerPod": "Volume Info / Pod",
+        "storageClass": "Storage Class",
         "volumeSizeUnit": "GB",
         "throughputUnit": "MB/s",
         "k8VolumeSizeUnit": "Gib",

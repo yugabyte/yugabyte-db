@@ -150,6 +150,7 @@ export const getInitialValues = (data: UniverseRespResponse): Partial<AddRRConte
       : {
           inheritPrimaryInstance: true,
           arch,
+          imageBundleUUID: primaryClusterSpec?.provider_spec?.image_bundle_uuid ?? null,
           instanceType: primaryClusterSpec?.node_spec?.instance_type ?? null,
           useSpotInstance: primaryClusterSpec?.use_spot_instance ?? false,
           deviceInfo: null,

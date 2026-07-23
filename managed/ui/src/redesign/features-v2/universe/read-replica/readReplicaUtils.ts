@@ -62,6 +62,7 @@ export function buildRRInstanceSettingsFromCluster(
   return {
     inheritPrimaryInstance,
     arch,
+    imageBundleUUID: cluster.provider_spec?.image_bundle_uuid ?? null,
     instanceType: cluster.node_spec?.instance_type ?? null,
     useSpotInstance: cluster.use_spot_instance ?? false,
     deviceInfo: storageSpec
@@ -70,7 +71,7 @@ export function buildRRInstanceSettingsFromCluster(
           numVolumes: storageSpec.num_volumes,
           diskIops: storageSpec.disk_iops ?? null,
           throughput: storageSpec.throughput ?? null,
-          storageClass: 'standard',
+          storageClass: storageSpec.storage_class ?? 'standard',
           storageType: (storageSpec.storage_type as StorageType) ?? null
         } satisfies DeviceInfo)
       : null,

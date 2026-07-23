@@ -1,6 +1,7 @@
 import { forwardRef, useContext, useEffect, useImperativeHandle, useMemo } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
+import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { mui, YBCheckboxField } from '@yugabyte-ui-library/core';
 import { RRBreadCrumbs } from '../../ReadReplicaBreadCrumbs';
@@ -19,12 +20,14 @@ import {
 import { TotalNodesBadge } from '@app/redesign/features-v2/universe/create-universe/components/TotalNodesBadge';
 import { InstanceBox } from '@app/redesign/features-v2/universe/create-universe/steps';
 import {
+  CPUArchField,
   InstanceTypeField,
   VolumeInfoField,
   K8NodeSpecField,
   K8VolumeInfoField,
   EBSVolumeField,
-  EBSKmsConfigField
+  EBSKmsConfigField,
+  LinuxVersionField
 } from '@app/redesign/features-v2/universe/create-universe/fields';
 import { ENABLE_EBS_CONFIG_FIELD } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
 import { RRInstanceSettingsValidationSchema } from './ValidationSchema';
@@ -36,6 +39,9 @@ import { ProviderType } from '@app/redesign/features-v2/universe/create-universe
 import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { buildRRInstanceSettingsFromCluster } from '../../../readReplicaUtils';
 import { sumReadReplicaNodeCounts } from '../../addReadReplicaClusterPayload';
+import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
+import { isImgBundleSupportedByProvider } from '@app/components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+import { ArchitectureType } from '@app/redesign/features-v2/universe/create-universe/helpers/constants';
 
 const { Box, styled, CircularProgress } = mui;
 
@@ -66,24 +72,62 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const totalNodes = regionsAndAZ ? sumReadReplicaNodeCounts(regionsAndAZ) : 0;
   const goToPlacementRegions = () => setActiveStep(AddReadReplicaSteps.REGIONS_AND_AZ);
 
-  const provider: Partial<ProviderType> = {
-    uuid: primaryCluster?.provider_spec.provider ?? '',
-    code: (primaryCluster?.placement_spec?.cloud_list[0].code ?? '') as CloudType
-  };
+  const providerUuid = primaryCluster?.provider_spec.provider ?? '';
+  const providerCode = (primaryCluster?.placement_spec?.cloud_list[0].code ?? '') as CloudType;
+
+  const { data: providers, isLoading: isProvidersLoading } = useQuery(
+    QUERY_KEY.getProvidersList,
+    api.getProvidersList,
+    {
+      enabled: !!providerUuid
+    }
+  );
+
+  const provider = useMemo((): ProviderType | undefined => {
+    const matched = providers?.find((p) => p.uuid === providerUuid);
+    if (!matched) {
+      return {
+        uuid: providerUuid,
+        code: providerCode
+      } as ProviderType;
+    }
+    return {
+      ...matched,
+      uuid: matched.uuid,
+      code: matched.code as CloudType
+    } as ProviderType;
+  }, [providers, providerUuid, providerCode]);
+
+  const supportedArchs = useMemo((): ArchitectureType[] => {
+    if (!provider) return [];
+    if (provider.code === CloudType.onprem) {
+      return [ArchitectureType.X86_64, ArchitectureType.ARM64];
+    }
+    const fromBundles = provider.imageBundles?.map((img) => img.details.arch).filter(Boolean) ?? [];
+    if (fromBundles.length) {
+      return [...new Set(fromBundles)] as ArchitectureType[];
+    }
+    // fallback while bundles load
+    const universeArch = universeData?.info?.arch;
+    return universeArch ? [universeArch as ArchitectureType] : [];
+  }, [provider, universeData?.info?.arch]);
 
   const {
     maxVolumeCount,
     isRuntimeConfigLoading,
     isProviderRuntimeConfigLoading,
     ebsVolumeEnabled,
-    useK8CustomResources
-  } = useRuntimeConfigValues(provider.uuid);
+    useK8CustomResources,
+    osPatchingEnabled
+  } = useRuntimeConfigValues(provider?.uuid);
 
   const { t } = useTranslation('translation', { keyPrefix: 'readReplica.addRR' });
 
   const methods = useForm<RRInstanceSettingsProps>({
     defaultValues: instanceSettings,
-    mode: 'onChange',
+    mode: 'onSubmit',
+    reValidateMode: 'onChange',
+    context: { osPatchingEnabled },
     resolver: yupResolver(
       RRInstanceSettingsValidationSchema(t, useK8CustomResources, provider?.code)
     )
@@ -107,6 +151,12 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const sameAsPrimary = watch(SAME_AS_PRIMARY_INST_FIELD);
   const ebsEnabled = watch(ENABLE_EBS_CONFIG_FIELD);
 
+  const showOsPatchingFields =
+    osPatchingEnabled &&
+    !!provider &&
+    !isProvidersLoading &&
+    (isImgBundleSupportedByProvider(provider) || provider.code === CloudType.onprem);
+
   // Reset form to initial values from primary cluster when sameAsPrimary is true
   useEffect(() => {
     if (sameAsPrimary && primaryCluster && universeData) {
@@ -116,8 +166,7 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
         true
       );
       const currentInstanceType = getValues('instanceType');
-      // On k8s, primary cluster may not include node_spec.instance_type (custom resources path).
-      // Preserve the currently selected value so toggling "same as primary" does not blank the field.
+      // k8 custom resources may not have instance_type on primary
       const resolvedInstanceType =
         provider?.code === CloudType.kubernetes && !initialInstanceSettings.instanceType
           ? (currentInstanceType ?? null)
@@ -177,12 +226,20 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
                 />
               </Box>
               <StyledPanelWrapper>
-                {isRuntimeConfigLoading || isProviderRuntimeConfigLoading ? (
+                {isRuntimeConfigLoading || isProviderRuntimeConfigLoading || isProvidersLoading ? (
                   <Box display="flex" alignItems="center" justifyContent="center" width="100%">
                     <CircularProgress />
                   </Box>
                 ) : (
                   <InstanceBox>
+                    {showOsPatchingFields && (
+                      <>
+                        <CPUArchField supportedArchs={supportedArchs} disabled />
+                        {provider.code !== CloudType.onprem && (
+                          <LinuxVersionField disabled={!!sameAsPrimary} provider={provider} />
+                        )}
+                      </>
+                    )}
                     {provider &&
                       (isK8s && useK8CustomResources ? (
                         <>

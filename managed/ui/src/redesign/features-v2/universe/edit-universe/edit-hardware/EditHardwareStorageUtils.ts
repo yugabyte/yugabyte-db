@@ -91,7 +91,7 @@ export const toClusterStorageSpec = (
 
 /**
  * True when storage fields not supported by ClusterResizeStorageSpec changed
- * (num_volumes or storage_type). Those edits must go through edit-universe.
+ * (num_volumes, storage_type, or storage_class). Those edits must go through edit-universe.
  */
 export const storageRequiresEditUniverse = (
   settings: InstanceSettingProps,
@@ -103,7 +103,8 @@ export const storageRequiresEditUniverse = (
 
   if (
     nextTserver.numVolumes !== currentTserver.numVolumes ||
-    nextTserver.storageType !== currentTserver.storageType
+    nextTserver.storageType !== currentTserver.storageType ||
+    nextTserver.storageClass !== currentTserver.storageClass
   ) {
     return true;
   }
@@ -119,6 +120,7 @@ export const storageRequiresEditUniverse = (
 
   return (
     nextMaster.numVolumes !== currentMaster.numVolumes ||
-    nextMaster.storageType !== currentMaster.storageType
+    nextMaster.storageType !== currentMaster.storageType ||
+    nextMaster.storageClass !== currentMaster.storageClass
   );
 };

@@ -858,7 +858,7 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       numVolumes: storageSpec?.num_volumes,
       diskIops: storageSpec?.disk_iops,
       throughput: storageSpec?.throughput,
-      storageClass: storageSpec?.storage_class,
+      storageClass: storageSpec?.storage_class ?? 'standard',
       storageType: storageSpec?.storage_type,
       mountPoints: storageSpec?.mount_points
     },
@@ -871,7 +871,9 @@ export const EditHardwareConfirmModal: FC<EditHardwareConfirmModalProps> = ({
       throughput:
         targetCluster?.node_spec?.master?.storage_spec?.throughput ?? storageSpec?.throughput,
       storageClass:
-        targetCluster?.node_spec?.master?.storage_spec?.storage_class ?? storageSpec?.storage_class,
+        targetCluster?.node_spec?.master?.storage_spec?.storage_class ??
+        storageSpec?.storage_class ??
+        'standard',
       storageType:
         targetCluster?.node_spec?.master?.storage_spec?.storage_type ?? storageSpec?.storage_type,
       mountPoints:

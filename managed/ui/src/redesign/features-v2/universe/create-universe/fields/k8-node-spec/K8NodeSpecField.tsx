@@ -2,11 +2,7 @@ import { ReactElement, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Controller, useFormContext } from 'react-hook-form';
 import { YBLabel, YBInput, mui } from '@yugabyte-ui-library/core';
-import {
-  getDefaultK8NodeSpec,
-  getK8MemorySizeRange,
-  getK8CPUCoresRange
-} from '@app/redesign/features-v2/universe/create-universe/fields/k8-node-spec/K8NodeSpecFieldHelper';
+import { getDefaultK8NodeSpec } from '@app/redesign/features-v2/universe/create-universe/fields/k8-node-spec/K8NodeSpecFieldHelper';
 import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
 import { NodeType } from '@app/redesign/utils/dtos';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
@@ -33,7 +29,12 @@ export const K8NodeSpecField = ({
   disabled,
   provider
 }: K8NodeSpecFieldProps): ReactElement => {
-  const { watch, control, setValue } = useFormContext<InstanceSettingProps>();
+  const {
+    watch,
+    control,
+    setValue,
+    formState: { errors, isSubmitted }
+  } = useFormContext<InstanceSettingProps>();
   const { t } = useTranslation();
 
   const nodeTypeTag = isMaster ? NodeType.Master : NodeType.TServer;
@@ -42,6 +43,18 @@ export const K8NodeSpecField = ({
     : watch(TSERVER_K8_NODE_SPEC_FIELD);
   const UPDATE_FIELD = isMaster ? MASTER_K8_NODE_SPEC_FIELD : TSERVER_K8_NODE_SPEC_FIELD;
   const convertToString = (str: string | number) => str?.toString() ?? '';
+  const k8FieldErrors = (isMaster
+    ? errors.masterK8SNodeResourceSpec
+    : errors.tserverK8SNodeResourceSpec) as
+    | {
+        memoryGib?: { message?: string };
+        cpuCoreCount?: { message?: string };
+      }
+    | undefined;
+
+  const setNodeSpec = (next: { memoryGib: number | null; cpuCoreCount: number | null }) => {
+    setValue(UPDATE_FIELD, next, { shouldValidate: isSubmitted, shouldDirty: true });
+  };
 
   //fetch run time configs
   const { providerRuntimeConfigs } = useRuntimeConfigValues(provider?.uuid);
@@ -50,43 +63,26 @@ export const K8NodeSpecField = ({
   useEffect(() => {
     const updateDeviceInfo = () => {
       const { memorySize, CPUCores } = getDefaultK8NodeSpec(providerRuntimeConfigs);
+      const resolvedMemory = Number(memorySize);
+      const resolvedCpu = Number(CPUCores);
       const nodeSpec = {
-        memoryGib: memorySize,
-        cpuCoreCount: CPUCores
+        memoryGib: Number.isFinite(resolvedMemory) ? resolvedMemory : null,
+        cpuCoreCount: Number.isFinite(resolvedCpu) ? resolvedCpu : null
       };
       setValue(UPDATE_FIELD, nodeSpec);
     };
     !fieldValue && updateDeviceInfo();
   }, [fieldValue]);
 
-  const { minMemorySize, maxMemorySize } = getK8MemorySizeRange(providerRuntimeConfigs);
-  const { minCPUCores, maxCPUCores } = getK8CPUCoresRange(providerRuntimeConfigs);
-  const minMem = Number(minMemorySize ?? 0);
-  const maxMem = Number(maxMemorySize ?? minMem);
-  const minCpu = Number(minCPUCores ?? 0);
-  const maxCpu = Number(maxCPUCores ?? minCpu);
-  const { memorySize: defaultMemRaw, CPUCores: defaultCpuRaw } =
-    getDefaultK8NodeSpec(providerRuntimeConfigs);
-  const defaultMem = Number(defaultMemRaw);
-  const defaultCpu = Number(defaultCpuRaw);
-
   const onNumCoresChanged = (value: any) => {
     const raw = sanitizePositiveDecimalString(String(value));
     const decimalPlaces = raw.split('.')[1]?.length ?? 0;
-    const fallbackCpu =
-      Number.isFinite(defaultCpu) && defaultCpu > 0
-        ? defaultCpu
-        : fieldValue?.cpuCoreCount && fieldValue.cpuCoreCount > 0
-          ? fieldValue.cpuCoreCount
-          : minCpu > 0
-            ? minCpu
-            : 1;
-    let numCores = parsePositiveDecimalInput(raw, fallbackCpu, minCpu, maxCpu);
-    if (decimalPlaces > 2) {
+    let numCores = parsePositiveDecimalInput(raw);
+    if (numCores != null && decimalPlaces > 2) {
       numCores = Number(numCores.toFixed(2));
     }
-    setValue(UPDATE_FIELD, {
-      memoryGib: fieldValue?.memoryGib as number,
+    setNodeSpec({
+      memoryGib: fieldValue?.memoryGib ?? null,
       cpuCoreCount: numCores
     });
   };
@@ -94,20 +90,12 @@ export const K8NodeSpecField = ({
   const onMemoryChanged = (value: any) => {
     const raw = sanitizePositiveDecimalString(String(value));
     const decimalPlaces = raw.split('.')[1]?.length ?? 0;
-    const fallbackMem =
-      Number.isFinite(defaultMem) && defaultMem > 0
-        ? defaultMem
-        : fieldValue?.memoryGib && fieldValue.memoryGib > 0
-          ? fieldValue.memoryGib
-          : minMem > 0
-            ? minMem
-            : 1;
-    let memory = parsePositiveDecimalInput(raw, fallbackMem, minMem, maxMem);
-    if (decimalPlaces > 2) {
+    let memory = parsePositiveDecimalInput(raw);
+    if (memory != null && decimalPlaces > 2) {
       memory = Number(Number(memory).toFixed(2));
     }
-    setValue(UPDATE_FIELD, {
-      cpuCoreCount: fieldValue?.cpuCoreCount as number,
+    setNodeSpec({
+      cpuCoreCount: fieldValue?.cpuCoreCount ?? null,
       memoryGib: memory
     });
   };
@@ -130,6 +118,8 @@ export const K8NodeSpecField = ({
                   type="number"
                   label={t('createUniverseV2.instanceSettings.k8NumCores')}
                   fullWidth
+                  error={!!k8FieldErrors?.cpuCoreCount}
+                  helperText={k8FieldErrors?.cpuCoreCount?.message}
                   slotProps={{
                     htmlInput: {
                       'data-testid': `K8NodeSpecField-${nodeTypeTag}-NumCoresInput`
@@ -147,14 +137,18 @@ export const K8NodeSpecField = ({
             <Box display="flex" flexDirection="column" mt={2}>
               <Box display="flex">
                 <Box>
-                  <YBLabel>{t('createUniverseV2.instanceSettings.k8Memory')}</YBLabel>
+                  <YBLabel error={!!k8FieldErrors?.memoryGib}>
+                    {t('createUniverseV2.instanceSettings.k8Memory')}
+                  </YBLabel>
                 </Box>
               </Box>
-              <Box display="flex" width="100%">
+              <Box display="flex" width="100%" alignItems="flex-start">
                 <Box display="flex" sx={{ width: 198 }}>
                   <YBInput
                     type="number"
                     fullWidth
+                    error={!!k8FieldErrors?.memoryGib}
+                    helperText={k8FieldErrors?.memoryGib?.message}
                     slotProps={{
                       htmlInput: {
                         'data-testid': `K8NodeSpecField-${nodeTypeTag}-MemoryInput`
@@ -173,8 +167,8 @@ export const K8NodeSpecField = ({
                   alignItems="center"
                   sx={(theme) => ({
                     marginLeft: theme.spacing(2),
-                    alignSelf: 'flex-end',
-                    marginBottom: 1
+                    height: 40,
+                    flexShrink: 0
                   })}
                 >
                   {t('createUniverseV2.instanceSettings.k8VolumeSizeUnit')}

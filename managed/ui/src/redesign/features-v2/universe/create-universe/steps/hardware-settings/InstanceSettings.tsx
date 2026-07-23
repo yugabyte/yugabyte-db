@@ -1,9 +1,8 @@
 import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
-import { upperCase } from 'lodash';
 import { FormProvider, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useQuery } from 'react-query';
-import { Trans, useTranslation } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 import { mui, YBAccordion, YBCheckboxField } from '@yugabyte-ui-library/core';
 import {
   StyledContent,
@@ -39,6 +38,7 @@ import {
 import { ResilienceType } from '@app/redesign/features-v2/universe/create-universe/steps/resilence-regions/dtos';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import { InstanceSettingsValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/ValidationSchema';
+import { ArchitectureType } from '@app/redesign/features-v2/universe/create-universe/helpers/constants';
 import {
   getDedicatedTserverMasterCounts,
   getNodeCount
@@ -57,7 +57,7 @@ import {
   CPU_ARCH_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
 
-const { Box, Typography, CircularProgress } = mui;
+const { Box, CircularProgress } = mui;
 
 export const InstanceBox = ({ children }: { children: React.ReactNode }) => (
   <Box sx={{ width: 480, display: 'flex', flexDirection: 'column', gap: 2 }}>{children}</Box>
@@ -122,6 +122,7 @@ export const InstanceSettings = forwardRef<
 
   const provider = generalSettings?.providerConfiguration;
   const isK8s = provider?.code === CloudType.kubernetes;
+  const isOnPrem = provider?.code === CloudType.onprem;
   const useDedicatedNodes = nodesAvailabilitySettings?.useDedicatedNodes;
 
   //Runtime configs
@@ -132,8 +133,11 @@ export const InstanceSettings = forwardRef<
     canUseSpotInstance,
     isRuntimeConfigLoading,
     isProviderRuntimeConfigLoading,
-    ebsVolumeEnabled
+    ebsVolumeEnabled,
+    enableAzOverridesK8s
   } = useRuntimeConfigValues(provider?.uuid);
+
+  const k8sOverrideEnabled = !!editMode && enableAzOverridesK8s;
   //Runtime configs
 
   const { t } = useTranslation('translation', {
@@ -144,6 +148,8 @@ export const InstanceSettings = forwardRef<
 
   const methods = useForm<InstanceSettingProps>({
     defaultValues: instanceSettings,
+    mode: 'onSubmit',
+    reValidateMode: 'onChange',
     context: {
       earKmsConfig: earKMSConfig
     },
@@ -153,6 +159,9 @@ export const InstanceSettings = forwardRef<
   });
   usePersistStepFormValues(methods.watch, methods.getValues, saveInstanceSettings);
   const { watch, setValue, control, trigger } = methods;
+  const {
+    formState: { isSubmitted }
+  } = methods;
 
   const deviceInfo = watch(DEVICE_INFO_FIELD);
   const sameAsTserver = watch(MASTER_TSERVER_SAME_FIELD);
@@ -199,17 +208,32 @@ export const InstanceSettings = forwardRef<
 
   useEffect(() => {
     if (deviceInfo && sameAsTserver) {
-      setValue(MASTER_DEVICE_INFO_FIELD, deviceInfo);
+      setValue(MASTER_DEVICE_INFO_FIELD, deviceInfo, {
+        shouldValidate: isSubmitted,
+        shouldDirty: true
+      });
       //instance type not present for k8s
       if (instanceType) {
-        setValue(MASTER_INSTANCE_TYPE_FIELD, instanceType);
+        setValue(MASTER_INSTANCE_TYPE_FIELD, instanceType, {
+          shouldValidate: isSubmitted,
+          shouldDirty: true
+        });
       }
       //node spec for k8s
       if (nodeSpec) {
-        setValue(MASTER_K8_NODE_SPEC_FIELD, nodeSpec);
+        setValue(MASTER_K8_NODE_SPEC_FIELD, nodeSpec, {
+          shouldValidate: isSubmitted,
+          shouldDirty: true
+        });
       }
     }
-  }, [deviceInfo, sameAsTserver, instanceType, nodeSpec]);
+  }, [deviceInfo, sameAsTserver, instanceType, nodeSpec, isSubmitted, setValue]);
+
+  // revalidate master when toggle changes
+  useEffect(() => {
+    if (!isSubmitted) return;
+    void trigger([MASTER_DEVICE_INFO_FIELD, MASTER_INSTANCE_TYPE_FIELD, MASTER_K8_NODE_SPEC_FIELD]);
+  }, [sameAsTserver, isSubmitted, trigger]);
 
   useImperativeHandle(
     forwardRef,
@@ -300,14 +324,21 @@ export const InstanceSettings = forwardRef<
               <InstanceBox>
                 {osPatchingEnabled &&
                   provider &&
-                  isImgBundleSupportedByProvider(provider) &&
+                  (isImgBundleSupportedByProvider(provider) ||
+                    provider.code === CloudType.onprem) &&
                   !editMode && (
                     <>
                       <CPUArchField
-                        supportedArchs={provider.imageBundles?.map((img) => img.details.arch)}
+                        supportedArchs={
+                          provider.code === CloudType.onprem
+                            ? [ArchitectureType.X86_64, ArchitectureType.ARM64]
+                            : (provider.imageBundles?.map((img) => img.details.arch) ?? [])
+                        }
                         disabled={false}
                       />
-                      <LinuxVersionField disabled={false} provider={provider} />
+                      {provider.code !== CloudType.onprem && (
+                        <LinuxVersionField disabled={false} provider={provider} />
+                      )}
                     </>
                   )}
                 {provider && isSpotInstanceCloudType(provider.code) && canUseSpotInstance && (
@@ -367,6 +398,8 @@ export const InstanceSettings = forwardRef<
                         disableVolumeSize={false}
                         disabled={disableTserverFields}
                         provider={provider}
+                        isEditMode={editMode}
+                        k8sOverrideEnabled={k8sOverrideEnabled}
                       />
                     </>
                   ) : (
@@ -466,6 +499,8 @@ export const InstanceSettings = forwardRef<
                       maxVolumeCount={maxVolumeCount}
                       disabled={!!sameAsTserver}
                       provider={provider}
+                      isEditMode={editMode}
+                      k8sOverrideEnabled={k8sOverrideEnabled}
                     />
                   </>
                 )}
