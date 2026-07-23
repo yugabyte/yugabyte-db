@@ -3,7 +3,7 @@ title: Install YugabyteDB Anywhere software - Kubernetes
 headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software in your Kubernetes environment.
-headContent: Install YBA software in a Kubernetes environment
+headContent: Install YugabyteDB Anywhere in a Kubernetes environment
 menu:
   v2025.2_yugabyte-platform:
     parent: install-yugabyte-platform
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-For higher availability, you can install additional YugabyteDB Anywhere (YBA) instances, and configure them later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
+For higher availability, you can install additional YugabyteDB Anywhere instances, and configure them later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -153,7 +153,7 @@ When customizing the Helm chart, note that `useYugabyteDB` should always be set 
 
 By default, the Helm chart will attempt to create a service account that has certain ClusterRoles listed [here](https://github.com/yugabyte/charts/blob/master/stable/yugaware/templates/rbac.yaml#L166). These roles are used to do the following:
 
-1. Enable YBA to collect resource metrics such as CPU and memory from the Kubernetes nodes.
+1. Enable YugabyteDB Anywhere to collect resource metrics such as CPU and memory from the Kubernetes nodes.
 1. Create YugabyteDB deployments in new namespaces.
 
 To customize this behavior (and potentially lose some functionality), you can set the `serviceAccount` value to a pre-existing service account that you've already created. It is recommended that you at least grant this service account the cluster roles listed in the "required to scrape" section of the [RBAC configuration file](https://github.com/yugabyte/charts/blob/master/stable/yugaware/templates/rbac.yaml#L166), along with a namespace admin role. To completely disable this behavior, set the `rbac.create` value to false. Note that without the ability to create new namespaces, YugabyteDB Anywhere must be [configured with a pre-created namespace](../../../configure-yugabyte-platform/kubernetes/#configure-region-and-zones).
@@ -447,7 +447,7 @@ Before enabling GCP IAM, ensure you have the prerequisites. Refer to [GCP IAM](.
 To enable GCP IAM, provide the following additional Helm values during installation to a version which supports this feature (v2.18.4 or later):
 
 - serviceAccount: Provide the name of the Kubernetes service account you created. Note that this service account should be present in the namespace being used for the YugabyteDB pod resources.
-- [nodeSelector](#nodeselector): Pass a node selector override to make sure YBA pods are scheduled on the GKE cluster's worker nodes which have a metadata server running.
+- [nodeSelector](#nodeselector): Pass a node selector override to make sure YugabyteDB Anywhere pods are scheduled on the GKE cluster's worker nodes which have a metadata server running.
 
     ```yaml
     yugaware:
