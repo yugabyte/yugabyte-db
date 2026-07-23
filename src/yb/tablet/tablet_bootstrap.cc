@@ -559,7 +559,9 @@ class TabletBootstrap {
 
     // This is a new tablet, nothing left to do.
     if (!has_blocks && !needs_recovery) {
-      LOG_WITH_PREFIX(INFO) << "No blocks or log segments found. Creating new log.";
+      LOG_WITH_PREFIX(WARNING) << "No blocks or log segments found. "
+                               << "This may indicate that RocksDB data was deleted "
+                               << "or never existed. Creating new log.";
       RETURN_NOT_OK_PREPEND(OpenLog(CreateNewSegment::kTrue), "Failed to open new log");
       RETURN_NOT_OK(FinishBootstrap("No bootstrap required, opened a new log",
                                     rebuilt_log,
