@@ -2378,6 +2378,66 @@ Default: `128`
 
 The number of table rows to backfill in a single backfill job. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows. When index creation is slower than expected on large tables, increasing this parameter to 1024 or 2048 may speed up the operation. However, care must be taken to also tune the associated timeouts for larger batch sizes.
 
+### Multitenancy (resource governor) flags
+
+These flags control per-database CPU isolation, which lets you treat each database as a tenant and prevent one database from starving others of CPU. The feature relies on Linux cgroups and requires operating system setup before it can be enabled. For an overview and setup instructions, see [Multitenancy](../../../additional-features/multitenancy/).
+
+Set these flags on both YB-Master and YB-TServer.
+
+##### --enable_qos
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/restart-needed>}}
+{{<tags/feature/t-server>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables per-database CPU limits and the maximum database count cap. When `false`, per-database cgroups are not created and none of the other `qos_*` flags have any effect.
+
+##### --qos_max_db_cpu_percent
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/t-server>}}
+Default: `100.0`
+{{% /tags/wrap %}}
+
+The maximum percentage (0.0–100.0) of the node's non-system-reserved CPU that work for any single database is allowed to use on a YB-TServer. Has no effect unless `enable_qos` is `true`.
+
+##### --qos_evaluation_window_us
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/t-server>}}
+Default: `100000`
+{{% /tags/wrap %}}
+
+Advanced flag that maps directly to the Linux `cfs_period_us` parameter: the period, in microseconds, that the scheduler uses when checking CPU limits and throttling cgroups. Accepts values from 1000 to 1000000. This should normally not be changed. Has no effect unless `enable_qos` is `true`.
+
+##### --qos_system_high_cpu_reserved_percent
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/t-server>}}
+Default: `0`
+{{% /tags/wrap %}}
+
+The percentage (0.0–100.0) of CPU reserved for high-priority system work.
+
+##### --use_cgroups_cpu
+
+{{% tags/wrap %}}
+{{<tags/feature/ea>}}
+{{<tags/feature/restart-needed>}}
+{{<tags/feature/t-server>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Determines the number of available CPUs from the cgroup CPU limit rather than the total number of CPUs on the host. Set this to `true` in containerized environments where the container is allotted a fraction of the host's CPUs.
+
+The maximum number of databases is controlled by the [--qos_max_db_count](../yb-master/#qos-max-db-count) flag on the YB-Master.
+
 ### Other performance tuning options
 
 ##### --allowed_preview_flags_csv
