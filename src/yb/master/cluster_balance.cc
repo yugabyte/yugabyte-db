@@ -275,6 +275,11 @@ Status ClusterLoadBalancer::PopulateReplicationInfo(
   if (state_->placement_.num_replicas() == 0 && has_read_replicas) {
     state_->placement_.set_num_replicas(FLAGS_replication_factor);
   }
+  if (std::ranges::any_of(
+          state_->placement_.placement_blocks(),
+          [](const auto& block) { return block.has_max_num_replicas(); })) {
+    RETURN_NOT_OK(CatalogManagerUtil::IsPlacementInfoValid(state_->placement_));
+  }
   if (state_->placement_.placement_blocks().empty()) {
     // Wildcard placement matches all tservers.
     state_->placement_.add_placement_blocks()->CopyFrom(PlacementBlockPB());
@@ -967,6 +972,39 @@ Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
   return false;
 }
 
+Result<bool> ClusterLoadBalancer::HandleAddIfOverMaxPlacement(
+    TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
+  for (const auto& tablet_id : state_->tablets_over_max_placements_) {
+    const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
+    if (tablet_meta.is_over_replicated) {
+      continue;
+    }
+    for (const auto& from_ts : tablet_meta.over_max_replicated_tablet_servers) {
+      const auto from_placement = state_->GetValidPlacement(from_ts);
+      for (const auto& to_ts : state_->sorted_load_) {
+        const auto to_placement = state_->GetValidPlacement(to_ts);
+        if (!from_placement || !to_placement ||
+            cloud_equal_to()(*from_placement, *to_placement)) {
+          continue;
+        }
+        if (!VERIFY_RESULT(
+                state_->CanAddTabletToTabletServer(tablet_id, to_ts, from_ts))) {
+          continue;
+        }
+        *out_tablet_id = tablet_id;
+        *out_from_ts = from_ts;
+        *out_to_ts = to_ts;
+        RETURN_NOT_OK(AddOrMoveReplica(
+            tablet_id, from_ts, to_ts,
+            Format("Placement $0 exceeds max_num_replicas",
+                   from_placement->ShortDebugString())));
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 Result<bool> ClusterLoadBalancer::HandleAddIfWrongPlacement(
     TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
   for (const auto& tablet_id : state_->tablets_wrong_placement_) {
@@ -1040,6 +1078,11 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
           << ", max allowed: " << state_->options_->kMaxTabletRemoteBootstrapsPerTable;
 
   // Missing placements / under-replicated tablets are handled in ProcessUnderReplicatedTablets.
+
+  if (VERIFY_RESULT(
+          HandleAddIfOverMaxPlacement(out_tablet_id, out_from_ts, out_to_ts))) {
+    return true;
+  }
 
   // Handle wrong placements as next priority, as these could be servers we're moving off of, so
   // we can decommission ASAP.
@@ -1213,7 +1256,7 @@ Result<std::optional<TabletId>> ClusterLoadBalancer::GetTabletToMove(
         continue;
       }
 
-      if (VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, to_ts))) {
+      if (VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, to_ts, from_ts))) {
         filtered_drive_tablets.insert(tablet_id);
       }
     }

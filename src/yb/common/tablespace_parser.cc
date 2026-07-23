@@ -19,6 +19,8 @@
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
 
+#include "yb/common/common_net.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/format.h"
@@ -113,13 +115,29 @@ Status ValidateReplicationInfo(const ReplicationInfoPB& replication_info) {
 
     const auto& placements = replicas->placement_blocks();
 
-    auto total_min_replicas = 0;
+    int64_t total_min_replicas = 0;
+    int64_t total_max_replicas = 0;
     for (auto i = placements.begin(); i != placements.end(); ++i) {
       if (i->min_num_replicas() <= 0) {
         return STATUS_FORMAT(
             Corruption, "min_num_replicas ($0) must be > 0", i->min_num_replicas());
       }
+      if (i->has_max_num_replicas()) {
+        if (i->max_num_replicas() <= 0) {
+          return STATUS_FORMAT(
+              Corruption, "max_num_replicas ($0) must be > 0", i->max_num_replicas());
+        }
+        if (i->max_num_replicas() < i->min_num_replicas()) {
+          return STATUS_FORMAT(
+              Corruption,
+              "max_num_replicas ($0) must be greater than or equal to min_num_replicas ($1)",
+              i->max_num_replicas(), i->min_num_replicas());
+        }
+      }
       total_min_replicas += i->min_num_replicas();
+      total_max_replicas += i->has_max_num_replicas()
+          ? i->max_num_replicas()
+          : replicas->num_replicas();
       // Check for duplicate placement blocks.
       for (auto j = placements.begin(); j != i; ++j) {
         if (pb_util::ArePBsEqual(i->cloud_info(), j->cloud_info(), nullptr /* diff_str */)) {
@@ -136,6 +154,13 @@ Status ValidateReplicationInfo(const ReplicationInfoPB& replication_info) {
           "Sum of min_num_replicas fields ($0) exceeds the total replication factor "
           "in the placement policy ($1)",
           total_min_replicas, replicas->num_replicas());
+    }
+    if (!placements.empty() && total_max_replicas < replicas->num_replicas()) {
+      return STATUS_FORMAT(
+          Corruption,
+          "Sum of effective max_num_replicas fields ($0) is less than the total replication "
+          "factor in the placement policy ($1)",
+          total_max_replicas, replicas->num_replicas());
     }
   }
 
@@ -245,9 +270,20 @@ Status TablespaceParser::PlacementInfoFromJson(
             "$0: Invalid type for \"min_num_replicas\" in placement block. Expected int, got $1.",
             replica_type_str, GetRapidJsonTypeName(placement["min_num_replicas"]));
       }
+      if (placement.HasMember("max_num_replicas") &&
+          !placement["max_num_replicas"].IsInt()) {
+        return STATUS_FORMAT(
+            Corruption,
+            "$0: Invalid type for \"max_num_replicas\" in placement block. Expected int, got "
+            "$1.",
+            replica_type_str, GetRapidJsonTypeName(placement["max_num_replicas"]));
+      }
 
       auto* placement_block = placement_info->add_placement_blocks();
       placement_block->set_min_num_replicas(placement["min_num_replicas"].GetInt());
+      if (placement.HasMember("max_num_replicas")) {
+        placement_block->set_max_num_replicas(placement["max_num_replicas"].GetInt());
+      }
 
       auto* cloud_info = placement_block->mutable_cloud_info();
       // The special value '*' is allowed for a placement to match any region/zone.
