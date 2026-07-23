@@ -12,6 +12,8 @@ menu:
     parent: best-practices-operations
     weight: 50
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 Many common PostgreSQL operations, such as parsing a query, planning, and so on, require looking up entries in PostgreSQL system catalog tables, including pg_class, pg_operator, pg_statistic, and pg_attribute, for PostgreSQL metadata for the columns, operators, and more.
@@ -484,6 +486,98 @@ On the flip side, automatic preloading of caches may result in higher memory usa
 
 - [Minimal catalog cache preloading](#minimal-catalog-cache-preloading).
 
+### Negative caching issue
+
+Normally, executing a query repeatedly in the same connection results in some requests to Master in the first execution, but starting from the second execution, all catalog data should be cached, there should be no further catalog requests.
+
+However, for some queries, the results are not cached, and every execution makes one or more requests to Master.
+
+To check if this is a problem, open a connection and run the same query twice with EXPLAIN (ANALYZE, DIST). If the second run still makes catalog read requests, then you have a negative caching issue.
+
+For example, try the following:
+
+1. To ensure there is no preloading, open and close a connection by starting and quitting ysqlsh.
+
+1. Start [ysqlsh](../../api/ysqlsh/) and run the following:
+
+    ```sql
+    EXPLAIN (ANALYZE, DIST) SELECT
+        unnest(
+            ARRAY[
+                10,
+                20,
+                30
+            ]
+        ) AS value;
+    ```
+
+    ```output
+    Catalog Read Ops: 12
+    ```
+
+    The first execution is expected to have catalog reads.
+
+1. Run it again:
+
+    ```sql
+    EXPLAIN (ANALYZE, DIST) SELECT
+        unnest(
+            ARRAY[
+                10,
+                20,
+                30
+            ]
+        ) AS value;
+    ```
+
+    ```output
+    Catalog Read Ops: 0
+    ```
+
+    No reads means no caching issue.
+
+Now try the following:
+
+1. To ensure there is no preloading, open and close a connection by starting and quitting ysqlsh.
+
+1. Start ysqlsh and run the following:
+
+    ```sql
+    EXPLAIN (ANALYZE, DIST)
+        SELECT *
+        FROM unnest(
+            ARRAY[1,2,3]::int[],
+            ARRAY['a','b','c']::text[]
+        );
+    ```
+
+    ```output
+    Catalog Read Ops: 18
+    ```
+
+    The first execution is expected to have catalog reads.
+
+1. Run it again:
+
+    ```sql
+    EXPLAIN (ANALYZE, DIST)
+        SELECT *
+        FROM unnest(
+            ARRAY[1,2,3]::int[],
+            ARRAY['a','b','c']::text[]
+        );
+    ```
+
+    ```output
+    Catalog Read Ops: 1
+    ```
+
+    This indicates a negative caching problem.
+
+**Possible solution**
+
+- [Enable negative caching](#enable-negative-caching).
+
 ## Solution details
 
 ### Use connection pooling {#connection-pooling}
@@ -526,6 +620,106 @@ For example:
 When enabled, only a small subset of the catalog cache entries is preloaded. This reduces the memory spike that results, but can increase the initial query latency when [additional tables are preloaded](#preload-additional-system-tables).
 
 To enable minimal catalog cache preloading, set the [YB-TServer flag](../../reference/configuration/yb-tserver/#catalog-flags) `--ysql_minimal_catalog_caches_preload=true`.
+
+### Enable negative caching
+
+Enabling negative caching requires setting two [configuration parameters](../../reference/configuration/yb-tserver/#postgresql-configuration-parameters):
+
+1. Enable the catalog version increment on all DDLs by setting the `yb_always_increment_catalog_version_on_ddl` parameter to true.
+1. Enable negative caching by setting the `yb_enable_negative_catcache_entries` parameter to true.
+
+{{< warning title="The order is important" >}}
+Be sure to follow this exact sequence, otherwise correctness issues may result. Enabling catalog version increment on all DDLs is _mandatory_ for enabling negative caching. Using negative caching without first enabling the catalog version increment on all DDLs can lead to unexpected errors.
+{{< /warning >}}
+
+Negative caching is available in v2025.2.2.0 and later.
+
+To enable negative caching using a rolling restart:
+
+1. Set `yb_always_increment_catalog_version_on_ddl=true` in `ysql_pg_conf_csv` and restart all TServers.
+
+1. After all TServers have restarted, set `yb_enable_negative_catcache_entries=true` in `ysql_pg_conf_csv` and restart all TServers.
+
+    This enables negative caching across the entire cluster.
+
+If you prefer to enable negative caching without a rolling restart, you can do the following:
+
+1. Set `yb_always_increment_catalog_version_on_ddl=true` in `ysql_pg_conf_csv` on all TServers (don't restart).
+
+1. Wait for the setting to propagate to all nodes.
+
+    Verify that this has happened by running the following on each node:
+
+    ```sql
+    SHOW yb_always_increment_catalog_version_on_ddl;
+    ```
+
+    ```output
+    yb_always_increment_catalog_version_on_ddl 
+    --------------------------------------------
+    on
+    (1 row)
+    ```
+
+1. After the parameter setting has propagated to all nodes, get the current timestamp:
+
+    ```sql
+    SELECT now() AS t_fence;
+    ```
+
+    ```output
+                t_fence            
+    -------------------------------
+    2026-04-21 20:47:55.825731+00
+    (1 row)
+    ```
+
+    You will use this as the fence timestamp, waiting until all transactions that started before this timestamp have completed before proceeding.
+
+1. Wait for all transactions that started before `t_fence` to complete.
+
+    Wait until the following query returns zero rows on every node before advancing to the next step.
+
+    ```sql
+    SELECT pid, datname, usename, application_name,
+        state, xact_start, query_start, backend_start
+    FROM pg_stat_activity
+    WHERE pid <> pg_backend_pid()
+    AND backend_type = 'client backend'
+    AND state IS DISTINCT FROM 'idle'
+    AND (xact_start IS NULL OR xact_start <= TIMESTAMPTZ '<t_fence>');
+    ```
+
+    Replace `<t_fence>` with the fence timestamp.
+
+1. Set `yb_enable_negative_catcache_entries=true` in `ysql_pg_conf_csv` (don't restart).
+
+To roll back the change, perform the same steps in the reverse order, but setting the parameters to false; that is, set negative caching to false, then catalog version increment on all DDLs to false.
+
+#### Limitation
+
+Incrementing the catalog version on all DDLs may cause more DDL errors. For example, if you were previously doing concurrent DDLs that did not bump the catalog version (for example, CREATE TABLE), these CREATE statements will now fail due to conflict, when previously they would have succeeded.
+
+The following DDLs will increment the catalog version when `yb_always_increment_catalog_version_on_ddl` is set to true:
+
+```sql
+CREATE TABLE
+CREATE DATABASE
+CREATE VIEW
+CREATE OPERATOR
+CREATE AGGREGATE
+CREATE TYPE
+CREATE TEXT SEARCH
+CREATE COLLATION
+COMMENT
+CREATE PROFILE
+TRUNCATE (when yb_enable_alter_table_rewrite=false)
+CREATE ROLE (when not referencing other roles)
+CREATE TABLE AS
+CREATE SEQUENCE
+DISCARD
+ALTER ROLE WITH PASSWORD
+```
 
 ## Confirm catalog cache misses are a root cause of latency / load {#confirm-catalog-cache-misses-root-cause-of-latency}
 
