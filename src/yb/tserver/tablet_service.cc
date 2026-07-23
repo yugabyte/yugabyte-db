@@ -2554,10 +2554,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   // TODO(jason): come up with a more efficient connection reuse method for tserver-postgres
   // communication.  As of D19621, connections are spawned each request for YSQL upgrade, index
   // backfill, and this.  Creating the connection has a startup cost.
-  auto res = pgwrapper::CreateInternalPGConnBuilder(
-                 server_->pgsql_proxy_bind_address(), "template1",
-                 server_->GetSharedMemoryPostgresAuthKey(), modified_deadline)
-                 .Connect();
+  auto res = server_->CreateInternalPGConn("template1", modified_deadline);
   if (!res.ok()) {
     LOG_WITH_PREFIX_AND_FUNC(WARNING) << "failed to connect to local postgres: " << res.status();
     SetupErrorAndRespond(resp->mutable_error(), res.status(), &context);

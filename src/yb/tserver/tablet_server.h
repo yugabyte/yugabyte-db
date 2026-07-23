@@ -366,6 +366,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   uint64_t GetSharedMemoryPostgresAuthKey();
 
+  // Opens an internal (yb-tserver-key authenticated) libpq connection to the local postgres.
+  // The connect retry loop is aborted if the tserver starts shutting down, so these connections
+  // never keep a shutdown blocked on a doomed connect (see the definition for details).
+  Result<pgwrapper::PGConn> CreateInternalPGConn(
+      const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) override;
+
   SchemaVersion GetMinXClusterSchemaVersion(const TableId& table_id,
       const ColocationId& colocation_id) const;
 
@@ -496,9 +502,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Result<std::unordered_set<std::string>> GetFlagsForServer() const override;
 
   void SetCronLeaderLease(MonoTime cron_leader_lease_end);
-
-  Result<pgwrapper::PGConn> CreateInternalPGConn(
-      const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) override;
 
   std::atomic<bool> initted_{false};
 

@@ -14,6 +14,7 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -315,17 +316,22 @@ class PGConn {
   static Result<PGConn> Connect(
       const std::string& conn_str,
       bool simple_query_protocol,
-      const std::string& conn_str_for_log) {
+      const std::string& conn_str_for_log,
+      const std::function<bool()>& should_stop = {}) {
     return Connect(conn_str,
                    CoarseMonoClock::Now() + MonoDelta::FromSeconds(60) /* deadline */,
                    simple_query_protocol,
-                   conn_str_for_log);
+                   conn_str_for_log,
+                   should_stop);
   }
+  // If should_stop is provided, the retry loop gives up as soon as it returns true (e.g. the caller
+  // is shutting down). This is checked between connection attempts, not during one.
   static Result<PGConn> Connect(
       const std::string& conn_str,
       CoarseTimePoint deadline,
       bool simple_query_protocol,
-      const std::string& conn_str_for_log);
+      const std::string& conn_str_for_log,
+      const std::function<bool()>& should_stop = {});
 
   // Reconnect.
   void Reset();
@@ -452,6 +458,10 @@ struct PGConnSettings {
   // Wire name of the YbInternalConnKind this connection should be assigned.
   // Empty for a regular client connection.
   std::string yb_internal_conn_kind = {};
+  // If set, the connect retry loop gives up as soon as this returns true (e.g. the owning server is
+  // shutting down). Checked between connection attempts, not during one. Carried by the builder, so
+  // it also applies to any later reconnect made from a stored builder.
+  std::function<bool()> should_stop = {};
 };
 
 class PGConnBuilder {
@@ -463,6 +473,7 @@ class PGConnBuilder {
   const std::string conn_str_;
   const std::string conn_str_for_log_;
   const size_t connect_timeout_;
+  const std::function<bool()> should_stop_;
 };
 
 Result<PGConn> Execute(Result<PGConn> connection, const std::string& query);
@@ -486,7 +497,8 @@ class PGConnPerf {
 PGConnBuilder CreateInternalPGConnBuilder(
     const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
     uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline,
-    std::string_view yb_internal_conn_kind = {});
+    std::string_view yb_internal_conn_kind = {},
+    std::function<bool()> should_stop = {});
 
 Result<std::string> ResultAsString(
     PGresult* res, const std::string& column_sep = DefaultColumnSeparator(),

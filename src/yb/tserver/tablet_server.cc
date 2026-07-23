@@ -730,7 +730,8 @@ Status TabletServer::RegisterServices() {
                                 const CoarseTimePoint& deadline) {
       return pgwrapper::CreateInternalPGConnBuilder(
                  pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(),
-                 deadline, pgwrapper::YbInternalConnKindWireName::kAutoAnalyze)
+                 deadline, pgwrapper::YbInternalConnKindWireName::kAutoAnalyze,
+                 [this] { return static_cast<bool>(shutting_down_); })
           .Connect();
     };
     auto pg_auto_analyze_service =
@@ -1310,7 +1311,8 @@ void TabletServer::MakeRelcacheInitConnection(const std::string& dbname) {
   auto status = ResultToStatus(
       pgwrapper::CreateInternalPGConnBuilder(
           pgsql_proxy_bind_address(), dbname, GetSharedMemoryPostgresAuthKey(), deadline,
-          pgwrapper::YbInternalConnKindWireName::kRelcacheInit)
+          pgwrapper::YbInternalConnKindWireName::kRelcacheInit,
+          [this] { return static_cast<bool>(shutting_down_); })
           .Connect(/*simple_query_protocol=*/false));
   if (status.ok()) {
     LOG(INFO) << "Relcache init connection to database " << dbname << " succeeded";
@@ -2130,7 +2132,8 @@ Status TabletServer::CreateXClusterConsumer() {
   auto connect_to_pg = [this](const std::string& database_name, const CoarseTimePoint& deadline) {
     return pgwrapper::CreateInternalPGConnBuilder(
                pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(),
-               deadline)
+               deadline, /*yb_internal_conn_kind=*/{},
+               [this] { return static_cast<bool>(shutting_down_); })
         .Connect();
   };
   auto get_namespace_info =
@@ -2472,7 +2475,14 @@ void TabletServer::SetCronLeaderLease(MonoTime cron_leader_lease_end) {
 Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(
     const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) {
   return pgwrapper::CreateInternalPGConnBuilder(
-             pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(), deadline)
+             pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(), deadline,
+             /*yb_internal_conn_kind=*/{},
+             // Abort the connect retry loop as soon as shutdown begins. Internal connects run on
+             // messenger threads and can hold the triggering backend's inbound RpcContext alive
+             // until they return; retrying the (also shutting-down) postgres for the full deadline
+             // keeps that RPC connection non-idle and makes Messenger::Shutdown() time out joining
+             // the reactor.
+             [this] { return static_cast<bool>(shutting_down_); })
       .Connect();
 }
 
