@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { mui, YBButton, YBDropdown } from '@yugabyte-ui-library/core';
+import { mui, YBButton, YBButtonGroup, YBDropdown } from '@yugabyte-ui-library/core';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { useQuery, useQueryClient } from 'react-query';
@@ -20,6 +20,7 @@ import {
 } from '../EditUniverseUtils';
 
 import { EditGflagsModal } from '@app/redesign/features/universe/universe-actions/edit-gflags/EditGflags';
+import { transformToEditFlagsForm } from '@app/redesign/features/universe/universe-actions/edit-gflags/GflagHelper';
 import { EditConnectionPoolModal } from '@app/redesign/features/universe/universe-actions/edit-connection-pool/EditConnectionPoolModal';
 import { EditPGCompatibilityModal } from '@app/redesign/features/universe/universe-actions/edit-pg-compatibility/EditPGCompatibilityModal';
 import { EnableYSQLModal } from '@app/redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYSQLModal';
@@ -29,10 +30,7 @@ import {
   api as universeFormApi,
   QUERY_KEY as universeFormQueryKey
 } from '@app/redesign/features/universe/universe-form/utils/api';
-import {
-  ClusterType,
-  RunTimeConfigEntry
-} from '@app/redesign/features/universe/universe-form/utils/dto';
+import { RunTimeConfigEntry } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 import { getGetUniverseQueryKey } from '@app/v2/api/universe/universe';
 import { CloudType } from '@app/redesign/helpers/dtos';
@@ -49,15 +47,16 @@ import Checked from '@app/redesign/assets/check-new.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import Disabled from '@app/redesign/assets/revoke.svg';
 import AddCircleIcon from '@app/redesign/assets/add-circle-blue.svg';
-import {
-  getClusterByType as getLegacyClusterType,
-  transformSpecificGFlagToFlagsArray,
-  transformGFlagToFlagsArray
-} from '@app/redesign/features/universe/universe-form/utils/helpers';
+import { getAsyncCluster } from '@app/redesign/features/universe/universe-form/utils/helpers';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 
 const { Box, MenuItem, styled } = mui;
+
+const GFLAG_CLUSTER_TYPE = {
+  PRIMARY: 'primary',
+  READ_REPLICA: 'readReplica'
+} as const;
 
 const CheckedIcon = styled(Checked)({
   width: '24px',
@@ -73,6 +72,7 @@ const DisabledIcon = styled(Disabled)({
 
 export const DatabaseTab = () => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.database' });
+  const { t: tUniverseForm } = useTranslation('translation');
   const queryClient = useQueryClient();
   const { universeData } = useEditUniverseContext();
 
@@ -81,6 +81,9 @@ export const DatabaseTab = () => {
   const [ysqlModalOpen, setYsqlModalOpen] = useState(false);
   const [ycqlModalOpen, setYcqlModalOpen] = useState(false);
   const [gflagsModalOpen, setGflagsModalOpen] = useState(false);
+  const [selectedGflagCluster, setSelectedGflagCluster] = useState<string>(
+    GFLAG_CLUSTER_TYPE.PRIMARY
+  );
   const isUniverseReady = useIsUniverseReady();
 
   const universeUUID = universeData?.info?.universe_uuid;
@@ -139,13 +142,22 @@ export const DatabaseTab = () => {
 
   const databaseVersion = universeData?.spec?.yb_software_version;
 
-  const legacyPrimaryCluster = legacyUniverse?.universeDetails
-    ? getLegacyClusterType(legacyUniverse.universeDetails, ClusterType.PRIMARY)
-    : undefined;
-  const userIntent = legacyPrimaryCluster?.userIntent;
-  const legacyGflags = userIntent?.specificGFlags
-    ? transformSpecificGFlagToFlagsArray(userIntent.specificGFlags)
-    : transformGFlagToFlagsArray(userIntent?.masterGFlags, userIntent?.tserverGFlags);
+  const {
+    gFlags: primaryGflags = [],
+    asyncGflags = [],
+    inheritFlagsFromPrimary = true
+  } = legacyUniverse ? transformToEditFlagsForm(legacyUniverse) : {};
+  const hasReadReplica = !!(
+    legacyUniverse?.universeDetails && getAsyncCluster(legacyUniverse.universeDetails)
+  );
+  const isPrimaryGflagsView = selectedGflagCluster === GFLAG_CLUSTER_TYPE.PRIMARY;
+  const readReplicaSourceGflags = inheritFlagsFromPrimary ? primaryGflags : asyncGflags;
+  // Read replicas are TSERVER-only — drop MASTER values and master-only flag rows.
+  const readReplicaGflags = readReplicaSourceGflags
+    .filter((flag) => flag.TSERVER !== undefined)
+    .map(({ MASTER: _master, ...flag }) => flag);
+  const displayedGflags = isPrimaryGflagsView ? primaryGflags : readReplicaGflags;
+  const hasAnyGflags = primaryGflags.length > 0 || asyncGflags.length > 0;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -304,9 +316,9 @@ export const DatabaseTab = () => {
         </StyledContent>
       </StyledPanel>
       <StyledPanel>
-        <StyledCardHeader sx={{ padding: legacyGflags?.length <= 0 ? '24px' : '26px 24px' }}>
+        <StyledCardHeader sx={{ padding: !hasAnyGflags ? '24px' : '26px 24px' }}>
           {t('advancedConfigFlags')}
-          {legacyGflags.length > 0 && (
+          {hasAnyGflags && (
             <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
               <YBButton
                 dataTestId="edit-gflags-button"
@@ -320,8 +332,35 @@ export const DatabaseTab = () => {
             </RbacValidator>
           )}
         </StyledCardHeader>
-        <StyledContent>
-          {legacyGflags.length <= 0 ? (
+        <StyledContent sx={{ gap: '16px' }}>
+          {hasReadReplica && hasAnyGflags && (
+            <Box display="flex" justifyContent="flex-end">
+              <YBButtonGroup
+                size="medium"
+                dataTestId="gflags-cluster-type-button-group"
+                value={selectedGflagCluster}
+                buttons={[
+                  {
+                    value: GFLAG_CLUSTER_TYPE.PRIMARY,
+                    label: tUniverseForm('universeForm.gFlags.primaryTab'),
+                    onClick: () => setSelectedGflagCluster(GFLAG_CLUSTER_TYPE.PRIMARY),
+                    buttonProps: {
+                      dataTestId: 'gflags-primary-cluster-button'
+                    }
+                  },
+                  {
+                    value: GFLAG_CLUSTER_TYPE.READ_REPLICA,
+                    label: tUniverseForm('universeForm.gFlags.rrTab'),
+                    onClick: () => setSelectedGflagCluster(GFLAG_CLUSTER_TYPE.READ_REPLICA),
+                    buttonProps: {
+                      dataTestId: 'gflags-read-replica-button'
+                    }
+                  }
+                ]}
+              />
+            </Box>
+          )}
+          {!hasAnyGflags ? (
             <Box
               sx={{
                 display: 'flex',
@@ -351,8 +390,26 @@ export const DatabaseTab = () => {
                 </YBButton>
               </RbacValidator>
             </Box>
+          ) : displayedGflags.length <= 0 ? (
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '168px',
+                width: '100%',
+                justifyContent: 'center',
+                alignItems: 'center',
+                bgcolor: '#F2F6FF',
+                border: '1px dashed #CBDBFF',
+                borderRadius: '8px',
+                color: '#4E5F6D',
+                fontSize: '13px'
+              }}
+            >
+              {t('noGflagsAdded')}
+            </Box>
           ) : (
-            <ReadOnlyGflagTable gFlags={legacyGflags} isPrimary={true} />
+            <ReadOnlyGflagTable gFlags={displayedGflags} isPrimary={isPrimaryGflagsView} />
           )}
         </StyledContent>
       </StyledPanel>

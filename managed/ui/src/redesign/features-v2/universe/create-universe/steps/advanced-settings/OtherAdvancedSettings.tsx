@@ -9,6 +9,7 @@
 
 import { forwardRef, useContext, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from 'react-query';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { FormProvider, useForm } from 'react-hook-form';
 import { mui, YBAccordion } from '@yugabyte-ui-library/core';
@@ -28,6 +29,7 @@ import {
 import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
 import { constructPlacements } from '../../utils/createUniversePayload';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
 import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { OtherAdvancedProps } from './dtos';
 import { USER_TAGS_FIELD } from '../../fields/FieldNames';
@@ -47,13 +49,28 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
 
   const provider = generalSettings?.providerConfiguration;
   const dbVersion = generalSettings?.databaseVersion;
+  const isOnPrem = provider?.code === CloudType.onprem;
+
+  // On-prem providers (e.g. manually provisioned). Hide the Node Access
+  const { data: accessKeys, isLoading: isAccessKeysLoading } = useQuery(
+    [QUERY_KEY.getAccessKeys, provider?.uuid],
+    () => api.getAccessKeys(provider?.uuid),
+    { enabled: !!provider?.uuid && isOnPrem }
+  );
+  const hasSshAccessKeys = (accessKeys?.length ?? 0) > 0;
+  const showNodeAccessCard =
+    !!provider &&
+    provider.code !== CloudType.kubernetes &&
+    !(isOnPrem && (isAccessKeysLoading || !hasSshAccessKeys));
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.otherAdvancedSettings'
   });
 
   const methods = useForm<OtherAdvancedProps>({
-    resolver: yupResolver(OtherAdvancedValidationSchema(t, provider?.code)),
+    resolver: showNodeAccessCard
+      ? yupResolver(OtherAdvancedValidationSchema(t, provider?.code))
+      : undefined,
     defaultValues: {
       ...DEFAULT_COMMUNICATION_PORTS,
       instanceTags: [],
@@ -99,7 +116,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   return (
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '24px' }}>
-        {provider?.code !== CloudType.kubernetes && (
+        {showNodeAccessCard && (
           <YBAccordion
             titleContent={t('nodeAcessHeader')}
             sx={{ width: '100%', gap: '24px' }}

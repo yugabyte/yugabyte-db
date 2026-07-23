@@ -8,6 +8,7 @@ import { YBEarlyAccessTag } from '../../../../../components';
 import { isVersionConnectionPoolSupported } from '../../../../../features/universe/universe-form/utils/helpers';
 import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
 import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
+import { DEFAULT_CONNECTION_POOLING_PORTS } from '../../helpers/syncConnectionPoolingPorts';
 import { YSQL_FIELD, CONNECTION_POOLING_FIELD } from '../FieldNames';
 
 //icons
@@ -102,6 +103,26 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
   useUpdateEffect(() => {
     if (!isYSQLEnabled) setValue(CONNECTION_POOLING_FIELD, false);
   }, [isYSQLEnabled]);
+
+  // Disabling the override (or CP itself) must restore default CP ports.
+  useUpdateEffect(() => {
+    if (!isConPoolEnabled) {
+      setValue('overrideCPPorts', false);
+      setValue('ysqlServerRpcPort', DEFAULT_CONNECTION_POOLING_PORTS.ysqlServerRpcPort);
+      setValue(
+        'internalYsqlServerRpcPort',
+        DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
+      );
+      return;
+    }
+    if (!isOverrideCPEnabled) {
+      setValue('ysqlServerRpcPort', DEFAULT_CONNECTION_POOLING_PORTS.ysqlServerRpcPort);
+      setValue(
+        'internalYsqlServerRpcPort',
+        DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
+      );
+    }
+  }, [isOverrideCPEnabled, isConPoolEnabled, setValue]);
 
   return (
     <FieldContainer>

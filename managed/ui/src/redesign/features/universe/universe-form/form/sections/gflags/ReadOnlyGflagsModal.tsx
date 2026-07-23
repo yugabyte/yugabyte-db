@@ -37,7 +37,14 @@ export const ReadOnlyGflagsModal = ({
 };
 
 export const ReadOnlyGflagTable = ({ gFlags, isPrimary = true }: ReadOnlyGflagTableProps) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.database' });
+  // Read replicas do not use MASTER flags — keep TSERVER-only rows/values in the table.
+  const tableData = isPrimary
+    ? gFlags
+    : gFlags
+        .filter((flag) => flag.TSERVER !== undefined)
+        .map(({ MASTER: _master, ...flag }) => flag);
+
   return (
     <Box
       display={'flex'}
@@ -48,7 +55,7 @@ export const ReadOnlyGflagTable = ({ gFlags, isPrimary = true }: ReadOnlyGflagTa
       overflow={'auto'}
     >
       <BootstrapTable
-        data={gFlags}
+        data={tableData}
         height={'auto'}
         maxHeight={'420px'}
         tableStyle={{ overflow: 'scroll' }}
@@ -59,7 +66,9 @@ export const ReadOnlyGflagTable = ({ gFlags, isPrimary = true }: ReadOnlyGflagTa
           dataFormat={(cell) => <span className="cell-font">{cell}</span>}
           isKey
         >
-          <span className="header-title">{t('universeForm.gFlags.flagName')}</span>
+          <span className="header-title" style={{ textTransform: 'none' }}>
+            {t('flagName')}
+          </span>
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField="TSERVER"
@@ -68,7 +77,9 @@ export const ReadOnlyGflagTable = ({ gFlags, isPrimary = true }: ReadOnlyGflagTa
             <span className="cell-font">{cell !== undefined ? `${cell}` : ''}</span>
           )}
         >
-          <span className="header-title">{t('universeForm.gFlags.tServerValue')}</span>
+          <span className="header-title" style={{ textTransform: 'none' }}>
+            {t('tServer')}
+          </span>
         </TableHeaderColumn>
         {isPrimary && (
           <TableHeaderColumn
@@ -78,7 +89,9 @@ export const ReadOnlyGflagTable = ({ gFlags, isPrimary = true }: ReadOnlyGflagTa
               <span className="cell-font">{cell !== undefined ? `${cell}` : ''}</span>
             )}
           >
-            <span className="header-title">{t('universeForm.gFlags.masterValue')}</span>
+            <span className="header-title" style={{ textTransform: 'none' }}>
+              {t('master')}
+            </span>
           </TableHeaderColumn>
         )}
       </BootstrapTable>
