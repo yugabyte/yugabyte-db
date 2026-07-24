@@ -384,14 +384,38 @@ Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement
     }
   }
 
-  int total_min_replica_count = 0;
-  for (auto& placement_block : placement_info.placement_blocks()) {
+  int64_t total_min_replica_count = 0;
+  int64_t total_max_replica_count = 0;
+  for (const auto& placement_block : placement_info.placement_blocks()) {
+    if (placement_block.has_max_num_replicas()) {
+      if (placement_block.max_num_replicas() < 1) {
+        return STATUS_FORMAT(
+            IllegalState, "max_num_replicas ($0) must be greater than or equal to 1",
+            placement_block.max_num_replicas());
+      }
+      if (placement_block.max_num_replicas() < placement_block.min_num_replicas()) {
+        return STATUS_FORMAT(
+            IllegalState,
+            "max_num_replicas ($0) must be greater than or equal to min_num_replicas ($1)",
+            placement_block.max_num_replicas(), placement_block.min_num_replicas());
+      }
+    }
     total_min_replica_count += placement_block.min_num_replicas();
+    total_max_replica_count += placement_block.has_max_num_replicas()
+        ? placement_block.max_num_replicas()
+        : placement_info.num_replicas();
   }
   if (total_min_replica_count > placement_info.num_replicas()) {
     return STATUS_FORMAT(IllegalState, "num_replicas ($0) should be greater than or equal to the "
         "total of replica counts specified in placement_info ($1).", placement_info.num_replicas(),
         total_min_replica_count);
+  }
+  if (placement_info.placement_blocks_size() > 0 &&
+      total_max_replica_count < placement_info.num_replicas()) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "num_replicas ($0) should be less than or equal to the total maximum replica count ($1).",
+        placement_info.num_replicas(), total_max_replica_count);
   }
 
   return Status::OK();

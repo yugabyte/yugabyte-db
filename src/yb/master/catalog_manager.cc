@@ -2550,6 +2550,21 @@ Status CatalogManager::ValidateTableReplicationInfo(
     return STATUS(InvalidArgument, "No replication info set.");
   }
 
+  auto validate_explicit_max = [](const PlacementInfoPB& placement_info) -> Status {
+    if (std::ranges::any_of(
+            placement_info.placement_blocks(),
+            [](const auto& block) { return block.has_max_num_replicas(); })) {
+      return CatalogManagerUtil::IsPlacementInfoValid(placement_info);
+    }
+    return Status::OK();
+  };
+  if (replication_info.has_live_replicas()) {
+    RETURN_NOT_OK(validate_explicit_max(replication_info.live_replicas()));
+  }
+  for (const auto& read_replicas : replication_info.read_replicas()) {
+    RETURN_NOT_OK(validate_explicit_max(read_replicas));
+  }
+
   auto l = ClusterConfig()->LockForRead();
   const ReplicationInfoPB& cluster_replication_info = l->pb.replication_info();
 
@@ -5301,13 +5316,16 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
       auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
       size_t allowed_ts_size = allowed_ts.size();
       size_t min_num_replicas = pb.min_num_replicas();
+      size_t max_num_replicas =
+          GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(num_replicas));
       // For every placement block, we can only satisfy upto the number of
       // tservers present in that particular placement block.
       total_feasible_replicas += min(allowed_ts_size, min_num_replicas);
       // Extra tablet servers beyond min_num_replicas will be used to place
       // the extra replicas over and above the minimums.
-      if (allowed_ts_size > min_num_replicas) {
-        total_extra_servers += allowed_ts_size - min_num_replicas;
+      size_t max_feasible_replicas = min(allowed_ts_size, max_num_replicas);
+      if (max_feasible_replicas > min_num_replicas) {
+        total_extra_servers += max_feasible_replicas - min_num_replicas;
       }
     }
     // The total number of extra replicas that we can put cannot be more than
@@ -12274,10 +12292,10 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
     // match the requested policies. We'll assign the minimum requested replicas in each combination
     // of cloud.region.zone and then if we still have leftover replicas, we'll assign those
     // in any of the allowed areas.
-    auto all_allowed_ts = VERIFY_RESULT(FindTServersForPlacementInfo(placement_info, ts_descs));
-
     // Loop through placements and assign to respective available TSs.
     size_t min_replica_count_sum = 0;
+    std::vector<size_t> selected_per_block;
+    selected_per_block.reserve(placement_info.placement_blocks_size());
     for (const auto& pb : placement_info.placement_blocks()) {
       // This works because currently we don't allow placement blocks to overlap.
       auto available_ts_descs = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
@@ -12288,19 +12306,38 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
       min_replica_count_sum += min_num_replicas;
       SelectReplicas(available_ts_descs, num_replicas, config, &already_selected_ts, member_type,
                      per_table_state, global_state);
+      selected_per_block.push_back(num_replicas);
     }
 
     size_t replicas_left = nreplicas - min_replica_count_sum;
-    size_t max_tservers_left = all_allowed_ts.size() - already_selected_ts.size();
-    // Upper bounded by the tservers left.
-    replicas_left = min(replicas_left, max_tservers_left);
-    DCHECK_GE(replicas_left, 0);
-    if (replicas_left > 0) {
-      // No need to do an extra check here, as we checked early if we have enough to cover all
-      // requested placements and checked individually per placement info, if we could cover the
-      // minimums.
-      SelectReplicas(all_allowed_ts, replicas_left, config, &already_selected_ts, member_type,
-                     per_table_state, global_state);
+    while (replicas_left > 0) {
+      TSDescriptorVector candidates;
+      size_t block_idx = 0;
+      for (const auto& pb : placement_info.placement_blocks()) {
+        if (selected_per_block[block_idx] <
+            implicit_cast<size_t>(
+                GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(nreplicas)))) {
+          auto block_tservers = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
+          candidates.insert(candidates.end(), block_tservers.begin(), block_tservers.end());
+        }
+        ++block_idx;
+      }
+
+      auto selected = SelectReplica(
+          candidates, &already_selected_ts, per_table_state, global_state);
+      if (!selected) {
+        break;
+      }
+      SelectReplicas(
+          {selected}, 1, config, &already_selected_ts, member_type, per_table_state, global_state);
+      for (size_t i = 0; i != implicit_cast<size_t>(placement_info.placement_blocks_size()); ++i) {
+        if (selected->MatchesCloudInfo(
+                placement_info.placement_blocks(narrow_cast<int>(i)).cloud_info())) {
+          ++selected_per_block[i];
+          break;
+        }
+      }
+      --replicas_left;
     }
   }
   return Status::OK();
@@ -13146,6 +13183,20 @@ Result<int32_t> CatalogManager::GetClusterConfigVersion() {
 
 Status CatalogManager::ValidateReplicationInfo(
     const ValidateReplicationInfoRequestPB* req, ValidateReplicationInfoResponsePB* resp) {
+  const auto& replication_info = req->replication_info();
+  auto validate_explicit_max = [](const PlacementInfoPB& placement_info) -> Status {
+    if (std::ranges::any_of(
+            placement_info.placement_blocks(),
+            [](const auto& block) { return block.has_max_num_replicas(); })) {
+      return CatalogManagerUtil::IsPlacementInfoValid(placement_info);
+    }
+    return Status::OK();
+  };
+  RETURN_NOT_OK(validate_explicit_max(replication_info.live_replicas()));
+  for (const auto& read_replicas : replication_info.read_replicas()) {
+    RETURN_NOT_OK(validate_explicit_max(read_replicas));
+  }
+
   TSDescriptorVector all_ts_descs;
   {
     BlacklistSet blacklist = VERIFY_RESULT(BlacklistSetFromPB());
@@ -13155,7 +13206,7 @@ Status CatalogManager::ValidateReplicationInfo(
   // because they aren't a part of any raft quorum underneath.
   // Technically, it is ok to have even 0 read replica nodes for them upfront.
   // We only need it for the primary cluster replicas.
-  auto placement_info = req->replication_info().live_replicas();
+  auto placement_info = replication_info.live_replicas();
   TSDescriptorVector ts_descs;
   // If the placement_info's uuid is empty, set it to be the current cluster's live replica uuid.
   if (placement_info.placement_uuid().empty()) {
@@ -13167,7 +13218,7 @@ Status CatalogManager::ValidateReplicationInfo(
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
   }
 
-  s = CatalogManagerUtil::CheckValidLeaderAffinity(req->replication_info());
+  s = CatalogManagerUtil::CheckValidLeaderAffinity(replication_info);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
   }

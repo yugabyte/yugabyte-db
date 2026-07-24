@@ -41,6 +41,9 @@ DEFINE_RUNTIME_AUTO_bool(enable_automatic_tablet_splitting, kExternal, false, tr
     "If false, disables automatic tablet splitting driven from the yb-master side, and in this "
     "case the value of tserver's ysql_num_tablets is recommended to be set to -1.");
 
+DEFINE_RUNTIME_AUTO_bool(enable_placement_block_max_num_replicas, kExternal, false, true,
+    "Enable enforcement of max_num_replicas in placement blocks.");
+
 DEFINE_UNKNOWN_bool(log_ysql_catalog_versions, false,
     "Log YSQL catalog events. For debugging purposes.");
 TAG_FLAG(log_ysql_catalog_versions, hidden);
