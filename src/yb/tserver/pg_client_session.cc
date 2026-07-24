@@ -92,6 +92,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
+#include "yb/util/transit_owner.h"
 #include "yb/util/write_buffer.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -2308,10 +2309,16 @@ class PgClientSession::Impl {
   void FinishTransaction(
       const PgFinishTransactionRequestPB& req, PgFinishTransactionResponsePB* resp,
       rpc::RpcContext&& context, PgSessionGuard& guard) {
-    const auto opt_status = DoFinishTransaction(req, resp, std::move(context), guard);
+    TransitOwner context_owner{std::move(context)};
+    const auto opt_status = DoFinishTransaction(req, resp, context_owner, guard);
     if (opt_status) {
+      if (!context_owner.Owns()) {
+        LOG_WITH_FUNC(DFATAL)
+            << "RpcContext ownership was unexpectedly transferred, unable to send response";
+        return;
+      }
       StatusToPB(*opt_status, resp->mutable_status());
-      context.RespondSuccess();
+      context_owner->RespondSuccess();
     }
   }
 
@@ -4211,7 +4218,7 @@ class PgClientSession::Impl {
 
   std::optional<Status> DoFinishTransaction(
       const PgFinishTransactionRequestPB& req, PgFinishTransactionResponsePB* resp,
-      rpc::RpcContext&& context, PgSessionGuard& guard) {
+      TransitOwner<rpc::RpcContext>& context_owner, PgSessionGuard& guard) {
     saved_priority_.reset();
     const auto is_ddl_mode = req.has_ddl_mode();
     const auto is_commit = req.commit();
@@ -4219,7 +4226,7 @@ class PgClientSession::Impl {
         is_ddl_mode && req.ddl_mode().use_regular_transaction_block();
     const auto kind =
         GetSessionKindBasedOnDDLOptions(is_ddl_mode, ddl_use_regular_transaction_block);
-    const auto deadline = context.GetClientDeadline();
+    const auto deadline = context_owner->GetClientDeadline();
     auto& txn = GetSessionData(kind).transaction;
     if (!txn) {
       VLOG_WITH_PREFIX_AND_FUNC(2)
@@ -4274,7 +4281,7 @@ class PgClientSession::Impl {
           disabler = silently_altered_db
               ? response_cache().Disable(*silently_altered_db) : PgResponseCache::Disabler(),
           holder = MakeSharedFromMoveOnly(
-              MakeTypedPBRpcContextHolder(req, resp, std::move(context)),
+              MakeTypedPBRpcContextHolder(req, resp, context_owner.Release()),
               guard.ConvertToCrossThreadGuard(),
               std::move(metadata_cleanupper))](Status commit_status) {
         auto& [context, guard, metadata_cleanupper] = *holder;
