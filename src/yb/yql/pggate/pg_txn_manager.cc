@@ -885,7 +885,8 @@ Status PgTxnManager::SetupReadTimeOptions(
 Status PgTxnManager::SetupPerformOptions(
     SetupPerformOptionsAccessorTag, tserver::PgPerformOptionsPB& options,
     NonTransactionalWrites ops_has_non_transactional_writes,
-    std::optional<ReadTimeAction> read_time_action) {
+    std::optional<ReadTimeAction> read_time_action,
+    IsLocalObjectLockOp is_local_object_lock_op) {
   if (!IsDdlModeWithSeparateTransaction() && !txn_in_progress_) {
     IncTxnSerialNo();
   }
@@ -907,8 +908,15 @@ Status PgTxnManager::SetupPerformOptions(
     options.set_priority(*priority_);
   }
 
-  RETURN_NOT_OK(SetupReadTimeOptions(
-      *options.mutable_read_time_options(), read_time_action, ops_has_non_transactional_writes));
+  // Object-lock RPCs must not carry read-time manipulations; keep only the serial numbers.
+  if (is_local_object_lock_op) {
+    auto& read_time_options = *options.mutable_read_time_options();
+    read_time_options.set_read_time_serial_no(serial_no_.read_time());
+    read_time_options.set_read_time_serial_no_history_min(serial_no_.min_read_time());
+  } else {
+    RETURN_NOT_OK(SetupReadTimeOptions(
+        *options.mutable_read_time_options(), read_time_action, ops_has_non_transactional_writes));
+  }
 
   options.set_force_global_transaction(yb_force_global_transaction);
   options.set_force_tablespace_locality(yb_force_tablespace_locality);
@@ -1133,12 +1141,16 @@ Status PgTxnManager::AcquireObjectLock(
     const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
     bool is_session_lock,
     std::optional<PgTablespaceOid> tablespace_oid) {
+  const auto is_local_object_lock_op =
+      IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK);
   RETURN_NOT_OK(CalculateIsolation(
       false /* read_only, doesn't matter */,
       GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
-      IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)));
+      is_local_object_lock_op));
   tserver::PgPerformOptionsPB options;
-  RETURN_NOT_OK(SetupPerformOptions(tag, options, NonTransactionalWrites::kFalse));
+  RETURN_NOT_OK(SetupPerformOptions(
+      tag, options, NonTransactionalWrites::kFalse, {} /* read_time_action */,
+      is_local_object_lock_op));
   RETURN_NOT_OK(client_->AcquireObjectLock(
       &options, lock_id, mode, is_session_lock, tablespace_oid));
   DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());
