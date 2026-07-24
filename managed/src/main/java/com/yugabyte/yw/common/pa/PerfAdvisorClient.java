@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.WSClientRefresher;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.PACollectorExt;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PACollector;
 import com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsFormat;
 import java.io.File;
@@ -47,6 +48,12 @@ public class PerfAdvisorClient {
     String customerMetadataUrl =
         collector.getPaUrl() + "/api/customer/" + collector.getCustomerUUID() + "/metadata";
     try {
+      // collection_enabled is derived from local HA state at PUT time - never persisted on
+      // PACollector. For non-embedded collectors HA does not apply, so collection is always
+      // enabled from YBA's point of view (the operator can still pause collection through
+      // the PA UI). For embedded collectors we disable collection when the local YBA is an
+      // HA follower.
+      boolean collectionEnabled = !(collector.isEmbedded() && HighAvailabilityConfig.isFollower());
       CustomerMetadata customerMetadata =
           new CustomerMetadata()
               .setId(collector.getCustomerUUID())
@@ -57,7 +64,8 @@ public class PerfAdvisorClient {
               .setMetricsScrapePeriodSec(collector.getMetricsScrapePeriodSecs())
               .setApiToken(collector.getApiToken())
               .setProxyMode(
-                  confGetter.getGlobalConf(GlobalConfKeys.paEmbeddedUiReverseProxyEnabled));
+                  confGetter.getGlobalConf(GlobalConfKeys.paEmbeddedUiReverseProxyEnabled))
+              .setCollectionEnabled(collectionEnabled);
       JsonNode result =
           getApiHelper()
               .putRequest(
@@ -311,6 +319,14 @@ public class PerfAdvisorClient {
      * com.yugabyte.yw.controllers.PAProxyController}.
      */
     boolean proxyMode;
+
+    /**
+     * When false, PA skips scraping, anomaly detection, and task-runner tasks against this
+     * customer's universes. YBA sets this to false when the local YBA is an HA follower (embedded
+     * collectors only) and back to true after promotion. Operators can also toggle it via the PA UI
+     * to pause collection for a specific customer.
+     */
+    boolean collectionEnabled;
   }
 
   @Data
