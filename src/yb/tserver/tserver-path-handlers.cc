@@ -669,17 +669,17 @@ string GetOnDiskSizeInHtml(const yb::tablet::TabletOnDiskSizeInfo& info) {
   disk_size_html << "<ul>"
                  << "<li>" << "Total (may be stale): "
                  << (info.total_on_disk_size > 0 ?
-                        HumanReadableNumBytes::ToString(info.total_on_disk_size) : "N/A")
+                        HumanizeBytes(info.total_on_disk_size) : "N/A")
                  << "<ul>"
                  << "<li>" << "SST Files: "
-                 << HumanReadableNumBytes::ToString(info.sst_files_disk_size)
+                 << HumanizeBytes(info.sst_files_disk_size)
                  << "<li>" << "WAL Files: "
-                 << HumanReadableNumBytes::ToString(info.wal_files_disk_size)
+                 << HumanizeBytes(info.wal_files_disk_size)
                  << "<li>" << "Consensus Metadata: "
-                 << HumanReadableNumBytes::ToString(info.consensus_metadata_disk_size);
+                 << HumanizeBytes(info.consensus_metadata_disk_size);
   if (info.vector_index_disk_size > 0) {
     disk_size_html << "<li>" << "Vector Indexes: "
-                   << HumanReadableNumBytes::ToString(info.vector_index_disk_size);
+                   << HumanizeBytes(info.vector_index_disk_size);
   }
   disk_size_html << "</ul>"
                  << "</ul>";
@@ -1055,8 +1055,8 @@ void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::Web
       *output << Substitute(
           "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td><td>$5</td></tr>\n",
           EscapeForHtmlToString(op_pb.name()), op_pb.runnable(),
-          HumanReadableNumBytes::ToString(op_pb.ram_anchored_bytes()),
-          HumanReadableNumBytes::ToString(op_pb.logs_retained_bytes()), op_pb.perf_improvement(),
+          HumanizeBytes(op_pb.ram_anchored_bytes()),
+          HumanizeBytes(op_pb.logs_retained_bytes()), op_pb.perf_improvement(),
           op_pb.cdcsdk_reset_stale_retention_barrier() ? "Yes" : "No");
     }
   }
@@ -1338,31 +1338,31 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
     jw.StartObject();
     const yb::tablet::TabletOnDiskSizeInfo& info = yb::tablet::TabletOnDiskSizeInfo::FromPB(status);
     jw.String("total_size");
-    jw.String(HumanReadableNumBytes::ToString(info.active_on_disk_size));
+    jw.String(HumanizeBytes(info.active_on_disk_size));
     jw.String("total_size_bytes");
     jw.Uint64(info.active_on_disk_size);
     jw.String("total_size_including_snapshots");
-    jw.String(HumanReadableNumBytes::ToString(info.total_on_disk_size));
+    jw.String(HumanizeBytes(info.total_on_disk_size));
     jw.String("total_size_including_snapshots_bytes");
     jw.Uint64(info.total_on_disk_size);
     jw.String("consensus_metadata_size");
-    jw.String(HumanReadableNumBytes::ToString(info.consensus_metadata_disk_size));
+    jw.String(HumanizeBytes(info.consensus_metadata_disk_size));
     jw.String("consensus_metadata_size_bytes");
     jw.Uint64(info.consensus_metadata_disk_size);
     jw.String("wal_files_size");
-    jw.String(HumanReadableNumBytes::ToString(info.wal_files_disk_size));
+    jw.String(HumanizeBytes(info.wal_files_disk_size));
     jw.String("wal_files_size_bytes");
     jw.Uint64(info.wal_files_disk_size);
     jw.String("sst_files_size");
-    jw.String(HumanReadableNumBytes::ToString(info.sst_files_disk_size));
+    jw.String(HumanizeBytes(info.sst_files_disk_size));
     jw.String("sst_files_size_bytes");
     jw.Uint64(info.sst_files_disk_size);
     jw.String("uncompressed_sst_files_size");
-    jw.String(HumanReadableNumBytes::ToString(info.uncompressed_sst_files_disk_size));
+    jw.String(HumanizeBytes(info.uncompressed_sst_files_disk_size));
     jw.String("uncompressed_sst_files_size_bytes");
     jw.Uint64(info.uncompressed_sst_files_disk_size);
     jw.String("vector_index_size");
-    jw.String(HumanReadableNumBytes::ToString(info.vector_index_disk_size));
+    jw.String(HumanizeBytes(info.vector_index_disk_size));
     jw.String("vector_index_size_bytes");
     jw.Uint64(info.vector_index_disk_size);
     jw.EndObject();
