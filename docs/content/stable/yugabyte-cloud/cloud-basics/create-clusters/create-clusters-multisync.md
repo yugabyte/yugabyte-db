@@ -81,6 +81,8 @@ Select the [Fault tolerance](../../create-clusters-overview/#fault-tolerance) fo
 
 Clusters can be scaled in increments of 1 node per region; for example, a cluster with fault tolerance of 2 regions can be scaled in multiples of 5 nodes, one per region.
 
+To create a cluster that is resilient to _two zone outages_, click **Advanced Options** and set [Replication Factor](../../../../architecture/docdb-replication/replication/#replication-factor) to **RF5**. This configuration requires a minimum of 5 nodes, across 5 availability zones, across 3 regions; two regions have 2 zones while the third region has a single zone. The cluster can be scaled in increments of 2-2-1 nodes per region. When setting the [Preferred region](#preferred-region), set it to one of the regions with two zones. 
+
 #### Select regions and node size
 
 ![Add Cluster Wizard - Multi-region and size](/images/yb-cloud/cloud-addcluster-multisync.png)

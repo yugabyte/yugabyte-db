@@ -109,6 +109,7 @@ YugabyteDB Aeon provides the following configurations for fault tolerance.
 |                 | 2 Node outages   | 5 | 1 |
 |                 | 3 Node outages   | 7 | 1 |
 | **Zone**        | 1 Zone outage    | 3 across 3 zones   | 3 |
+|                 | 2 Zone outages | 5 across 5 zones (3 regions) | 5 |
 | **Region**      | 1 Region outage  | 3 across 3 regions | 3 |
 |                 | 2 Region outages | 5 across 5 regions | 5 |
 |                 | 3 Region outages | 7 across 7 regions | 7 |
@@ -128,9 +129,13 @@ For application development and testing, you can set fault tolerance to **None**
 #### Availability Zone
 
 - YugabyteDB can continue to do reads and writes even in case of a cloud availability zone outage.
-- Minimum of 3 nodes across 3 availability zones for a fault tolerance of 1 zone.
-- Because cloud providers typically provide only 3-4 availability zones per region, availability zone fault tolerance is limited to 1 zone outage (anything more requires more zones than are available in any typical region).
-- Add or remove nodes in increments of 3 (1 node per zone); all zones have the same number of nodes.
+- Minimum of 3 nodes across 3 availability zones for a fault tolerance of 1 zone, or 5 nodes across 5 availability zones for a fault tolerance of 2 zones.
+
+Zones can be placed in a single region, or across 3 regions.
+
+In the case of single region, because cloud providers typically provide only 3-4 availability zones per region, fault tolerance is limited to 1 zone outage (anything more requires more zones than are available in any typical region). You add or remove nodes in increments of 3 (1 node per zone); all zones have the same number of nodes.
+
+YugabyteDB Aeon also provides a configuration resilient to 2 zone outages, with a minimum of 5 nodes, across 5 availability zones, across 3 regions; two regions have 2 zones while the third region has a single zone. In this case, you scale the cluster in increments of 2-2-1 nodes per region. This configuration is also resilient to 1 region outage.
 
 #### Node
 
