@@ -18,6 +18,7 @@
 #include "yb/client/session.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/constants.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/gutil/map-util.h"
@@ -133,26 +134,26 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   std::optional<uint64> stream_creation_time;
   std::unordered_map<std::string, PgReplicaIdentity> replica_identity_map;
   std::optional<std::string> replication_slot_name;
+  std::optional<std::string> replication_slot_plugin_name;
   std::vector<TableId> unqualified_table_ids;
   std::optional<uint32_t> db_oid_to_get_sequences_for;
   std::optional<bool> detect_publication_changes_implicitly;
+  bool is_notification_slot = false;
 
   RETURN_NOT_OK(client->GetCDCStream(
       stream_id, &namespace_id, &object_ids, &options, &transactional, &consistent_snapshot_time,
       &consistent_snapshot_option, &stream_creation_time, &replica_identity_map,
       &replication_slot_name, &unqualified_table_ids, &replication_slot_lsn_type,
-      &replication_slot_ordering_mode, &detect_publication_changes_implicitly));
+      &replication_slot_ordering_mode, &detect_publication_changes_implicitly,
+      &replication_slot_plugin_name, &is_notification_slot));
 
   AddDefaultOptionsIfMissing(&options);
 
   for (const auto& [key, value] : options) {
     if (key == kRecordType) {
-      // For replication slot consumption, the CDC RecordType Option is ignored. The replica
-      // identity present in the replica identity map determines the record type for each table.
-      if (FLAGS_ysql_yb_enable_replica_identity && replication_slot_name.has_value() &&
-          !replication_slot_name->empty()) {
-        continue;
-      }
+      // The streams created via PG model won't have kRecordType option set in their metadata. The
+      // replica identity map is used for such streams. If kRecordType option is present in a
+      // stream, then it can be inferred that such a stream wasn't created via PG syntax.
       CDCRecordType record_type;
       SCHECK(
           CDCRecordType_Parse(value, &record_type), IllegalState, "CDC record type parsing error");
@@ -208,15 +209,29 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   stream_creation_time_.store(stream_creation_time, std::memory_order_release);
   consistent_snapshot_option_ = consistent_snapshot_option;
   replication_slot_name_ = replication_slot_name;
+  replication_slot_plugin_name_ = replication_slot_plugin_name;
   replication_slot_lsn_type_ = replication_slot_lsn_type;
   replication_slot_ordering_mode_ = replication_slot_ordering_mode;
   detect_publication_changes_implicitly_ = detect_publication_changes_implicitly;
+  is_notification_slot_ = is_notification_slot;
 
   if (!is_refresh) {
     loaded_.store(true, std::memory_order_release);
   }
 
   return Status::OK();
+}
+
+bool StreamMetadata::IsLogicalReplicationStream() const {
+  std::lock_guard l(mutex_);
+  DCHECK(loaded_);
+  // Internal LISTEN/NOTIFY notifications streams are logical replication streams.
+  if (is_notification_slot_) {
+    return true;
+  }
+  // Logical streams have a real output plugin; gRPC streams have none (legacy) or yb_grpc.
+  return replication_slot_plugin_name_.has_value() && !replication_slot_plugin_name_->empty() &&
+         *replication_slot_plugin_name_ != kYbGrpcStreamIndicator;
 }
 
 Result<std::optional<uint32_t>> StreamMetadata::GetDbOidToGetSequencesForUnlocked() const {
@@ -260,7 +275,8 @@ void StreamMetadata::StreamTabletMetadata::PopulateStats(xrepl::StreamTabletStat
 std::string StreamMetadata::ToString() const {
   std::lock_guard lock(mutex_);
   return YB_CLASS_TO_STRING(
-      stream_id, namespace_id, (record_type, CDCRecordType_Name(record_type_)),
+      stream_id, namespace_id,
+      (record_type, record_type_ ? CDCRecordType_Name(*record_type_) : "none"),
       (source_type, CDCRequestSource_Name(source_type_)));
 }
 
