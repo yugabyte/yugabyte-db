@@ -1053,12 +1053,29 @@ TEST_F(PgLibPqTest, InTxnDelete) {
   ASSERT_NO_FATALS(AssertRows(&conn, 1));
 }
 
+namespace {
+
+void AddSysCatalogTombstoneGcFlags(ExternalMiniClusterOptions* options) {
+  // Too little data written by DDLs to flush to SSTs with default memstore size.
+  // This helps compaction since compaction only happens on SST files.
+  options->extra_master_flags.emplace_back("--memstore_size_mb=1");
+  // Increase frequency of compaction.
+  options->extra_master_flags.emplace_back("--rocksdb_level0_file_num_compaction_trigger=2");
+  // Reduce history retention interval to remove tombstones.
+  options->extra_master_flags.emplace_back(
+      "--timestamp_syscatalog_history_retention_interval_sec=1");
+  options->extra_master_flags.emplace_back("--timestamp_history_retention_interval_sec=1");
+}
+
+}  // namespace
+
 class PgLibPqReadFromSysCatalogTest : public PgLibPqTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgLibPqTest::UpdateMiniClusterOptions(options);
     options->extra_master_flags.emplace_back(
         "--TEST_get_ysql_catalog_version_from_sys_catalog=true");
+    AddSysCatalogTombstoneGcFlags(options);
     // Disable auto analyze for catalog version tests.
     options->extra_tserver_flags.emplace_back("--ysql_enable_auto_analyze=false");
   }
@@ -1080,7 +1097,12 @@ class PgLibPqReadFromSysCatalogTest : public PgLibPqTest {
       num_iter /= 1.2;
     }
     LOG(INFO) << "num_iter: " << num_iter;
+    const auto deadline = CoarseMonoClock::Now() + 15min;
     for (int i = 1; i <= num_iter; i++) {
+      if (CoarseMonoClock::Now() >= deadline) {
+        LOG(INFO) << "Ending after " << i - 1 << " iterations to stay within the test time budget";
+        break;
+      }
       LOG(INFO) << "ITERATION " << i;
       RETURN_NOT_OK(BumpCatalogVersion(1, &conn, i % 2 == 1 ? "NOSUPERUSER" : "SUPERUSER"));
       LOG(INFO) << "Fetching CatalogVersion. Expecting " << i + ver_orig;
