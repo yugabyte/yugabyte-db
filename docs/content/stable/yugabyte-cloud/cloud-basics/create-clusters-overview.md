@@ -110,7 +110,7 @@ YugabyteDB Aeon provides the following configurations for fault tolerance.
 |                 | 3 Node outages   | 7 | 1 |
 | **Zone**        | 1 Zone outage    | 3 across 3 zones   | 3 |
 | **Region**      | 1 Region outage  | 3 across 3 regions | 3 |
-|                 | 1 Region outage and<br>2 Zone outages | 5 across 3 regions | 5 |
+|                 | 1 Region outage and<br>2 Zone outages | 5 across 3 regions (RF5) | 5 |
 |                 | 2 Region outages | 5 across 5 regions | 5 |
 |                 | 3 Region outages | 7 across 7 regions | 7 |
 
