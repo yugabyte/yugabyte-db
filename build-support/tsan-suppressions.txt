@@ -202,3 +202,6 @@ signal:yb::PstackWatcher::DumpStacks
 # Unexpected tsan warning in the getpwuid_r standard thread safe function which is called
 # from the pqGetpwuid function
 race:pqGetpwuid
+
+# False positive because we compile OpenSSL without TSAN instrumentation (#32121).
+race:libcrypto.so.3
