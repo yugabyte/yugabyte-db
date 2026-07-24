@@ -139,6 +139,12 @@ struct ybthin_client {
   std::vector<std::unique_ptr<ybthin_session>> write_sessions;
   std::atomic<size_t> read_rr{0};   // round-robin cursor for read-session selection
   std::atomic<size_t> write_rr{0};  // round-robin cursor for write-session selection
+  // A fresh txn_serial_no is stamped on every Perform. The server keeps a plain session's read
+  // point (and transaction) alive across Performs that carry the SAME txn_serial_no, so a constant
+  // would freeze the read point at the first read -- reads would never see later commits. Advancing
+  // it per Perform makes each one a fresh logical transaction that picks a new read point (this is
+  // what pggate/yb_tsclient do; see pg_client_session.cc gating on txn_serial_no_).
+  std::atomic<uint64_t> txn_serial{1};
   std::vector<HostPort> hosts;
   MonoDelta timeout;
   int num_reactors = kDefaultNumReactors;
@@ -601,9 +607,14 @@ void FinishRead(ReadCall* raw) {
 
   auto* result = static_cast<ybthin_read_result*>(calloc(1, sizeof(ybthin_read_result)));
   result->n_ops = n_ops;
-  result->used_read_time_ht = call->used_read_time_ht;
   result->results = static_cast<ybthin_read_op_result*>(
       calloc(n_ops ? n_ops : 1, sizeof(ybthin_read_op_result)));
+
+  // The hybrid time the batch actually ran at (all ops share one snapshot). For a pinned batch it
+  // is the caller's read_time_ht; for a fresh (read_time_ht == 0) batch the server picks it and
+  // reports it in the paging state -- surface it so the caller can pin follow-up pages/batches to
+  // the same snapshot.
+  uint64_t picked_read_ht = 0;
 
   for (size_t i = 0; i < n_ops; ++i) {
     const auto& op = call->resp.responses(static_cast<int>(i));
@@ -631,6 +642,11 @@ void FinishRead(ReadCall* raw) {
     // A missing paging_state means this op's scan is exhausted; otherwise wrap the server's paging
     // state with the pinning header so a continuation returns to this batch's session.
     if (op.has_paging_state()) {
+      // The server stamps the snapshot it chose into the paging state; capture it as the batch's
+      // used read time (all ops ran at one snapshot).
+      if (op.paging_state().read_time().has_read_ht()) {
+        picked_read_ht = op.paging_state().read_time().read_ht();
+      }
       std::string srv;
       op.paging_state().SerializeToString(&srv);
       std::string wrapped = WrapPagingState(call->session_index, call->generation, srv);
@@ -638,6 +654,9 @@ void FinishRead(ReadCall* raw) {
       op_result.paging_state_len = wrapped.size();
     }
   }
+  // Pinned batch: echo the caller's read_time_ht. Fresh batch: report the server-picked time.
+  result->used_read_time_ht =
+      call->used_read_time_ht != 0 ? call->used_read_time_ht : picked_read_ht;
   call->cb(call->ctx, OkStatus(), result);
 }
 
@@ -1008,13 +1027,17 @@ void ybthin_read_async(
     }
   }
 
-  // One snapshot for the whole batch: read_time_ht == 0 lets the server set a clamped read point
-  // (relaxed read-after-commit); otherwise pin read == global_limit so all ops see one snapshot.
+  // One snapshot for the whole batch.
   auto* rto = req.mutable_options()->mutable_read_time_options();
   if (read_time_ht == 0) {
+    // Fresh read point for this batch: ensure a read time is set (the fresh txn_serial_no stamped
+    // at dispatch already dropped any prior read point, so the server picks a current one here).
+    // This mirrors yb_tsclient's plain-read path. Read-after-write correctness comes from the fresh
+    // txn_serial_no, not from this manipulation alone.
     rto->set_read_time_manipulation(tserver::ENSURE_READ_TIME_IS_SET);
-    rto->set_clamp_uncertainty_window(true);
   } else {
+    // Pin the batch to an explicit snapshot (e.g. paged-scan continuation, or a second batch that
+    // must observe the same snapshot as a prior one via its used_read_time_ht).
     auto* rt = rto->mutable_read_time();
     rt->set_read_ht(read_time_ht);
     rt->set_global_limit_ht(read_time_ht);
@@ -1042,6 +1065,8 @@ void ybthin_read_async(
       for (auto& op : *raw->req.mutable_ops()) {
         op.mutable_read()->set_stmt_id(s->stmt_id++);
       }
+      // Fresh transaction per Perform so the server does not reuse this session's prior read point.
+      raw->req.mutable_options()->set_txn_serial_no(client->txn_serial.fetch_add(1));
       raw->req.set_session_id(s->session_id);
       raw->req.set_serial_no(s->serial_no++);
       dispatch = true;
@@ -1137,6 +1162,8 @@ void ybthin_upsert_batch_async(
       const uint64_t serial = s->read_time_serial++;
       rto->set_read_time_serial_no(serial);
       rto->set_read_time_serial_no_history_min(serial);
+      // Fresh transaction per Perform (stateless writes), matching the read path and yb_tsclient.
+      raw->req.mutable_options()->set_txn_serial_no(client->txn_serial.fetch_add(1));
       raw->req.set_session_id(s->session_id);
       raw->req.set_serial_no(s->serial_no++);
       dispatch = true;

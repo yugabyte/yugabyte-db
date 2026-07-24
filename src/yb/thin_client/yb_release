@@ -111,8 +111,29 @@ grep -qE 'postgres_build/src/common/' "$link_args_file" && \
 grep -qE 'postgres_build/src/port/' "$link_args_file" && \
   pg_targets+=( "postgres_build/src/port/libpgport.a" )
 log "Closure: ${#closure_objs[@]} objects + ${#pg_targets[@]} PostgreSQL static lib(s)"
-( cd "$build_root" && ninja -k 0 "${closure_objs[@]}" "${pg_targets[@]}" ) || \
+# YB_BUILD_ROOT must be exported for ninja: several closure objects order-only-depend on
+# configure_postgres/genbki (via the yb_pggate_util dep), and build_postgres aborts without it. If it
+# is unset, those postgres steps fail, ninja SKIPS the dependent objects (e.g. yb_thin_client.cc.o),
+# and the link silently reuses a STALE object -- shipping a .so that doesn't match the source.
+#
+# Build the shim's OWN object on its own first. In the batched closure build below, ninja's -k 0
+# tolerates unrelated intermediate .so link failures (--no-undefined) -- but it can also skip
+# yb_thin_client.cc.o in the same run, silently leaving it stale. Building it alone (its only
+# prereqs are the postgres configure/genbki steps) guarantees it is regenerated from current source.
+shim_obj_target="src/yb/thin_client/CMakeFiles/yb_thin_client.dir/yb_thin_client.cc.o"
+( cd "$build_root" && YB_BUILD_ROOT="$build_root" ninja "$shim_obj_target" ) \
+  || fatal "failed to compile $shim_obj_target -- see ninja output above"
+( cd "$build_root" && YB_BUILD_ROOT="$build_root" ninja -k 0 "${closure_objs[@]}" "${pg_targets[@]}" ) || \
   log "note: a non-closure byproduct failed to link (expected with --no-tcmalloc); continuing"
+
+# Guard against the stale-object trap above: the shim's own object (the one that regressed) must be
+# newer than its source. If it's stale, the postgres prereqs likely failed and ninja skipped it --
+# abort rather than link and ship a .so that doesn't match the source.
+shim_obj="$build_root/src/yb/thin_client/CMakeFiles/yb_thin_client.dir/yb_thin_client.cc.o"
+if [[ ! -f "$shim_obj" || "$shim_obj" -ot "$script_dir/yb_thin_client.cc" ]]; then
+  fatal "stale/missing yb_thin_client.cc.o (older than its source) -- postgres prereqs likely \
+failed; the link would ship a mismatched .so. Check the ninja output above."
+fi
 
 # Export only the ybthin_* ABI; everything else (protobuf/absl/OpenSSL/... symbols) is localized so
 # the shim never interposes or collides with symbols in the host process.
