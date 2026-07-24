@@ -25,7 +25,7 @@ rightNav:
 
 ##### Improvements
 
-- Support for three-region [Replicate across Regions](../cloud-basics/create-clusters/create-clusters-multisync/) clusters that are resilient to 2 availability zone failures. This configuration requires a minimum of 5 nodes, across 5 availability zones, across 3 regions: two regions have 2 zones while the third region has a single zone. This [replication factor 5 cluster](../develop/build-global-apps/global-database/) provides quicker failover; with two replicas in the preferred region, when a leader fails, a local follower can be elected as a leader, rather than a follower in a different region. The cluster can be scaled in increments of 2-2-1 nodes per region.
+- Support for three-region [Replicate across Regions](../cloud-basics/create-clusters/create-clusters-multisync/) clusters that are resilient to 2 availability zone failures. This configuration requires a minimum of 5 nodes, across 5 availability zones, across 3 regions: two regions have 2 zones while the third region has a single zone. This [replication factor](/stable/architecture/docdb-replication/replication/#replication-factor) 5 cluster provides quicker failover; with two replicas in the preferred region, when a leader fails, a local follower can be elected as a leader, rather than a follower in a different region. The cluster can be scaled in increments of 2-2-1 nodes per region.
 
 ##### Database
 

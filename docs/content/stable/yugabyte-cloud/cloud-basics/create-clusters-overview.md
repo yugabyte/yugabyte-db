@@ -109,8 +109,8 @@ YugabyteDB Aeon provides the following configurations for fault tolerance.
 |                 | 2 Node outages   | 5 | 1 |
 |                 | 3 Node outages   | 7 | 1 |
 | **Zone**        | 1 Zone outage    | 3 across 3 zones   | 3 |
-|                 | 2 Zone outages | 5 across 5 zones (3 regions) | 5 |
 | **Region**      | 1 Region outage  | 3 across 3 regions | 3 |
+|                 | 1 Region outage and<br>2 Zone outages | 5 across 3 regions | 5 |
 |                 | 2 Region outages | 5 across 5 regions | 5 |
 |                 | 3 Region outages | 7 across 7 regions | 7 |
 
@@ -123,7 +123,7 @@ For application development and testing, you can set fault tolerance to **None**
 #### Region
 
 - YugabyteDB can continue to do reads and writes even in case of a cloud region outage.
-- Minimum of 3 nodes across 3 regions, 5 nodes across 5 regions, or 7 nodes across 7 regions.
+- Minimum of 3 nodes across 3 regions, 5 nodes across 3 regions, 5 nodes across 5 regions, or 7 nodes across 7 regions.
 - Add or remove nodes in increments of 1 per region; all regions have the same number of nodes. For example, for a fault tolerance of 2 regions, you must scale in increments of 5 (one node per region).
 
 Aeon also supports the [Global database pattern](/stable/develop/build-global-apps/global-database/), with 5 availability zones across 3 regions (two regions have 2 zones while the third region has a single zone). This configuration is resilient to _two zone outages_ and provides quicker failover; with two replicas in the [preferred region](../create-clusters/create-clusters-multisync/#preferred-region), when a leader fails, a local follower can be elected as a leader, rather than a follower in a different region. The cluster is scaled in increments of 2-2-1 nodes per region. When setting the preferred region, set it to one of the regions with two zones.
