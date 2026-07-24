@@ -20,7 +20,7 @@ With the YugabyteDB MCP Server, developers can:
 - Generate AI-powered visualizations from query results
 - Enable LLMs to safely issue read-only SQL queries (and optionally guarded writes)
 - Map authenticated users to database roles via OIDC identity mapping
-- Integrate instantly with tools like Claude Desktop, Cursor, and Windsurf
+- Integrate instantly with AI coding agents such as Claude Desktop, Cursor, and Windsurf
 
 Learn more about the YugabyteDB MCP Server:
 
