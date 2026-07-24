@@ -71,6 +71,8 @@ using std::string;
 using std::vector;
 
 DECLARE_uint64(cdc_intent_retention_ms);
+DECLARE_bool(cdc_enable_time_based_intent_retention);
+DECLARE_uint64(cdc_min_sec_to_retain_intent);
 DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_bool(stream_truncate_record);
