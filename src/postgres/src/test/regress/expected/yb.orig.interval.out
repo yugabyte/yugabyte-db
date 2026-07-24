@@ -40,7 +40,8 @@ SELECT f1 FROM INTERVAL_TBL_OF r1 ORDER BY f1;
  Sort
    Sort Key: f1
    ->  Seq Scan on interval_tbl_of r1
-(3 rows)
+         Disabled: true
+(4 rows)
 
 SELECT f1 FROM INTERVAL_TBL_OF r1 ORDER BY f1;
                     f1                     

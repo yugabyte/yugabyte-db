@@ -7,9 +7,9 @@
 SET work_mem TO 64;
 SET temp_file_limit TO 0;
 SELECT * FROM generate_series(0, 1000000);
-ERROR:  temporary file size exceeds temp_file_limit (0kB)
+ERROR:  temporary file size exceeds "temp_file_limit" (0kB)
 SELECT 'bob' FROM generate_series(0, 1000000);
-ERROR:  temporary file size exceeds temp_file_limit (0kB)
+ERROR:  temporary file size exceeds "temp_file_limit" (0kB)
 -- This sleep is necessary to allow PGSTAT_STAT_INTERVAL (500) milliseconds to pass.
 -- In that time, the statistics in the backend would be updated and we will read updated
 -- statistics.
@@ -57,7 +57,7 @@ SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
 SET work_mem TO 64;
 SET temp_file_limit TO 0;
 SELECT * FROM generate_series(0, 1000001);
-ERROR:  temporary file size exceeds temp_file_limit (0kB)
+ERROR:  temporary file size exceeds "temp_file_limit" (0kB)
 SELECT pg_sleep(1);
  pg_sleep 
 ----------
@@ -76,7 +76,7 @@ SELECT 'We were taught in this modern age that science and mathematics is the pi
 'Yet, in our complacency, we began to neglect the very thing which our ancestors had once done: to challenge the process.'
 'We need to stand back and critically analyze what we do and doing so would allow us to become better and so much more.'
 FROM generate_series(0, 1000000);
-ERROR:  temporary file size exceeds temp_file_limit (0kB)
+ERROR:  temporary file size exceeds "temp_file_limit" (0kB)
 SELECT pg_sleep(1);
  pg_sleep 
 ----------
@@ -137,7 +137,7 @@ SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
 CREATE ROLE test_user WITH login;
 \c yugabyte test_user
 SELECT * FROM generate_series(0, 100000002);
-ERROR:  temporary file size exceeds temp_file_limit (1048576kB)
+ERROR:  temporary file size exceeds "temp_file_limit" (1048576kB)
 SELECT pg_sleep(1);
  pg_sleep 
 ----------
@@ -211,7 +211,7 @@ show temp_file_limit;
 (1 row)
 
 SELECT * FROM generate_series(0, 1234567);
-ERROR:  temporary file size exceeds temp_file_limit (0kB)
+ERROR:  temporary file size exceeds "temp_file_limit" (0kB)
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries ORDER BY databasename;
     databasename    |                   termination_reason                    |                                                         query_text                                                         
 --------------------+---------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------

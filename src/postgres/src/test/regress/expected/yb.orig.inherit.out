@@ -13,7 +13,10 @@ ALTER TABLE parent ADD CONSTRAINT parent_uniq_c1 UNIQUE(c1);
 Indexes:
     "parent_pkey" PRIMARY KEY, lsm (id HASH)
     "parent_uniq_c1" UNIQUE CONSTRAINT, lsm (c1 HASH)
-Child tables: child
+Not-null constraints:
+    "parent_id_not_null" NOT NULL "id"
+Child tables:
+    child
 
 \d+ child
                                    Table "public.child"
@@ -22,7 +25,10 @@ Child tables: child
  id     | integer |           | not null |         | plain   |              | 
  c1     | integer |           |          |         | plain   |              | 
  c2     | integer |           |          |         | plain   |              | 
-Inherits: parent
+Not-null constraints:
+    "parent_id_not_null" NOT NULL "id" (inherited)
+Inherits:
+    parent
 
 ALTER TABLE parent DROP CONSTRAINT parent_pkey;
 NOTICE:  table rewrite may lead to inconsistencies
@@ -36,7 +42,10 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppr
  c1     | integer |           |          |         | plain   |              | 
 Indexes:
     "parent_uniq_c1" UNIQUE CONSTRAINT, lsm (c1 HASH)
-Child tables: child
+Not-null constraints:
+    "parent_id_not_null" NOT NULL "id"
+Child tables:
+    child
 
 \d+ child
                                    Table "public.child"
@@ -45,7 +54,10 @@ Child tables: child
  id     | integer |           | not null |         | plain   |              | 
  c1     | integer |           |          |         | plain   |              | 
  c2     | integer |           |          |         | plain   |              | 
-Inherits: parent
+Not-null constraints:
+    "parent_id_not_null" NOT NULL "id" (inherited)
+Inherits:
+    parent
 
 ALTER TABLE parent DROP CONSTRAINT parent_uniq_c1;
 \d+ parent
@@ -54,7 +66,10 @@ ALTER TABLE parent DROP CONSTRAINT parent_uniq_c1;
 --------+---------+-----------+----------+---------+---------+--------------+-------------
  id     | integer |           | not null |         | plain   |              | 
  c1     | integer |           |          |         | plain   |              | 
-Child tables: child
+Not-null constraints:
+    "parent_id_not_null" NOT NULL "id"
+Child tables:
+    child
 
 \d+ child
                                    Table "public.child"
@@ -63,7 +78,10 @@ Child tables: child
  id     | integer |           | not null |         | plain   |              | 
  c1     | integer |           |          |         | plain   |              | 
  c2     | integer |           |          |         | plain   |              | 
-Inherits: parent
+Not-null constraints:
+    "parent_id_not_null" NOT NULL "id" (inherited)
+Inherits:
+    parent
 
 -- Test combining alter table cmds with inherit #27263
 ALTER TABLE child NO INHERIT parent, ADD COLUMN c3 int;

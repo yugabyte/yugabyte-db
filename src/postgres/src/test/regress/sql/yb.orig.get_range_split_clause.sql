@@ -266,20 +266,6 @@ CREATE TABLE tbl_with_special_strings2 (
 SELECT yb_get_range_split_clause('tbl_with_special_strings2'::regclass);
 DROP TABLE tbl_with_special_strings2;
 
--- When standard_conforming_strings = OFF, backslashs are treated as escapes.
-SET standard_conforming_strings = OFF;
-
--- Incorrect escapes ignore backslashs
-SELECT 'B back\slashes';
-SELECT E'B back\slashes';
-
-CREATE TABLE tbl_with_special_strings3 (
- a TEXT,
- PRIMARY KEY(a DESC)
-) SPLIT AT VALUES(('D si''ngle quo''tes'), ('C double" quotes'), ('B back\slashes'), ('A all'' combo\ of them"'));
-SELECT yb_get_range_split_clause('tbl_with_special_strings3'::regclass);
-DROP TABLE tbl_with_special_strings3;
-
 -- Test proper escapes
 CREATE TABLE tbl_with_special_strings4 (
  a TEXT,

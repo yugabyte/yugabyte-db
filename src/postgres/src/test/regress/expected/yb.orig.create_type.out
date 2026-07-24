@@ -173,12 +173,16 @@ NOTICE:  return type base_type is only a shell
 CREATE FUNCTION base_type_out(base_type) RETURNS cstring
    LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2out';
 NOTICE:  argument type base_type is only a shell
+LINE 1: CREATE FUNCTION base_type_out(base_type) RETURNS cstring
+                                      ^
 CREATE FUNCTION base_type_recv(internal) RETURNS base_type
    LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2recv';
 NOTICE:  return type base_type is only a shell
 CREATE FUNCTION base_type_send(base_type) RETURNS bytea
    LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2send';
 NOTICE:  argument type base_type is only a shell
+LINE 1: CREATE FUNCTION base_type_send(base_type) RETURNS bytea
+                                       ^
 CREATE TYPE base_type (
    INPUT = base_type_in,
    OUTPUT = base_type_out,

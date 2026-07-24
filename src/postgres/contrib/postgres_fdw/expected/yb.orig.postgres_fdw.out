@@ -67,7 +67,6 @@ DROP SERVER s_nosrvtype2;
 -- Test to validate that 'server_type' option is not applicable to foreign table.
 CREATE FOREIGN TABLE ft_test (v INT) SERVER s_yugabytedb OPTIONS (table_name 't_test', server_type 'yugabytedb');
 ERROR:  invalid option "server_type"
-HINT:  Valid options in this context are: schema_name, table_name, use_remote_estimate, updatable, truncatable, fetch_size, batch_size, async_capable
 CREATE TABLE t_test (v INT);
 INSERT INTO t_test (SELECT i FROM generate_series(1, 10) AS i);
 -- Sanity test to assert that the server has indeed been configured.
@@ -196,9 +195,9 @@ ALTER FOREIGN TABLE ft_test2 OPTIONS (DROP table_name, ADD batch_size '1000');
 SELECT * FROM pg_foreign_table;
  ftrelid | ftserver |        ftoptions         
 ---------+----------+--------------------------
-   16407 |    16391 | {table_name=t_othertest}
-   16410 |    16392 | {batch_size=1000}
-   16413 |    16394 | {table_name=t_test}
+   16409 |    16393 | {table_name=t_othertest}
+   16412 |    16394 | {batch_size=1000}
+   16415 |    16396 | {table_name=t_test}
 (3 rows)
 
 -- Setting an option should be disallowed if it doesn't already exist.
@@ -213,9 +212,9 @@ ERROR:  option "table_name" provided more than once
 SELECT * FROM pg_foreign_table;
  ftrelid | ftserver |        ftoptions         
 ---------+----------+--------------------------
-   16407 |    16391 | {table_name=t_othertest}
-   16410 |    16392 | {batch_size=1000}
-   16413 |    16394 | {table_name=t_test}
+   16409 |    16393 | {table_name=t_othertest}
+   16412 |    16394 | {batch_size=1000}
+   16415 |    16396 | {table_name=t_test}
 (3 rows)
 
 -- Restore the original table name.
@@ -224,9 +223,9 @@ ALTER FOREIGN TABLE ft_test2 OPTIONS (ADD table_name 't_test', DROP batch_size);
 SELECT * FROM pg_foreign_table;
  ftrelid | ftserver |      ftoptions      
 ---------+----------+---------------------
-   16407 |    16391 | {table_name=t_test}
-   16410 |    16392 | {table_name=t_test}
-   16413 |    16394 | {table_name=t_test}
+   16409 |    16393 | {table_name=t_test}
+   16412 |    16394 | {table_name=t_test}
+   16415 |    16396 | {table_name=t_test}
 (3 rows)
 
 DROP FOREIGN TABLE ft_test1;
@@ -563,35 +562,12 @@ WHERE s.k < 2 AND t.v = s.v;
 EXPLAIN (VERBOSE, COSTS OFF) DELETE FROM ft_simple s
 USING ft_other t1 JOIN ft_other t2 ON t1.k = t2.k
 WHERE s.k = 2 AND t1.v = s.v;
-                                                                                                            QUERY PLAN                                                                                                             
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                   QUERY PLAN                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Delete on public.ft_simple s
-   Remote SQL: DELETE FROM public.t_simple WHERE ybctid = $1
-   ->  Hash Join
-         Output: s.ybctid, t1.*, t2.*
-         Hash Cond: (t2.k = t1.k)
-         ->  Foreign Scan on public.ft_other t2
-               Output: t2.*, t2.k
-               Remote SQL: SELECT k, v FROM public.t_other
-         ->  Hash
-               Output: s.ybctid, t1.*, t1.k
-               ->  Foreign Scan
-                     Output: s.ybctid, t1.*, t1.k
-                     Relations: (public.ft_simple s) INNER JOIN (public.ft_other t1)
-                     Remote SQL: SELECT r1.ybctid, CASE WHEN (r2.*)::text IS NOT NULL THEN ROW(r2.k, r2.v) END, r2.k FROM (public.t_simple r1 INNER JOIN public.t_other r2 ON (((r1.v = r2.v)) AND ((r1.k = 2)))) FOR UPDATE OF r1
-                     ->  Hash Join
-                           Output: s.ybctid, t1.*, t1.k
-                           Hash Cond: (s.v = t1.v)
-                           ->  Foreign Scan on public.ft_simple s
-                                 Output: s.ybctid, s.v
-                                 Remote Filter: (s.k = 2)
-                                 Remote SQL: SELECT v, ybctid FROM public.t_simple WHERE ((k = 2)) FOR UPDATE
-                           ->  Hash
-                                 Output: t1.*, t1.k, t1.v
-                                 ->  Foreign Scan on public.ft_other t1
-                                       Output: t1.*, t1.k, t1.v
-                                       Remote SQL: SELECT k, v FROM public.t_other
-(26 rows)
+   ->  Foreign Delete
+         Remote SQL: DELETE FROM public.t_simple r1 USING (public.t_other r2 INNER JOIN public.t_other r3 ON (TRUE)) WHERE ((r2.k = r3.k)) AND ((r1.v = r2.v)) AND ((r1.k = 2))
+(3 rows)
 
 UPDATE ft_simple s SET v = s.v + 1
 FROM ft_other t

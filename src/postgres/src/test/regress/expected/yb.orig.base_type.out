@@ -35,7 +35,7 @@ CREATE FUNCTION name_type_in(cstring) RETURNS name_type
 NOTICE:  return type name_type is only a shell
 CREATE FUNCTION name_type_out(name_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'nameout';
-NOTICE:  argument type name_type is only a shell
+NOTICE:  argument type name_type is only a shell at character 31
 CREATE TYPE name_type (
     INPUT = name_type_in,
     OUTPUT = name_type_out,
@@ -66,7 +66,7 @@ CREATE FUNCTION lseg_type_in(cstring) RETURNS lseg_type
 NOTICE:  return type lseg_type is only a shell
 CREATE FUNCTION lseg_type_out(lseg_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'lseg_out';
-NOTICE:  argument type lseg_type is only a shell
+NOTICE:  argument type lseg_type is only a shell at character 31
 CREATE TYPE lseg_type (
     INPUT = lseg_type_in,
     OUTPUT = lseg_type_out,
@@ -91,7 +91,7 @@ CREATE FUNCTION line_type_in(cstring) RETURNS line_type
 NOTICE:  return type line_type is only a shell
 CREATE FUNCTION line_type_out(line_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'line_out';
-NOTICE:  argument type line_type is only a shell
+NOTICE:  argument type line_type is only a shell at character 31
 CREATE TYPE line_type (
     INPUT = line_type_in,
     OUTPUT = line_type_out,
@@ -116,7 +116,7 @@ CREATE FUNCTION point_type_in(cstring) RETURNS point_type
 NOTICE:  return type point_type is only a shell
 CREATE FUNCTION point_type_out(point_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'point_out';
-NOTICE:  argument type point_type is only a shell
+NOTICE:  argument type point_type is only a shell at character 32
 CREATE TYPE point_type (
     INPUT = point_type_in,
     OUTPUT = point_type_out,
@@ -141,7 +141,7 @@ CREATE FUNCTION uuid_type_in(cstring) RETURNS uuid_type
 NOTICE:  return type uuid_type is only a shell
 CREATE FUNCTION uuid_type_out(uuid_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'uuid_out';
-NOTICE:  argument type uuid_type is only a shell
+NOTICE:  argument type uuid_type is only a shell at character 31
 CREATE TYPE uuid_type (
     INPUT = uuid_type_in,
     OUTPUT = uuid_type_out,
@@ -166,7 +166,7 @@ CREATE FUNCTION timetz_type_in(cstring) RETURNS timetz_type
 NOTICE:  return type timetz_type is only a shell
 CREATE FUNCTION timetz_type_out(timetz_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'timetz_out';
-NOTICE:  argument type timetz_type is only a shell
+NOTICE:  argument type timetz_type is only a shell at character 33
 CREATE TYPE timetz_type (
     INPUT = timetz_type_in,
     OUTPUT = timetz_type_out,
@@ -192,7 +192,7 @@ CREATE FUNCTION macaddr8_type_in(cstring) RETURNS macaddr8_type
 NOTICE:  return type macaddr8_type is only a shell
 CREATE FUNCTION macaddr8_type_out(macaddr8_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'macaddr8_out';
-NOTICE:  argument type macaddr8_type is only a shell
+NOTICE:  argument type macaddr8_type is only a shell at character 35
 CREATE TYPE macaddr8_type (
     INPUT = macaddr8_type_in,
     OUTPUT = macaddr8_type_out,
@@ -217,7 +217,7 @@ CREATE FUNCTION int8_type_in(cstring) RETURNS int8_type
 NOTICE:  return type int8_type is only a shell
 CREATE FUNCTION int8_type_out(int8_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int8out';
-NOTICE:  argument type int8_type is only a shell
+NOTICE:  argument type int8_type is only a shell at character 31
 CREATE TYPE int8_type (
     INPUT = int8_type_in,
     OUTPUT = int8_type_out,
@@ -245,7 +245,7 @@ CREATE FUNCTION float8_type_in(cstring) RETURNS float8_type
 NOTICE:  return type float8_type is only a shell
 CREATE FUNCTION float8_type_out(float8_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'float8out';
-NOTICE:  argument type float8_type is only a shell
+NOTICE:  argument type float8_type is only a shell at character 33
 CREATE TYPE float8_type (
     INPUT = float8_type_in,
     OUTPUT = float8_type_out,
@@ -270,7 +270,7 @@ CREATE FUNCTION macaddr_type_in(cstring) RETURNS macaddr_type
 NOTICE:  return type macaddr_type is only a shell
 CREATE FUNCTION macaddr_type_out(macaddr_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'macaddr_out';
-NOTICE:  argument type macaddr_type is only a shell
+NOTICE:  argument type macaddr_type is only a shell at character 34
 CREATE TYPE macaddr_type (
     INPUT = macaddr_type_in,
     OUTPUT = macaddr_type_out,
@@ -295,7 +295,7 @@ CREATE FUNCTION tid_type_in(cstring) RETURNS tid_type
 NOTICE:  return type tid_type is only a shell
 CREATE FUNCTION tid_type_out(tid_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'tidout';
-NOTICE:  argument type tid_type is only a shell
+NOTICE:  argument type tid_type is only a shell at character 30
 CREATE TYPE tid_type (
     INPUT = tid_type_in,
     OUTPUT = tid_type_out,
@@ -320,7 +320,7 @@ CREATE FUNCTION int4_type_in(cstring) RETURNS int4_type
 NOTICE:  return type int4_type is only a shell
 CREATE FUNCTION int4_type_out(int4_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int4out';
-NOTICE:  argument type int4_type is only a shell
+NOTICE:  argument type int4_type is only a shell at character 31
 CREATE TYPE int4_type (
     INPUT = int4_type_in,
     OUTPUT = int4_type_out,
@@ -348,7 +348,7 @@ CREATE FUNCTION int2_type_in(cstring) RETURNS int2_type
 NOTICE:  return type int2_type is only a shell
 CREATE FUNCTION int2_type_out(int2_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2out';
-NOTICE:  argument type int2_type is only a shell
+NOTICE:  argument type int2_type is only a shell at character 31
 CREATE TYPE int2_type (
     INPUT = int2_type_in,
     OUTPUT = int2_type_out,
@@ -376,7 +376,7 @@ CREATE FUNCTION bool_type_in(cstring) RETURNS bool_type
 NOTICE:  return type bool_type is only a shell
 CREATE FUNCTION bool_type_out(bool_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'boolout';
-NOTICE:  argument type bool_type is only a shell
+NOTICE:  argument type bool_type is only a shell at character 31
 CREATE TYPE bool_type (
     INPUT = bool_type_in,
     OUTPUT = bool_type_out,
@@ -401,7 +401,7 @@ CREATE FUNCTION char_type_in(cstring) RETURNS char_type
 NOTICE:  return type char_type is only a shell
 CREATE FUNCTION char_type_out(char_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'charout';
-NOTICE:  argument type char_type is only a shell
+NOTICE:  argument type char_type is only a shell at character 31
 CREATE TYPE char_type (
     INPUT = char_type_in,
     OUTPUT = char_type_out,
@@ -429,7 +429,7 @@ CREATE FUNCTION bytea_type_in(cstring) RETURNS bytea_type
 NOTICE:  return type bytea_type is only a shell
 CREATE FUNCTION bytea_type_out(bytea_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'byteaout';
-NOTICE:  argument type bytea_type is only a shell
+NOTICE:  argument type bytea_type is only a shell at character 32
 CREATE TYPE bytea_type (
     INPUT = bytea_type_in,
     OUTPUT = bytea_type_out,
@@ -454,7 +454,7 @@ CREATE FUNCTION cidr_type_in(cstring) RETURNS cidr_type
 NOTICE:  return type cidr_type is only a shell
 CREATE FUNCTION cidr_type_out(cidr_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'cidr_out';
-NOTICE:  argument type cidr_type is only a shell
+NOTICE:  argument type cidr_type is only a shell at character 31
 CREATE TYPE cidr_type (
     INPUT = cidr_type_in,
     OUTPUT = cidr_type_out,
@@ -479,7 +479,7 @@ CREATE FUNCTION int2vector_type_in(cstring) RETURNS int2vector_type
 NOTICE:  return type int2vector_type is only a shell
 CREATE FUNCTION int2vector_type_out(int2vector_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int2vectorout';
-NOTICE:  argument type int2vector_type is only a shell
+NOTICE:  argument type int2vector_type is only a shell at character 37
 CREATE TYPE int2vector_type (
     INPUT = int2vector_type_in,
     OUTPUT = int2vector_type_out,
@@ -504,7 +504,7 @@ CREATE FUNCTION json_type_in(cstring) RETURNS json_type
 NOTICE:  return type json_type is only a shell
 CREATE FUNCTION json_type_out(json_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'json_out';
-NOTICE:  argument type json_type is only a shell
+NOTICE:  argument type json_type is only a shell at character 31
 CREATE TYPE json_type (
     INPUT = json_type_in,
     OUTPUT = json_type_out,
@@ -529,7 +529,7 @@ CREATE FUNCTION text_type_in(cstring) RETURNS text_type
 NOTICE:  return type text_type is only a shell
 CREATE FUNCTION text_type_out(text_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'textout';
-NOTICE:  argument type text_type is only a shell
+NOTICE:  argument type text_type is only a shell at character 31
 CREATE TYPE text_type (
     INPUT = text_type_in,
     OUTPUT = text_type_out,
@@ -554,7 +554,7 @@ CREATE FUNCTION cstring_type_in(cstring) RETURNS cstring_type
 NOTICE:  return type cstring_type is only a shell
 CREATE FUNCTION cstring_type_out(cstring_type) RETURNS cstring
     LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'cstring_out';
-NOTICE:  argument type cstring_type is only a shell
+NOTICE:  argument type cstring_type is only a shell at character 34
 CREATE TYPE cstring_type (
     INPUT = cstring_type_in,
     OUTPUT = cstring_type_out,

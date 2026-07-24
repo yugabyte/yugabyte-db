@@ -16,6 +16,8 @@ Indexes:
     "tbsptest2_b_key" UNIQUE CONSTRAINT, lsm (b HASH)
 Check constraints:
     "tbsptest1_id_check" CHECK (id > 0)
+Not-null constraints:
+    "tbsptest1_id_not_null" NOT NULL "id"
 
 -- Target table is in a tablespace.
 CREATE TABLE tbsptest3 (LIKE tbsptest2 INCLUDING ALL) TABLESPACE testtablespace;
@@ -31,6 +33,8 @@ Indexes:
     "tbsptest3_b_key" UNIQUE CONSTRAINT, lsm (b HASH)
 Check constraints:
     "tbsptest1_id_check" CHECK (id > 0)
+Not-null constraints:
+    "tbsptest1_id_not_null" NOT NULL "id"
 Tablespace: "testtablespace"
 
 DROP TABLE tbsptest3, tbsptest2, tbsptest1 CASCADE;
@@ -49,6 +53,11 @@ CREATE TABLE testlikepk(LIKE testpk INCLUDING INDEXES);
  value  | text    |           |          |         | extended |              | 
 Indexes:
     "testlikepk_pkey" PRIMARY KEY, lsm ((h1, h2) HASH, d DESC, a ASC)
+Not-null constraints:
+    "testpk_h1_not_null" NOT NULL "h1"
+    "testpk_h2_not_null" NOT NULL "h2"
+    "testpk_d_not_null" NOT NULL "d"
+    "testpk_a_not_null" NOT NULL "a"
 
 CREATE TABLE testlikenopk(LIKE testpk);
 \d+ testlikenopk;
@@ -60,6 +69,11 @@ CREATE TABLE testlikenopk(LIKE testpk);
  d      | text    |           | not null |         | extended |              | 
  a      | integer |           | not null |         | plain    |              | 
  value  | text    |           |          |         | extended |              | 
+Not-null constraints:
+    "testpk_h1_not_null" NOT NULL "h1"
+    "testpk_h2_not_null" NOT NULL "h2"
+    "testpk_d_not_null" NOT NULL "d"
+    "testpk_a_not_null" NOT NULL "a"
 
 DROP TABLE testpk, testlikepk, testlikenopk CASCADE;
 -- Test adding SPLIT AT syntax with copied PK.
@@ -78,6 +92,9 @@ CREATE INDEX ON testlikesplitat(a ASC) SPLIT AT VALUES ((10), (20));
 Indexes:
     "testlikesplitat_pkey" PRIMARY KEY, lsm (a ASC, b ASC)
     "testlikesplitat_a_idx" lsm (a ASC)
+Not-null constraints:
+    "testsplitat_a_not_null" NOT NULL "a"
+    "testsplitat_b_not_null" NOT NULL "b"
 
 SELECT yb_get_range_split_clause('testlikesplitat'::regclass);
            yb_get_range_split_clause           
@@ -104,6 +121,9 @@ CREATE INDEX ON testlikesplitinto(a) SPLIT INTO 5 TABLETS;
 Indexes:
     "testlikesplitinto_pkey" PRIMARY KEY, lsm ((a, b) HASH)
     "testlikesplitinto_a_idx" lsm (a HASH)
+Not-null constraints:
+    "testsplitinto_a_not_null" NOT NULL "a"
+    "testsplitinto_b_not_null" NOT NULL "b"
 
 SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('testlikesplitinto'::regclass);
  num_tablets | num_hash_key_columns 
@@ -195,47 +215,52 @@ $$ LANGUAGE SQL;
 -- Without specifying INCLUDING COMMENTS, comments are not copied.
 CREATE TABLE comments1 (LIKE liketest1 INCLUDING INDEXES, LIKE liketest2 INCLUDING CONSTRAINTS);
 SELECT * FROM get_comments('comments1');
- object_type |      obj_name      | comments 
--------------+--------------------+----------
- column      | a                  | 
- column      | b                  | 
- column      | c                  | 
- index       | comments1_b_idx    | 
- index       | comments1_expr_idx | 
- constraint  | comments1_pkey     | 
- index       | comments1_pkey     | 
- column      | d                  | 
- constraint  | liketest2_c_check  | 
-(9 rows)
+ object_type |       obj_name       | comments 
+-------------+----------------------+----------
+ column      | a                    | 
+ column      | b                    | 
+ column      | c                    | 
+ index       | comments1_b_idx      | 
+ index       | comments1_expr_idx   | 
+ constraint  | comments1_pkey       | 
+ index       | comments1_pkey       | 
+ column      | d                    | 
+ constraint  | liketest1_a_not_null | 
+ constraint  | liketest2_c_check    | 
+ constraint  | liketest2_c_not_null | 
+(11 rows)
 
 -- Comments are copied over if INCLUDING COMMENTS/INCLUDING ALL is specified.
 CREATE TABLE comments2(LIKE liketest1 INCLUDING INDEXES INCLUDING COMMENTS, LIKE liketest2 INCLUDING CONSTRAINTS INCLUDING COMMENTS);
 SELECT * FROM get_comments('comments2');
- object_type |      obj_name      |  comments  
--------------+--------------------+------------
- column      | a                  | A
- column      | b                  | B
- column      | c                  | C
- index       | comments2_b_idx    | index b
- index       | comments2_expr_idx | 
- constraint  | comments2_pkey     | 
- index       | comments2_pkey     | index pkey
- column      | d                  | D
- constraint  | liketest2_c_check  | c_check
-(9 rows)
+ object_type |       obj_name       |  comments  
+-------------+----------------------+------------
+ column      | a                    | A
+ column      | b                    | B
+ column      | c                    | C
+ index       | comments2_b_idx      | index b
+ index       | comments2_expr_idx   | 
+ constraint  | comments2_pkey       | 
+ index       | comments2_pkey       | index pkey
+ column      | d                    | D
+ constraint  | liketest1_a_not_null | 
+ constraint  | liketest2_c_check    | c_check
+ constraint  | liketest2_c_not_null | 
+(11 rows)
 
 CREATE TABLE comments3(LIKE liketest1 INCLUDING ALL);
 SELECT * FROM get_comments('comments3');
- object_type |      obj_name      |  comments  
--------------+--------------------+------------
- column      | a                  | A
- column      | b                  | B
- index       | comments3_b_idx    | index b
- index       | comments3_expr_idx | 
- constraint  | comments3_pkey     | 
- index       | comments3_pkey     | index pkey
- constraint  | liketest1_a_check  | a_check
-(7 rows)
+ object_type |       obj_name       |  comments  
+-------------+----------------------+------------
+ column      | a                    | A
+ column      | b                    | B
+ index       | comments3_b_idx      | index b
+ index       | comments3_expr_idx   | 
+ constraint  | comments3_pkey       | 
+ index       | comments3_pkey       | index pkey
+ constraint  | liketest1_a_check    | a_check
+ constraint  | liketest1_a_not_null | 
+(8 rows)
 
 DROP TABLE comments1, comments2, comments3 CASCADE;
 DROP FUNCTION get_comments;
@@ -248,6 +273,8 @@ CREATE TABLE neg_stats_test (LIKE liketest1);
 --------+------+-----------+----------+---------+----------+--------------+-------------
  a      | text |           | not null |         | extended |              | 
  b      | text |           |          |         | extended |              | 
+Not-null constraints:
+    "liketest1_a_not_null" NOT NULL "a"
 
 CREATE TABLE stats_test1 (LIKE liketest1 INCLUDING STATISTICS);
 \d+ stats_test1
@@ -258,6 +285,8 @@ CREATE TABLE stats_test1 (LIKE liketest1 INCLUDING STATISTICS);
  b      | text |           |          |         | extended |              | 
 Statistics objects:
     "public.stats_test1_a_b_stat" ON a, b FROM stats_test1
+Not-null constraints:
+    "liketest1_a_not_null" NOT NULL "a"
 
 CREATE TABLE stats_test2 (LIKE liketest1 INCLUDING ALL);
 \d+ stats_test2
@@ -274,6 +303,8 @@ Check constraints:
     "liketest1_a_check" CHECK (length(a) > 2)
 Statistics objects:
     "public.stats_test2_a_b_stat" ON a, b FROM stats_test2
+Not-null constraints:
+    "liketest1_a_not_null" NOT NULL "a"
 
 DROP TABLE neg_stats_test, stats_test1, stats_test2 CASCADE;
 DROP STATISTICS liketest1_stat;
@@ -291,6 +322,9 @@ CREATE TABLE testtgroup1 (LIKE liketest1 INCLUDING DEFAULTS, LIKE liketest2 INCL
  d      | text |           |          |             | extended |              | 
 Check constraints:
     "liketest2_c_check" CHECK (length(c) > 2)
+Not-null constraints:
+    "liketest1_a_not_null" NOT NULL "a"
+    "liketest2_c_not_null" NOT NULL "c"
 Tablegroup: "tgroup1"
 
 -- Fail because liketest2 has a hash-partitioned index.
@@ -311,6 +345,8 @@ Indexes:
     "testtgroup2_d_idx" lsm (d ASC), tablegroup "tgroup1"
 Check constraints:
     "liketest2_c_check" CHECK (length(c) > 2)
+Not-null constraints:
+    "liketest2_c_not_null" NOT NULL "c"
 Tablegroup: "tgroup1"
 
 -- Create table using LIKE clause from a table in a tablegroup. The tablegroup clause is not copied over.
@@ -326,6 +362,8 @@ Indexes:
     "neg_tgroup_d_idx" lsm (d ASC)
 Check constraints:
     "liketest2_c_check" CHECK (length(c) > 2)
+Not-null constraints:
+    "liketest2_c_not_null" NOT NULL "c"
 
 -- Cleanup
 DROP TABLE liketest1, liketest2, testtgroup1, testtgroup2, neg_tgroup CASCADE;

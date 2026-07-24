@@ -286,7 +286,7 @@ DROP TABLE tbl, tbl2;
 CREATE TABLE tab_nonkey2 (a INT) WITH (colocation = true);
 CREATE UNIQUE INDEX idx_range6 ON tab_nonkey2 (a);
 \dt
-                 List of relations
+                   List of tables
  Schema |          Name          | Type  |  Owner   
 --------+------------------------+-------+----------
  public | tab_key                | table | yugabyte
@@ -307,7 +307,7 @@ CREATE UNIQUE INDEX idx_range6 ON tab_nonkey2 (a);
 (15 rows)
 
 \di
-                                List of relations
+                                 List of indexes
  Schema |            Name             | Type  |  Owner   |         Table          
 --------+-----------------------------+-------+----------+------------------------
  public | idx_range                   | index | yugabyte | tab_range_nonkey2
@@ -423,7 +423,7 @@ SELECT a FROM tab_nonkey2 ORDER BY a;
 (2 rows)
 
 \dt
-                 List of relations
+                   List of tables
  Schema |          Name          | Type  |  Owner   
 --------+------------------------+-------+----------
  public | tab_key                | table | yugabyte
@@ -444,7 +444,7 @@ SELECT a FROM tab_nonkey2 ORDER BY a;
 (15 rows)
 
 \di
-                                List of relations
+                                 List of indexes
  Schema |            Name             | Type  |  Owner   |         Table          
 --------+-----------------------------+-------+----------+------------------------
  public | idx_range                   | index | yugabyte | tab_range_nonkey2
@@ -560,7 +560,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey5 WHERE a = 1;
 (2 rows)
 
 \dt
-                 List of relations
+                   List of tables
  Schema |          Name          | Type  |  Owner   
 --------+------------------------+-------+----------
  public | tab_key                | table | yugabyte
@@ -577,7 +577,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey5 WHERE a = 1;
 (11 rows)
 
 \di
-                                List of relations
+                                 List of indexes
  Schema |            Name             | Type  |  Owner   |         Table          
 --------+-----------------------------+-------+----------+------------------------
  public | idx_range4                  | index | yugabyte | tab_range_nonkey_noco3
@@ -724,6 +724,9 @@ SELECT col, col2, col4 FROM base ORDER BY col;
  col4   | integer          |           | not null | nextval('base_col4_seq'::regclass) | plain   |              | 
 Indexes:
     "base_idx" lsm (col2 ASC), colocation: true
+Not-null constraints:
+    "base_col_not_null" NOT NULL "col"
+    "base_col4_not_null" NOT NULL "col4"
 Colocation: true
 
 SELECT num_tablets, num_hash_key_columns, is_colocated FROM
@@ -773,6 +776,9 @@ SELECT col, col2, col4 FROM base2 ORDER BY col;
  col4   | integer          |           | not null | nextval('base2_col4_seq'::regclass) | plain   |              | 
 Indexes:
     "base2_idx" lsm (col2 HASH)
+Not-null constraints:
+    "base2_col_not_null" NOT NULL "col"
+    "base2_col4_not_null" NOT NULL "col4"
 Options: colocation=false
 
 SELECT num_tablets, num_hash_key_columns, is_colocated FROM

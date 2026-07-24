@@ -262,7 +262,7 @@ SELECT * FROM diff_stats
           OR owner IN ('yb_su', 'yb_user1', 'yb_user2', 'yb_user3');
  d |  owner   | schemaname |          relname          | k | s | reltuples | ncolstats | xndv | xdep 
 ---+----------+------------+---------------------------+---+---+-----------+-----------+------+------
- - | postgres | pg_catalog | pg_database               | r | t |         6 |        16 |      | 
+ - | postgres | pg_catalog | pg_database               | r | t |         6 |        18 |      | 
  + | postgres | pg_catalog | pg_database               | r | t |        -1 |         0 |      | 
  - | postgres | pg_catalog | pg_database_datname_index | i | t |         6 |         0 |      | 
  + | postgres | pg_catalog | pg_database_datname_index | i | t |        -1 |         0 |      | 
@@ -280,12 +280,12 @@ SELECT yb_reset_analyze_statistics('table_su'::regclass);
 SELECT * FROM diff_stats
     WHERE relname ~* '(pg_database|pg_sequence).*'
           OR owner IN ('yb_su', 'yb_user1', 'yb_user2', 'yb_user3');
- d | owner | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep         
----+-------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
- - | yb_su | public     | table_su        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_su | public     | table_su        | r | f |        -1 |         0 |              | 
- - | yb_su | public     | table_su_c2_idx | i | f |        10 |         0 |              | 
- + | yb_su | public     | table_su_c2_idx | i | f |        -1 |         0 |              | 
+ d | owner | schemaname |     relname     | k | s | reltuples | ncolstats |                   xndv                    |                            xdep                            
+---+-------+------------+-----------------+---+---+-----------+-----------+-------------------------------------------+------------------------------------------------------------
+ - | yb_su | public     | table_su        | r | f |        10 |         3 | [{"attributes": [2, 3], "ndistinct": 10}] | [{"attributes": [3], "dependency": 2, "degree": 0.200000}]
+ + | yb_su | public     | table_su        | r | f |        -1 |         0 |                                           | 
+ - | yb_su | public     | table_su_c2_idx | i | f |        10 |         0 |                                           | 
+ + | yb_su | public     | table_su_c2_idx | i | f |        -1 |         0 |                                           | 
 (4 rows)
 
 CALL record_stats();
@@ -298,12 +298,12 @@ SELECT yb_reset_analyze_statistics('table_u1'::regclass);
 SELECT * FROM diff_stats
     WHERE relname ~* '(pg_database|pg_sequence).*'
           OR owner IN ('yb_su', 'yb_user1', 'yb_user2', 'yb_user3');
- d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep         
----+----------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
- - | yb_user1 | public     | table_u1        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_user1 | public     | table_u1        | r | f |        -1 |         0 |              | 
- - | yb_user1 | public     | table_u1_c2_idx | i | f |        10 |         0 |              | 
- + | yb_user1 | public     | table_u1_c2_idx | i | f |        -1 |         0 |              | 
+ d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |                   xndv                    |                            xdep                            
+---+----------+------------+-----------------+---+---+-----------+-----------+-------------------------------------------+------------------------------------------------------------
+ - | yb_user1 | public     | table_u1        | r | f |        10 |         3 | [{"attributes": [2, 3], "ndistinct": 10}] | [{"attributes": [3], "dependency": 2, "degree": 0.200000}]
+ + | yb_user1 | public     | table_u1        | r | f |        -1 |         0 |                                           | 
+ - | yb_user1 | public     | table_u1_c2_idx | i | f |        10 |         0 |                                           | 
+ + | yb_user1 | public     | table_u1_c2_idx | i | f |        -1 |         0 |                                           | 
 (4 rows)
 
 CALL record_stats();
@@ -316,12 +316,12 @@ SELECT yb_reset_analyze_statistics('table_u2'::regclass);
 SELECT * FROM diff_stats
     WHERE relname ~* '(pg_database|pg_sequence).*'
           OR owner IN ('yb_su', 'yb_user1', 'yb_user2', 'yb_user3');
- d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep         
----+----------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
- - | yb_user2 | public     | table_u2        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_user2 | public     | table_u2        | r | f |        -1 |         0 |              | 
- - | yb_user2 | public     | table_u2_c2_idx | i | f |        10 |         0 |              | 
- + | yb_user2 | public     | table_u2_c2_idx | i | f |        -1 |         0 |              | 
+ d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |                   xndv                    |                            xdep                            
+---+----------+------------+-----------------+---+---+-----------+-----------+-------------------------------------------+------------------------------------------------------------
+ - | yb_user2 | public     | table_u2        | r | f |        10 |         3 | [{"attributes": [2, 3], "ndistinct": 10}] | [{"attributes": [3], "dependency": 2, "degree": 0.200000}]
+ + | yb_user2 | public     | table_u2        | r | f |        -1 |         0 |                                           | 
+ - | yb_user2 | public     | table_u2_c2_idx | i | f |        10 |         0 |                                           | 
+ + | yb_user2 | public     | table_u2_c2_idx | i | f |        -1 |         0 |                                           | 
 (4 rows)
 
 CALL record_stats();
@@ -334,12 +334,12 @@ SELECT yb_reset_analyze_statistics('table_u3'::regclass);
 SELECT * FROM diff_stats
     WHERE relname ~* '(pg_database|pg_sequence).*'
           OR owner IN ('yb_su', 'yb_user1', 'yb_user2', 'yb_user3');
- d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep         
----+----------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
- - | yb_user3 | public     | table_u3        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_user3 | public     | table_u3        | r | f |        -1 |         0 |              | 
- - | yb_user3 | public     | table_u3_c2_idx | i | f |        10 |         0 |              | 
- + | yb_user3 | public     | table_u3_c2_idx | i | f |        -1 |         0 |              | 
+ d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |                   xndv                    |                            xdep                            
+---+----------+------------+-----------------+---+---+-----------+-----------+-------------------------------------------+------------------------------------------------------------
+ - | yb_user3 | public     | table_u3        | r | f |        10 |         3 | [{"attributes": [2, 3], "ndistinct": 10}] | [{"attributes": [3], "dependency": 2, "degree": 0.200000}]
+ + | yb_user3 | public     | table_u3        | r | f |        -1 |         0 |                                           | 
+ - | yb_user3 | public     | table_u3_c2_idx | i | f |        10 |         0 |                                           | 
+ + | yb_user3 | public     | table_u3_c2_idx | i | f |        -1 |         0 |                                           | 
 (4 rows)
 
 --- Single relation, DB owner
@@ -388,12 +388,12 @@ SELECT yb_reset_analyze_statistics('table_su'::regclass);
 SELECT * FROM diff_stats
     WHERE relname ~* '(pg_database|pg_sequence).*'
           OR owner IN ('yb_su', 'yb_user1', 'yb_user2', 'yb_user3');
- d | owner | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep         
----+-------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
- - | yb_su | public     | table_su        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_su | public     | table_su        | r | f |        -1 |         0 |              | 
- - | yb_su | public     | table_su_c2_idx | i | f |        10 |         0 |              | 
- + | yb_su | public     | table_su_c2_idx | i | f |        -1 |         0 |              | 
+ d | owner | schemaname |     relname     | k | s | reltuples | ncolstats |                   xndv                    |                            xdep                            
+---+-------+------------+-----------------+---+---+-----------+-----------+-------------------------------------------+------------------------------------------------------------
+ - | yb_su | public     | table_su        | r | f |        10 |         3 | [{"attributes": [2, 3], "ndistinct": 10}] | [{"attributes": [3], "dependency": 2, "degree": 0.200000}]
+ + | yb_su | public     | table_su        | r | f |        -1 |         0 |                                           | 
+ - | yb_su | public     | table_su_c2_idx | i | f |        10 |         0 |                                           | 
+ + | yb_su | public     | table_su_c2_idx | i | f |        -1 |         0 |                                           | 
 (4 rows)
 
 CALL record_stats();
@@ -406,12 +406,12 @@ SELECT yb_reset_analyze_statistics('table_u1'::regclass);
 SELECT * FROM diff_stats
     WHERE relname ~* '(pg_database|pg_sequence).*'
           OR owner IN ('yb_su', 'yb_user1', 'yb_user2', 'yb_user3');
- d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep         
----+----------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
- - | yb_user1 | public     | table_u1        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_user1 | public     | table_u1        | r | f |        -1 |         0 |              | 
- - | yb_user1 | public     | table_u1_c2_idx | i | f |        10 |         0 |              | 
- + | yb_user1 | public     | table_u1_c2_idx | i | f |        -1 |         0 |              | 
+ d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |                   xndv                    |                            xdep                            
+---+----------+------------+-----------------+---+---+-----------+-----------+-------------------------------------------+------------------------------------------------------------
+ - | yb_user1 | public     | table_u1        | r | f |        10 |         3 | [{"attributes": [2, 3], "ndistinct": 10}] | [{"attributes": [3], "dependency": 2, "degree": 0.200000}]
+ + | yb_user1 | public     | table_u1        | r | f |        -1 |         0 |                                           | 
+ - | yb_user1 | public     | table_u1_c2_idx | i | f |        10 |         0 |                                           | 
+ + | yb_user1 | public     | table_u1_c2_idx | i | f |        -1 |         0 |                                           | 
 (4 rows)
 
 CALL record_stats();
@@ -424,12 +424,12 @@ SELECT yb_reset_analyze_statistics('table_u2'::regclass);
 SELECT * FROM diff_stats
     WHERE relname ~* '(pg_database|pg_sequence).*'
           OR owner IN ('yb_su', 'yb_user1', 'yb_user2', 'yb_user3');
- d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep         
----+----------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
- - | yb_user2 | public     | table_u2        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_user2 | public     | table_u2        | r | f |        -1 |         0 |              | 
- - | yb_user2 | public     | table_u2_c2_idx | i | f |        10 |         0 |              | 
- + | yb_user2 | public     | table_u2_c2_idx | i | f |        -1 |         0 |              | 
+ d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |                   xndv                    |                            xdep                            
+---+----------+------------+-----------------+---+---+-----------+-----------+-------------------------------------------+------------------------------------------------------------
+ - | yb_user2 | public     | table_u2        | r | f |        10 |         3 | [{"attributes": [2, 3], "ndistinct": 10}] | [{"attributes": [3], "dependency": 2, "degree": 0.200000}]
+ + | yb_user2 | public     | table_u2        | r | f |        -1 |         0 |                                           | 
+ - | yb_user2 | public     | table_u2_c2_idx | i | f |        10 |         0 |                                           | 
+ + | yb_user2 | public     | table_u2_c2_idx | i | f |        -1 |         0 |                                           | 
 (4 rows)
 
 CALL record_stats();
@@ -442,12 +442,12 @@ SELECT yb_reset_analyze_statistics('table_u3'::regclass);
 SELECT * FROM diff_stats
     WHERE relname ~* '(pg_database|pg_sequence).*'
           OR owner IN ('yb_su', 'yb_user1', 'yb_user2', 'yb_user3');
- d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep         
----+----------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
- - | yb_user3 | public     | table_u3        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_user3 | public     | table_u3        | r | f |        -1 |         0 |              | 
- - | yb_user3 | public     | table_u3_c2_idx | i | f |        10 |         0 |              | 
- + | yb_user3 | public     | table_u3_c2_idx | i | f |        -1 |         0 |              | 
+ d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |                   xndv                    |                            xdep                            
+---+----------+------------+-----------------+---+---+-----------+-----------+-------------------------------------------+------------------------------------------------------------
+ - | yb_user3 | public     | table_u3        | r | f |        10 |         3 | [{"attributes": [2, 3], "ndistinct": 10}] | [{"attributes": [3], "dependency": 2, "degree": 0.200000}]
+ + | yb_user3 | public     | table_u3        | r | f |        -1 |         0 |                                           | 
+ - | yb_user3 | public     | table_u3_c2_idx | i | f |        10 |         0 |                                           | 
+ + | yb_user3 | public     | table_u3_c2_idx | i | f |        -1 |         0 |                                           | 
 (4 rows)
 
 -- Single relation, non-DB owner
@@ -520,12 +520,12 @@ SELECT yb_reset_analyze_statistics('table_u2'::regclass);
 SELECT * FROM diff_stats
     WHERE relname ~* '(pg_database|pg_sequence).*'
           OR owner IN ('yb_su', 'yb_user1', 'yb_user2', 'yb_user3');
- d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |     xndv     |         xdep         
----+----------+------------+-----------------+---+---+-----------+-----------+--------------+----------------------
- - | yb_user2 | public     | table_u2        | r | f |        10 |         3 | {"2, 3": 10} | {"3 => 2": 0.200000}
- + | yb_user2 | public     | table_u2        | r | f |        -1 |         0 |              | 
- - | yb_user2 | public     | table_u2_c2_idx | i | f |        10 |         0 |              | 
- + | yb_user2 | public     | table_u2_c2_idx | i | f |        -1 |         0 |              | 
+ d |  owner   | schemaname |     relname     | k | s | reltuples | ncolstats |                   xndv                    |                            xdep                            
+---+----------+------------+-----------------+---+---+-----------+-----------+-------------------------------------------+------------------------------------------------------------
+ - | yb_user2 | public     | table_u2        | r | f |        10 |         3 | [{"attributes": [2, 3], "ndistinct": 10}] | [{"attributes": [3], "dependency": 2, "degree": 0.200000}]
+ + | yb_user2 | public     | table_u2        | r | f |        -1 |         0 |                                           | 
+ - | yb_user2 | public     | table_u2_c2_idx | i | f |        10 |         0 |                                           | 
+ + | yb_user2 | public     | table_u2_c2_idx | i | f |        -1 |         0 |                                           | 
 (4 rows)
 
 CALL record_stats();
@@ -550,7 +550,7 @@ SELECT yb_reset_analyze_statistics();	-- fail
 ERROR:  function yb_reset_analyze_statistics() does not exist
 LINE 1: SELECT yb_reset_analyze_statistics();
                ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+DETAIL:  No function of that name accepts the given number of arguments.
 SELECT * FROM diff_stats;
  d | owner | schemaname | relname | k | s | reltuples | ncolstats | xndv | xdep 
 ---+-------+------------+---------+---+---+-----------+-----------+------+------

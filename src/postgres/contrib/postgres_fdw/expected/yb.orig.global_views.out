@@ -644,7 +644,7 @@ ORDER BY node_id, metric_name;
  Sort
    Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".metric_value
    Sort Key: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Aggregate
            Output: avg("gv$node_metrics".metric_value)
            ->  Foreign Scan on public."gv$node_metrics"
@@ -652,7 +652,7 @@ ORDER BY node_id, metric_name;
                  Remote SQL: SELECT metric_value FROM public.local_node_metrics
    ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
          Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".metric_value
-         Remote Filter: ("gv$node_metrics_1".metric_value > $0)
+         Remote Filter: ("gv$node_metrics_1".metric_value > (InitPlan expr_1).col1)
          Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision))
 (13 rows)
 
@@ -682,13 +682,13 @@ ORDER BY node_id, metric_name;
  Sort
    Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".metric_value
    Sort Key: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Aggregate
            Output: avg("gv$node_metrics".metric_value)
            ->  Foreign Scan on public."gv$node_metrics"
                  Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".metric_value, "gv$node_metrics".event_count, "gv$node_metrics".total_bytes, "gv$node_metrics".ratio, "gv$node_metrics".is_healthy, "gv$node_metrics".tag, "gv$node_metrics".status, "gv$node_metrics".created_at, "gv$node_metrics".updated_at
                  Remote SQL: SELECT metric_value FROM public.local_node_metrics
-   InitPlan 2 (returns $1)
+   InitPlan expr_2
      ->  Aggregate
            Output: min("gv$node_metrics_1".event_count)
            ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
@@ -696,7 +696,7 @@ ORDER BY node_id, metric_name;
                  Remote SQL: SELECT event_count FROM public.local_node_metrics
    ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
          Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".metric_value
-         Remote Filter: (("gv$node_metrics_2".metric_value > $0) AND ("gv$node_metrics_2".event_count > $1))
+         Remote Filter: (("gv$node_metrics_2".metric_value > (InitPlan expr_1).col1) AND ("gv$node_metrics_2".event_count > (InitPlan expr_2).col1))
          Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision)) AND ((event_count > $2::integer))
 (19 rows)
 
@@ -726,7 +726,7 @@ ORDER BY node_id, metric_name;
  Sort
    Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".metric_value
    Sort Key: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Aggregate
            Output: avg("gv$node_metrics".metric_value)
            ->  Foreign Scan on public."gv$node_metrics"
@@ -735,7 +735,7 @@ ORDER BY node_id, metric_name;
                  Remote SQL: SELECT metric_value FROM public.local_node_metrics WHERE ((node_id = 999))
    ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
          Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".metric_value
-         Remote Filter: ("gv$node_metrics_1".metric_value > $0)
+         Remote Filter: ("gv$node_metrics_1".metric_value > (InitPlan expr_1).col1)
          Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision))
 (14 rows)
 
@@ -761,13 +761,13 @@ ORDER BY node_id, metric_name;
  Sort
    Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".metric_value
    Sort Key: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Aggregate
            Output: avg("gv$node_metrics".metric_value)
            ->  Foreign Scan on public."gv$node_metrics"
                  Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".metric_value, "gv$node_metrics".event_count, "gv$node_metrics".total_bytes, "gv$node_metrics".ratio, "gv$node_metrics".is_healthy, "gv$node_metrics".tag, "gv$node_metrics".status, "gv$node_metrics".created_at, "gv$node_metrics".updated_at
                  Remote SQL: SELECT metric_value FROM public.local_node_metrics
-   InitPlan 2 (returns $1)
+   InitPlan expr_2
      ->  Aggregate
            Output: min("gv$node_metrics_1".event_count)
            ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
@@ -776,7 +776,7 @@ ORDER BY node_id, metric_name;
                  Remote SQL: SELECT event_count FROM public.local_node_metrics WHERE ((node_id = 999))
    ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
          Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".metric_value
-         Remote Filter: (("gv$node_metrics_2".metric_value > $0) AND ("gv$node_metrics_2".event_count > $1))
+         Remote Filter: (("gv$node_metrics_2".metric_value > (InitPlan expr_1).col1) AND ("gv$node_metrics_2".event_count > (InitPlan expr_2).col1))
          Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision)) AND ((event_count > $2::integer))
 (20 rows)
 
@@ -840,12 +840,12 @@ ORDER BY node_id, metric_name;
  Sort
    Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".tag
    Sort Key: "gv$node_metrics".node_id
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Result *RESULT*
            Output: ''::character varying
    ->  Foreign Scan on public."gv$node_metrics"
          Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".tag
-         Remote Filter: (("gv$node_metrics".metric_name)::text = ($0)::text)
+         Remote Filter: (("gv$node_metrics".metric_name)::text = ((InitPlan expr_1).col1)::text)
          Remote SQL: SELECT node_id, metric_name, tag FROM public.local_node_metrics WHERE ((metric_name = $1::character varying))
 (10 rows)
 
@@ -869,12 +869,12 @@ ORDER BY node_id, metric_name;
  Sort
    Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".tag
    Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Result *RESULT*
            Output: NULL::character(5)
    ->  Foreign Scan on public."gv$node_metrics"
          Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".tag
-         Remote Filter: (NOT ("gv$node_metrics".tag IS DISTINCT FROM $0))
+         Remote Filter: (NOT ("gv$node_metrics".tag IS DISTINCT FROM (InitPlan expr_1).col1))
          Remote SQL: SELECT node_id, metric_name, tag FROM public.local_node_metrics WHERE ((NOT (tag IS DISTINCT FROM $1::character(5))))
 (10 rows)
 

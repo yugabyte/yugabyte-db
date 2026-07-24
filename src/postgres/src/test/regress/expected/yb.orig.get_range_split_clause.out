@@ -314,9 +314,9 @@ CREATE TABLE tbl9 (
   PRIMARY KEY(a ASC)
 ) SPLIT AT VALUES (('1/2345678'));
 SELECT yb_get_range_split_clause('tbl9'::regclass);
-    yb_get_range_split_clause    
----------------------------------
- SPLIT AT VALUES (('1/2345678'))
+    yb_get_range_split_clause     
+----------------------------------
+ SPLIT AT VALUES (('1/02345678'))
 (1 row)
 
 DROP TABLE tbl9;
@@ -402,44 +402,6 @@ SELECT yb_get_range_split_clause('tbl_with_special_strings2'::regclass);
 (1 row)
 
 DROP TABLE tbl_with_special_strings2;
--- When standard_conforming_strings = OFF, backslashs are treated as escapes.
-SET standard_conforming_strings = OFF;
--- Incorrect escapes ignore backslashs
-SELECT 'B back\slashes';
-WARNING:  nonstandard use of escape in a string literal
-LINE 1: SELECT 'B back\slashes';
-               ^
-HINT:  Use the escape string syntax for escapes, e.g., E'\r\n'.
-   ?column?    
----------------
- B backslashes
-(1 row)
-
-SELECT E'B back\slashes';
-   ?column?    
----------------
- B backslashes
-(1 row)
-
-CREATE TABLE tbl_with_special_strings3 (
- a TEXT,
- PRIMARY KEY(a DESC)
-) SPLIT AT VALUES(('D si''ngle quo''tes'), ('C double" quotes'), ('B back\slashes'), ('A all'' combo\ of them"'));
-WARNING:  nonstandard use of escape in a string literal
-LINE 4: ...S(('D si''ngle quo''tes'), ('C double" quotes'), ('B back\sl...
-                                                             ^
-HINT:  Use the escape string syntax for escapes, e.g., E'\r\n'.
-WARNING:  nonstandard use of escape in a string literal
-LINE 4: ...tes'), ('C double" quotes'), ('B back\slashes'), ('A all'' c...
-                                                             ^
-HINT:  Use the escape string syntax for escapes, e.g., E'\r\n'.
-SELECT yb_get_range_split_clause('tbl_with_special_strings3'::regclass);
-                                           yb_get_range_split_clause                                            
-----------------------------------------------------------------------------------------------------------------
- SPLIT AT VALUES (('D si''ngle quo''tes'), ('C double" quotes'), ('B backslashes'), ('A all'' combo of them"'))
-(1 row)
-
-DROP TABLE tbl_with_special_strings3;
 -- Test proper escapes
 CREATE TABLE tbl_with_special_strings4 (
  a TEXT,

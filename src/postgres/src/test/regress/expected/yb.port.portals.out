@@ -1190,18 +1190,18 @@ rollback;
 -- Check handling of non-backwards-scan-capable plans with scroll cursors
 begin;
 explain (costs off) declare c1 cursor for select (select 42) as x;
-        QUERY PLAN         
----------------------------
+       QUERY PLAN        
+-------------------------
  Result *RESULT*_1
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Result *RESULT*
 (3 rows)
 
 explain (costs off) declare c1 scroll cursor for select (select 42) as x;
-        QUERY PLAN         
----------------------------
+       QUERY PLAN        
+-------------------------
  Materialize
-   InitPlan 1 (returns $0)
+   InitPlan expr_1
      ->  Result *RESULT*
    ->  Result *RESULT*_1
 (4 rows)
