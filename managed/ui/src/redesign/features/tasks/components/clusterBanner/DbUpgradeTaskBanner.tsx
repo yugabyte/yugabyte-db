@@ -156,6 +156,7 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
       }
       break;
     case TaskState.FAILURE:
+    case TaskState.ABORTED:
       if (
         universeDetailsQuery.data?.info?.software_upgrade_state ===
         UniverseInfoSoftwareUpgradeState.Ready
@@ -181,7 +182,6 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
       break;
     case TaskState.CREATED:
     case TaskState.INITIALIZING:
-    case TaskState.ABORTED:
     case TaskState.ABORT:
     case TaskState.UNKNOWN:
       bannerComponent = null;
