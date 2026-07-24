@@ -1,0 +1,44 @@
+name: "yb-gh"
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited ]
+    paths-ignore:
+      - README.md
+      - 'docs/**'
+
+jobs:
+  pr-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: 'false'
+
+      # TODO: Create GH custom image with pycodestyle & golint installed
+      - name: Lint
+        run: |
+          docker run \
+            --user root \
+            -v "$(pwd):$(pwd)" \
+            -w "$(pwd)" \
+            yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest \
+            bash -c 'chown -R yugabyteci .'
+          docker run \
+            --user yugabyteci \
+            -v "$(pwd):$(pwd)" \
+            -w "$(pwd)" \
+            yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest \
+            bash -c '
+              set -euo pipefail
+              # Base reference should be set for PR actions.
+              set -x
+              if [[ -n "${{ github.base_ref }}" ]]; then
+                git fetch origin ${{ github.base_ref }}
+                ./build-support/lint.py --rev origin/${{ github.base_ref }}
+              else
+                echo No base reference to compare
+                exit 1
+              fi
+            '
