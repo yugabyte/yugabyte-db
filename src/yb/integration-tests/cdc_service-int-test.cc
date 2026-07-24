@@ -36,6 +36,7 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rpc/messenger.h"
@@ -178,6 +179,7 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void CreateTable(int num_tablets, TableHandle* table);
+  void CreateTable(int num_tablets, const client::YBTableName& table_name, TableHandle* table);
   void GetTablets(std::vector<TabletId>* tablet_ids,
                   const client::YBTableName& table_name = kTableName);
   std::string GetTablet(const client::YBTableName& table_name = kTableName);
@@ -211,8 +213,13 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
 };
 
 void CDCServiceTest::CreateTable(int num_tablets, TableHandle* table) {
-  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
-                                                kTableName.namespace_type()));
+  CreateTable(num_tablets, kTableName, table);
+}
+
+void CDCServiceTest::CreateTable(
+    int num_tablets, const client::YBTableName& table_name, TableHandle* table) {
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(
+      table_name.namespace_name(), table_name.namespace_type()));
 
   client::YBSchemaBuilder builder;
   builder.AddColumn("key")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
@@ -223,7 +230,7 @@ void CDCServiceTest::CreateTable(int num_tablets, TableHandle* table) {
   table_properties.SetTransactional(true);
   builder.SetTableProperties(table_properties);
 
-  ASSERT_OK(table->Create(kTableName, num_tablets, client_.get(), &builder));
+  ASSERT_OK(table->Create(table_name, num_tablets, client_.get(), &builder));
 }
 
 Result<QLValuePB> ExtractValue(
@@ -642,6 +649,82 @@ TEST_F(CDCServiceTest, TestDeleteXClusterStream) {
   for (const auto& tablet_id : tablet_ids) {
     VerifyStreamDeletedFromCdcState(client_.get(), stream_id_, tablet_id);
   }
+}
+
+TEST_F(CDCServiceTest, TestCleanupStaleCDCStreamsWithoutCDCStateTable) {
+  master::MasterReplicationProxy master_proxy(
+      &client_->proxy_cache(), cluster_->mini_master()->bound_rpc_addr());
+
+  master::CleanupStaleCDCStreamsRequestPB req;
+  req.set_dry_run(true);
+  master::CleanupStaleCDCStreamsResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(10));
+
+  ASSERT_OK(master_proxy.CleanupStaleCDCStreams(req, &resp, &rpc));
+  ASSERT_TRUE(resp.has_error());
+  EXPECT_EQ(resp.error().code(), master::MasterErrorPB::OBJECT_NOT_FOUND);
+  ASSERT_STR_CONTAINS(resp.error().status().message(), "cdc_state table does not exist");
+}
+
+TEST_F(CDCServiceTest, TestCleanupStaleCDCStreamsDryRunAndDelete) {
+  stream_id_ = ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id()));
+
+  auto cdc_state_table = MakeCDCStateTable(client_.get());
+  const auto tablet_id = GetTablet();
+  const auto missing_stream_id = xrepl::StreamId::GenerateRandom();
+  const CDCStateTableKey missing_tablet_key("missing_tablet_id", stream_id_);
+  const CDCStateTableKey missing_stream_key(tablet_id, missing_stream_id);
+
+  ASSERT_OK(cdc_state_table.InsertEntries({
+      CDCStateTableEntry(missing_tablet_key),
+      CDCStateTableEntry(missing_stream_key)}));
+
+  master::MasterReplicationProxy master_proxy(
+      &client_->proxy_cache(), cluster_->mini_master()->bound_rpc_addr());
+  auto cleanup_stale_cdc_streams = [&](bool dry_run) {
+    master::CleanupStaleCDCStreamsRequestPB req;
+    master::CleanupStaleCDCStreamsResponsePB resp;
+    req.set_dry_run(dry_run);
+    RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(60));
+    EXPECT_OK(master_proxy.CleanupStaleCDCStreams(req, &resp, &rpc));
+    EXPECT_FALSE(resp.has_error()) << resp.error().ShortDebugString();
+    return resp;
+  };
+
+  auto dry_run_resp = cleanup_stale_cdc_streams(/*dry_run=*/true);
+  ASSERT_EQ(dry_run_resp.stale_entries_size(), 2);
+  ASSERT_EQ(dry_run_resp.deleted_entries_size(), 0);
+  ASSERT_OK(VerifyCdcStateMatches(client_.get(), stream_id_, tablet_id, 0, 0));
+  for (const auto& entry : dry_run_resp.stale_entries()) {
+    if (entry.reason() == "stream not found") {
+      ASSERT_EQ(entry.tables_size(), 1);
+      EXPECT_EQ(entry.tables(0).table_id(), table_.table()->id());
+      EXPECT_EQ(entry.tables(0).table_name(), table_.table()->name().table_name());
+    }
+  }
+
+  ASSERT_OK(cdc_state_table.UpsertEntries({
+      CDCStateTableEntry(missing_tablet_key),
+      CDCStateTableEntry(missing_stream_key)}));
+
+  auto cleanup_resp = cleanup_stale_cdc_streams(/*dry_run=*/false);
+  ASSERT_EQ(cleanup_resp.stale_entries_size(), 2);
+  ASSERT_EQ(cleanup_resp.deleted_entries_size(), 2);
+  for (const auto& entry : cleanup_resp.deleted_entries()) {
+    if (entry.reason() == "stream not found") {
+      ASSERT_EQ(entry.tables_size(), 1);
+      EXPECT_EQ(entry.tables(0).table_id(), table_.table()->id());
+      EXPECT_EQ(entry.tables(0).table_name(), table_.table()->name().table_name());
+    }
+  }
+  ASSERT_FALSE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(missing_tablet_key)));
+  ASSERT_FALSE(ASSERT_RESULT(cdc_state_table.TryFetchEntry(missing_stream_key)));
+  ASSERT_OK(VerifyCdcStateMatches(client_.get(), stream_id_, tablet_id, 0, 0));
+
+  ASSERT_OK(DeleteXClusterStream(stream_id_));
+  stream_id_ = xrepl::StreamId::Nil();
 }
 
 TEST_F(CDCServiceTest, TestSafeTime) {

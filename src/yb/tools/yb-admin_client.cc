@@ -4297,6 +4297,48 @@ Status ClusterAdminClient::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
   return Status::OK();
 }
 
+Status ClusterAdminClient::CleanupStaleCDCStreams(bool dry_run) {
+  master::CleanupStaleCDCStreamsRequestPB req;
+  master::CleanupStaleCDCStreamsResponsePB resp;
+
+  req.set_dry_run(dry_run);
+
+  RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(std::max(timeout_.ToSeconds(), 120.0)));
+  RETURN_NOT_OK(master_replication_proxy_->CleanupStaleCDCStreams(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error cleaning up stale CDC streams: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Found " << resp.stale_entries_size() << " stale cdc_state entries";
+  if (dry_run) {
+    cout << " (dry run)";
+  }
+  cout << ".\n";
+  for (const auto& entry : resp.stale_entries()) {
+    cout << "  tablet_id: " << entry.tablet_id()
+         << ", stream_id: " << entry.stream_id();
+    if (entry.has_colocated_table_id()) {
+      cout << ", colocated_table_id: " << entry.colocated_table_id();
+    }
+    for (const auto& table : entry.tables()) {
+      cout << ", table_id: " << table.table_id();
+      if (table.has_table_name()) {
+        cout << ", table_name: " << table.table_name();
+      }
+    }
+    cout << ", reason: " << entry.reason() << "\n";
+  }
+
+  if (!dry_run) {
+    cout << "Deleted " << resp.deleted_entries_size() << " stale cdc_state entries.\n";
+  }
+
+  return Status::OK();
+}
+
 Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(
     const string& replication_group_id) {
   master::IsSetupUniverseReplicationDoneRequestPB req;

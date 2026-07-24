@@ -24,6 +24,7 @@
 #include "yb/common/common_util.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
+#include "yb/common/constants.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/xcluster_util.h"
 
@@ -5393,6 +5394,161 @@ Status CatalogManager::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
   LOG_WITH_FUNC(INFO)
       << "Successfully validated and synced cdc state table entries for CDC stream: " << stream_id;
 
+  return Status::OK();
+}
+
+Status CatalogManager::CleanupStaleCDCStreams(
+    const CleanupStaleCDCStreamsRequestPB* req,
+    CleanupStaleCDCStreamsResponsePB* resp, rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing CleanupStaleCDCStreams request from " << RequestorString(rpc) << ": "
+            << req->ShortDebugString();
+
+  const bool dry_run = req->dry_run();
+
+  // we check the table existence to instead of relying on GetTableRangeAsync down the line
+  // because GetTableRangeAsync has a long timeout.
+  if (!VERIFY_RESULT(TableExists(kSystemNamespaceName, cdc::kCdcStateTableName))) {
+    return SetupError(
+        resp->mutable_error(),
+        MasterErrorPB::OBJECT_NOT_FOUND,
+        STATUS(
+            NotFound,
+            "cdc_state table does not exist or is not ready."));
+  }
+
+  std::unordered_set<xrepl::StreamId> all_stream_ids;
+  {
+    SharedLock lock(mutex_);
+    for (const auto& [stream_id, stream] : cdc_stream_map_) {
+      auto stream_lock = stream->LockForRead();
+      if (stream_lock->is_deleting()) {
+        continue;
+      }
+
+      all_stream_ids.insert(stream_id);
+    }
+  }
+
+  Status iteration_status;
+  auto all_entry_keys_result =
+      cdc_state_table_->GetTableRangeAsync({}, &iteration_status);
+  if (!all_entry_keys_result.ok()) {
+    const auto& status = all_entry_keys_result.status();
+    if (!status.IsNotFound() && !status.IsUninitialized()) {
+      return status;
+    }
+    return SetupError(
+        resp->mutable_error(),
+        MasterErrorPB::OBJECT_NOT_FOUND,
+        STATUS(
+            NotFound,
+            "cdc_state table does not exist or is not ready."));
+  }
+
+  std::vector<cdc::CDCStateTableKey> all_entry_keys;
+  std::unordered_map<TabletId, TabletInfoPtr> tablet_info_map;
+
+  {
+    std::unordered_set<TabletId> tablet_ids;
+    for (const auto& entry_result : *all_entry_keys_result) {
+      RETURN_NOT_OK(entry_result);
+
+      const auto& key = entry_result->key;
+      all_entry_keys.push_back(key);
+
+      // Ignore sys catalog tablet and slot entry.
+      if (key.tablet_id == kCDCSDKSlotEntryTabletId || key.tablet_id == kSysCatalogTabletId) {
+        continue;
+      }
+
+      tablet_ids.insert(key.tablet_id);
+    }
+    RETURN_NOT_OK(iteration_status);
+
+    auto tablet_infos = GetTabletInfos({tablet_ids.begin(), tablet_ids.end()});
+    for (auto& tablet_info : tablet_infos) {
+      if (tablet_info) {
+        tablet_info_map.emplace(tablet_info->tablet_id(), std::move(tablet_info));
+      }
+    }
+  }
+
+  std::unordered_map<TabletId, std::vector<scoped_refptr<TableInfo>>> tablet_tables_map;
+  {
+    SharedLock lock(mutex_);
+    for (const auto& [tablet_id, tablet_info] : tablet_info_map) {
+      auto& tables = tablet_tables_map[tablet_id];
+      for (const auto& table_id : tablet_info->GetTableIds()) {
+        auto table = tables_->FindTableOrNull(table_id);
+        if (table) {
+          tables.push_back(std::move(table));
+        }
+      }
+    }
+  }
+
+  std::vector<cdc::CDCStateTableKey> keys_to_delete;
+  const std::vector<scoped_refptr<TableInfo>> no_tables;
+
+  // helper function to add an entry to the response's stale entries list and add the key to the
+  // keys_to_delete list
+  auto add_stale_entry =
+      [&resp, &keys_to_delete](
+          const cdc::CDCStateTableKey& key,
+          const std::vector<scoped_refptr<TableInfo>>& tables,
+          const char* reason) {
+        auto* stale_entry = resp->add_stale_entries();
+        stale_entry->set_tablet_id(key.tablet_id);
+        stale_entry->set_stream_id(key.stream_id.ToString());
+        if (!key.colocated_table_id.empty()) {
+          stale_entry->set_colocated_table_id(key.colocated_table_id);
+        }
+        for (const auto& table : tables) {
+          auto* table_pb = stale_entry->add_tables();
+          table_pb->set_table_id(table->id());
+          table_pb->set_table_name(table->name());
+        }
+        stale_entry->set_reason(reason);
+        keys_to_delete.push_back(key);
+      };
+
+  for (const auto& key : all_entry_keys) {
+    const bool stream_exists = all_stream_ids.contains(key.stream_id);
+    if ((key.tablet_id == kCDCSDKSlotEntryTabletId || key.tablet_id == kSysCatalogTabletId) &&
+        stream_exists) {
+      continue;
+    }
+
+    const auto tablet_iter = tablet_info_map.find(key.tablet_id);
+    const auto tablet_tables_iter = tablet_tables_map.find(key.tablet_id);
+    const auto* tablet_tables =
+        tablet_tables_iter == tablet_tables_map.end() ? nullptr : &tablet_tables_iter->second;
+
+    // Classify the remaining candidate row in order: missing stream, then missing tablet.
+    if (!stream_exists) {
+      add_stale_entry(
+          key, tablet_tables ? *tablet_tables : no_tables, "stream not found");
+      continue;
+    }
+
+    if (tablet_iter == tablet_info_map.end()) {
+      add_stale_entry(key, {}, "tablet not found");
+      continue;
+    }
+  }
+
+  if (!dry_run && !keys_to_delete.empty()) {
+    RETURN_NOT_OK_PREPEND(
+        cdc_state_table_->DeleteEntries(keys_to_delete),
+        "Error deleting stale entries from cdc_state table");
+    for (const auto& stale_entry : resp->stale_entries()) {
+      *resp->add_deleted_entries() = stale_entry;
+    }
+  }
+
+  LOG(INFO) << "Found " << resp->stale_entries_size() << " stale cdc_state entries"
+            << (dry_run ? " (dry run)"
+                        : Format(", deleted $0 entries", resp->deleted_entries_size()));
   return Status::OK();
 }
 
