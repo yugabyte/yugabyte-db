@@ -96,7 +96,7 @@ Set `us-east` to be preferred region 1 and `us-central` to be preferred region 2
     set_preferred_zones aws.us-east-2.us-east-2a:1 aws.us-central-1.us-central-1a:2 aws.us-west-1.us-west-1a:3
 ```
 
-The leaders are placed in `us-east`.
+The leaders are placed in `us-east`. (Note that currently in YugabyteDB Aeon you can only set a single preferred region.)
 
 ![Global Database - Preferred Leaders](/images/develop/global-apps/global-database-preferred-leaders.png)
 
