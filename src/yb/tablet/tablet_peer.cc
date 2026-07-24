@@ -227,6 +227,7 @@ Status TabletPeer::InitTabletPeer(
     const scoped_refptr<MetricEntity>& table_metric_entity,
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
     ThreadPool* raft_pool,
+    ThreadPool* snapshot_cleanup_pool,
     rpc::ThreadPool* raft_notifications_pool,
     ThreadPool* tablet_prepare_pool,
     consensus::RetryableRequests* retryable_requests,
@@ -295,7 +296,7 @@ Status TabletPeer::InitTabletPeer(
       };
     });
 
-    tablet_->SetCleanupPool(raft_pool);
+    tablet_->SetCleanupPool(snapshot_cleanup_pool, &messenger_->scheduler(), raft_pool);
 
     ConsensusOptions options;
     options.tablet_id = meta_->raft_group_id();

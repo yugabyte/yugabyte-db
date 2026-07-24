@@ -151,6 +151,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
       table_metric_entity,
       tablet_metric_entity,
       raft_pool_.get(),
+      raft_pool_.get() /* snapshot_cleanup_pool */,
       raft_notifications_pool_.get(),
       tablet_prepare_pool_.get(),
       &retryable_requests,

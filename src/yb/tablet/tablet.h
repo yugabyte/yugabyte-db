@@ -89,6 +89,10 @@ DECLARE_bool(TEST_docdb_log_write_batches);
 namespace yb {
 
 class Cgroup;
+
+namespace rpc {
+class Scheduler;
+}
 class FsManager;
 class MetricEntity;
 
@@ -806,7 +810,9 @@ class Tablet : public AbstractTablet,
   bool is_sys_catalog() const { return is_sys_catalog_; }
   bool IsTransactionalRequest(bool is_ysql_request) const override;
 
-  void SetCleanupPool(ThreadPool* thread_pool);
+  void SetCleanupPool(
+      ThreadPool* snapshot_cleanup_pool, rpc::Scheduler* scheduler,
+      ThreadPool* intent_cleanup_pool);
 
   TabletSnapshots& snapshots() {
     return *snapshots_;
