@@ -59,6 +59,8 @@ import { EditConnectionPoolModal } from '../../../redesign/features/universe/uni
 import { EditMultiTenancyModal } from '../../../redesign/features/universe/universe-actions/edit-multi-tenancy/EditMultiTenancyModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import { EditUniverse } from '@app/redesign/features-v2/universe/edit-universe';
+import { EditUniverseTabs } from '@app/redesign/features-v2/universe/edit-universe/EditUniverseContext';
+import { getEditUniverseSettingsRoute } from '@app/redesign/features-v2/universe/edit-universe/editUniverseTabUtils';
 import { UpgradeLinuxVersionModal } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/UpgradeLinuxVersionModal';
 import { DBUpgradeModal as LegacyDbUpgradeModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBUpgradeModal';
 import { DbUpgradeModal } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeModal';
@@ -522,7 +524,7 @@ class UniverseDetail extends Component {
         ?.value === 'true';
 
     // This is the current Perf Advisor UI which is mostly not used and will be removed from 2026.2
-    const isPerfAdvisorUIEnabled =
+    const isLegacyPAEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.PERFORMANCE_ADVISOR_UI_FEATURE_FLAG
       )?.value === 'true';
@@ -532,20 +534,20 @@ class UniverseDetail extends Component {
     - Integrations -> Perf Advisor (to attach a customer to Perf Advisor service)
     - Under Universe Actions -> Show options to enable/disable Performance Monitoring for the universe (Perf Advisor Service)
     */
-    const isPerfAdvisorServiceEnabled =
+    const isPACollectorEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (c) => c.key === RuntimeConfigKey.ENABLE_PA_COLLECTOR
       )?.value === 'true';
 
-    const isNewPerfAdvisorUiEnabled =
-      isPerfAdvisorServiceEnabled &&
+    const isEmbeddedPAEnabled =
+      isPACollectorEnabled &&
       runtimeConfigs?.data?.configEntries?.find(
         (c) => c.key === RuntimeConfigKey.ENABLE_NEW_PERF_ADVISOR_UI
       )?.value === 'true';
 
     // Performance Tab should be shown only if Perf Advisor is enabled for the universe with advanced observability
-    const isPerformanceTabEnabled =
-      isNewPerfAdvisorUiEnabled &&
+    const isPATabEnabled =
+      isEmbeddedPAEnabled &&
       universePaRegistrationStatus?.data?.success &&
       universePaRegistrationStatus?.data?.advancedObservability;
 
@@ -709,7 +711,12 @@ class UniverseDetail extends Component {
       : 'overview';
     // Check if the pathname contains "performance" to determine if we should show the performance tab
     const isPerfAdvisorPath = location?.pathname?.includes(PERF_ADVISOR_PATH);
-    const activeTab = isPerfAdvisorPath ? PERF_ADVISOR_PATH : tab || defaultTab;
+    const isSettingsPath = location?.pathname?.includes('/settings');
+    const activeTab = isPerfAdvisorPath
+      ? PERF_ADVISOR_PATH
+      : isSettingsPath || tab === 'settings'
+        ? 'settings'
+        : tab || defaultTab;
     const tabElements = [
       //common tabs for every universe
       ...[
@@ -794,7 +801,7 @@ class UniverseDetail extends Component {
             onExit={this.stripQueryParams}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.queries')}
           >
-            <QueriesViewer isPerfAdvisorUIEnabled={isPerfAdvisorUIEnabled} />
+            <QueriesViewer isLegacyPAEnabled={isLegacyPAEnabled} />
           </Tab.Pane>
         ),
         isNotHidden(currentCustomer.data.features, 'universes.details.recovery') && isDrEnabled && (
@@ -844,7 +851,7 @@ class UniverseDetail extends Component {
           </Tab.Pane>
         ),
         isNotHidden(currentCustomer.data.features, 'universes.details.performance') &&
-          isPerformanceTabEnabled &&
+          isPATabEnabled &&
           ybaToPaServiceDetails?.data?.length > 0 && (
             <Tab.Pane
               eventKey={'perfAdvisor'}
@@ -1183,6 +1190,7 @@ class UniverseDetail extends Component {
                   )}
                   {!isReadOnlyUniverse &&
                     !universePaused &&
+                    !isV2EditUniverseUIEnabled &&
                     isNotHidden(
                       currentCustomer.data.features,
                       'universes.details.overview.editUniverse'
@@ -1217,6 +1225,94 @@ class UniverseDetail extends Component {
                           </span>
                         </YBTooltip>
                       </RbacValidator>
+                    )}
+                  {!isReadOnlyUniverse &&
+                    !universePaused &&
+                    isV2EditUniverseUIEnabled &&
+                    isNotHidden(
+                      currentCustomer.data.features,
+                      'universes.details.overview.editUniverse'
+                    ) && (
+                      <>
+                        <MenuItem divider />
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
+                        >
+                          <YBTooltip
+                            title={
+                              hasAsymmetricPrimaryCluster &&
+                              !(isKubernetesUniverse && enableAzOverridesK8s)
+                                ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
+                                : ''
+                            }
+                            placement="left"
+                          >
+                            <span>
+                              <YBMenuItem
+                                to={getEditUniverseSettingsRoute(uuid, EditUniverseTabs.PLACEMENT)}
+                                availability={getFeatureState(
+                                  currentCustomer.data.features,
+                                  'universes.details.overview.editUniverse'
+                                )}
+                                disabled={isEditUniverseDisabled}
+                                className="no-border-bottom"
+                              >
+                                <YBLabelWithIcon
+                                  icon="fa fa-pencil"
+                                  className="menu-item-subtext-container"
+                                >
+                                  Edit Universe Placement
+                                  <span className="menu-item-subtext">
+                                    Regions, Availability Zones, and Nodes
+                                  </span>
+                                </YBLabelWithIcon>
+                              </YBMenuItem>
+                            </span>
+                          </YBTooltip>
+                        </RbacValidator>
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
+                        >
+                          <YBTooltip
+                            title={
+                              hasAsymmetricPrimaryCluster &&
+                              !(isKubernetesUniverse && enableAzOverridesK8s)
+                                ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
+                                : ''
+                            }
+                            placement="left"
+                          >
+                            <span>
+                              <YBMenuItem
+                                to={getEditUniverseSettingsRoute(uuid, EditUniverseTabs.HARDWARE)}
+                                availability={getFeatureState(
+                                  currentCustomer.data.features,
+                                  'universes.details.overview.editUniverse'
+                                )}
+                                disabled={isEditUniverseDisabled}
+                                className="no-border-bottom"
+                              >
+                                <YBLabelWithIcon
+                                  icon="fa fa-pencil"
+                                  className="menu-item-subtext-container"
+                                >
+                                  Edit Hardware
+                                  <span className="menu-item-subtext">Instances and storage</span>
+                                </YBLabelWithIcon>
+                              </YBMenuItem>
+                            </span>
+                          </YBTooltip>
+                        </RbacValidator>
+                        <MenuItem divider />
+                      </>
                     )}
                   {!universePaused && !this.isRRFlagsEnabled() && (
                     <RbacValidator
@@ -1422,18 +1518,6 @@ class UniverseDetail extends Component {
                     )}
 
                   <MenuItem divider />
-
-                  {/* TODO:
-                  1. For now, we're enabling the Pause Universe for providerType one of
-                  'aws', 'gcp' or 'azu' only. This functionality needs to be enabled for
-                  all the cloud providers and once that's done this condition needs
-                  to be removed.
-                  2. One more condition needs to be added which specifies the
-                  current status of the universe. */}
-
-                  {/*
-                  Read-only users should not be given the rights to "Pause Universe"
-                  */}
 
                   {isPausableUniverse(currentUniverse?.data) &&
                     (featureFlags.test['pausedUniverse'] ||
@@ -1729,7 +1813,7 @@ class UniverseDetail extends Component {
                       </RbacValidator>
                     )}
                     {!universePaused &&
-                      isPerfAdvisorServiceEnabled &&
+                      isPACollectorEnabled &&
                       ybaToPaServiceDetails?.data?.length > 0 && (
                         <RbacValidator
                           isControl
@@ -1748,7 +1832,7 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         </RbacValidator>
                       )}
-                    {isNewPerfAdvisorUiEnabled &&
+                    {isEmbeddedPAEnabled &&
                       !universePaused &&
                       universePaRegistrationStatus?.data?.success &&
                       !universePaRegistrationStatus?.data?.advancedObservability && (
@@ -1766,7 +1850,7 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         </RbacValidator>
                       )}
-                    {isNewPerfAdvisorUiEnabled &&
+                    {isEmbeddedPAEnabled &&
                       !universePaused &&
                       universePaRegistrationStatus?.data?.success &&
                       universePaRegistrationStatus?.data?.advancedObservability && (
@@ -2041,7 +2125,7 @@ class UniverseDetail extends Component {
               this.props.getUniversePaRegistrationStatus(currentUniverse.data.universeUUID);
             }
           }}
-          isNewPerfAdvisorUiEnabled={isNewPerfAdvisorUiEnabled}
+          isEmbeddedPAEnabled={isEmbeddedPAEnabled}
           paUuid={ybaToPaServiceDetails?.data?.[0]?.uuid}
           universeData={currentUniverse.data}
           perfAdvisorStatus={universePaRegistrationStatus}
@@ -2116,7 +2200,9 @@ class UniverseDetail extends Component {
             activeTab={activeTab}
             routePrefix={`/universes/${currentUniverse.data.universeUUID}/`}
             id={'universe-tab-panel'}
-            className={'universe-detail'}
+            className={`universe-detail${
+              activeTab === 'settings' ? ' universe-detail-settings' : ''
+            }`}
           >
             {[...tabElements, <div title={actionMenuButtons} />]}
           </YBTabsWithLinksPanel>

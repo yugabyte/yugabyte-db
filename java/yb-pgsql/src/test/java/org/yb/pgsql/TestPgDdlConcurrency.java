@@ -43,7 +43,11 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
     // TODO(#28745): Revisit this. Runs into a deadlock issue with table locks/txn-ddl enabled.
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     flags.put("enable_object_locking_for_table_locks", "false");
+    flags.put("ysql_enable_concurrent_ddl", "false");
+    flags.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
+        (e, a) -> e + "," + a);
     flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
     return flags;
   }

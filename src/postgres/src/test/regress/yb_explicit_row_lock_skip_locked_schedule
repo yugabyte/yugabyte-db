@@ -1,0 +1,7 @@
+# src/test/regress/yb_explicit_row_lock_skip_locked_schedule
+#
+####################################################################################################
+# Runs yb.orig.explicit_row_lock_skip_locked in isolation so it can be exercised with different
+# values of yb_explicit_row_lock_skip_locked_max_read_ahead without re-running yb_misc_serial4.
+####################################################################################################
+test: yb.orig.explicit_row_lock_skip_locked

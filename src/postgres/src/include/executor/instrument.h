@@ -95,6 +95,8 @@ typedef struct YbInstrumentation
 
 	uint64_t	rows_removed_by_recheck;
 	uint64_t	commit_wait;
+
+	uint32_t max_read_ahead;
 } YbInstrumentation;
 
 typedef struct Instrumentation

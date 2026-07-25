@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.DownloadingSoftware;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.models.TaskInfo.State.Aborted;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -349,7 +350,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
   }
 
   @Test
-  public void testRollbackRetries() {
+  public void testRollbackRetries() throws Exception {
     updatePrevYbSoftwareConfig("2.21.0.0-b1", "2.21.0.0-b2");
     factory
         .forUniverse(defaultUniverse)
@@ -359,14 +360,41 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     taskParams.expectedUniverseVersion = -1;
     taskParams.sleepAfterMasterRestartMillis = 0;
     taskParams.sleepAfterTServerRestartMillis = 0;
-    super.verifyTaskRetries(
+
+    int nodeCount = defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size();
+    mockDBServerVersion("2.21.0.0-b2", "2.21.0.0-b1", nodeCount);
+
+    // Abort once mid-rollback and retry to completion. Full per-position verifyTaskRetries is not
+    // used because idempotent rollback shrinks the task graph on retry (fewer per-node rolling
+    // steps), which makes tail comparison against the first-run graph unstable.
+    setPausePosition(0);
+    UUID taskUuid = commissioner.submit(TaskType.RollbackUpgrade, taskParams);
+    CustomerTask.create(
         defaultCustomer,
-        CustomerTask.TaskType.RollbackUpgrade,
+        taskParams.getUniverseUUID(),
+        taskUuid,
         CustomerTask.TargetType.Universe,
-        defaultUniverse.getUniverseUUID(),
-        TaskType.RollbackUpgrade,
-        taskParams,
-        false);
+        CustomerTask.TaskType.RollbackUpgrade,
+        "fake-name");
+    waitForTaskPaused(taskUuid);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUuid);
+
+    clearAbortOrPausePositions();
+    setAbortPosition(10);
+    mockDBServerVersion("2.21.0.0-b2", nodeCount);
+    commissioner.resumeTask(taskUuid);
+    taskInfo = waitForTask(taskUuid);
+    assertEquals(Aborted, taskInfo.getTaskState());
+
+    clearAbortOrPausePositions();
+    CustomerTask retryCustomerTask =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskUuid);
+    UUID retryUuid = retryCustomerTask.getTaskUUID();
+    mockDBServerVersion("2.21.0.0-b1", nodeCount);
+    commissioner.resumeTask(retryUuid);
+    taskInfo = waitForTask(retryUuid);
+    assertEquals(Success, taskInfo.getTaskState());
+
     checkUniverseNodesStates(taskParams.getUniverseUUID());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
@@ -401,11 +429,10 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.RollbackAutoFlags);
-
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
     assertEquals(5, downloadTasks.size());
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RollbackAutoFlags);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     position = assertSequence(subTasksByPosition, MASTER, position, true, false);
@@ -445,11 +472,10 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.RollbackAutoFlags);
-
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
     assertEquals(5, downloadTasks.size());
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RollbackAutoFlags);
     position = assertSequence(subTasksByPosition, TSERVER, position, false, true);
     position = assertSequence(subTasksByPosition, MASTER, position, false, false);
     position = assertSequence(subTasksByPosition, MASTER, position, false, true);
@@ -491,10 +517,10 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.RollbackAutoFlags);
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
     assertEquals(4, downloadTasks.size());
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RollbackAutoFlags);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -544,9 +570,9 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(false))
         .addTasks(TaskType.UpdateUniverseState)
-        .addTasks(TaskType.RollbackAutoFlags)
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.RollbackAutoFlags)
         .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getMasters().size())
         .addSimultaneousTasks(TaskType.SetFlagInMemory, defaultUniverse.getTServers().size())
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())

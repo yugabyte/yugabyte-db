@@ -1,13 +1,4 @@
-import { isEqual } from 'lodash';
-
-import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import { isDefinedNotNull, isNonEmptyArray } from '../../../utils/ObjectUtils';
-
-import SuccessIcon from '@app/redesign/assets/approved/success.svg';
-import PausedIcon from '@app/redesign/assets/approved/paused.svg';
-import AlertIcon from '@app/redesign/assets/approved/alert.svg';
-import ErrorIcon from '@app/redesign/assets/approved/error.svg';
-import LoadingIcon from '@app/redesign/assets/default-loading-circles.svg';
 
 /**
  * A mapping from universe state to display text and className.

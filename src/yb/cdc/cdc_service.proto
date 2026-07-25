@@ -213,6 +213,12 @@ message GetConsistentChangesResponsePB {
   // in the publication needs to be querried for refresh. This is only relevant if
   // the above field 'needs_publication_table_list_refresh' is true.
   optional uint64 publication_refresh_time = 4;
+
+  // When true, the refresh was caused by an explicit ALTER PUBLICATION rather than a CREATE TABLE
+  // auto-added to a FOR ALL TABLES publication. Tells the walsender to fire syscache callbacks so
+  // pgoutput re-reads the publication and re-sends RELATION messages. Only relevant when
+  // 'needs_publication_table_list_refresh' is true.
+  optional bool explicit_alter_publication_detected = 5;
 }
 
 message DestroyVirtualWALForCDCRequestPB {

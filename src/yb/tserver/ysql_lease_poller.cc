@@ -32,6 +32,7 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/thread.h"
 
 DEFINE_RUNTIME_uint64(ysql_lease_refresher_rpc_timeout_ms, 15000,

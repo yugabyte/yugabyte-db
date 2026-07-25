@@ -772,6 +772,9 @@ typedef struct EState
 	 * FK relation. Used by YBCBuildYBTupleIdDescriptor().
 	 */
 	List	   *yb_es_pk_proutes;
+
+	/* YB: Indicates that execution state allows nodes to apply read ahead optimization (if any) */
+	bool yb_read_ahead_allowed;
 } EState;
 
 /*
@@ -3046,7 +3049,7 @@ typedef struct YbLockRowsStateInfo {
 	Tuplestorestate *buffered_slots;
 	uint16_t buffered_slots_capacity;
 	uint16_t buffered_slot_index;
-	YbcIsExplicitlyLockedRowSkippedCheckHandle *check_handles;
+	YbcIsExplicitlyLockedRowSkippedCheckHandleOptional *check_handles;
 	bool bounded;
 	uint64_t bound;
 	uint64_t rows_fetched;

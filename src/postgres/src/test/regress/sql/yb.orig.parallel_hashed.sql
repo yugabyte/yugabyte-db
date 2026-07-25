@@ -69,17 +69,17 @@ SELECT count(*) FROM pctest1 WHERE k > 123;
 SELECT count(*) FROM pctest1 WHERE k > 123;
 
 -- index only
-/*+ Parallel(pctest1 2 hard) */
+/*+ Parallel(pctest1 2 hard) IndexOnlyScan(pctest1) */
 EXPLAIN (costs off)
 SELECT a FROM pctest1 WHERE a < 10;
-/*+ Parallel(pctest1 2 hard) */
+/*+ Parallel(pctest1 2 hard) IndexOnlyScan(pctest1) */
 SELECT a FROM pctest1 WHERE a < 10;
 
 -- with grouping
-/*+ Parallel(pctest1 2 hard) */
+/*+ Parallel(pctest1 2 hard) IndexOnlyScan(pctest1) */
 EXPLAIN (costs off)
 SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
-/*+ Parallel(pctest1 2 hard) */
+/*+ Parallel(pctest1 2 hard) IndexOnlyScan(pctest1) */
 SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
 
 -- Subquery
@@ -259,9 +259,9 @@ SELECT * FROM
      WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
 
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
-/*+ Parallel(pctest3 3 hard) */
+/*+ Parallel(pctest3 3 hard) IndexOnlyScan(pctest3) */
 EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
-/*+ Parallel(pctest3 3 hard) */
+/*+ Parallel(pctest3 3 hard) IndexOnlyScan(pctest3) */
 SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
 
 -- GHI #30204 support for conditions on yb_hash_code()

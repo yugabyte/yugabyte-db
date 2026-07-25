@@ -42,14 +42,16 @@ bool YBCStatusIsTryAgain(YbcStatus s);
 bool YBCStatusIsTimedOut(YbcStatus s);
 bool YBCStatusIsAlreadyPresent(YbcStatus s);
 bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s);
-bool YBCStatusIsFatalError(YbcStatus s);
 uint32_t YBCStatusPgsqlError(YbcStatus s);
 void YBCFreeStatus(YbcStatus s);
 
-const char* YBCStatusFilename(YbcStatus s);
-int YBCStatusLineNumber(YbcStatus s);
-const char* YBCStatusFuncname(YbcStatus s);
-size_t YBCStatusMessageLen(YbcStatus s);
+typedef struct YbcStatusErrorLocationInfo {
+    const char *filename;
+    int lineno;
+    const char *funcname;
+} YbcStatusErrorLocationInfo;
+
+YbcStatusErrorLocationInfo YBCStatusErrorLocation(YbcStatus s);
 const char* YBCStatusMessageBegin(YbcStatus s);
 const char* YBCMessageAsCString(YbcStatus s);
 unsigned int YBCStatusRelationOid(YbcStatus s);
@@ -173,6 +175,8 @@ void YBCUpdateInitPostgresMetrics();
 // Partition key hash decoding helpers
 uint16_t YBCDecodeMultiColumnHashLeftBound(const char* partition_key, size_t key_len);
 uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t key_len);
+
+char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len);
 
 bool YBCIsObjectLockingEnabled();
 void YBCPgSetClampUncertaintyWindow(bool clamp);

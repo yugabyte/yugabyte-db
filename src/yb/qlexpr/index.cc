@@ -25,6 +25,7 @@
 #include "yb/qlexpr/index_column.h"
 
 #include "yb/util/compare_util.h"
+#include "yb/util/format.h"
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/result.h"
 

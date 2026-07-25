@@ -26,7 +26,7 @@
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/mutable_cf_options.h"
 
@@ -449,6 +449,9 @@ static std::unordered_map<std::string, OptionTypeInfo> cf_options_type_info = {
     {"write_buffer_size",
      {offsetof(struct ColumnFamilyOptions, write_buffer_size),
       OptionType::kSizeT, OptionVerificationType::kNormal}},
+    {"target_path_id",
+     {offsetof(struct ColumnFamilyOptions, target_path_id),
+      OptionType::kUInt32T, OptionVerificationType::kNormal}},
     {"bloom_locality",
      {offsetof(struct ColumnFamilyOptions, bloom_locality),
       OptionType::kUInt32T, OptionVerificationType::kNormal}},

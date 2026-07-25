@@ -19,6 +19,8 @@
 
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/status_log.h"
+
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
 using std::string;

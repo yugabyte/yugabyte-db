@@ -31,6 +31,7 @@
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::string;
 
@@ -48,6 +49,7 @@ DECLARE_int32(replication_factor);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_universal_compaction_min_merge_width);
 DECLARE_int32(rocksdb_universal_compaction_size_ratio);
+DECLARE_int32(rpc_workers_limit);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int64(db_filter_block_size_bytes);
@@ -158,6 +160,34 @@ TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(ShowEffectiveYBIsolationLevel)) 
 
   // TODO(read committed): test cases with "BEGIN" followed by "SET TRANSACTION ISOLATION LEVEL".
   // This can be done after #12494 is fixed.
+}
+
+class SmallRpcWorkersTest : public PgTxnTest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_workers_limit) = 32;
+    PgMiniTestBase::SetUp();
+  }
+};
+
+TEST_F_EX(PgTxnTest, ManyCommitsWithSmallRpcWorkers, SmallRpcWorkersTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT, PRIMARY KEY(k ASC))"));
+  std::atomic<int> counter(0);
+  ThreadHolder thread_holder;
+  for ([[maybe_unused]] auto _  : std::views::iota(0, FLAGS_rpc_workers_limit * 2)) {
+    thread_holder.AddThread([this, &stop_flag = thread_holder.stop_flag(), &counter]() {
+      auto conn = ASSERT_RESULT(Connect());
+      while (!stop_flag) {
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES($0)", ++counter));
+        std::this_thread::sleep_until(NextDiscreteTimePoint(500ms));
+        ASSERT_OK(conn.CommitTransaction());
+      }
+    });
+  }
+  thread_holder.WaitAndStop(5s);
+  ASSERT_GT(counter, FLAGS_rpc_workers_limit);
 }
 
 struct Configuration {
@@ -578,6 +608,56 @@ TEST_F_EX(PgTxnTest, ReadAtMultipleTimestamps, PgReadCommittedTxnTest) {
   }
 }
 
+// Test that in READ COMMITTED isolation level, a transaction executing
+// a large number of statements (in the order of a few hundred thousand)
+// does not crash at transaction COMMIT time.
+// See issue https://github.com/yugabyte/yugabyte-db/issues/23742
+// Before the fix to 23742, a large number of statements
+// in a transaction running in READ COMMITTED isolation level
+// will lead to error "Thread stack size exceeded due to excessive recursion" and
+// result in a SIGSEGV crashing the backend process.
+
+TEST_F_EX(
+    PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(LargeNumberOfStatements), PgReadCommittedTxnTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr size_t kPayloadBytes = 1024;
+  ASSERT_OK(conn.Execute("CREATE TABLE tt_test (id INT PRIMARY KEY, val TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE tt_insert_log (id INT PRIMARY KEY, val TEXT)"));
+  ASSERT_OK(conn.Execute(R"(
+    CREATE FUNCTION tt_write_large_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      INSERT INTO tt_insert_log SELECT id, val FROM new_table;
+      RETURN NULL;
+    END;
+    $$;
+  )"));
+
+  // The AFTER INSERT trigger below allocates AfterTriggersTableData
+  // in CurTransactionContext in the function GetAfterTriggersTableData
+  // in trigger.c. This allocation in CurTransactionContext ensures
+  // that in AtSubCommit_Memory() in xact.c, the function does not
+  // MemoryContextDelete the CurTransactionContext trivially because
+  // it is empty. We need non empty CurTransactionContext for each
+  // internal savepoint created for each statement in a READ COMMITTED
+  // transaction in order to reproduce the backend crash due to
+  // stack overflow.
+  ASSERT_OK(conn.Execute(R"(
+    CREATE TRIGGER tt_test_ins AFTER INSERT ON tt_test
+      REFERENCING NEW TABLE AS new_table
+      FOR EACH STATEMENT EXECUTE FUNCTION tt_write_large_insert()
+  )"));
+  const auto insert_query_template =
+      Format("INSERT INTO tt_test VALUES ($$0, repeat('x', $0))", kPayloadBytes);
+  // In order to reproduce the stack overflow we need num_stms to be
+  // about 385000. To avoid test timeouts, we use a smaller number of statements.
+  uint32_t num_stms = 10000;
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED"));
+  for (uint32_t idx = 0; idx < num_stms; ++idx) {
+    ASSERT_OK(conn.ExecuteFormat(insert_query_template, idx));
+  }
+  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
 TEST_F(PgTxnTest, MultiInsertUpdate) {
   constexpr int kBig = 100000000;
 
@@ -645,6 +725,49 @@ TEST_F(PgTxnTest, CleanupIntentsDuringShutdown) {
   conn = ASSERT_RESULT(Connect());
   sum = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT SUM(id) FROM test"));
   ASSERT_EQ(sum, kExpectedSum);
+}
+
+// A large transaction is applied in several batches bounded by txn_max_apply_batch_records. The
+// first batch is applied synchronously during replicated apply, the rest by the async apply task.
+// This test flushes the regular DB after the first batch (so the persisted apply state points past
+// the first batch), lets the transaction apply fully, then flushes only the intents DB. After a
+// restart that skips the flush-on-shutdown, the records applied in the later batches live only in
+// the (lost) regular DB memtable while their intents are already gone, so they must still be
+// recoverable. All inserted records must be present.
+TEST_F_EX(PgTxnTest, ApplyLargeTransactionPartialFlush, PgTxnRF1Test) {
+  constexpr int kBatchRecords = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = kBatchRecords;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+
+  constexpr int kNumRows = kBatchRecords * 3 / 2;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (id INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+
+  // Block the apply task right before it applies the second batch. By the time the task loop is
+  // reached, the first batch has already been applied synchronously to the regular DB memtable.
+  SyncPoint::GetInstance()->SetCallBack(
+      "ApplyIntentsTask::Run:Loop", [this](void*) {
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test SELECT generate_series(1, $0), 0", kNumRows));
+  ASSERT_OK(conn.CommitTransaction());
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  // Flush only the intents DB; records applied after the regular flush stay in the regular DB
+  // memtable.
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kIntents));
+
+  DisableFlushOnShutdown(*cluster_, true);
+  ASSERT_OK(RestartCluster());
+
+  conn = ASSERT_RESULT(Connect());
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test"));
+  ASSERT_EQ(count, kNumRows);
 }
 
 TEST_F(PgTxnTest, FlushLargeTransaction) {

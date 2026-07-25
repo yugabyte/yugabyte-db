@@ -6,7 +6,6 @@
 
 -- Install required extensions
 CREATE EXTENSION file_fdw;
-CREATE EXTENSION postgres_fdw;
 
 -- Create enum type for the status column
 CREATE TYPE metric_status AS ENUM ('active', 'warning', 'critical');
@@ -37,6 +36,10 @@ OPTIONS (format 'csv', filename 'gv_test_data.csv');
 CREATE VIEW local_node_metrics AS
     SELECT yb_get_local_tserver_uuid() AS server_uuid, *
     FROM local_node_metrics_csv;
+
+-- Remote global-view queries execute as the non-superuser yb_global_views_user role
+-- (a member of pg_read_all_stats), so grant it read access to the partial view.
+GRANT SELECT ON local_node_metrics TO pg_read_all_stats;
 
 -- Verify local data is readable (should show only this node's data)
 SELECT count(*) > 0 AS has_local_data FROM local_node_metrics;
@@ -828,7 +831,6 @@ DROP VIEW local_node_metrics;
 DROP FOREIGN TABLE local_node_metrics_csv;
 DROP SERVER gv_server CASCADE;
 DROP SERVER file_server CASCADE;
-DROP EXTENSION postgres_fdw;
 DROP EXTENSION file_fdw;
 DROP TYPE metric_status;
 DROP FUNCTION is_high_value(real);

@@ -2337,6 +2337,18 @@ void
 YBCRestartWriteTransaction()
 {
 	/*
+	 * Roll back every open savepoint / subtransaction so the trans_stack is
+	 * clean before we recreate the top-level write state. Without this, the
+	 * per-statement RC internal subtxn (and any user-defined SAVEPOINTs on
+	 * top of it) survive the surgical write-state reset, leaving the
+	 * after-trigger trans_stack pointing at slots whose state field was
+	 * never re-initialized -- which then SIGSEGVs at pfree() during the
+	 * eventual ROLLBACK in AfterTriggerEndSubXact (#31550).
+	 */
+	while (CurrentTransactionState->parent != NULL)
+		RollbackAndReleaseCurrentSubTransaction();
+
+	/*
 	 * Presence of triggers pushes additional snapshots. Pop all of them. Given
 	 * that we restart the writes only when we haven't sent any data back to the
 	 * user, removing all snapshots is safe.
@@ -3280,7 +3292,19 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 				 * We could have solved the recursion problem by plumbing a flag to skip calling
 				 * BeginInternalSubTransaction() again, but it is simpler and less error-prone to just copy
 				 * the minimal required logic.
+				 *
+				 * Release any previous internal savepoints. This avoids a long
+				 * chain of nested CurTransactionContexts and a subsequent crash
+				 * at COMMIT time when we attempt to MemoryContextDelete the
+				 * TopTransactionContext.
 				 */
+				const char *cur_transaction_name = GetCurrentTransactionName();
+				if (cur_transaction_name && (strcmp(cur_transaction_name,
+													YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME) == 0))
+				{
+					ReleaseCurrentSubTransaction();
+				}
+
 				YbBeginInternalSubTransactionForReadCommittedStatement();
 			}
 
@@ -3329,21 +3353,19 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 void
 YbCommitTransactionCommandIntermediate(void)
 {
-	NodeTag		yb_node_tag;
-	CommandTag	yb_command_tag;
+	YbDdlOriginalStmtState yb_ddl_stmt_state;
 	bool		is_ddl_mode = YBCPgIsDdlMode();
 	YbDdlMode	ddl_mode;
 
 	elog(DEBUG2, "YbCommitTransactionCommandIntermediate");
 
 	/*
-	 * Remember the NodeTag and the CommandTag of the DDL currently being
-	 * executed so that we can set it into the next transaction.
+	 * Remember DDL state of the statement currently being executed so that we
+	 * can restore it on the next transaction.
 	 */
 	if (YBIsDdlTransactionBlockEnabled() && is_ddl_mode)
 	{
-		yb_node_tag = YBGetCurrentStmtDdlNodeTag();
-		yb_command_tag = YBGetCurrentStmtDdlCommandTag();
+		YBGetDdlOriginalStmtState(&yb_ddl_stmt_state);
 		ddl_mode = YBGetCurrentDdlMode();
 	}
 
@@ -3356,7 +3378,7 @@ YbCommitTransactionCommandIntermediate(void)
 	if (YBIsDdlTransactionBlockEnabled() && is_ddl_mode)
 	{
 		YBAddDdlTxnState(ddl_mode);
-		YBSetDdlOriginalNodeAndCommandTag(yb_node_tag, yb_command_tag);
+		YBSetDdlOriginalStmtState(&yb_ddl_stmt_state);
 	}
 }
 

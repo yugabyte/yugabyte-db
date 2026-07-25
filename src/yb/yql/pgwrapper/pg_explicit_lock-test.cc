@@ -11,6 +11,15 @@
 // under the License.
 //
 
+#include <chrono>
+#include <initializer_list>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+
+#include "yb/util/json_document.h"
+
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
@@ -28,6 +37,35 @@ Status SetExplicitRowLockMaxReadAhead(PGConn& conn, size_t value) {
 
 Status DisableExplicitRowLockReadAhead(PGConn& conn) {
   return SetExplicitRowLockMaxReadAhead(conn, 1);
+}
+
+class TopPlanExplainer {
+ public:
+  explicit TopPlanExplainer(PGConn& conn) : conn_(conn) {}
+
+  Result<JsonObject> Explain(const std::string& query) {
+    doc_.emplace(VERIFY_RESULT(conn_.FetchRow<JsonDocument>(
+        Format("EXPLAIN (ANALYZE, DIST, DEBUG, FORMAT JSON) $0", query))));
+    return doc_->Root()[0]["Plan"].GetObject();
+  }
+
+ private:
+  PGConn& conn_;
+  std::optional<JsonDocument> doc_;
+};
+
+Result<std::optional<uint32_t>> GetMaxReadAhead(
+    const JsonValue& node, const std::string& expected_node_type) {
+  const auto obj = VERIFY_RESULT(node.GetObject());
+  const auto node_type = VERIFY_RESULT(obj["Node Type"].GetString());
+  SCHECK_EQ(node_type, expected_node_type, IllegalState, "Bad node type");
+  const auto max_read_ahead = obj["Max Read Ahead"];
+  return max_read_ahead.IsValid()
+      ? std::optional(VERIFY_RESULT(max_read_ahead.GetUint32())) : std::nullopt;
+}
+
+Result<std::optional<uint32_t>> GetLockRowsMaxReadAhead(const JsonValue& object) {
+  return GetMaxReadAhead(object, "LockRows");
 }
 
 } // namespace
@@ -324,7 +362,7 @@ TEST_F_EX(PgExplicitLockTest, BatchedSkipLockedPerformance, PgSkipLockedOptimiza
   }
 }
 
-// The test checks absence of undesired locks in case of JOIN
+// The test checks correctness and absence of undesired locks in case of JOIN
 TEST_F_EX(PgExplicitLockTest, BatchedSkipLockedJoinLockOrder, PgSkipLockedOptimizationTest) {
   auto conn = ASSERT_RESULT(Connect());
   auto aux_conn = ASSERT_RESULT(Connect());
@@ -378,6 +416,86 @@ TEST_F_EX(PgExplicitLockTest, BatchedSkipLockedJoinLockOrder, PgSkipLockedOptimi
   };
   ASSERT_OK(checker(/* batching = */ false));
   ASSERT_OK(checker(/* batching = */ true));
+}
+
+// The test checks correctness and absence of undesired locks in case of nested LockRows nodes
+TEST_F_EX(PgExplicitLockTest, BatchedSkipLockedNestedLockRowsNodes, PgSkipLockedOptimizationTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto aux_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (k INT, v INT, PRIMARY KEY(k ASC));" \
+      "CREATE TABLE t2 (k INT, v INT, PRIMARY KEY(k ASC));" \
+      "INSERT INTO t1 VALUES(1, 1), (2, 2), (3, 3), (4, 4), (5, 5);" \
+      "INSERT INTO t2 VALUES(1, 10), (2, 20), (3, 30), (4, 40), (5, 50);"));
+  auto checker = [&conn, &aux_conn](bool batching) -> Status {
+    RETURN_NOT_OK(
+        batching ? SetExplicitRowLockMaxReadAhead(conn, 3) : DisableExplicitRowLockReadAhead(conn));
+    RETURN_NOT_OK(aux_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    VERIFY_RESULT(aux_conn.FetchRow<int32_t>("SELECT k FROM t1 WHERE k = 2 FOR UPDATE"));
+    VERIFY_RESULT(aux_conn.FetchRow<int32_t>("SELECT k FROM t2 WHERE k = 4 FOR UPDATE"));
+
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    auto rows = VERIFY_RESULT((conn.FetchRows<int32_t, int32_t>(
+        "SELECT t1.k, sub.v FROM " \
+        "    t1 INNER JOIN " \
+        "    (SELECT * FROM t2 FOR UPDATE SKIP LOCKED) AS sub ON (t1.k = sub.k) " \
+        "FOR UPDATE SKIP LOCKED")));
+    SCHECK_EQ(rows, (decltype(rows){{1, 10}, {3, 30}, {5, 50}}), IllegalState, "Unexpected values");
+    RETURN_NOT_OK(aux_conn.CommitTransaction());
+
+    auto t1_non_locked_rows =
+        VERIFY_RESULT(aux_conn.FetchRows<int32_t>("SELECT k FROM t1 FOR UPDATE SKIP LOCKED"));
+    SCHECK_EQ(
+        t1_non_locked_rows, (decltype(t1_non_locked_rows){2, 4}),
+        IllegalState, "Unexpected row locks state in table t1");
+
+    auto t2_non_locked_rows =
+        VERIFY_RESULT(aux_conn.FetchRows<int32_t>("SELECT k FROM t2 FOR UPDATE SKIP LOCKED"));
+    SCHECK_EQ(
+        t2_non_locked_rows, (decltype(t1_non_locked_rows){4}),
+        IllegalState, "Unexpected row locks state in table t2");
+    return conn.CommitTransaction();
+  };
+  ASSERT_OK(checker(/* batching = */ false));
+  ASSERT_OK(checker(/* batching = */ true));
+}
+
+// The test checks when skip locked batching can be applied based on query plan
+TEST_F_EX(PgExplicitLockTest, SkipLockedBatchingApplicability, PgExplicitLockTest) {
+  constexpr uint32_t kMaxReadAhead = 5;
+  constexpr uint32_t kLimit = 3;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (k INT PRIMARY KEY);" \
+      "CREATE TABLE t2 (k INT PRIMARY KEY);" \
+      "INSERT INTO t1 VALUES(1), (2), (3), (4), (5);" \
+      "INSERT INTO t2 VALUES(1), (2), (3), (4), (5)"));
+
+  ASSERT_OK(SetExplicitRowLockMaxReadAhead(conn, kMaxReadAhead));
+  TopPlanExplainer top_plan_explainer(conn);
+  // Test queries with single LockRows
+  const auto read_ahead_no_limit = ASSERT_RESULT(GetLockRowsMaxReadAhead(
+      ASSERT_RESULT(top_plan_explainer.Explain(
+          "SELECT * FROM (SELECT * FROM t1 FOR UPDATE SKIP LOCKED) AS sub"))["Plans"][0]));
+  ASSERT_EQ(read_ahead_no_limit, std::optional(kMaxReadAhead));
+  const auto read_ahead_outer_limit = ASSERT_RESULT(GetLockRowsMaxReadAhead(
+      ASSERT_RESULT(top_plan_explainer.Explain(
+          "SELECT * FROM (SELECT * FROM t1 FOR UPDATE SKIP LOCKED) AS sub LIMIT 3"))
+          ["Plans"][0]["Plans"][0]));
+  ASSERT_EQ(read_ahead_outer_limit, std::nullopt);
+
+  // Test query with single LockRows
+  const auto join_lock = ASSERT_RESULT(top_plan_explainer.Explain(
+      Format(
+          "SELECT * FROM " \
+          "    t1 INNER JOIN " \
+          "    (SELECT * FROM t2 FOR UPDATE SKIP LOCKED) AS sub ON (t1.k = sub.k) " \
+          "FOR UPDATE SKIP LOCKED LIMIT $0", kLimit)))["Plans"][0];
+  const auto read_ahead_join = ASSERT_RESULT(GetLockRowsMaxReadAhead(join_lock));
+  ASSERT_EQ(read_ahead_join, std::optional(kLimit));
+  const auto read_ahead_sub = ASSERT_RESULT(GetLockRowsMaxReadAhead(
+      join_lock["Plans"][0]["Plans"][0]["Plans"][0]));
+  ASSERT_EQ(read_ahead_sub, std::nullopt);
 }
 
 } // namespace yb::pgwrapper

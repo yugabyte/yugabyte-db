@@ -26,10 +26,13 @@
 
 #include <atomic>
 
+#include "yb/rocksdb/db/version_edit.h"
+
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/mutable_cf_options.h"
-#include "yb/rocksdb/db/version_edit.h"
+
+#include "yb/util/mem_tracker_fwd.h"
 
 namespace yb {
 

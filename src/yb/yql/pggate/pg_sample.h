@@ -19,7 +19,7 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/pg_dml_read.h"
 #include "yb/yql/pggate/pg_tools.h"

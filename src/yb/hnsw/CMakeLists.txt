@@ -31,7 +31,7 @@ ADD_YB_LIBRARY(hnsw
 ADD_YB_TEST_LIBRARY(
     hnsw_test_util
     SRCS vector_index_test_base.cc
-    DEPS vector_index yb_common yb_util)
+    DEPS vector_index yb_common yb_util hnsw rocksdb yb_test_util gmock gtest)
 
 set(YB_TEST_LINK_LIBS
     hnsw yb_common_test_util hnsw_test_util ${YB_MIN_TEST_LIBS})

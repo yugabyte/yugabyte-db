@@ -579,7 +579,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow OTLP Exporter in Telemetry Provider",
           "Allow the usage of OTLP Exporter in Telemetry Provider.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> telemetrySkipConnectivityValidations =
       new ConfKeyInfo<>(
           "yb.telemetry.skip_connectivity_validations",
@@ -1015,6 +1015,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Enables extra logging",
           "Enables extra logging for task params and request body",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableGFlagsSensitiveDataApiRedaction =
+      new ConfKeyInfo<>(
+          "yb.api.enable_gflags_sensitive_data_redaction",
+          ScopeType.GLOBAL,
+          "Enable gflags sensitive data API redaction",
+          "When true, API responses redact gflags sensitive data that is not covered by JsonPath "
+              + "(for example ldapbindpasswd in ysql_hba_conf_csv and audit additionalDetails). "
+              + "JsonPath based API redaction remains enabled.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> applicationLogFileNamePrefix =
@@ -2026,6 +2036,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable performing automatic rollback of edit operation (if possible)",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowEditUniverseRollback =
+      new ConfKeyInfo<>(
+          "yb.task.allow_edit_universe_rollback",
+          ScopeType.GLOBAL,
+          "Allow Rollback of Edit Universe Tasks",
+          "Allow rolling back a failed edit universe task (VM and Kubernetes) via the task"
+              + " rollback API",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableContinuousPlatformBackups =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.continuous_platform_backups",
@@ -2311,4 +2330,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Skip memory availability validation when enabling Performance Advisor Collection",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> paEmbeddedUiReverseProxyEnabled =
+      new ConfKeyInfo<>(
+          "yb.pa.embedded_ui.reverse_proxy.enabled",
+          ScopeType.GLOBAL,
+          "Reverse-proxy API calls from embedded PA Collector UI via YBA",
+          "When true, embedded PA Collector UI traffic is proxied through YBA (same origin)"
+              + " so YBA performs all authentication and universe RBAC; requires PA Collector to"
+              + " accept the X-AUTH-TP-API-TOKEN service token as full user-request auth.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

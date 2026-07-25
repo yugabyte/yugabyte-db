@@ -54,7 +54,6 @@ using yb::client::YBTableName;
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_mark_snapshot_as_failed);
 DECLARE_bool(TEST_use_custom_varz);
-DECLARE_bool(TEST_use_yb_controller);
 DECLARE_bool(enable_pg_anonymizer);
 DECLARE_bool(ysql_beta_features);
 
@@ -933,8 +932,10 @@ TEST_P(YBBackupDuringAlterTable, RenameColumn) {
 class YBBackupWithAnonymizerTest : public YBBackupDuringDdl {
  public:
   void SetUp() override {
+    if (!UseYbController()) {
+      GTEST_SKIP() << "Test requires YBC";
+    }
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_pg_anonymizer) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_yb_controller) = true;
     YBBackupDuringDdl::SetUp();
     CreateDatabase(kBackupSourceDbName);
   }
@@ -975,9 +976,6 @@ class YBBackupWithAnonymizerTest : public YBBackupDuringDdl {
 // encounters "role does not exist" errors for the GRANT statements. The restore itself
 // should succeed and ignore the errors because --dump-role-checks is used.
 TEST_F(YBBackupWithAnonymizerTest, RestoreAfterRoleRenameWithAnonymizer) {
-  if (!UseYbController()) {
-    GTEST_SKIP() << "Test requires YBC";
-  }
 
   auto conn = ASSERT_RESULT(SetUpAnonymizer());
   const string backup_dir = GetTempDir("backup");

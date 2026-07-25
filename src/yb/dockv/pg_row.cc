@@ -29,6 +29,8 @@
 
 #include "yb/util/decimal.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
@@ -483,13 +485,18 @@ struct PrimitiveValueDecoder<bool> {
   }
 };
 
-template <bool kAppendZero, char kValueType>
+template <char... kValueTypes>
+bool MatchesValueType(char c) {
+  return ((c == kValueTypes) || ...);
+}
+
+template <bool kAppendZero, char... kValueTypes>
 struct BinaryValueDecoder {
   bool V1(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
     if (PREDICT_FALSE(begin == end)) {
       return false;
     }
-    if (PREDICT_FALSE(*begin != kValueType)) {
+    if (PREDICT_FALSE(!MatchesValueType<kValueTypes...>(*begin))) {
       return false;
     }
     row->SetBinary(projection_index, Slice(++begin, end), kAppendZero);
@@ -598,7 +605,8 @@ struct GetPackedColumnDecoderVisitorV2 {
   }
 
   PackedColumnDecoderV2 Vector() const {
-    return Binary();
+    return Apply<BinaryValueDecoder<
+        false, ValueEntryTypeAsChar::kString, ValueEntryTypeAsChar::kVector>>();
   }
 
   PackedColumnDecoderV2 Bson() const {
@@ -632,7 +640,8 @@ struct GetPackedColumnDecoderVisitorV1 {
   }
 
   PackedColumnDecoderV1 Vector() const {
-    return Binary();
+    return Apply<BinaryValueDecoder<
+        false, ValueEntryTypeAsChar::kString, ValueEntryTypeAsChar::kVector>>();
   }
 
   PackedColumnDecoderV1 Bson() const {
@@ -947,6 +956,9 @@ Status PgTableRow::SetValue(ColumnId column_id, const LWQLValuePB& value) {
 }
 
 Status PgTableRow::SetValueByColumnIdx(size_t idx, const QLValuePB& value) {
+  if (projection_->columns[idx].data_type == DataType::VECTOR) {
+    return DoSetValueByColumnIdx(idx, VERIFY_RESULT(DecodeVectorSchemaMissingValueForPgRow(value)));
+  }
   return DoSetValueByColumnIdx(idx, value);
 }
 

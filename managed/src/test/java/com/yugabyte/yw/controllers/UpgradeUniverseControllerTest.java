@@ -2000,6 +2000,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     Provider provider = Util.getSingleProvider(onprem.getUniverseDetails().getPrimaryCluster());
     provider.getDetails().skipProvisioning = true;
     provider.save();
+    assertTrue(Util.isOnPremManualProvisioning(onprem));
     PlatformServiceException exception =
         assertThrows(
             PlatformServiceException.class,

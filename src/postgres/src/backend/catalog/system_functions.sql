@@ -687,7 +687,11 @@ REVOKE EXECUTE ON FUNCTION pg_replication_origin_session_progress(boolean) FROM 
 
 REVOKE EXECUTE ON FUNCTION pg_replication_origin_session_reset() FROM public;
 
+REVOKE EXECUTE ON FUNCTION yb_replication_origin_session_reset_shared() FROM public;
+
 REVOKE EXECUTE ON FUNCTION pg_replication_origin_session_setup(text) FROM public;
+
+REVOKE EXECUTE ON FUNCTION yb_replication_origin_session_setup_shared(text) FROM public;
 
 REVOKE EXECUTE ON FUNCTION pg_replication_origin_xact_reset() FROM public;
 
@@ -736,3 +740,5 @@ GRANT pg_read_all_settings TO pg_monitor;
 GRANT pg_read_all_stats TO pg_monitor;
 
 GRANT pg_stat_scan_tables TO pg_monitor;
+
+GRANT pg_read_all_stats TO yb_global_views_user;

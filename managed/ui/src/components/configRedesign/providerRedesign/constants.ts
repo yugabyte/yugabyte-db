@@ -21,6 +21,7 @@ export const ProviderCode = {
   AWS: 'aws',
   GCP: 'gcp',
   AZU: 'azu',
+  OCI: 'oci',
   DOCKER: 'docker',
   ON_PREM: 'onprem',
   KUBERNETES: 'kubernetes',
@@ -29,7 +30,12 @@ export const ProviderCode = {
 } as const;
 export type ProviderCode = typeof ProviderCode[keyof typeof ProviderCode];
 
-export const CloudVendorProviders = [ProviderCode.AWS, ProviderCode.AZU, ProviderCode.GCP] as const;
+export const CloudVendorProviders = [
+  ProviderCode.AWS,
+  ProviderCode.AZU,
+  ProviderCode.GCP,
+  ProviderCode.OCI
+] as const;
 
 // `KubernetesProviderType` and `KubernetesProviderTab` are required because we need to support
 // 3 kubernetes provider tabs
@@ -190,6 +196,7 @@ export const ProviderLabel = {
   [ProviderCode.AWS]: 'AWS',
   [ProviderCode.AZU]: 'AZU',
   [ProviderCode.GCP]: 'GCP',
+  [ProviderCode.OCI]: 'OCI',
   [ProviderCode.KUBERNETES]: 'Kubernetes',
   [ProviderCode.ON_PREM]: 'On Prem'
 } as const;

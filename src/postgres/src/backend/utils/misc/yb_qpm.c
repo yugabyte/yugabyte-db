@@ -1507,8 +1507,6 @@ qpmGetAllEntries(YbQpmInfoEntry entries[])
 		HASH_SEQ_STATUS status;
 		YbQpmHashEntry *entry;
 
-		LWLockAcquire(qpmLock, LW_SHARED);
-
 		hash_seq_init(&status, qpmHashTable);
 
 		while ((entry = (YbQpmHashEntry *) hash_seq_search(&status)) != NULL)
@@ -1521,8 +1519,6 @@ qpmGetAllEntries(YbQpmInfoEntry entries[])
 				++cnt;
 			}
 		}
-
-		LWLockRelease(qpmLock);
 	}
 
 	return cnt;
@@ -1894,10 +1890,13 @@ yb_pg_stat_plans_get_all_entries(PG_FUNCTION_ARGS)
 		/*
 		 * Allocate and populate the YbQpmInfoEntry array.
 		 */
+		LWLockAcquire(qpmLock, LW_SHARED);
 		long		numEntries = qpmNumEntries();
 
 		entries = (YbQpmInfoEntry *) palloc0(numEntries * sizeof(YbQpmInfoEntry));
 		(void) qpmGetAllEntries(entries);
+
+		LWLockRelease(qpmLock);
 
 		/*
 		 * Describe the tuple we are returning.

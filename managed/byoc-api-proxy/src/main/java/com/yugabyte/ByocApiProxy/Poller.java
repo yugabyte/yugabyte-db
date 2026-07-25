@@ -17,6 +17,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -183,8 +184,7 @@ public class Poller implements DisposableBean {
                 return null;
               }
 
-              requestApi.postQueuedHttpRequestResponse(
-                  dispatch.requestId(), dispatch.responseSpec());
+              postResponse(requestApi, dispatch);
               return null;
             });
       }
@@ -195,6 +195,14 @@ public class Poller implements DisposableBean {
       } else {
         throw e;
       }
+    }
+  }
+
+  private void postResponse(InternalQueuedHttpRequestApi requestApi, DispatchResult dispatch) {
+    try {
+      requestApi.postQueuedHttpRequestResponse(dispatch.requestId(), dispatch.responseSpec());
+    } catch (ApiException e) {
+      log.error("Failed to post response for {} (status {})", dispatch.requestId(), e.getCode(), e);
     }
   }
 
@@ -238,7 +246,9 @@ public class Poller implements DisposableBean {
                 .responseHeaders(resp.headers().map())
                 .responseStatusCode(resp.statusCode());
 
-            log.info("{} - {}", resp.statusCode(), resp.uri());
+            int responseBodyBytes =
+                resp.body() == null ? 0 : resp.body().getBytes(StandardCharsets.UTF_8).length;
+            log.info("{} - {} ({} bytes)", resp.statusCode(), resp.uri(), responseBodyBytes);
 
             if (resp.statusCode() < 400) {
               responseRequestSpec.responseBody(resp.body());
@@ -250,10 +260,10 @@ public class Poller implements DisposableBean {
                 new DispatchResult(
                     reqData.getId(), mdcRequestId, responseRequestSpec, /* interrupted */ false));
           } catch (IOException e) {
-            log.error("Failed request to {}", reqData.getUri(), e);
+            log.error("Failed request to {}", modifiedUri, e);
             return Optional.empty();
           } catch (InterruptedException e) {
-            log.error("Interrupted request to {}", reqData.getUri(), e);
+            log.error("Interrupted request to {}", modifiedUri, e);
             Thread.currentThread().interrupt();
             return Optional.of(
                 new DispatchResult(reqData.getId(), mdcRequestId, responseRequestSpec, true));

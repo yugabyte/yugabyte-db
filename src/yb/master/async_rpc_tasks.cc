@@ -28,6 +28,8 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 
 using namespace std::literals;
@@ -574,6 +576,16 @@ void AsyncAlterTable::HandleResponse(int attempt) {
 
 TableType AsyncAlterTable::table_type() const {
   return tablet_->table()->GetTableType();
+}
+
+void AsyncAlterTable::Finished(const Status& status) {
+  // Notify the CDC-SDK batch tracker (if any) so the CreateCDCStream dispatcher can move
+  // on to the next batch once all of this batch's per-tablet RPCs have reached a terminal
+  // state. RetryingRpcTask::Finished() fires exactly once per task at terminal state, so
+  // it's safe to call OnComplete here without worrying about per-attempt double-counting.
+  if (cdc_alter_batch_tracker_) {
+    cdc_alter_batch_tracker_->OnComplete(status);
+  }
 }
 
 bool AsyncAlterTable::SendRequest(int attempt) {

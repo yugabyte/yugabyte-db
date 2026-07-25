@@ -35,6 +35,56 @@ describe('isMatchedBySearchToken', () => {
     expect(isMatchedBySearchToken(candidate, makeToken('1000'), ['name'])).toBe(false);
   });
 
+  it('matches when there is no modifier and a string array field contains the search value', () => {
+    const candidate: SearchCandidate = {
+      name: { value: 'my-universe-1', type: FieldType.STRING },
+      status: {
+        value: ['Schema Mismatch', 'Missing colocated child table'],
+        type: FieldType.STRING_ARRAY
+      }
+    };
+    expect(isMatchedBySearchToken(candidate, makeToken('schema'), ['name', 'status'])).toBe(true);
+    expect(isMatchedBySearchToken(candidate, makeToken('colocated'), ['name', 'status'])).toBe(true);
+  });
+
+  it('does not match when there is no modifier and no string array element contains the search value', () => {
+    const candidate: SearchCandidate = {
+      status: {
+        value: ['Schema Mismatch', 'Missing colocated child table'],
+        type: FieldType.STRING_ARRAY
+      }
+    };
+    expect(isMatchedBySearchToken(candidate, makeToken('unknown'), ['status'])).toBe(false);
+  });
+
+  it('matches on modifier string array field when any element contains the search token', () => {
+    const candidate: SearchCandidate = {
+      status: {
+        value: ['Schema Mismatch', 'Missing colocated child table'],
+        type: FieldType.STRING_ARRAY
+      }
+    };
+    expect(isMatchedBySearchToken(candidate, makeToken('colocated', 'status'), [])).toBe(true);
+    expect(isMatchedBySearchToken(candidate, makeToken('schema', 'status'), [])).toBe(true);
+  });
+
+  it('does not match on modifier string array field when no element contains the search token', () => {
+    const candidate: SearchCandidate = {
+      status: {
+        value: ['Schema Mismatch', 'Missing colocated child table'],
+        type: FieldType.STRING_ARRAY
+      }
+    };
+    expect(isMatchedBySearchToken(candidate, makeToken('unknown', 'status'), [])).toBe(false);
+  });
+
+  it('does not match on modifier string array field when the array is empty', () => {
+    const candidate: SearchCandidate = {
+      status: { value: [], type: FieldType.STRING_ARRAY }
+    };
+    expect(isMatchedBySearchToken(candidate, makeToken('schema', 'status'), [])).toBe(false);
+  });
+
   it('matches on modifier string field when value contains the search token', () => {
     const candidate: SearchCandidate = {
       name: { value: 'prod-universe-us-west', type: FieldType.STRING },

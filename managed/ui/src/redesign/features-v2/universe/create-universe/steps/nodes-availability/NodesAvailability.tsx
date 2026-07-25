@@ -8,10 +8,12 @@ import { useNodesAvailabilityStep } from './useNodesAvailabilityStep';
 
 export type NodesAvailabilityProps = {
   isGeoPartition?: boolean;
+  /** Hide the dedicated-nodes toggle (e.g. Edit Placement — dedicated nodes are not editable there). */
+  hideDedicatedNodes?: boolean;
 };
 
 export const NodesAvailability = forwardRef<StepsRef, NodesAvailabilityProps>(
-  function NodesAvailability({ isGeoPartition = false }, ref) {
+  function NodesAvailability({ isGeoPartition = false, hideDedicatedNodes = false }, ref) {
   const step = useNodesAvailabilityStep(ref, { isGeoPartition });
   const mode = step.resilienceAndRegionsSettings?.resilienceFormMode ?? ResilienceFormMode.GUIDED;
 
@@ -29,6 +31,7 @@ export const NodesAvailability = forwardRef<StepsRef, NodesAvailabilityProps>(
           effectiveReplicationFactor={step.effectiveReplicationFactor}
           resilienceAndRegionsSettings={step.resilienceAndRegionsSettings}
           isGeoPartition={isGeoPartition}
+          hideDedicatedNodes={hideDedicatedNodes}
         />
       ) : (
         <NodesAvailabilityGuidedBody
@@ -40,6 +43,7 @@ export const NodesAvailability = forwardRef<StepsRef, NodesAvailabilityProps>(
           t={step.t}
           resilienceAndRegionsSettings={step.resilienceAndRegionsSettings}
           isGeoPartition={isGeoPartition}
+          hideDedicatedNodes={hideDedicatedNodes}
         />
       )}
     </FormProvider>

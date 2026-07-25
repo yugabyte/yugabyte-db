@@ -1,0 +1,62 @@
+title: DrConfigInfo
+description: |
+  System-generated disaster recovery configuration metadata and runtime status.
+type: object
+properties:
+  uuid:
+    description: DR config UUID.
+    type: string
+    format: uuid
+    example: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+    readOnly: true
+  state:
+    description: High-level lifecycle state of the DR config.
+    type: string
+    enum:
+      - INITIALIZING
+      - REPLICATING
+      - SWITCHOVER_IN_PROGRESS
+      - FAILOVER_IN_PROGRESS
+      - PAUSED
+      - HALTED
+      - UPDATING
+      - FAILED
+      - DELETED_UNIVERSE
+      - DELETION_FAILED
+    readOnly: true
+  primary_universe_state:
+    description: Replication status of the primary universe.
+    $ref: "./DrConfigUniverseReplicationState.yaml"
+    readOnly: true
+  dr_replica_universe_state:
+    description: Replication status of the DR replica universe.
+    $ref: "./DrConfigUniverseReplicationState.yaml"
+    readOnly: true
+  keyspace_pending:
+    description: 'Keyspace name that the current DR task is working on, if any.'
+    type: string
+    readOnly: true
+  create_time:
+    description: Time when the DR config was created.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+    readOnly: true
+  modify_time:
+    description: Time when the DR config was last modified.
+    type: string
+    format: date-time
+    example: '2024-07-25T13:07:18Z'
+    readOnly: true
+  replication_group_name:
+    description: Replication group name in the DR replica universe cluster config.
+    type: string
+    readOnly: true
+  primary_universe_active:
+    description: Whether the primary universe is active in replication.
+    type: boolean
+    readOnly: true
+  dr_replica_universe_active:
+    description: Whether the DR replica universe is active in replication.
+    type: boolean
+    readOnly: true

@@ -39,6 +39,7 @@
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
 
+#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/thread_restrictions.h"
 

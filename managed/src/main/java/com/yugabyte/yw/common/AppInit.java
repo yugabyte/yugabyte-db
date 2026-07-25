@@ -27,6 +27,7 @@ import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SlowQueriesAggregator;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
+import com.yugabyte.yw.commissioner.UniverseArchitectureBackfill;
 import com.yugabyte.yw.commissioner.UpdateProviderMetadata;
 import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
@@ -144,6 +145,7 @@ public class AppInit {
       ReleasesUtils releasesUtils,
       JobScheduler jobScheduler,
       NodeAgentEnabler nodeAgentEnabler,
+      UniverseArchitectureBackfill universeArchitectureBackfill,
       RoleBindingUtil roleBindingUtil,
       SlowQueriesAggregator slowQueriesAggregator,
       EmbeddedCollectorInitializer embeddedCollectorInitializer)
@@ -358,6 +360,7 @@ public class AppInit {
 
         ybcUpgrade.start();
         nodeAgentEnabler.init();
+        universeArchitectureBackfill.start();
 
         prometheusConfigManager.updateK8sScrapeConfigs();
 

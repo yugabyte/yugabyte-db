@@ -39,6 +39,7 @@
 #include "catalog/pg_description.h"
 #include "catalog/pg_enum.h"
 #include "catalog/pg_event_trigger.h"
+#include "catalog/pg_extension.h"
 #include "catalog/pg_foreign_data_wrapper.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_foreign_table.h"
@@ -1080,6 +1081,18 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 		},
 		16
+	},
+	/* intentionally out of alphabetical order, to avoid an ABI break: */
+	{ExtensionRelationId,		/* EXTENSIONOID */
+		ExtensionOidIndexId,
+		1,
+		{
+			Anum_pg_extension_oid,
+			0,
+			0,
+			0
+		},
+		2
 	}
 };
 
@@ -1169,6 +1182,7 @@ static const char *yb_cache_index_name_table[] = {
 	"pg_user_mapping_user_server_index",
 	"pg_yb_tablegroup_oid_index",
 	"pg_constraint_conrelid_contypid_conname_index",
+	"pg_extension_oid_index",
 };
 
 static_assert(SysCacheSize == sizeof(yb_cache_index_name_table) /
@@ -1259,7 +1273,8 @@ char	   *SysCacheName[] = {
 	"USERMAPPINGOID",
 	"USERMAPPINGUSERSERVER",
 	"YBTABLEGROUPOID",
-	"YBCONSTRAINTRELIDTYPIDNAME"
+	"YBCONSTRAINTRELIDTYPIDNAME",
+	"EXTENSIONOID",
 };
 
 static_assert(SysCacheSize == sizeof(SysCacheName) /
@@ -1284,6 +1299,7 @@ static const char *yb_cache_table_name_table[] = {
 	"pg_default_acl",
 	"pg_enum",
 	"pg_event_trigger",
+	"pg_extension",
 	"pg_foreign_data_wrapper",
 	"pg_foreign_server",
 	"pg_foreign_table",
@@ -1413,6 +1429,7 @@ static YbCatalogCacheTable yb_catalog_cache_tables[] = {
 	YbCatalogCacheTable_pg_user_mapping,
 	YbCatalogCacheTable_pg_yb_tablegroup,
 	YbCatalogCacheTable_pg_constraint,
+	YbCatalogCacheTable_pg_extension,
 };
 
 static_assert(SysCacheSize ==
@@ -1471,16 +1488,21 @@ YbSetSysCacheTuple(Relation rel, HeapTuple tup)
 }
 
 /*
- * Should YbPreloadCatalogCache populate catcache LIST entries?
+ * Should YbPreloadCatalogCache populate the full set of catcache LIST entries?
+ *
+ * In minimal-preload mode the caller preloads only the pg_rewrite (RULERELNAME)
+ * list -- the one whose on-demand rebuild during relcache init is expensive
+ * (see YbPreloadCatalogCache). This function decides whether to additionally
+ * preload the rest.
  *
  * - Outside minimal-preload mode: yes, always.
  * - In minimal-preload mode: only if the current backend's YbInternalConnKind
  *   descriptor opts in via preload_lists_in_minimal_mode. The relcache-init
- *   builder is the one kind that opts in -- the lists it populates are needed
- *   while building the relcache init file. Other minimal-preload kinds leave
- *   lists to be built on demand from a full SearchCatCacheList scan, because
- *   the prefetch filter restricts the underlying scan to system rows and the
- *   lists would otherwise be missing user-defined entries.
+ *   builder is the one kind that opts in -- it is transient and needs its
+ *   lists while building the relcache init file. Other minimal-preload kinds
+ *   leave the remaining lists (notably pg_proc's by-name list, which must be
+ *   complete for correctness) to be built on demand from a full
+ *   SearchCatCacheList scan.
  */
 static bool
 YbShouldPreloadCatcacheLists(void)
@@ -1533,16 +1555,13 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 			SetCatCacheTuple(idx_cache, ntp, RelationGetDescr(relation));
 
 		/*
-		 * In minimal preload mode the scan above only includes system rows,
-		 * so any cached list built here would be missing user-defined
-		 * entries. Most kinds skip list preloading in that mode and let
-		 * SearchCatCacheList rebuild on demand from a full scan. The
-		 * relcache-init builder is the exception (see yb_internal_conn.c):
-		 * it opts in via preload_lists_in_minimal_mode so list-keyed catcache
-		 * lookups go through the populated list caches as it builds the
-		 * relcache init file.
+		 * In minimal-preload mode preload only the pg_rewrite (RULERELNAME)
+		 * list, which is safe to preload because we throw it away when we
+		 * are done preloading the corresponding relcache entry. The other
+		 * catcache lists are unsafe to preload in minimal mode because they
+		 * may be incomplete.
 		 */
-		if (!YbShouldPreloadCatcacheLists())
+		if (cache_id != RULERELNAME && !YbShouldPreloadCatcacheLists())
 			continue;
 
 		bool		is_add_to_list_required = true;
@@ -2749,6 +2768,7 @@ YbCheckCatalogCacheIds()
 	YB_CHECK_CATALOG_CACHE_ID(USERMAPPINGUSERSERVER, 82);
 	YB_CHECK_CATALOG_CACHE_ID(YBTABLEGROUPOID, 83);
 	YB_CHECK_CATALOG_CACHE_ID(YBCONSTRAINTRELIDTYPIDNAME, 84);
+	YB_CHECK_CATALOG_CACHE_ID(EXTENSIONOID, 85);
 
 	/*
 	 * If an existing ID is removed, interop isn't possible so we need to
@@ -2769,5 +2789,5 @@ YbCheckCatalogCacheIds()
 	 * but old PG backend cannot provide that message needed. In this case
 	 * interop isn't possible so we need to bump YbSharedInvalCatcacheMsgVersion.
 	 */
-	static_assert(SysCacheSize == 85, "new catalog cache id added");
+	static_assert(SysCacheSize == 86, "new catalog cache id added");
 }

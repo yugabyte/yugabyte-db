@@ -443,6 +443,25 @@ public class UniverseInfoController extends AuthenticatedController {
     return PlatformResults.withData(masterInfos);
   }
 
+  @ApiOperation(
+      notes = "YbaApi Internal. Returns the in-flight state transition details for a universe.",
+      value = "Get universe state transition details",
+      nickname = "getStateTransition",
+      hidden = true,
+      response = JsonNode.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  // Optional state can be one of "source", "target" or "delta".
+  public Result getStateTransition(UUID customerUUID, UUID universeUUID, String state) {
+    return PlatformResults.withData(
+        universeInfoHandler.getStateTransition(customerUUID, universeUUID, state));
+  }
+
   private List<DetailsExt> convertDetails(List<Details> details) {
     boolean backwardCompatibleDate =
         confGetter.getGlobalConf(GlobalConfKeys.backwardCompatibleDate);

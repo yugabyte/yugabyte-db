@@ -1,8 +1,8 @@
 ---
-title: PostgreSQL Psycopg2 Driver
+title: PostgreSQL Psycopg 2 Driver
 headerTitle: Python drivers
 linkTitle: Python drivers
-description: PostgreSQL Psycopg2 Python Driver for YSQL
+description: PostgreSQL Psycopg 2 Python Driver for YSQL
 tags:
   other: ysql
 aliases:
@@ -19,37 +19,43 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
     <li >
     <a href="../yugabyte-psycopg2-reference/" class="nav-link ">
-      <img src="/icons/yugabyte.svg"></i>
-      Yugabyte Psycopg2
+      <img src="/icons/yugabyte.svg">
+      YB Psycopg 2
+    </a>
+  </li>
+  <li >
+    <a href="../yugabyte-psycopg3-reference/" class="nav-link">
+      <img src="/icons/yugabyte.svg">
+      YB Psycopg 3
     </a>
   </li>
   <li >
     <a href="../postgres-psycopg2-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG Psycopg2
+      PG Psycopg 2
     </a>
   </li>
   <li >
     <a href="../postgres-psycopg3-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG Psycopg3
+      PG Psycopg 3
     </a>
   </li>
 </ul>
 
-Psycopg is the most popular PostgreSQL database adapter for the Python programming language. Its main features are the complete implementation of the Python DB API 2.0 specification and the thread safety (several threads can share the same connection). YugabyteDB has full support for [Psycopg2](https://www.psycopg.org/). psycopg2 is based on libpq and supports the [SCRAM-SHA-256 authentication method](../../../../secure/authentication/password-authentication/#scram-sha-256).
+Psycopg is the most popular PostgreSQL database adapter for the Python programming language. Its main features are the complete implementation of the Python DB API 2.0 specification and the thread safety (several threads can share the same connection). YugabyteDB has full support for [Psycopg 2](https://www.psycopg.org/). psycopg2 is based on libpq and supports the [SCRAM-SHA-256 authentication method](../../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For details on using psycopg2, see [Psycopg documentation](https://www.psycopg.org/docs/).
+For details on using Psycopg 2, see [Psycopg documentation](https://www.psycopg.org/docs/).
 
-For a tutorial on building a sample Python application that uses psycopg2, see [Connect an application](../postgres-psycopg2/).
+For a tutorial on building a sample Python application that uses Psycopg 2, see [Connect an application](../postgres-psycopg2/).
 
 ## Fundamentals
 
-Learn how to perform common tasks required for Python application development using the PostgreSQL Psycopg2 driver.
+Learn how to perform common tasks required for Python application development using the PostgreSQL Psycopg 2 driver.
 
 ### Download the driver dependency
 
-Building Psycopg2 requires a few prerequisites (a C compiler, some development packages). Check the [installation instructions](https://www.psycopg.org/docs/install.html#install-from-source) and the [FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) for details.
+Building Psycopg 2 requires a few prerequisites (a C compiler, some development packages). Check the [installation instructions](https://www.psycopg.org/docs/install.html#install-from-source) and the [FAQ](https://www.psycopg.org/docs/faq.html#faq-compile) for details.
 
 If prerequisites are met, you can install psycopg like any other Python package, using pip to download it from [PyPI](https://pypi.org/project/psycopg2/):
 
@@ -192,7 +198,7 @@ for row in rows:
 
 ## Configure SSL/TLS
 
-Psycopg2 supports several SSL modes, as follows:
+Psycopg 2 supports several SSL modes, as follows:
 
 | SSL mode | Client driver behavior |
 | :------- | :--------------------- |
@@ -215,4 +221,4 @@ The difference between `verify-ca` and `verify-full` depends on the policy of th
 
 ## Limitations
 
-Currently, [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2) and [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) _cannot_ be used in the same environment.
+Currently, [PostgreSQL Psycopg 2 driver](https://github.com/psycopg/psycopg2) and [Yugabyte Psycopg 2 smart driver](https://github.com/yugabyte/psycopg2) _cannot_ be used in the same environment.

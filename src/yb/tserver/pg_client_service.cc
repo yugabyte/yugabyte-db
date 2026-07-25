@@ -36,6 +36,7 @@
 #include "yb/client/client_error.h"
 #include "yb/client/error.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/namespace_info.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/stateful_services/pg_cron_leader_service_client.h"
@@ -44,6 +45,7 @@
 #include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
+#include "yb/client/transaction_status_tablets.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/pg_types.h"
@@ -472,7 +474,7 @@ class LockablePgClientSession {
       // Session expired (e.g., backend killed). An in-flight Perform RPC
       // (e.g., slow BackfillIndex) may hold mutex_ for an unbounded time.
       // Defer the drain to the messenger thread pool so session_.StartShutdown()
-      // — which aborts the session's transactions — is not gated on that RPC.
+      // which aborts the session's transactions is not gated on that RPC.
       messenger_.ThreadPool().EnqueueFunctor([shared_this = shared_this_] {
         auto obj = shared_this.lock();
         if (!obj) {
@@ -716,6 +718,8 @@ class PgClientSessionLocker {
       : session_(std::move(session)), guard_(std::move(guard)) {}
 
   [[nodiscard]] PgClientSession* operator->() const { return session_.get(); }
+
+  [[nodiscard]] PgSessionGuard& guard() { return guard_; }
 
  private:
   std::shared_ptr<PgClientSession> session_;
@@ -2335,7 +2339,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     VLOG(1) << "ImportTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
     auto snapshot = VERIFY_RESULT(txn_snapshot_manager_.Get(req.snapshot_id()));
     auto options = req.options();
-    snapshot.read_time.ToPB(options.mutable_read_time());
+    snapshot.read_time.ToPB(options.mutable_read_time_options()->mutable_read_time());
     RETURN_NOT_OK(VERIFY_RESULT(GetSession(req))->SetTxnSnapshotReadTime(
         options, context->GetClientDeadline()));
     snapshot.ToPBNoReadTime(*resp->mutable_snapshot());
@@ -3085,12 +3089,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       const YB_PG_CLIENT_METHOD_ARG(data, method, Request)& req, \
       YB_PG_CLIENT_METHOD_ARG(data, method, Response)* resp, \
       rpc::RpcContext context) { \
-    const auto session = GetSession(req); \
+    auto session = GetSession(req); \
     if (!session.ok()) { \
       Respond(session.status(), resp, &context); \
       return; \
     } \
-    (*session)->method(req, resp, std::move(context)); \
+    (*session)->method(req, resp, std::move(context), session->guard()); \
   }
 
   BOOST_PP_SEQ_FOR_EACH(
@@ -3105,6 +3109,10 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   size_t TEST_SessionsCount() {
     SharedLock lock(mutex_);
     return sessions_.size();
+  }
+
+  size_t TEST_ExchangeThreadPoolWorkersCreated() {
+    return exchange_thread_pool_ ? exchange_thread_pool_->TEST_NumWorkersCreated() : 0;
   }
 
  private:
@@ -3382,6 +3390,10 @@ Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }
+
+size_t PgClientServiceImpl::TEST_ExchangeThreadPoolWorkersCreated() {
+  return impl_->TEST_ExchangeThreadPoolWorkersCreated();
+}
 
 void PgClientServiceImpl::Shutdown() { impl_->Shutdown(); }
 

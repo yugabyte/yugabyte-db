@@ -46,7 +46,7 @@
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/enums.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace google {
 class LogMessage;

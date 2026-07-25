@@ -11,20 +11,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../audit-logging-ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-  <li >
-    <a href="../audit-logging-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
+{{<api-tabs>}}
 
 Audit logging can be used to record information about YCQL statements or events (such as login events) and log the records on a per-node basis into the YB-TServer logs. Audit logging can be enabled on YugabyteDB cluster by setting the `ycql_enable_audit_log` TServer flag to `true`. By default, each TServer records all login events and YCQL commands issued to the server.
 

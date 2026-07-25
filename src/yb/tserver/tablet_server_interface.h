@@ -14,6 +14,7 @@
 #pragma once
 
 #include <future>
+#include <string_view>
 
 #include "yb/ash/wait_state.h"
 
@@ -55,6 +56,11 @@ class PgYCQLStatementStatsRequestPB;
 class PgYCQLStatementStatsResponsePB;
 
 using PgConfigReloader = std::function<Status(void)>;
+
+// Default role for internal pg connections (yb-tserver-key auth). Mirrors
+// pgwrapper::PGConnSettings::kDefaultUser, duplicated here so this widely included
+// header need not pull in the heavyweight libpq_utils.h.
+inline constexpr std::string_view kDefaultInternalPgUser = "postgres";
 
 class TabletServerIf : public LocalTabletServer {
  public:
@@ -158,8 +164,10 @@ class TabletServerIf : public LocalTabletServer {
   virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const = 0;
 
   virtual Result<pgwrapper::PGConn> CreateInternalPGConn(
-      const std::string& database_name, bool simple_query_protocol = false,
-      const std::optional<CoarseTimePoint>& deadline = std::nullopt) = 0;
+      const std::string& database_name, std::string_view user = kDefaultInternalPgUser,
+      bool simple_query_protocol = false,
+      const std::optional<CoarseTimePoint>& deadline = std::nullopt,
+      std::string_view yb_internal_conn_kind = {}) = 0;
 
   virtual Result<tserver::PgTxnSnapshot> GetLocalPgTxnSnapshot(
       const PgTxnSnapshotLocalId& snapshot_id) = 0;

@@ -45,6 +45,24 @@ const YbInternalConnKindDescriptor
 		.use_minimal_preload = true,
 		.preload_lists_in_minimal_mode = true,
 	},
+	[YB_INTERNAL_CONN_KIND_GLOBAL_VIEW] = {
+		.wire_name = "global_view",
+		.backend_type = YB_GLOBAL_VIEW_BACKEND,
+		.backend_desc = "yb global view backend",
+		.use_minimal_preload = false,
+		.preload_lists_in_minimal_mode = false,
+	},
+	[YB_INTERNAL_CONN_KIND_AUTO_ANALYZE] = {
+		.wire_name = "auto_analyze",
+		.backend_type = YB_AUTO_ANALYZE_BACKEND,
+		.backend_desc = "yb auto analyze backend",
+		/*
+		 * Auto-analyze is a long-lived backend running real ANALYZE work, so
+		 * it preloads normally rather than minimally.
+		 */
+		.use_minimal_preload = false,
+		.preload_lists_in_minimal_mode = false,
+	},
 };
 
 YbInternalConnKind

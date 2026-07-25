@@ -51,6 +51,8 @@ bool yb_enable_pg_export_snapshot = true;
 
 bool yb_enable_replication_slot_consumption = true;
 
+bool yb_enable_replication_slot_query_api = false;
+
 bool yb_allow_replication_slot_lsn_types = true;
 
 bool yb_allow_replication_slot_ordering_modes = true;
@@ -60,6 +62,8 @@ bool yb_enable_alter_table_rewrite = true;
 bool yb_enable_replica_identity = true;
 
 bool yb_enable_consistent_replication_from_hash_range = false;
+
+bool yb_enable_replication_slot_exclusive_lock = false;
 
 bool yb_cdcsdk_stream_tables_without_primary_key = true;
 
@@ -147,6 +151,8 @@ bool yb_disable_ddl_transaction_block_for_read_committed = false;
 int yb_fk_references_cache_limit = 65535;
 
 bool yb_allow_dockey_bounds = true;
+
+bool yb_dump_presplit_in_create = true;
 
 bool yb_xcluster_target_ddl_bypass = false;
 

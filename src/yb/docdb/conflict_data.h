@@ -20,7 +20,7 @@
 #include "yb/dockv/intent.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/ref_cnt_buffer.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb::docdb {
 

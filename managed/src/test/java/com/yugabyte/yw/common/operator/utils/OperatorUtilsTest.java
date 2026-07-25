@@ -31,6 +31,7 @@ import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -61,6 +62,12 @@ import io.fabric8.kubernetes.client.utils.Serialization;
 import io.fabric8.mockwebserver.Context;
 import io.fabric8.mockwebserver.ServerRequest;
 import io.fabric8.mockwebserver.ServerResponse;
+import io.yugabyte.operator.v1alpha1.KMSConfig;
+import io.yugabyte.operator.v1alpha1.KMSConfigSpec;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.Vault;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.AppRole;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.TokenSecret;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.approle.SecretIdSecret;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -1209,5 +1216,93 @@ public class OperatorUtilsTest extends FakeDBApplication {
         mockResourceClient = createMockResourceClient(mockResource);
 
     OperatorUtils.maybeAddYbaResourceId(configMap, resourceId, mockResourceClient);
+  }
+
+  /*--- getKMSConfigFormDataFromCr (Hashicorp Vault) tests ---*/
+
+  private KMSConfig baseKmsConfigCr(KMSConfigSpec.Provider provider) {
+    KMSConfig kmsConfig = new KMSConfig();
+    ObjectMeta metadata = new ObjectMeta();
+    metadata.setName("vault-kms");
+    metadata.setNamespace("test-namespace");
+    kmsConfig.setMetadata(metadata);
+    KMSConfigSpec spec = new KMSConfigSpec();
+    spec.setName("vault-kms-config");
+    spec.setProvider(provider);
+    kmsConfig.setSpec(spec);
+    return kmsConfig;
+  }
+
+  private static String field(ObjectNode node, String key) {
+    return node.get(key).asText();
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataHashicorpToken() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.HASHICORP);
+    Vault vault = new Vault();
+    vault.setAddress("http://vault:8200");
+    vault.setAuthType(Vault.AuthType.TOKEN);
+    TokenSecret tokenSecret = new TokenSecret();
+    tokenSecret.setName("vault-token");
+    tokenSecret.setKey("token");
+    vault.setTokenSecret(tokenSecret);
+    kmsConfig.getSpec().setVault(vault);
+
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("root-token").when(operatorUtils).parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals("vault-kms-config", formData.get("name").asText());
+    assertEquals("http://vault:8200", field(formData, HashicorpVaultConfigParams.HC_VAULT_ADDRESS));
+    assertEquals("root-token", field(formData, HashicorpVaultConfigParams.HC_VAULT_TOKEN));
+    assertEquals("transit/", field(formData, HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH));
+    assertEquals("transit", field(formData, HashicorpVaultConfigParams.HC_VAULT_ENGINE));
+    assertEquals("key_yugabyte", field(formData, HashicorpVaultConfigParams.HC_VAULT_KEY_NAME));
+    // TOKEN auth must not carry AppRole/authNamespace fields.
+    assertFalse(formData.has(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID));
+    assertFalse(formData.has(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID));
+    assertFalse(formData.has(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataHashicorpAppRolePrefixesMountPath() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.HASHICORP);
+    Vault vault = new Vault();
+    vault.setAddress("http://vault:8200");
+    vault.setAuthType(Vault.AuthType.APPROLE);
+    vault.setAuthNamespace("admin");
+    AppRole appRole = new AppRole();
+    appRole.setRoleID("role-id");
+    SecretIdSecret secretIdSecret = new SecretIdSecret();
+    secretIdSecret.setName("vault-approle-secret-id");
+    secretIdSecret.setKey("secret-id");
+    appRole.setSecretIdSecret(secretIdSecret);
+    vault.setAppRole(appRole);
+    kmsConfig.getSpec().setVault(vault);
+
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("secret-id-value")
+        .when(operatorUtils)
+        .parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals("role-id", field(formData, HashicorpVaultConfigParams.HC_VAULT_ROLE_ID));
+    assertEquals("secret-id-value", field(formData, HashicorpVaultConfigParams.HC_VAULT_SECRET_ID));
+    assertEquals("admin", field(formData, HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE));
+    // The default mount path is prefixed with the auth namespace for APPROLE.
+    assertEquals("admin/transit/", field(formData, HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH));
+    // APPROLE auth must not carry a token.
+    assertFalse(formData.has(HashicorpVaultConfigParams.HC_VAULT_TOKEN));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataUnsupportedProviderThrows() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.AWS);
+    assertThrows(
+        UnsupportedOperationException.class,
+        () -> operatorUtils.getKMSConfigFormDataFromCr(kmsConfig));
   }
 }

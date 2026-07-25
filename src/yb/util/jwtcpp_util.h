@@ -18,7 +18,7 @@
 #include <string>
 
 #include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 // This file contains utility wrappers & extensions functions over the JWT-CPP library.

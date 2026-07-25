@@ -16,7 +16,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import { components } from 'react-select';
 
 import { FormLabel, makeStyles } from '@material-ui/core';
-import { YBInputField } from '../../../../../../components';
+import { AlertVariant, YBInputField } from '../../../../../../components';
 import { YBLoading } from '../../../../../../../components/common/indicators';
 import { YBTag, YBTag_Types } from '../../../../../../../components/common/YBTag';
 import { YBReactSelectField } from '../../../../../../../components/configRedesign/providerRedesign/components/YBReactSelect/YBReactSelectField';
@@ -34,6 +34,8 @@ import { fetchStorageConfigs } from '../../../../../../../components/backupv2/co
 import { groupStorageConfigs } from '../../../ScheduledBackupUtils';
 import { getValidationSchema } from './GeneralSettingsValidation';
 import { ReactSelectComponents, ReactSelectStyles } from '../../ReactSelectStyles';
+import { AZURE_IMMUTABLE_STORAGE_MSG, isImmutableStorageEnabled } from '@app/components/backupv2/common/BackupUtils';
+import { YBAlert } from '@yugabyte-ui-library/core';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -85,6 +87,7 @@ const GeneralSettings = forwardRef<PageRef>((_, forwardRef) => {
     select: (data) => groupStorageConfigs(data.data)
   });
 
+
   const {
     formData: { generalSettings }
   } = scheduledBackupContext;
@@ -93,6 +96,7 @@ const GeneralSettings = forwardRef<PageRef>((_, forwardRef) => {
     control,
     handleSubmit,
     setValue,
+    getValues,
     formState: { errors, isValid }
   } = useForm<GeneralSettingsModel>({
     resolver: yupResolver(getValidationSchema(scheduledBackupContext, t)),
@@ -128,6 +132,8 @@ const GeneralSettings = forwardRef<PageRef>((_, forwardRef) => {
       />
     );
 
+  const immutableStorageEnabled = isImmutableStorageEnabled(storageConfigs, getValues('storageConfig')?.value);
+  
   return (
     <div className={classes.root}>
       <YBInputField
@@ -186,6 +192,7 @@ const GeneralSettings = forwardRef<PageRef>((_, forwardRef) => {
           }}
         />
       </div>
+      {immutableStorageEnabled && <YBAlert open variant={AlertVariant.Warning} text={AZURE_IMMUTABLE_STORAGE_MSG(true)} />}
       <MultiRegionNodesSupport control={control} />
       <ParallelThreadsField control={control} />
     </div>

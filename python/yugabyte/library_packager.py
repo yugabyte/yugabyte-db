@@ -40,10 +40,12 @@ from yugabyte.command_util import run_program, mkdir_p, copy_deep
 from yugabyte.common_util import (
     get_llvm_toolchain_dir,
     get_thirdparty_dir,
+    build_machine_dirs_to_strip,
     sorted_grouped_by,
     YB_SRC_ROOT,
 )
 from yugabyte.rpath import set_rpath, remove_rpath
+from yugabyte.sanitize_pg_compiler_config import assert_sanitized, sanitize_cc, sanitize_flags
 from yugabyte.file_util import clean_path_join
 from yugabyte.linuxbrew import get_linuxbrew_home, using_linuxbrew, LinuxbrewHome
 
@@ -642,6 +644,54 @@ class LibraryPackager:
         for (dir_path, rpath), count in self.rpath_stats_by_dir.items():
             logging.info("Set RPATH to %s for %d files in %s", rpath, count, dir_path)
 
+    def sanitize_exported_pg_makefile_global(self, makefile_global_path: str) -> None:
+        """Strip build-machine-private switches from the compiler-config lines of a shipped
+        Makefile.global so that an external PGXS build does not inherit dangling build-tree -I
+        paths, the build's compiler wrapper, or build-tree path-remap and libc++ flags.  The
+        rewritten lines are CC/CXX, CFLAGS/CXXFLAGS/CPPFLAGS, and ICU_CFLAGS.  ICU_CFLAGS is
+        included because Makefile.global unconditionally prepends $(ICU_CFLAGS) to CPPFLAGS, so a
+        thirdparty -I left there would defeat the CPPFLAGS sanitization for every PGXS build.  The
+        equivalent values baked into the pg_config binary are sanitized separately at build time
+        (see src/postgres/src/common/Makefile).  The link side (the LDFLAGS and ICU_LIBS lines, not
+        rewritten here, and the pkg-config .pc files) is tracked separately in #32266.
+        """
+        build_machine_dirs = build_machine_dirs_to_strip(
+            get_thirdparty_dir(), self.context.build_dir)
+        cc_vars = ('CC', 'CXX')
+        flag_vars = ('CFLAGS', 'CXXFLAGS', 'CPPFLAGS', 'ICU_CFLAGS')
+        changed = False
+        sanitized_cc: Dict[str, str] = {}
+        sanitized_flags: Dict[str, str] = {}
+        out_lines = []
+        with open(makefile_global_path) as makefile_global_file:
+            for line in makefile_global_file.read().splitlines():
+                # The variable and value may be separated by spaces (YB-overridden vars such as
+                # CFLAGS) or tabs (upstream autoconf-aligned vars such as ICU_CFLAGS).
+                match = re.fullmatch(r'(\w+)\s*=\s*(.*)', line)
+                if match and match.group(1) in cc_vars + flag_vars:
+                    var, value = match.group(1), match.group(2)
+                    tokens = value.split()
+                    if var in cc_vars:
+                        new_value = ' '.join(sanitize_cc(tokens))
+                        sanitized_cc[var] = new_value
+                    else:
+                        new_value = ' '.join(sanitize_flags(tokens, build_machine_dirs))
+                        sanitized_flags[var] = new_value
+                    if new_value != value:
+                        line = f'{var} = {new_value}'
+                        changed = True
+                out_lines.append(line)
+        # Fail the release if anything about to ship is still unsanitized: assert_sanitized
+        # re-checks the rewritten CC/CXX and flag values and raises on any build-machine path that
+        # survived (a sanitizer regression, or a not-yet-handled variable that leaks one).
+        # build_postgres.py runs the same check against pg_config at build time.  Negligible cost:
+        # this runs only during release packaging.
+        assert_sanitized(makefile_global_path, sanitized_cc, sanitized_flags, build_machine_dirs)
+        if changed:
+            with open(makefile_global_path, 'w') as makefile_global_file:
+                makefile_global_file.write('\n'.join(out_lines) + '\n')
+            logging.info("Sanitized exported PG compiler flags in %s", makefile_global_path)
+
     def postprocess_distribution(self, build_target: str) -> None:
         """
         build_target is different from self.dest_dir because this function is invoked after
@@ -652,4 +702,6 @@ class LibraryPackager:
         for root, dirs, files in os.walk(os.path.join(build_target, 'postgres')):
             for file_name in files:
                 file_path = os.path.join(root, file_name)
+                if file_name == 'Makefile.global':
+                    self.sanitize_exported_pg_makefile_global(file_path)
                 self.set_or_remove_rpath(build_target, file_path)

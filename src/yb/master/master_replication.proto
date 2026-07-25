@@ -72,6 +72,9 @@ message CDCStreamInfoPB {
   // This field decides whether the slot will use pub refresh mechanism or mechanism to poll sys
   // catalog tablet for detecting changes to publications.
   optional bool detect_publication_changes_implicitly = 16 [default = false];
+
+  // This field decides whether the slot is an internal LISTEN/NOTIFY notifications stream.
+  optional bool is_notification_slot = 17 [default = false];
 }
 
 message ValidateReplicationInfoRequestPB {

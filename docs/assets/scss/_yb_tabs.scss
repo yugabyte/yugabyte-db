@@ -48,12 +48,25 @@
       }
     }
 
-    & + .tab-content {
+    &:not(.tabpane-plain) + .tab-content {
       .tab-pane {
         background: rgba(240, 244, 247, 0.2);
         border: 1px solid #e9eef2;
         border-radius: 8px;
         padding: 25px 27px;
+      }
+    }
+
+    &.tabpane-plain + .tab-content {
+      .tab-pane {
+        background: transparent;
+        border: 0;
+        border-radius: 0;
+        padding: 0;
+
+        .highlight {
+          margin: 0;
+        }
       }
     }
   }

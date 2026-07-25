@@ -379,7 +379,7 @@ describe('ResilienceAndRegions', () => {
       });
     });
 
-    it('valid state calls saveResilienceAndRegionsSettings on Next', async () => {
+    it('valid state calls moveToNextPage on Next (persist is via watch, not onNext)', async () => {
       renderResilienceAndTriggerNext(
         getContextValue({
           faultToleranceType: FaultToleranceType.REGION_LEVEL,
@@ -388,7 +388,126 @@ describe('ResilienceAndRegions', () => {
         })
       );
       await waitFor(() => {
+        expect(mockMoveToNextPage).toHaveBeenCalled();
+        expect(screen.queryByText('errMsg.regionErrTooFew')).not.toBeInTheDocument();
+      });
+    });
+
+    it('persists region changes via saveResilienceAndRegionsSettings (watch)', async () => {
+      const { ref } = renderResilience(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.REGION_LEVEL,
+          resilienceFactor: 1,
+          regions: []
+        })
+      );
+      mockSaveResilienceAndRegionsSettings.mockClear();
+      const regions = makeRegions(3);
+      ref.current.setValue!(REGIONS_FIELD, regions);
+      await waitFor(() => {
         expect(mockSaveResilienceAndRegionsSettings).toHaveBeenCalled();
+        const lastCall =
+          mockSaveResilienceAndRegionsSettings.mock.calls[
+            mockSaveResilienceAndRegionsSettings.mock.calls.length - 1
+          ][0];
+        expect(lastCall[REGIONS_FIELD]).toHaveLength(3);
+      });
+    });
+
+    it('flushes saveResilienceAndRegionsSettings on unmount', async () => {
+      const { unmount } = render(
+        <QueryClientProvider client={queryClient}>
+          <CreateUniverseContext.Provider
+            value={getContextValue({
+              faultToleranceType: FaultToleranceType.REGION_LEVEL,
+              resilienceFactor: 1,
+              regions: makeRegions(3)
+            })}
+          >
+            <ResilienceAndRegions ref={createRef<any>()} />
+          </CreateUniverseContext.Provider>
+        </QueryClientProvider>
+      );
+      mockSaveResilienceAndRegionsSettings.mockClear();
+      unmount();
+      expect(mockSaveResilienceAndRegionsSettings).toHaveBeenCalled();
+      const lastCall =
+        mockSaveResilienceAndRegionsSettings.mock.calls[
+          mockSaveResilienceAndRegionsSettings.mock.calls.length - 1
+        ][0];
+      expect(lastCall[REGIONS_FIELD]).toHaveLength(3);
+    });
+
+    it('onPrev navigates back without requiring Next', () => {
+      const { ref } = renderResilience(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.REGION_LEVEL,
+          resilienceFactor: 1,
+          regions: makeRegions(3)
+        })
+      );
+      ref.current.onPrev();
+      expect(mockMoveToPreviousPage).toHaveBeenCalled();
+    });
+
+    it('does not reset nodesAvailabilitySettings on remount when resilience type is unchanged', () => {
+      const contextValue = getContextValue({
+        faultToleranceType: FaultToleranceType.REGION_LEVEL,
+        resilienceFactor: 1,
+        regions: makeRegions(3)
+      });
+      const { unmount } = render(
+        <QueryClientProvider client={queryClient}>
+          <CreateUniverseContext.Provider value={contextValue}>
+            <ResilienceAndRegions ref={createRef<any>()} />
+          </CreateUniverseContext.Provider>
+        </QueryClientProvider>
+      );
+      mockSaveNodesAvailabilitySettings.mockClear();
+      unmount();
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <CreateUniverseContext.Provider value={contextValue}>
+            <ResilienceAndRegions ref={createRef<any>()} />
+          </CreateUniverseContext.Provider>
+        </QueryClientProvider>
+      );
+
+      expect(mockSaveNodesAvailabilitySettings).not.toHaveBeenCalled();
+    });
+
+    it('resets nodesAvailabilitySettings when replication factor changes', async () => {
+      const { ref } = renderResilience(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.REGION_LEVEL,
+          resilienceFactor: 1,
+          regions: makeRegions(3)
+        })
+      );
+      mockSaveNodesAvailabilitySettings.mockClear();
+      ref.current.setValue!(RESILIENCE_FACTOR, 3);
+      await waitFor(() => {
+        expect(mockSaveNodesAvailabilitySettings).toHaveBeenCalledWith(
+          initialCreateUniverseFormState.nodesAvailabilitySettings
+        );
+      });
+    });
+
+    it('resets nodesAvailabilitySettings when regions change', async () => {
+      const { ref } = renderResilience(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.REGION_LEVEL,
+          resilienceFactor: 1,
+          regions: makeRegions(3)
+        })
+      );
+      mockSaveNodesAvailabilitySettings.mockClear();
+      ref.current.setValue!(REGIONS_FIELD, makeRegions(2));
+      await waitFor(() => {
+        expect(mockSaveNodesAvailabilitySettings).toHaveBeenCalledWith(
+          initialCreateUniverseFormState.nodesAvailabilitySettings
+        );
       });
     });
 

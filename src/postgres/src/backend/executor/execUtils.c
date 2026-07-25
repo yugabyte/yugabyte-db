@@ -205,6 +205,8 @@ CreateExecutorState(void)
 	estate->yb_exec_params.yb_index_check = false;
 	estate->yb_es_pk_proutes = NIL;
 
+	estate->yb_read_ahead_allowed = false;
+
 	return estate;
 }
 

@@ -34,6 +34,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/checked_narrow_cast.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/range.h"
@@ -81,26 +82,12 @@ Result<dockv::DocKey> BuildDocKey(
   FATAL_INVALID_ENUM_VALUE(SortingType, sorting_type);
 }
 
+Result<uint16_t> GetHashCodeValue(PgExpr* expr) {
+  auto hash_code = VERIFY_RESULT(expr->Eval());
+  return checked_narrow_cast<uint16_t>(hash_code->int32_value());
+}
+
 using LWQLValuePBContainer = boost::container::small_vector<LWQLValuePB*, 16>;
-
-Result<dockv::KeyEntryValue> GetKeyValue(
-    const PgColumn& col, PgExpr* expr,
-    LWQLValuePB** ql_value_dest, std::optional<dockv::KeyEntryType> null_type = {}) {
-  if (!expr) {
-    RSTATUS_DCHECK(null_type, IllegalState, "Null expression is not expected");
-    *ql_value_dest = nullptr;
-    return dockv::KeyEntryValue(*null_type);
-  }
-  *ql_value_dest = VERIFY_RESULT(expr->Eval());
-  return dockv::KeyEntryValue::FromQLValuePB(**ql_value_dest, col.desc().sorting_type());
-}
-
-auto GetKeyValue(
-    const PgColumn& col, PgExpr* expr, std::optional<dockv::KeyEntryType> null_type = {}) {
-  LWQLValuePB* tmp = nullptr;
-  return GetKeyValue(col, expr, &tmp, null_type);
-}
-
 using Slices = std::vector<Slice>;
 
 class SimpleYbctidProvider : public YbctidProvider {
@@ -770,31 +757,15 @@ Status PgDmlRead::BindColumnCondIsNotNull(int attr_num) {
   return Status::OK();
 }
 
-Result<dockv::DocKey> PgDmlRead::EncodeRowKeyForBound(
-    YbcPgStatement handle, size_t n_col_values, PgExpr** col_values, bool for_lower_bound) {
-  const auto num_hash_key_columns = bind_->num_hash_key_columns();
-  dockv::KeyEntryValues hashed_components;
-  hashed_components.reserve(num_hash_key_columns);
-  LWQLValuePBContainer hashed_values(num_hash_key_columns);
-  size_t i = 0;
-  for (; i < num_hash_key_columns; ++i) {
-    hashed_components.push_back(VERIFY_RESULT(GetKeyValue(
-        bind_.ColumnForIndex(i), col_values[i], &hashed_values[i])));
+Status PgDmlRead::AddRowBound(std::span<PgExpr*> col_values, bool is_inclusive, bool is_lower) {
+  auto& scan_range = GetScanRange();
+  if (bind_->num_hash_key_columns() > 0) {
+    DCHECK_GT(col_values.size(), 1);  // the hash code and at least one value
+    auto hash_code = VERIFY_RESULT(GetHashCodeValue(col_values[0]));
+    return scan_range.SetHashAndRangeValuesBound(
+        hash_code, col_values.subspan(1), is_inclusive, is_lower);
   }
-
-  dockv::KeyEntryValues range_components;
-  n_col_values = std::max(std::min(n_col_values, bind_->num_key_columns()), num_hash_key_columns);
-  range_components.reserve(n_col_values - num_hash_key_columns);
-  const auto null_type = for_lower_bound
-      ? dockv::KeyEntryType::kLowest : dockv::KeyEntryType::kHighest;
-  for (; i < n_col_values; ++i) {
-    range_components.push_back(VERIFY_RESULT(GetKeyValue(
-        bind_.ColumnForIndex(i), col_values[i], null_type)));
-  }
-
-  return BuildDocKey(
-      bind_->partition_schema(), std::move(hashed_components), hashed_values.data(),
-      std::move(range_components));
+  return scan_range.SetRangeValuesBound(col_values, is_inclusive, is_lower);
 }
 
 Status PgDmlRead::SetMergeSortKeys(int num_keys, const YbcSortKey* sort_keys) {
@@ -988,27 +959,21 @@ void PgDmlRead::BindHashCode(const std::optional<Bound>& start, const std::optio
   }
 }
 
-Status PgDmlRead::AddRowLowerBound(
-    YbcPgStatement handle, int n_col_values, PgExpr **col_values, bool is_inclusive) {
+Status PgDmlRead::AddRowLowerBound(std::span<PgExpr*> col_values, bool is_inclusive) {
 
   if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
-    return secondary_index->AddRowLowerBound(handle, n_col_values, col_values, is_inclusive);
+    return secondary_index->AddRowLowerBound(col_values, is_inclusive);
   }
 
-  auto dockey = VERIFY_RESULT(EncodeRowKeyForBound(handle, n_col_values, col_values, true));
-  GetScanRange().SetDocKeyBound(dockey, is_inclusive, true /* is_lower_bound */);
-  return Status::OK();
+  return AddRowBound(col_values, is_inclusive, /* is_lower= */ true);
 }
 
-Status PgDmlRead::AddRowUpperBound(
-    YbcPgStatement handle, int n_col_values, PgExpr **col_values, bool is_inclusive) {
+Status PgDmlRead::AddRowUpperBound(std::span<PgExpr*> col_values, bool is_inclusive) {
   if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
-    return secondary_index->AddRowUpperBound(handle, n_col_values, col_values, is_inclusive);
+    return secondary_index->AddRowUpperBound(col_values, is_inclusive);
   }
 
-  auto dockey = VERIFY_RESULT(EncodeRowKeyForBound(handle, n_col_values, col_values, false));
-  GetScanRange().SetDocKeyBound(dockey, is_inclusive, false /* is_lower_bound */);
-  return Status::OK();
+  return AddRowBound(col_values, is_inclusive, /* is_lower= */ false);
 }
 //--------------------------------------------------------------------------------------------------
 

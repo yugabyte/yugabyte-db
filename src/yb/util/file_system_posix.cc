@@ -38,6 +38,8 @@
 #include "yb/util/result.h"
 #include "yb/util/stack_trace_tracker.h"
 #include "yb/util/stats/iostats_context_imp.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_kill.h"
 #include "yb/util/thread_restrictions.h"

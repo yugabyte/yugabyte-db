@@ -2,7 +2,10 @@ import { FC } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { mui, YBButton, YBDropdown } from '@yugabyte-ui-library/core';
 import { KeyboardArrowDown } from '@material-ui/icons';
-import { getAddGeoPartitionRoute, getAddReadReplicaRoute } from '../../read-replica/readReplicaUtils';
+import {
+  getAddGeoPartitionRoute,
+  getAddReadReplicaRoute
+} from '../../read-replica/readReplicaUtils';
 import AddIcon from '@app/redesign/assets/add.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
@@ -19,6 +22,8 @@ interface PlacementActionsMenuProps {
   showAddGeoPartition?: boolean;
   /** Optional override for the trigger button label key (defaults to "actions" common key). */
   triggerLabelKey?: string;
+  /** When true, the "Add Read Replica" item is not shown (used by the geo partition view). */
+  readReplicaAlreadyPresent?: boolean;
 }
 
 /**
@@ -31,7 +36,8 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
   universeUuid,
   onEditMasterAllocationClick,
   showAddGeoPartition = false,
-  triggerLabelKey
+  triggerLabelKey,
+  readReplicaAlreadyPresent = false
 }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.placement' });
   const isUniverseReady = useIsUniverseReady();
@@ -51,7 +57,9 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
           dataTestId="edit-placement-actions-button"
           endIcon={<KeyboardArrowDown />}
         >
-          {triggerLabelKey ? t(triggerLabelKey, { keyPrefix: 'common' }) : t('advancedPlacementOptions')}
+          {triggerLabelKey
+            ? t(triggerLabelKey, { keyPrefix: 'common' })
+            : t('advancedPlacementOptions')}
         </YBButton>
       }
     >
@@ -73,7 +81,6 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
         </>
       ) : null}
       <RbacValidator accessRequiredOn={ApiPermissionMap.ADD_V2_READ_REPLICA} isControl>
-
         <MenuItem
           data-test-id="add-read-replica"
           sx={{ height: 'auto' }}
@@ -82,17 +89,13 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
           }}
           disabled={!isUniverseReady}
         >
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', flexDirection: 'row', gap: '4px' }}>
-            <div>
-              <AddIcon />
-            </div>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {t('addReadReplica')}
-              <Typography
-                variant="subtitle1"
-                color="textSecondary"
-                sx={{ whiteSpace: 'initial' }}
-              >
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '4px' }}>
+              {readReplicaAlreadyPresent ? <EditIcon /> : <AddIcon />}{' '}
+              {readReplicaAlreadyPresent ? t('editReadReplica') : t('addReadReplica')}
+            </Box>
+            <Box sx={{ ml: 3.5 }}>
+              <Typography variant="subtitle1" color="textSecondary" sx={{ whiteSpace: 'initial' }}>
                 <Trans t={t} i18nKey={'addReadReplicaHelpText'} style={{ lineHeight: '16px' }} />
               </Typography>
             </Box>

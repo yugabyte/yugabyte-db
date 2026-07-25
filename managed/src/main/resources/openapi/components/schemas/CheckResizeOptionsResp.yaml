@@ -1,0 +1,13 @@
+title: CheckResizeOptionsResp
+description: |
+  Response listing available resize-related operations for the proposed node settings.
+  Part of CheckResizeOptionsResponse.
+type: object
+required:
+  - options
+properties:
+  options:
+    description: Available operations for applying the proposed node settings.
+    type: array
+    items:
+      $ref: "./ResizeUpdateOption.yaml"

@@ -32,6 +32,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 #include "yb/util/to_stream.h"
 #include "yb/util/tsan_util.h"

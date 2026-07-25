@@ -10,6 +10,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -25,6 +26,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
@@ -556,5 +558,51 @@ public class CreateBackupTest extends CommissionerBaseTest {
       assertEquals(
           "enableBackupsDuringDDL should be true", true, enableBackupsDuringDDLNode.booleanValue());
     }
+  }
+
+  @Test
+  public void testBackupEntryNotCreatedWhenStorageConfigPreCheckFails() {
+    Map<String, String> config = new HashMap<>();
+    config.put(Universe.TAKE_BACKUPS, "true");
+    defaultUniverse.updateConfig(config);
+    defaultUniverse.save();
+
+    // Enable YBC so that the storage config pre-check validation runs.
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+          universeDetails.setYbcInstalled(true);
+          universeDetails.setEnableYbc(true);
+          u.setUniverseDetails(universeDetails);
+        });
+
+    // Simulate an unusable storage config: the pre-check (validateParams) validation throws.
+    Mockito.doThrow(new RuntimeException("Invalid storage config"))
+        .when(mockBackupHelper)
+        .validateStorageConfigForBackupOnUniverse(
+            any(UUID.class), any(UUID.class), any(Universe.class));
+
+    BackupRequestParams params = new BackupRequestParams();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.customerUUID = defaultCustomer.getUuid();
+    params.backupType = TableType.PGSQL_TABLE_TYPE;
+    params.storageConfigUUID = storageConfig.getConfigUUID();
+
+    // validateParams runs as a pre-check at submit time, before run() creates the Backup row, so
+    // the submit is rejected outright and no orphaned Backup row (which the GC cannot delete) is
+    // ever persisted. See PLAT-20585.
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> commissioner.submit(TaskType.CreateBackup, params));
+    assertThat(exception.getMessage(), containsString("Invalid storage config"));
+    assertEquals(
+        0,
+        Backup.fetchByUniverseUUID(defaultCustomer.getUuid(), defaultUniverse.getUniverseUUID())
+            .size());
+    verify(mockBackupHelper, times(1))
+        .validateStorageConfigForBackupOnUniverse(
+            any(UUID.class), any(UUID.class), any(Universe.class));
   }
 }

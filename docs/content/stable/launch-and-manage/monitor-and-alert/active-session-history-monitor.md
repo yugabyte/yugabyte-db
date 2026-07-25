@@ -217,6 +217,12 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | RocksDB_WaitForSubcompaction | WaitOnCondition | Tablet ID | RocksDB is waiting for a compaction to complete. |
 | RocksDB_NewIterator | DiskIO | Tablet ID | RocksDB is waiting for a new iterator to be created. |
 
+#### VectorIndex class
+
+| Wait Event | Type | <div style="width:100px">Aux</div> | Description |
+| :--------- | :--- | :-- | :---------- |
+| VectorIndex_Search | CPU | Tablet ID | The vector index is performing an approximate nearest neighbor search. <br> Supported in v2026.1.1.0 or later.|
+
 ### YCQL
 
 #### YCQLQuery class

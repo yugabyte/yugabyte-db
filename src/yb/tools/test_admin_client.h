@@ -27,7 +27,7 @@
 #include "yb/master/master_fwd.h"
 
 #include "yb/util/tsan_util.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 
 namespace yb {

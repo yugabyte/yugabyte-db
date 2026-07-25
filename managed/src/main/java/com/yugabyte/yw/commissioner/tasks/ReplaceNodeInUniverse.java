@@ -55,7 +55,7 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
           false);
 
       // Generate new nodeDetails from existing node.
-      NodeDetails newNode = PlacementInfoUtil.createToBeAddedNode(currentNode);
+      NodeDetails newNode = PlacementInfoUtil.createToBeAddedNode(universe, currentNode);
       // Set the replacement node to toBeRemoved state.
       setToBeRemovedState(currentNode);
 

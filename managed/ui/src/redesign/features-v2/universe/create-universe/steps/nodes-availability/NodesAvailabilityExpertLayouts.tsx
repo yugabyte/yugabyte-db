@@ -19,7 +19,7 @@ export type ExpertNodesAvailabilityLayoutSlots = {
   map: ReactNode;
   availabilityZones: ReactNode;
   lesserNodesAlert: ReactNode;
-  dedicatedNode: ReactNode;
+  dedicatedNode?: ReactNode;
 };
 
 /** Create-universe expert nodes: map first, then form stack (current behavior). */
@@ -39,7 +39,7 @@ export function ExpertNodesAvailabilityDefaultLayout({
   );
 }
 
-/** Add geo partition expert nodes: main column left, map + instance details right (aligned with guided geo). */
+/** Add geo partition / edit-placement expert nodes: main column left, map + instance details right. */
 export function ExpertNodesAvailabilityGeoLayout({
   map,
   availabilityZones,

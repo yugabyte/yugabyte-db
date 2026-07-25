@@ -11,6 +11,7 @@ typedef struct kiwi_be_startup kiwi_be_startup_t;
 
 struct kiwi_be_startup {
 	int is_ssl_request;
+	int yb_ssl_established;
 	int unsupported_request;
 	int is_cancel;
 	kiwi_key_t key;
@@ -23,6 +24,7 @@ static inline void kiwi_be_startup_init(kiwi_be_startup_t *su)
 {
 	su->is_cancel = 0;
 	su->is_ssl_request = 0;
+	su->yb_ssl_established = 0;
 	su->unsupported_request = 0;
 	kiwi_key_init(&su->key);
 	kiwi_var_init(&su->user, NULL, 0);
@@ -313,7 +315,7 @@ KIWI_API static inline int kiwi_be_read_parse(char *data, uint32_t size,
 	/* YB: Also parse new YB parse packets as they have the same format */
 	if (kiwi_unlikely(header->type != KIWI_FE_PARSE &&
 			  header->type != YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE &&
-			  header->type != YB_KIWI_FE_NO_PARSE_PARSE_COMPLETE))
+			  header->type != YB_KIWI_FE_FORCE_PARSE))
 		return -1;
 	uint32_t pos_size = len;
 	char *pos = kiwi_header_data(header);

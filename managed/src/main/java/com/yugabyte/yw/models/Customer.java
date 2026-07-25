@@ -82,7 +82,7 @@ public class Customer extends Model {
   private Date creationDate;
 
   // To be replaced with runtime config
-  @Column(nullable = true, columnDefinition = "TEXT")
+  @Column(columnDefinition = "TEXT")
   @ApiModelProperty(value = "UI_ONLY", hidden = true, accessMode = READ_ONLY)
   private JsonNode features;
 
@@ -110,11 +110,9 @@ public class Customer extends Model {
 
   @JsonIgnore
   public Set<Universe> getUniversesForProvider(UUID providerUUID) {
-    Set<Universe> universesInProvider =
-        getUniverses().stream()
-            .filter(u -> checkClusterInProvider(u, providerUUID))
-            .collect(Collectors.toSet());
-    return universesInProvider;
+    return getUniverses().stream()
+        .filter(u -> checkClusterInProvider(u, providerUUID))
+        .collect(Collectors.toSet());
   }
 
   private boolean checkClusterInProvider(Universe universe, UUID providerUUID) {
@@ -129,22 +127,23 @@ public class Customer extends Model {
   public static final Finder<UUID, Customer> find = new Finder<UUID, Customer>(Customer.class) {};
 
   public static Customer getOrBadRequest(UUID customerUUID) {
-    Customer customer = get(customerUUID);
-    if (customer == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Invalid Customer UUID:" + customerUUID);
-    }
-    return customer;
+    return getOrHttpError(customerUUID, BAD_REQUEST);
   }
 
   public static Customer getOrNotFound(UUID customerUUID) {
-    return find.query()
-        .where()
-        .eq("uuid", customerUUID)
-        .findOneOrEmpty()
-        .orElseThrow(
-            () ->
-                new PlatformServiceException(
-                    NOT_FOUND, String.format("Could not find customer %s", customerUUID)));
+    return getOrHttpError(customerUUID, NOT_FOUND);
+  }
+
+  public static Customer getOrHttpError(UUID customerUUID, int statusCode) {
+    Customer customer = get(customerUUID);
+    if (customer == null) {
+      throw new PlatformServiceException(
+          statusCode,
+          statusCode == NOT_FOUND
+              ? String.format("Could not find customer %s", customerUUID)
+              : "Invalid Customer UUID:" + customerUUID);
+    }
+    return customer;
   }
 
   public static Customer get(UUID customerUUID) {

@@ -344,7 +344,15 @@ class MergingIteratorBase final
       if (key_vs_target < 0) {
         if (child_iterator_filter_.SeekUpdatingHeap(target, minHeap_)) {
           const auto& entry = CurrentForward();
-          if (!entry.Valid() || comparator_->Compare(entry.key, target) == 0) {
+          if (!entry.Valid()) {
+            return entry;
+          }
+          // SeekUpdatingHeap may have brought in a previously-rejected child that's now
+          // positioned at-or-past target. Refresh key_vs_target from the new heap top so
+          // we don't redundantly re-Seek a child that's already past target in the loop
+          // below.
+          key_vs_target = comparator_->Compare(entry.key, target);
+          if (key_vs_target >= 0) {
             return entry;
           }
         }

@@ -20,11 +20,12 @@
 
 #pragma once
 
-#include "yb/rocksdb/status.h"
-#include "yb/rocksdb/types.h"
-#include "yb/rocksdb/write_batch.h"
 #include <memory>
 #include <vector>
+
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/write_batch.h"
 
 namespace rocksdb {
 
@@ -42,7 +43,7 @@ enum  WalFileType {
 
   /* Indicates that WAL file is live and resides in the main db directory */
   kAliveLogFile = 1
-} ;
+};
 
 class LogFile {
  public:

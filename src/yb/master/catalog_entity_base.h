@@ -19,6 +19,7 @@
 #include "yb/master/master_types.pb.h"
 #include "yb/server/monitored_task.h"
 #include "yb/util/cow_object.h"
+#include "yb/util/format.h"
 
 namespace yb::master {
 

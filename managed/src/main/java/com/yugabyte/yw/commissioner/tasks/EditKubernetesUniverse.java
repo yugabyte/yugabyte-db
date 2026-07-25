@@ -79,6 +79,11 @@ import play.libs.Json;
 @Slf4j
 @Abortable
 @Retryable
+// TODO(PLAT-21484): add @CanRollback here once RollbackEditKubernetesUniverse (PLAT-21484), the
+// state_transition_details safe-window gate (PLAT-21387 / PLAT-21483) and the runtime flag
+// (PLAT-21488) are in place. See the edit-universe placeholder in
+// CustomerTaskManager.rollbackCustomerTask. Annotating before those exist would surface
+// canRollback=true in the UI/API while the rollback action is not yet implemented.
 public class EditKubernetesUniverse extends KubernetesTaskBase {
 
   static final int DEFAULT_WAIT_TIME_MS = 10000;
@@ -1670,8 +1675,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       if (!newAzUUIDs.contains(az.uuid)) {
         continue;
       }
-      oldDeviceInfo = curIntent.getDeviceInfoForAz(az.uuid, false /* isDedicatedMaster */);
-      newDeviceInfo = newIntent.getDeviceInfoForAz(az.uuid, false /* isDedicatedMaster */);
+      oldDeviceInfo = curIntent.getDeviceInfoForAz(az.uuid, ServerType.TSERVER);
+      newDeviceInfo = newIntent.getDeviceInfoForAz(az.uuid, ServerType.TSERVER);
       if (oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo)) {
         tserverDiskSizeChanged = true;
         log.info(
@@ -1680,8 +1685,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             newDeviceInfo.volumeSize,
             az.name);
       }
-      oldDeviceInfo = curIntent.getDeviceInfoForAz(az.uuid, true /* isDedicatedMaster */);
-      newDeviceInfo = newIntent.getDeviceInfoForAz(az.uuid, true /* isDedicatedMaster */);
+      oldDeviceInfo = curIntent.getDeviceInfoForAz(az.uuid, ServerType.MASTER);
+      newDeviceInfo = newIntent.getDeviceInfoForAz(az.uuid, ServerType.MASTER);
       if (oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo)) {
         masterDiskSizeChanged = true;
         log.info(
@@ -1831,9 +1836,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         continue;
       }
       String newDiskSizeGi =
-          String.format(
-              "%dGi",
-              userIntent.getDeviceInfoForAz(azUUID, serverType == ServerType.MASTER).volumeSize);
+          String.format("%dGi", userIntent.getDeviceInfoForAz(azUUID, serverType).volumeSize);
 
       // Subtask groups( ignore Errors is false by default )
       SubTaskGroup validateExpansion =
@@ -2169,12 +2172,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               Map<ServerType, Integer> diskSizes = new HashMap<>();
               diskSizes.put(
                   ServerType.MASTER,
-                  cluster.userIntent.getDeviceInfoForAz(azUUID, true /* idDedicatedMaster */)
-                      .volumeSize);
+                  cluster.userIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER).volumeSize);
               diskSizes.put(
                   ServerType.TSERVER,
-                  cluster.userIntent.getDeviceInfoForAz(azUUID, false /* idDedicatedMaster */)
-                      .volumeSize);
+                  cluster.userIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER).volumeSize);
               originalDiskSizeMap.put(azUUID, diskSizes);
             });
     taskParams().getClusterByUuid(cluster.uuid).setOriginalDiskSize(originalDiskSizeMap);
@@ -2240,9 +2241,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             newCluster.placementInfo, newCluster.clusterType == ClusterType.ASYNC);
     for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {
       DeviceInfo taskDeviceInfo =
-          newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), false /* isDedicatedMaster */);
+          newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), ServerType.TSERVER);
       DeviceInfo existingDeviceInfo =
-          currCluster.userIntent.getDeviceInfoForAz(entry.getKey(), false /* isDedicatedMaster */);
+          currCluster.userIntent.getDeviceInfoForAz(entry.getKey(), ServerType.TSERVER);
       if (taskDeviceInfo != null
           && existingDeviceInfo != null
           && !taskDeviceInfo.equals(existingDeviceInfo)) {
@@ -2250,9 +2251,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         tserverVolumeChanged = true;
       }
       DeviceInfo taskMasterDeviceInfo =
-          newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), true /* isDedicatedMaster */);
+          newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), ServerType.MASTER);
       DeviceInfo existingMasterDeviceInfo =
-          currCluster.userIntent.getDeviceInfoForAz(entry.getKey(), true /* isDedicatedMaster */);
+          currCluster.userIntent.getDeviceInfoForAz(entry.getKey(), ServerType.MASTER);
       if (taskMasterDeviceInfo != null
           && existingMasterDeviceInfo != null
           && !taskMasterDeviceInfo.equals(existingMasterDeviceInfo)) {

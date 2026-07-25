@@ -50,6 +50,8 @@
 #include "yb/server/clock.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 DEFINE_NON_RUNTIME_bool(master_register_ts_check_desired_host_port, true,
     "When set to true, master will only do duplicate address checks on the used host/port instead "
@@ -504,6 +506,15 @@ Status TSManager::RemoveTabletServer(
     servers_by_id_.erase(desc->id());
   }
   return Status::OK();
+}
+
+void TSManager::MarkTServersForLeaderBlacklistNotification() {
+  SharedLock<decltype(map_lock_)> l(map_lock_);
+  for (const auto& [id, desc] : servers_by_id_) {
+    if (desc->IsLive()) {
+      desc->inc_pending_leader_drain_notification();
+    }
+  }
 }
 
 Status TSManager::ValidateAllTserverVersions(ValidateVersionInfoOp op) const {

@@ -438,9 +438,37 @@ For record type `MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES`, the update and delete rec
 
 ### Updating or deleting a row inserted in the same transaction
 
-If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event. If the before image record type is not CHANGE, then CDC will throw an error while processing such events.
+By default, if a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event, because the before-image is derived only from the row's last committed state (the value before the transaction began), and no such state exists yet. If the before image record type is not CHANGE, then CDC will throw an error while processing such events.
 
-To handle such updates/deletes with a non-CHANGE before-image record type, set the YB-TServer flag [cdc_send_null_before_image_if_not_exists](../../../../reference/configuration/yb-tserver/#cdc-send-null-before-image-if-not-exists) to true. With this flag enabled, CDC will send a null before-image instead of failing with an error.
+You can handle this scenario in one of two ways:
+
+- **Populate the actual intra-transactional before-image (recommended).** Set the YB-TServer flag [cdc_enable_intra_transactional_before_image](../../../../reference/configuration/yb-tserver/#cdc-enable-intra-transactional-before-image) to true. CDC then reads the row's effective value immediately before the operation, including changes made earlier in the same transaction, so the UPDATE / DELETE no longer errors and its before-image reports the real value instead of being unavailable. This also applies when a row is modified multiple times in one transaction: each UPDATE / DELETE reports the value written by the preceding operation as its before-image.
+
+  For example:
+
+  ```sql
+  BEGIN;
+    INSERT INTO t (id, v) VALUES (1, 10);
+    UPDATE t SET v = 20 WHERE id = 1;   -- before-image of v: 10
+    UPDATE t SET v = 30 WHERE id = 1;   -- before-image of v: 20
+    DELETE FROM t WHERE id = 1;         -- before-image of v: 30
+  COMMIT;
+  ```
+
+- **Emit a null before-image (fallback).** Set the YB-TServer flag [cdc_send_null_before_image_if_not_exists](../../../../reference/configuration/yb-tserver/#cdc-send-null-before-image-if-not-exists) to true. With this flag enabled, CDC sends a null before-image for such events instead of failing with an error. The before-image is not populated with the intra-transactional value. This is a runtime flag, so it can be changed without a YB-TServer restart.
+
+  For example:
+
+  ```sql
+  BEGIN;
+    INSERT INTO t (id, v) VALUES (1, 10);
+    UPDATE t SET v = 20 WHERE id = 1;   -- before-image of v: null
+    UPDATE t SET v = 30 WHERE id = 1;   -- before-image of v: null
+    DELETE FROM t WHERE id = 1;         -- before-image of v: null
+  COMMIT;
+  ```
+
+The two flags are complementary and can be set together; they are not mutually exclusive. `cdc_enable_intra_transactional_before_image` takes precedence: CDC first attempts to read the intra-transactional before-image, and for a row inserted and then updated or deleted in the same transaction this read succeeds, so the actual value is used. `cdc_send_null_before_image_if_not_exists` acts only as a fallback, sending a null before-image if CDC still cannot find one after that read.
 
 ## Schema evolution
 

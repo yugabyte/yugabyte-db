@@ -21,6 +21,7 @@ public class UpdateUniverseAccessKey extends UniverseTaskBase {
   public static class Params extends UniverseTaskParams {
     public String newAccessKeyCode;
     public UUID clusterUUID;
+    public UUID providerUUID;
   }
 
   protected Params taskParams() {
@@ -42,8 +43,10 @@ public class UpdateUniverseAccessKey extends UniverseTaskBase {
             @Override
             public void run(Universe universe) {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-              universeDetails.getClusterByUuid(taskParams().clusterUUID).userIntent.accessKeyCode =
-                  taskParams().newAccessKeyCode;
+              universeDetails
+                  .getClusterByUuid(taskParams().clusterUUID)
+                  .userIntent
+                  .setProviderAccessKey(taskParams().providerUUID, taskParams().newAccessKeyCode);
               universe.setUniverseDetails(universeDetails);
             }
           };

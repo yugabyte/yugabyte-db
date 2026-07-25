@@ -274,7 +274,12 @@ class PgHintTableTestTableLocksDisabled : public PgHintTableTest {
     // "could not serialize access due to concurrent update" errors.
     PgHintTableTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
     options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
+    options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_master_flags, "ysql_enable_concurrent_ddl");
     options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
     AppendFlagToAllowedPreviewFlagsCsv(
         options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");

@@ -203,6 +203,9 @@ YbSplitType
 YbStatLabel
 YbStatLabelData
 YbStatementType
+YbStatusErrorData
+YbStatusErrorDataErrorLocation
+YbStatusErrorDataFormatText
 YbSubstConstsContext
 YbSubstituteContext
 YbSysCatalogModificationAspect
@@ -257,6 +260,7 @@ YbcFlushDebugContext
 YbcGetTableKeyRangesCallback
 YbcHeapSnapshotSample
 YbcIsExplicitlyLockedRowSkippedCheckHandle
+YbcIsExplicitlyLockedRowSkippedCheckHandleOptional
 YbcLsnType
 YbcMetricsInfo
 YbcObjectLockId
@@ -353,6 +357,7 @@ YbcSliceVector
 YbcSlotEntryDescriptor
 YbcSortKey
 YbcStatus
+YbcStatusErrorLocationInfo
 YbcSwitchMemoryContextFn
 YbcTableProperties
 YbcTablePropertiesData

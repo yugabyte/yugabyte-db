@@ -27,6 +27,37 @@ export const getNodeCount = (availabilityZones: NodeAvailabilityProps['availabil
   }, 0);
 };
 
+export type DedicatedTserverMasterCounts = {
+  tserver: number;
+  master: number;
+  total: number;
+};
+
+/**
+ * Display counts when dedicated nodes is enabled (user toggle).
+ * Masters equal effective RF; tservers are AZ node sums (or 1 for single-node).
+ * Returns null when dedicated nodes is off — same gate as DedicatedNodes UI (not K8s effective dedicated).
+ */
+export const getDedicatedTserverMasterCounts = (
+  resilienceAndRegionsSettings: ResilienceAndRegionsProps | undefined,
+  nodesAvailabilitySettings: NodeAvailabilityProps | undefined
+): DedicatedTserverMasterCounts | null => {
+  if (!nodesAvailabilitySettings?.useDedicatedNodes || !resilienceAndRegionsSettings) {
+    return null;
+  }
+
+  const tserver =
+    resilienceAndRegionsSettings.resilienceType === ResilienceType.SINGLE_NODE
+      ? 1
+      : getNodeCount(nodesAvailabilitySettings.availabilityZones);
+  const master = getEffectiveReplicationFactorForResilience(
+    resilienceAndRegionsSettings,
+    nodesAvailabilitySettings
+  );
+
+  return { tserver, master, total: tserver + master };
+};
+
 export const getNodeCountNeeded = (
   totalNodesCount: number,
   totalRegions: number,
@@ -350,8 +381,9 @@ export function reduceExpertNodeCountsToAtMostRf(
 }
 
 /**
- * Expert-mode defaults when landing on Nodes & availability with no prior zone selection
- * Applies when fault tolerance is AZ-level or region-level; node-level and none use {@link assignRegionsAZNodeByReplicationFactor}.
+ * Expert-mode defaults when landing on Nodes & availability with no prior zone selection.
+ * Applies for AZ/region-level and NONE (edit RF=1 maps to NONE). NODE_LEVEL uses
+ * {@link assignRegionsAZNodeByReplicationFactor}.
  * Returns null when defaults do not apply.
  */
 export function getExpertNodesStepDefaultPlacement(
@@ -364,7 +396,11 @@ export function getExpertNodesStepDefaultPlacement(
     return null;
   }
   const ft = resilience[FAULT_TOLERANCE_TYPE];
-  if (ft !== FaultToleranceType.AZ_LEVEL && ft !== FaultToleranceType.REGION_LEVEL) {
+  if (
+    ft !== FaultToleranceType.AZ_LEVEL &&
+    ft !== FaultToleranceType.REGION_LEVEL &&
+    ft !== FaultToleranceType.NONE
+  ) {
     return null;
   }
 

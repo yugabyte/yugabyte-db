@@ -40,6 +40,8 @@
 #include "yb/util/atomic.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 using std::min;

@@ -118,13 +118,13 @@ Currently the *UNLOGGED* option is ignored. It's handled as *LOGGED* default per
 
 Change the specified storage parameter into the provided value.
 
-Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/15/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
+Note that [PostgreSQL storage parameters](https://www.postgresql.org/docs/15/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS) are ignored and only present for compatibility with PostgreSQL.
 
 #### RESET ( *param_name* )
 
 Reset the specified storage parameter.
 
-Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/15/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
+Note that [PostgreSQL storage parameters](https://www.postgresql.org/docs/15/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS) are ignored and only present for compatibility with PostgreSQL.
 
 #### DROP [ COLUMN ] [ IF EXISTS ] *column_name* [ RESTRICT | CASCADE ]
 
@@ -332,6 +332,30 @@ Create a table with a constraint and rename the constraint:
 CREATE TABLE test(id BIGSERIAL PRIMARY KEY, a TEXT);
 ALTER TABLE test ADD constraint vague_name unique (a);
 ALTER TABLE test RENAME CONSTRAINT vague_name TO unique_a_constraint;
+```
+
+#### ALTER CONSTRAINT *constraint_name* [ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
+
+Modify the deferral properties of an existing constraint. This is currently only supported for foreign key constraints.
+
+- `DEFERRABLE` — The constraint can be deferred until the end of the transaction.
+- `NOT DEFERRABLE` — The constraint is always checked immediately after each row in a statement (the default).
+- `INITIALLY DEFERRED` — The constraint is deferred by default unless explicitly checked during the transaction.
+- `INITIALLY IMMEDIATE` — The constraint is checked immediately by default (the default).
+
+##### Example
+
+Alter a foreign key constraint to be deferrable:
+
+```sql
+CREATE TABLE parent(id int PRIMARY KEY);
+CREATE TABLE child(id int, parent_id int,
+  CONSTRAINT fk_parent FOREIGN KEY(parent_id) REFERENCES parent(id)
+);
+
+-- Make the constraint deferrable and initially deferred
+ALTER TABLE child ALTER CONSTRAINT fk_parent
+  DEFERRABLE INITIALLY DEFERRED;
 ```
 
 #### ENABLE / DISABLE ROW LEVEL SECURITY

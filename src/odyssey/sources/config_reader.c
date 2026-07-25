@@ -163,6 +163,7 @@ typedef enum {
 	OD_YB_MAX_PREPARED_STATEMENTS,
 	OD_YB_ENABLE_PARSE_QUEUE_TRACKING,
 	OD_YB_WAIT_FOR_RFQ_ON_SYNC,
+	OD_YB_ENABLE_DEALLOC_RECONCILIATION,
 	OD_YB_BACKEND_DRAIN_TIMEOUT_MS,
 } od_lexeme_t;
 
@@ -359,6 +360,8 @@ static od_keyword_t od_config_keywords[] = {
 		   OD_YB_ENABLE_PARSE_QUEUE_TRACKING),
 	od_keyword("yb_wait_for_rfq_on_sync",
 		   OD_YB_WAIT_FOR_RFQ_ON_SYNC),
+	od_keyword("yb_enable_dealloc_reconciliation",
+		   OD_YB_ENABLE_DEALLOC_RECONCILIATION),
 	od_keyword("yb_backend_drain_timeout_ms",
 		   OD_YB_BACKEND_DRAIN_TIMEOUT_MS),
 
@@ -2641,6 +2644,15 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 				goto error;
 			}
 			config->yb_wait_for_rfq_on_sync = val;
+			continue;
+		}
+		/* yb_enable_dealloc_reconciliation */
+		case OD_YB_ENABLE_DEALLOC_RECONCILIATION: {
+			int val;
+			if (!od_config_reader_yes_no(reader, &val)) {
+				goto error;
+			}
+			config->yb_enable_dealloc_reconciliation = val;
 			continue;
 		}
 		/* yb_backend_drain_timeout_ms */

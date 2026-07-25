@@ -56,6 +56,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/shutdown_controller.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/tostring.h"
 #include "yb/util/unique_lock.h"
@@ -516,6 +517,11 @@ class SysCatalogTable {
   std::shared_ptr<tserver::TabletMemoryManager> mem_manager_;
 
   std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
+
+  // Makes the two-phase StartShutdown / CompleteShutdown run at most once, in order. A removed
+  // master going into shell mode (GoIntoShellMode) can race with process shutdown; both drive
+  // the tablet peer shutdown.
+  ShutdownController shutdown_controller_;
 
   DISALLOW_COPY_AND_ASSIGN(SysCatalogTable);
 };

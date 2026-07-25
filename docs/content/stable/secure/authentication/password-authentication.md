@@ -114,6 +114,24 @@ Because all existing passwords must be changed, you can manage the migration of 
 
 If you follow this approach, you can enhance security, track and migrate passwords, and then remove the much weaker MD5 rules after all passwords have been updated.
 
+To check which passwords remain to be migrated, run the following query as a superuser (for example, the `yugabyte` user; only superusers can read from `pg_authid`):
+
+```sql
+SELECT
+  rolname,
+  CASE
+    WHEN rolpassword LIKE 'SCRAM-SHA-256%' THEN 'scram'
+    WHEN rolpassword LIKE 'md5%' THEN 'md5'
+    ELSE 'none/other'
+  END AS password_type,
+  rolvaliduntil
+FROM pg_authid
+WHERE rolcanlogin
+ORDER BY password_type, rolname;
+```
+
+For any role where `password_type` is `md5`, use [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role/) or the ysqlsh [\password](../../../api/ysqlsh-meta-commands/#password-username) meta-command to set a new password. The password is re-encrypted using SCRAM-SHA-256.
+
 ## Resetting user password
 
 In PostgreSQL, if the administrator password is lost or changed to an unknown value, you can change the `pg_hba.conf` file to allow administrator access without a password. This is a static file that is used to control client authentication. To reset the password for the `postgres` user, you change the parameters in the configuration file, restart the database, and then log in as `postgres` without a password, and reset the password.

@@ -1083,10 +1083,9 @@ PostmasterMain(int argc, char *argv[])
 	 * Register the apply launcher.  It's probably a good idea to call this
 	 * before any modules had a chance to take the background worker slots.
 	 *
-	 * Logical replication is not supported in YugaByte mode currently and the
-	 * registration is disabled.
+	 * In YugaByte mode, only register if pg_subscription support is enabled.
 	 */
-	if (!YBIsEnabledInPostgresEnvVar())
+	if (!YBIsEnabledInPostgresEnvVar() || yb_enable_pg_subscription)
 		ApplyLauncherRegister();
 
 	if (YBIsEnabledInPostgresEnvVar())
@@ -2149,7 +2148,6 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	char	   *yb_auth_backend_remote_host = NULL;
 	char		yb_logical_conn_type = 'U'; /* Unencrypted */
 	bool		yb_logical_conn_type_provided = false;
-	bool		yb_auto_analyze_backend = false;
 	YbInternalConnKind yb_internal_conn_kind = YB_INTERNAL_CONN_KIND_NONE;
 	bool		yb_is_auth_via_conn_mgr = false;
 	bool		yb_is_control_conn = false;
@@ -2480,17 +2478,6 @@ retry1:
 				yb_logical_conn_type_provided = true;
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_auto_analyze") == 0)
-			{
-				if (!parse_bool(valptr, &yb_auto_analyze_backend))
-					ereport(FATAL,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("invalid value for parameter \"%s\": \"%s\"",
-									"yb_auto_analyze",
-									valptr),
-							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
-			}
-			else if (YBIsEnabledInPostgresEnvVar()
 					 && strcmp(nameptr, "yb_internal_conn_kind") == 0)
 			{
 				yb_internal_conn_kind = YbLookupInternalConnKindByName(valptr);
@@ -2593,9 +2580,10 @@ retry1:
 			/*
 			 * HARD Code connection type between client and ysql_conn_mgr to
 			 * AF_INET which is the only supported connection type for
-			 * authentication.
+			 * authentication. Also set salen for ipv4 address.
 			 */
 			port->raddr.addr.ss_family = AF_INET;
+			port->raddr.salen = sizeof(struct sockaddr_in);
 			port->remote_host = yb_auth_backend_remote_host;
 
 			struct sockaddr_in *ip_address_1;
@@ -2657,11 +2645,11 @@ retry1:
 
 	if (am_walsender)
 		MyBackendType = B_WAL_SENDER;
-	else if (yb_auto_analyze_backend)
-		MyBackendType = YB_AUTO_ANALYZE_BACKEND;
 	else if (yb_internal_conn_kind != YB_INTERNAL_CONN_KIND_NONE)
 		MyBackendType =
 			YbInternalConnKindDescriptors[yb_internal_conn_kind].backend_type;
+	else if (YbIsAuthPassthroughControlBackend())
+		MyBackendType = YB_YSQL_CONN_MGR_CTRL;
 	else
 		MyBackendType = B_BACKEND;
 

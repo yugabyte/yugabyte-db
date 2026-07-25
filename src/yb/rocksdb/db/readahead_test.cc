@@ -20,6 +20,7 @@
 #include "yb/util/compare_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 DECLARE_uint64(rocksdb_iterator_sequential_disk_reads_factor);
 DECLARE_uint64(rocksdb_iterator_sequential_disk_reads_for_auto_readahead);

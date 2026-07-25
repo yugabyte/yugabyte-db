@@ -103,6 +103,7 @@
 | "Max Size of each log message" | "yb.logs.max_msg_size" | "GLOBAL" | "We limit the length of each log line as sometimes we dump entire output of script. If you want to debug something specific and the script output isgetting truncated in application log then increase this limit" | "Bytes" |
 | "KMS Refresh Interval" | "yb.kms.refresh_interval" | "GLOBAL" | "Default refresh interval for the KMS providers." | "Duration" |
 | "Allow CipherTrust KMS" | "yb.kms.allow_ciphertrust" | "GLOBAL" | "Allow the usage of CipherTrust KMS." | "Boolean" |
+| "Allow OTLP Exporter in Telemetry Provider" | "yb.telemetry.allow_otlp" | "GLOBAL" | "Allow the usage of OTLP Exporter in Telemetry Provider." | "Boolean" |
 | "Skip connectivity validations while creating Telemetry Provider" | "yb.telemetry.skip_connectivity_validations" | "GLOBAL" | "Skip connectivity and permission validations while creating Telemetry Provider." | "Boolean" |
 | "Percentage of Hashicorp vault TTL to renew the token after" | "yb.kms.hcv_token_renew_percent" | "GLOBAL" | "HashiCorp Vault tokens expire when their TTL is reached. This setting renews the token after it has used the specified percentage of its original TTL. Default: 70%." | "Integer" |
 | "Start Master On Stop Node" | "yb.start_master_on_stop_node" | "GLOBAL" | "Auto-start master process on a similar available node on stopping a master node" | "Boolean" |
@@ -127,6 +128,7 @@
 | "Regex for match Yugabyte DB release .tar.gz files" | "yb.regex.release_pattern.ybdb" | "GLOBAL" | "Regex pattern used to find Yugabyte DB release .tar.gz files" | "String" |
 | "Regex for match Yugabyte DB release helm .tar.gz files" | "yb.regex.release_pattern.helm" | "GLOBAL" | "Regex pattern used to find Yugabyte DB helm .tar.gz files" | "String" |
 | "Enables extra logging" | "yb.logging.enable_task_failed_request_logs" | "GLOBAL" | "Enables extra logging for task params and request body" | "Boolean" |
+| "Enable gflags sensitive data API redaction" | "yb.api.enable_gflags_sensitive_data_redaction" | "GLOBAL" | "When true, API responses redact gflags sensitive data that is not covered by JsonPath (for example ldapbindpasswd in ysql_hba_conf_csv and audit additionalDetails). JsonPath based API redaction remains enabled." | "Boolean" |
 | "tmp directory path" | "yb.filepaths.tmpDirectory" | "GLOBAL" | "Path to the tmp directory to be used by YBA" | "String" |
 | "Customer UUID to use with Kubernentes Operator" | "yb.kubernetes.operator.customer_uuid" | "GLOBAL" | "Customer UUID to use with Kubernentes Operator, do not change once set" | "String" |
 | "Enable Kubernentes Operator" | "yb.kubernetes.operator.enabled" | "GLOBAL" | "Enable Kubernentes Operator, requires restart to take effect" | "Boolean" |
@@ -198,6 +200,7 @@
 | "Skip Runtime GFlag validation before cluster operations." | "yb.skip_runtime_gflag_validation" | "GLOBAL" | "Skip Runtime GFlag validation before cluster operations." | "Boolean" |
 | "Timeout for backup success marker download" | "ybc.success_marker_download_timeout_secs" | "GLOBAL" | "Timeout for backup success marker download from backup location" | "Integer" |
 | "Enable Performing Automatic Rollback of Edit Operation" | "yb.task.enable_edit_auto_rollback" | "GLOBAL" | "Enable performing automatic rollback of edit operation (if possible)" | "Boolean" |
+| "Allow Rollback of Edit Universe Tasks" | "yb.task.allow_edit_universe_rollback" | "GLOBAL" | "Allow rolling back a failed edit universe task (VM and Kubernetes) via the task rollback API" | "Boolean" |
 | "Enable S3 Backup Proxy" | "yb.ui.feature_flags.enable_s3_backup_proxy" | "GLOBAL" | "Enable proxy configuration for S3 backup storage" | "Boolean" |
 | "Allow YBA Restore With Universes" | "yb.yba_backup.allow_restore_with_universes" | "GLOBAL" | "Allow YBA restore from one time restore or continuous backup when existing universes are present" | "Boolean" |
 | "Allow YBA Restore With Old Backup" | "yb.yba_backup.allow_restore_with_old_backup" | "GLOBAL" | "Allow YBA restore from one time restore or continuous backup when backup file is more than 1 day old" | "Boolean" |
@@ -219,6 +222,7 @@
 | "YB Upgrade Blacklist Leaders" | "yb.upgrade.blacklist_leaders" | "UNIVERSE" | "Determines (boolean) whether we enable/disable leader blacklisting when performing universe/node tasks" | "Boolean" |
 | "YB Upgrade Blacklist Leader Wait Time in Ms" | "yb.upgrade.blacklist_leader_wait_time_ms" | "UNIVERSE" | "The timeout (in milliseconds) that we wait of leader blacklisting on a node to complete" | "Integer" |
 | "Fail task on leader blacklist timeout" | "yb.node_ops.leader_blacklist.fail_on_timeout" | "UNIVERSE" | "Determines (boolean) whether we fail the task after waiting for leader blacklist timeout is reached" | "Boolean" |
+| "YB Upgrade Wait After Leader Blacklist Completion" | "yb.upgrade.blacklist_leader_wait_after_completion" | "UNIVERSE" | "Additional time to wait after the leader-blacklist operation completes and before stopping a tserver during rolling restarts/upgrades, giving resident tablet leaders extra time to drain. Defaults to 0 (disabled)." | "Duration" |
 | "YB Upgrade Max Follower Lag Threshold " | "yb.upgrade.max_follower_lag_threshold_ms" | "UNIVERSE" | "The maximum time (in milliseconds) that we allow a tserver to be behind its peers" | "Integer" |
 | "YB Upgrade Use Single Connection Param" | "yb.upgrade.single_connection_ysql_upgrade" | "UNIVERSE" | "The flag, which controls, if YSQL catalog upgrade will be performed in single or multi connection mode.Single connection mode makes it work even on tiny DB nodes." | "Boolean" |
 | "YB edit sleep time in ms before blacklist clear in ms" | "yb.edit.wait_before_blacklist_clear" | "UNIVERSE" | "Sleep time before clearing nodes from blacklist in ms" | "Duration" |

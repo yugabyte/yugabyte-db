@@ -13,6 +13,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
@@ -21,6 +22,7 @@ import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
@@ -37,6 +39,7 @@ import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeStat
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -104,9 +107,52 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     // it is overridden e.g in CreateUniverse.
     public boolean masterJoinExistingCluster = true;
 
-    public AuditLogConfig auditLogConfig = null;
-    public QueryLogConfig queryLogConfig = null;
-    public MetricsExportConfig metricsExportConfig = null;
+    // Single carrier for all telemetry export sections (audit/query/metrics/master).
+    public TelemetryConfig telemetryConfig = null;
+
+    @JsonIgnore
+    public AuditLogConfig getAuditLogConfig() {
+      return telemetryConfig != null ? telemetryConfig.getAuditLogConfig() : null;
+    }
+
+    @JsonIgnore
+    public QueryLogConfig getQueryLogConfig() {
+      return telemetryConfig != null ? telemetryConfig.getQueryLogConfig() : null;
+    }
+
+    @JsonIgnore
+    public MetricsExportConfig getMetricsExportConfig() {
+      return telemetryConfig != null ? telemetryConfig.getMetricsExportConfig() : null;
+    }
+
+    @JsonIgnore
+    public MasterLogConfig getMasterLogConfig() {
+      return telemetryConfig != null ? telemetryConfig.getMasterLogConfig() : null;
+    }
+
+    // Backward-compat: fold pre-migration top-level fields into telemetryConfig on deserialize.
+    private TelemetryConfig ensureTelemetryConfig() {
+      if (telemetryConfig == null) {
+        telemetryConfig = new TelemetryConfig();
+      }
+      return telemetryConfig;
+    }
+
+    @JsonProperty("auditLogConfig")
+    public void setLegacyAuditLogConfig(AuditLogConfig auditLogConfig) {
+      ensureTelemetryConfig().setAuditLogConfig(auditLogConfig);
+    }
+
+    @JsonProperty("queryLogConfig")
+    public void setLegacyQueryLogConfig(QueryLogConfig queryLogConfig) {
+      ensureTelemetryConfig().setQueryLogConfig(queryLogConfig);
+    }
+
+    @JsonProperty("metricsExportConfig")
+    public void setLegacyMetricsExportConfig(MetricsExportConfig metricsExportConfig) {
+      ensureTelemetryConfig().setMetricsExportConfig(metricsExportConfig);
+    }
+
     public Map<String, String> ybcGflags = new HashMap<>();
     public boolean overrideNodePorts = false;
     // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)

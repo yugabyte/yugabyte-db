@@ -72,6 +72,7 @@ void od_config_init(od_config_t *config)
 	config->yb_tcmalloc_gc_interval = 300;
 	config->yb_enable_parse_queue_tracking = true;
 	config->yb_wait_for_rfq_on_sync = true;
+	config->yb_enable_dealloc_reconciliation = true;
 	config->yb_backend_drain_timeout_ms = 100;
 
 	od_list_init(&config->listen);
@@ -99,8 +100,6 @@ void od_config_reload(od_config_t *current_config, od_config_t *new_config)
 		new_config->yb_tcmalloc_gc_interval;
 	current_config->yb_enable_parse_queue_tracking =
 		new_config->yb_enable_parse_queue_tracking;
-	current_config->yb_wait_for_rfq_on_sync =
-		new_config->yb_wait_for_rfq_on_sync;
 	current_config->yb_backend_drain_timeout_ms =
 		new_config->yb_backend_drain_timeout_ms;
 }
@@ -413,6 +412,10 @@ void od_config_print(od_config_t *config, od_logger_t *logger)
 	od_log(logger, "config", NULL, NULL,
 	       "yb_wait_for_rfq_on_sync        %s",
 	       od_config_yes_no(config->yb_wait_for_rfq_on_sync));
+
+	od_log(logger, "config", NULL, NULL,
+	       "yb_enable_dealloc_reconciliation %s",
+	       od_config_yes_no(config->yb_enable_dealloc_reconciliation));
 
 #ifdef USE_SCRAM
 	od_log(logger, "config", NULL, NULL, "SCRAM auth metod:       OK");

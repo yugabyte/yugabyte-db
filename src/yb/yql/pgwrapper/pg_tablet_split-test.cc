@@ -22,6 +22,7 @@
 
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
@@ -60,6 +61,7 @@
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/range.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_case.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
@@ -82,6 +84,7 @@ DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
+DECLARE_bool(ysql_enable_write_pipelining);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_select_parallelism);
 DECLARE_uint64(rpc_max_message_size);
@@ -100,6 +103,8 @@ DECLARE_bool(TEST_pause_apply_tablet_split);
 DECLARE_bool(TEST_disable_flush_on_shutdown);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(cleanup_intents_sst_files);
+DECLARE_bool(delete_intents_sst_files);
+DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(ysql_enable_write_pipelining);
 
@@ -1861,9 +1866,20 @@ TEST_F(PgDelayedSplitAtFollower, TestDelayedSplitAtFollower) {
   // Insert enough data to create SST files for splitting
   ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 1000), 0"));
 
+  if (FLAGS_ysql_enable_write_pipelining) {
+    // Write pipelining acks the above insert immediately, need to wait for this to be applied
+    // before doing the flush + split.
+    ASSERT_OK(WaitForTableIntentsApplied(cluster_.get(), table_id));
+  }
+
   // Insert a row in a transaction
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0, $1)", kKey, kValue));
+  // Make sure every replica has applied all the writes before flushing. Otherwise a lagging
+  // follower may flush an empty regular memtable (a no-op) and end up without any level-0 SST file.
+  // If such a follower later becomes the leader, GetSplitKey fails with "No SST file at level 0",
+  // which is not retried for a manual split, so the split never completes.
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), 30s * kTimeMultiplier));
   ASSERT_OK(cluster_->FlushTablets());
 
   // Stop tserver C (index 2)
@@ -2187,6 +2203,161 @@ TEST_F(PgTabletSplitTest, AsyncWriteRaceWithSplit) {
   auto verify_conn = ASSERT_RESULT(Connect());
   auto count = ASSERT_RESULT(verify_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM t"));
   ASSERT_EQ(count, 1000);
+}
+
+// Reproduces a data-loss race in SimulateProcessRecentlyAppliedTransactions: during fresh
+// bootstrap, if recently_applied={helper} is populated while the loader has not yet reached
+// target (whose first_write_ht is lower), SaveToDisk persists min_replay_txn_first_write_ht >
+// target.first_write_ht. On the next bootstrap, target is Skip-loaded and target.APPLY fails
+// with "Apply of unknown leader_term:-1" and target's row never lands in RegularDB.
+TEST_F(PgTabletSplitTest, BootstrapStateLoadRaceFlush) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 1000), 0"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+
+  // Open txns with target writing first (so target.first_write_ht < helper.first_write_ht) and
+  // helper.UUID < target.UUID (so the loader iterates helper first and the sync point pauses
+  // before reaching target). helper writes 100 keys so its metadata lands on every post-split
+  // child.
+  auto conn_target = ASSERT_RESULT(Connect());
+  auto conn_helper = ASSERT_RESULT(Connect());
+  Uuid target_uuid;
+  Uuid helper_uuid;
+  constexpr int kMaxRetries = 100;
+  int retries = 0;
+  while (retries < kMaxRetries) {
+    ASSERT_OK(conn_target.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn_target.Execute("INSERT INTO t VALUES (5001, 5001)"));
+    target_uuid = ASSERT_RESULT(conn_target.FetchRow<Uuid>(
+        "SELECT yb_get_current_transaction()"));
+    ASSERT_OK(conn_helper.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn_helper.Execute(
+        "INSERT INTO t SELECT generate_series(6001, 6100), 0"));
+    helper_uuid = ASSERT_RESULT(conn_helper.FetchRow<Uuid>(
+        "SELECT yb_get_current_transaction()"));
+    if (helper_uuid < target_uuid) break;
+    ASSERT_OK(conn_target.RollbackTransaction());
+    ASSERT_OK(conn_helper.RollbackTransaction());
+    ++retries;
+  }
+  ASSERT_LT(retries, kMaxRetries);
+
+  // Flush intents into SSTs so split children inherit them via hard-link.
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync,
+                                   tablet::FlushFlags::kIntents));
+
+  // Set below flags to make the test deterministic
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_intents_flush_max_delay_ms) = 3600000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_delete_intents_sst_files) = false;
+
+  std::atomic<bool> resume_loader{false};
+  std::atomic<int> helper_applies_recorded{0};
+  SyncPoint::GetInstance()->SetCallBack(
+      "TransactionLoader::Executor::LoadedTransaction",
+      [&](void* arg) {
+        const auto* loaded_id = static_cast<const TransactionId*>(arg);
+        if (loaded_id && loaded_id->GetUuid() == helper_uuid) {
+          while (!resume_loader.load()) {
+            std::this_thread::sleep_for(10ms);
+          }
+        }
+      });
+  SyncPoint::GetInstance()->SetCallBack(
+      "TransactionParticipant::Impl::AddRecentlyAppliedTransaction",
+      [&](void* arg) {
+        const auto* id = static_cast<const TransactionId*>(arg);
+        if (id && id->GetUuid() == helper_uuid) {
+          helper_applies_recorded.fetch_add(1);
+        }
+      });
+  SyncPoint::GetInstance()->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([&] {
+    resume_loader.store(true);
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id, 2));
+
+  // In prod, log segment switch and RBS can trigger FlushBootstrapState. To make the test
+  // deterministic, poison each child peer's bootstrap-state file directly by calling
+  // FlushBootstrapState in the race state (transactions_loaded_=false, recently_applied={helper},
+  // target not yet in transactions_ or recently_applied). DoProcess computes threshold =
+  // min(recently_applied) = helper.first_write_ht. Since target writes first,
+  // target.first_write_ht < helper.first_write_ht, so the persisted threshold will cause target
+  // to be skip-loaded on next bootstrap.
+  // ListTableTabletPeers also returns the split-completed parent peer; drop it so counts refer
+  // only to the two children that actually run helper.APPLY.
+  auto user_peers = ListTableTabletPeers(cluster_.get(), table_id);
+  std::erase_if(user_peers, [](const tablet::TabletPeerPtr& peer) {
+    return peer->tablet_metadata()->tablet_data_state() !=
+           tablet::TabletDataState::TABLET_DATA_READY;
+  });
+  ASSERT_EQ(user_peers.size(), 2u);
+
+  // helper.APPLY runs against children. The sync point above lets the loader load helper into
+  // transactions_, but then blocks it before it can advance to target. ProcessApply(helper)
+  // unblocks (last_loaded_ >= helper.id) and moves helper into recently_applied. Wait until
+  // that has happened on EVERY child; otherwise a lagging child's flush would see
+  // recently_applied={} and compute threshold=kMax (min_running_ht_ stays kInvalid during the
+  // race window because TransactionsModifiedUnlocked early-returns when !transactions_loaded_),
+  // harmlessly skipping the poison. Note we do NOT commit target yet: with the fix, target.APPLY
+  // would block at loader_.WaitLoaded(target) holding the replica-state lock, which would block
+  // FlushBootstrapState's TakeSnapshotOfRetryableRequests for the entire pause and prevent the
+  // race-window persist.
+  ASSERT_OK(conn_helper.CommitTransaction());
+  ASSERT_OK(WaitFor(
+      [&] { return helper_applies_recorded.load() >= static_cast<int>(user_peers.size()); },
+      60s * kTimeMultiplier, "helper added to recently_applied on all children"));
+
+  std::atomic<int> flush_done_count{0};
+  TestThreadHolder flush_bootstrap_state_thread;
+  for (const auto& peer : user_peers) {
+    flush_bootstrap_state_thread.AddThread([&, peer]() {
+      WARN_NOT_OK(peer->FlushBootstrapState(), "flush bootstrap state");
+      flush_done_count.fetch_add(1);
+    });
+  }
+
+  // Let the flush-bootstrap-state threads proceed for a brief race window, then release the
+  // loader. With the fix (WaitAllLoaded inside SimulateProcess), each flush blocks here until
+  // the loader finishes, so we must release the loader before WaitFor(flush_done_count).
+  // Without the fix, SimulateProcess returned immediately in the partial-state window; either
+  // way, releasing the loader does not change what was persisted.
+  resume_loader.store(true);
+  ASSERT_OK(WaitFor([&] {
+    return flush_done_count.load() == static_cast<int>(user_peers.size());
+  }, 60s * kTimeMultiplier, "flush bootstrap state"));
+
+  // Commit target so target.APPLY enters the WAL.
+  ASSERT_OK(conn_target.CommitTransaction());
+
+  SyncPoint::GetInstance()->DisableProcessing();
+  SyncPoint::GetInstance()->ClearAllCallBacks();
+
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Restart());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->WaitStarted());
+
+  // CONSISTENT_PREFIX read served from the tserver's local replica.
+  auto tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_id);
+  ASSERT_EQ(tablet_ids.size(), 2u);
+
+  bool found = false;
+  for (const auto& tablet_id : tablet_ids) {
+    auto exists = ASSERT_RESULT(RowExistsInTablet(
+        cluster_.get(), client_.get(), table_id, tablet_id, 5001, 0));
+    if (exists) { found = true; break; }
+  }
+  LOG(INFO) << "target row k=5001 locally: " << (found ? "YES" : "NO");
+  EXPECT_TRUE(found) << "DATA LOSS: target row missing";
 }
 
 } // namespace yb::pgwrapper

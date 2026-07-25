@@ -277,18 +277,8 @@ Result<std::string> DocDBValueToDebugStr(
       return ApplyStateWithCommitInfo::FromPB(pb).ToString();
     }
 
-    case KeyType::kVectorIndexMetadata: {
-      // There are only two possible type of values: tombstone or ybctid.
-      if (value.starts_with(dockv::ValueEntryTypeAsChar::kTombstone)) {
-        SCHECK_EQ(value.size(), 1, Corruption, "kTombstone should have no extra data");
-        return dockv::PrimitiveValue::kTombstone.ToString();
-      }
-
-      // The value must be a valid ybctid.
-      dockv::DocKey ybctid;
-      RETURN_NOT_OK(ybctid.DecodeFrom(value));
-      return ybctid.ToString(dockv::AutoDecodeKeys::kTrue);
-    }
+    case KeyType::kVectorIndexMetadata:
+      return dockv::DocVectorMetaValueToString(value);
 
     case KeyType::kExternalIntents: {
       std::vector<std::string> intents;

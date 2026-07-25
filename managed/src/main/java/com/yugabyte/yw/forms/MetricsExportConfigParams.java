@@ -27,7 +27,10 @@ public class MetricsExportConfigParams extends UpgradeTaskParams {
 
   @Override
   public boolean isKubernetesUpgradeSupported() {
-    return false;
+    // Metrics export on K8s universes runs through the unified
+    // KubernetesConfigureExportTelemetryConfig task; these params are only validated (never
+    // executed as ModifyMetricsExportConfig) for K8s universes.
+    return true;
   }
 
   @Override
@@ -36,7 +39,17 @@ public class MetricsExportConfigParams extends UpgradeTaskParams {
     boolean exportEnabled =
         metricsExportConfig.isExportActive()
             && CollectionUtils.isNotEmpty(metricsExportConfig.getUniverseMetricsExporterConfig());
+    boolean isK8s =
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(CloudType.kubernetes);
+    // On K8s the collector is a sidecar injected by the opentelemetry operator, so there is no
+    // install step; the installed/installOtelCollector check only applies to VM universes.
     if (exportEnabled
+        && !isK8s
         && !universe.getUniverseDetails().otelCollectorEnabled
         && !installOtelCollector) {
       throw new PlatformServiceException(
@@ -45,16 +58,6 @@ public class MetricsExportConfigParams extends UpgradeTaskParams {
               + universe.getUniverseUUID()
               + " does not have OpenTelemetry Collector installed and task params has"
               + " installOtelCollector=false - can't configure metrics export for the universe");
-    }
-    if (exportEnabled
-        && universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .userIntent
-            .providerType
-            .equals(CloudType.kubernetes)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Metrics export is not yet supported for kubernetes based universes.");
     }
 
     if (CollectionUtils.isEmpty(metricsExportConfig.getScrapeConfigTargets())) {

@@ -20,7 +20,6 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/status_fwd.h"
-#include "yb/util/status.h"
 #include "yb/util/thread.h"
 
 namespace yb {

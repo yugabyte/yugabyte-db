@@ -22,7 +22,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/enums.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace client {

@@ -1,0 +1,18 @@
+title: DrConfigBootstrapBackupParams
+description: |
+  Backup and restore parameters used when bootstrapping a DR config.
+type: object
+required:
+  - storage_config_uuid
+properties:
+  storage_config_uuid:
+    description: Storage configuration UUID for bootstrap backup.
+    type: string
+    format: uuid
+  parallelism:
+    description: |
+      Number of concurrent commands used by yb_backup (not YBC) on nodes over SSH.
+    type: integer
+    format: int32
+    default: 8
+    minimum: 1

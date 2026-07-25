@@ -39,7 +39,9 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.security.KeyPair;
 import java.security.NoSuchAlgorithmException;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -283,6 +285,126 @@ public class CertificateControllerTest extends FakeDBApplication {
     assertTrue(customServerCertInfo.serverCert.contains("/tmp"));
     assertTrue(customServerCertInfo.serverKey.contains("/tmp"));
     assertEquals(ci.getCertType(), CertConfigType.CustomServerCert);
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Root certificate/key upload tests for the three upload-style cert types:
+  //   SelfSigned, CustomCertHostPath, CustomServerCert.
+  // Each test exercises CertificateController.upload end-to-end (HTTP + DB +
+  // on-disk artifacts) and verifies the resulting CertificateInfo row.
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void testUploadSelfSignedRootCertificate() throws Exception {
+    // Generate a real CA cert + matching private key so the default validation
+    // (cert/key match) inside CertificateHelper.uploadRootCA passes.
+    KeyPair keyPair = CertificateHelper.getKeyPairObject();
+    X509Certificate caCert =
+        certificateHelper.generateCACertificate(
+            "upload-self-signed-test", keyPair, /*expiryInYear*/ 4);
+    String certPem = CertificateHelper.getAsPemString(caCert);
+    String keyPem = CertificateHelper.getAsPemString(keyPair.getPrivate());
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("label", "upload_self_signed_test");
+    bodyJson.put("certContent", certPem);
+    bodyJson.put("keyContent", keyPem);
+    bodyJson.put("certStart", caCert.getNotBefore().getTime());
+    bodyJson.put("certExpiry", caCert.getNotAfter().getTime());
+    bodyJson.put("certType", CertConfigType.SelfSigned.name());
+
+    Result result = uploadCertificate(customer.getUuid(), bodyJson);
+    assertEquals(OK, result.status());
+
+    UUID certUUID = UUID.fromString(Json.parse(contentAsString(result)).asText());
+    CertificateInfo ci = CertificateInfo.get(certUUID);
+    assertNotNull(ci);
+    assertEquals("upload_self_signed_test", ci.getLabel());
+    assertEquals(CertConfigType.SelfSigned, ci.getCertType());
+    assertFalse(ci.getInUse());
+    // Both cert and key files must have been written under the storage path.
+    assertNotNull(ci.getCertificate());
+    assertNotNull(ci.getPrivateKey());
+    assertTrue(Files.exists(Paths.get(ci.getCertificate())));
+    assertTrue(Files.exists(Paths.get(ci.getPrivateKey())));
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testUploadCustomCertHostPathRootCertificate() throws IOException {
+    String certContent = TestUtils.readResource("platform.dev.crt");
+    ObjectNode bodyJson = Json.newObject();
+    Date date = new Date();
+    bodyJson.put("label", "upload_custom_host_path_test");
+    bodyJson.put("certContent", certContent);
+    bodyJson.put("certStart", date.getTime());
+    bodyJson.put("certExpiry", date.getTime());
+    bodyJson.put("certType", CertConfigType.CustomCertHostPath.name());
+    ObjectNode customCertInfo = Json.newObject();
+    customCertInfo.put("rootCertPath", "/tmp/rootCertPath");
+    customCertInfo.put("nodeCertPath", "/tmp/nodeCertPath");
+    customCertInfo.put("nodeKeyPath", "/tmp/nodeKeyPath");
+    customCertInfo.put("clientCertPath", "/tmp/clientCertPath");
+    customCertInfo.put("clientKeyPath", "/tmp/clientKeyPath");
+    bodyJson.set("customCertInfo", customCertInfo);
+
+    Result result = uploadCertificate(customer.getUuid(), bodyJson);
+    assertEquals(OK, result.status());
+
+    UUID certUUID = UUID.fromString(Json.parse(contentAsString(result)).asText());
+    CertificateInfo ci = CertificateInfo.get(certUUID);
+    assertNotNull(ci);
+    assertEquals("upload_custom_host_path_test", ci.getLabel());
+    assertEquals(CertConfigType.CustomCertHostPath, ci.getCertType());
+    assertFalse(ci.getInUse());
+    // CustomCertHostPath stores only paths; the round-tripped struct must match
+    // exactly what was POSTed.
+    CertificateParams.CustomCertInfo persisted = ci.getCustomCertPathParams();
+    assertNotNull(persisted);
+    assertEquals("/tmp/rootCertPath", persisted.rootCertPath);
+    assertEquals("/tmp/nodeCertPath", persisted.nodeCertPath);
+    assertEquals("/tmp/nodeKeyPath", persisted.nodeKeyPath);
+    assertEquals("/tmp/clientCertPath", persisted.clientCertPath);
+    assertEquals("/tmp/clientKeyPath", persisted.clientKeyPath);
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testUploadCustomServerRootCertificate() throws IOException {
+    String certContent = TestUtils.readResource("platform.dev.crt");
+    String serverCertContent = TestUtils.readResource("server.dev.crt");
+    String serverKeyContent = TestUtils.readResource("server.dev.key");
+    ObjectNode bodyJson = Json.newObject();
+    Date date = new Date();
+    bodyJson.put("label", "upload_custom_server_test");
+    bodyJson.put("certContent", certContent);
+    bodyJson.put("certStart", date.getTime());
+    bodyJson.put("certExpiry", date.getTime());
+    bodyJson.put("certType", CertConfigType.CustomServerCert.name());
+    ObjectNode serverCertJson = Json.newObject();
+    serverCertJson.put("serverCertContent", serverCertContent);
+    serverCertJson.put("serverKeyContent", serverKeyContent);
+    bodyJson.set("customServerCertData", serverCertJson);
+
+    Result result = uploadCertificate(customer.getUuid(), bodyJson);
+    assertEquals(OK, result.status());
+
+    UUID certUUID = UUID.fromString(Json.parse(contentAsString(result)).asText());
+    CertificateInfo ci = CertificateInfo.get(certUUID);
+    assertNotNull(ci);
+    assertEquals("upload_custom_server_test", ci.getLabel());
+    assertEquals(CertConfigType.CustomServerCert, ci.getCertType());
+    assertFalse(ci.getInUse());
+    // The root cert and the server cert+key must all be persisted to disk.
+    assertNotNull(ci.getCertificate());
+    assertTrue(Files.exists(Paths.get(ci.getCertificate())));
+    CertificateInfo.CustomServerCertInfo serverInfo = ci.getCustomServerCertInfo();
+    assertNotNull(serverInfo);
+    assertNotNull(serverInfo.serverCert);
+    assertNotNull(serverInfo.serverKey);
+    assertTrue(Files.exists(Paths.get(serverInfo.serverCert)));
+    assertTrue(Files.exists(Paths.get(serverInfo.serverKey)));
     assertAuditEntry(1, customer.getUuid());
   }
 

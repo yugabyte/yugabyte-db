@@ -39,6 +39,7 @@
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/logging.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/trace.h"
 

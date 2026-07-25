@@ -1,6 +1,7 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
@@ -32,6 +33,12 @@ public class DrConfigGetResp {
   public DrConfigGetResp(DrConfig drConfig, XClusterConfig xClusterConfig) {
     this.drConfig = drConfig;
     this.xClusterConfig = xClusterConfig;
+  }
+
+  /** Active xCluster config backing this response; not part of the API payload. */
+  @JsonIgnore
+  public XClusterConfig getActiveXClusterConfig() {
+    return xClusterConfig;
   }
 
   @ApiModelProperty(value = "DR config UUID")

@@ -1767,7 +1767,7 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
 
   auto const tablet_peer_result = server_->tablet_manager()->CreateNewTablet(
       table_info, req->tablet_id(), partition, req->config(), req->colocated(), snapshot_schedules,
-      hosted_services);
+      hosted_services, req->target_storage_tier());
   if (PREDICT_FALSE(!tablet_peer_result.ok())) {
     status = tablet_peer_result.status();
     auto is_already_present = status.IsAlreadyPresent();
@@ -1893,7 +1893,7 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
       req->tablet_id(), delete_type,
       tablet::ShouldAbortActiveTransactions(req->should_abort_active_txns()),
       cas_config_opid_index_less_or_equal, req->hide_only(), req->keep_data(), &error_code,
-      std::move(txn_id));
+      std::move(txn_id), resp);
   if (PREDICT_FALSE(!s.ok())) {
     HandleErrorResponse(resp, &context, s, error_code);
     return;
@@ -2514,10 +2514,8 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   // TODO(jason): come up with a more efficient connection reuse method for tserver-postgres
   // communication.  As of D19621, connections are spawned each request for YSQL upgrade, index
   // backfill, and this.  Creating the connection has a startup cost.
-  auto res = pgwrapper::CreateInternalPGConnBuilder(
-                 server_->pgsql_proxy_bind_address(), "template1",
-                 server_->GetSharedMemoryPostgresAuthKey(), modified_deadline)
-                 .Connect();
+  auto res = server_->CreateInternalPGConn(
+      "template1", kDefaultInternalPgUser, /*simple_query_protocol=*/false, modified_deadline);
   if (!res.ok()) {
     LOG_WITH_PREFIX_AND_FUNC(WARNING) << "failed to connect to local postgres: " << res.status();
     SetupErrorAndRespond(resp->mutable_error(), res.status(), &context);
@@ -3571,7 +3569,9 @@ void TabletServiceImpl::PgRemoteExec(
 
   // TODO(#30396): Maintain a pool of connections instead of creating a new connection
   auto conn = server_->CreateInternalPGConn(
-      req->database_name(), /* simple_query_protocol */ false, context.GetClientDeadline());
+      req->database_name(), /* user */ "yb_global_views_user",
+      /* simple_query_protocol */ false, context.GetClientDeadline(),
+      pgwrapper::YbInternalConnKindWireName::kGlobalView);
   if (!conn.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), conn.status(), &context);
     return;
@@ -4018,7 +4018,8 @@ void TabletServiceImpl::AdminExecutePgsql(
   auto execute_pg_sql = [&req, &context, &server = server_]() -> Status {
     const auto& deadline = context.GetClientDeadline();
     auto pg_conn = VERIFY_RESULT(
-        server->CreateInternalPGConn(req->database_name(), false, deadline));
+        server->CreateInternalPGConn(req->database_name(), kDefaultInternalPgUser, false,
+                                     deadline));
     for (const auto& stmt : req->pgsql_statements()) {
       SCHECK_LT(
           CoarseMonoClock::Now(), deadline, TimedOut, "Timed out while executing Ysql statements");

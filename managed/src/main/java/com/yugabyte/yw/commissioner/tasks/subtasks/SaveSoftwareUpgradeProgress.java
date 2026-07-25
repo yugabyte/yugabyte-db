@@ -36,6 +36,13 @@ public class SaveSoftwareUpgradeProgress extends UniverseTaskBase {
 
     /** When true, set universe {@code softwareUpgradeState} to Paused after saving progress. */
     public boolean pauseAfter;
+
+    /**
+     * When true, mark {@code prevYBSoftwareConfig.masterPauseCompleted} so the canary
+     * pauseAfterMasters checkpoint is not re-emitted on a later abort+retry. Only ever sets the
+     * flag to true; never resets it.
+     */
+    public boolean markMasterPauseCompleted;
   }
 
   protected Params taskParams() {
@@ -72,6 +79,9 @@ public class SaveSoftwareUpgradeProgress extends UniverseTaskBase {
               p.tserverAZUpgradeStatesList != null
                   ? new ArrayList<>(p.tserverAZUpgradeStatesList)
                   : new ArrayList<>());
+          if (p.markMasterPauseCompleted) {
+            prev.setMasterPauseCompleted(true);
+          }
           if (p.pauseAfter) {
             details.softwareUpgradeState = UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
           }

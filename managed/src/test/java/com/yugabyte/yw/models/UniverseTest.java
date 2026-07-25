@@ -130,7 +130,7 @@ public class UniverseTest extends FakeDBApplication {
     Set<UUID> uuids =
         Sets.newHashSet(u1.getUniverseUUID(), u2.getUniverseUUID(), u3.getUniverseUUID());
 
-    Set<Universe> universes = Universe.getAllPresent(uuids);
+    Set<Universe> universes = Universe.getAllWithoutResources(uuids);
     assertNotNull(universes);
     assertEquals(universes.size(), 3);
   }
@@ -558,6 +558,43 @@ public class UniverseTest extends FakeDBApplication {
   }
 
   @Test
+  public void testAreTagsSameMulticloud() {
+    UUID providerUUID = defaultProvider.getUuid();
+    Map<String, String> tags = ImmutableMap.of("Cust", "Test", "Dept", "Misc");
+
+    UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
+        new UniverseDefinitionTaskParams.ProviderSpecification();
+    providerSpecification.setProviderUUID(providerUUID);
+    providerSpecification.setProviderType(CloudType.aws);
+    providerSpecification.setInstanceTags(tags);
+
+    UserIntent userIntent = getBaseIntent();
+    userIntent.providerType = CloudType.aws;
+    userIntent.providerSpecifications = List.of(providerSpecification);
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+
+    UserIntent sameTagsIntent = getBaseIntent();
+    sameTagsIntent.providerType = CloudType.aws;
+    UniverseDefinitionTaskParams.ProviderSpecification sameSpec =
+        new UniverseDefinitionTaskParams.ProviderSpecification();
+    sameSpec.setProviderUUID(providerUUID);
+    sameSpec.setProviderType(CloudType.aws);
+    sameSpec.setInstanceTags(tags);
+    sameTagsIntent.providerSpecifications = List.of(sameSpec);
+    assertTrue(cluster.areTagsSame(new Cluster(ClusterType.PRIMARY, sameTagsIntent)));
+
+    UserIntent differentTagsIntent = getBaseIntent();
+    differentTagsIntent.providerType = CloudType.aws;
+    UniverseDefinitionTaskParams.ProviderSpecification differentSpec =
+        new UniverseDefinitionTaskParams.ProviderSpecification();
+    differentSpec.setProviderUUID(providerUUID);
+    differentSpec.setProviderType(CloudType.aws);
+    differentSpec.setInstanceTags(ImmutableMap.of("Cust", "Test"));
+    differentTagsIntent.providerSpecifications = List.of(differentSpec);
+    assertFalse(cluster.areTagsSame(new Cluster(ClusterType.PRIMARY, differentTagsIntent)));
+  }
+
+  @Test
   public void testAreTagsSameErrors() {
     Universe u = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
@@ -901,5 +938,104 @@ public class UniverseTest extends FakeDBApplication {
     assertEquals("instType1", userIntent.getInstanceType(UniverseTaskBase.ServerType.TSERVER, az1));
     assertEquals(
         "masterInstType", userIntent.getInstanceType(UniverseTaskBase.ServerType.MASTER, az1));
+  }
+
+  @Test
+  public void testGetNodePrefixesForCustomer() {
+    Universe universeA = createUniverse("universe-a", defaultCustomer.getId());
+    Universe universeB = createUniverse("universe-b", defaultCustomer.getId());
+    Customer otherCustomer = ModelFactory.testCustomer("oc", "other@customer.com");
+    ModelFactory.awsProvider(otherCustomer);
+    Universe otherUniverse = createUniverse("other-universe", otherCustomer.getId());
+
+    Set<String> prefixes = Universe.getNodePrefixesForCustomer(defaultCustomer.getId());
+
+    assertEquals(2, prefixes.size());
+    assertTrue(prefixes.contains(universeA.getUniverseDetails().nodePrefix));
+    assertTrue(prefixes.contains(universeB.getUniverseDetails().nodePrefix));
+    assertFalse(prefixes.contains(otherUniverse.getUniverseDetails().nodePrefix));
+  }
+
+  @Test
+  public void testGetNodePrefixesForCustomerSkipsBlankPrefixes() {
+    Universe universe = createUniverse(defaultCustomer.getId());
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    details.nodePrefix = "";
+    universe.setUniverseDetails(details);
+    universe.update();
+
+    Set<String> prefixes = Universe.getNodePrefixesForCustomer(defaultCustomer.getId());
+
+    assertFalse(prefixes.contains(""));
+  }
+
+  @Test
+  public void testGetNodePrefixesForCustomerEmptyWhenNoUniverses() {
+    Customer emptyCustomer = ModelFactory.testCustomer("nc", "no-universes@customer.com");
+
+    Set<String> prefixes = Universe.getNodePrefixesForCustomer(emptyCustomer.getId());
+
+    assertTrue(prefixes.isEmpty());
+  }
+
+  @Test
+  public void testFindUniverseUuidsByNodePrefix() {
+    Universe universe = createUniverse("find-me", defaultCustomer.getId());
+    String nodePrefix = universe.getUniverseDetails().nodePrefix;
+
+    List<UUID> universeUuids =
+        Universe.findUniverseUuidsByNodePrefix(defaultCustomer.getId(), nodePrefix);
+
+    assertEquals(1, universeUuids.size());
+    assertEquals(universe.getUniverseUUID(), universeUuids.get(0));
+  }
+
+  @Test
+  public void testFindUniverseUuidsByNodePrefixNotFound() {
+    createUniverse(defaultCustomer.getId());
+
+    List<UUID> universeUuids =
+        Universe.findUniverseUuidsByNodePrefix(defaultCustomer.getId(), "nonexistent-prefix");
+
+    assertTrue(universeUuids.isEmpty());
+  }
+
+  @Test
+  public void testFindUniverseUuidsByNodePrefixCustomerIsolation() {
+    Universe universe = createUniverse("shared-name", defaultCustomer.getId());
+    Customer otherCustomer = ModelFactory.testCustomer("ic", "isolated@customer.com");
+    ModelFactory.awsProvider(otherCustomer);
+    createUniverse("shared-name", otherCustomer.getId());
+
+    List<UUID> universeUuids =
+        Universe.findUniverseUuidsByNodePrefix(
+            defaultCustomer.getId(), universe.getUniverseDetails().nodePrefix);
+
+    assertEquals(1, universeUuids.size());
+    assertEquals(universe.getUniverseUUID(), universeUuids.get(0));
+  }
+
+  @Test
+  public void testFindUniverseUuidsByNodePrefixReturnsMultipleMatches() {
+    Universe universeOne = createUniverse("u1", defaultCustomer.getId());
+    Universe universeTwo = createUniverse("u2", defaultCustomer.getId());
+    String sharedPrefix = "shared-test-prefix";
+
+    UniverseDefinitionTaskParams detailsOne = universeOne.getUniverseDetails();
+    detailsOne.nodePrefix = sharedPrefix;
+    universeOne.setUniverseDetails(detailsOne);
+    universeOne.update();
+
+    UniverseDefinitionTaskParams detailsTwo = universeTwo.getUniverseDetails();
+    detailsTwo.nodePrefix = sharedPrefix;
+    universeTwo.setUniverseDetails(detailsTwo);
+    universeTwo.update();
+
+    List<UUID> universeUuids =
+        Universe.findUniverseUuidsByNodePrefix(defaultCustomer.getId(), sharedPrefix);
+
+    assertEquals(2, universeUuids.size());
+    assertTrue(universeUuids.contains(universeOne.getUniverseUUID()));
+    assertTrue(universeUuids.contains(universeTwo.getUniverseUUID()));
   }
 }

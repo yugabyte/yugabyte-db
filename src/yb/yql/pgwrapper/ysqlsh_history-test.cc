@@ -104,6 +104,39 @@ class YsqlshHistoryTest : public PgWrapperTestBase {
 
     const std::string extra = extra_flags.empty() ? "" : " " + JoinStrings(extra_flags, " ");
 
+#if defined(__APPLE__)
+    // BSD `script` on macOS has both an incompatible CLI and a race: it tears down the pty
+    // when stdin closes, so cat's EOF can race ysqlsh entering raw mode and the up-arrows
+    // get eaten by the pty in cooked mode. Use `expect` instead — it lets us wait for the
+    // prompt before sending input. macOS ships /usr/bin/expect by default.
+    // Note: in YB's Format(), `$` introduces a positional placeholder. Use `$$` to emit a
+    // literal `$` for tcl variable references like `$f`.
+    const auto expect_script = Format(
+        "set timeout 30\n"
+        "eval spawn \"$0\" -h $1 -p $2 -U yugabyte -X $3\n"
+        "expect \"yugabyte=#\"\n"
+        "set f [open \"$4\" r]\n"
+        "set data [read $$f]\n"
+        "close $$f\n"
+        "send -- $$data\n"
+        "expect eof\n",
+        ysqlsh_path, pg_ts->bind_host(), pg_ts->ysql_port(), extra, input_path);
+    const auto expect_path = WriteTempFile(
+        Format("ysqlsh_expect_$0.tcl", next_input_id_++), expect_script);
+    const auto command = Format(
+        "set -euo pipefail\n"
+        "export PSQL_HISTORY=\"$0\"\n"
+        "export HISTFILE=\"$0\"\n"
+        "expect \"$1\"\n",
+        history_path, expect_path);
+
+    // Non-login shell on macOS: a login shell sources ~/.bash_profile, which on macOS dev
+    // machines typically pulls in the tec/shadowenv init. That init installs a DEBUG trap
+    // whose hook references an internal variable that gets `unset` on its first call; under
+    // `set -u` the second trap firing aborts the shell before our command runs. Linux test
+    // images don't have this init, so they keep the login shell.
+    std::vector<std::string> argv = {"/bin/bash", "-c", command};
+#else
     // Use `script` so ysqlsh sees a pty and enables history.
     // Linux requires -c to specify the command; macOS doesn't support -c but accepts it as a
     // positional argument.
@@ -117,6 +150,8 @@ class YsqlshHistoryTest : public PgWrapperTestBase {
         history_path, input_path, ysqlsh_path, pg_ts->bind_host(), pg_ts->ysql_port(), extra);
 
     std::vector<std::string> argv = {"/bin/bash", "-lc", command};
+#endif
+
     std::string output;
     std::string error;
     RETURN_NOT_OK(Subprocess::Call(argv, &output, &error));

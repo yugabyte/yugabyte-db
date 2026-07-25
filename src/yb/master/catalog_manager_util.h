@@ -23,6 +23,7 @@
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/util/status_callback.h"
+#include "yb/util/status_format.h"
 
 // Utility functions that can be shared between test and code for catalog manager.
 namespace yb {

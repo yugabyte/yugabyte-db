@@ -283,6 +283,89 @@ You can also create "Custom Queries" by providing PromQL expressions; their resu
 
 </details>
 
+## Collect node data
+
+YugabyteDB Anywhere exposes REST APIs that run a short script on universe nodes to collect specified files or directories into archives you can download. This replaces manually SSHing into each node to run the same diagnostic command or gather the same paths.
+
+This feature is only available only via the YugabyteDB Anywhere [REST API](../../anywhere-automation/anywhere-api/) or [CLI](../../anywhere-automation/anywhere-cli/).
+
+### Best practices
+
+- For routine diagnostics that do not require arbitrary commands, consider using [support bundles](#use-support-bundles) first.
+
+- These APIs can read arbitrary files and run arbitrary commands on database nodes. They are intended for YugabyteDB Support and site reliability engineers during active troubleshooting. Before using them on a production universe, contact {{% support-platform %}} to confirm the approach and the safest way to invoke the APIs.
+
+- Keep the feature [enabled](#prerequisites) only for the duration of an active troubleshooting session, and set it back to false when you are done.
+
+- Scripts should be short-lived, idempotent, and self-terminating. They run as the configured Linux user on each node; treat them as high-impact commands that can run concurrently on every targeted node. After execution has started on a node, it **cannot** be cancelled remotely from YBA. When you only need logs or configuration files, prefer the file-collection APIs over ad-hoc shell scripts (run-script) so size and depth limits apply and the operation stays auditable.
+
+- Use this feature only for _ad-hoc troubleshooting_. Do not embed it in automation, cron jobs, backup pipelines, or other recurring workflows.
+
+### Prerequisites
+
+The All Nodes Script APIs are disabled by default. All `run-script` and `file-collection` API calls return HTTP 400 until the feature is enabled.
+
+To enable All Nodes Script APIs, set the **Enable All Nodes Script APIs** Universe Runtime Configuration option (config key `yb.node_script.enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
+In addition, you need the following:
+
+- An [API token](../../anywhere-automation/#authentication) for a user whose role includes the **TROUBLESHOOT** permission on the target universe, and the **DEBUG** permission to download file collections. For information on mapping roles and permissions to API access, see [Manage access to YugabyteDB Anywhere](../../administer-yugabyte-platform/anywhere-rbac/).
+- Shell access to the YugabyteDB Anywhere host for any operation that changes state on database nodes (run-script, creating or deleting a file collection, or downloading a collection with cleanup (see [Limitations](#limitations))).
+
+### Using the APIs
+
+The `run-script`, `file-collection create` and `delete` operations, and the "cleanup after download" variant of the `download` operation are restricted to localhost access only; you can only invoke them from the YugabyteDB Anywhere host itself, and not from a remote client.
+
+Per-request limits (timeouts, maximum parallel nodes, maximum file and total collection sizes, maximum directory depth, Linux user, and similar options) are defined in the YugabyteDB Anywhere OpenAPI specification for the `runScript` and `createFileCollection` operations. For details, see the [YugabyteDB Anywhere REST API](../../anywhere-automation/anywhere-api/) documentation.
+
+Avoid long-running or non-idempotent scripts; remote cancellation is not available after a script starts on a node.
+
+Invocations are recorded in the YBA audit log (target type **Universe**; actions include **RunScript**, **CreateFileCollection**, **DownloadFileCollection**, and **DeleteFileCollection**).
+
+The implementation uses the existing Node Agent channel to database nodes; you do not need separate SSH credentials for these APIs when Node Agent is already in use.
+
+#### Run a script on YugabyteDB nodes
+
+Use the `run-script` API when you need the same shell commands executed on many universe nodes in one round trip, instead of SSHing to each host.
+
+Endpoint to run a script:
+
+```sh
+POST /api/v2/customers/{cUUID}/universes/{uniUUID}/run-script
+```
+
+You can provide the script body or point to a script file that already exists on the YBA host. You can target all nodes, Masters only, TServers only, a specific cluster, or an explicit list of node names, and you can also cap parallel execution across nodes.
+
+The response is synchronous and includes the stdout, exit code, and per-node success or failure summary.
+
+#### Collect files, download, and clean up
+
+- Endpoint to create a collection:
+
+    ```sh
+    POST /api/v2/customers/{cUUID}/universes/{uniUUID}/file-collections
+    ```
+
+    Accepts a list of file paths and/or directory paths to gather, along with size and depth limits. Files are packaged into a tar archive on each node. The response includes a `collection_uuid` that identifies the collection.
+
+- Endpoint to download a collection:
+
+    ```sh
+    GET /api/v2/customers/{cUUID}/universes/{uniUUID}/file-collections/{collectionUUID}/download
+    ```
+
+    Streams the per-node archives as a combined download.
+
+- Endpoint to delete a collection:
+
+    ```sh
+    DELETE /api/v2/customers/{cUUID}/universes/{uniUUID}/file-collections/{collectionUUID}
+    ```
+
+    Removes staged archives from the database nodes and can optionally remove related data from YBA local storage.
+
+Contact {{% support-platform %}} for invocation examples suited to your environment and issue.
+
 ## Debug crashing YugabyteDB pods in Kubernetes
 
 If the YugabyteDB pods of your universe are crashing, you can debug them with the help of following instructions.
@@ -383,22 +466,59 @@ Typically, the maximum follower lag of a healthy universe is a few seconds at mo
 
 ## Run pre-checks before edit and upgrade operations
 
-Before running most edit and upgrade operations, YBA applies the following pre-checks to the universe to ensure that operations do not leave the universe in an unhealthy state.
+YugabyteDB Anywhere runs automated pre-checks before rolling upgrades and other cluster changes begin. The goal is to detect unhealthy nodes, unreachable management paths, or broken inter-node networking early, so rolling software upgrades and edit-cluster operations fail fast instead of stalling mid-task.
+
+Many edit and upgrade dialogs include a **Run Pre-check Only** button. Use this to validate the planned change without applying it. The task appears in the universe **Tasks** list with a **Validation** prefix.
+
+When a pre-check fails, the parent task is blocked in the pre-check phase. Task details and logs show which check failed and on which node. To view results, navigate to your universe **Tasks** tab, or refer to [Monitor and manage universe tasks](../../manage-deployments/retry-failed-task/).
+
+### When pre-checks apply
+
+Pre-checks are run as follows:
+
+- Rolling upgrades. This includes software upgrades, rollbacks, certificate rotation, VM image upgrades, GFlag changes, and other upgrade tasks that use rolling upgrade mode. If `skipNodeChecks` is `true` on the upgrade request, the checks are skipped.
+
+- Edit cluster and universe operations on live nodes. This includes **Edit Universe**, **Replace Node**, and **Decommission Node**.
+
+- Universe creation and node provisioning, including inter-node DB port connectivity checks when new nodes are added.
+
+Pre-checks run on the live subset of nodes in the planned change (nodes that are Live in the task parameters).
+
+Pre-checks do not apply in the following cases:
+
+- Comprehensive pre-checks (service liveness, command execution, DB port connectivity) do not apply to Kubernetes universes.
+- Rolling-operation pre-checks (under-replicated tablets, nodes safe to take down, comprehensive pre-checks) do not apply to non-rolling upgrades.
+- Nodes not in **Live** state. For rolling upgrades, if any node in the restart set is not Live, comprehensive pre-checks are skipped.
+- Task retries. Comprehensive pre-checks run only on the first attempt of a task; retries skip them to avoid duplicate work.
+
+### Configure pre-checks
+
+Most checks can be turned off or tuned using universe-scoped runtime configuration. Use these only when you understand the risk. For example, during a controlled maintenance window with manual validation.
+
+The following universe-scoped runtime configuration parameters control comprehensive pre-checks:
+
+| Flag | Details |
+| :--- | :--- |
+| `yb.checks.comprehensive_prechecks.enabled` | Default: `true`. When `false`, skips service liveness, command execution, and DB port connectivity checks that are gated on this flag. |
+| `yb.checks.comprehensive_prechecks.check_service_liveness_timeout` | Default: `1m`. Timeout for each liveness check subtask during comprehensive pre-checks. |
+
+Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/) for instructions on viewing and changing these parameters.
+
+### Pre-checks
+
+#### (Rolling operations) Under-replicated tablets
 
 <details>
-  <summary><b>(Rolling operations) Under-replicated tablets</b></summary>
   <br>
 
-**Symptom (An approximate sample error message)**
+During upgrades, YBA will not proceed if any tablets have fewer than the desired copies of tablets (typically the same as the overall [replication factor (RF)](../../../architecture/key-concepts/#replication-factor-rf)).
+
+**Symptom (approximate sample error message)**
 
 ```text
 CheckUnderReplicatedTablets, timing out after retrying 20 times for a duration of 10005ms,
 greater than max time out of 10000ms. Under-replicated tablet size: 3. Failing....
 ```
-
-**Details**
-
-During upgrades, YBA will not proceed if any tablets have fewer than the desired copies of tablets (typically the same as the overall [replication factor (RF)](../../../architecture/key-concepts/#replication-factor-rf)).
 
 **Possible action/workaround**
 
@@ -408,21 +528,20 @@ During upgrades, YBA will not proceed if any tablets have fewer than the desired
 
 </details>
 
+#### (Rolling operations) Are nodes safe to take down?
+
 <details>
-  <summary><b>(Rolling operations) Are nodes safe to take down?</b></summary>
   <br>
 
-**Symptom (An approximate sample error message)**
+During upgrades, YBA will not proceed if any tablets or YB-Masters have fewer than the desired copies of tablets (typically the same as the overall [replication factor (RF)](../../../architecture/key-concepts/#replication-factor-rf)).
+
+**Symptom (approximate sample error message)**
 
 ```text
 Nodes are not safe to take down:
 TSERVERS: [10.1.1.1] have a problem: Server[YB Master - 10.1.1.1:7100] ILLEGAL_STATE[code 9]: 3 tablet(s) would be under-replicated.
 Example: tablet c8bf6d0092004dee91c1df80e9f4223a would be under-replicated by 1 replicas
 ```
-
-**Details**
-
-During upgrades, YBA will not proceed if any tablets or YB-Masters have fewer than the desired copies of tablets (typically the same as the overall [replication factor (RF)](../../../architecture/key-concepts/#replication-factor-rf)).
 
 **Possible action/workaround**
 
@@ -434,19 +553,18 @@ During upgrades, YBA will not proceed if any tablets or YB-Masters have fewer th
 
 </details>
 
+#### Leaderless tablets detected on the universe
+
 <details>
-  <summary><b>Leaderless tablets detected on the universe</b></summary>
   <br>
 
-**Symptom (An approximate sample error message)**
+YBA verifies that the universe is in a healthy state before starting operations. If any tablets do not have leaders, this check prevents further progress.
+
+**Symptom (approximate sample error message)**
 
 ```text
 There are leaderless tablets: [b8a3e62d6868490abca0aba82e3477d7]
 ```
-
-**Details**
-
-YBA verifies that the universe is in a healthy state before starting operations. If any tablets do not have leaders, this check prevents further progress.
 
 **Possible action/workaround**
 
@@ -456,17 +574,10 @@ YBA verifies that the universe is in a healthy state before starting operations.
 
 </details>
 
+#### Universe consistency check
+
 <details>
-  <summary><b>Universe consistency check</b></summary>
   <br>
-
-**Symptom (An approximate sample error message)**
-
-```text
-No rows updated performing consistency check, stale universe metadata.
-```
-
-**Details**
 
 YBA verifies that the configuration of deployed YB-Masters and YB-TServers matches the YBA metadata (`universe_details_json`). In general, any discrepancy may indicate that some operations were performed on the YB-Masters/YB-TServers without YBA's knowledge and may need to be reconciled with the YBA metadata. This could happen due to:
 
@@ -474,6 +585,12 @@ YBA verifies that the configuration of deployed YB-Masters and YB-TServers match
 - Restoring a stale backup to a standby in HA.
 - Manually restoring a stale backup using YBA Installer.
 - During manual migration to a new host using YBA Installer.
+
+**Symptom (approximate sample error message)**
+
+```text
+No rows updated performing consistency check, stale universe metadata.
+```
 
 **Possible action/workaround**
 
@@ -483,20 +600,19 @@ YBA verifies that the configuration of deployed YB-Masters and YB-TServers match
 
 </details>
 
+#### Cluster consistency check
+
 <details>
-  <summary><b>Cluster consistency check</b></summary>
   <br>
 
-**Symptom (An approximate sample error message)**
+YBA verifies that the configuration of deployed YB-Masters and YB-TServers matches the YBA metadata (`universe_details_json`). In general, any discrepancy may indicate that some operations were performed on the YB-Masters/YB-TServers without YBA's knowledge and may need to be reconciled with the YBA metadata.
+
+**Symptom (approximate sample error message)**
 
 ```text
 Unexpected TSERVER: 10.1.1.1, node with such ip is not present in cluster
 Unexpected MASTER:, 10.1.1.1 node yb-node-1 is not marked as MASTER
 ```
-
-**Details**
-
-YBA verifies that the configuration of deployed YB-Masters and YB-TServers matches the YBA metadata (`universe_details_json`). In general, any discrepancy may indicate that some operations were performed on the YB-Masters/YB-TServers without YBA's knowledge and may need to be reconciled with the YBA metadata.
 
 **Possible action/workaround**
 
@@ -505,24 +621,188 @@ YBA verifies that the configuration of deployed YB-Masters and YB-TServers match
 
 </details>
 
+#### Follower lag check
+
 <details>
-  <summary><b>Follower lag check</b></summary>
   <br>
 
-**Symptom (An approximate sample error message)**
+After a node is restarted as part of a rolling operation, YBA verifies that the YB-Masters and YB-TServers catch up to their peers. If this does not happen in a specified duration, YBA aborts the rolling operation.
+
+**Symptom (approximate sample error message)**
 
 ```text
 CheckFollowerLag, timing out after retrying 10 times for a duration of 10000ms
 ```
-
-**Details**
-
-After a node is restarted as part of a rolling operation, YBA verifies that the YB-Masters and YB-TServers catch up to their peers. If this does not happen in a specified duration, YBA aborts the rolling operation.
 
 **Possible action/workaround**
 
 1. Fix any unhealthy nodes in the cluster or problematic network conditions that prevent the node from catching up to its peers.
 1. Allow a restarted node more time to catch up to its peers by increasing the timeout for the [global runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag `yb.checks.follower_lag.timeout`.
 1. If temporary unavailability is acceptable, disable this check briefly by turning off the global runtime configuration flag `yb.checks.follower_lag.enabled`.
+
+</details>
+
+#### Service liveness check
+
+<details>
+  <br>
+
+Confirms YugabyteDB processes (and node agent, if present) respond on each node before YugabyteDB Anywhere restarts or reconfigures them.
+
+**Symptom (approximate sample error message)**
+
+```text
+Service(s) MASTER, TSERVER are not alive on node n1 (IP: 10.0.0.5)
+```
+
+**Scope:** YB-Master, YB-TServer, and node agent (when installed) on each node in the pre-check set.
+
+**Typical failure conditions**
+
+- YB-Master or YB-TServer process is down or not listening.
+- Node agent is registered but not reachable.
+- Liveness probe exceeds the configured timeout.
+
+**Possible action/workaround**
+
+1. On the node (or via the YugabyteDB Anywhere UI), verify `yb-master`, `yb-tserver`, and node-agent services are running.
+1. Review the universe **Nodes** tab and node logs; fix crash loops or port conflicts.
+1. Retry the operation after processes are healthy.
+
+**Disable**
+
+Set `yb.checks.comprehensive_prechecks.enabled` to `false` on the universe.
+
+</details>
+
+#### Node command execution check
+
+<details>
+  <br>
+
+Verifies YugabyteDB Anywhere can run remote commands on the node via node agent (preferred) or SSH, before relying on that path for upgrade or edit scripts.
+
+**Symptom (approximate sample error message)**
+
+```text
+Cannot execute commands on node n1 (IP: 10.0.0.5). Node may be unreachable or SSH/node-agent connection may be unavailable.
+```
+
+**Scope:** Each live node in edit, replace, or decommission operations; each node in the rolling restart set for upgrades; and stop-node when comprehensive pre-checks are enabled.
+
+**Typical failure conditions**
+
+- Dead node.
+- Node agent unreachable or not executing commands.
+- SSH keys, bastion, or firewall blocking management access.
+- Command times out (default **10 seconds** per node).
+
+**Possible action/workaround**
+
+1. Confirm node agent health on the node (`node-agent` service) and that the node appears correctly in YugabyteDB Anywhere.
+1. If using SSH fallback, verify provider credentials, security groups, and SSH access from YugabyteDB Anywhere to the node.
+1. Fix networking or reinstall node agent if needed. Refer to [Prepare to upgrade YugabyteDB Anywhere](../../upgrade/prepare-to-upgrade/#node-agent).
+
+**Disable**
+
+Set `yb.checks.comprehensive_prechecks.enabled` to `false` on the universe.
+
+</details>
+
+#### DB node port connectivity check
+
+<details>
+  <br>
+
+Validates TCP connectivity between database nodes on YB-Master RPC and YB-TServer RPC ports using a socket probe run from one node toward others. Checks both forward (source → target) and reverse (target → source) directions when IPs are available.
+
+**Symptom (approximate sample error message)**
+
+```text
+Port connectivity check failed (forward) from n1 (10.0.0.5) to n2 (10.0.0.6) on port 7100
+```
+
+**Scope:** Universe create, add node, and related provisioning or configure flows for nodes in eligible states, grouped by availability zone. Runs during universe creation and when adding or configuring nodes. It is not invoked by rolling upgrades or by edit-cluster operations on existing live nodes.
+
+**Typical failure conditions**
+
+- Security groups or firewall rules block RPC ports between availability zones or regions.
+- Wrong private or public IP selection for cloud networking.
+- Port filtered or unreachable (probe returns UNREACHABLE or FILTERED).
+
+**Possible action/workaround**
+
+1. Ensure the YB-Master and YB-TServer RPC ports (defaults: `7100` and `9100`; configurable per universe) are open between all database nodes in the universe, in both directions.
+1. Confirm cloud private IP versus public IP settings match your network design.
+
+**Disable**
+
+Set `yb.checks.comprehensive_prechecks.enabled` to `false` on the universe. The same flag gates this check during provisioning.
+
+
+</details>
+
+#### Data directory disk space check
+
+<details>
+  <br>
+
+Ensures each targeted node has enough free space on the YugabyteDB data directory before running an operation that may write additional state to disk.
+
+**Symptom (approximate sample error message)**
+
+```text
+Node n1 has insufficient free disk space on data dir /mnt/d0: required 3221225472 bytes, available 1073741824 bytes
+```
+
+**Scope:** Runs as a pre-check for tasks that schedule it. Currently, this applies to the GFlags upgrade task.
+
+**Typical failure conditions**
+
+- Data directory filesystem nearly full.
+- Wrong data directory path on the node.
+
+**Possible action/workaround**
+
+1. Free disk space on the data volume or expand the disk.
+1. Confirm `data_dir` and mount layout match universe configuration.
+1. Retry the task that triggered the pre-check.
+
+**Disable**
+
+For upgrade tasks, set `skipNodeChecks: true` on the upgrade API request.
+
+</details>
+
+#### Duplicate instance check
+
+<details>
+  <br>
+
+Queries the cloud provider for each node and fails if more than one VM or instance matches the node's name (and `node-uuid` tag, when present). This guards against orphaned cloud resources left behind by interrupted tasks or manual changes.
+
+**Symptom (approximate sample error message)**
+
+```text
+Duplicate instances found for node myuniverse-n1 in universe <uuid>: [{id=i-abc123, private_ip=10.0.0.5, ...}, {id=i-def456, private_ip=10.0.0.9, ...}]
+```
+
+**Scope:** Public cloud providers (AWS, GCP, Azure) only; on-prem nodes are skipped. Runs for every node during edit-universe operations when comprehensive pre-checks are enabled.
+
+**Typical failure conditions**
+
+- A prior create, replace-node, or edit task provisioned a VM but did not terminate the old one.
+- A stopped or orphaned VM shares the same `Name` tag (AWS) or instance name as the live node.
+- Older universes without `node-uuid` tags, where multiple VMs match on name alone.
+
+**Possible action/workaround**
+
+1. In the cloud console, find instances matching the node name from the error (on AWS, search by the `Name` tag).
+1. Compare `private_ip` values against the universe **Nodes** tab to identify the orphan.
+1. Terminate or delete the extra instance, then retry the operation.
+
+**Disable**
+
+Set `yb.checks.comprehensive_prechecks.enabled` to `false` on the universe.
 
 </details>

@@ -31,12 +31,14 @@
 //
 
 #include "yb/tools/yb-admin_client.h"
+#include "yb/tools/yb-admin_util.h"
 
+#include <iomanip>
 #include <sstream>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
-#include <iomanip>
+#include <unordered_set>
 
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
@@ -89,7 +91,6 @@
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/tools/tools_utils.h"
-#include "yb/tools/yb-admin_util.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
 
@@ -1348,6 +1349,7 @@ Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS(const PeerId& uuid)
 Status ClusterAdminClient::ListAllTabletServers(bool exclude_dead) {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
+  SortListTabletServerEntries(servers);
   char kSpaceSep = ' ';
 
   cout << RightPadToUuidWidth("Tablet Server UUID") << kSpaceSep
@@ -1469,6 +1471,9 @@ Status ClusterAdminClient::ListAllMasters() {
 Status ClusterAdminClient::ListTabletServersLogLocations() {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
+  // Sort alive tservers first so unreachable (DEAD/unknown) nodes appear last,
+  // matching the ordering of list_all_tablet_servers.
+  SortListTabletServerEntries(servers);
 
   if (!servers.empty()) {
     cout << RightPadToUuidWidth("TS UUID") << kColumnSep
@@ -1478,17 +1483,38 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
   }
 
   for (const ListTabletServersResponsePB::Entry& server : servers) {
-    auto ts_uuid = server.instance_id().permanent_uuid();
+    const auto& ts_uuid = server.instance_id().permanent_uuid();
+    const auto ts_addr_str = FormatFirstHostPort(
+        server.registration().common().private_rpc_addresses());
 
-    HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS(ts_uuid));
+    // Skip RPCs to known-dead tservers and report them as unavailable so one
+    // unreachable node does not abort listing for the rest of the cluster.
+    if (server.has_alive() && !server.alive()) {
+      cout << ts_uuid << kColumnSep << ts_addr_str << kColumnSep << "N/A" << endl;
+      continue;
+    }
 
+    if (!server.has_registration() ||
+        server.registration().common().private_rpc_addresses().empty()) {
+      LOG(WARNING) << "Tablet server " << ts_uuid << " has no RPC address registered";
+      cout << ts_uuid << kColumnSep << ts_addr_str << kColumnSep << "N/A" << endl;
+      continue;
+    }
+
+    HostPort ts_addr = HostPortFromPB(server.registration().common().private_rpc_addresses(0));
     TabletServerServiceProxy ts_proxy(proxy_cache_.get(), ts_addr);
 
-    const auto resp = VERIFY_RESULT(InvokeRpc(
-        &TabletServerServiceProxy::GetLogLocation, ts_proxy, tserver::GetLogLocationRequestPB()));
+    auto resp = InvokeRpc(
+        &TabletServerServiceProxy::GetLogLocation, ts_proxy, tserver::GetLogLocationRequestPB());
+    if (!resp.ok()) {
+      LOG(WARNING) << "Unable to get log location from tablet server " << ts_uuid
+                   << " at " << ts_addr << ": " << resp.status();
+      cout << ts_uuid << kColumnSep << ts_addr_str << kColumnSep << "N/A" << endl;
+      continue;
+    }
     cout << ts_uuid << kColumnSep
-         << ts_addr << kColumnSep
-         << resp.log_location() << endl;
+         << ts_addr_str << kColumnSep
+         << resp->log_location() << endl;
   }
 
   return Status::OK();
@@ -3997,7 +4023,8 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
     const TypedNamespaceName& ns, const std::string& checkpoint_type,
     const cdc::CDCRecordType record_type,
     const std::string& consistent_snapshot_option,
-    const bool& is_dynamic_tables_enabled) {
+    const bool& is_dynamic_tables_enabled,
+    const std::unordered_set<std::string>& bound_table_ids) {
   HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
 
@@ -4036,6 +4063,23 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
         CDCSDKDynamicTablesOption::DYNAMIC_TABLES_DISABLED);
   }
 
+  if (!bound_table_ids.empty()) {
+    if (ns.db_type != YQLDatabase::YQL_DATABASE_PGSQL) {
+      return STATUS(
+          InvalidArgument, "Bound table CDC streams are only supported for YSQL namespaces");
+    }
+
+    if (is_dynamic_tables_enabled) {
+      return STATUS(
+          InvalidArgument, "Bound table CDC streams cannot be created with dynamic tables enabled");
+    }
+
+    auto* bound = stream_create_options->mutable_bound_table_ids();
+    for (const auto& id : bound_table_ids) {
+      bound->add_table_ids(id);
+    }
+  }
+
   RpcController rpc;
   rpc.set_timeout(timeout_);
   RETURN_NOT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));
@@ -4046,6 +4090,8 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
   }
 
   cout << "CDC Stream ID: " << resp.db_stream_id() << endl;
+  cout << "WARNING: yb-admin create_change_data_stream is deprecated. "
+       << "Use pg_create_logical_replication_slot('<slot>', 'yb_grpc') instead." << endl;
   return Status::OK();
 }
 

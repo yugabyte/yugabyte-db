@@ -378,7 +378,7 @@ extern void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
  */
 extern TM_Result YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 							  LockWaitPolicy wait_policy, EState *estate,
-							  const YbcIsExplicitlyLockedRowSkippedCheckHandle *handle);
+							  YbcIsExplicitlyLockedRowSkippedCheckHandleOptional *handle);
 
 /*
  * Fetch a single row for given ybctid into a heap-tuple.
@@ -415,7 +415,6 @@ extern Size yb_estimate_parallel_size(void);
 extern void yb_init_partition_key_data(void *data);
 extern void yb_rescan_partition_key_data(void *data);
 extern void ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
-							  YbcPgExecParameters *exec_params,
 							  bool is_forward);
 extern bool ybParallelNextRange(YBParallelPartitionKeys ppk,
 								const char **low_bound, size_t *low_bound_size,

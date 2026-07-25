@@ -14,6 +14,7 @@
 #pragma once
 
 #include <array>
+#include <chrono>
 #include <functional>
 #include <string_view>
 #include <utility>
@@ -127,6 +128,8 @@ Status IncrementAllDBCatalogVersions(
 
 void GenerateCSVFileForCopy(
     const std::string& filename, int num_rows, int num_columns = 2, int offset = 0);
+
+std::chrono::steady_clock::time_point NextDiscreteTimePoint(std::chrono::milliseconds step);
 
 } // namespace pgwrapper
 } // namespace yb

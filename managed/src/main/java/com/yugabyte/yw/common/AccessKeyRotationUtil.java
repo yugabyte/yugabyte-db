@@ -192,11 +192,12 @@ public class AccessKeyRotationUtil {
     List<AccessKey> accessKeys = new ArrayList<AccessKey>();
     clusters.forEach(
         cluster -> {
-          String clusterAccessKeyCode = cluster.userIntent.accessKeyCode;
-          if (StringUtils.isNotEmpty(clusterAccessKeyCode)) {
-            UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
-            AccessKeyId id = AccessKeyId.create(providerUUID, clusterAccessKeyCode);
-            accessKeys.add(allAccessKeys.get(id));
+          for (UUID providerUUID : cluster.userIntent.getAllProviderUUIDs()) {
+            String accessKey = cluster.userIntent.getAccessKeyCodeForProvider(providerUUID);
+            if (StringUtils.isNotEmpty(accessKey)) {
+              AccessKeyId id = AccessKeyId.create(providerUUID, accessKey);
+              accessKeys.add(allAccessKeys.get(id));
+            }
           }
         });
     return accessKeys;

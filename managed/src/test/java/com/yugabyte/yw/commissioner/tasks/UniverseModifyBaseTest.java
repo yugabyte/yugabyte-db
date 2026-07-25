@@ -222,6 +222,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
       mockMasterAndPeerRoles(mockClient, () -> dbMasters);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
+      mockDbNodePortConnectivityResponse(mockNodeUniverseManager);
       lenient()
           .when(
               mockNodeUniverseManager.runCommand(

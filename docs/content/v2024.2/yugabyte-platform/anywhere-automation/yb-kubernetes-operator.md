@@ -22,7 +22,7 @@ The Operator establishes `ybuniverse` as a Custom Resource (CR) in Kubernetes, a
 
 ## YugabyteDB Kubernetes Operator CRDs
 
-The Yugabyte Operator provides additional Custom Resource Definitions (CRDs) to manage the day 2 operations of a YBA universe, including the following:
+The YugabyteDB Operator provides additional Custom Resource Definitions (CRDs) to manage the day 2 operations of a YBA universe, including the following:
 
 - Release CRD - run multiple releases of YugabyteDB and upgrade the software in a YBA universe
 - Support Bundle CRD - collect logs when a universe fails
@@ -229,7 +229,7 @@ spec:
       http:
         paths:
           helmChart: "https://charts.yugabyte.com/yugabyte-2.20.1.tgz"
-          x86_64: "https://downloads.yugabyte.com/releases/2.20.1.3/yugabyte-2.20.1.3-b3-linux-x86_64.tar.gz"
+          x86_64: "https://software.yugabyte.com/releases/2.20.1.3/yugabyte-2.20.1.3-b3-linux-x86_64.tar.gz"
 ```
 
 ### Backup and restore

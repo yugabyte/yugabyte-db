@@ -87,12 +87,19 @@ Build options:
     Only build Java code
   --resolve-java-dependencies
     Force Maven to download all Java dependencies to the local repository
+  --no-scoped-java-build, --full-java-build
+    When building for a single Java test, build all Java modules instead of just the test's module
+    and its dependencies. By default the build is scoped to the test's module (using "mvn -pl
+    <module> --also-make"), which avoids building unrelated modules.
 
   --build-yugabyted-ui
     Build yugabyted-ui. If specified with --cmake-only, it won't be built.
 
   --skip-pg-parquet
     Skip pg_parquet extension build.
+  --skip-extra-pg-extensions
+    Skip building extra (non-essential) PG extensions: documentdb (also skips its pgrx/Rust build)
+    and pg_parquet.
 
   --target, --targets
     Pass the given target or set of targets to make or ninja.
@@ -251,7 +258,12 @@ Test options:
     Remove logs after a successful test run.
   --stop-at-failure, --stop-on-failure
     Stop running further iterations after the first failure happens when running a unit test
-    repeatedly.
+    repeatedly. Equivalent to --max-failures 1.
+  --max-failures, -mf <num_failures>
+    Stop running further iterations after this many failures happen when running a unit test
+    repeatedly. Helpful for reproducing a flaky test locally: reaching a target number of failures
+    lets you estimate how many iterations are needed to hit that many failures. Delegates to the
+    -mf / --max-failures option of repeat_unit_test.sh.
   --stack-trace-error-status, --stes
     When running tests, print stack traces when error statuses are generated. Only works in
     non-release mode.
@@ -377,6 +389,10 @@ set_default_yb_build_args() {
   reduce_log_output=""
 
   resolve_java_dependencies=false
+
+  # When building for a single Java test, scope the Maven build to that test's module (and its
+  # dependencies) instead of building the whole reactor. Disabled with --no-scoped-java-build.
+  scope_java_build_to_test_module=true
 
   run_cmake_unit_tests=false
 
@@ -526,6 +542,9 @@ parse_yb_build_cmd_line() {
       --skip-java-build|--skip-java|--sjb|--sj|--no-java|--nj)
         build_java=false
       ;;
+      --no-scoped-java-build|--full-java-build)
+        scope_java_build_to_test_module=false
+      ;;
       --run-java-tests|--java-tests)
         run_java_tests=true
       ;;
@@ -628,6 +647,9 @@ parse_yb_build_cmd_line() {
       ;;
       --skip-pg-parquet)
         export YB_SKIP_PG_PARQUET_BUILD=1
+      ;;
+      --skip-extra-pg-extensions)
+        export YB_SKIP_EXTRA_PG_EXTENSIONS=1
       ;;
       --num-repetitions|--num-reps|-n)
         ensure_option_has_arg "$@"
@@ -796,6 +818,14 @@ parse_yb_build_cmd_line() {
       ;;
       --stop-at-failure|--stop-on-failure|--saf|--sof)
         repeat_unit_test_inherited_args+=( "$1" )
+      ;;
+      --max-failures|-mf)
+        ensure_option_has_arg "$@"
+        if [[ ! $2 =~ ^[0-9]+$ ]]; then
+          fatal "Invalid number of max failures: $2"
+        fi
+        repeat_unit_test_inherited_args+=( --max-failures "$2" )
+        shift
       ;;
       --stack-trace-error-status|--stes)
         export YB_STACK_TRACE_ON_ERROR_STATUS=1

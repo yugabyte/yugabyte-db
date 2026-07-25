@@ -53,6 +53,7 @@
 #include "yb/client/client_utils.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/namespace_alterer.h"
+#include "yb/client/namespace_info.h"
 #include "yb/client/permissions.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
@@ -60,6 +61,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
+#include "yb/client/transaction_status_tablets.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
@@ -286,7 +288,7 @@ DEFINE_RUNTIME_int32(ysql_num_tablets, 1,
 
 // Non-runtime because pggate uses it.
 DEFINE_NON_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms,
-    40000,
+    20000,
     "WaitForYsqlBackendsCatalogVersion client-to-master RPC timeout. Specifically, both the "
     "postgres-to-tserver and tserver-to-master RPC timeout.");
 TAG_FLAG(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms, advanced);
@@ -301,6 +303,12 @@ DEFINE_test_flag(int32, create_namespace_if_not_exist_inject_delay_ms, 0,
     "before creating the namespace.");
 
 namespace yb::client {
+
+const CDCSDKDynamicTablesOption& DefaultDynamicTablesOption() {
+  static const CDCSDKDynamicTablesOption kDefault =
+      CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED;
+  return kDefault;
+}
 
 namespace {
 
@@ -1601,7 +1609,8 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     const CDCSDKDynamicTablesOption& dynamic_tables_option,
     uint64_t *consistent_snapshot_time_out,
     const std::optional<ReplicationSlotLsnType>& lsn_type,
-    const std::optional<ReplicationSlotOrderingMode>& ordering_mode) {
+    const std::optional<ReplicationSlotOrderingMode>& ordering_mode,
+    const std::vector<TableId>& bound_table_ids) {
   CreateCDCStreamRequestPB req;
 
   if (populate_namespace_id_as_table_id) {
@@ -1633,6 +1642,12 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
   }
   req.mutable_cdcsdk_stream_create_options()->set_cdcsdk_dynamic_tables_option(
       dynamic_tables_option);
+  if (!bound_table_ids.empty()) {
+    auto* bound = req.mutable_cdcsdk_stream_create_options()->mutable_bound_table_ids();
+    for (const auto& id : bound_table_ids) {
+      bound->add_table_ids(id);
+    }
+  }
 
   CreateCDCStreamResponsePB resp;
   deadline = PatchAdminDeadline(deadline);
@@ -1658,7 +1673,9 @@ Status YBClient::GetCDCStream(
     TableIds* unqualified_table_ids,
     std::optional<ReplicationSlotLsnType>* lsn_type,
     std::optional<ReplicationSlotOrderingMode>* ordering_mode,
-    std::optional<bool>* detect_publication_changes_implicitly) {
+    std::optional<bool>* detect_publication_changes_implicitly,
+    std::optional<std::string>* replication_slot_plugin_name,
+    bool* is_notification_slot) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1717,6 +1734,11 @@ Status YBClient::GetCDCStream(
     *replication_slot_name = resp.stream().cdcsdk_ysql_replication_slot_name();
   }
 
+  if (replication_slot_plugin_name &&
+      resp.stream().has_cdcsdk_ysql_replication_slot_plugin_name()) {
+    *replication_slot_plugin_name = resp.stream().cdcsdk_ysql_replication_slot_plugin_name();
+  }
+
   if (lsn_type && resp.stream().has_cdc_stream_info_options() &&
       resp.stream().cdc_stream_info_options().has_cdcsdk_ysql_replication_slot_lsn_type()) {
     *lsn_type = resp.stream().cdc_stream_info_options().cdcsdk_ysql_replication_slot_lsn_type();
@@ -1731,6 +1753,10 @@ Status YBClient::GetCDCStream(
   if (detect_publication_changes_implicitly &&
       resp.stream().has_detect_publication_changes_implicitly()) {
     *detect_publication_changes_implicitly = resp.stream().detect_publication_changes_implicitly();
+  }
+
+  if (is_notification_slot) {
+    *is_notification_slot = resp.stream().is_notification_slot();
   }
 
   return Status::OK();
@@ -3259,6 +3285,10 @@ void YBClient::ClearAllMetaCachesOnServer() {
 
 Status YBClient::ClearMetacache(const std::string& namespace_id) {
   return data_->meta_cache_->ClearCacheEntries(namespace_id);
+}
+
+void YBClient::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {
+  data_->meta_cache_->MarkTServersAsFollowers(ts_uuids);
 }
 
 template <class PB>

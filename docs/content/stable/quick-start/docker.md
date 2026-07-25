@@ -205,7 +205,7 @@ Type "help" for help.
 yugabyte=#
 ```
 
-To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](/stable/sample-data/retail-analytics/).
+To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](/stable/develop/sample-data/retail-analytics/).
 
 ## Monitor your cluster
 

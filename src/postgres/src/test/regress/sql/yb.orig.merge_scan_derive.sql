@@ -18,35 +18,35 @@ SET yb_enable_derived_saops = true;
 -- No order
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT * FROM bkt_tbl;'
-\i :iter_Q2
+\i :run_query
 
 -- No limit
 \set query ':explain :Q SELECT * FROM bkt_tbl ORDER BY r1, r2, r3;'
-\i :iter_Q2
+\i :run_query
 
 -- Forward scan
 \set query ':P :Q SELECT * FROM bkt_tbl ORDER BY r1, r2, r3, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- Backward scan
 \set query ':P :Q SELECT * FROM bkt_tbl ORDER BY r1 DESC, r2 DESC, r3 DESC, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- DISTINCT
 \set query ':P :Q SELECT DISTINCT r1, r2, r3 FROM bkt_tbl ORDER BY r1, r2, r3 LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- GROUP BY
 \set query ':P :Q SELECT COUNT(*), r1, r2, r3 FROM bkt_tbl GROUP BY r1, r2, r3 ORDER BY r1, r2, r3 LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- Explicit SAOP smaller than derived SAOP
 \set query ':P :Q SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2) ORDER BY r1, r2, r3, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- Explicit SAOP larger than derived SAOP
 \set query ':P :Q SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2, 3, 4) ORDER BY r1, r2, r3, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 CREATE INDEX NONCONCURRENTLY ON bkt_tbl (bkt ASC, r3, r2, r1)
 SPLIT AT VALUES (
@@ -60,15 +60,15 @@ SPLIT AT VALUES (
 -- No limit
 -- TODO(#29078): this likely should use merge scan.
 \set query ':explain :Q SELECT * FROM bkt_tbl ORDER BY r3, r2, r1;'
-\i :iter_Q2
+\i :run_query
 
 -- Forward scan
 \set query ':P :Q SELECT * FROM bkt_tbl ORDER BY r3, r2, r1, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- Backward scan
 \set query ':P :Q SELECT * FROM bkt_tbl ORDER BY r3 DESC, r2 DESC, r1 DESC, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 --
 -- Derive from secondary index expression, expression being a prefix
@@ -85,29 +85,29 @@ SPLIT AT VALUES (
 -- No limit
 -- TODO(#29078): this likely should use merge scan.
 \set query ':explain :Q SELECT * FROM r5n ORDER BY r2, r3;'
-\i :iter_Q2
+\i :run_query
 
 -- Forward scan
 \set query ':P :Q SELECT * FROM r5n ORDER BY r2, r3, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- Explicit SAOP smaller than derived SAOP
 \set query ':P :Q SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2) ORDER BY r2, r3, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- Explicit SAOP larger than derived SAOP
 \set query ':P :Q SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2, 4, 8) ORDER BY r2, r3, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- Expression bound to constant
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT yb_hash_code(r2, r3, r4) % 3, r2, r3, n FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 = 1 ORDER BY r2, r3, n LIMIT 5;'
-\i :iter_Q2
+\i :run_query
 
 -- Range filter; no ORDER BY
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT * FROM r5n WHERE r2 > 1 LIMIT 5;'
-\i :iter_Q2
+\i :run_query
 
 -- (Drop this index)
 DROP INDEX r5n_expr_r2_r3_r4_idx;
@@ -128,18 +128,18 @@ SPLIT AT VALUES (
 -- Expression in sort, so not derived
 -- Merge scan should not be used.
 \set query ':explain :Q SELECT r1, yb_hash_code(r1, r3, r4) % -5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;'
-\i :iter_Q2
+\i :run_query
 
 -- Expression in sort, so not derived (v2)
 \set query ':P :Q SELECT yb_hash_code(r1, r3, r4) % -5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- Derived
 -- Third hint is to use the expression index.
 \set query ':P :Q SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5;'
 \set Q3 '/*+IndexScan(r5n r5n_r1_expr_r3_r4_idx) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/'
-\set Pnext :iter_Q3
-\i :iter_P2
+\i :run_query
+\unset Q3
 
 -- Following queries send various numbers of requests/scan various number of
 -- rows due to non-deterministic order of equal rows in merge sort.  Hide their
@@ -148,8 +148,7 @@ SPLIT AT VALUES (
 
 -- Derived with multiple stream keys
 \set query ':P :Q SELECT r3, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r3, r4, n LIMIT 5;'
-\set Pnext :iter_Q2
-\i :iter_P2
+\i :run_query
 
 -- (Reset the explain change)
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
@@ -170,15 +169,15 @@ SPLIT AT VALUES (
 
 -- Parent
 \set query ':P :Q SELECT r2, r3, n FROM parent ORDER BY r2, r3, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- Child
 \set query ':P :Q SELECT r2, r3, n FROM child1 ORDER BY r2, r3, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- Grandchild
 \set query ':P :Q SELECT r2, r3, n FROM child1b ORDER BY r2, r3, n LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- (Drop this index)
 DROP INDEX parent_expr_r2_r3_idx;
@@ -204,11 +203,11 @@ SPLIT AT VALUES (
 
 -- Derive from r5n
 \set query ':P :Q SELECT r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY r5n.r2 LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- Derive from parent
 \set query ':P :Q SELECT parent.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY parent.r2 LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- 2-hop =-const equivalence
 -- Third hint is to show that when a JOIN doesn't care about the ordering of
@@ -220,4 +219,4 @@ SPLIT AT VALUES (
 \set Q3 '/*+Leading((parent r5n)) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/'
 \set Q4 '/*+MergeJoin(parent r5n) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/'
 \set Q5 '/*+MergeJoin(parent r5n) Leading((parent r5n)) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/'
-\i :iter_Q5
+\i :run_query

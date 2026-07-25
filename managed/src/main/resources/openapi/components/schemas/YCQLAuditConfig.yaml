@@ -3,13 +3,6 @@ description: YCQL Audit Logging Configuration. Part of AuditLogConfig.
 type: object
 required:
   - enabled
-  - excluded_categories
-  - excluded_keyspaces
-  - excluded_users
-  - included_categories
-  - included_keyspaces
-  - included_users
-  - log_level
 properties:
   enabled:
     description: Enabled

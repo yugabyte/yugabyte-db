@@ -314,7 +314,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - Global objects like Users, Roles, and Tablespaces are not replicated. These objects must be manually managed on the standby universe.
 - DDLs related to Materialized Views (`CREATE`, `DROP`, and `REFRESH`) are not replicated. You can manually run these on both universes by setting the YSQL configuration parameter `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`.
-- `ALTER COLUMN TYPE`, `ADD COLUMN ... SERIAL`, and `ALTER LARGE OBJECT` DDLs are not supported.
+- `ALTER COLUMN TYPE`, `ADD COLUMN ... SERIAL`, and [ALTER LARGE OBJECT](https://www.postgresql.org/docs/15/sql-alterlargeobject.html) DDLs are not supported (YugabyteDB does not support [large objects](https://www.postgresql.org/docs/15/largeobjects.html), see issue {{<issue 25318>}}).
 - DDLs related to `PUBLICATION` and `SUBSCRIPTION` are not supported.
 - Replication of colocated tables is not yet supported.  See {{<issue 25926>}}.
 - Rewinding of sequences (for example, restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
@@ -324,11 +324,11 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 #### Transactional Semi-Automatic and Manual mode
 
-- Schema changes are not automatically replicated. All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables).
+- Schema changes are not automatically replicated. All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables/).
 
   An exception are DDLs related to PUBLICATION and SUBSCRIPTION, which should only be used on the source universe.
 
-- `ALTER TABLE` DDLs that involve table rewrites (see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)) may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
+- You cannot run [ALTER TABLE DDLs that involve table rewrites](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite) (including those that rewrite only the associated indexes, or both the table and associated indexes) while replication is running. You will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
 
 - The `TRUNCATE` command is not supported.
 
@@ -350,7 +350,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - Table rewrites
 
-  `ALTER TABLE` DDLs that involve table rewrites (see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)) may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
+  You cannot run [ALTER TABLE DDLs that involve table rewrites](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite) (including those that rewrite only the associated indexes, or both the table and associated indexes) while replication is running. You will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
 
 - Composite, enum, and range (array) types
 

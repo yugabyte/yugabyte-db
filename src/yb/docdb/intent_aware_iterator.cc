@@ -783,7 +783,10 @@ Result<Slice> IntentAwareIterator::FetchValue(Slice key, docdb::UpdateFilterKey 
   Seek(key, SeekFilter::kAll, Full::kTrue);
   auto fetch_result = VERIFY_RESULT_REF(Fetch());
 
-  return fetch_result.key == key ? fetch_result.value : Slice{};
+  // When the seek finds no matching entry, FillEntry() leaves entry_.key pointing at the
+  // previously fetched key, whose backing RocksDB block may already have been freed by this
+  // seek. Guard on validity so we never read that stale slice.
+  return fetch_result && fetch_result.key == key ? fetch_result.value : Slice{};
 }
 
 template <bool kDescending>

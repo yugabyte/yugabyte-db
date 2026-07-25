@@ -27,6 +27,14 @@ If your cluster database version is v2024.2 or later, you can enable early acces
 Enabling Enhanced Postgres Compatibility sets several flags, and overrides any settings you may have set for the same flags on the **G-Flags** tab. The **G-Flags** tab will however continue to display the setting that you customized.
 {{</warning>}}
 
+## Connection Pooling
+
+On universes with [built-in connection pooling](../../../additional-features/connection-manager-ysql/) enabled, you can customize YSQL Connection Manager settings using **Actions > Edit Flags**.
+
+Do not set `enable_ysql_conn_mgr`, `ysql_conn_mgr_port`, or `pgsql_proxy_bind_address` through **Edit Flags** when YugabyteDB Anywhere manages connection pooling for the universe.
+
+For information on Connection Manager settings and defaults, refer to [Set up YSQL Connection Manager](../../../additional-features/connection-manager-ysql/ycm-setup/#configure).
+
 ## Modify configuration flags
 
 You can add and edit configuration flags by navigating to the universe and clicking **Actions > Edit Flags** to open the **G-Flags** dialog shown in the following illustration:

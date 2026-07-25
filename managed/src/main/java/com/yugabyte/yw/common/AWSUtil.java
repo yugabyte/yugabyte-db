@@ -136,6 +136,7 @@ public class AWSUtil implements CloudUtil {
   public static final String YBC_AWS_ENDPOINT_FIELDNAME = "AWS_ENDPOINT";
   public static final String YBC_AWS_DEFAULT_REGION_FIELDNAME = "AWS_DEFAULT_REGION";
   public static final String YBC_AWS_ACCESS_TOKEN_FIELDNAME = "AWS_ACCESS_TOKEN";
+  public static final String YBC_AWS_SDK_UA_APP_ID_FIELDNAME = "AWS_SDK_UA_APP_ID";
   public static final String YBC_USE_AWS_IAM_FIELDNAME = "USE_AWS_IAM";
   private static final Pattern standardHostBaseCompiled =
       Pattern.compile(AWS_STANDARD_HOST_BASE_PATTERN);
@@ -1369,7 +1370,15 @@ public class AWSUtil implements CloudUtil {
     String hostBase = getOrCreateHostBase(s3Data, bucket, bucketRegion, region);
     s3CredsMap.put(YBC_AWS_ENDPOINT_FIELDNAME, hostBase);
     s3CredsMap.put(YBC_AWS_DEFAULT_REGION_FIELDNAME, bucketRegion);
+    String appId = getAwsSdkUaAppId();
+    if (StringUtils.isNotBlank(appId)) {
+      s3CredsMap.put(YBC_AWS_SDK_UA_APP_ID_FIELDNAME, appId);
+    }
     return s3CredsMap;
+  }
+
+  public String getAwsSdkUaAppId() {
+    return System.getenv(YBC_AWS_SDK_UA_APP_ID_FIELDNAME);
   }
 
   private void fillMapWithIAMCreds(

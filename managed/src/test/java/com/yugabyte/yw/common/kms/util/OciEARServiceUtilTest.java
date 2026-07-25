@@ -15,6 +15,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -63,6 +64,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
   private String vaultOcid = "ocid1.vault.oc1..fake";
   private String region = "us-phoenix-1";
   private String keyOcid = "ocid1.key.oc1..fake";
+  private String keyName = "fake-key-name";
   private Customer customer;
   private Universe universe;
 
@@ -79,15 +81,18 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
 
     fakeAuthConfig = mapper.createObjectNode();
     fakeAuthConfig.put("name", authConfigName);
-    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.TENANCY_OCID.fieldName, tenancyOcid);
-    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.USER_OCID.fieldName, userOcid);
-    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.FINGERPRINT.fieldName, fingerprint);
-    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.PRIVATE_KEY.fieldName, privateKey);
+    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.ociTenancyId.fieldName, tenancyOcid);
+    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.ociUserId.fieldName, userOcid);
     fakeAuthConfig.put(
-        OciEARServiceUtil.OciKmsAuthConfigField.OCI_COMPARTMENT_OCID.fieldName, compartmentOcid);
-    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_VAULT_OCID.fieldName, vaultOcid);
-    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_REGION.fieldName, region);
-    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_KEY_OCID.fieldName, keyOcid);
+        OciEARServiceUtil.OciKmsAuthConfigField.ociFingerprint.fieldName, fingerprint);
+    fakeAuthConfig.put(
+        OciEARServiceUtil.OciKmsAuthConfigField.ociPrivateKeyContent.fieldName, privateKey);
+    fakeAuthConfig.put(
+        OciEARServiceUtil.OciKmsAuthConfigField.ociCompartmentId.fieldName, compartmentOcid);
+    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.ociVaultId.fieldName, vaultOcid);
+    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.ociRegion.fieldName, region);
+    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.ociKeyName.fieldName, keyName);
+    fakeAuthConfig.put(OciEARServiceUtil.OciKmsAuthConfigField.ociKeyOcid.fieldName, keyOcid);
 
     doReturn(fakeclient).when(mockOciEARServiceUtil).getKmsVaultClient(configUUID, fakeAuthConfig);
     doReturn(fakeKmsManagementClient)
@@ -136,17 +141,37 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
     assertEquals(keyOcid, result);
   }
 
+  @Test
+  public void testResolveKeyOcid_cachedOcid_returnsWithoutLookup() {
+    // When an OCID is already cached, it is returned as-is.
+    String result = mockOciEARServiceUtil.resolveKeyOcid(configUUID, fakeAuthConfig);
+    assertEquals(keyOcid, result);
+  }
+
+  @Test
+  public void testResolveKeyOcid_fromName_resolvesAndCaches() {
+    ObjectNode form = fakeAuthConfig.deepCopy();
+    form.remove(OciEARServiceUtil.OciKmsAuthConfigField.ociKeyOcid.fieldName);
+
+    doReturn(keyOcid).when(mockOciEARServiceUtil).getKeyOcidByName(any(), any(), eq(keyName));
+
+    String result = mockOciEARServiceUtil.resolveKeyOcid(configUUID, form);
+    assertEquals(keyOcid, result);
+    assertEquals(
+        keyOcid, form.path(OciEARServiceUtil.OciKmsAuthConfigField.ociKeyOcid.fieldName).asText());
+  }
+
   @Test(expected = RuntimeException.class)
   public void testGetCredentials_missingField_throws() {
     ObjectNode bad = fakeAuthConfig.deepCopy();
-    bad.put(OciEARServiceUtil.OciKmsAuthConfigField.PRIVATE_KEY.fieldName, "");
+    bad.put(OciEARServiceUtil.OciKmsAuthConfigField.ociPrivateKeyContent.fieldName, "");
     mockOciEARServiceUtil.getCredentials(bad);
   }
 
   @Test
   public void testValidateKMSProviderConfigFormData_missingCompartment_throws() {
     ObjectNode form = fakeAuthConfig.deepCopy();
-    form.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_COMPARTMENT_OCID.fieldName, "");
+    form.put(OciEARServiceUtil.OciKmsAuthConfigField.ociCompartmentId.fieldName, "");
     try {
       mockOciEARServiceUtil.validateKMSProviderConfigFormData(form);
     } catch (RuntimeException e) {
@@ -157,7 +182,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
   @Test
   public void testValidateKMSProviderConfigFormData_missingVault_throws() {
     ObjectNode form = fakeAuthConfig.deepCopy();
-    form.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_VAULT_OCID.fieldName, "");
+    form.put(OciEARServiceUtil.OciKmsAuthConfigField.ociVaultId.fieldName, "");
     try {
       mockOciEARServiceUtil.validateKMSProviderConfigFormData(form);
     } catch (RuntimeException e) {
@@ -168,7 +193,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
   @Test
   public void testValidateKMSProviderConfigFormData_missingRegion_throws() {
     ObjectNode form = fakeAuthConfig.deepCopy();
-    form.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_REGION.fieldName, "");
+    form.put(OciEARServiceUtil.OciKmsAuthConfigField.ociRegion.fieldName, "");
     try {
       mockOciEARServiceUtil.validateKMSProviderConfigFormData(form);
     } catch (RuntimeException e) {
@@ -179,7 +204,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
   @Test
   public void testValidateKMSProviderConfigFormData_invalidRegionString_throws() {
     ObjectNode form = fakeAuthConfig.deepCopy();
-    form.put(OciEARServiceUtil.OciKmsAuthConfigField.OCI_REGION.fieldName, "not-a-real-region");
+    form.put(OciEARServiceUtil.OciKmsAuthConfigField.ociRegion.fieldName, "not-a-real-region");
     try {
       mockOciEARServiceUtil.validateKMSProviderConfigFormData(form);
     } catch (RuntimeException e) {

@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from db.connection_pool import ConnectionPool
+from db.system_connection_pool import SystemConnectionPool
 from work_queue.poller import Poller
 from work_queue.task_router import get_router
 from work_queue.task_type_keys import TaskTypeKeys
@@ -161,6 +162,45 @@ def _resolve_worker_document_types() -> List[str]:
     return document_types
 
 
+def _maybe_preload_docling_models():
+    """Preload Docling PDF->Markdown models when this worker handles PDFs.
+
+    Only runs when fine-tuning is enabled (``ENABLE_FINETUNING=true``) AND this
+    worker is configured to process PDFs, so non-PDF/text workers never pay the
+    model-loading cost. Failures are logged but non-fatal -- per-document
+    conversion will surface a clear error if artifacts are missing.
+    """
+    finetuning_enabled = (
+        os.getenv("ENABLE_FINETUNING", "false").strip().lower() == "true"
+    )
+    if not finetuning_enabled:
+        logger.info("Fine-tuning disabled; skipping Docling model preload")
+        return
+
+    document_types = _resolve_worker_document_types()
+    if "application/pdf" not in document_types:
+        logger.info(
+            "Worker does not handle PDFs; skipping Docling model preload"
+        )
+        return
+
+    try:
+        from pdf_processing.docling_loader import preload_docling_models
+
+        logger.info("Preloading Docling PDF models for fine-tuning...")
+        if preload_docling_models():
+            logger.info("Docling PDF models preloaded successfully")
+        else:
+            logger.error(
+                "Docling model preload reported failure; PDF fine-tuning tasks "
+                "will error until model artifacts are available"
+            )
+    except Exception as e:
+        logger.error(
+            f"Unexpected error preloading Docling models: {e}", exc_info=True
+        )
+
+
 def polling_worker():
     """
     Synchronous worker thread that continuously polls for work queue tasks.
@@ -311,6 +351,14 @@ async def lifespan(app: FastAPI):
         ConnectionPool.initialize(db_connection_string)
         logger.info("ConnectionPool initialized successfully")
 
+        # Initialize the system connection pool when a dedicated meko_system
+        # connection string is configured. Used for the Langfuse key lookup,
+        # which lives in a different database than the shared pool serves.
+        system_connection_string = os.getenv("YUGABYTEDB_SYSTEM_CONN_STRING")
+        if system_connection_string:
+            SystemConnectionPool.initialize(system_connection_string)
+            logger.info("SystemConnectionPool initialized successfully")
+
         # Initialize task router and register processors
         router = get_router()
         router.register(
@@ -326,6 +374,8 @@ async def lifespan(app: FastAPI):
             UserPromptEmbedder()
         )
         logger.info("Task processors registered successfully")
+
+        _maybe_preload_docling_models()
 
         # Start the polling worker thread
         poller_thread = threading.Thread(target=polling_worker, daemon=True)
@@ -356,6 +406,9 @@ async def lifespan(app: FastAPI):
 
         ConnectionPool.close_all()
         logger.info("ConnectionPool closed successfully")
+
+        SystemConnectionPool.close_all()
+        logger.info("SystemConnectionPool closed successfully")
     except Exception as e:
         logger.error(f"Error during shutdown: {e}")
 

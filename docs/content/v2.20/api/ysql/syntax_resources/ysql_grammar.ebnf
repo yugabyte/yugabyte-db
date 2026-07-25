@@ -225,6 +225,7 @@ alter_table_action =
     | 'DROP' [ 'COLUMN' ] [ 'IF' 'EXISTS' ] column_name [ 'RESTRICT' | 'CASCADE' ]
     | 'ALTER' [ 'COLUMN' ] column_name [ 'SET DATA' ]
       'TYPE' data_type [ 'COLLATE' collation ] [ 'USING' expression ]
+    | 'ALTER' 'CONSTRAINT' constraint_name [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ]
     | 'ADD' alter_table_constraint
     | 'DROP' 'CONSTRAINT' constraint_name [ 'RESTRICT' | 'CASCADE' ]
     | 'RENAME' [ 'COLUMN' ] column_name 'TO' column_name

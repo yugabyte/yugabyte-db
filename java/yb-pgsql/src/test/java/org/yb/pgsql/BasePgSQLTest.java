@@ -470,12 +470,37 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected Connection createTestRole() throws Exception {
     try (Connection initialConnection = getConnectionBuilder().withUser(DEFAULT_PG_USER).connect();
          Statement statement = initialConnection.createStatement()) {
-        statement.execute(
+        executeSetupStatementWithConflictRetry(statement,
             String.format("CREATE ROLE %s SUPERUSER CREATEROLE CREATEDB BYPASSRLS LOGIN ",
                           TEST_PG_USER));
     }
 
     return getConnectionBuilder().connect();
+  }
+
+  /**
+   * Executes a cluster-setup DDL statement, retrying on a transient serialization conflict.
+   *
+   * With ysql_yb_enable_listen_notify enabled, the background LISTEN/NOTIFY bootstrap DDL bumps
+   * pg_yb_catalog_version concurrently with the first setup statements. Both are max-priority DDL
+   * transactions, so the setup statement may lose the race and fail with a serialization conflict
+   * (SERIALIZATION_FAILURE_PSQL_STATE). Retrying matches standard YSQL client behavior and is a
+   * no-op when no background DDL is running.
+   */
+  private void executeSetupStatementWithConflictRetry(Statement statement, String sql)
+      throws SQLException {
+    for (int attempt = 1; ; ++attempt) {
+      try {
+        statement.execute(sql);
+        return;
+      } catch (SQLException ex) {
+        if (attempt >= 10 || !SERIALIZATION_FAILURE_PSQL_STATE.equals(ex.getSQLState())) {
+          throw ex;
+        }
+        LOG.info("Setup statement hit serialization conflict, retrying (attempt " + attempt +
+                 "): " + sql);
+      }
+    }
   }
 
   public void verifyClusterAcceptsPGConnections(long timeoutMs) throws Exception {
@@ -515,7 +540,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   private void allowSchemaPublic() throws Exception {
     try (Statement statement = connection.createStatement()) {
-      statement.execute("GRANT ALL ON SCHEMA public TO public");
+      executeSetupStatementWithConflictRetry(statement, "GRANT ALL ON SCHEMA public TO public");
     }
   }
 

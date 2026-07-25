@@ -198,10 +198,7 @@ public class NodeUniverseManager extends DevopsBase {
       Set<String> paths,
       String targetLocalPath) {
     String nodeTmpDir = getRemoteTmpDir(node, universe);
-    Provider provider =
-        Provider.get(
-            customerUUID,
-            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    Provider provider = Util.getProviderForNode(node, universe);
     ShellProcessContext context =
         ShellProcessContext.builder().sshUser(provider.getDetails().sshUser).build();
 
@@ -516,7 +513,8 @@ public class NodeUniverseManager extends DevopsBase {
       boolean authEnabled,
       boolean cpEnabled) {
     Cluster curCluster = universe.getCluster(node.placementUuid);
-    if (curCluster.userIntent.providerType == CloudType.local) {
+    Provider provider = Util.getProviderForNode(node, universe);
+    if (provider.getCloudCode() == CloudType.local) {
       return localNodeUniverseManager.runYsqlCommand(
           node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled);
     }
@@ -596,10 +594,7 @@ public class NodeUniverseManager extends DevopsBase {
    * @return home directory
    */
   public String getYbHomeDir(NodeDetails node, Universe universe) {
-    UUID providerUUID =
-        UUID.fromString(
-            universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent.provider);
-    Provider provider = Provider.getOrBadRequest(providerUUID);
+    Provider provider = Util.getProviderForNode(node, universe);
     return provider.getYbHome();
   }
 
@@ -632,6 +627,8 @@ public class NodeUniverseManager extends DevopsBase {
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
     CloudType cloudType = universe.getNodeDeploymentMode(node);
+    UUID providerUUID = cluster.getProviderUUIDForNode(node);
+    String accessKeyCode = cluster.userIntent.getAccessKeyCodeForProvider(providerUUID);
     if (cloudType == CloudType.kubernetes) {
       Map<String, String> k8sConfig =
           KubernetesUtil.getKubernetesConfigPerPod(
@@ -653,11 +650,9 @@ public class NodeUniverseManager extends DevopsBase {
         NodeAgent nodeAgent = optional.get();
         commandArgs.add("rpc");
         getNodeAgentClient().addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
-      } else if (!StringUtils.isEmpty(cluster.userIntent.accessKeyCode)) {
-        UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
+      } else if (!StringUtils.isEmpty(accessKeyCode)) {
         Provider provider = Provider.getOrBadRequest(providerUUID);
-        AccessKey accessKey =
-            AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
+        AccessKey accessKey = AccessKey.getOrBadRequest(providerUUID, accessKeyCode);
         String sshPort = provider.getDetails().sshPort.toString();
         if (node.sshPortOverride != null) {
           sshPort = node.sshPortOverride.toString();
@@ -668,9 +663,7 @@ public class NodeUniverseManager extends DevopsBase {
           if (imageBundleUUID != null) {
             ImageBundle.NodeProperties toOverwriteNodeProperties =
                 imageBundleUtil.getNodePropertiesOrFail(
-                    imageBundleUUID,
-                    node.cloudInfo.region,
-                    cluster.userIntent.providerType.toString());
+                    imageBundleUUID, node.cloudInfo.region, cloudType.toString());
             sshPort = toOverwriteNodeProperties.getSshPort().toString();
           }
         }
@@ -731,7 +724,8 @@ public class NodeUniverseManager extends DevopsBase {
       context = context.toBuilder().redactedVals(redactedVals).build();
     }
     Cluster curCluster = universe.getCluster(node.placementUuid);
-    if (curCluster.userIntent.providerType == CloudType.local) {
+    CloudType cloudType = curCluster.getProviderCloudType(node);
+    if (cloudType == CloudType.local) {
       return localNodeUniverseManager.executeNodeAction(universe, node, nodeAction, commandArgs);
     }
     return shellProcessHandler.run(commandArgs, context);
@@ -957,7 +951,11 @@ public class NodeUniverseManager extends DevopsBase {
 
   public void postProcessInMemoryGFlags(
       Map<String, String> gflags, Universe universe, NodeDetails nodeDetails) {
-    if (universe.getCluster(nodeDetails.placementUuid).userIntent.providerType == CloudType.local) {
+    if (universe
+        .getCluster(nodeDetails.placementUuid)
+        .userIntent
+        .getAllCloudTypes()
+        .contains(CloudType.local)) {
       localNodeUniverseManager.postProcessGFlagsMap(gflags, universe, nodeDetails);
     }
   }

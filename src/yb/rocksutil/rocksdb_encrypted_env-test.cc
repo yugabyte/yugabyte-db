@@ -22,7 +22,7 @@
 #include "yb/encryption/header_manager_mock_impl.h"
 
 #include "yb/util/random_util.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/test_util.h"
 
 namespace yb {

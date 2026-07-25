@@ -33,6 +33,8 @@
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
 
+#include "yb/gutil/port.h"
+
 #include "yb/qlexpr/ql_expr.h"
 
 // TODO(sergei) Wrong dependency
@@ -676,7 +678,12 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
   return FetchNextImpl(QLTableRowPair{table_row, projection, static_row, static_projection});
 }
 
+// Pin the FetchNextImpl entry to a cache-line boundary. This ~7 KB template
+// instantiation is the hottest function in read-heavy workloads (~10% of tserver
+// samples); under full-LTO its address shifts unpredictably across builds and the
+// resulting i-cache misalignment shows up as small (~1%) CPU-share swings.
 template <class TableRow>
+CACHELINE_ALIGNED
 Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
   VLOG_WITH_FUNC(4) << "done_: " << done_;
 
@@ -802,6 +809,17 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
   }
   return true;
 }
+
+// Explicit instantiations with CACHELINE_ALIGNED. Under full-LTO, Clang's
+// attribute-on-template-definition placement is honored inconsistently across
+// instantiations (the QLTableRowPair variant aligned but the PgTableRow* one
+// didn't). Attaching CACHELINE_ALIGNED to explicit instantiations forces both
+// specializations' entry points onto 64-byte boundaries.
+template CACHELINE_ALIGNED Result<bool>
+DocRowwiseIterator::FetchNextImpl<dockv::PgTableRow*>(dockv::PgTableRow*);
+template CACHELINE_ALIGNED Result<bool>
+DocRowwiseIterator::FetchNextImpl<DocRowwiseIterator::QLTableRowPair>(
+    DocRowwiseIterator::QLTableRowPair);
 
 Result<DocReaderResult> DocRowwiseIterator::FetchRow(
     const FetchedEntry& fetched_entry, dockv::PgTableRow* table_row) {

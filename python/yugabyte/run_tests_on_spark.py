@@ -129,6 +129,13 @@ from yugabyte import artifact_upload  # noqa
 
 REPEAT_FAILURE_LIMIT = 50
 
+# The failed-test re-run job starts right when the main test job finishes, which is exactly when
+# autoscaled Spark workers may be scaling in, and the whole Spark application can be lost to
+# executor churn (symptom: "Master removed our application: FAILED"). Submit the job for the
+# not-yet-completed test attempts up to SPARK_JOB_MAX_SUBMITS times, re-creating the Spark context
+# if needed.
+SPARK_JOB_MAX_SUBMITS = 3
+
 # Special Jenkins environment variables. They are propagated to tasks running in a distributed way
 # on Spark.
 JENKINS_ENV_VARS = [
@@ -244,8 +251,14 @@ g_spark_master_url_override = None
 propagated_env_vars: Dict[str, str] = {}
 global_conf_dict = None
 spark_context = None
+# Copy of the details list init_spark_context() was called with, so an equivalent context can be
+# re-created if the Spark application is lost mid-run (e.g. to Spark worker autoscaling).
+g_spark_context_details: List[str] = []
 archive_sha256sum = None
 g_max_num_test_failures = sys.maxsize
+# Whether the last Spark job submitted via run_spark_action was explicitly canceled (because the
+# number of test failures reached limit).
+g_spark_job_cancelled = False
 
 
 def configure_logging() -> None:
@@ -274,8 +287,12 @@ def log_heading(msg: str) -> None:
 # name visible in the Spark web UI.
 def init_spark_context(details: List[str] = []) -> None:
     global spark_context
+    global g_spark_context_details
     if spark_context:
         return
+    # Save a copy before this function appends to details, so restart_spark_context() can pass an
+    # equivalent list here again.
+    g_spark_context_details = list(details)
     log_heading("Initializing Spark context")
     global_conf = yb_dist_tests.get_global_conf()
     build_type = global_conf.build_type
@@ -324,6 +341,43 @@ def init_spark_context(details: List[str] = []) -> None:
         spark_context.addFile(global_conf.archive_for_workers)
 
     log_heading("Initialized Spark context")
+
+
+def spark_context_is_stopped() -> bool:
+    if spark_context is None:
+        return True
+    try:
+        return cast(bool, spark_context._jsc.sc().isStopped())
+    except Exception:
+        logging.exception("Could not check if the Spark context is stopped, assuming it is")
+        return True
+
+
+# py4j is only importable once pyspark has been set up (pyspark puts it on sys.path), and it is
+# absent entirely in the unit-test environment, so we resolve it lazily and cache the result. When
+# py4j cannot be imported this is an empty tuple and unit-tests fall back to
+# spark_context_is_stopped().
+@functools.lru_cache(maxsize=1)
+def spark_bridge_error_types() -> Tuple[type, ...]:
+    try:
+        from py4j.protocol import Py4JError  # type: ignore
+        return (Py4JError,)
+    except ImportError:
+        return ()
+
+
+# Stop and re-create the Spark context after the application was lost, e.g. when the standalone
+# master removed it due to executor failures on autoscaled workers that were shutting down.
+def restart_spark_context() -> None:
+    global spark_context
+    log_heading("Re-creating the Spark context")
+    if spark_context is not None:
+        try:
+            spark_context.stop()
+        except Exception:
+            logging.exception("Error stopping the old Spark context, creating a new one anyway")
+        spark_context = None
+    init_spark_context(list(g_spark_context_details))
 
 
 def set_global_conf_for_spark_jobs() -> None:
@@ -1198,15 +1252,21 @@ def propagate_env_vars() -> None:
 # This action is a spark job, not individual task.
 def run_spark_action(action: Any) -> Any:
     import py4j  # type: ignore
+    global g_spark_job_cancelled
+    g_spark_job_cancelled = False
     results = None
     try:
         results = action()
     except py4j.protocol.Py4JJavaError as e:
         if "cancelled as part of cancellation of all jobs" in str(e):
+            g_spark_job_cancelled = True
             log_heading("Spark job was killed after hitting test failure threshold of {}".format(
                         g_max_num_test_failures))
         else:
-            logging.error("Spark job failed to run!.")
+            # Partial results are still collected from the accumulator by the caller, and any
+            # test attempts left without a result can be re-submitted
+            # (see run_tests_job_with_resubmits).
+            logging.exception("Spark job failed to run!")
     return results
 
 
@@ -1268,6 +1328,79 @@ def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: b
     for rlist in test_results.value:
         results.extend(rlist)
     return results
+
+
+# Test-only fault injection, to exercise the re-submission / context-recovery path without waiting
+# for a real autoscaling accident. Both are gated by environment variables and default to off, so
+# production runs are unaffected. On the FIRST submission only:
+#   YB_TEST_RERUN_DROP_RESULTS=<n>  discard the last <n> results, so those attempts look lost and
+#                                   must be re-submitted (exercises the pending/re-submit path).
+#   YB_TEST_RERUN_STOP_CONTEXT=1    stop the Spark context afterwards, so the next iteration has to
+#                                   re-create it (exercises restart_spark_context end to end).
+# Combine both (drop some results AND stop the context) to drive a full lost-application recovery:
+# the dropped attempts are re-submitted on a freshly re-created context.
+def maybe_inject_rerun_fault(
+        submit_index: int,
+        results: List[yb_dist_tests.TestResult]) -> List[yb_dist_tests.TestResult]:
+    if submit_index != 1:
+        return results
+    drop = int(os.environ.get('YB_TEST_RERUN_DROP_RESULTS', '0'))
+    if drop > 0 and results:
+        keep = max(0, len(results) - drop)
+        logging.warning("TEST FAULT (YB_TEST_RERUN_DROP_RESULTS): discarding %d of %d results "
+                        "from submission %d", len(results) - keep, len(results), submit_index)
+        results = results[:keep]
+    if os.environ.get('YB_TEST_RERUN_STOP_CONTEXT') == '1' and spark_context is not None:
+        logging.warning("TEST FAULT (YB_TEST_RERUN_STOP_CONTEXT): stopping the Spark context "
+                        "after submission %d to force a re-creation", submit_index)
+        try:
+            spark_context.stop()
+        except Exception:
+            logging.exception("TEST FAULT: error stopping the Spark context")
+    return results
+
+
+# Run tests on Spark, re-submitting the job for test attempts that did not produce a result,
+# e.g. because the Spark application was lost while autoscaled workers were shutting down.
+# This is executed on the main Spark driver.
+def run_tests_job_with_resubmits(test_descriptors: List[yb_dist_tests.TestDescriptor],
+                                 rerun: bool) -> List[yb_dist_tests.TestResult]:
+    all_results: List[yb_dist_tests.TestResult] = []
+    # descriptor_str includes the attempt index, so it uniquely identifies a test attempt.
+    pending = list(test_descriptors)
+    for submit_index in range(1, SPARK_JOB_MAX_SUBMITS + 1):
+        if submit_index > 1:
+            logging.info(
+                "Re-submitting the job for %d test attempts with missing results "
+                "(submission %d of at most %d)",
+                len(pending), submit_index, SPARK_JOB_MAX_SUBMITS)
+        try:
+            if spark_context_is_stopped():
+                restart_spark_context()
+            results = run_tests_job(pending, rerun=rerun)
+        except Exception as e:
+            # Retry this submission only if it failed because the Spark application was lost or
+            # due to another transient Spark error. In case of a genuine bug don't retry and
+            # re-raise the exception.
+            if not (isinstance(e, spark_bridge_error_types()) or spark_context_is_stopped()):
+                raise
+            logging.exception("Rerun submission %d could not run on Spark (%s), re-creating the "
+                              "context and re-submitting", submit_index,
+                              type(e).__name__)
+            results = []
+        results = maybe_inject_rerun_fault(submit_index, results)
+        all_results.extend(results)
+        if g_spark_job_cancelled:
+            logging.info("Not re-submitting remaining test attempts: the Spark job was cancelled "
+                         "after reaching the test failure threshold")
+            break
+        completed = set(result.test_descriptor.descriptor_str for result in results)
+        pending = [td for td in pending if td.descriptor_str not in completed]
+        if not pending:
+            break
+        logging.warning("Spark job did not produce results for %d of %d test attempts",
+                        len(pending), len(test_descriptors))
+    return all_results
 
 
 def report_skipped_test(test_descriptor: yb_dist_tests.TestDescriptor) -> None:
@@ -1705,7 +1838,7 @@ def main() -> None:
                 for test_descriptor in failed_test_descriptors
                 for i in range(1, args.fail_repetitions + 1)
             ]
-            rerun_results = run_tests_job(test_descriptors_rerun, rerun=True)
+            rerun_results = run_tests_job_with_resubmits(test_descriptors_rerun, rerun=True)
             logging.info("Re-run results: %s  Expected: %s", len(rerun_results),
                          len(test_descriptors_rerun))
             rerun_failed = 0
@@ -1713,6 +1846,17 @@ def main() -> None:
                 if result.exit_code != 0:
                     rerun_failed += 1
             logging.info("Number of failures in re-run: %s", rerun_failed)
+            rerun_completed = set(
+                result.test_descriptor.descriptor_str for result in rerun_results)
+            rerun_missing_cnt = len([
+                td for td in test_descriptors_rerun if td.descriptor_str not in rerun_completed])
+            if rerun_missing_cnt > 0 and not g_spark_job_cancelled:
+                logging.error(
+                    "Re-run is incomplete even after re-submissions: no results for %d of %d "
+                    "test attempts. Returning a non-zero exit code so the lost re-runs are "
+                    "visible, instead of failed tests silently missing their retries.",
+                    rerun_missing_cnt, len(test_descriptors_rerun))
+                global_exit_code = 1
 
     for suite_name in csi_suites.keys():
         csi_report.close_item(csi_suites[suite_name], test_phase_end_time, '', [])

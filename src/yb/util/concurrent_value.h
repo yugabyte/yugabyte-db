@@ -107,14 +107,7 @@ class ThreadList {
     return head_.load(mo);
   }
 
-  static ThreadList<T>& Instance() {
-    static ThreadList<T> result;
-    return result;
-  }
-
  private:
-  ThreadList() {}
-
   std::atomic<Data*> head_{nullptr};
   std::atomic<size_t> allocated_{0};
   std::atomic<ThreadId> destructor_thread_id_{kNullThreadId};
@@ -181,10 +174,16 @@ class URCU {
   }
 
  private:
+  // The URCU thread registry must be a single process-wide instance shared by all shared libraries.
+  // It is defined out of line (in concurrent_value.cc) so the storage lives in one translation unit
+  // and is not duplicated per-dylib (which would split the registry and hang shutdown waits). This
+  // holds regardless of symbol visibility flags such as -fvisibility-inlines-hidden.
+  static ThreadList<URCUThreadData>& GetThreadList();
+
   URCUThreadData* ThreadData() {
     auto result = data_.get();
     if (!result) {
-      data_.reset(result = ThreadList<URCUThreadData>::Instance().Alloc());
+      data_.reset(result = GetThreadList().Alloc());
     }
     return result;
   }
@@ -192,7 +191,7 @@ class URCU {
   void FlipAndWait() {
     global_control_word_.fetch_xor(kControlBit, std::memory_order_seq_cst);
 
-    for (auto* data = ThreadList<URCUThreadData>::Instance().Head(std::memory_order_acquire);
+    for (auto* data = GetThreadList().Head(std::memory_order_acquire);
          data;
          data = data->next.load(std::memory_order_acquire)) {
       while (data->owner.load(std::memory_order_acquire) != kNullThreadId &&
@@ -213,7 +212,7 @@ class URCU {
   std::mutex mutex_;
   struct CleanupThreadData {
     void operator()(URCUThreadData* data) {
-      ThreadList<URCUThreadData>::Instance().Retire(data);
+      URCU::GetThreadList().Retire(data);
     }
   };
 

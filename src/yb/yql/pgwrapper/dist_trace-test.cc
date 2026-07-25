@@ -24,6 +24,7 @@
 #include <google/protobuf/empty.pb.h>
 #include <gtest/gtest.h>
 
+#include "opentelemetry/sdk/common/global_log_handler.h"
 #include "opentelemetry/trace/scope.h"
 #include "opentelemetry/trace/tracer.h"
 #include "opentelemetry/proto/collector/trace/v1/trace_service.pb.h"
@@ -39,10 +40,12 @@
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
@@ -52,6 +55,7 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_string(otel_collector_traces_endpoint);
+DECLARE_string(otel_internal_log_level);
 DECLARE_uint32(otel_batch_max_queue_size);
 DECLARE_uint32(otel_batch_schedule_delay_ms);
 DECLARE_uint32(otel_batch_max_export_batch_size);
@@ -1659,6 +1663,125 @@ TEST_F(DistTraceRpcTest, TestRpcSpans) {
       "RPC span to appear in trace"));
 }
 
+TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_internal_log_level) = "debug";
+
+  static constexpr auto kError = "otel internal error";
+  static constexpr auto kWarning = "otel internal warning";
+  static constexpr auto kInfo = "otel internal info";
+  static constexpr auto kDebug = "otel internal debug";
+
+  RegexWaiterLogSink error_waiter(Format("E.*$0.*", kError));
+  RegexWaiterLogSink warning_waiter(Format("W.*$0.*", kWarning));
+  RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
+  RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
+
+  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-log-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::CleanupDistTrace();
+  });
+
+  OTEL_INTERNAL_LOG_ERROR(kError);
+  OTEL_INTERNAL_LOG_WARN(kWarning);
+  OTEL_INTERNAL_LOG_INFO(kInfo);
+  OTEL_INTERNAL_LOG_DEBUG(kDebug);
+
+  ASSERT_OK(error_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(warning_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(info_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(debug_waiter.WaitFor(5s * kTimeMultiplier));
+}
+
+TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelDefaultsToInfo) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
+
+  static constexpr auto kError = "otel default internal error";
+  static constexpr auto kInfo = "otel default internal info";
+  static constexpr auto kDebug = "otel default internal debug";
+
+  RegexWaiterLogSink error_waiter(Format("E.*$0.*", kError));
+  RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
+  RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
+
+  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-default-log-level-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::CleanupDistTrace();
+  });
+
+  OTEL_INTERNAL_LOG_ERROR(kError);
+  OTEL_INTERNAL_LOG_INFO(kInfo);
+  OTEL_INTERNAL_LOG_DEBUG(kDebug);
+
+  ASSERT_OK(error_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_OK(info_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_EQ(debug_waiter.GetEventCount(), 0);
+}
+
+TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelGFlagControlsSdkFiltering) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_internal_log_level) = "error";
+
+  static constexpr auto kError = "otel error threshold internal error";
+  static constexpr auto kWarning = "otel error threshold internal warning";
+  static constexpr auto kInfo = "otel error threshold internal info";
+  static constexpr auto kDebug = "otel error threshold internal debug";
+
+  RegexWaiterLogSink error_waiter(Format("E.*$0.*", kError));
+  RegexWaiterLogSink warning_waiter(Format("W.*$0.*", kWarning));
+  RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
+  RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
+
+  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-error-log-level-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::CleanupDistTrace();
+  });
+
+  OTEL_INTERNAL_LOG_ERROR(kError);
+  OTEL_INTERNAL_LOG_WARN(kWarning);
+  OTEL_INTERNAL_LOG_INFO(kInfo);
+  OTEL_INTERNAL_LOG_DEBUG(kDebug);
+
+  ASSERT_OK(error_waiter.WaitFor(5s * kTimeMultiplier));
+  ASSERT_EQ(warning_waiter.GetEventCount(), 0);
+  ASSERT_EQ(info_waiter.GetEventCount(), 0);
+  ASSERT_EQ(debug_waiter.GetEventCount(), 0);
+}
+
+TEST_F(DistTraceRpcTest, TestOtelInternalLogLevelNoneSuppressesAllMessages) {
+  google::FlagSaver flag_saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_internal_log_level) = "none";
+
+  static constexpr auto kError = "otel none threshold internal error";
+  static constexpr auto kWarning = "otel none threshold internal warning";
+  static constexpr auto kInfo = "otel none threshold internal info";
+  static constexpr auto kDebug = "otel none threshold internal debug";
+
+  RegexWaiterLogSink error_waiter(Format("E.*$0.*", kError));
+  RegexWaiterLogSink warning_waiter(Format("W.*$0.*", kWarning));
+  RegexWaiterLogSink info_waiter(Format("I.*$0.*", kInfo));
+  RegexWaiterLogSink debug_waiter(Format("I.*$0.*", kDebug));
+
+  dist_trace::InitDistTrace(0 /* process_pid */, "dist-trace-otel-none-log-level-test");
+  auto cleanup = ScopeExit([] {
+    dist_trace::CleanupDistTrace();
+  });
+
+  OTEL_INTERNAL_LOG_ERROR(kError);
+  OTEL_INTERNAL_LOG_WARN(kWarning);
+  OTEL_INTERNAL_LOG_INFO(kInfo);
+  OTEL_INTERNAL_LOG_DEBUG(kDebug);
+
+  ASSERT_EQ(error_waiter.GetEventCount(), 0);
+  ASSERT_EQ(warning_waiter.GetEventCount(), 0);
+  ASSERT_EQ(info_waiter.GetEventCount(), 0);
+  ASSERT_EQ(debug_waiter.GetEventCount(), 0);
+}
+
 TEST_F(DistTraceRpcTest, TestErroredRpcSpanStatus) {
   google::FlagSaver flag_saver;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_otel_collector_traces_endpoint) = collector_.Url();
@@ -1789,6 +1912,47 @@ TEST_F(DistTraceRpcTest, TestRpcSpanAttributes) {
     ASSERT_FALSE(table_names_it->second.empty()) << "rpc.table_names should not be empty";
     ASSERT_STR_CONTAINS(table_names_it->second, "rpc_attr_test");
   }
+}
+
+// Regression test for the rpc.table_names publish path across a table rewrite.
+TEST_F(DistTraceRpcTest, TestRpcSpanTableNamesAfterTruncate) {
+  ASSERT_OK(CreateTable("rewrite_test", 5));
+
+  // Pre-rewrite: relfilenode == pg_table_id, so the traced SELECT works and publishes the name.
+  auto tp_before = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp_before.full));
+  ASSERT_OK(conn_->Fetch("SELECT * FROM rewrite_test"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.FindRpcSpanWithTableName(tp_before.trace_id, "rewrite_test").has_value();
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "RPC span with table name to appear for SELECT before TRUNCATE"));
+  ASSERT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
+
+  // TRUNCATE rewrites the table, rotating its relfilenode away from the stable pg_table_id.
+  ASSERT_OK(conn_->Execute("TRUNCATE rewrite_test"));
+
+  // Post-rewrite traced SELECT: must NOT crash the backend, though it does not publish table name.
+  // TODO(#32477)
+  auto tp_after = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp_after.full));
+  ASSERT_OK(conn_->Fetch("SELECT * FROM rewrite_test"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.HasSpanWithNamePrefix(tp_after.trace_id, "rpc ");
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "RPC span to appear for SELECT after TRUNCATE"));
+
+  // The connection must still be alive (backend did not crash).
+  ASSERT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
+  // TODO (#30816): FetchRow<T> for non-string types fails on simple query protocol connections,
+  // so fetch the count as text.
+  ASSERT_EQ(
+      ASSERT_RESULT(conn_->FetchRow<std::string>("SELECT count(*)::text FROM rewrite_test")), "0");
 }
 
 }  // namespace yb::pgwrapper

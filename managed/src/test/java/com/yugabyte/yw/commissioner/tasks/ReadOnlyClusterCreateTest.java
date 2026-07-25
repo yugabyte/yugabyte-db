@@ -34,7 +34,6 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Arrays;
@@ -71,6 +70,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
+      mockDbNodePortConnectivityResponse(mockNodeUniverseManager);
       when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
     } catch (Exception e) {
     }
@@ -261,7 +261,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
                 universe.getUniverseUUID(),
-                CommonUtils.getClusterType(region.getProvider(), universe),
+                DoCapacityReservation.getProviderStr(region.getProvider(), universe),
                 region.getCode()),
             Arrays.asList("host-readonly1-n1", "host-readonly1-n2")));
   }
@@ -321,7 +321,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
         Map.of(
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
-                CommonUtils.getClusterType(defaultProvider, universe),
+                DoCapacityReservation.getProviderStr(defaultProvider, universe),
                 "az-1",
                 rrInstanceType),
             Arrays.asList("host-readonly1-n1", "host-readonly1-n2")));

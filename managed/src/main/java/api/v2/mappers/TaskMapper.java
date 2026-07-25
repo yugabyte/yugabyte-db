@@ -89,6 +89,11 @@ public interface TaskMapper {
                   node.get("metricsExportConfig"), api.v2.models.MetricsExportConfig.class));
     }
 
+    if (hasRawJson(node, "modifiedExportTypes")) {
+      details.setModifiedExportTypes(
+          Json.mapper().convertValue(node.get("modifiedExportTypes"), new TypeReference<>() {}));
+    }
+
     return details;
   }
 }

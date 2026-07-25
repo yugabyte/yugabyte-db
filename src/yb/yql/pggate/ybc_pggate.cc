@@ -91,6 +91,9 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_bool(ysql_enable_concurrent_ddl);
 
+DECLARE_uint64(rpc_max_message_size);
+DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
+
 DEPRECATE_FLAG(bool, ysql_disable_per_tuple_memory_context_in_update_relattrs, "06_2023");
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_user_ddls_preempt_auto_analyze, true,
@@ -1931,6 +1934,11 @@ YbcTxnPriorityRequirement YBCGetTransactionPriorityType() {
   return pgapi->GetTransactionPriorityType();
 }
 
+uint64_t YBCGetMaxRpcResponseSize() {
+  return static_cast<uint64_t>(
+      FLAGS_rpc_max_message_size * FLAGS_max_buffer_size_to_rpc_limit_ratio);
+}
+
 YbcStatus YBCPgEnsureReadPoint() {
   return ToYBCStatus(pgapi->EnsureReadPoint());
 }
@@ -2133,11 +2141,24 @@ void YBCNotifyDeferredTriggersProcessingStarted() {
 YbcPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
     YbcPgOid table_relfilenode_oid, uint64_t ybctid, YbcPgOid database_oid,
     const YbcPgExplicitRowLockParams* params, YbcPgTableLocalityInfo locality_info,
-    const YbcIsExplicitlyLockedRowSkippedCheckHandle* handle) {
+    YbcIsExplicitlyLockedRowSkippedCheckHandleOptional* handle) {
+  std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> opt_handle;
+  auto* actual_handle = &opt_handle;
+  if (handle) {
+    if (handle->has_value) {
+      opt_handle.emplace(handle->value);
+    }
+  } else {
+    actual_handle = nullptr;
+  }
   auto result = MakePgExplicitRowLockStatus();
   result.ybc_status = ToYBCStatus(pgapi->AddExplicitRowLockIntent(
       PgObjectId(database_oid, table_relfilenode_oid), YbctidAsSlice(ybctid), *params,
-      locality_info, handle ? std::optional(*handle) : std::nullopt, result.error_info));
+      locality_info, actual_handle, result.error_info));
+  if (opt_handle.has_value() && !handle->has_value) {
+    handle->value = *opt_handle;
+    handle->has_value = true;
+  }
   return result;
 }
 
@@ -2153,10 +2174,6 @@ YbcPgExplicitRowLockStatus YBCIsExplicitlyLockedRowSkipped(
   result.ybc_status = ExtractValueFromResult(
       pgapi->IsRowSkipped(handle, result.error_info), is_skipped);
   return result;
-}
-
-YbcIsExplicitlyLockedRowSkippedCheckHandle YBCAcquireExplicitlyLockedRowSkippedCheckHandle() {
-  return pgapi->AcquireExplicitlyLockedRowSkippedCheckHandle();
 }
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
@@ -2934,6 +2951,7 @@ YbcStatus YBCPgGetCDCConsistentChanges(
   auto resp_rows = static_cast<YbcPgRowMessage *>(YBCPAlloc(sizeof(YbcPgRowMessage) * row_count));
   bool needs_publication_table_list_refresh = resp.needs_publication_table_list_refresh();
   uint64_t publication_refresh_time = resp.publication_refresh_time();
+  bool explicit_alter_publication_detected = resp.explicit_alter_publication_detected();
 
   size_t row_idx = 0;
   for (const auto& row_pb : resp_rows_pb) {
@@ -3068,7 +3086,8 @@ YbcStatus YBCPgGetCDCConsistentChanges(
       .row_count = row_count,
       .rows = resp_rows,
       .needs_publication_table_list_refresh = needs_publication_table_list_refresh,
-      .publication_refresh_time = publication_refresh_time
+      .publication_refresh_time = publication_refresh_time,
+      .explicit_alter_publication_detected = explicit_alter_publication_detected,
   };
 
   if (row_count > 0) {
@@ -3152,7 +3171,12 @@ YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* cou
         .tablet_descriptor = MakeYbcPgTabletsDescriptor(tablet_metadata),
         .replicas = replicas_array,
         .replicas_count = static_cast<size_t>(tablet_metadata.replicas().size()),
-        .is_hash_partitioned = tablet_metadata.is_hash_partitioned()
+        .is_hash_partitioned = tablet_metadata.is_hash_partitioned(),
+        .tablet_state = tablet_metadata.has_tablet_state()
+            ? YBCPAllocStdString(tablet_metadata.tablet_state())
+            : nullptr,
+        .pg_table_oid = tablet_metadata.has_pg_table_oid() ? tablet_metadata.pg_table_oid()
+                                                           : kPgInvalidOid
       };
       ++dest;
     }

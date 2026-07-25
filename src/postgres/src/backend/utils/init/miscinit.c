@@ -314,8 +314,8 @@ GetBackendTypeDesc(BackendType backendType)
 		case YB_YSQL_CONN_MGR_WAL_SENDER:
 			backendDesc = "yb-conn-mgr walsender";
 			break;
-		case YB_AUTO_ANALYZE_BACKEND:
-			backendDesc = "yb auto analyze backend";
+		case YB_YSQL_CONN_MGR_CTRL:
+			backendDesc = "yb-conn-mgr control connection";
 			break;
 		case YB_INDEX_BACKFILL_DDL:
 			backendDesc = "yb index backfill";
@@ -323,13 +323,14 @@ GetBackendTypeDesc(BackendType backendType)
 		case YB_MATVIEW_REFRESH_DDL:
 			backendDesc = "yb matview refresh";
 			break;
+		case YB_AUTO_ANALYZE_BACKEND:
 		case YB_RELCACHE_INIT_BACKEND:
+		case YB_GLOBAL_VIEW_BACKEND:
 			/*
-			 * Handled by the registry lookup at the top of this function.
-			 * The case is here only so this switch stays enum-exhaustive.
-			 * Future YB internal-conn kinds need a similar one-line case
-			 * (or the switch could be restructured around a registry-aware
-			 * default).
+			 * Registered YB internal-connection kinds are handled by the
+			 * registry lookup at the top of this function; these cases exist
+			 * only so the switch stays enum-exhaustive. A new kind needs its
+			 * BackendType added here too.
 			 */
 			Assert(false);
 			break;

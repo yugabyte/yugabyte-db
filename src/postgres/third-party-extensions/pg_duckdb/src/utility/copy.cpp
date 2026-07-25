@@ -6,6 +6,9 @@
 #include "pgduckdb/pgduckdb_metadata_cache.hpp"
 #include "pgduckdb/pgduckdb_hooks.hpp"
 
+/* YB includes */
+#include "pgduckdb/pg/permissions.hpp"
+
 extern "C" {
 #include "postgres.h"
 
@@ -51,7 +54,7 @@ AppendCreateRelationCopyString(StringInfo info, ParseState *pstate, CopyStmt *co
 #if PG_VERSION_NUM >= 160000
 	ExecCheckPermissions(pstate->p_rtable, list_make1(perminfo), true);
 #else
-	ExecCheckRTPerms(pstate->p_rtable, true);
+	pgduckdb::pg::YbExecCheckRTPerms(pstate->p_rtable);
 #endif
 
 	table_close(rel, AccessShareLock);
@@ -100,7 +103,7 @@ CheckQueryPermissions(Query *query, const char *query_string) {
 #if PG_VERSION_NUM >= 160000
 	ExecCheckPermissions(postgres_plan->rtable, postgres_plan->permInfos, true);
 #else
-	ExecCheckRTPerms(postgres_plan->rtable, true);
+	pgduckdb::pg::YbExecCheckRTPerms(postgres_plan->rtable);
 #endif
 
 	foreach_node(RangeTblEntry, rte, postgres_plan->rtable) {

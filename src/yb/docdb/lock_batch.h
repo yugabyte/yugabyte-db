@@ -26,7 +26,7 @@
 
 #include "yb/util/monotime.h"
 #include "yb/util/ref_cnt_buffer.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb::docdb {
 

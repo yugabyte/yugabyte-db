@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/env.h"
 #include "yb/util/slice.h"
 

@@ -16,6 +16,7 @@
 #include <sys/types.h>
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -69,25 +70,31 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
     void RemoveListener(StringListener* listener);
 
-    StringListener* listener() { return listener_.load(std::memory_order_acquire); }
+    StringListener* listener();
 
     ~LogTailerThread();
 
    private:
+    // State shared between this object and the detached tailer thread. The thread is detached and
+    // may keep running (e.g. blocked in fgets reading a child's output) after this LogTailerThread
+    // is destroyed, so it must not access any member of the possibly-destroyed object. Everything
+    // the thread needs is either captured by value or kept here and held alive via shared_ptr.
+    //
+    // stopped and listener are guarded by mutex. The tailer thread holds mutex while reading
+    // listener and invoking listener->Handle, so guarding the listener mutation with the same mutex
+    // guarantees that a listener cannot be removed (and its object destroyed) while a Handle call
+    // referencing it is in flight, avoiding a use-after-free.
+    struct SharedState {
+      std::mutex mutex;
+      bool stopped GUARDED_BY(mutex) = false;
+      StringListener* listener GUARDED_BY(mutex) = nullptr;
+    };
+
     static GlobalLogTailerState* global_state();
 
-    static std::atomic<bool>* CreateStoppedFlagForId(int id);
-
-    const int id_;
-
-    // This lock protects the stopped_ pointer in case of a race between tailer thread's
-    // initialization (i.e. before it gets into its loop) and the destructor.
-    std::mutex state_lock_;
-
-    std::atomic<bool>* const stopped_;
+    const std::shared_ptr<SharedState> state_;
     const std::string thread_desc_;  // A human-readable description of this thread.
     std::thread thread_;
-    std::atomic<StringListener*> listener_{nullptr};
   };
 
   ExternalDaemon(

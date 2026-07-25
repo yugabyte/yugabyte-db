@@ -417,7 +417,7 @@ public class LocalNodeManager {
   }
 
   public static LocalCloudInfo getCloudInfo(UniverseDefinitionTaskParams.UserIntent userIntent) {
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    Provider provider = Util.getSingleProvider(userIntent);
     return CloudInfoInterface.get(provider);
   }
 
@@ -438,6 +438,8 @@ public class LocalNodeManager {
       NodeManager.NodeCommandType type, NodeTaskParams nodeTaskParam, List<String> commandArgs) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.getUniverseUUID());
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
+    UUID providerUUID =
+        universe.getCluster(nodeDetails.placementUuid).getProviderUUIDForNode(nodeDetails);
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
     ShellResponse response = null;
@@ -476,7 +478,9 @@ public class LocalNodeManager {
       case Tags:
         InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
         Map<String, String> tags =
-            taskParam.tags != null ? taskParam.tags : userIntent.instanceTags;
+            taskParam.tags != null
+                ? taskParam.tags
+                : userIntent.getInstanceTagsForProvider(providerUUID);
         if (MapUtils.isEmpty(tags) && taskParam.deleteTags.isEmpty()) {
           throw new RuntimeException("Invalid params: no tags to add or remove");
         }
@@ -753,7 +757,7 @@ public class LocalNodeManager {
   private synchronized void updateSoftwareOnNode(
       UniverseDefinitionTaskParams.UserIntent userIntent, String version) {
     // This returns the cached bean from the database.
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    Provider provider = Util.getSingleProvider(userIntent);
     // Reload from the DB.
     provider.refresh();
     String newYBBinDir = versionBinPathMap.get(version);
@@ -841,13 +845,7 @@ public class LocalNodeManager {
       boolean isDestroy) {
     Process process = nodeInfo.processMap.remove(serverType);
     if (process == null) {
-      // Only show warning here, as "createDisableMasterOnNonMasterNodesTasks" can run
-      // on nodes that do not have a master process
-      if (serverType == UniverseTaskBase.ServerType.MASTER) {
-        log.warn("No process of type {} for {}", serverType, nodeInfo.name);
-        return;
-      }
-      throw new IllegalStateException("No process of type " + serverType + " for " + nodeInfo.name);
+      return;
     }
     log.debug("Killing process {}", process.pid());
 

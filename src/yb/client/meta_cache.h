@@ -352,7 +352,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   bool MarkTServerAsLeader(const RemoteTabletServer* server) WARN_UNUSED_RESULT;
 
   // Mark the specified tablet server as a follower in the cache.
-  void MarkTServerAsFollower(const RemoteTabletServer* server);
+  bool MarkTServerAsFollower(const RemoteTabletServer* server);
 
   // Return stringified representation of the list of replicas for this tablet.
   std::string ReplicasAsString() const;
@@ -625,6 +625,11 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // Mark any replicas of any tablets hosted by 'ts' as failed. They will
   // not be returned in future cache lookups.
   void MarkTSFailed(RemoteTabletServer* ts, const Status& status);
+
+  // For each tserver UUID in the given list, mark any replicas hosted by that tserver as
+  // followers across all cached tablets. Used to proactively demote leaders on
+  // leader-blacklisted tservers.
+  void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
 
   // Acquire or release a permit to perform a (slow) master lookup.
   //

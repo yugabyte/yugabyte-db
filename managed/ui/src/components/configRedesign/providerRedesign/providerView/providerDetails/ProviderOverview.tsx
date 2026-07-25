@@ -11,6 +11,7 @@ import { AWSPropertiesOverview } from '../aws/AWSPropertiesOverview';
 import { AZUPropertiesOverview } from '../azu/AZUPropertiesOverview';
 import { GCPPropertiesOverview } from '../gcp/GCPPropertiesOverview';
 import { K8sPropertiesOverview } from '../k8s/K8sPropertiesOverview';
+import { OCIPropertiesOverview } from '../oci/OCIPropertiesOverview';
 import { OnPremPropertiesOverview } from '../onPrem/OnPremPropertiesOverview';
 import { assertUnreachableCase } from '../../../../../utils/errorHandlingUtils';
 import { LinuxVersionOverview } from '../../components/linuxVersionCatalog/LinuxVersionOverview';
@@ -57,6 +58,10 @@ const getProviderPropertiesOverview = (providerConfig: YBProvider, isProviderInU
     case ProviderCode.GCP:
       return (
         <GCPPropertiesOverview providerConfig={providerConfig} isProviderInUse={isProviderInUse} />
+      );
+    case ProviderCode.OCI:
+      return (
+        <OCIPropertiesOverview providerConfig={providerConfig} isProviderInUse={isProviderInUse} />
       );
     case ProviderCode.KUBERNETES:
       return (

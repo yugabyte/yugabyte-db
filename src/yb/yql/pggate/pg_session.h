@@ -231,7 +231,7 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   class RunHelper;
 
   struct PerformOptions {
-    UseCatalogSession use_catalog_session = UseCatalogSession::kFalse;
+    UseLegacyCatalogSession use_legacy_catalog_session = UseLegacyCatalogSession::kFalse;
     bool has_catalog_ops = false;
     std::optional<ReadTimeAction> read_time_action = {};
     std::optional<CacheOptions> cache_options = std::nullopt;
@@ -239,6 +239,11 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   };
 
   Result<PerformFuture> Perform(BufferableOperations&& ops, PerformOptions&& options);
+
+  NonTransactionalWrites OpsHaveNonTransactionalWrites(const PgsqlOps& operations) const;
+
+  Status SetReadTimeIfPresent(const PgsqlOps& operations, tserver::PgPerformOptionsPB& options);
+  Status CheckConflictWithYbReadTime(const PgsqlOps& operations);
 
   template<class Generator>
   Result<PerformFuture> DoRunAsync(

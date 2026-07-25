@@ -598,6 +598,10 @@ class YBThreadPool::Impl {
     return share_.num_workers.load(std::memory_order_relaxed) & ~kStopCreatingWorkersFlag;
   }
 
+  size_t TEST_NumWorkersCreated() const {
+    return worker_counter_.load(std::memory_order_relaxed);
+  }
+
 #ifdef __linux__
   void SetCgroup(Cgroup* cgroup) EXCLUDES(mutex_) {
     share_.cgroup.store(cgroup, std::memory_order_release);
@@ -673,6 +677,10 @@ bool YBThreadPool::BusyWait(MonoTime deadline) {
 
 size_t YBThreadPool::NumWorkers() const {
   return impl_->NumWorkers();
+}
+
+size_t YBThreadPool::TEST_NumWorkersCreated() const {
+  return impl_->TEST_NumWorkersCreated();
 }
 
 bool YBThreadPool::Idle() const {

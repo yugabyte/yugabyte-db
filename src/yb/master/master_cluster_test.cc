@@ -23,6 +23,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
 DECLARE_bool(enable_load_balancing);

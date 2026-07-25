@@ -41,6 +41,7 @@
 #include "yb/common/transaction.h"
 
 #include "yb/client/client.h"
+#include "yb/client/namespace_info.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/master/master_admin.pb.h"
@@ -432,7 +433,8 @@ class ClusterAdminClient {
       const TypedNamespaceName& ns, const std::string& CheckPointType,
       const cdc::CDCRecordType RecordType,
       const std::string& ConsistentSnapshotOption,
-      const bool& is_dynamic_tables_enabled);
+      const bool& is_dynamic_tables_enabled,
+      const std::unordered_set<std::string>& bound_table_ids = {});
 
   Status DeleteCDCStream(const std::string& stream_id, bool force_delete = false);
 

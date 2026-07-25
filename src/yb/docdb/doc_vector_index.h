@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/entity_ids_types.h"
 
@@ -140,20 +141,33 @@ class DocVectorIndex {
 
   virtual Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
-      DocDBStatistics* statistics) = 0;
+      const ReadOperationData& read_operation_data) = 0;
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
   virtual void EnableAutoCompactions() = 0;
   virtual Status Compact() = 0;
   virtual Status WaitForCompaction() = 0;
   virtual Status Flush() = 0;
   virtual Status WaitForFlush() = 0;
-  virtual docdb::ConsensusFrontierPtr GetFlushedFrontier() = 0;
+  // Computes the requested frontiers (flushed and/or in-memory) atomically, so the views are
+  // mutually consistent. This is the single primitive subclasses override; the accessors below are
+  // expressed in terms of it.
+  virtual storage::FrontierInfo GetFrontiers(storage::FrontierKinds kinds) = 0;
+
+  docdb::ConsensusFrontierPtr GetFlushedFrontier();
+  // Returns the (smallest, largest) frontiers of the in-memory (not yet flushed) state. The
+  // smallest frontier is used to determine how much of the index is durably flushed.
+  storage::UserFrontierRange GetInMemoryFrontiers();
+  storage::UserFrontierPtr GetInMemoryFrontier(storage::UpdateUserValueType type);
+
   virtual storage::FlushAbility GetFlushAbility() = 0;
   virtual Status CreateCheckpoint(const std::string& out) = 0;
   virtual const std::string& ToString() const = 0;
   virtual Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const = 0;
   virtual Status Destroy() = 0;
   virtual Result<size_t> TotalEntries() const = 0;
+
+  // Returns the total size in bytes occupied by this vector index on disk.
+  virtual uint64_t OnDiskSize() const = 0;
 
   virtual void StartShutdown() = 0;
   virtual void CompleteShutdown() = 0;
@@ -163,8 +177,11 @@ class DocVectorIndex {
 
   bool BackfillDone();
 
+  // Writes reverse mapping for the vector id in `value`.
+  // kInvalidColumnId means legacy raw-ybctid format; otherwise V1 value format.
   static void ApplyReverseEntry(
-      rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht);
+      rocksdb::DirectWriteHandler& handler, Slice ybctid, Slice value, DocHybridTime write_ht,
+      ColumnId column_id = kInvalidColumnId, Slice table_key_prefix = {});
 
  private:
   std::atomic<bool> backfill_done_cache_{false};

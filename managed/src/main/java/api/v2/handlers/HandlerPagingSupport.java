@@ -12,6 +12,7 @@ import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedResponse;
 import io.ebean.ExpressionList;
 import io.ebean.PagedList;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -99,6 +100,18 @@ public final class HandlerPagingSupport {
         .setTotalCount(page.getTotalCount() != null ? page.getTotalCount() : 0)
         .setEntities(page.getEntities() == null ? List.of() : mapPage(page.getEntities(), mapper));
     return resp;
+  }
+
+  public static <M> PagedResponse<M> pagedResponse(List<M> sorted, NormalizedPaginationSpec spec) {
+    int total = sorted.size();
+    int from = Math.min(spec.offset(), total);
+    int to = Math.min(from + spec.limit(), total);
+    PagedResponse<M> response = new PagedResponse<>();
+    response.setTotalCount(total);
+    response.setHasPrev(from > 0);
+    response.setHasNext(to < total);
+    response.setEntities(new ArrayList<>(sorted.subList(from, to)));
+    return response;
   }
 
   private static <M> PagedResponse<M> toPagedResponse(PagedList<M> page) {

@@ -128,9 +128,11 @@ enum SysCacheIdentifier
 	USERMAPPINGOID,
 	USERMAPPINGUSERSERVER,
 	YBTABLEGROUPOID,
-	YBCONSTRAINTRELIDTYPIDNAME
+	YBCONSTRAINTRELIDTYPIDNAME,
+	/* intentionally out of alphabetical order, to avoid an ABI break: */
+	EXTENSIONOID
 
-#define SysCacheSize (YBCONSTRAINTRELIDTYPIDNAME + 1)
+#define SysCacheSize (EXTENSIONOID + 1)
 };
 
 typedef enum YbCatalogCacheTable
@@ -151,6 +153,7 @@ typedef enum YbCatalogCacheTable
 	YbCatalogCacheTable_pg_default_acl,
 	YbCatalogCacheTable_pg_enum,
 	YbCatalogCacheTable_pg_event_trigger,
+	YbCatalogCacheTable_pg_extension,
 	YbCatalogCacheTable_pg_foreign_data_wrapper,
 	YbCatalogCacheTable_pg_foreign_server,
 	YbCatalogCacheTable_pg_foreign_table,

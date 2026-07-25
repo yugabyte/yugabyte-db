@@ -149,6 +149,7 @@ Enhanced Postgres Compatibility
 Enable Connection Pooling
 : {{<tags/feature/ea idea="1368">}}If database version is v2024.2 or later, you can enable [Built-in connection pooling](../../../explore/going-beyond-sql/connection-mgr-ysql/).
 : While in Early Access, connection pooling is not available by default. To make the feature available, set the *Allow users to enable or disable connection pooling* Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+: After the universe is created, you can customize additional connection pooling YB-TServer flags using **Actions > Edit Flags**. For flag names and defaults, refer to [YSQL Connection Manager configuration](../../../additional-features/connection-manager-ysql/ycm-setup/#configure).
 
 Enable Systemd Services
 : To use cron instead of systemd for managing nodes, you can disable systemd services. This is not recommended.

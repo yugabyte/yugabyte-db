@@ -33,7 +33,7 @@ Before you can use the extension, set the following flags on every YB-Master and
 
 - `allowed_preview_flags_csv=ysql_enable_documentdb`
 - `ysql_enable_documentdb=true`
-- `enable_pg_cron=true` (the extension uses `pg_cron` for background maintenance)
+- `enable_pg_cron=true` (the extension uses pg_cron for background maintenance)
 
 By default the gateway listens on port `27017`. You can change this with the `documentdb_port` flag on YB-TServers.
 

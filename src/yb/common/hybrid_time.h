@@ -42,6 +42,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 

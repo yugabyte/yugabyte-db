@@ -15,6 +15,11 @@ COPY requirements.txt /app/rag_agent/
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
+# Pre-download Docling model artifacts at build time
+ENV DOCLING_ARTIFACTS_PATH=/opt/docling-models
+RUN python -c "from pathlib import Path; from docling.utils.model_downloader import download_models; download_models(output_dir=Path('/opt/docling-models'))" && \
+    chmod -R a+rX /opt/docling-models
+
 RUN useradd --uid 1001 --create-home --shell /bin/false ragagent
 
 COPY --chown=ragagent:ragagent . /app/rag_agent/

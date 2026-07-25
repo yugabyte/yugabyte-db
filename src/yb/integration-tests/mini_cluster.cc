@@ -1921,15 +1921,8 @@ std::vector<std::string> DumpDocDBToStrings(MiniCluster* cluster, ListPeersFilte
 void DisableFlushOnShutdown(MiniCluster& cluster, bool disable) {
   for (const auto& peer : ListTabletPeers(&cluster, ListPeersFilter::kAll)) {
     auto tablet = peer->shared_tablet_maybe_null();
-    if (!tablet) {
-      continue;
-    }
-    auto doc_db = tablet->doc_db();
-    if (doc_db.regular) {
-      doc_db.regular->SetDisableFlushOnShutdown(disable);
-    }
-    if (doc_db.intents) {
-      doc_db.intents->SetDisableFlushOnShutdown(disable);
+    if (tablet) {
+      tablet->TEST_SetDisableFlushOnShutdown(disable);
     }
   }
 }

@@ -18,7 +18,7 @@ set(PROCESS_WRAPPER_LIBS
     yb_util)
 ADD_YB_LIBRARY(yb_process_wrapper
                SRCS ${PROCESS_WRAPPER_SRCS}
-               DEPS ${PROCESS_WRAPPER_LIBS})
+               DEPS ${PROCESS_WRAPPER_LIBS} yb_fs yrpc)
 ADD_YB_LIBRARY(yb_process_wrapper_minimal
                SRCS process_wrapper.cc
                DEPS ${PROCESS_WRAPPER_LIBS})

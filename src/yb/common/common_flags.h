@@ -33,6 +33,7 @@ DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_enable_invalidation_messages);
 DECLARE_bool(enable_qos);
+DECLARE_bool(is_yb_managed);
 
 namespace yb {
 

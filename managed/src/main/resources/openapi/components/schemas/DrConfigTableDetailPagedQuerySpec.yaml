@@ -1,0 +1,7 @@
+title: DrConfigTableDetailPagedQuerySpec
+description: |
+  Paged list of table replication details for a DR config.
+  Rows are ordered by table ID. The order is ascending by default.
+type: object
+allOf:
+  - $ref: "./PaginationSpec.yaml"

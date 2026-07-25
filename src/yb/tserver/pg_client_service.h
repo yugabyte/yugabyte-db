@@ -57,7 +57,6 @@ class TserverXClusterContextIf;
     (DropTable) \
     (DropTablegroup) \
     (FetchData) \
-    (FinishTransaction) \
     (GetActiveTransactionList) \
     (GetCatalogMasterVersion) \
     (GetDatabaseInfo) \
@@ -124,6 +123,7 @@ class TserverXClusterContextIf;
 // Forwards call to corresponding PgClientSession async method (see
 // PG_CLIENT_SESSION_ASYNC_METHODS).
 #define YB_PG_CLIENT_ASYNC_METHODS \
+    (FinishTransaction) \
     (OpenTable) \
     (TriggerRelcacheInitConnection) \
     /**/
@@ -160,6 +160,10 @@ class PgClientServiceImpl : public PgClientServiceIf {
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
 
   size_t TEST_SessionsCount();
+
+  // Cumulative number of worker threads ever created by the shared memory exchange thread pool.
+  // Used to verify that the pool reuses threads across postgres connections.
+  size_t TEST_ExchangeThreadPoolWorkersCreated();
 
   void Shutdown() override;
 

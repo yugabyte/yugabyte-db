@@ -27,6 +27,7 @@
 #include "yb/rocksdb/db/version_edit.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/status_format.h"
 
 DEFINE_RUNTIME_bool(file_expiration_ignore_value_ttl, false,
     "When deciding whether a file has expired, assume that it is safe to ignore "

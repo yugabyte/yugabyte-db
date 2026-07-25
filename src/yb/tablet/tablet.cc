@@ -122,6 +122,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -319,21 +320,35 @@ DEFINE_test_flag(uint64, inject_sleep_before_applying_write_batch_ms, 0,
 DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
     "Sleep before applying intents to docdb after transaction commit");
 
+DEFINE_test_flag(double, inject_delay_before_external_intents_write_probability, 0.0,
+    "Probability of injecting a random delay between an external write batch's regular db "
+    "write and its intents db write in ApplyKeyValueRowOperations. Each firing sleeps for a "
+    "duration drawn uniformly from [0, TEST_inject_delay_before_external_intents_write_max_ms]. "
+    "Widens the otherwise sub-millisecond window in which a regular db flush can force-advance "
+    "the intents db flushed frontier past not-yet-written external intents (see "
+    "advance_intents_flushed_op_id_to_match_regular).");
+
+DEFINE_test_flag(uint64, inject_delay_before_external_intents_write_max_ms, 100,
+    "Upper bound in milliseconds of the random delay injected when "
+    "TEST_inject_delay_before_external_intents_write_probability fires.");
+
 DEFINE_test_flag(bool, skip_remove_intent, false,
     "If true, remove intent will be skipped");
 
 DEFINE_test_flag(bool, simulate_load_txn_for_cdc, false,
     "If true GetMinStartHTRunningTxnsForCDCProducer returns kInvalid");
 
-DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, true,
+DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, false,
     "If true, the flushed op id of intents db may be updated to match that of "
-    "regular db during flushing regular db memtable");
+    "regular db during flushing regular db memtable. "
+    "Don't enable it on xcluster target side for now");
 
 DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
     "Whether to include vector indexes into tablet's post split compaction");
 
 DECLARE_bool(cdc_immediate_transaction_cleanup);
 DECLARE_bool(consistent_restore);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
@@ -520,13 +535,6 @@ storage::UserFrontierPtr GetMutableMemTableFrontierFromDb(
 }
 
 
-Result<HybridTime> CheckSafeTime(HybridTime time, HybridTime min_allowed) {
-  if (time) {
-    return time;
-  }
-  return STATUS_FORMAT(TimedOut, "Timed out waiting for safe time $0", min_allowed);
-}
-
 class ActiveCompactionToken {
  public:
   explicit ActiveCompactionToken(std::atomic<size_t>& counter) : counter_(counter) {
@@ -602,7 +610,10 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
 
   void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo& flush_job_info) override {
     RocksDbListener::OnFlushCompleted(db, flush_job_info);
-    ERROR_NOT_OK(tablet_.MayModifyIntentsDbFlushedOpId(), log_prefix_);
+    auto status = tablet_.MayModifyIntentsDbFlushedOpId();
+    if (!status.ok() && !tablet_.shutdown_requested_.load(std::memory_order_acquire)) {
+      LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "Failed to update intents db flushed op id: " << status;
+    }
   }
 
  private:
@@ -678,7 +689,7 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
       return;
     }
     {
-      auto smallest = db->CalcMemTableFrontier(storage::UpdateUserValueType::kSmallest);
+      auto smallest = db->GetInMemoryFrontier(storage::UpdateUserValueType::kSmallest);
       if (smallest) {
         down_cast<docdb::ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(
             table_id_to_min_schema_version);
@@ -821,15 +832,14 @@ Tablet::Tablet(const TabletInitData& data)
 }
 
 Tablet::~Tablet() {
-  if (StartShutdown()) {
-    CompleteShutdown(DisableFlushOnShutdown::kFalse, AbortOps::kFalse);
+  if (StartShutdown(DisableFlushOnShutdown::kFalse, AbortOps::kFalse)) {
+    CompleteShutdown();
   } else {
     auto state = state_;
     if (state != kShutdown) {
       LOG_WITH_PREFIX(DFATAL) << "Destroying Tablet that did not complete shutdown: " << state;
-      // Still try to complete shutdown in release builds, but disable flush in this state to
-      // minimize risk of flushing potentially corrupted data.
-      CompleteShutdown(DisableFlushOnShutdown::kTrue, AbortOps::kFalse);
+      // Still try to complete shutdown in release builds.
+      CompleteShutdown();
     }
   }
   if (regulardb_block_based_table_mem_tracker_) {
@@ -920,14 +930,22 @@ struct Tablet::IntentsDbFlushFilterState {
   boost::container::small_vector<int64_t, 4> largest_flushed_index;
   boost::container::small_vector<rocksdb::FlushAbility, 4> flush_ability;
 
-  void AddLargestFlushedIndex(const storage::UserFrontierPtr& flushed_frontier) {
-    if (!flushed_frontier) {
-      largest_flushed_index.push_back(std::numeric_limits<int64_t>::min());
-      return;
+  void AddLargestFlushedIndex(
+      const storage::UserFrontierPtr& flushed_frontier,
+      const storage::UserFrontierPtr& smallest_mem_frontier) {
+    int64_t flushed_index = std::numeric_limits<int64_t>::min();
+    if (flushed_frontier) {
+      flushed_index = static_cast<const docdb::ConsensusFrontier&>(*flushed_frontier).op_id().index;
     }
-    const auto& consensus_frontier =
-        static_cast<const docdb::ConsensusFrontier&>(*flushed_frontier);
-    largest_flushed_index.push_back(consensus_frontier.op_id().index);
+    // The flushed frontier alone could overstate what is durable: a single apply op id may span
+    // both a flushed and an unflushed batch of a large transaction. So clamp the largest flushed
+    // index to one below the smallest op id that is still only in memory.
+    if (smallest_mem_frontier) {
+      auto mem_index =
+          static_cast<const docdb::ConsensusFrontier&>(*smallest_mem_frontier).op_id().index;
+      flushed_index = std::min(flushed_index, mem_index - 1);
+    }
+    largest_flushed_index.push_back(flushed_index);
   }
 
   bool HasNewData(int64_t memtable_op_index) const {
@@ -962,7 +980,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(
   VLOG_WITH_PREFIX(4) << __func__;
 
   if (state->flush_ability.empty() && state->largest_flushed_index.empty()) {
-    state->vector_indexes = VectorIndexList(vector_indexes_->List());
+    state->vector_indexes = vector_indexes_->List();
   }
 
   auto frontiers = memtable.Frontiers();
@@ -974,10 +992,16 @@ Result<bool> Tablet::IntentsDbFlushFilter(
       // We allow to flush intents DB only after regular DB.
       // Otherwise we could lose applied intents when corresponding regular records were not
       // flushed.
-      state->AddLargestFlushedIndex(regular_db_->GetFlushedFrontier());
+      const storage::FrontierKinds frontier_kinds{
+          storage::FrontierKind::kFlushed, storage::FrontierKind::kInMemorySmallest};
+      auto regular_frontiers = regular_db_->GetFrontiers(frontier_kinds);
+      state->AddLargestFlushedIndex(
+          regular_frontiers.flushed, regular_frontiers.in_memory.smallest);
       if (state->vector_indexes) {
         for (const auto& vector_index : *state->vector_indexes) {
-          state->AddLargestFlushedIndex(vector_index->GetFlushedFrontier());
+          auto vector_frontiers = vector_index->GetFrontiers(frontier_kinds);
+          state->AddLargestFlushedIndex(
+              vector_frontiers.flushed, vector_frontiers.in_memory.smallest);
         }
       }
       VLOG_WITH_PREFIX_AND_FUNC(4)
@@ -1243,6 +1267,34 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
 
   const auto& db_dir = metadata()->rocksdb_dir();
   RETURN_NOT_OK(CreateTabletDirectories(db_dir, metadata()->fs_manager()));
+
+  // Tiered storage: populate db_paths from the tablet's persisted tier_paths so RocksDB is
+  // aware of all tier directories at open time.
+  // Invariants:
+  //   - slot 0 must equal db_dir (MANIFEST/CURRENT/OPTIONS live there).
+  //   - target_size = UINT64_MAX for every slot so RocksDB's automatic
+  //    size-based db_path selection does not spill files to another path_id.
+  {
+    const auto& tier_paths = metadata()->tier_paths();
+    if (!tier_paths.empty()) {
+      auto* fs = metadata()->fs_manager();
+      regular_rocksdb_options.db_paths.clear();
+      std::string desc;
+      for (const auto& tp : tier_paths) {
+        if (tp.path != db_dir) {
+          RETURN_NOT_OK(CreateTabletDirectories(tp.path, fs));
+        }
+        regular_rocksdb_options.db_paths.emplace_back(
+            tp.path, std::numeric_limits<uint64_t>::max());
+        desc += Format("$0[$1]=$2 ", tp.tier, tp.path_id, tp.path);
+      }
+      LOG_IF_WITH_PREFIX(DFATAL, regular_rocksdb_options.db_paths.front().path != db_dir)
+          << "tier_paths[0] (" << regular_rocksdb_options.db_paths.front().path
+          << ") does not match home rocksdb_dir (" << db_dir << ")";
+      LOG_WITH_PREFIX(INFO) << "Opening RocksDB with " << tier_paths.size()
+                            << " tiered db_paths: " << desc;
+    }
+  }
 
   LOG(INFO) << "Opening RocksDB at: " << db_dir;
   rocksdb::DB* db = nullptr;
@@ -1518,7 +1570,8 @@ void Tablet::DoCleanupIntentFiles() {
         FlushFlags::kRegular | FlushFlags::kVectorIndexes | FlushFlags::kNoScopedOperation,
         rocksdb::FlushReason::kIntentFilesCleanup);
     if (!flush_status.ok()) {
-      LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Failed to flush regular db: " << flush_status;
+      LOG_WITH_PREFIX_AND_FUNC(WARNING)
+          << "Failed to flush regular db or vector indexes: " << flush_status;
       break;
     }
     auto delete_status = intents_db_->DeleteFile(best_file->Name());
@@ -1554,7 +1607,7 @@ Status Tablet::EnableCompactions(
 }
 
 Status Tablet::DoEnableCompactions() {
-  tablet::VectorIndexList{ vector_indexes().List() }.EnableAutoCompactions();
+  vector_indexes().List().EnableAutoCompactions();
 
   Status regular_db_status;
   std::unordered_map<std::string, std::string> new_options = {
@@ -1592,20 +1645,66 @@ Status Tablet::DoEnableCompactions() {
 void Tablet::MarkFinishedBootstrapping() {
   CHECK_EQ(state_, kBootstrapping);
   state_ = kOpen;
+}
+
+void Tablet::Start() {
+  if (transaction_coordinator_) {
+    transaction_coordinator_->Start();
+  }
+
+  if (transaction_participant_) {
+    transaction_participant_->Start();
+  }
+
+  // Launch vector index backfill only now, after the tablet has been published by its TabletPeer.
+  // The backfill resolves transaction statuses of provisional records, which reads the tablet's
+  // safe time; running it during bootstrap (before TabletPeer::tablet_ is assigned) would race with
+  // that assignment.
   vector_indexes_->LaunchBackfillsIfNecessary();
 }
 
-bool Tablet::StartShutdown() {
+bool Tablet::StartShutdown(
+    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
   LOG_WITH_PREFIX(INFO) << __func__;
 
   bool expected = false;
   if (!shutdown_requested_.compare_exchange_strong(expected, true)) {
     return false;
   }
+  // shutdown_requested_ is now set, so the vector index backfill will observe it and exit. This
+  // sync point fires before StartShutdownStorages pauses read/write operations, so a test can
+  // release a backfill parked at TabletVectorIndexes::Backfill:Start here without deadlocking that
+  // pause.
+  TEST_SYNC_POINT("Tablet::StartShutdown");
+
+  // Stop the transaction coordinator's pollers before StartShutdownStorages pauses read/write
+  // operations below: otherwise a poll could submit a transaction status update operation against
+  // the paused tablet and fail with a non-shutdown status, tripping a DFATAL. See issue #32211.
+  if (transaction_coordinator_) {
+    transaction_coordinator_->StartShutdown();
+  }
 
   if (transaction_participant_) {
     transaction_participant_->StartShutdown();
   }
+
+  // Abort in-flight safe time waits before StartShutdownStorages pauses read/write operations.
+  // Safe time stops advancing once shutdown starts, so an operation blocked in
+  // MvccManager::SafeTime/SafeTimeForFollower (e.g. a vector index backfill resolving an aborted
+  // transaction) would otherwise never release its ScopedRWOperation, deadlocking the pause.
+  mvcc_.StartShutdown();
+
+  // Start shutting the RocksDB instances down (signalling shutdown, pausing read/write operations)
+  // here, before TabletPeer::CompleteShutdown drains the peer strand. StartShutdownStorages signals
+  // RocksDB shutdown, which releases any writer parked in DBImpl::DelayWrite on a write stall (the
+  // stall loop breaks out once the DB reports it is shutting down). Otherwise the shutdown would
+  // deadlock: the strand drain waits for in-flight RemoveIntents (and similar) tasks to finish, but
+  // a RemoveIntents write stalled on an intents-DB write stall that never clears would never be
+  // released until StartShutdownStorages runs -- which used to happen only later, from
+  // CompleteShutdown, i.e. after the strand drain. See issue #32211.
+  // The op pauses must outlive this call (they keep operations paused until the RocksDB instances
+  // are destroyed in CompleteShutdownStorages), so they are stored in a member.
+  shutdown_op_pauses_ = StartShutdownStorages(disable_flush_on_shutdown, abort_ops, Stop::kTrue);
 
   return true;
 }
@@ -1617,18 +1716,19 @@ Status Tablet::CompleteStartup() {
   return EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr);
 }
 
-void Tablet::CompleteShutdown(
-    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
+void Tablet::CompleteShutdown() {
   LOG_WITH_PREFIX(INFO) << __func__;
 
-  StartShutdown();
-
-  auto op_pauses = StartShutdownStorages(disable_flush_on_shutdown, abort_ops, Stop::kTrue);
+  // StartShutdown must have been called before CompleteShutdown (via TabletPeer::StartShutdown or
+  // Tablet::~Tablet). It runs StartShutdownStorages and populates shutdown_op_pauses_, which we
+  // consume below.
+  LOG_IF_WITH_PREFIX(DFATAL, !shutdown_requested_.load(std::memory_order_acquire))
+      << "CompleteShutdown called without a preceding StartShutdown";
 
   cleanup_intent_files_token_.reset();
 
   if (transaction_coordinator_) {
-    transaction_coordinator_->Shutdown();
+    transaction_coordinator_->CompleteShutdown();
   }
 
   if (transaction_participant_) {
@@ -1657,7 +1757,7 @@ void Tablet::CompleteShutdown(
   // Shutdown the RocksDB instance for this tablet, if present.
   // Destruct intents DB and regular DB in-memory objects in reverse order to their creation.
   // Also it makes sure that regular DB is alive during flush filter of intents db.
-  CompleteShutdownStorages(op_pauses);
+  CompleteShutdownStorages(shutdown_op_pauses_);
 
   {
     std::lock_guard compaction_lock(full_compaction_token_mutex_);
@@ -1668,7 +1768,7 @@ void Tablet::CompleteShutdown(
 
   state_ = kShutdown;
 
-  for (auto* op_pause : op_pauses.AsArray()) {
+  for (auto* op_pause : shutdown_op_pauses_.AsArray()) {
     // Release the mutex that prevents snapshot restore / truncate operations from running. Such
     // operations are no longer possible because the tablet has shut down. When we start the
     // "read/write operation pause", we incremented the "exclusive operation" counter. This will
@@ -1683,8 +1783,17 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
     DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops, Stop stop) {
   TabletScopedRWOperationPauses op_pauses;
 
-  auto pause = [this,
-                stop](const BlockingRocksDbShutdownStart is_blocking) -> ScopedRWOperationPause {
+  // For graceful shutdown flush all storages while they are fully operational, so the intents DB
+  // flush filter keeps the intents DB flushed OpId behind the vector index flushed OpIds.
+  // Entries applied after this flush are recovered from the WAL during bootstrap (GH #32691).
+  if (!disable_flush_on_shutdown && !TEST_disable_flush_on_shutdown_ &&
+      FLAGS_flush_rocksdb_on_shutdown) {
+    WARN_NOT_OK(
+        Flush(FlushMode::kSync, FlushFlags::kAllDbs, rocksdb::FlushReason::kShutdown),
+        LogPrefix() + "Failed to flush storages before shutdown");
+  }
+
+  auto pause = [this, stop](const BlockingRocksDbShutdownStart is_blocking) {
     auto op_pause = PauseReadWriteOperations(is_blocking, stop);
     if (!op_pause.ok()) {
       LOG(FATAL) << "Failed to stop read/write operations: " << op_pause.status();
@@ -1692,11 +1801,11 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
     return op_pause;
   };
 
+  op_pauses.blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kTrue);
+
   // Triggering vector indexes shutting down before RocksDB to let vector indexes release
   // ScopedRWOperation instances if any.
   vector_indexes_->StartShutdown();
-
-  op_pauses.blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kTrue);
 
   bool expected = false;
   // If shutdown has been already requested, we still might need to wait for all pending read/write
@@ -1704,7 +1813,9 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
   if (rocksdb_shutdown_requested_.compare_exchange_strong(expected, true)) {
     for (auto* db : {regular_db_.get(), intents_db_.get()}) {
       if (db) {
-        db->SetDisableFlushOnShutdown(disable_flush_on_shutdown);
+        // Flushes are either already done above or not desired at all. Also at this point the
+        // intents DB flush filter cannot check the vector index flushed state anymore.
+        db->SetDisableFlushOnShutdown();
         db->StartShutdown();
       }
     }
@@ -1760,6 +1871,12 @@ std::vector<std::string> Tablet::CompleteShutdownStorages(
 Status Tablet::DeleteStorages(const std::vector<std::string>& db_paths) {
   rocksdb::Options rocksdb_options;
   InitRocksDBOptions(&rocksdb_options, LogPrefix());
+
+  // Tiered storage: hand DestroyDB the regular DB's tier disks so its cleanup removes SST files
+  // spread across all tiers.
+  for (const auto& tp : metadata()->tier_paths()) {
+    rocksdb_options.db_paths.emplace_back(tp.path, std::numeric_limits<uint64_t>::max());
+  }
 
   Status status;
   for (const auto& db_path : db_paths) {
@@ -1961,7 +2078,8 @@ Status Tablet::ApplyKeyValueRowOperations(
     rocksdb::WriteBatch intents_write_batch;
     docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
-        GetSchemaPackingProvider(), frontiers, vector_indexes_->List(), apply_to_storages);
+        GetSchemaPackingProvider(), frontiers, vector_indexes_->List().impl(), apply_to_storages,
+        table_type());
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetDirectWriter(&batcher);
@@ -1973,6 +2091,15 @@ Status Tablet::ApplyKeyValueRowOperations(
     }
 
     if (intents_write_batch.Count() != 0) {
+      TEST_SYNC_POINT("Tablet::ApplyKeyValueRowOperations:BeforeIntentsWrite");
+      if (PREDICT_FALSE(RandomActWithProbability(
+              FLAGS_TEST_inject_delay_before_external_intents_write_probability))) {
+        const auto delay_ms = RandomUniformInt<uint64>(
+            0, FLAGS_TEST_inject_delay_before_external_intents_write_max_ms);
+        LOG_WITH_PREFIX(INFO) << "TEST: injecting " << delay_ms
+                              << " ms delay before external intents write";
+        SleepFor(MonoDelta::FromMilliseconds(delay_ms));
+      }
       if (!metadata_->IsUnderXClusterReplication()) {
         RETURN_NOT_OK(metadata_->SetIsUnderXClusterReplicationAndFlush(true));
       }
@@ -2457,7 +2584,7 @@ Status Tablet::Flush(
 
   VectorIndexList vector_indexes_list;
   if (HasFlags(flags, FlushFlags::kVectorIndexes)) {
-    vector_indexes_list = VectorIndexList(vector_indexes_->List());
+    vector_indexes_list = vector_indexes_->List();
     vector_indexes_list.Flush();
   }
 
@@ -2496,7 +2623,7 @@ Status Tablet::Flush(FlushMode mode, rocksdb::FlushReason rocksdb_flush_reason) 
 Status Tablet::WaitForFlush() {
   TRACE_EVENT0("tablet", "Tablet::WaitForFlush");
 
-  RETURN_NOT_OK(VectorIndexList(vector_indexes_->List()).WaitForFlush());
+  RETURN_NOT_OK(vector_indexes_->List().WaitForFlush());
 
   if (regular_db_) {
     RETURN_NOT_OK(regular_db_->WaitForFlush());
@@ -2536,7 +2663,7 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_intents_ms);
   docdb::ConsensusFrontiers frontiers;
   InitFrontiers(data, frontiers);
-  auto vector_indexes = vector_indexes_->List();
+  auto vector_indexes = vector_indexes_->List().impl();
   docdb::ApplyIntentsContextCompleteListener complete_listener;
   if (!vector_indexes_->has_vector_deletion()) {
     complete_listener = [this](const docdb::ConsensusFrontiers& frontiers) {
@@ -2548,7 +2675,7 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   docdb::ApplyIntentsContext context(
       tablet_id(), data.transaction_id, data.apply_state, data.aborted, data.commit_ht, data.log_ht,
       min_running_ht, data.op_id, &key_bounds_, *metadata_, frontiers, intents_db_.get(),
-      vector_indexes, data.apply_to_storages, std::move(complete_listener));
+      vector_indexes, data.apply_to_storages, table_type(), std::move(complete_listener));
   docdb::IntentsWriter intents_writer(
       data.apply_state ? data.apply_state->key : Slice(), min_running_ht,
       intents_db_.get(), &context);
@@ -2721,7 +2848,8 @@ Status Tablet::GetIntentsForCDC(
 
 HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) {
   // We could not use mvcc_ directly, because correct lease should be passed to it.
-  return mvcc_.SafeTimeForFollower(min_allowed, deadline);
+  auto safe_time = mvcc_.SafeTimeForFollower(min_allowed, deadline);
+  return safe_time.ok() ? *safe_time : HybridTime::kInvalid;
 }
 
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIterator(
@@ -3254,7 +3382,8 @@ Status Tablet::BackfillIndexesForYsql(
   *backfilled_until = backfill_from;
   BackfillParams backfill_params(deadline, true /* is_ysql */);
   auto conn_result  = pgwrapper::CreateInternalPGConnBuilder(
-                          pgsql_proxy_bind_address, database_name, postgres_auth_key,
+                          pgsql_proxy_bind_address, database_name,
+                          pgwrapper::PGConnSettings::kDefaultUser, postgres_auth_key,
                           backfill_params.modified_deadline)
                           .Connect();
   // BACKFILL passes a read time and SERIALIZABLE is incompatible with fixed read time.
@@ -4230,7 +4359,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
     RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
   TEST_PAUSE_IF_FLAG(TEST_pause_before_getting_safe_time);
   if (require_lease == RequireLease::kFalse) {
-    return CheckSafeTime(mvcc_.SafeTimeForFollower(min_allowed, deadline), min_allowed);
+    return mvcc_.SafeTimeForFollower(min_allowed, deadline);
   }
   FixedHybridTimeLease ht_lease;
   if (ht_lease_provider_) {
@@ -4239,7 +4368,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
     if (!ht_lease_result.ok()) {
       if (require_lease == RequireLease::kFallbackToFollower &&
           ht_lease_result.status().IsIllegalState()) {
-        return CheckSafeTime(mvcc_.SafeTimeForFollower(min_allowed, deadline), min_allowed);
+        return mvcc_.SafeTimeForFollower(min_allowed, deadline);
       }
       return ht_lease_result.status();
     }
@@ -4258,7 +4387,7 @@ Result<HybridTime> Tablet::DoGetSafeTime(
         InternalError, "Read request hybrid time after leader lease: $0, lease: $1",
         min_allowed, ht_lease);
   }
-  return CheckSafeTime(mvcc_.SafeTime(min_allowed, deadline, ht_lease), min_allowed);
+  return mvcc_.SafeTime(min_allowed, deadline, ht_lease);
 }
 
 ScopedRWOperationPause Tablet::PauseWritePermits(CoarseTimePoint deadline) {
@@ -5060,7 +5189,7 @@ Status Tablet::TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions&
 
 Status Tablet::TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "vectors index ids: " << AsString(vector_index_ids);
-  tablet::VectorIndexList vector_index_list { vector_indexes().Collect(vector_index_ids) };
+  auto vector_index_list = vector_indexes().Collect(vector_index_ids);
   vector_index_list.Compact();
   auto status = vector_index_list.WaitForCompaction();
   WARN_WITH_PREFIX_NOT_OK(
@@ -5335,8 +5464,9 @@ docdb::CompactionHybridTimeConstraints Tablet::CompactionHybridTimeConstraints(
   for (const auto& file : inputs) {
     input_names.push_back(file->fd.GetNumber());
     if (!file->smallest.user_frontier) {
-      // This should not happen, so consider input range as a full range.
-      LOG(DFATAL) << "Input file without frontier: " << file->ToString();
+      // Frontiers are reset on files imported by bulk load, otherwise it should not happen.
+      // In both cases consider input range as a full range.
+      LOG_IF(DFATAL, !file->imported) << "Input file without frontier: " << file->ToString();
       result.input_min = HybridTime::kMin;
       result.input_max = HybridTime::kMax;
       continue;
@@ -5368,13 +5498,13 @@ docdb::CompactionHybridTimeConstraints Tablet::CompactionHybridTimeConstraints(
     result.HandleOtherRange(min_running_ht, HybridTime::kMax);
   }
 
-  auto frontiers = regular_db_->CalcMemTableFrontiers();
-  if (frontiers.first) {
-    DCHECK_ONLY_NOTNULL(frontiers.second.get());
+  auto frontiers = regular_db_->GetInMemoryFrontiers();
+  if (frontiers.smallest) {
+    DCHECK_ONLY_NOTNULL(frontiers.largest.get());
     VLOG_WITH_PREFIX_AND_FUNC(4)
-        << "Mem table frontiers: " << frontiers.first->ToString()
-        << "-" << frontiers.second->ToString();
-    result.HandleOtherRange(*frontiers.first, *frontiers.second);
+        << "Mem table frontiers: " << frontiers.smallest->ToString()
+        << "-" << frontiers.largest->ToString();
+    result.HandleOtherRange(*frontiers.smallest, *frontiers.largest);
   }
 
   auto files = regular_db_->GetLiveFilesMetaData();
@@ -5675,17 +5805,13 @@ Status Tablet::GetTabletKeyRanges(
     WriteBuffer* keys_buffer, TableIdView colocated_table_id) const {
   if (table_type_ != PGSQL_TABLE_TYPE) {
     return STATUS_FORMAT(
-        NotSupported, "GetTabletKeyRanges is only supported for YSQL, tablet_id: ", tablet_id());
-  }
-  if (!metadata_->colocated()) {
-    return STATUS_FORMAT(
-        NotSupported,
-        "GetTabletKeyRanges is only supported for colocated tables, tablet_id: ", tablet_id());
+        NotSupported, "GetTabletKeyRanges is only supported for YSQL, tablet_id: $0", tablet_id());
   }
   if (!metadata_->partition_schema()->IsRangePartitioning()) {
     return STATUS_FORMAT(
         NotSupported,
-        "GetTabletKeyRanges is only supported for range-sharded tables, tablet_id: ", tablet_id());
+        "GetTabletKeyRanges is only supported for range-sharded tables, tablet_id: $0",
+        tablet_id());
   }
   return GetTabletKeyRanges(
       lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, direction, max_key_length,
@@ -5958,9 +6084,6 @@ Status Tablet::GetTabletKeyRanges(
     partition_lower_bound_key = table_key_prefix;
     encoded_partition_key_end = IncrementedCopy(table_key_prefix);
     partition_upper_bound_key = encoded_partition_key_end;
-  } else if (key_bounds_.IsInitialized()) {
-    partition_lower_bound_key = key_bounds_.lower;
-    partition_upper_bound_key = key_bounds_.upper;
   } else {
     const auto partition_schema = metadata_->partition_schema();
     const auto partition = metadata_->partition();

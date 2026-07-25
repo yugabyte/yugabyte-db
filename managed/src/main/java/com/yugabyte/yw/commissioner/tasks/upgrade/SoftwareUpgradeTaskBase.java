@@ -378,7 +378,9 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
   }
 
   /**
-   * Returns a pair of list of nodes which have same DB version or in Live state.
+   * Returns the masters/tservers that still need processing for the upgrade/rollback. Filters OUT
+   * nodes that are already on {@code requiredVersion} AND in Live state; keeps nodes on a different
+   * version, or on the right version but not Live (e.g. left stopped by a prior aborted run).
    *
    * @param universe
    * @param nodes

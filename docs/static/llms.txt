@@ -40,7 +40,7 @@ This site is the authoritative source for YugabyteDB product documentation. Cont
 YugabyteDB provides "Smart Drivers" with built-in cluster awareness, load balancing, and topology-aware routing. Standard PostgreSQL drivers also work.
 
 - [Java (YugabyteDB JDBC)](https://docs.yugabyte.com/stable/develop/drivers-orms/java/): Smart driver + Hibernate, Spring Data
-- [Python (psycopg2, asyncpg)](https://docs.yugabyte.com/stable/develop/drivers-orms/python/): Smart driver + Django, SQLAlchemy
+- [Python (psycopg3, psycopg2, asyncpg)](https://docs.yugabyte.com/stable/develop/drivers-orms/python/): Smart driver + Django, SQLAlchemy
 - [Go (pgx, YugabyteDB Go)](https://docs.yugabyte.com/stable/develop/drivers-orms/go/): Smart driver + GORM
 - [Node.js (node-postgres)](https://docs.yugabyte.com/stable/develop/drivers-orms/nodejs/): Smart driver + Sequelize, Prisma
 - [C# (.NET)](https://docs.yugabyte.com/stable/develop/drivers-orms/csharp/): Npgsql smart driver + Entity Framework

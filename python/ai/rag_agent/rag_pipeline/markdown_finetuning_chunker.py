@@ -2,7 +2,7 @@ import logging
 import os
 from typing import Any, Dict, Generator, Optional
 
-from rag_pipeline.md_parser import parse_markdown
+from rag_pipeline.md_parser import parse_markdown, split_embed_text
 from rag_pipeline.partition_chunk_pipeline import read_whole_file
 from observability import meko_observe
 
@@ -36,4 +36,4 @@ def chunk_markdown_whole_file(
     )
 
     for chunk in doc.chunks:
-        yield chunk.to_embed_text(doc.title)
+        yield from split_embed_text(chunk.to_embed_text(doc.title))

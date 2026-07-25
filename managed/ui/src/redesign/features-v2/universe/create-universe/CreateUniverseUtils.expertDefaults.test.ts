@@ -97,6 +97,17 @@ describe('getExpertNodesStepDefaultPlacement', () => {
     ).toBeNull();
   });
 
+  it('applies multi-region defaults for NONE fault tolerance (edit RF=1)', () => {
+    const regions = [makeRegion('a', 3), makeRegion('b', 3), makeRegion('c', 3)];
+    const out = getExpertNodesStepDefaultPlacement({
+      ...expertBase(regions),
+      [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NONE
+    } as any);
+    expect(out).not.toBeNull();
+    expect(Object.keys(out!.availabilityZones).sort()).toEqual(['a', 'b', 'c']);
+    expect(out!.replicationFactor).toBe(3);
+  });
+
   it('returns null when region count is outside Figma table (e.g. 8)', () => {
     const regions = Array.from({ length: 8 }, (_, i) => makeRegion(`r${i}`, 4));
     expect(getExpertNodesStepDefaultPlacement(expertBase(regions) as any)).toBeNull();
@@ -215,7 +226,9 @@ describe('getInferredOutageCount', () => {
       r1: [{ name: '', uuid: '', nodeCount: 1, preffered: 3 }]
     };
 
-    expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 5, availabilityZones as any)).toBe(0);
+    expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 5, availabilityZones as any)).toBe(
+      0
+    );
   });
 
   it('uses RF cap for valid NODE_LEVEL placement at RF node count', () => {
@@ -227,7 +240,9 @@ describe('getInferredOutageCount', () => {
       r1: [{ name: '', uuid: '', nodeCount: 1, preffered: 3 }]
     };
 
-    expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 5, availabilityZones as any)).toBe(2);
+    expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 5, availabilityZones as any)).toBe(
+      2
+    );
   });
 
   it('uses RF cap for valid NODE_LEVEL placement above RF', () => {
@@ -239,7 +254,9 @@ describe('getInferredOutageCount', () => {
       r1: [{ name: '', uuid: '', nodeCount: 2, preffered: 3 }]
     };
 
-    expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 5, availabilityZones as any)).toBe(2);
+    expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 5, availabilityZones as any)).toBe(
+      2
+    );
   });
 
   it('keeps RF-based outage count for non-node-level resilience', () => {
@@ -250,16 +267,18 @@ describe('getInferredOutageCount', () => {
       ]
     };
 
-    expect(
-      getInferredOutageCount(FaultToleranceType.AZ_LEVEL, 5, availabilityZones as any)
-    ).toBe(2);
+    expect(getInferredOutageCount(FaultToleranceType.AZ_LEVEL, 5, availabilityZones as any)).toBe(
+      2
+    );
   });
 
   it('returns 0 for RF=1 sanity case', () => {
     const availabilityZones = {
       r0: [{ name: '', uuid: '', nodeCount: 1, preffered: 1 }]
     };
-    expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 1, availabilityZones as any)).toBe(0);
+    expect(getInferredOutageCount(FaultToleranceType.NODE_LEVEL, 1, availabilityZones as any)).toBe(
+      0
+    );
   });
 });
 
@@ -275,7 +294,10 @@ describe('inferResilience', () => {
   });
 
   it('returns null when regions exceed RF', () => {
-    const resilience = expertBase([makeRegion('r0', 1), makeRegion('r1', 1), makeRegion('r2', 1)], 2);
+    const resilience = expertBase(
+      [makeRegion('r0', 1), makeRegion('r1', 1), makeRegion('r2', 1)],
+      2
+    );
     const out = inferResilience(resilience as any, {
       availabilityZones: {
         r0: [{ name: '', uuid: '', nodeCount: 1, preffered: 1 }],
@@ -289,7 +311,10 @@ describe('inferResilience', () => {
   });
 
   it('returns REGION_LEVEL when regions equal RF', () => {
-    const resilience = expertBase([makeRegion('r0', 2), makeRegion('r1', 2), makeRegion('r2', 2)], 3);
+    const resilience = expertBase(
+      [makeRegion('r0', 2), makeRegion('r1', 2), makeRegion('r2', 2)],
+      3
+    );
     const out = inferResilience(resilience as any, {
       availabilityZones: {
         r0: [{ name: '', uuid: '', nodeCount: 1, preffered: 1 }],
@@ -369,11 +394,9 @@ const minimalOtherAdvanced = (): OtherAdvancedProps => ({
   nodeExporterPort: 9300,
   ybControllerrRpcPort: 7200,
   instanceTags: [],
-  useTimeSync: false,
   awsArnString: '',
   useSystemd: true,
-  accessKeyCode: '',
-  enableExposingService: false
+  accessKeyCode: ''
 });
 
 describe('effectiveUseDedicatedNodes', () => {

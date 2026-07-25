@@ -43,7 +43,8 @@ class RemoteSnapshotTransferClient : public RemoteClientBase {
  public:
   // Construct the remote bootstrap client.
   // 'fs_manager' and 'messenger' must remain valid until this object is destroyed.
-  RemoteSnapshotTransferClient(const TabletId& tablet_id, FsManager* fs_manager);
+  RemoteSnapshotTransferClient(
+      const TabletId& tablet_id, FsManager* fs_manager, std::function<bool()> is_cancelled = {});
 
   // Attempt to clean up resources on the remote end by sending an
   // EndRemoteBootstrapSession() RPC

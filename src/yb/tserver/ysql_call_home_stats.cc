@@ -109,7 +109,7 @@ std::optional<CoarseTimePoint> ConnectionDeadline() {
 
 Result<pgwrapper::PGConn> ConnectToDb(TabletServerIf* server, const string& dbname) {
   auto conn = VERIFY_RESULT(
-      server->CreateInternalPGConn(dbname, false, ConnectionDeadline()));
+      server->CreateInternalPGConn(dbname, kDefaultInternalPgUser, false, ConnectionDeadline()));
 
   if (FLAGS_callhome_ysql_statement_timeout_ms > 0) {
     RETURN_NOT_OK(conn.ExecuteFormat(

@@ -24,7 +24,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/random_util.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 

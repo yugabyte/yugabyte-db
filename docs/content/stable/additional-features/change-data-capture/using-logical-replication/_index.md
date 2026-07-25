@@ -104,13 +104,17 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
     DDL operations should not be performed from the time of replication slot creation till the start of snapshot consumption of the last table.
 
-- There should be a primary key on the table you want to stream the changes from.
-
 - CDC is not supported on tables that are also the target of xCluster replication (see issue {{<issue 15534>}}). However, both CDC and xCluster can work simultaneously on the same source tables.
 
     When performing [switchover](../../../deploy/multi-dc/async-replication/async-transactional-switchover/) or [failover](../../../deploy/multi-dc/async-replication/async-transactional-failover/) on xCluster, if you are using CDC, remember to also reconfigure CDC to use the new primary universe.
 
-- Currently, CDC doesn't support schema evolution for changes that require table rewrites (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)), or DROP TABLE and TRUNCATE TABLE operations after the replication slot is created. However, you can perform these operations before creating the replication slot without any issues.
+- Starting in v2026.1, CDC supports streaming DDLs that cause table rewrites on non-colocated tables. CDC detects the rewrite, notifies the client, and transitions to the new tablets. For configuration, limitations, and unsupported scenarios, refer to [Streaming DDLs causing table rewrite](./advanced-topic/#streaming-ddls-causing-table-rewrite). In versions earlier than v2026.1, CDC blocks DDLs that cause table rewrites when logical replication is active; DROP TABLE and TRUNCATE TABLE operations after slot creation are also not supported.
+
+- When you truncate a table that is being replicated by CDC, CDC does not send a truncate record to the client. Tracked in issue {{<issue 29674>}}.
+
+- When a DDL causes a table rewrite, CDC re-sends existing data that was re-written to the new tablets. Tracked in issue {{<issue 31636>}}.
+
+- DDLs that cause table rewrites on _colocated_ tables remain blocked when CDC is enabled, even in v2026.1 and later. Tracked in issue {{<issue 31908>}}.
 
 - YCQL tables aren't currently supported. Issue {{<issue 11320>}}.
 

@@ -32,7 +32,7 @@
 #include <vector>
 
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/transaction_log.h"
 
 #include "yb/util/slice.h"

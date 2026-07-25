@@ -1,8 +1,8 @@
 ---
-title: PostgreSQL Psycopg2 Driver for YSQL
+title: PostgreSQL Psycopg 2 Driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
-description: Connect a Python application using PostgreSQL Psycopg2 Driver for YSQL
+description: Connect a Python application using PostgreSQL Psycopg 2 Driver for YSQL
 menu:
   stable_develop:
     identifier: postgres-psycopg2-driver
@@ -28,22 +28,28 @@ type: docs
 
   <li >
     <a href="../yugabyte-psycopg2" class="nav-link">
-      <img src="/icons/yugabyte.svg"></i>
-      Yugabyte Psycopg2
+      <img src="/icons/yugabyte.svg">
+      YB Psycopg 2
+    </a>
+  </li>
+  <li >
+    <a href="../yugabyte-psycopg3" class="nav-link">
+      <img src="/icons/yugabyte.svg">
+      YB Psycopg 3
     </a>
   </li>
 
   <li >
     <a href="../postgres-psycopg2" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG Psycopg2
+      PG Psycopg 2
     </a>
   </li>
 
   <li >
     <a href="../postgres-psycopg3" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG Psycopg3
+      PG Psycopg 3
     </a>
   </li>
 
@@ -56,11 +62,11 @@ type: docs
 
 </ul>
 
-Psycopg is the most popular PostgreSQL database adapter for Python. Its main features are the complete implementation of the Python DB API 2.0 specification and the thread safety (several threads can share the same connection). YugabyteDB has full support for [Psycopg2](https://www.psycopg.org/).
+[Psycopg](https://www.psycopg.org/) is the most popular PostgreSQL database adapter for Python. Its main features are the complete implementation of the Python DB API 2.0 specification and the thread safety (several threads can share the same connection). YugabyteDB has full support for Psycopg 2.
 
 ## CRUD operations
 
-The following sections demonstrate how to perform common tasks required for Python application development using the PostgreSQL Psycopg2 driver.
+The following sections demonstrate how to perform common tasks required for Python application development using the PostgreSQL Psycopg 2 driver.
 
 To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
@@ -218,7 +224,7 @@ If there is no output or you get an error, verify the parameters included in the
 
 ### Limitations
 
-Currently, [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2) and [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) _cannot_ be used in the same environment.
+Currently, [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2) and [Yugabyte Psycopg 2 smart driver](https://github.com/yugabyte/psycopg2) _cannot_ be used in the same environment.
 
 ## Learn more
 

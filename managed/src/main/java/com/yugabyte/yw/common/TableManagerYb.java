@@ -77,12 +77,14 @@ public class TableManagerYb extends DevopsBase {
     Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
     Architecture arch = universe.getUniverseDetails().arch;
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
     UniverseDefinitionTaskParams.UserIntent userIntent = primaryCluster.userIntent;
     Provider provider = Provider.get(region.getProvider().getUuid());
 
-    String accessKeyCode = userIntent.accessKeyCode;
-    AccessKey accessKey = AccessKey.get(region.getProvider().getUuid(), accessKeyCode);
+    String accessKeyCode =
+        primaryCluster.userIntent.getAccessKeyCodeForProvider(provider.getUuid());
+    AccessKey accessKey = AccessKey.get(provider.getUuid(), accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
     Map<String, String> extraVars = CloudInfoInterface.fetchEnvVars(provider);
     Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
@@ -91,7 +93,7 @@ public class TableManagerYb extends DevopsBase {
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
 
-    if (region.getProviderCloudCode().equals(CloudType.kubernetes)) {
+    if (Util.isKubernetesBasedUniverse(universe)) {
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         PlacementInfo pi = cluster.getOverallPlacement();
         podAddrToConfig.putAll(
@@ -102,13 +104,13 @@ public class TableManagerYb extends DevopsBase {
       // Populate the map so that we use the correct SSH Keys for the different
       // nodes in different clusters.
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
-        UserIntent clusterUserIntent = cluster.userIntent;
-        Provider clusterProvider =
-            Provider.getOrBadRequest(UUID.fromString(clusterUserIntent.provider));
-        AccessKey accessKeyForCluster =
-            AccessKey.getOrBadRequest(clusterProvider.getUuid(), clusterUserIntent.accessKeyCode);
         Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
         for (NodeDetails nodeInCluster : nodesInCluster) {
+          UUID providerUUID = cluster.getProviderUUIDForNode(nodeInCluster);
+          String nodeAccessKeyCode = cluster.userIntent.getAccessKeyCodeForProvider(providerUUID);
+          AccessKey accessKeyForCluster =
+              AccessKey.getOrBadRequest(providerUUID, nodeAccessKeyCode);
+
           if (nodeInCluster.cloudInfo.private_ip != null
               && !nodeInCluster.cloudInfo.private_ip.equals("null")) {
             ipToSshKeyPath.put(
@@ -197,7 +199,6 @@ public class TableManagerYb extends DevopsBase {
         addCommonCommandArgs(
             backupTableParams,
             accessKey,
-            region,
             customerConfig,
             provider,
             podAddrToConfig,
@@ -259,7 +260,6 @@ public class TableManagerYb extends DevopsBase {
         addCommonCommandArgs(
             backupTableParams,
             accessKey,
-            region,
             customerConfig,
             provider,
             podAddrToConfig,
@@ -276,8 +276,8 @@ public class TableManagerYb extends DevopsBase {
     return shellProcessHandler.run(commandArgs, extraVars);
   }
 
-  private String getCertsDir(Region region, Provider provider) {
-    return region.getProviderCloudCode().equals(CloudType.kubernetes)
+  private String getCertsDir(Provider provider) {
+    return provider.getCloudCode() == CloudType.kubernetes
         ? K8S_CERT_PATH
         : provider.getYbHome() + VM_CERT_DIR;
   }
@@ -285,7 +285,6 @@ public class TableManagerYb extends DevopsBase {
   private void addCommonCommandArgs(
       BackupTableParams backupTableParams,
       AccessKey accessKey,
-      Region region,
       CustomerConfig customerConfig,
       Provider provider,
       Map<String, Map<String, String>> podAddrToConfig,
@@ -293,7 +292,7 @@ public class TableManagerYb extends DevopsBase {
       Map<String, String> ipToSshKeyPath,
       List<String> commandArgs,
       UserIntent userIntent) {
-    if (region.getProviderCloudCode().equals(CloudType.kubernetes)) {
+    if (provider.getCloudCode() == CloudType.kubernetes) {
       commandArgs.add("--k8s_config");
       commandArgs.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
@@ -306,7 +305,7 @@ public class TableManagerYb extends DevopsBase {
         commandArgs.add(Json.stringify(Json.toJson(ipToSshKeyPath)));
       }
     }
-    if (region.getProviderCloudCode().equals(CloudType.kubernetes) || userIntent.dedicatedNodes) {
+    if (provider.getCloudCode() == CloudType.kubernetes || userIntent.dedicatedNodes) {
       commandArgs.add("--useTserver");
     }
     Universe universe = Universe.getOrBadRequest(backupTableParams.getUniverseUUID());
@@ -326,7 +325,7 @@ public class TableManagerYb extends DevopsBase {
     }
     if (nodeToNodeTlsEnabled) {
       commandArgs.add("--certs_dir");
-      commandArgs.add(getCertsDir(region, provider));
+      commandArgs.add(getCertsDir(provider));
     }
     boolean verboseLogsEnabled =
         confGetter.getConfForScope(universe, UniverseConfKeys.backupLogVerbose);

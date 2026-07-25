@@ -9,6 +9,8 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistQueryLoggingConfig;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -121,14 +123,15 @@ public class ModifyQueryLoggingConfig extends UpgradeTaskBase {
     // Update query logging gflags in TServer configuration file.
     createUpdateConfigurationFileTask(userIntent, nodes, processTypes);
 
-    // Install, configure and start/stop/restart otel collector, if needed.
+    // Install, configure and start/stop/restart otel collector, if needed. Start from the current
+    // telemetry config (table is source of truth) and override only the query log section.
+    TelemetryConfig telemetryConfig = OtelCollectorUtil.getCurrentTelemetryConfig(universe);
+    telemetryConfig.setQueryLogConfig(taskParams().queryLogConfig);
     createManageOtelCollectorTasks(
         userIntent,
         nodes,
         taskParams().installOtelCollector,
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig,
-        taskParams().queryLogConfig,
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig,
+        telemetryConfig,
         nodeDetails ->
             GFlagsUtil.getGFlagsForNode(
                 nodeDetails,
@@ -169,7 +172,8 @@ public class ModifyQueryLoggingConfig extends UpgradeTaskBase {
             processType,
             UpgradeTaskParams.UpgradeTaskType.GFlags,
             UpgradeTaskParams.UpgradeTaskSubType.None);
-    params.queryLogConfig = taskParams().queryLogConfig;
+    params.telemetryConfig =
+        TelemetryConfig.builder().queryLogConfig(taskParams().queryLogConfig).build();
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());

@@ -1299,6 +1299,35 @@ Default: `true`
 
 Tables created after the creation of a replication slot are referred as Dynamic tables. This flag can be used to switch the dynamic addition of tables to the publication ON or OFF.
 
+##### --ysql_yb_enable_implicit_dynamic_tables_logical_replication
+
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+{{<tags/feature/restart-needed>}}
+Default: `true`
+{{% /tags/wrap %}}
+
+Available in v2026.1 and later.
+
+When set to `true`, modifications to a publication are reflected implicitly in logical replication streams, providing PostgreSQL-like semantics for dynamic tables.
+
+When set to `false`, CDC uses a periodic publication refresh mechanism. (This is the bahavior in versions earlier than v2026.1.)
+
+For more information, refer to [Adding tables to publication](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#adding-tables-to-publication).
+
+##### --enable_table_rewrite_for_cdcsdk_table
+
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+Default: `true`
+{{% /tags/wrap %}}
+
+When set to `true`, CDC does not block DDLs that cause table rewrites on tables with active logical replication streams. CDC streams records from the re-written tablets after finishing data from the older tablets.
+
+When set to `false`, any DDL that causes a table rewrite is blocked when CDC is active on the database (this is also the behavior in versions earlier than v2026.1).
+
+For more information, refer to [Streaming DDLs causing table rewrite](../../../additional-features/change-data-capture/using-logical-replication/advanced-topic/#streaming-ddls-causing-table-rewrite).
+
 ##### --cdcsdk_publication_list_refresh_interval_secs
 
 {{% tags/wrap %}}
@@ -1307,7 +1336,7 @@ Tables created after the creation of a replication slot are referred as Dynamic 
 Default: `900`
 {{% /tags/wrap %}}
 
-Interval in seconds at which the table list in the publication will be refreshed.
+Interval in seconds at which the table list in the publication will be refreshed. Applies in versions earlier than v2026.1, or on v2026.1 and later when [ysql_yb_enable_implicit_dynamic_tables_logical_replication](#ysql-yb-enable-implicit-dynamic-tables-logical-replication) is set to `false`.
 
 ##### --cdc_stream_records_threshold_size_bytes
 
@@ -1348,20 +1377,45 @@ Determines the window in milliseconds in which if a client has consumed the chan
 Default: `false`
 {{% /tags/wrap %}}
 
-When true, the CDC service returns a null before-image if it is not able to find one.
+When true, the CDC service returns a null before-image if it is not able to find one. This applies, for example, when a row is updated or deleted in the same transaction in which it was inserted: no committed pre-transaction state exists, so the before-image is returned as null instead of causing an error.
+
+```sql
+BEGIN;
+  INSERT INTO t (id, v) VALUES (1, 10);
+  UPDATE t SET v = 20 WHERE id = 1;   -- before-image of v: null
+  UPDATE t SET v = 30 WHERE id = 1;   -- before-image of v: null
+  DELETE FROM t WHERE id = 1;         -- before-image of v: null
+COMMIT;
+```
+
+To instead populate the before-image with the actual intra-transactional value, use [--cdc_enable_intra_transactional_before_image](#cdc-enable-intra-transactional-before-image).
 
 ##### --cdc_enable_intra_transactional_before_image
 
 {{% tags/wrap %}}
-
+{{<tags/feature/ea idea="2470">}}
+{{<tags/feature/restart-needed>}}
 Default: `false`
 {{% /tags/wrap %}}
 
-Available in v2024.2.9.1 and later, v2025.2.4.0 and later.
+Available in v2024.2.9.1 and later, and v2025.2.4.0 and later.
 
-When true, CDC populates before-image values for DML operations that occur within the same transaction. For example, if a row is inserted and then updated or deleted in one transaction, each UPDATE or DELETE change record includes the row values immediately before that operation within the transaction (not only the pre-transaction state).
+Controls how the before-image of a change record is computed when the same row is modified more than once in a single transaction.
 
-This flag requires a YB-TServer restart. Enable it on all YB-TServers in the universe when you need accurate before images for intra-transactional changes with logical replication or gRPC CDC.
+By default, the before-image reflects only the row's last *committed* state, that is, its value before the transaction began. Any changes made earlier in the same transaction are ignored. When this flag is true, CDC instead uses the row's effective value at the point just before each operation, including uncommitted changes made earlier in the same transaction. As a result, the before-image of the second and subsequent operations on a row reflects the change that immediately preceded it.
+
+For example:
+
+```sql
+BEGIN;
+  INSERT INTO t (id, v) VALUES (1, 10);
+  UPDATE t SET v = 20 WHERE id = 1;   -- before-image of v: 10
+  UPDATE t SET v = 30 WHERE id = 1;   -- before-image of v: 20
+  DELETE FROM t WHERE id = 1;         -- before-image of v: 30
+COMMIT;
+```
+
+The before-image is only emitted when before-image capture is enabled for the stream: use a replica identity of `FULL` or `DEFAULT` for logical replication, or a before-image record type for gRPC CDC. Set the flag consistently on every YB-TServer in the universe.
 
 
 ##### --cdcsdk_tablet_not_of_interest_timeout_secs

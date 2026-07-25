@@ -258,9 +258,16 @@ macro(yb_find_third_party_dependencies)
       ADD_CXX_FLAGS("-DYB_GPERFTOOLS_TCMALLOC")
     endif()
 
-    # We link tcmalloc statically into every executable, so we are not interested in the shared
-    # tcmalloc library here.
-    ADD_THIRDPARTY_LIB(tcmalloc STATIC_LIB "${TCMALLOC_STATIC_LIB}")
+    # On macOS we link the shared tcmalloc: gperftools installs itself as a malloc zone at load
+    # time (rather than by symbol interposition), so the static-initialization ordering that
+    # motivates static linking does not apply, and linking the shared library lets undefined
+    # tcmalloc API symbols (MallocExtension, MallocHook, HeapProfiler) resolve at link time. On
+    # other platforms we link tcmalloc statically into every executable.
+    if(APPLE)
+      ADD_THIRDPARTY_LIB(tcmalloc SHARED_LIB "${TCMALLOC_SHARED_LIB}")
+    else()
+      ADD_THIRDPARTY_LIB(tcmalloc STATIC_LIB "${TCMALLOC_STATIC_LIB}")
+    endif()
     ADD_CXX_FLAGS("-DYB_TCMALLOC_ENABLED")
   else()
     message("Not using tcmalloc, YB_TCMALLOC_ENABLED is '${YB_TCMALLOC_ENABLED}'")

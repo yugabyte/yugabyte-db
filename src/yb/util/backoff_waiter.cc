@@ -16,6 +16,7 @@
 #include <string>
 
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 
 using std::string;
 
@@ -132,6 +133,30 @@ Status LoggedWaitFor(
       WaitFor(condition, timeout, description, initial_delay, delay_multiplier, max_delay);
   LOG(INFO) << description << " - completed: " << status;
   return status;
+}
+
+void BusyWait(
+    const LWFunction<bool()>& is_done,
+    std::string_view description,
+    MonoDelta poll_interval,
+    MonoDelta warn_after) {
+  if (is_done()) {
+    return;
+  }
+  const auto start = CoarseMonoClock::Now();
+  auto next_warn = start + warn_after;
+  for (;;) {
+    SleepFor(poll_interval);
+    if (is_done()) {
+      return;
+    }
+    const auto now = CoarseMonoClock::Now();
+    if (now >= next_warn) {
+      LOG(WARNING) << "Still waiting for " << description << " for "
+                   << MonoDelta::FromMilliseconds(ToMilliseconds(now - start));
+      next_warn = now + warn_after;
+    }
+  }
 }
 
 } // namespace yb

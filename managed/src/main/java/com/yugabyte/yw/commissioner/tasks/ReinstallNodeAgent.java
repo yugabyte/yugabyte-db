@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
@@ -22,6 +23,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +47,40 @@ public class ReinstallNodeAgent extends UniverseDefinitionTaskBase {
     return (Params) taskParams;
   }
 
+  @VisibleForTesting
+  List<NodeDetails> getEligibleNodesForReinstall(Universe universe) {
+    // If nodeNames is empty, it means all Live nodes in the universe. Otherwise, only the
+    // specified nodes irrespective of the node state as connection pre-check is run.
+    Predicate<NodeDetails> nodeFilter =
+        CollectionUtils.isEmpty(taskParams().nodeNames)
+            ? n -> n.state == NodeState.Live
+            : n -> taskParams().nodeNames.contains(n.getNodeName());
+    List<NodeDetails> eligibleNodes =
+        filterNodesForInstallNodeAgent(
+                universe, universe.getNodes(), true /* includeOnPremManual */)
+            .stream()
+            .filter(nodeFilter)
+            .collect(Collectors.toList());
+    Set<String> targetNodeNames =
+        CollectionUtils.isEmpty(taskParams().nodeNames)
+            ? universe.getNodes().stream().map(NodeDetails::getNodeName).collect(Collectors.toSet())
+            : Sets.newHashSet(taskParams().nodeNames);
+    Set<String> allNodeNames =
+        eligibleNodes.stream().map(NodeDetails::getNodeName).collect(Collectors.toSet());
+    if (targetNodeNames.size() != eligibleNodes.size()) {
+      Set<String> filteredNodes = Sets.difference(targetNodeNames, allNodeNames);
+      log.error(
+          "Some nodes {} are not eligible for installing node agent. Make sure they are Live or"
+              + " targeted and node agent client is enabled",
+          filteredNodes);
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Some nodes are not eligible for installing node agent. Make sure they are Live or"
+              + " targeted and node agent client is enabled");
+    }
+    return eligibleNodes;
+  }
+
   @Override
   public void run() {
     // This lock neither puts the universe in error state on failure nor freezes the universe. So
@@ -53,43 +89,21 @@ public class ReinstallNodeAgent extends UniverseDefinitionTaskBase {
     try {
       Integer parallelism =
           confGetter.getConfForScope(universe, UniverseConfKeys.nodeAgentReinstallParallelism);
-      List<NodeDetails> nodeDetails =
-          filterNodesForInstallNodeAgent(
-                  universe, universe.getNodes(), true /* includeOnPremManual */)
-              .stream()
-              .filter(n -> n.state == NodeState.Live)
-              .filter(
-                  n ->
-                      CollectionUtils.isEmpty(taskParams().nodeNames)
-                          || taskParams().nodeNames.contains(n.getNodeName()))
-              .collect(Collectors.toList());
+      List<NodeDetails> eligibleNodes = getEligibleNodesForReinstall(universe);
       Set<String> targetNodeNames =
           CollectionUtils.isEmpty(taskParams().nodeNames)
               ? universe.getNodes().stream()
                   .map(NodeDetails::getNodeName)
                   .collect(Collectors.toSet())
               : Sets.newHashSet(taskParams().nodeNames);
-      Set<String> allNodeNames =
-          nodeDetails.stream().map(NodeDetails::getNodeName).collect(Collectors.toSet());
-      if (targetNodeNames.size() != nodeDetails.size()) {
-        Set<String> filteredNodes = Sets.difference(targetNodeNames, allNodeNames);
-        log.error(
-            "Some nodes {} are not eligible for installing node agent. Make sure they are Live and"
-                + " node agent client is enabled",
-            filteredNodes);
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            "Some nodes are not eligible for installing node agent. Make sure they are Live and"
-                + " node agent client is enabled");
-      }
       // Check the connection first before making changes.
-      createCheckSshConnectionTasks(nodeDetails)
+      createCheckSshConnectionTasks(eligibleNodes)
           .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
       if (Util.isOnPremManualProvisioning(universe)) {
         ShellProcessContext shellContext =
             ShellProcessContext.builder().useSshConnectionOnly(true).build();
         // Check if user systemd is possible.
-        createRunEnableLingerTask(universe, nodeDetails, shellContext);
+        createRunEnableLingerTask(universe, eligibleNodes, shellContext);
         // Check if root systemd is managing yb-node-agent.service.
         // Command outputs "not-found" if it is not found else, it returns "loaded".
         // It always exits with 0 status code.
@@ -98,7 +112,7 @@ public class ReinstallNodeAgent extends UniverseDefinitionTaskBase {
                 "systemctl", "show", "-p", "LoadState", "--value", "yb-node-agent.service");
         createRunNodeCommandTask(
             universe,
-            nodeDetails,
+            eligibleNodes,
             cmd,
             (n, r) -> {
               String output =
@@ -110,7 +124,7 @@ public class ReinstallNodeAgent extends UniverseDefinitionTaskBase {
             },
             shellContext);
       }
-      Lists.partition(nodeDetails, parallelism)
+      Lists.partition(eligibleNodes, parallelism)
           .forEach(
               list ->
                   createInstallNodeAgentTasks(universe, list, true /* reinstall */)

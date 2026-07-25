@@ -32,6 +32,7 @@
 #include "common/int.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/paths.h"
+#include "optimizer/restrictinfo.h"
 #include "optimizer/yb_merge_scan.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
@@ -54,6 +55,7 @@ static bool
 ybIsClauseEligibleSaop(Node *clause,
 					   Expr *expr,
 					   Oid opfamily,
+					   Oid idxcollation,
 					   int *num_elems)
 {
 	/*
@@ -103,7 +105,19 @@ ybIsClauseEligibleSaop(Node *clause,
 		return false;
 
 	/*
-	 * 5. Check operator (part 2).
+	 * 5. Check collation.
+	 *
+	 * As in match_saopclause_to_indexcol (see IndexCollMatchesExprColl),
+	 * reject the clause unless the index collation matches the clause's
+	 * comparison collation.  A SAOP pinned here is expected to reach the
+	 * executor among the index conditions, but match_saopclause_to_indexcol
+	 * drops such a clause from them.
+	 */
+	if (OidIsValid(idxcollation) && idxcollation != opexpr->inputcollid)
+		return false;
+
+	/*
+	 * 6. Check operator (part 2).
 	 *
 	 * This is last as it is more expensive than the other checks.
 	 */
@@ -111,7 +125,7 @@ ybIsClauseEligibleSaop(Node *clause,
 		return false;
 
 	/*
-	 * 6. Checks passed.  Collect data.
+	 * 7. Checks passed.  Collect data.
 	 */
 	ArrayType  *arrayval;
 	int16		elmlen;
@@ -343,11 +357,22 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 			continue;
 
 		/*
+		 * As in match_clause_to_index, if the clause can't be used as an
+		 * indexqual because it must wait till after some lower-security-level
+		 * restriction clause, reject it.  A SAOP pinned here is expected to
+		 * reach the executor among the index conditions, but
+		 * match_clause_to_index drops such a clause from them.
+		 */
+		if (!restriction_is_securely_promotable(rinfo, index->rel))
+			continue;
+
+		/*
 		 * If this is an eligible SAOP index clause, keep track of it if it is
 		 * better than the last one seen.
 		 */
 		if (ybIsClauseEligibleSaop((Node *) rinfo->clause, expr,
 									   index->opfamily[indexcol],
+									   index->indexcollations[indexcol],
 									   &num_elems) &&
 			(num_elems < best_num_elems || best_num_elems == -1))
 		{
@@ -362,6 +387,13 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 
 	bool		derived = false;
 
+	/*
+	 * Derived SAOPs need no securely-promotable check.  They are not query
+	 * clauses subject to RLS evaluation order but tautologies fabricated over
+	 * the index expression, and they bind against stored index values, which
+	 * the owner-defined expression already produced at write time, using the
+	 * builtin int equality.
+	 */
 	if (yb_enable_derived_saops)
 	{
 		if (IsA(expr, OpExpr))

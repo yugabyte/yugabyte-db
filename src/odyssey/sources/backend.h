@@ -14,6 +14,9 @@ void od_backend_close_connection(od_server_t *);
 void od_backend_close(od_server_t *);
 void yb_evict_prep_stmt_by_keyhash(od_server_t *, char *, yb_od_hash_64_t);
 void od_backend_evict_server_hashmap(od_server_t *, char *, char *, uint32_t);
+void yb_backend_register_close_prep_stmt(od_server_t *, char *, char *, uint32_t);
+void yb_backend_unregister_close_prep_stmt(od_server_t *, char *, char *, uint32_t);
+void yb_backend_drain_close_prep_stmts(od_server_t *, char *);
 void od_backend_error(od_server_t *, char *, char *, uint32_t);
 
 int od_backend_update_parameter(od_server_t *, char *, char *, uint32_t, int);

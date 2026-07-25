@@ -1561,6 +1561,7 @@ public class NodeManagerTest extends FakeDBApplication {
       userIntent.regionList = new ArrayList<UUID>();
       userIntent.regionList.add(t.region.getUuid());
       userIntent.providerType = t.cloudType;
+      userIntent.provider = t.provider.getUuid().toString();
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       buildValidParams(
           t,
@@ -1771,6 +1772,7 @@ public class NodeManagerTest extends FakeDBApplication {
       userIntent.regionList = new ArrayList<>();
       userIntent.regionList.add(t.region.getUuid());
       userIntent.providerType = t.cloudType;
+      userIntent.provider = t.provider.getUuid().toString();
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
       buildValidParams(
           t,
@@ -2008,6 +2010,7 @@ public class NodeManagerTest extends FakeDBApplication {
       userIntent.regionList = new ArrayList<>();
       userIntent.regionList.add(t.region.getUuid());
       userIntent.providerType = t.cloudType;
+      userIntent.provider = t.provider.getUuid().toString();
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(
           t,

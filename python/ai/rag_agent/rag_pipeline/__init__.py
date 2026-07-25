@@ -39,6 +39,14 @@ _LAZY_EXPORTS = {
         "rag_pipeline.markdown_finetuning_chunker",
         "is_markdown_finetuning_enabled",
     ),
+    "chunk_pdf_whole_file": (
+        "rag_pipeline.pdf_finetuning_chunker",
+        "chunk_pdf_whole_file",
+    ),
+    "is_pdf_finetuning_enabled": (
+        "rag_pipeline.pdf_finetuning_chunker",
+        "is_pdf_finetuning_enabled",
+    ),
     "MekoMarkdownParser": ("rag_pipeline.md_parser", "MekoMarkdownParser"),
     "parse_markdown": ("rag_pipeline.md_parser", "parse_markdown"),
     "parse_file": ("rag_pipeline.md_parser", "parse_file"),

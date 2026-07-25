@@ -27,6 +27,8 @@ Using the `node-agent-provision.sh` script, you can automatically provision a VM
 
 - YugabyteDB Anywhere is [installed and running](../../../install-yugabyte-platform/).
 
+- VMs are accessible to YugabyteDB Anywhere over ports 9070 and 443. See [Networking requirements](../../networking/) for more information.
+
 ## How to prepare the nodes for use in a database cluster
 
 After you have created the VMs with the operating system and additional software, you must further prepare the VMs as follows:
@@ -161,13 +163,11 @@ After the node is provisioned, reboot the node.
 
 If the preflight check fails, rebooting the node may solve some issues (for example, incorrect ulimit settings).
 
-<!-- TODO for 2026.1
 #### Run root or non-root
 
 Use the `--noroot` flag to run only the modules specific to the `yugabyte` user. The script must be run as the user `yugabyte`.
 
 Use the `--root` flag to run only the modules that require root privileges. Modules which do not require root are skipped. The script must be run as the user `root`.
--->
 
 #### Verify provisioning
 

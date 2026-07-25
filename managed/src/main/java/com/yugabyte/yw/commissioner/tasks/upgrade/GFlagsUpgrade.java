@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -517,9 +518,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
             userIntent,
             nodes,
             false,
-            curCluster.userIntent.auditLogConfig,
-            curCluster.userIntent.queryLogConfig,
-            curCluster.userIntent.metricsExportConfig,
+            OtelCollectorUtil.getCurrentTelemetryConfig(universe),
             nodeDetails ->
                 GFlagsUtil.getGFlagsForNode(
                     nodeDetails, ServerType.TSERVER, newCluster, newClusters));

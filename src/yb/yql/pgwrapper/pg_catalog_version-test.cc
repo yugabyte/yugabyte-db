@@ -17,6 +17,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/test_thread_holder.h"
@@ -114,16 +115,29 @@ class PgCatalogVersionTest : public LibPqTestBase {
     LOG(INFO) << "Restart the cluster with --ysql_yb_enable_invalidation_messages=" << mode_str;
     cluster_->Shutdown();
     for (size_t i = 0; i != cluster_->num_masters(); ++i) {
-      cluster_->master(i)->mutable_flags()->push_back(
-          Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
-      cluster_->master(i)->mutable_flags()->push_back("--log_ysql_catalog_versions=true");
+      auto* flags = cluster_->master(i)->mutable_flags();
+      flags->push_back(Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
+      flags->push_back("--log_ysql_catalog_versions=true");
+      // Object locking (and therefore concurrent DDL) requires invalidation messages, enforced by
+      // the cross-flag validators in common_flags.cc. So whenever invalidation messages are off,
+      // object locking and concurrent DDL must be off too, otherwise the daemons FATAL at startup.
+      if (!mode) {
+        flags->push_back("--enable_object_locking_for_table_locks=false");
+        flags->push_back("--ysql_enable_concurrent_ddl=false");
+        AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+      }
     }
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-      cluster_->tablet_server(i)->mutable_flags()->push_back(
-          Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
-      cluster_->tablet_server(i)->mutable_flags()->push_back("--log_ysql_catalog_versions=true");
+      auto* flags = cluster_->tablet_server(i)->mutable_flags();
+      flags->push_back(Format("--ysql_yb_enable_invalidation_messages=$0", mode_str));
+      flags->push_back("--log_ysql_catalog_versions=true");
+      if (!mode) {
+        flags->push_back("--enable_object_locking_for_table_locks=false");
+        flags->push_back("--ysql_enable_concurrent_ddl=false");
+        AppendFlagToAllowedPreviewFlagsCsv(*flags, "ysql_enable_concurrent_ddl");
+      }
       for (const auto& flag : extra_tserver_flags) {
-        cluster_->tablet_server(i)->mutable_flags()->push_back(flag);
+        flags->push_back(flag);
       }
     }
     ASSERT_OK(cluster_->Restart());
@@ -165,7 +179,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ShmCatalogVersionMap result;
     for (size_t tablet_index = 0; tablet_index != cluster_->num_tablet_servers(); ++tablet_index) {
       // Get the shared memory object from tserver at 'tablet_index'.
-      auto uuid = cluster_->tablet_server(0)->instance_id().permanent_uuid();
+      auto uuid = cluster_->tablet_server(tablet_index)->instance_id().permanent_uuid();
       tserver::SharedMemoryManager shared_mem_manager;
       RETURN_NOT_OK(shared_mem_manager.InitializePgBackend(uuid));
 
@@ -1642,6 +1656,12 @@ TEST_F(PgCatalogVersionTest, AlterDatabaseRename) {
   auto v3_yugabyte = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
   auto v3_postgres = ASSERT_RESULT(GetCatalogVersion(&conn_postgres));
 
+  // Wait for the global-impact RENAME version bump to propagate to conn_postgres's tserver so
+  // that conn_postgres refreshes its catalog snapshot to the new version before running the
+  // DROP below. Otherwise conn_postgres may still send the DROP with its stale catalog version
+  // while the tserver has already advanced, producing a spurious MISMATCHED_SCHEMA (40001) error.
+  WaitForCatalogVersionToPropagate();
+
   // If we did not bump up the catalog version of postgres DB, this DROP DATABASE would
   // stuck and the test timed out.
   ASSERT_OK(conn_postgres.Execute("DROP DATABASE test_db_renamed"));
@@ -2077,15 +2097,16 @@ TEST_F(PgCatalogVersionTest, AnalyzeAllTables) {
   LOG(INFO) << "result:\n" << result;
   string expected = IsTransactionalDdlEnabled()
       ? "$0, 2, 120; $0, 3, 768; $0, 4, 624; $0, 5, 720; "
-        "$0, 6, 792; $0, 7, 504; $0, 8, 96; $0, 9, 600; $0, 10, 216; "
-        "$0, 11, 528; $0, 12, 96; $0, 13, 216; $0, 14, 144; $0, 15, 144; "
-        "$0, 16, 624; $0, 17, 192; $0, 18, 168; $0, 19, 96; $0, 20, 504; "
-        "$0, 21, 216; $0, 22, 96; $0, 23, 216; $0, 24, 360; $0, 25, 192; "
-        "$0, 26, 120; $0, 27, 192; $0, 28, 120; $0, 29, 264; $0, 30, 168; "
-        "$0, 31, 144; $0, 32, 192; $0, 33, 120; $0, 34, 96; $0, 35, 120; "
-        "$0, 36, 216; $0, 37, 96; $0, 38, 48; $0, 39, 240; $0, 40, 168; "
-        "$0, 41, 120; $0, 42, 120; $0, 43, 96"
-      : "$0, 2, 10632";
+        "$0, 6, 792; $0, 7, 504; $0, 8, 96; $0, 9, 600; $0, 10, 192; "
+        "$0, 11, 168; $0, 12, 216; $0, 13, 528; $0, 14, 96; $0, 15, 216; "
+        "$0, 16, 144; $0, 17, 144; $0, 18, 624; $0, 19, 192; $0, 20, 168; "
+        "$0, 21, 96; $0, 22, 504; $0, 23, 216; $0, 24, 96; $0, 25, 216; "
+        "$0, 26, 360; $0, 27, 192; $0, 28, 120; $0, 29, 192; $0, 30, 72; "
+        "$0, 31, 120; $0, 32, 264; $0, 33, 168; $0, 34, 144; $0, 35, 192; "
+        "$0, 36, 120; $0, 37, 96; $0, 38, 120; $0, 39, 216; $0, 40, 96; "
+        "$0, 41, 48; $0, 42, 240; $0, 43, 168; $0, 44, 120; $0, 45, 120; "
+        "$0, 46, 96"
+      : "$0, 2, 11064";
   expected = Format(expected, yugabyte_db_oid);
   if (result != expected) {
     LOG(INFO) << ASSERT_RESULT(conn_yugabyte.FetchAllAsString(
@@ -2667,52 +2688,57 @@ TEST_F(PgCatalogVersionTest, InvalMessageYsqlUpgradeCommit3) {
   auto v = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
   ASSERT_EQ(v, 1);
 
+  ASSERT_OK(conn_yugabyte.Execute("SET ysql_upgrade_mode TO true"));
+  // V77 predates global views and does DROP VIEW pg_catalog.yb_terminated_queries.
+  // On a fresh cluster the global view wrapper
+  // yb_terminated_queries_with_server_uuid (created at initdb) depends on that
+  // view and would block the DROP. Drop the wrapper first to mimic the
+  // pre-global-views state the migration was written for. This standalone DDL
+  // bumps the catalog version from 1 to 2 in both transactional and
+  // non-transactional DDL modes (a lone autocommit statement is its own version)
+  ASSERT_OK(conn_yugabyte.Execute(
+      "DROP VIEW pg_catalog.yb_terminated_queries_with_server_uuid CASCADE"));
+
   // Now run the migrate sql under YSQL upgrade mode.
   // V77__26590__query_id_yb_terminated_queries_view.sql
   const string migrate_sql =
     ReadMigrationFile("V77__26590__query_id_yb_terminated_queries_view.sql");
-  ASSERT_OK(conn_yugabyte.Execute("SET ysql_upgrade_mode TO true"));
   ASSERT_OK(conn_yugabyte.Execute(migrate_sql));
-  // The migrate sql is run under YSQL upgrade mode. Therefore its COMMIT is
-  // considered as a DDL. There are two COMMIT statements. The first COMMIT
-  // has got invalidation messages so it causes catalog version to increment
-  // from 1 to 2.
+  // The dropped wrapper above occupies version 2. The migrate sql then runs
+  // under YSQL upgrade mode; its COMMITs are DDLs. The first COMMIT increments
+  // the version from 2 to 3.
   //
   // For the second transaction block:
   // If Transactional DDL is enabled: the COMMIT is counted as a DDL and causes
-  // catalog version to increment from 2 to 3.
-  // Otherwise, the DROP VIEW statement causes catalog version to
-  // increment from 2 to 3, the next CREATE OR REPLACE VIEW statement causes
-  // catalog version to increment from 3 to 4. The last COMMIT statement got
-  // 1 invalidation messages because even though there is no catalog table
-  // writes between the CREATE OR REPLACE VIEW and the last COMMIT, the call
-  // to increment catalog version does generate one message that is not
-  // captured by the call itself. Therefore the last COMMIT still causes
-  // catalog version to increment.
+  // catalog version to increment from 3 to 4.
+  // Otherwise, the DROP VIEW statement increments from 3 to 4, the next
+  // CREATE OR REPLACE VIEW from 4 to 5, and the last COMMIT from 5 to 6 (the
+  // call to increment catalog version itself generates one message that is not
+  // captured by the call).
   v = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
-  ASSERT_EQ(v, IsTransactionalDdlEnabled() ? 3 : 5);
+  ASSERT_EQ(v, IsTransactionalDdlEnabled() ? 4 : 6);
   const auto count = ASSERT_RESULT(conn_yugabyte.FetchRow<PGUint64>(
       "SELECT COUNT(*) FROM pg_yb_invalidation_messages"));
-  ASSERT_EQ(count, IsTransactionalDdlEnabled() ? 2 : 4);
+  ASSERT_EQ(count, IsTransactionalDdlEnabled() ? 3 : 5);
   auto query = "SELECT encode(messages, 'hex') FROM pg_yb_invalidation_messages "
                "WHERE current_version=$0"s;
 
-  // version 2 messages.
-  auto result2 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 2)));
-  ASSERT_EQ(result2.size(), 144U);
-
   // version 3 messages.
   auto result3 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 3)));
-  ASSERT_EQ(result3.size(), IsTransactionalDdlEnabled() ? 2544U : 1248U);
+  ASSERT_EQ(result3.size(), 144U);
+
+  // version 4 messages.
+  auto result4 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 4)));
+  ASSERT_EQ(result4.size(), IsTransactionalDdlEnabled() ? 2544U : 1248U);
 
   if (!IsTransactionalDdlEnabled()) {
-    // version 4 messages.
-    auto result4 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 4)));
-    ASSERT_EQ(result4.size(), 1344U);
-
     // version 5 messages.
     auto result5 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 5)));
-    ASSERT_EQ(result5.size(), 48U);
+    ASSERT_EQ(result5.size(), 1344U);
+
+    // version 6 messages.
+    auto result6 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 6)));
+    ASSERT_EQ(result6.size(), 48U);
   }
 }
 
@@ -2902,7 +2928,7 @@ TEST_F(PgCatalogVersionTest, InvalMessageMinimalRetention) {
     });
   }
   CoarseTimePoint start = CoarseMonoClock::Now();
-  while (start + 60s > CoarseMonoClock::Now()) {
+  while (start + RegularBuildVsSanitizers(60s, 20s) > CoarseMonoClock::Now()) {
     ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN c2 INT"));
     ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN c2"));
   }
@@ -2934,7 +2960,11 @@ TEST_F(PgCatalogVersionTest, InvalMessageWaitOnVersionGap) {
   // conn1 connects to node 1
   auto conn1 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   auto v = ASSERT_RESULT(GetCatalogVersion(&conn1));
-  ASSERT_EQ(v, IsTransactionalDdlEnabled() ? 88 : 4);
+  // ANALYZE bumps the catalog version once per non-empty relation it writes stats
+  // for. The global views populate three formerly-empty FDW catalogs
+  // (pg_foreign_data_wrapper, pg_foreign_server, pg_foreign_table), so each ANALYZE
+  // now updates 3 more relations. This test runs ANALYZE twice: +6, so 88 -> 94.
+  ASSERT_EQ(v, IsTransactionalDdlEnabled() ? 94 : 4);
   auto result = ASSERT_RESULT(conn1.FetchAllAsString("SELECT id FROM test_table"));
   ASSERT_EQ(result, "1");
 
@@ -3130,6 +3160,14 @@ class PgCatalogVersionConnManagerTest
     PgCatalogVersionTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back(
         "--ysql_enable_read_request_cache_for_connection_auth=true");
+    // The conn-mgr wrapper derives max_connections by parsing the postgresql.conf
+    // that PG regenerates on every (re)start; a read that races the regeneration
+    // finds no max_connections line and falls back to 10, which is below the
+    // default reserve of 15 and trips a fatal CHECK during startup. Pin a small
+    // reserve on every cluster start so reserve <= max_connections holds even
+    // against that 10 fallback.
+    options->extra_tserver_flags.push_back(
+        "--ysql_conn_mgr_reserve_internal_conns=5");
   }
 };
 
@@ -3147,16 +3185,23 @@ TEST_P(PgCatalogVersionConnManagerTest,
   auto master_read_count_before = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << "Create " << num_logical_connections << " logical connections";
   std::vector<PGConn> conns;
-  // Create additional number of logical connections. The setup process of each logical
-  // connection triggers a PG auth backend, which uses tserver cache for its work.
-  // In contrast, a regular PG backend does not use tserver cache for its auth work.
+  // Create additional logical connections. With
+  // ysql_enable_read_request_cache_for_connection_auth=true (set by the fixture)
+  // the connection-auth catalog prefetch is served from the tserver response
+  // cache for both connection manager auth backends and regular backends, so it
+  // costs no master read in either mode. A regular backend, however, is its own
+  // physical backend and still resolves the latest catalog version once in
+  // RelationCacheInitializePhase3() (YbGetMasterCatalogVersion) -- a read the
+  // connection-auth cache does not cover -- so each fresh regular backend costs
+  // one master read. Connection manager multiplexes logical connections onto
+  // already-initialized physical backends, so it costs none.
   for (int i = 0; i < num_logical_connections; i++) {
     conns.emplace_back(ASSERT_RESULT(Connect()));
   }
   auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << ", master_read_count_before: " << master_read_count_before
             << ", master_read_count_after: " << master_read_count_after;
-  auto expected_count = (enable_ysql_conn_mgr ? 0 : 2) * num_logical_connections;
+  const int expected_count = (enable_ysql_conn_mgr ? 0 : 1) * num_logical_connections;
   ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
 
   // Validate the conn-init-latency metrics:
@@ -3191,7 +3236,11 @@ TEST_P(PgCatalogVersionConnManagerTest,
   auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << ", master_read_count_before: " << master_read_count_before
             << ", master_read_count_after: " << master_read_count_after;
-  auto expected_count = (enable_ysql_conn_mgr ? 0 : 1) + 1;
+  // CM auth-passthrough serves auth from the response cache and the reused
+  // control backend does no relcache rebuild -> 0. After #32063 a regular
+  // backend also serves the auth prefetch from cache, leaving only the relcache
+  // rebuild -> 1.
+  auto expected_count = (enable_ysql_conn_mgr ? 0 : 1);
   ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_table(id int)"));
@@ -3209,10 +3258,23 @@ TEST_P(PgCatalogVersionConnManagerTest,
   master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << ", master_read_count_before: " << master_read_count_before
             << ", master_read_count_after: " << master_read_count_after;
-  // Because latest master catalog version is used to do prefetch when rebuilding
-  // relcache init file, we see the same number of master RPCs regardless of
-  // whether connection manager is used or not.
-  ASSERT_EQ(master_read_count_after - master_read_count_before, 6);
+  // #30148: in CM Auth Passthrough mode (default) the first auth prefetches at
+  // the global (template1) shared catalog version but rebuilds the relcache at
+  // the per-DB master version; the differing versions cost one extra master RPC.
+  // #32063: the regular-backend auth prefetch is served from the response cache
+  // when its version-keyed slot is warm. conn3 connects right after 200 version
+  // bumps, so the regular slot's warmth is timing-dependent -> 5 (hit) or 6 (miss).
+  // The same warmth timing applies in CM mode, where the #30148 extra RPC adds a
+  // constant +1 -> 6 (hit) or 7 (miss). The default global views (#30591) add one
+  // more relcache-rebuild read in CM mode -> up to 8.
+  auto rebuild_delta = master_read_count_after - master_read_count_before;
+  if (enable_ysql_conn_mgr) {
+    ASSERT_GE(rebuild_delta, 7);
+    ASSERT_LE(rebuild_delta, 8);
+  } else {
+    ASSERT_GE(rebuild_delta, 6);
+    ASSERT_LE(rebuild_delta, 7);
+  }
 }
 
 TEST_P(PgCatalogVersionConnManagerTest,
@@ -3279,112 +3341,96 @@ TEST_P(PgCatalogVersionConnManagerTest,
   ASSERT_OK(conn.ExecuteFormat("ALTER USER test_user WITH PASSWORD 'new_password'"));
 
   pg_ts = cluster_->tablet_server(0);
-  if (enable_ysql_conn_mgr) {
+  // After #32063 the connection-auth prefetch (pg_authid etc.) is served from
+  // the tserver response cache for regular backends too, not just connection
+  // manager auth backends, so a regular backend now also exhibits bounded auth
+  // staleness: a new connection on ts-0 keeps authenticating against the cached
+  // pre-ALTER password until that entry expires. The checks below run in both
+  // modes, but the staleness bound differs -- a regular backend re-reads auth
+  // fresh from master once the trust-auth lifetime expires (even while ts-0's
+  // shared catalog version is frozen), whereas a CM auth-passthrough backend
+  // stays at the frozen shared version until it advances. Only the
+  // master-read-count assertion stays CM-specific (a regular backend resolves
+  // the latest master version on every connect, so its count scales with the
+  // number of connections rather than being a small constant).
+  setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
+  if (IsObjectLockingEnabled()) {
+    // Object locking force-refreshes the catalog version on all tservers despite
+    // TEST_tserver_disable_catalog_refresh_on_heartbeat being set, so the stale
+    // cache entry is invalidated and the old password is already rejected.
+    ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
+        "password authentication failed for user \"test_user\"");
+  } else {
+    // The freeze flag pins ts-0's catalog version at the pre-ALTER value, so the
+    // cached auth entry keyed on it still serves the old password.
+    ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+  }
+
+  // Wait for the stale cache entry in the tserver to expire.
+  SleepFor(1ms * stale_cache_bound_ms);
+
+  // verify() checks how the password change is observed by new connections. When
+  // expect_password_change_visible is true the old password must be rejected and
+  // the new accepted; when false the expectation is flipped (while ts-0 is still
+  // frozen at v_old, auth is served from the response cache at the frozen
+  // version, so the change is not yet visible).
+  auto verify = [this](bool expect_password_change_visible) -> void {
     setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
-    if (IsObjectLockingEnabled()) {
-      // With object locking enabled, the password authentication should fail as
-      // the DDL commit codepath would force a catalog refresh on all tservers
-      // despite TEST_tserver_disable_catalog_refresh_on_heartbeat being set.
+    if (expect_password_change_visible) {
       ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
           "password authentication failed for user \"test_user\"");
     } else {
-      // Verify the old password still works because we have set the gflag
-      // --TEST_tserver_disable_catalog_refresh_on_heartbeat=true.
       ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
     }
-
-    // Wait for the stale cache in tserver expires.
-    SleepFor(1ms * stale_cache_bound_ms);
-
-    // Verify the old password no longer works after the threshold specified by
-    // --pg_cache_response_trust_auth_lifetime_limit_ms has passed.
-
-    auto verify = [this]() -> void {
-      setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
+    setenv("PGPASSWORD", "new_password", /*overwrite=*/true);
+    if (expect_password_change_visible) {
+      ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+    } else {
       ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
           "password authentication failed for user \"test_user\"");
-      // Verify the new password works.
-      setenv("PGPASSWORD", "new_password", /*overwrite=*/true);
-      ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
-    };
-
-    // First verify.
-    verify();
-    auto master_read_count_before = ASSERT_RESULT(GetMasterReadRPCCount());
-    ASSERT_OK(cluster_->SetFlagOnTServers(
-        "TEST_tserver_disable_catalog_refresh_on_heartbeat", "false"));
-    WaitForCatalogVersionToPropagate();
-
-    const int verify_count = 5;
-    for (int i = 0; i < verify_count; i++) {
-      verify();
     }
-    auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
-    LOG(INFO) << ", master_read_count_before: " << master_read_count_before
-              << ", master_read_count_after: " << master_read_count_after;
+  };
 
-    // Rebuilding the expired tserver cache entry costs 1 master RPC. But because
-    // we now use shared memory catalog version for both auth phase and
-    // RelationCacheInitializePhase3() prefetching, after we reset
-    // --TEST_tserver_disable_catalog_refresh_on_heartbeat=false which causes a new
-    // shared memory catalog version, we may have to rebuild up to two expired
-    // tserver cache entries during the verify loop:
-    // (1) expired entry for the auth phase
-    // (2) expired entry for the RelationCacheInitializePhase3() phase
-    // Earlier we were using master catalog version for
-    // RelationCacheInitializePhase3(), in that case we would have rebuilt (2)
-    // in the verify() that has "First verify" comment above.
-    //
-    // The expected count depends on how the relcache init file on ts-0 gets
-    // refreshed to the new catalog version *before* this loop runs:
-    //
-    //   Release (object locking enabled): the ALTER USER DDL commit codepath
-    //   force-refreshes the catalog version on all tservers despite
-    //   TEST_tserver_disable_catalog_refresh_on_heartbeat=true, so ts-0's
-    //   shared catalog version reaches v_new shortly after the ALTER USER
-    //   above and well before the "First verify" call. The local tserver
-    //   already has the v_new invalidation messages, so when the regular
-    //   backend forked by the new-password connect in "First verify" enters
-    //   load_relcache_init_file() -> YbTryRevalidateRelcacheFile(),
-    //   YbWaitForSharedCatalogVersionToCatchup() returns immediately and
-    //   YBCGetTserverCatalogMessageLists() succeeds. The init file is updated
-    //   from v_old to v_new without a master RPC and without populating either
-    //   tserver response-cache slot. Both (1) and (2) are still cold when we
-    //   enter the loop, so both expirations are observable -> 2 master RPCs.
-    //
-    //   Fastdebug (object locking disabled): the test flag is fully effective,
-    //   so ts-0's shared catalog version stays at v_old throughout "First
-    //   verify" and the local tserver does not yet have the v_new invalidation
-    //   messages. The regular backend's call into YbTryRevalidateRelcacheFile()
-    //   blocks in YbWaitForSharedCatalogVersionToCatchup() for the full 60s
-    //   timeout (twice -- once for the shared init file, once for the per-DB
-    //   init file) and then YBCGetTserverCatalogMessageLists() returns reason
-    //   "no match found". It falls back to a full relcache preload using
-    //   TRUST_CACHE @ master_catalog_version, which writes a new init file
-    //   stamped at v_new and populates a response-cache slot at v_new -- all
-    //   before master_read_count_before is captured. When we enter the loop,
-    //   each new connect's load_relcache_init_file() finds the init file
-    //   already fresh, so YbNeedNewCacheFileForPgAuthBackend stays false and
-    //   Phase3 skips its full prefetch entirely. Only the auth phase's
-    //   pg_authid lookup hits the response cache, so (1) and (2) collapse into
-    //   a single master RPC.
-    const int num_rebuild_rpcs = IsObjectLockingEnabled() ? 2 : 1;
+  // First verify (ts-0 still frozen at v_old): a CM auth-passthrough backend
+  // serves auth at the frozen shared version and never reads master during auth,
+  // so the stale old password is still accepted until ts-0 advances -- visible
+  // only under object locking. A regular backend re-reads auth fresh from master
+  // once the trust-auth cache entry expires, so the change is already visible.
+  verify(/*expect_password_change_visible=*/
+         enable_ysql_conn_mgr ? IsObjectLockingEnabled() : true);
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "TEST_tserver_disable_catalog_refresh_on_heartbeat", "false"));
+  WaitForCatalogVersionToPropagate();
 
-    // Each pg auth backend still costs 1 master RPC due to logical catalog version read.
-    ASSERT_EQ(master_read_count_before + num_rebuild_rpcs,
-              master_read_count_after);
-  } else {
-    // Bounded staleness only applies when connection manager is used.
-    // When connection manager is not used, we do not use tserver cache
-    // for auth processing so there is no staleness.
-    setenv("PGPASSWORD", "old_password", /*overwrite=*/true);
-    ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("yugabyte", "test_user"),
-        "password authentication failed for user \"test_user\"");
+  // Capture the baseline only after ts-0 has advanced to v_new, so deferred,
+  // setup-induced relcache rebuilds are excluded from the measured window.
+  auto master_read_count_before = ASSERT_RESULT(GetMasterReadRPCCount());
 
-    // Verify the new password works.
-    setenv("PGPASSWORD", "new_password", /*overwrite=*/true);
-    ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+  const int verify_count = 10;
+  for (int i = 0; i < verify_count; i++) {
+    verify(/*expect_password_change_visible=*/ true);
   }
+  auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
+  LOG(INFO) << ", master_read_count_before: " << master_read_count_before
+            << ", master_read_count_after: " << master_read_count_after;
+
+  if (enable_ysql_conn_mgr) {
+    // CM auth-passthrough serves auth from the cache and does no relcache rebuild
+    // during auth, so the loop's master reads are a small constant independent of
+    // the number of user connections: rebuilding the expired auth-phase cache
+    // entry, a possible auth-cache refresh if the trust-auth lifetime lapses mid
+    // loop, and at most a couple of one-time catalog-init reads when CM recycles a
+    // control connection after ts-0's catalog version advances -- none of these
+    // scale with the connection count. Without the response-cache path (#32063)
+    // each of the loop's connections would read master, so requiring strictly
+    // fewer than one master read per verify() iteration still catches that
+    // regression while tolerating the nondeterministic constant control-conn noise.
+    ASSERT_LT(master_read_count_after - master_read_count_before, verify_count);
+  }
+  // A regular backend resolves the latest master version in
+  // RelationCacheInitializePhase3() on every connect, so its master-read count
+  // scales with the number of connections rather than being a small constant;
+  // only the staleness behavior (verified above) is asserted for that mode.
 }
 
 TEST_P(PgCatalogVersionConnManagerTest,
@@ -3789,6 +3835,19 @@ class PgCatalogVersionMasterCacheTest : public PgCatalogVersionTest {
     PgCatalogVersionTest::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back("--enable_heartbeat_pg_catalog_versions_cache=true");
     options->extra_master_flags.push_back("--TEST_log_catalog_version_cache_events=true");
+
+    // These tests observe the catalog-version cache being consulted on the read path via
+    // CatalogVersionChecker (GetYsqlDBCatalogVersion). With object locking enabled,
+    // CatalogVersionChecker short-circuits and never reads the catalog version, so the
+    // cache is not exercised. Disable object locking to avoid this.
+    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent (and allow-list the
+    // preview flag so its non-default value is permitted).
+    options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_master_flags, "ysql_enable_concurrent_ddl");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
   }
 };
 

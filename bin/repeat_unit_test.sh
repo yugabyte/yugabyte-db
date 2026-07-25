@@ -54,6 +54,11 @@ Options:
     Don't compress kept logs.
   --stop-at-failure, --stop-on-failure, --saf, --sof
     Stop running further iterations after the first failure happens.
+    Equivalent to --max-failures 1.
+  -mf, --max-failures <num_failures>
+    Stop running further iterations after this many failures happen. Useful when reproducing a
+    flaky test locally: unlike a single failure, reaching a target number of failures lets you
+    estimate how many iterations are needed to hit that many failures.
   --java
     Specify this when running a Java test.
 EOT
@@ -97,7 +102,7 @@ skip_log_compression=false
 original_args=( "$@" )
 yb_compiler_type_arg=""
 verbose=false
-stop_at_failure=false
+declare -i max_failures=0
 is_java_test=false
 
 while [[ $# -gt 0 ]]; do
@@ -175,7 +180,12 @@ while [[ $# -gt 0 ]]; do
       is_java_test=true
     ;;
     --stop-at-failure|--stop-on-failure|--saf|--sof)
-      stop_at_failure=true
+      max_failures=1
+    ;;
+    -mf|--max-failures)
+      max_failures=$2
+      validate_numeric_arg_range "max-failures" "$max_failures" 1 1000000
+      shift
     ;;
     *)
       if [[ $1 == "--" ]]; then
@@ -250,12 +260,26 @@ if [[ -z $log_dir ]]; then
   mkdir -p "$log_dir"
 fi
 
-# We create this file when the first failure happens.
+# We create this file when the first failure happens. Kept for backward compatibility: external
+# tooling (e.g. Jenkins) not in this repository may rely on its presence.
 failure_flag_file_path="$log_dir/failure_flag"
 
+# Each failing iteration creates a marker file here, and each executed iteration creates one in
+# runs_dir. Counting them lets us implement "stop after N failures" (see --max-failures) and report
+# how many iterations actually ran.
+failures_dir="$log_dir/failures"
+runs_dir="$log_dir/runs"
+
+count_dir_entries() {
+  find "$1" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l
+}
+
 if [[ $iteration -gt 0 ]]; then
-  if [[ $stop_at_failure == "true" && -f $failure_flag_file_path ]]; then
+  if [[ $max_failures -gt 0 && $( count_dir_entries "$failures_dir" ) -ge $max_failures ]]; then
     exit
+  fi
+  if [[ $max_failures -gt 0 ]]; then
+    touch "$runs_dir/$iteration"
   fi
   # One iteration with a specific "id" ($iteration).
   test_log_path_prefix=$log_dir/$iteration
@@ -379,6 +403,7 @@ if [[ $iteration -gt 0 ]]; then
 
   if [[ $pass_or_fail == "FAILED" ]]; then
     touch "$failure_flag_file_path"
+    touch "$failures_dir/$iteration"
     exit 1
   fi
 else
@@ -409,6 +434,25 @@ else
   fi
   log "Saving repeated test execution logs to: $log_dir"
   ln -sfn "$log_dir" "$HOME/logs/latest_test"
+
+  mkdir -p "$failures_dir" "$runs_dir"
+  if [[ $max_failures -gt 0 ]]; then
+    log "Will stop after $max_failures failure(s)."
+  fi
+
+  set +e
   seq 1 "$num_iter" | \
     xargs -P $parallelism -n 1 "$0" "${original_args[@]}" --log_dir "$log_dir" --iteration
+  declare -i xargs_exit_code=$?
+  set -e
+
+  if [[ $max_failures -gt 0 ]]; then
+    declare -i total_runs total_failures
+    total_runs=$( count_dir_entries "$runs_dir" )
+    total_failures=$( count_dir_entries "$failures_dir" )
+    log "Summary: got $total_failures failure(s) in $total_runs iteration(s) actually run" \
+        "(requested up to $num_iter iteration(s), stopping after $max_failures failure(s))."
+  fi
+
+  exit "$xargs_exit_code"
 fi

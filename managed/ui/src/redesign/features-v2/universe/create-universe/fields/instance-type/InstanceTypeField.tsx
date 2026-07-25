@@ -14,12 +14,12 @@ import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/creat
 import { getDeviceInfoFromInstance } from '@app/redesign/features-v2/universe/create-universe/fields/volume-info/VolumeInfoFieldHelper';
 import { NodeType } from '@app/redesign/utils/dtos';
 import {
-  CloudType,
   InstanceType,
   InstanceTypeWithGroup,
   Placement,
   Region
 } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import {
@@ -108,15 +108,12 @@ export const InstanceTypeField = ({
         defaultInstanceType && instanceExists(defaultInstanceType)
           ? defaultInstanceType
           : data[0].instanceTypeCode;
-      setValue(UPDATE_FIELD, code, { shouldValidate: true });
+      setValue(UPDATE_FIELD, code);
       const option = data.find((i) => i.instanceTypeCode === code);
       if (option) {
         setValue(
           UPDATE_DEVICE_INFO_FIELD,
-          getDeviceInfoFromInstance(option, providerRuntimeConfigs),
-          {
-            shouldValidate: true
-          }
+          getDeviceInfoFromInstance(option, providerRuntimeConfigs)
         );
       }
     } else if (!isEditMode && !getValues(UPDATE_DEVICE_INFO_FIELD)) {
@@ -124,10 +121,7 @@ export const InstanceTypeField = ({
       if (option) {
         setValue(
           UPDATE_DEVICE_INFO_FIELD,
-          getDeviceInfoFromInstance(option, providerRuntimeConfigs),
-          {
-            shouldValidate: true
-          }
+          getDeviceInfoFromInstance(option, providerRuntimeConfigs)
         );
       }
     }
@@ -147,7 +141,7 @@ export const InstanceTypeField = ({
   const handleChange = (e: ChangeEvent<{}>, option: any) => {
     setValue(UPDATE_FIELD, option?.instanceTypeCode, { shouldValidate: true });
     const deviceInfo = getDeviceInfoFromInstance(option, providerRuntimeConfigs);
-    setValue(UPDATE_DEVICE_INFO_FIELD, deviceInfo, { shouldValidate: true });
+    setValue(UPDATE_DEVICE_INFO_FIELD, deviceInfo);
   };
 
   return (
@@ -183,8 +177,7 @@ export const InstanceTypeField = ({
                 }}
                 dataTestId="instance-type-field-container"
                 groupBy={
-                  provider?.code &&
-                  [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code)
+                  isCloudVendorCloudType(provider?.code)
                     ? (option: Record<string, string>) => option.groupName
                     : undefined
                 }

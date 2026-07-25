@@ -19,7 +19,7 @@
 
 #include "yb/gutil/macros.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/tostring.h"
 
 #include "yb/yql/pggate/pg_tools.h"
@@ -29,13 +29,13 @@ namespace yb::pggate {
 
 class ExplicitRowLockBuffer {
  public:
-  struct Info {
+  struct LockInfo {
     int rowmark;
     int pg_wait_policy;
     int docdb_wait_policy;
     PgOid database_id;
 
-    friend bool operator==(const Info&, const Info&) = default;
+    friend bool operator==(const LockInfo&, const LockInfo&) = default;
   };
 
   struct ErrorStatusAdditionalInfo {
@@ -50,18 +50,23 @@ class ExplicitRowLockBuffer {
     PgOid conflicting_table_id;
   };
 
+  struct AddLockData {
+    LockInfo lock_info;
+    LightweightTableYbctid lock_key;
+    const YbcPgTableLocalityInfo& table_locality;
+    std::optional<ErrorStatusAdditionalInfo>& error_info;
+  };
+
   explicit ExplicitRowLockBuffer(PgSession& session);
   ~ExplicitRowLockBuffer();
 
-  Status Add(
-      const Info& info, const LightweightTableYbctid& key,
-      const YbcPgTableLocalityInfo& locality_info,
-      std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> handle,
-      std::optional<ErrorStatusAdditionalInfo>& error_info);
+  Status Add(const AddLockData& data);
+  Result<YbcIsExplicitlyLockedRowSkippedCheckHandle> AddSkippable(
+      const AddLockData& data, std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> handle);
+
   Status Flush(std::optional<ErrorStatusAdditionalInfo>& error_info);
   void Clear();
   [[nodiscard]] bool HasPendingLocks() const;
-  [[nodiscard]] YbcIsExplicitlyLockedRowSkippedCheckHandle AcquireCheckHandle();
   // Check that handle has at least one skipped lock.
   // Note: Each handle can be checked only once.
   //       I.e. in case IsSkipped returned true for some handle next call with same handle will

@@ -26,7 +26,7 @@
 #include <stdint.h>
 #include <string>
 #include "yb/util/slice.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table.h"
 
@@ -83,6 +83,10 @@ class BlockHandle {
 
   bool IsSet() const {
     return offset_ != kUint64FieldNotSet && size_ != kUint64FieldNotSet;
+  }
+
+  bool operator==(const BlockHandle& other) const {
+    return offset_ == other.offset_ && size_ == other.size_;
   }
 
   static const BlockHandle& NullBlockHandle() {

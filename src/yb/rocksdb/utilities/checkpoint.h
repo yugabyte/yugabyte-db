@@ -22,7 +22,7 @@
 #pragma once
 
 #include <string>
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 
 namespace rocksdb {
 

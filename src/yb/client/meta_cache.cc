@@ -163,6 +163,10 @@ const size_t kPartitionGroupSize = 4;
 
 std::atomic<int64_t> lookup_serial_{1};
 
+const Status kPartitionNotYetRunningStatus = STATUS(
+    TryAgain, "Tablet for requested partition is not yet running",
+    ClientError(ClientErrorCode::kTabletNotYetRunning));
+
 } // namespace
 
 int64_t TEST_GetLookupSerial() {
@@ -683,7 +687,7 @@ bool RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
   return found;
 }
 
-void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
+bool RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
   bool found = false;
   std::lock_guard lock(mutex_);
   for (auto& replica : replicas_) {
@@ -693,8 +697,7 @@ void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
     }
   }
   VLOG_WITH_PREFIX(3) << "Latest replicas: " << ReplicasAsStringUnlocked();
-  DCHECK(found) << "Tablet " << tablet_id_ << ": Specified server not found: "
-                << server->ToString() << ". Replicas: " << ReplicasAsStringUnlocked();
+  return found;
 }
 
 std::string RemoteTablet::current_leader_uuid() const {
@@ -765,15 +768,7 @@ void LookupCallbackVisitor::operator()(const LookupTabletCallback& tablet_callba
     tablet_callback(*error_status_);
     return;
   }
-  auto remote_tablet = boost::get<RemoteTabletPtr>(param_);
-  if (remote_tablet == nullptr) {
-    static const Status error_status = STATUS(
-        TryAgain, "Tablet for requested partition is not yet running",
-        ClientError(ClientErrorCode::kTabletNotYetRunning));
-    tablet_callback(error_status);
-    return;
-  }
-  tablet_callback(remote_tablet);
+  tablet_callback(boost::get<RemoteTabletPtr>(param_));
 }
 
 void LookupCallbackVisitor::operator()(
@@ -1063,12 +1058,15 @@ Status MetaCache::ProcessTabletLocations(
 
     for (const TabletLocationsPB& loc : locations) {
       auto remote = VERIFY_RESULT(ProcessTabletLocation(loc, lookup_context, &processed_tables));
+      bool not_yet_running = !remote && !deleted_tablets_.contains(loc.tablet_id());
 
       auto it = tablet_lookups_by_id_.find(loc.tablet_id());
       if (it != tablet_lookups_by_id_.end()) {
         while (auto* lookup = it->second.lookups.Pop()) {
-          to_notify.emplace_back(std::move(lookup->callback),
-                                 LookupCallbackVisitor(remote));
+          to_notify.emplace_back(
+              std::move(lookup->callback),
+              not_yet_running ? LookupCallbackVisitor(kPartitionNotYetRunningStatus)
+                              : LookupCallbackVisitor(remote));
           delete lookup;
         }
       }
@@ -1132,8 +1130,6 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
   // Next, update the tablet caches.
   if (location.is_deleted()) {
     VLOG_WITH_PREFIX(5) << "Marking tablet " << tablet_id << " as deleted";
-
-    tablet_lookups_by_id_.erase(tablet_id);
     tablets_by_id_.erase(tablet_id);
     deleted_tablets_.insert(tablet_id);
     return RemoteTabletPtr();
@@ -1775,8 +1771,9 @@ class LookupByKeyRpc : public LookupRpc {
         auto& lookups_group = lookup_by_group_iter->second;
         while (auto* lookup = lookups_group.lookups.Pop()) {
           auto remote_it = processed_table.second.find(*lookup->partition_start);
-          auto lookup_visitor = LookupCallbackVisitor(
-              remote_it != processed_table.second.end() ? remote_it->second : nullptr);
+          auto lookup_visitor = remote_it != processed_table.second.end()
+              ? LookupCallbackVisitor(remote_it->second)
+              : LookupCallbackVisitor(kPartitionNotYetRunningStatus);
           to_notify->emplace_back(std::move(lookup->callback), lookup_visitor);
           delete lookup;
         }
@@ -1989,7 +1986,8 @@ void MetaCache::LookupByIdFailed(
   CoarseTimePoint max_deadline;
   {
     std::lock_guard lock(mutex_);
-    if (status.IsNotFound() && response_partition_list_version.has_value()) {
+    if ((status.IsNotFound() || status.IsDeleted()) &&
+        response_partition_list_version.has_value()) {
       auto tablet = LookupTabletByIdFastPathUnlocked(tablet_id);
       if (tablet && *tablet) {
         const auto tablet_last_known_table_partition_list_version =
@@ -2493,6 +2491,23 @@ void MetaCache::MarkTSFailed(RemoteTabletServer* ts,
     // We just loop on all tablets; if a tablet does not have a replica on this
     // TS, MarkReplicaFailed() returns false and we ignore the return value.
     tablet.second->MarkReplicaFailed(ts, ts_status);
+  }
+}
+
+void MetaCache::MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids) {
+  SharedLock<decltype(mutex_)> lock(mutex_);
+
+  for (const auto& uuid : ts_uuids) {
+    auto it = ts_cache_.find(uuid);
+    if (it == ts_cache_.end()) {
+      continue;
+    }
+    auto* ts = it->second.get();
+    LOG_WITH_PREFIX_AND_FUNC(INFO)
+        << "Marking replicas on leader-blacklisted tserver " << ts->ToString() << " as followers.";
+    for (const auto& tablet : tablets_by_id_) {
+      tablet.second->MarkTServerAsFollower(ts);
+    }
   }
 }
 
