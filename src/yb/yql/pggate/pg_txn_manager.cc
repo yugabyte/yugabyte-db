@@ -980,6 +980,8 @@ TxnReadPoint PgTxnManager::GetCurrentReadPointState() const {
       follower_read_staleness_ms_};
 }
 
+// Requires that any pending buffered entities are flushed at
+// the current read point before restoring to read_point.
 Status PgTxnManager::RestoreReadPoint(YbcReadPointHandle read_point) {
   if (VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt) {
     LOG(INFO) << "Setting read time serial_no to : " << read_point
