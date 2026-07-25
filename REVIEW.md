@@ -1,6 +1,6 @@
 # YugabyteDB Code Review Style Guide
 
-This document configures AI code-review agents' automated review for PRs in this repository. It scopes what to flag, what to skip, and how to handle a few PR types (especially backports) where the default review behavior produces noise.
+This document is the review guide for anyone — human or AI agent — reviewing PRs in this repository. It scopes what to flag, what to skip, and how to handle a few PR types (especially backports) where the default review behavior produces noise.
 
 ## General review guidance
 
@@ -27,7 +27,7 @@ Default comment severity threshold: **MEDIUM**. Suppress LOW-severity nits unles
 
 **When you have no actionable feedback, say so in one line.** Do not write a `## Code Review` summary paragraph that paraphrases the diff and then ends with "I have no feedback to provide." — that's review noise the author has to read and dismiss. Just leave a single comment of the form `LGTM` (optionally with a one-line caveat, e.g. `LGTM — please verify the test plan covers <X>`). Skip the diff recap entirely; the author already knows what they wrote.
 
-**Do not repeatedly re-flag the same issue across review rounds.** A `/gemini review` retrigger after a follow-up commit must respect the prior round's resolution:
+**Do not repeatedly re-flag the same issue across review rounds.** A re-review after a follow-up commit must respect the prior round's resolution:
 
 - If a thread on the same line / same issue was **resolved** (via the GitHub UI or `resolveReviewThread`), do not raise it again. The resolve carries the human/agent decision and re-flagging adds review noise.
 - If a thread has a **reply** explaining why the suggestion was declined (e.g. "the script already has `set -euo pipefail` at line 17") or applied differently from the literal suggestion, accept the explanation and skip the issue on the next pass.
