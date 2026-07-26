@@ -1017,6 +1017,7 @@ class TransactionParticipant::Impl
       }
       if (data.apply_to_storages.Any()) {
         auto apply_state = applier_.ApplyIntents(data);
+        TEST_SYNC_POINT("TransactionParticipant::ApplyIntentsDone");
 
         VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
                             << apply_state.ToString();
@@ -2326,6 +2327,7 @@ class TransactionParticipant::Impl
   }
 
   void HandleApplying(std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
+    TEST_SYNC_POINT("TransactionParticipant::HandleApplying");
     if (RandomActWithProbability(FLAGS_TEST_transaction_ignore_applying_probability)) {
       VLOG_WITH_PREFIX(2)
           << "TEST: Rejected apply: "

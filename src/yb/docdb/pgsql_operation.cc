@@ -1097,6 +1097,12 @@ class PgsqlVectorFilter {
     return status_;
   }
 
+  // The reader used to resolve candidates, or nullptr when the filter is inactive; Search reuses it
+  // to resolve ybctids on the same snapshot.
+  docdb::DocVectorIndexReverseMappingReader* reverse_mapping_reader() const {
+    return reverse_mapping_reader_.get();
+  }
+
  private:
   const docdb::DocVectorIndexMetrics& metrics_;
   FilteringIterator iter_;
@@ -2709,6 +2715,18 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   RSTATUS_DCHECK(
       data_.vector_index->BackfillDone(), IllegalState,
       "Vector index query on non ready index: $0", *data_.vector_index);
+
+  // Resolve ybctids with the filter's reader so Search sees the same snapshot the filter used
+  // (avoids a spurious "Vector not found" when a DELETE applies between the two reads). When the
+  // filter is inactive it has no reader, so create one here.
+  auto* reverse_mapping_reader = filter.reverse_mapping_reader();
+  DocVectorIndexReverseMappingReaderPtr owned_reader;
+  if (reverse_mapping_reader == nullptr) {
+    owned_reader = VERIFY_RESULT(data_.vector_index->context().CreateReverseMappingReader(
+        data_.read_operation_data.read_time, data_.read_operation_data.statistics));
+    reverse_mapping_reader = owned_reader.get();
+  }
+
   auto result = VERIFY_RESULT(data_.vector_index->Search(
       vector_slice,
       vector_index::SearchOptions {
@@ -2717,7 +2735,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
         .filter = std::ref(filter),
       },
       could_have_missing_entries,
-      data_.read_operation_data
+      *reverse_mapping_reader
   ));
   RETURN_NOT_OK(filter.status());
   VLOG_WITH_FUNC(2) << "Search results: " << result.ToString();
