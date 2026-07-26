@@ -180,6 +180,12 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_reserve_internal_conns, 15,
   "is 300 and this flag is set to its default of 15, the YSQL Connection Manager will have a"
   "physical connection limit of 285 (300 - 15).");
 
+DEFINE_RUNTIME_uint32(ysql_conn_mgr_pg_conf_wait_timeout_ms, 15000,
+    "Timeout in milliseconds for the YSQL Connection Manager to wait for the PostgreSQL process "
+    "to be started (and hence for ysql_pg.conf to be freshly written) before reading "
+    "ysql_pg.conf to build its own config. If the timeout expires the connection manager start "
+    "fails and is retried by its supervisor.");
+
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_dump_heap_snapshot_interval, 0,
     "Dump tcmalloc current heap snapshot of Ysql Connection Manager process. "
     "If set to greater than 0, tcmalloc current heap snapshot will be dumped to the conn mgr "
@@ -269,8 +275,11 @@ DEFINE_validator(ysql_conn_mgr_enable_dealloc_reconciliation,
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
 
-YsqlConnMgrWrapper::YsqlConnMgrWrapper(const YsqlConnMgrConf& conf, key_t stat_shm_key)
-    : conf_(std::move(conf)), stat_shm_key_(std::move(stat_shm_key)) {}
+YsqlConnMgrWrapper::YsqlConnMgrWrapper(
+    const YsqlConnMgrConf& conf, key_t stat_shm_key, PgProcessStartWaiter pg_start_waiter)
+    : conf_(std::move(conf)),
+      stat_shm_key_(std::move(stat_shm_key)),
+      pg_start_waiter_(std::move(pg_start_waiter)) {}
 
 std::string YsqlConnMgrWrapper::GetYsqlConnMgrExecutablePath() {
   return JoinPathSegments(yb::env_util::GetRootDir("bin"), "bin", "odyssey");
@@ -283,6 +292,12 @@ Status YsqlConnMgrWrapper::PreflightCheck() {
 Status YsqlConnMgrWrapper::Start() {
   auto ysql_conn_mgr_executable = GetYsqlConnMgrExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(ysql_conn_mgr_executable));
+
+  if (pg_start_waiter_) {
+    RETURN_NOT_OK_PREPEND(
+        pg_start_waiter_(MonoDelta::FromMilliseconds(FLAGS_ysql_conn_mgr_pg_conf_wait_timeout_ms)),
+        "Failed waiting for the PostgreSQL process to be started before reading ysql_pg.conf");
+  }
 
   if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode != "none") {
     LOG(INFO) << "Warmup of server connections is enabled in ysql connection manager";
@@ -392,11 +407,16 @@ Status YsqlConnMgrWrapper::UpdateAndReloadConfig() {
   return ReloadConfig();
 }
 
-YsqlConnMgrSupervisor::YsqlConnMgrSupervisor(const YsqlConnMgrConf& conf, key_t stat_shm_key)
-    : ProcessSupervisor(conf.cgroup), conf_(conf), stat_shm_key_(stat_shm_key) {}
+YsqlConnMgrSupervisor::YsqlConnMgrSupervisor(
+    const YsqlConnMgrConf& conf, key_t stat_shm_key,
+    YsqlConnMgrWrapper::PgProcessStartWaiter pg_start_waiter)
+    : ProcessSupervisor(conf.cgroup),
+      conf_(conf),
+      stat_shm_key_(stat_shm_key),
+      pg_start_waiter_(std::move(pg_start_waiter)) {}
 
 std::shared_ptr<ProcessWrapper> YsqlConnMgrSupervisor::CreateProcessWrapper() {
-  return std::make_shared<YsqlConnMgrWrapper>(conf_, stat_shm_key_);
+  return std::make_shared<YsqlConnMgrWrapper>(conf_, stat_shm_key_, pg_start_waiter_);
 }
 
 void YsqlConnMgrSupervisor::UpdateAndReloadConfig() {
