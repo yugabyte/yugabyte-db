@@ -571,10 +571,11 @@ class Tablet::RocksDbListener : public rocksdb::EventListener {
       VLOG_WITH_PREFIX_AND_FUNC(2)
           << "RocksDB flush completed, triggering cleanup of recently applied transactions";
       auto status = participant->ProcessRecentlyAppliedTransactions();
-      if (!status.ok() && !tablet_.shutdown_requested_.load(std::memory_order_acquire)) {
-        LOG_WITH_PREFIX_AND_FUNC(DFATAL)
-            << "Failed to clean up recently applied transactions: " << status;
-      }
+      // Best-effort cleanup; a failure is not fatal. Suppress the expected ShutdownInProgress (a
+      // full shutdown stops the scoped-op counter); the rarer TryAgain during restore/truncate
+      // still warns to aid investigation.
+      LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
+          << "Failed to clean up recently applied transactions: " << status;
     }
   }
 
@@ -618,9 +619,9 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
   void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo& flush_job_info) override {
     RocksDbListener::OnFlushCompleted(db, flush_job_info);
     auto status = tablet_.MayModifyIntentsDbFlushedOpId();
-    if (!status.ok() && !tablet_.shutdown_requested_.load(std::memory_order_acquire)) {
-      LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "Failed to update intents db flushed op id: " << status;
-    }
+    // Best-effort; not fatal. As above, suppress ShutdownInProgress and let TryAgain warn.
+    LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
+        << "Failed to update intents db flushed op id: " << status;
   }
 
  private:

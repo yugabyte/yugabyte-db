@@ -2379,6 +2379,52 @@ TEST_P(PgVectorIndexSingleServerTest, SnapshotReadWithConcurrentDelete) {
   ASSERT_OK(read_conn.CommitTransaction());
 }
 
+// Reproduces the "Vector not found" flake from PgVectorIndexTest.SnapshotSchedule by interleaving a
+// committed DELETE's reverse-mapping apply with a vector search: sync points gate the apply to run
+// after the filter reads the live mapping (HandleApplying waits for Search:AfterFilter) and let the
+// query resolve only after it commits (Search:BeforeResolve waits for ApplyIntentsDone). A single
+// tablet server keeps each sync point mapped to one tablet.
+TEST_P(PgVectorIndexSingleServerTest, ConcurrentDeleteApplyDuringSearch) {
+  constexpr size_t kNumRows = 64;
+  constexpr size_t kQueryLimit = 10;
+
+  // Keep the filter active (could_have_missing_entries == false) so Search resolves on the filter's
+  // reader -- the path the fix exercises. In production this holds when the tablet has deletions;
+  // the racing delete's apply is gated below, so force it on to keep the test deterministic.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_no_deletions_skip_filter_check) = false;
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->LoadDependency({
+      // Hold the DELETE's apply at HandleApplying until the filter has read the live mapping.
+      {"DocVectorIndexImpl::Search:AfterFilter", "TransactionParticipant::HandleApplying"},
+      // Resolve only after the apply commits (its tombstone is visible to a new reader once
+      // ApplyIntents' WriteToRocksDB returns).
+      {"TransactionParticipant::ApplyIntentsDone", "DocVectorIndexImpl::Search:BeforeResolve"},
+  });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] { sync_point->DisableProcessing(); });
+
+  // Commit the racing delete; its apply is gated at HandleApplying, so COMMIT returns first and the
+  // query below reads after the commit.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // Same connection: read-your-writes puts the read time at/after the commit. Before the fix this
+  // fails with "Vector not found"; after it, Search reuses the filter reader and excludes row 1.
+  const auto query = "SELECT id FROM test AS t" + IndexQuerySuffix("[0.0, 0.0, 0.0]", kQueryLimit);
+  auto ids = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+
+  // Row 1 is deleted; the query must return the remaining nearest rows without erroring.
+  ASSERT_FALSE(ids.empty());
+  for (auto id : ids) {
+    ASSERT_NE(id, 1);
+  }
+}
+
 TEST_P(PgVectorIndexSingleServerTest, OnDiskSize) {
   // Make the heartbeat compute (and read OnDiskSize) on every heartbeat, and
   // heartbeat often.
