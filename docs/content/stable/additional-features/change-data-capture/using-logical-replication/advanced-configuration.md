@@ -26,6 +26,8 @@ You can use the following [YB-TServer flags](../../../../reference/configuration
 - [cdcsdk_max_consistent_records](../../../../reference/configuration/yb-tserver/#cdcsdk-max-consistent-records)
 - [cdcsdk_vwal_getchanges_resp_max_size_bytes](../../../../reference/configuration/yb-tserver/#cdcsdk-vwal-getchanges-resp-max-size-bytes)
 - [cdc_enable_intra_transactional_before_image](../../../../reference/configuration/yb-tserver/#cdc-enable-intra-transactional-before-image)
+- [cdc_enable_time_based_intent_retention](../../../../reference/configuration/yb-tserver/#cdc-enable-time-based-intent-retention)
+- [cdc_min_sec_to_retain_intent](../../../../reference/configuration/yb-tserver/#cdc-min-sec-to-retain-intent)
 
 ## Retention of resources
 
@@ -34,6 +36,8 @@ CDC retains resources (such as WAL segments) that contain information related to
 Retaining resources has an impact on the system. Clients are expected to consume these transactions within configurable duration limits. Resources will be released if the duration exceeds these configured limits.
 
 Use the [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) and [cdc_wal_retention_time_secs](../../../../reference/configuration/yb-tserver/#cdc-wal-retention-time-secs) flags to control the duration for which resources are retained.
+
+Starting in v2025.2.5.2, you can optionally enable time-based intent retention so CDC clients can rewind and re-stream already acknowledged transactions. Set [cdc_enable_time_based_intent_retention](../../../../reference/configuration/yb-tserver/#cdc-enable-time-based-intent-retention) to `true` and configure [cdc_min_sec_to_retain_intent](../../../../reference/configuration/yb-tserver/#cdc-min-sec-to-retain-intent) for the minimum intent retention window. Keep [cdc_wal_retention_time_secs](../../../../reference/configuration/yb-tserver/#cdc-wal-retention-time-secs) at least as long as that window.
 
 Resources are retained for each tablet of a table that is part of a database whose changes are being consumed using a replication slot. This includes those tables that may not be currently part of the publication specification.
 

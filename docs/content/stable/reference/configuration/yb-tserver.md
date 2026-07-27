@@ -1258,6 +1258,32 @@ Default: `28800000` (8 hours)
 
 The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records.
 
+##### --cdc_enable_time_based_intent_retention
+
+{{% tags/wrap %}}
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Available in v2025.2.5.2 and later.
+
+When true, YugabyteDB retains intent SST files for tablets under CDC replication for a minimum duration, instead of deleting intents as soon as they are no longer needed for streaming. This provides a rewind window so CDC clients can re-stream transactions that were already acknowledged. Intent SST files are cleaned up asynchronously after they are older than [`cdc_min_sec_to_retain_intent`](#cdc-min-sec-to-retain-intent).
+
+When false (the default), intent cleanup for CDC tablets follows the existing checkpoint-based behavior, and `cdc_min_sec_to_retain_intent` has no effect.
+
+To support a rewind window, also set [cdc_wal_retention_time_secs](#cdc-wal-retention-time-secs) (and related WAL retention flags such as [log_min_seconds_to_retain](#log-min-seconds-to-retain)) to at least the same duration as `cdc_min_sec_to_retain_intent`.
+
+##### --cdc_min_sec_to_retain_intent
+
+{{% tags/wrap %}}
+
+Default: `28800` (8 hours)
+{{% /tags/wrap %}}
+
+Available in v2025.2.5.2 and later.
+
+Minimum number of seconds to retain intent SST files for tablets under CDC replication when [`cdc_enable_time_based_intent_retention`](#cdc-enable-time-based-intent-retention) is true. An intent SST file is eligible for deletion only after its maximum hybrid time is at least this many seconds old. Has no effect when `cdc_enable_time_based_intent_retention` is false.
+
 ##### --cdc_wal_retention_time_secs
 
 {{% tags/wrap %}}
