@@ -67,6 +67,7 @@ struct PgSessionRunOptions {
 class PgSession final : public std::enable_shared_from_this<PgSession> {
   class PrivateTag {};
  public:
+  using TableCache = std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash>;
   PgSession(
       PrivateTag,
       PgClient& pg_client,
@@ -282,7 +283,7 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   std::string errmsg_;
 
   uint64_t table_cache_min_ysql_catalog_version_ = 0;
-  std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
+  TableCache table_cache_;
 
   using InsertOnConflictPlanBuffer = std::pair<void *, InsertOnConflictBuffer>;
   std::vector<InsertOnConflictPlanBuffer> insert_on_conflict_buffers_;
