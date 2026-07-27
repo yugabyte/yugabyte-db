@@ -97,6 +97,26 @@ class AzureStorageConfiguration extends Component {
               />
             </Col>
           </Row>
+          {useAzureIam && (
+            <Row className="config-provider-row">
+              <Col lg={2}>
+                <div className="form-item-custom-label">Client ID</div>
+              </Col>
+              <Col lg={9}>
+                <Field
+                  name="AZURE_CLIENT_ID"
+                  placeHolder="Client ID (optional)"
+                  component={YBTextInputWithLabel}
+                />
+              </Col>
+              <Col lg={1} className="config-zone-tooltip">
+                <YBInfoTip
+                  title="Client ID"
+                  content="Optional. Usable with Azure IAM. The client ID of a user-assigned managed identity to use for Azure storage access."
+                />
+              </Col>
+            </Row>
+          )}
           <Row className="config-provider-row">
             <Col lg={2}>
               <div className="form-item-custom-label">SAS Token</div>
