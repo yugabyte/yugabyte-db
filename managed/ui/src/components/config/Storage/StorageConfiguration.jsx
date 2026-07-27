@@ -184,6 +184,9 @@ class StorageConfiguration extends Component {
           dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
           dataPayload['USE_AZURE_IAM'] = dataPayload['USE_AZURE_IAM'].toString();
           FIELDS = ['BACKUP_LOCATION', 'USE_AZURE_IAM', 'IMMUTABLE_STORAGE'];
+          if (values['AZURE_CLIENT_ID']) {
+            FIELDS.push('AZURE_CLIENT_ID');
+          }
         } else {
           configName = dataPayload['AZ_CONFIGURATION_NAME'];
           dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
@@ -337,6 +340,7 @@ class StorageConfiguration extends Component {
           [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
           [`${tab}_CONFIGURATION_NAME`]: row?.configName,
           USE_AZURE_IAM: row.data?.USE_AZURE_IAM,
+          AZURE_CLIENT_ID: row.data?.AZURE_CLIENT_ID,
           AZURE_STORAGE_SAS_TOKEN: row.data?.AZURE_STORAGE_SAS_TOKEN,
           IMMUTABLE_STORAGE: initialS3StorageBooleanFromRowData(
             row?.data,
