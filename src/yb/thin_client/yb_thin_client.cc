@@ -54,6 +54,8 @@
 
 #include "yb/dockv/partition.h"
 
+#include "yb/gutil/endian.h"
+
 #include "yb/master/master_ddl.pb.h"
 
 #include "yb/rpc/messenger.h"
@@ -171,9 +173,7 @@ struct ybthin_table {
   };
   std::string table_id;
   uint32_t schema_version = 0;
-  size_t num_hash_key_columns = 0;
-  size_t num_key_columns = 0;
-  Schema schema;
+  Schema schema;  // num_hash_key_columns() / num_key_columns() are read directly off this
   PartitionSchema partition_schema;
   std::vector<ColInfo> columns;  // owns the name strings referenced by ybthin_column
 };
@@ -388,22 +388,20 @@ constexpr uint8_t kPagingMagic = 0xB1;
 constexpr uint8_t kPagingVersion = 2;
 constexpr size_t kPagingHeaderLen = 2 + 4 + 4 + 8 + 8;
 
+// Little-endian pack/unpack via gutil's tested primitives (LittleEndian::{Store,Load}{32,64}),
+// wrapped so the append-to-string / read-from-pointer call sites stay compact.
 void PutU32LE(std::string* s, uint32_t v) {
-  for (int i = 0; i < 4; ++i) s->push_back(static_cast<char>((v >> (8 * i)) & 0xff));
+  char buf[sizeof(v)];
+  LittleEndian::Store32(buf, v);
+  s->append(buf, sizeof(buf));
 }
-uint32_t GetU32LE(const uint8_t* p) {
-  uint32_t v = 0;
-  for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(p[i]) << (8 * i);
-  return v;
-}
+uint32_t GetU32LE(const uint8_t* p) { return LittleEndian::Load32(p); }
 void PutU64LE(std::string* s, uint64_t v) {
-  for (int i = 0; i < 8; ++i) s->push_back(static_cast<char>((v >> (8 * i)) & 0xff));
+  char buf[sizeof(v)];
+  LittleEndian::Store64(buf, v);
+  s->append(buf, sizeof(buf));
 }
-uint64_t GetU64LE(const uint8_t* p) {
-  uint64_t v = 0;
-  for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(p[i]) << (8 * i);
-  return v;
-}
+uint64_t GetU64LE(const uint8_t* p) { return LittleEndian::Load64(p); }
 
 std::string WrapPagingState(
     uint32_t session_index, uint32_t generation, uint64_t read_time_serial, uint64_t txn_serial,
@@ -434,6 +432,17 @@ Result<PinInfo> UnwrapPagingState(const uint8_t* data, size_t len) {
   return PinInfo{
       GetU32LE(data + 2), GetU32LE(data + 6), GetU64LE(data + 10), GetU64LE(data + 18),
       Slice(data + kPagingHeaderLen, len - kPagingHeaderLen)};
+}
+
+// Stamps a Perform's read serial and the matching windowed history_min. The server keeps the read
+// points of serials in [serial - kReadSerialHistoryWindow, serial] so paged scans / continuations
+// can restore their snapshot; setting history_min == serial would prune them. The read and write
+// dispatch paths both call this so the window (a non-obvious server coupling) lives in one place.
+template <class ReadTimeOptionsPB>
+void SetReadTimeSerial(ReadTimeOptionsPB* rto, uint64_t serial) {
+  rto->set_read_time_serial_no(serial);
+  rto->set_read_time_serial_no_history_min(
+      serial > kReadSerialHistoryWindow ? serial - kReadSerialHistoryWindow : 0);
 }
 
 // Extracts the best human-readable message from a per-op response.
@@ -899,18 +908,17 @@ ybthin_status ybthin_table_open(
   s = PartitionSchema::FromPB(info.partition_schema(), table->schema, &table->partition_schema);
   if (!s.ok()) return FromStatus(s);
 
-  table->num_hash_key_columns = table->schema.num_hash_key_columns();
-  table->num_key_columns = table->schema.num_key_columns();
-
+  const size_t num_hash_key_columns = table->schema.num_hash_key_columns();
+  const size_t num_key_columns = table->schema.num_key_columns();
   const size_t n = table->schema.num_columns();
   table->columns.reserve(n);
   for (size_t i = 0; i < n; ++i) {
     const auto& col = table->schema.column(i);
     auto type = MapDataType(col.type()->main());
     if (!type.ok()) return FromStatus(type.status());
-    ybthin_col_kind kind = i < table->num_hash_key_columns ? YBTHIN_COL_HASH
-                           : i < table->num_key_columns    ? YBTHIN_COL_RANGE
-                                                           : YBTHIN_COL_VALUE;
+    ybthin_col_kind kind = i < num_hash_key_columns ? YBTHIN_COL_HASH
+                           : i < num_key_columns    ? YBTHIN_COL_RANGE
+                                                    : YBTHIN_COL_VALUE;
     table->columns.push_back(
         {col.name(), table->schema.column_id(i).rep(), kind, *type});
   }
@@ -1118,9 +1126,7 @@ void ybthin_read_async(
         read_serial = s->read_time_serial++;
         txn_serial = client->txn_serial.fetch_add(1);
       }
-      rto->set_read_time_serial_no(read_serial);
-      rto->set_read_time_serial_no_history_min(
-          read_serial > kReadSerialHistoryWindow ? read_serial - kReadSerialHistoryWindow : 0);
+      SetReadTimeSerial(rto, read_serial);
       for (auto& op : *raw->req.mutable_ops()) {
         op.mutable_read()->set_stmt_id(s->stmt_id++);
       }
@@ -1184,9 +1190,10 @@ void ybthin_upsert_batch_async(
     write->set_schema_version(table->schema_version);
 
     // Primary-key columns are supplied in schema order: hash columns first, then range columns.
+    const size_t num_hash_key_columns = table->schema.num_hash_key_columns();
     for (size_t i = 0; i < row.n_keys && build.ok(); ++i) {
-      auto* expr = i < table->num_hash_key_columns ? write->add_partition_column_values()
-                                                   : write->add_range_column_values();
+      auto* expr = i < num_hash_key_columns ? write->add_partition_column_values()
+                                            : write->add_range_column_values();
       build = BindToQLValue(row.key_values[i], expr->mutable_value());
     }
     if (build.ok()) {
@@ -1220,11 +1227,8 @@ void ybthin_upsert_batch_async(
       for (auto& op : *raw->req.mutable_ops()) {
         op.mutable_write()->set_stmt_id(s->stmt_id++);
       }
-      auto* rto = raw->req.mutable_options()->mutable_read_time_options();
-      const uint64_t serial = s->read_time_serial++;
-      rto->set_read_time_serial_no(serial);
-      rto->set_read_time_serial_no_history_min(
-          serial > kReadSerialHistoryWindow ? serial - kReadSerialHistoryWindow : 0);
+      SetReadTimeSerial(raw->req.mutable_options()->mutable_read_time_options(),
+                        s->read_time_serial++);
       // Fresh transaction per Perform (stateless writes), matching the read path and yb_tsclient.
       raw->req.mutable_options()->set_txn_serial_no(client->txn_serial.fetch_add(1));
       raw->req.set_session_id(s->session_id);
