@@ -26,6 +26,8 @@
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/rocksdb_writer.h"
 
+#include "yb/hnsw/hnsw_block_cache.h"
+
 #include "yb/qlexpr/index.h"
 
 #include "yb/util/decimal.h"
@@ -311,6 +313,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .vector_merge_filter_factory = std::move(merge_filter_factory),
       .file_extension = GetVectorIndexChunkFileExtension(options_),
       .metric_entity = metric_entity_,
+      .block_cache_capacity = block_cache_ ? block_cache_->capacity() : 0,
     };
     return lsm_.Open(std::move(lsm_options));
   }
