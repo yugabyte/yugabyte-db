@@ -5686,19 +5686,6 @@ Status CatalogManager::CleanupStaleCDCStreams(
             "cdc_state table does not exist or is not ready."));
   }
 
-  std::unordered_set<xrepl::StreamId> all_stream_ids;
-  {
-    SharedLock lock(mutex_);
-    for (const auto& [stream_id, stream] : cdc_stream_map_) {
-      auto stream_lock = stream->LockForRead();
-      if (stream_lock->is_deleting()) {
-        continue;
-      }
-
-      all_stream_ids.insert(stream_id);
-    }
-  }
-
   Status iteration_status;
   auto all_entry_keys_result =
       cdc_state_table_->GetTableRangeAsync({}, &iteration_status);
@@ -5743,43 +5730,35 @@ Status CatalogManager::CleanupStaleCDCStreams(
     }
   }
 
-  std::unordered_map<TabletId, std::vector<scoped_refptr<TableInfo>>> tablet_tables_map;
+  std::unordered_set<xrepl::StreamId> all_stream_ids;
   {
     SharedLock lock(mutex_);
-    for (const auto& [tablet_id, tablet_info] : tablet_info_map) {
-      auto& tables = tablet_tables_map[tablet_id];
-      for (const auto& table_id : tablet_info->GetTableIds()) {
-        auto table = tables_->FindTableOrNull(table_id);
-        if (table) {
-          tables.push_back(std::move(table));
-        }
+    for (const auto& [stream_id, stream] : cdc_stream_map_) {
+      auto stream_lock = stream->LockForRead();
+      if (stream_lock->is_deleting()) {
+        continue;
       }
+
+      all_stream_ids.insert(stream_id);
     }
   }
 
   std::vector<cdc::CDCStateTableKey> keys_to_delete;
-  const std::vector<scoped_refptr<TableInfo>> no_tables;
+  std::vector<std::pair<int, TabletInfoPtr>> entries_pending_table_info;
 
   // helper function to add an entry to the response's stale entries list and add the key to the
-  // keys_to_delete list
+  // keys_to_delete list. Returns the index of the new entry in the response.
   auto add_stale_entry =
-      [&resp, &keys_to_delete](
-          const cdc::CDCStateTableKey& key,
-          const std::vector<scoped_refptr<TableInfo>>& tables,
-          const char* reason) {
+      [&resp, &keys_to_delete](const cdc::CDCStateTableKey& key, const char* reason) {
         auto* stale_entry = resp->add_stale_entries();
         stale_entry->set_tablet_id(key.tablet_id);
         stale_entry->set_stream_id(key.stream_id.ToString());
         if (!key.colocated_table_id.empty()) {
           stale_entry->set_colocated_table_id(key.colocated_table_id);
         }
-        for (const auto& table : tables) {
-          auto* table_pb = stale_entry->add_tables();
-          table_pb->set_table_id(table->id());
-          table_pb->set_table_name(table->name());
-        }
         stale_entry->set_reason(reason);
         keys_to_delete.push_back(key);
+        return resp->stale_entries_size() - 1;
       };
 
   for (const auto& key : all_entry_keys) {
@@ -5790,20 +5769,38 @@ Status CatalogManager::CleanupStaleCDCStreams(
     }
 
     const auto tablet_iter = tablet_info_map.find(key.tablet_id);
-    const auto tablet_tables_iter = tablet_tables_map.find(key.tablet_id);
-    const auto* tablet_tables =
-        tablet_tables_iter == tablet_tables_map.end() ? nullptr : &tablet_tables_iter->second;
+    const bool tablet_exists = tablet_iter != tablet_info_map.end();
 
     // Classify the remaining candidate row in order: missing stream, then missing tablet.
     if (!stream_exists) {
-      add_stale_entry(
-          key, tablet_tables ? *tablet_tables : no_tables, "stream not found");
+      const auto index = add_stale_entry(key, "stream not found");
+      if (tablet_exists) {
+        entries_pending_table_info.emplace_back(index, tablet_iter->second);
+      }
       continue;
     }
 
-    if (tablet_iter == tablet_info_map.end()) {
-      add_stale_entry(key, {}, "tablet not found");
+    if (!tablet_exists) {
+      add_stale_entry(key, "tablet not found");
       continue;
+    }
+  }
+
+  // Resolve table metadata for reporting, only for the stale rows whose tablet is still live.
+  if (!entries_pending_table_info.empty()) {
+    SharedLock lock(mutex_);
+    for (const auto& [index, tablet_info] : entries_pending_table_info) {
+      auto* stale_entry = resp->mutable_stale_entries(index);
+      for (const auto& table_id : tablet_info->GetTableIds()) {
+        auto table = tables_->FindTableOrNull(table_id);
+        if (!table) {
+          continue;
+        }
+
+        auto* table_pb = stale_entry->add_tables();
+        table_pb->set_table_id(table->id());
+        table_pb->set_table_name(table->name());
+      }
     }
   }
 

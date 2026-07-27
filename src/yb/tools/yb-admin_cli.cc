@@ -81,8 +81,6 @@ DEFINE_NON_RUNTIME_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
 // Command-specific flags
 DEFINE_NON_RUNTIME_bool(exclude_dead, false, "Exclude dead tservers from output");
-DEFINE_NON_RUNTIME_bool(dry_run, false,
-    "For supported commands, report what would be changed without making changes");
 
 #define REGISTER_COMMAND(command_name) \
   Register(#command_name, command_name##_args, command_name##_action)
@@ -2238,15 +2236,20 @@ Status validate_and_sync_cdc_state_table_entries_on_change_data_stream_action(
   return Status::OK();
 }
 
-const auto cleanup_stale_cdc_streams_args = "";
+const auto cleanup_stale_cdc_streams_args = "[dry_run] (default false)";
 Status cleanup_stale_cdc_streams_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (!args.empty()) {
-    return ClusterAdminCli::kInvalidArguments;
+  bool dry_run = false;
+  if (args.size() > 0) {
+    if (IsEqCaseInsensitive(args[0], "dry_run")) {
+      dry_run = true;
+    } else {
+      return ClusterAdminCli::kInvalidArguments;
+    }
   }
 
   RETURN_NOT_OK_PREPEND(
-      client->CleanupStaleCDCStreams(FLAGS_dry_run),
+      client->CleanupStaleCDCStreams(dry_run),
       "Failed to cleanup stale CDC streams");
   return Status::OK();
 }

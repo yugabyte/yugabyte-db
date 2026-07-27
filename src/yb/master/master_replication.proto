@@ -886,8 +886,7 @@ message ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB {
 }
 
 message CleanupStaleCDCStreamsRequestPB {
-  reserved 1; // Deprecated namespace_id.
-  optional bool dry_run = 2 [default = false];
+  optional bool dry_run = 1 [default = false];
 }
 
 message CleanupStaleCDCStreamsResponsePB {

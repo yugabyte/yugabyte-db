@@ -9696,6 +9696,7 @@ TEST_F(
 }
 
 TEST_F(CDCSDKYsqlTest, TestCleanupStaleCDCStreamsWithYBAdminDryRunAndDelete) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = false;
   ASSERT_OK(SetUpWithParams(3, 3, false));
 
   const int kNumTables = 1;
@@ -9706,6 +9707,7 @@ TEST_F(CDCSDKYsqlTest, TestCleanupStaleCDCStreamsWithYBAdminDryRunAndDelete) {
   ASSERT_OK(CreateTables(kNumTables, &table, &tablets, &expected_tables, &expected_tablets));
 
   const auto stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::EXPLICIT));
+  expected_tablets.insert(kCDCSDKSlotEntryTabletId);
   ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
       stream_id, expected_tablets.size(), expected_tables.size(),
       /* unqualified_table_ids_count */ 0, 60,
