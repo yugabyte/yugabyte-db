@@ -30,6 +30,24 @@ Learn more about the YugabyteDB MCP Server:
 - [Build a Retail Agent with MCP Toolbox, YugabyteDB, and Google ADK](https://www.yugabyte.com/blog/build-a-retail-agent/)
 - [How to Integrate the YugabyteDB MCP Server with Visual Studio Code](https://www.yugabyte.com/blog/integrate-yugabytedb-mcp-server-with-vs-code/)
 
+## YugabyteDB Agent Skills
+
+Complement the MCP server with [YugabyteDB Agent Skills](https://github.com/yugabyte/yugabytedb-skills). These are structured skill packages that give AI coding agents native YugabyteDB expertise for schema design, API usage, operations, and RAG workflows.
+
+Install all skills at once:
+
+```sh
+npx skills add yugabyte/yugabytedb-skills
+```
+
+Or install individual skills (`ysql`, `ycql`, `yb-k8s-operator`, `yba-api`, `yb-rag-langchain`):
+
+```sh
+npx skills add yugabyte/yugabytedb-skills -s ysql
+```
+
+See the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository for the full skill list and descriptions.
+
 ## Example: Claude Desktop
 
 This tutorial walks you through using the YugabyteDB MCP Server to allow an AI application to access, query, analyze, and interpret data in your YugabyteDB database, using only natural language prompts.
@@ -150,7 +168,7 @@ There is no longer a `src/server.py` entry point. Always invoke the server via t
 
 1. Restart Claude to apply changes.
 
-The same configuration works with **Cursor** (Settings → MCP) and **Windsurf** (Settings → Cascade → MCP Servers).
+The same configuration works with **Cursor** (Settings > MCP) and **Windsurf** (Settings > Cascade > MCP Servers).
 
 ### Prompt 1: Summarize the database
 
@@ -253,19 +271,19 @@ over the ~2-year period covered by the dataset.
 
 For shared or remote deployments (HTTP transport), you can enable OIDC (AWS Cognito or a generic OIDC provider) so each authenticated caller runs SQL under their own YugabyteDB role via `SET ROLE`.
 
-Identity mapping mirrors YSQL's native OIDC → role mapping (`ysql_ident_conf_csv` / `matching_claim_key`):
+Identity mapping mirrors YSQL's native OIDC role mapping (`ysql_ident_conf_csv` / `matching_claim_key`):
 
 | Environment variable | Purpose |
 | -------------------- | ------- |
 | `YB_MCP_IDENTITY_CLAIM` | JWT claim used as the identity (default `email`). Supports dotted paths (for example, `realm_access.roles`) and Cognito-style keys (`cognito:groups`). |
 | `YB_MCP_IDENTITY_TRANSFORM` | `none` or `strip_domain` when no map file is set. |
-| `YB_MCP_IDENTITY_MAP` | Path to a `pg_ident.conf`-style map file (the allowlist of claim value → DB role). |
+| `YB_MCP_IDENTITY_MAP` | Path to a `pg_ident.conf`-style map file (the allowlist of claim value maps to DB role). |
 | `YB_MCP_IDENTITY_MAP_NAME` | Named map inside the file to apply (default `default`). |
 | `YB_MCP_REQUIRE_ACCESS_TOKEN` | Cognito-only. When `true`, reject tokens with `token_use` other than `access`. Default `false` for backward compatibility. |
 
 When `YB_MCP_IDENTITY_MAP` is set, unmapped claim values are rejected (`IdentityError`) — the map is the allowlist. JWT audience validation is always on for Cognito and OIDC.
 
-For full provider setup, map file format, worked examples (Cognito, Keycloak, Azure AD), and a migration checklist, see [OIDC.md](https://github.com/yugabyte/yugabytedb-mcp-server/blob/main/OIDC.md) in the MCP server repository.
+For full provider setup, map file format, worked examples (Cognito, Keycloak, Azure AD), and a migration checklist, see [OIDC.md](https://github.com/yugabyte/yugabytedb-mcp-server/blob/main/OIDC.md) in the YugabyteDB MCP server repository.
 
 ## Read more
 
