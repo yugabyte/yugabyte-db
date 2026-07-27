@@ -781,7 +781,7 @@ NOTICE:  AUDIT: SESSION,7,1,DDL,CREATE SCHEMA,SCHEMA,test,CREATE SCHEMA test,<no
 --
 -- Copy account to stdout
 COPY account TO stdout;
-NOTICE:  AUDIT: SESSION,8,1,READ,SELECT,TABLE,public.account,COPY account TO stdout,<none>
+NOTICE:  AUDIT: SESSION,8,1,READ,COPY,TABLE,public.account,COPY account TO stdout,<none>
 1	regress_user1	HASH2	yada, yada
 --
 -- Create a table from a query
@@ -797,7 +797,7 @@ SELECT *
 --
 -- Copy from stdin to account copy
 COPY test.account_copy from stdin;
-NOTICE:  AUDIT: SESSION,10,1,WRITE,INSERT,TABLE,test.account_copy,COPY test.account_copy from stdin,<none>
+NOTICE:  AUDIT: SESSION,10,1,WRITE,COPY,TABLE,test.account_copy,COPY test.account_copy from stdin,<none>
 --
 -- Test prepared statement
 PREPARE pgclassstmt (oid) AS
@@ -1412,12 +1412,25 @@ NOTICE:  AUDIT: SESSION,93,1,READ,SELECT,TABLE,public.h_0,SELECT * FROM h_0,<non
  1 | 1
 (1 row)
 
+COPY h FROM stdin;
+NOTICE:  AUDIT: SESSION,94,1,WRITE,COPY,TABLE,public.h,COPY h FROM stdin,<none>
+COPY h TO stdout;
+NOTICE:  AUDIT: SESSION,95,1,READ,COPY,TABLE,public.h,COPY h TO stdout,<none>
+1	1
+2	2
+3	3
+COPY (SELECT * FROM h) TO stdout;
+NOTICE:  AUDIT: SESSION,96,1,READ,SELECT,TABLE,public.h,COPY (SELECT * FROM h) TO stdout,<none>
+1	1
+2	2
+3	3
+NOTICE:  AUDIT: SESSION,96,2,READ,COPY,,,COPY (SELECT * FROM h) TO stdout,<none>
 CREATE INDEX h_idx ON h (x);
-NOTICE:  AUDIT: SESSION,94,1,DDL,CREATE INDEX,,,CREATE INDEX h_idx ON h (x),<none>
+NOTICE:  AUDIT: SESSION,97,1,DDL,CREATE INDEX,,,CREATE INDEX h_idx ON h (x),<none>
 DROP INDEX h_idx;
-NOTICE:  AUDIT: SESSION,95,1,DDL,DROP INDEX,,,DROP INDEX h_idx,<none>
+NOTICE:  AUDIT: SESSION,98,1,DDL,DROP INDEX,,,DROP INDEX h_idx,<none>
 DROP TABLE h;
-NOTICE:  AUDIT: SESSION,96,1,DDL,DROP TABLE,,,DROP TABLE h,<none>
+NOTICE:  AUDIT: SESSION,99,1,DDL,DROP TABLE,,,DROP TABLE h,<none>
 --
 -- Test rows retrived or affected by statements
 \connect - :current_user
@@ -1926,7 +1939,8 @@ COPY account TO stdout;
 1	regress_user1	HASH4	yada, yada3
 1	regress_user2	HASH4	yada, yada3
 1	user3	HASH4	yada, yada3
-NOTICE:  AUDIT: SESSION,51,1,READ,COPY,,,COPY account TO stdout,<none>,0
+NOTICE:  AUDIT: OBJECT,51,1,READ,COPY,TABLE,public.account,COPY account TO stdout,<none>,3
+NOTICE:  AUDIT: SESSION,51,1,READ,COPY,TABLE,public.account,COPY account TO stdout,<none>,3
 --
 -- Drop a table from a query
 DROP TABLE test.account_copy;
@@ -1948,7 +1962,7 @@ SELECT *
 --
 -- Copy from stdin to account copy
 COPY test.account_copy from stdin;
-NOTICE:  AUDIT: SESSION,54,1,WRITE,COPY,,,COPY test.account_copy from stdin,<none>,0
+NOTICE:  AUDIT: SESSION,54,1,WRITE,COPY,TABLE,test.account_copy,COPY test.account_copy from stdin,<none>,1
 --
 -- Test prepared statement
 PREPARE pgclassstmt1 (oid) AS
@@ -2588,12 +2602,25 @@ NOTICE:  AUDIT: SESSION,145,1,READ,SELECT,TABLE,public.h_0,SELECT * FROM h_0,<no
  1 | 1
 (1 row)
 
+COPY h FROM stdin;
+NOTICE:  AUDIT: SESSION,146,1,WRITE,COPY,TABLE,public.h,COPY h FROM stdin,<none>,2
+COPY h TO stdout;
+1	1
+2	2
+3	3
+NOTICE:  AUDIT: SESSION,147,1,READ,COPY,TABLE,public.h,COPY h TO stdout,<none>,3
+COPY (SELECT * FROM h) TO stdout;
+1	1
+2	2
+3	3
+NOTICE:  AUDIT: SESSION,148,1,READ,SELECT,TABLE,public.h,COPY (SELECT * FROM h) TO stdout,<none>,3
+NOTICE:  AUDIT: SESSION,148,2,READ,COPY,,,COPY (SELECT * FROM h) TO stdout,<none>,3
 CREATE INDEX h_idx ON h (x);
-NOTICE:  AUDIT: SESSION,146,1,DDL,CREATE INDEX,,,CREATE INDEX h_idx ON h (x),<none>,0
+NOTICE:  AUDIT: SESSION,149,1,DDL,CREATE INDEX,,,CREATE INDEX h_idx ON h (x),<none>,0
 DROP INDEX h_idx;
-NOTICE:  AUDIT: SESSION,147,1,DDL,DROP INDEX,,,DROP INDEX h_idx,<none>,0
+NOTICE:  AUDIT: SESSION,150,1,DDL,DROP INDEX,,,DROP INDEX h_idx,<none>,0
 DROP TABLE h;
-NOTICE:  AUDIT: SESSION,148,1,DDL,DROP TABLE,,,DROP TABLE h,<none>,0
+NOTICE:  AUDIT: SESSION,151,1,DDL,DROP TABLE,,,DROP TABLE h,<none>,0
 --
 -- Change configuration of user 1 so that full statements are not logged
 \connect - :current_user
