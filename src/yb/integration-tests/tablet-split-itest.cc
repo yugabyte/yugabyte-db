@@ -3135,6 +3135,7 @@ TEST_F(TabletSplitSingleServerITest, RetryableWriteAfterSplitChildRestart) {
   write_thread.join();
 
   ASSERT_OK(CheckRowsCount(kNumRows));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = false;
 
 #ifndef NDEBUG
   SyncPoint::GetInstance()->DisableProcessing();
