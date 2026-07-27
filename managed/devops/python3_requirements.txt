@@ -53,5 +53,5 @@ requests==2.32.3
 scp==0.14.5
 setuptools==80.10.2
 six
-urllib3==2.6.3
+urllib3==2.7.0
 yb-cassandra-driver
