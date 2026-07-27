@@ -50,6 +50,7 @@
 #include "yb/common/transaction_priority.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/docdb/object_lock_shared_state.h"
 #include "yb/docdb/object_lock_shared_state_manager.h"
 
 #include "yb/dockv/doc_vector_id.h"
@@ -1365,42 +1366,16 @@ class ReadPointHistory {
   std::unordered_map<uint64_t, ConsistentReadPoint::Momento> read_points_;
 };
 
-class ObjectLockOwnerInfo {
- public:
-  ObjectLockOwnerInfo(
-      PgSessionLockOwnerTagShared& shared, docdb::ObjectLockOwnerRegistry& registry,
-      const TransactionId& txn_id, const TabletId& tablet_id)
-      : shared_(shared), guard_(registry.Register(txn_id, tablet_id)), txn_id_(txn_id) {
-    UpdateShared(guard_.tag());
-  }
-
-  ~ObjectLockOwnerInfo() {
-    UpdateShared({});
-  }
-
-  const TransactionId& txn_id() const {
-    return txn_id_;
-  }
-
- private:
-  void UpdateShared(docdb::SessionLockOwnerTag tag) {
-    ParentProcessGuard g;
-    shared_.Get() = tag;
-  }
-
-  PgSessionLockOwnerTagShared& shared_;
-  docdb::ObjectLockOwnerRegistry::RegistrationGuard guard_;
-  TransactionId txn_id_;
-};
-
 class TransactionProvider {
  public:
   YB_STRONGLY_TYPED_BOOL(EnsureGlobal);
 
   TransactionProvider(
       PgClientSession::TransactionBuilder&& builder,
-      docdb::ObjectLockOwnerRegistry* lock_owner_registry)
-      : builder_(std::move(builder)), lock_owner_registry_(lock_owner_registry) {}
+      docdb::ObjectLockOwnerRegistry* lock_owner_registry,
+      docdb::ObjectLockSharedState* object_lock_shared_state)
+      : builder_(std::move(builder)), lock_owner_registry_(lock_owner_registry),
+        object_lock_shared_state_(object_lock_shared_state) {}
 
   template<PgClientSessionKind kind, class... Args>
   requires(
@@ -1443,11 +1418,11 @@ class TransactionProvider {
           << ", next_plain_ transaction reset";
       next_plain_ = nullptr;
     }
-    ResetObjectLockOwner();
+    ResetObjectLockRegistration();
   }
 
-  void ResetObjectLockOwner() {
-    object_lock_owner_.reset();
+  void ResetObjectLockRegistration() {
+    object_lock_registration_.reset();
   }
 
   Result<TransactionMetadata> NextTxnMetaForPlain(
@@ -1472,22 +1447,18 @@ class TransactionProvider {
     // next_plain_ would be ready at this point i.e status tablet picked.
     auto metadata = VERIFY_RESULT(next_plain_->metadata());
     next_plain_->SetStartTimeIfNecessary();
-    if (object_lock_shared_ &&
-        (!object_lock_owner_ || object_lock_owner_->txn_id() != metadata.transaction_id)) {
-      object_lock_owner_.emplace(
-          *object_lock_shared_, *DCHECK_NOTNULL(lock_owner_registry_), metadata.transaction_id,
-          metadata.status_tablet);
+    if (object_lock_shared_state_ &&
+        (!object_lock_registration_ ||
+         object_lock_registration_->txn_id() != metadata.transaction_id)) {
+      object_lock_registration_.reset();
+      object_lock_registration_.emplace(DCHECK_NOTNULL(lock_owner_registry_)->Register(
+          *object_lock_shared_state_, metadata.transaction_id, metadata.status_tablet));
     }
     return metadata;
   }
 
   bool HasNextTxnForPlain() const {
     return next_plain_ != nullptr;
-  }
-
-  void SetupSharedObjectLocking(PgSessionLockOwnerTagShared& object_lock_shared) {
-    DCHECK(!object_lock_shared_);
-    object_lock_shared_ = &object_lock_shared;
   }
 
  private:
@@ -1524,9 +1495,9 @@ class TransactionProvider {
   }
 
   const PgClientSession::TransactionBuilder builder_;
-  PgSessionLockOwnerTagShared* object_lock_shared_ = nullptr;
-  std::optional<ObjectLockOwnerInfo> object_lock_owner_;
   docdb::ObjectLockOwnerRegistry* lock_owner_registry_ = nullptr;
+  docdb::ObjectLockSharedState* object_lock_shared_state_;
+  std::optional<docdb::ObjectLockOwnerRegistry::RegistrationGuard> object_lock_registration_;
   client::YBTransactionPtr next_plain_;
 };
 
@@ -1817,7 +1788,9 @@ class PgClientSession::Impl {
   Impl(
       TransactionBuilder&& transaction_builder, std::shared_ptr<PgClientSession> shared_this,
       client::YBClient& client, const PgClientSessionContext& context, uint64_t id, pid_t pid,
-      uint64_t lease_epoch, TSLocalLockManagerPtr lock_manager, rpc::Scheduler& scheduler)
+      uint64_t lease_epoch, TSLocalLockManagerPtr lock_manager,
+      std::optional<docdb::ObjectLockSharedStateHolder> object_lock_shared_state,
+      rpc::Scheduler& scheduler)
       : client_(client),
         context_(context),
         shared_this_(std::move(shared_this)),
@@ -1825,14 +1798,21 @@ class PgClientSession::Impl {
         pid_(pid),
         lease_epoch_(lease_epoch),
         ts_lock_manager_(std::move(lock_manager)),
-        transaction_provider_(std::move(transaction_builder), context_.lock_owner_registry),
+        object_lock_shared_state_(std::move(object_lock_shared_state)),
+        transaction_provider_(
+            std::move(transaction_builder), context_.lock_owner_registry,
+            object_lock_shared_state_ ? object_lock_shared_state_->get() : nullptr),
         big_shared_mem_expiration_task_("big_shared_mem_expiration_task", &scheduler),
         read_point_history_(PrefixLogger(id_, pid_)) {}
 
   [[nodiscard]] auto id() const {return id_; }
 
   void SetupSharedData(const PgClientSession::SharedDataDescriptor& descriptor) {
-    transaction_provider_.SetupSharedObjectLocking(descriptor.object_lock);
+    if (object_lock_shared_state_) {
+      ParentProcessGuard g;
+      object_lock_lend_guard_.emplace(
+          descriptor.object_lock.Lend(*object_lock_shared_state_->get()));
+    }
     oldest_read_point_serial_no_ = &descriptor.oldest_read_point_serial_no;
   }
 
@@ -4495,7 +4475,7 @@ class PgClientSession::Impl {
 
     const bool is_final_release = !subtxn_id;
     auto unregister_scope = is_final_release && txn
-        ? MakeOptionalScopeExit([this] { transaction_provider_.ResetObjectLockOwner(); })
+        ? MakeOptionalScopeExit([this] { transaction_provider_.ResetObjectLockRegistration(); })
         : std::nullopt;
 
     const auto ddl_mode_used = kind == PgClientSessionKind::kAutonomousDdl || is_ddl;
@@ -4696,6 +4676,7 @@ class PgClientSession::Impl {
   const pid_t pid_;
   const uint64_t lease_epoch_;
   const tserver::TSLocalLockManagerPtr ts_lock_manager_;
+  const std::optional<docdb::ObjectLockSharedStateHolder> object_lock_shared_state_;
   TransactionProvider transaction_provider_;
   std::mutex big_shared_mem_mutex_;
   std::atomic<CoarseTimePoint> last_big_shared_memory_access_;
@@ -4726,6 +4707,8 @@ class PgClientSession::Impl {
   std::atomic<uint64_t>* oldest_read_point_serial_no_ = nullptr;
   // Last SHMEM serial applied into history_retention_pin_read_time_.
   std::atomic<uint64_t> applied_oldest_read_point_serial_no_{0};
+
+  std::optional<RobustLendGuard<docdb::ObjectLockSharedState>> object_lock_lend_guard_;
 };
 
 PgClientSession::PgClientSession(
@@ -4733,10 +4716,12 @@ PgClientSession::PgClientSession(
     TransactionBuilder&& transaction_builder, client::YBClient& client,
     std::reference_wrapper<const PgClientSessionContext> context,
     uint64_t id, pid_t pid, uint64_t lease_epoch,
-    tserver::TSLocalLockManagerPtr ts_local_lock_manager)
+    tserver::TSLocalLockManagerPtr ts_local_lock_manager,
+    std::optional<docdb::ObjectLockSharedStateHolder> object_lock_shared_state)
     : impl_(new Impl(
           std::move(transaction_builder), {std::move(shared_this_source), this}, client, context,
-          id, pid, lease_epoch, std::move(ts_local_lock_manager), scheduler)) {}
+          id, pid, lease_epoch, std::move(ts_local_lock_manager),
+          std::move(object_lock_shared_state), scheduler)) {}
 
 PgClientSession::~PgClientSession() = default;
 

@@ -1219,13 +1219,18 @@ class PgClient::Impl : public BigDataFetcher {
       return false;
     }
 
-    auto* lock_shared = PgSharedMemoryManager().SharedData()->object_lock_state();
-    if (!lock_shared || !session_shared_mem_) {
-      LOG(WARNING) << "Not using object locking fastpath: shared memory not ready";
+    if (!session_shared_mem_) {
+      LOG(WARNING) << "Not using object locking fastpath: session shared memory not ready";
       return false;
     }
+
+    auto lock_shared = session_shared_mem_->object_locking_data().get();
+    if (!lock_shared) {
+      LOG(WARNING) << "Not using object locking fastpath: locking shared memory not ready";
+      return false;
+    }
+
     return lock_shared->Lock({
-        .owner = SHARED_MEMORY_LOAD(session_shared_mem_->object_locking_data()),
         .subtxn_id = subtxn_id,
         .database_oid = lock_id.db_oid,
         .relation_oid = lock_id.relation_oid,
