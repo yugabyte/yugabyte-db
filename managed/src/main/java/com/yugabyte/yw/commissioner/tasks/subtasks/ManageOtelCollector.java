@@ -72,13 +72,17 @@ public class ManageOtelCollector extends NodeTaskBase {
     if (isNodeAgentSupported) {
       NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(node.cloudInfo.private_ip);
       log.info("Configuring otel-collector using node-agent");
-      if (taskParams().otelCollectorEnabled) {
-        nodeAgentClient.runInstallOtelCollector(
-            nodeAgent,
-            nodeAgentRpcPayload.setupInstallOtelCollectorBits(
-                universe, node, taskParams(), nodeAgent),
-            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
-      }
+      // Always invoke the InstallOtelCollector RPC so that audit-log setting
+      // changes always reach the node - specifically the on-node
+      // zip_purge_yb_logs.sh script and its otel-collector/log_cleanup_env
+      // sidecar. When otel-collector isn't being (re)installed the payload
+      // builder switches to a refresh-only mode that skips the heavy install
+      // steps (see NodeAgentRpcPayload.setupInstallOtelCollectorBits).
+      nodeAgentClient.runInstallOtelCollector(
+          nodeAgent,
+          nodeAgentRpcPayload.setupInstallOtelCollectorBits(
+              universe, node, taskParams(), nodeAgent),
+          NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
     } else {
       log.info("Configuring otel-collector using legacy mode without node-agent");
       getNodeManager()

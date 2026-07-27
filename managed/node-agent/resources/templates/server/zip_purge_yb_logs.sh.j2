@@ -31,6 +31,20 @@ gzip_only=false
 YB_HOME_DIR=({{ yb_home_dir }})
 preserve_audit_logs=false
 ycql_audit_log_level=NONE
+# Retention (in days) for archived audit logs.
+# 0 (the default) disables the dedicated audit-log retention pipeline and keeps
+# the previous size-based purge behavior.
+ysql_audit_log_retention_days=0
+ycql_audit_log_retention_days=0
+
+# Count of log-purge failures observed across all files processed by this run.
+# Bumped whenever we can't safely archive an audit slice, can't gzip a source
+# log, can't delete an out-of-budget archive, or can't purge an expired audit
+# archive. The script exits non-zero at the end iff this counter is > 0.
+# We intentionally do NOT abort on the first failure - the remaining files
+# still need to be processed - but the systemd timer should surface every
+# missed piece of work to alerting rather than reporting a silent green run.
+log_purge_failures=0
 
 logs_disk_percent_max=10
 postgres_max_log_size_kb=$((100 * 1000))
@@ -105,6 +119,144 @@ then
   source "$YB_HOME_DIR/otel-collector/log_cleanup_env"
 fi
 
+# Per-file audit-archive helper. Invoked from gzip_log_file() right before
+# each gzip call so that we either (a) successfully persist the audit slice
+# into audit/<flavor>/ AND then gzip the source, or (b) bail out without
+# gzipping when audit archiving failed - guaranteeing that we never delete
+# audit content that has not been safely captured.
+#
+# Extracts every line of $src_file matching $audit_pattern (fixed string) into
+# $audit_dir/<basename>.audit.log.gz. Idempotent: a completed .gz
+# short-circuits the call. A leftover plain .audit.log is treated as a
+# previous failed attempt, discarded, and the extraction is retried.
+#
+# Returns 0 iff the archive is safely on disk (either as a .gz with matches, or
+# because the source had no audit lines to extract). Returns non-zero on any
+# failure mode - including a non-writable $audit_dir or grep failing to write
+# its matches (e.g. disk full) mid-stream. In those cases the caller must NOT
+# gzip/delete $src_file, so audit content is never lost.
+#
+# Currently used with two audit flavors:
+#   YSQL (pgaudit):  "LOG:  AUDIT:"
+#   YCQL:            "] AUDIT: user:"  (glog prefix's "]" plus the AUDIT
+#                                       prefix emitted in audit_logger.cc)
+archive_audit_lines() {
+  local src_file=$1
+  local audit_dir=$2
+  local audit_pattern=$3
+  local flavor_label=$4
+  local dst_base
+  dst_base=$(basename "$src_file")
+  local dst_plain="$audit_dir/${dst_base}.audit.log"
+  local dst_gz="${dst_plain}.gz"
+  if [ -e "$dst_gz" ]; then
+    return 0
+  fi
+  if ! mkdir -p "$audit_dir"; then
+    echo "WARN: cannot create audit archive dir $audit_dir - $flavor_label audit" \
+      "archive failed for $src_file (source left intact)" >&2
+    return 1
+  fi
+  if [ -e "$dst_plain" ]; then
+    echo "Discarding stale audit slice $dst_plain from a previous failed run"
+    rm -f "$dst_plain"
+  fi
+  # Pre-flight: creating/truncating $dst_plain up front distinguishes "audit
+  # dir exists but is not writable" (or "disk full") from "grep found no
+  # matches". Without this, the write-failure below would leave $dst_plain
+  # empty / absent, the emptiness check would say "no matches", and we would
+  # (wrongly) tell the caller success and let it gzip/delete the source.
+  local mkfile_err
+  if ! mkfile_err=$({ : > "$dst_plain"; } 2>&1); then
+    echo "WARN: cannot open $dst_plain for writing - $flavor_label audit" \
+      "archive failed for $src_file (source left intact): $mkfile_err" >&2
+    return 1
+  fi
+  # grep -aF: -a treats binary as text, -F matches the pattern as a fixed
+  # string (no regex). Exit codes we care about:
+  #   0  - one or more matches written to $dst_plain
+  #   1  - no matches (empty $dst_plain, benign)
+  #   >=2 - grep error, including write failures (disk full, quota, etc.)
+  # 2>&1 before the stdout redirect routes grep's stderr into the command
+  # substitution so we can surface it in the WARN instead of the previous
+  # "single cryptic raw error line" that landed on the timer unit's stderr.
+  local grep_err grep_rc
+  grep_err=$(grep -aF "$audit_pattern" "$src_file" 2>&1 > "$dst_plain")
+  grep_rc=$?
+  if [ "$grep_rc" -gt 1 ]; then
+    echo "WARN: grep failed (rc=$grep_rc) extracting $flavor_label audit lines" \
+      "from $src_file (source left intact): $grep_err" >&2
+    rm -f "$dst_plain"
+    return 1
+  fi
+  if [ ! -s "$dst_plain" ]; then
+    # grep_rc == 1: source had no audit lines. Not a failure - clean up the
+    # empty scratch file and let the caller compress/delete the source.
+    rm -f "$dst_plain"
+    return 0
+  fi
+  if ! gzip "$dst_plain"; then
+    echo "WARN: gzip failed for $dst_plain - $flavor_label audit archive" \
+      "incomplete for $src_file (source left intact)" >&2
+    rm -f "$dst_plain" "$dst_gz"
+    return 1
+  fi
+  echo "Archived $flavor_label audit lines from $src_file to $dst_gz"
+  return 0
+}
+
+# Audit-pattern constants. Sourced once at the top of the per-flavor archive
+# wrappers so call sites stay short.
+readonly YSQL_AUDIT_PATTERN='LOG:  AUDIT:'
+readonly YCQL_AUDIT_PATTERN='] AUDIT: user:'
+
+archive_postgres_audit_lines() {
+  archive_audit_lines "$1" "$2" "$YSQL_AUDIT_PATTERN" "YSQL"
+}
+
+archive_ycql_audit_log() {
+  archive_audit_lines "$1" "$2" "$YCQL_AUDIT_PATTERN" "YCQL"
+}
+
+# Single chokepoint for gzipping a YB log file. If $archive_fn is non-empty,
+# it is invoked first to persist an audit-only copy under $audit_dir; if that
+# fails the source is left as-is so the data is not lost. On success the
+# source file is gzipped in place. Returns non-zero (without aborting under
+# set -e) when either the archive step or the gzip itself fails.
+gzip_log_file() {
+  local src_file=$1
+  local archive_fn=$2
+  local audit_dir=$3
+  if [ -n "$archive_fn" ]; then
+    if ! "$archive_fn" "$src_file" "$audit_dir"; then
+      # Record the failure so the whole script exits non-zero even though
+      # our immediate caller (delete_or_gzip_files / process_plain_files)
+      # swallows this return value to keep processing the remaining files.
+      log_purge_failures=$((log_purge_failures + 1))
+      echo "WARN: audit archive failed for $src_file - skipping gzip to avoid data loss" >&2
+      return 1
+    fi
+  fi
+  # If $src_file.gz already exists next to the plain $src_file, most
+  # probably script failed to fully compress the file on previous run
+  # So, now we need to retry that.
+  if [ -e "$src_file.gz" ]; then
+    echo "Removing stale $src_file.gz so we can re-gzip $src_file"
+    if ! rm -f "$src_file.gz"; then
+      log_purge_failures=$((log_purge_failures + 1))
+      echo "WARN: failed to remove stale $src_file.gz - skipping gzip of $src_file" >&2
+      return 1
+    fi
+  fi
+  echo "Compressing file $src_file"
+  if ! gzip "$src_file"; then
+    log_purge_failures=$((log_purge_failures + 1))
+    echo "WARN: gzip failed for $src_file" >&2
+    return 1
+  fi
+  return 0
+}
+
 delete_or_gzip_files() {
   set -f
   local log_dir=$1
@@ -112,7 +264,15 @@ delete_or_gzip_files() {
   local files_regex=$3
   local permitted_usage=$4
   local operation=$5
-  local logs_disk_usage_bytes=$(find "$log_dir" -type f -name $usage_regex -print0 | \
+  # Optional audit-archival hook: function name + destination directory.
+  local archive_fn=${6:-}
+  local audit_dir=${7:-}
+  # -maxdepth 1: never descend into $log_dir/audit/. Audit archives live under
+  # audit/<flavor>/ and are governed by purge_audit_dir + the configured
+  # retention window. If we let find recurse, the -name glob (matched against
+  # basename only) picks up files like postgresql-*.log.audit.log.gz and this
+  # size-based path deletes them before their retention window is up.
+  local logs_disk_usage_bytes=$(find "$log_dir" -maxdepth 1 -type f -name $usage_regex -print0 | \
     xargs -0 -r stat -c '%s' | \
     awk '{sum+=$1;}END{print sum;}')
   if [ -z $logs_disk_usage_bytes ]; then
@@ -122,7 +282,7 @@ delete_or_gzip_files() {
   echo "Permitted disk usage for $usage_regex files in kb: $permitted_usage"
   echo "Disk usage by $usage_regex files in kb: $logs_disk_usage_kb"
   # get all the files to process.
-  local log_files=$(find "$log_dir" -type f -name $files_regex -print0 | \
+  local log_files=$(find "$log_dir" -maxdepth 1 -type f -name $files_regex -print0 | \
     xargs -0 -r stat -c '%Y %n' | \
     sort | awk '{print $2}')
   for file in $log_files; do
@@ -132,10 +292,20 @@ delete_or_gzip_files() {
       logs_disk_usage_kb=$(($logs_disk_usage_kb-$file_size))
       if [ "$operation" == "delete" ]; then
         echo "Delete file $file"
-        rm "$file"
+        if ! rm "$file"; then
+          log_purge_failures=$((log_purge_failures + 1))
+          echo "WARN: failed to delete $file" >&2
+          # Restore the budget so we don't undercount remaining usage after a
+          # failed delete (the file is still on disk).
+          logs_disk_usage_kb=$(($logs_disk_usage_kb+$file_size))
+          continue
+        fi
       else
-        echo "Compressing file $file"
-        gzip "$file"
+        if ! gzip_log_file "$file" "$archive_fn" "$audit_dir"; then
+          # Restore the budget; the file is still on disk.
+          logs_disk_usage_kb=$(($logs_disk_usage_kb+$file_size))
+          continue
+        fi
         local new_file_size=$(du -k $file.gz | awk '{print $1}')
         logs_disk_usage_kb=$(($logs_disk_usage_kb+$new_file_size))
       fi
@@ -151,9 +321,14 @@ process_plain_files()
   local log_dir=$1
   local log_regex=$2
   local allowed_disk_usage_kb=$3
+  # Optional audit-archival hook: function name + destination directory.
+  local archive_fn=${4:-}
+  local audit_dir=${5:-}
   # Using print0 since printf is not supported on all UNIX systems.
   # xargs -0 -r stat -c '%Y %n' outputs: [unix time in millisecs] [name of file]
-  find_non_gz_files="find $log_dir -type f -name \
+  # -maxdepth 1: same rationale as delete_or_gzip_files - do not descend into
+  # $log_dir/audit/, whose contents are governed by purge_audit_dir.
+  find_non_gz_files="find $log_dir -maxdepth 1 -type f -name \
   $log_regex -print0 | xargs -0 -r stat -c '%Y %n' | sort | awk '{print \$2}'"
   non_gz_file_count=$(eval "$find_non_gz_files" | wc -l)
 
@@ -161,14 +336,53 @@ process_plain_files()
   if [ $non_gz_file_count -gt 1 ]; then
     if [ $allowed_disk_usage_kb -gt 0 ]; then
       delete_or_gzip_files $log_dir "$log_regex" "$log_regex" \
-        $permitted_disk_usage_plain_kb "gzip"
+        $permitted_disk_usage_plain_kb "gzip" "$archive_fn" "$audit_dir"
     else
       files_to_gzip=$(eval "$find_non_gz_files" | head -n$(($non_gz_file_count - 1)))
       for file in $files_to_gzip; do
-        echo "Compressing file $file"
-        gzip "$file"
+        gzip_log_file "$file" "$archive_fn" "$audit_dir" || true
       done
     fi
+  fi
+}
+
+# Delete audit-log archives older than the configured retention window. Also
+# cleans up any abandoned plain .audit.log scratch files left behind by a
+# previously-interrupted archive_*() invocation so they do not accumulate.
+purge_audit_dir() {
+  set -f
+  local audit_dir=$1
+  local retention_days=$2
+  if [ ! -d "$audit_dir" ]; then
+    return
+  fi
+  echo "Purging audit archives older than $retention_days day(s) in $audit_dir"
+  # Merge find's stderr into stdout so a single $()-capture covers both the
+  # names-of-deleted-files trace and any error message. On success we replay
+  # the captured output verbatim to the script's stdout (preserving the
+  # previous "print each deleted file" behavior); on failure we bump the
+  # global failure counter and route the same buffer to stderr as a WARN,
+  # so retention breaches - e.g. a stale .gz we couldn't unlink because it
+  # turned read-only - show up in the run's exit code with enough context
+  # for the operator to grep for the specific file.
+  local find_output
+  if find_output=$(find "$audit_dir" -type f -name '*.gz' \
+      -mtime +"$retention_days" -print -delete 2>&1); then
+    [ -n "$find_output" ] && echo "$find_output"
+  else
+    log_purge_failures=$((log_purge_failures + 1))
+    echo "WARN: failed to purge some expired audit archives under $audit_dir:" \
+      "$find_output" >&2
+  fi
+  # Any *.audit.log plain file present for more than a day must be from a
+  # failed run that the live retry path never had a chance to retry; reap it.
+  if find_output=$(find "$audit_dir" -type f -name '*.audit.log' \
+      -mtime +0 -print -delete 2>&1); then
+    [ -n "$find_output" ] && echo "$find_output"
+  else
+    log_purge_failures=$((log_purge_failures + 1))
+    echo "WARN: failed to reap stale audit scratch files under $audit_dir:" \
+      "$find_output" >&2
   fi
 }
 
@@ -180,8 +394,14 @@ for server_type in $server_types; do
   fi
 done
 log_levels="INFO ERROR WARNING FATAL"
+ycql_audit_retention_active=false
+if [ "$ycql_audit_log_retention_days" -gt 0 ] && [ "$ycql_audit_log_level" != "NONE" ]; then
+  ycql_audit_retention_active=true
+fi
 for daemon_type in $daemon_types; do
   YB_LOG_DIR="$YB_HOME_DIR/$daemon_type/logs/"
+  ysql_audit_dir="$YB_LOG_DIR/audit/ysql"
+  ycql_audit_dir="$YB_LOG_DIR/audit/ycql"
 
   for level in $log_levels; do
     log_regex="yb-$daemon_type*log.$level* ! -name *.gz"
@@ -192,15 +412,49 @@ for daemon_type in $daemon_types; do
       plain_logs_disk_usage_kb=$permitted_disk_usage_plain_kb
     fi
 
-    process_plain_files "$YB_LOG_DIR" "$log_regex" $plain_logs_disk_usage_kb
+    # When YCQL audit retention is active, archive each tserver audit-level
+    # log into audit/ycql/ as part of the same gzip step. A failure to
+    # archive will skip the gzip so the source data is preserved on disk.
+    ycql_archive_fn=""
+    ycql_archive_audit_dir=""
+    if [ "$daemon_type" == "tserver" ] && [ "$ycql_audit_retention_active" == true ] \
+    && [ "$level" == "$ycql_audit_log_level" ]; then
+      ycql_archive_fn="archive_ycql_audit_log"
+      ycql_archive_audit_dir="$ycql_audit_dir"
+    fi
+
+    process_plain_files "$YB_LOG_DIR" "$log_regex" $plain_logs_disk_usage_kb \
+      "$ycql_archive_fn" "$ycql_archive_audit_dir"
   done
+
+  # Audit-extraction hook for postgres logs. Wires through both the size-based
+  # gzip path inside process_plain_files and the "older than 24h" loop below
+  # so every postgres log gzip is preceded by an audit extraction; if the
+  # extraction fails the gzip is skipped to avoid losing audit content.
+  pg_archive_fn=""
+  pg_archive_audit_dir=""
+  if [ "$daemon_type" == "tserver" ] && [ "$ysql_audit_log_retention_days" -gt 0 ]; then
+    pg_archive_fn="archive_postgres_audit_lines"
+    pg_archive_audit_dir="$ysql_audit_dir"
+  fi
 
   plain_postgres_log="postgres*log ! -name *.gz"
   plain_pg_logs_disk_usage_kb=0
   if [ $preserve_audit_logs == true ]; then
     plain_pg_logs_disk_usage_kb=$postgres_max_plain_log_size_kb
+    # When audit log export is enabled the budget-based logic below defers gzipping
+    # plain postgres logs as long as the cumulative size stays under the budget, which
+    # can keep individual log files plain indefinitely. Always gzip postgres logs
+    # that have not been modified in the last 24 hours so exporters get a full day
+    # to consume each log but plain logs don't accumulate forever.
+    while IFS= read -r -d '' old_pg_log; do
+      echo "Compressing postgres log not modified in the last day: $old_pg_log"
+      gzip_log_file "$old_pg_log" "$pg_archive_fn" "$pg_archive_audit_dir" || true
+    done < <(find "$YB_LOG_DIR" -maxdepth 1 -type f -name 'postgresql-*.log' \
+                  ! -name '*.gz' -mmin +1440 -print0 2>/dev/null)
   fi
-  process_plain_files "$YB_LOG_DIR" "$plain_postgres_log" $plain_pg_logs_disk_usage_kb
+  process_plain_files "$YB_LOG_DIR" "$plain_postgres_log" $plain_pg_logs_disk_usage_kb \
+    "$pg_archive_fn" "$pg_archive_audit_dir"
 
   plain_ysql_conn_mgr_log="ysql-conn-mgr*log* ! -name *.gz"
   plain_ysql_conn_mgr_logs_disk_usage_kb=0
@@ -217,4 +471,24 @@ for daemon_type in $daemon_types; do
     delete_or_gzip_files "$YB_LOG_DIR" "$ysql_conn_mgr_log" "$ysql_conn_mgr_log.gz" \
       "$ysql_conn_mgr_max_log_size_kb" "delete"
   fi
+
+  if [ "$daemon_type" == "tserver" ]; then
+    if [ "$ysql_audit_log_retention_days" -gt 0 ]; then
+      purge_audit_dir "$ysql_audit_dir" "$ysql_audit_log_retention_days"
+    fi
+    if [ "$ycql_audit_log_retention_days" -gt 0 ]; then
+      purge_audit_dir "$ycql_audit_dir" "$ycql_audit_log_retention_days"
+    fi
+  fi
 done
+
+# Surface any log-purge failure (missed audit archive, missed gzip, missed
+# delete, missed retention purge) as a non-zero exit code so the systemd
+# timer records the run as failed and downstream alerting can fire, instead
+# of the previous silent-success behavior where individual WARN lines were
+# the only evidence of trouble.
+if [ "$log_purge_failures" -gt 0 ]; then
+  echo "ERROR: $log_purge_failures log-purge step(s) failed;" \
+    "see WARN entries above" >&2
+  exit 1
+fi
