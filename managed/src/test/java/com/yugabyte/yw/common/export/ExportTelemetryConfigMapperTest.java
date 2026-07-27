@@ -36,7 +36,8 @@ public class ExportTelemetryConfigMapperTest {
     auditConfig.setUniverseLogsExporterConfig(List.of(auditExporter));
 
     api.v2.models.TelemetryConfig result =
-        ExportTelemetryConfigMapper.toGenerated(auditConfig, null, null);
+        ExportTelemetryConfigMapper.toGenerated(
+            TelemetryConfig.builder().auditLogConfig(auditConfig).build());
     AuditLogsTelemetrySpec audit = result.getAuditLogs();
     assertNotNull(audit);
     assertEquals(1, audit.getExporters().size());
@@ -57,7 +58,8 @@ public class ExportTelemetryConfigMapperTest {
     queryConfig.setUniverseLogsExporterConfig(List.of(queryExporter));
 
     api.v2.models.TelemetryConfig result =
-        ExportTelemetryConfigMapper.toGenerated(null, queryConfig, null);
+        ExportTelemetryConfigMapper.toGenerated(
+            TelemetryConfig.builder().queryLogConfig(queryConfig).build());
     QueryLogsTelemetrySpec query = result.getQueryLogs();
     assertNotNull(query);
     UniverseQueryLogsExporterConfig entry = query.getExporters().get(0);
@@ -77,7 +79,8 @@ public class ExportTelemetryConfigMapperTest {
     metricsConfig.setUniverseMetricsExporterConfig(List.of(metricsExporter));
 
     api.v2.models.TelemetryConfig result =
-        ExportTelemetryConfigMapper.toGenerated(null, null, metricsConfig);
+        ExportTelemetryConfigMapper.toGenerated(
+            TelemetryConfig.builder().metricsExportConfig(metricsConfig).build());
     MetricsTelemetrySpec metrics = result.getMetrics();
     assertNotNull(metrics);
     UniverseMetricsExporterConfig entry = metrics.getExporters().get(0);
@@ -87,8 +90,7 @@ public class ExportTelemetryConfigMapperTest {
 
   @Test
   public void reverseAllNullsReturnsEmptyTelemetryConfig() {
-    api.v2.models.TelemetryConfig result =
-        ExportTelemetryConfigMapper.toGenerated(null, null, null);
+    api.v2.models.TelemetryConfig result = ExportTelemetryConfigMapper.toGenerated(null);
     assertNull(result.getAuditLogs());
     assertNull(result.getQueryLogs());
     assertNull(result.getMetrics());

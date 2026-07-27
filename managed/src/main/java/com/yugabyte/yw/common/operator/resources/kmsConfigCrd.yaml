@@ -1,0 +1,553 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: kmsconfigs.operator.yugabyte.io
+spec:
+  group: operator.yugabyte.io
+  scope: Namespaced
+  names:
+    plural: kmsconfigs
+    singular: kmsconfig
+    shortNames:
+      - ykms
+    kind: KMSConfig
+    categories:
+      - all
+      - yugabyte
+  versions:
+    - name: v1alpha1
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Provider
+          type: string
+          description: The KMS provider backing this configuration
+          jsonPath: .spec.provider
+        - name: State
+          type: string
+          description: The state of the KMS config
+          jsonPath: .status.state
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          description: >
+            Custom resource definition for a YugabyteDB Anywhere KMS
+            (encryption at rest) configuration.
+          type: object
+          properties:
+            status:
+              description: KMS config status for the KMS config custom resource.
+              type: object
+              properties:
+                state:
+                  description: State of the KMS config (e.g. Creating, Ready, Error, InUse).
+                  type: string
+                resourceUUID:
+                  description: >
+                    Internal UUID of the KMS config in YBA. Empty until the config
+                    has been created; drives create-vs-edit reconciliation.
+                  type: string
+                taskUUID:
+                  description: Internal UUID of the most recent task associated with the KMS config.
+                  type: string
+                message:
+                  description: Message for the KMS config (validation errors, runtime-flag gating, etc.).
+                  type: string
+            spec:
+              type: object
+              x-kubernetes-validations:
+                - rule: "(self.provider == 'AWS') == has(self.aws)"
+                  message: "aws must be set if and only if provider is AWS"
+                - rule: "(self.provider == 'GCP') == has(self.gcp)"
+                  message: "gcp must be set if and only if provider is GCP"
+                - rule: "(self.provider == 'AZU') == has(self.azure)"
+                  message: "azure must be set if and only if provider is AZU"
+                - rule: "(self.provider == 'OCI') == has(self.oci)"
+                  message: "oci must be set if and only if provider is OCI"
+                - rule: "(self.provider == 'CIPHERTRUST') == has(self.cipherTrust)"
+                  message: "cipherTrust must be set if and only if provider is CIPHERTRUST"
+                - rule: "(self.provider == 'HASHICORP') == has(self.vault)"
+                  message: "vault must be set if and only if provider is HASHICORP"
+              properties:
+                name:
+                  description: Name of the KMS config as registered in YBA. Immutable.
+                  type: string
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: "name is immutable"
+                provider:
+                  description: KMS provider backing this configuration. Immutable once set.
+                  type: string
+                  enum:
+                    - AWS
+                    - GCP
+                    - AZU
+                    - OCI
+                    - CIPHERTRUST
+                    - HASHICORP
+                  x-kubernetes-validations:
+                    - rule: self == oldSelf
+                      message: "provider is immutable"
+
+                aws:
+                  description: Configuration for AWS KMS. Required when provider is AWS.
+                  type: object
+                  x-kubernetes-validations:
+                    - rule: "self.useIAMProfile || (has(self.accessKeyIdSecret) && has(self.secretAccessKeySecret))"
+                      message: "accessKeyIdSecret and secretAccessKeySecret are required unless useIAMProfile is true"
+                  properties:
+                    useIAMProfile:
+                      description: Use the host IAM profile instead of static credentials.
+                      type: boolean
+                      default: false
+                    accessKeyIdSecret:
+                      description: Secret holding the AWS access key ID. Editable (rotatable).
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the Secret.
+                          type: string
+                        namespace:
+                          description: Namespace of the Secret. Defaults to the resource namespace.
+                          type: string
+                        key:
+                          description: Key within the Secret data holding the value.
+                          type: string
+                      required:
+                        - name
+                        - key
+                    secretAccessKeySecret:
+                      description: Secret holding the AWS secret access key. Editable (rotatable).
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the Secret.
+                          type: string
+                        namespace:
+                          description: Namespace of the Secret. Defaults to the resource namespace.
+                          type: string
+                        key:
+                          description: Key within the Secret data holding the value.
+                          type: string
+                      required:
+                        - name
+                        - key
+                    region:
+                      description: AWS region of the KMS key. Immutable.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "region is immutable"
+                    cmkID:
+                      description: Customer Master Key ID. If empty, YBA creates a CMK. Immutable.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "cmkID is immutable"
+                    endpoint:
+                      description: Optional custom AWS KMS endpoint. Immutable.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "endpoint is immutable"
+                  required:
+                    - region
+
+                gcp:
+                  description: Configuration for GCP KMS. Required when provider is GCP.
+                  type: object
+                  properties:
+                    credentialsSecret:
+                      description: >
+                        Secret holding the GCP service account credentials JSON.
+                        Editable. Omit when using workload identity.
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the Secret.
+                          type: string
+                        namespace:
+                          description: Namespace of the Secret. Defaults to the resource namespace.
+                          type: string
+                        key:
+                          description: Key within the Secret data holding the JSON.
+                          type: string
+                      required:
+                        - name
+                        - key
+                    location:
+                      description: GCP KMS location (e.g. global, us-east1). Immutable.
+                      type: string
+                      default: global
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "location is immutable"
+                    keyRingName:
+                      description: Name of the GCP KMS key ring. Immutable.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "keyRingName is immutable"
+                    cryptoKeyName:
+                      description: Name of the GCP KMS crypto key. Immutable.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "cryptoKeyName is immutable"
+                    protectionLevel:
+                      description: Protection level for the crypto key. Immutable.
+                      type: string
+                      enum:
+                        - SOFTWARE
+                        - HSM
+                      default: HSM
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "protectionLevel is immutable"
+                    endpoint:
+                      description: Optional custom GCP KMS endpoint. Immutable.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "endpoint is immutable"
+                  required:
+                    - keyRingName
+                    - cryptoKeyName
+
+                azure:
+                  description: Configuration for Azure KMS. Required when provider is AZURE.
+                  type: object
+                  x-kubernetes-validations:
+                    - rule: "self.useManagedIdentity || (has(self.clientID) && has(self.clientSecretSecret) && has(self.tenantID))"
+                      message: "clientID, clientSecretSecret and tenantID are required unless useManagedIdentity is true"
+                  properties:
+                    useManagedIdentity:
+                      description: Authenticate with an Azure managed identity instead of a service principal.
+                      type: boolean
+                      default: false
+                    clientID:
+                      description: Azure service principal client ID. Editable.
+                      type: string
+                    clientSecretSecret:
+                      description: Secret holding the Azure client secret. Editable (rotatable).
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the Secret.
+                          type: string
+                        namespace:
+                          description: Namespace of the Secret. Defaults to the resource namespace.
+                          type: string
+                        key:
+                          description: Key within the Secret data holding the value.
+                          type: string
+                      required:
+                        - name
+                        - key
+                    tenantID:
+                      description: Azure Active Directory tenant ID. Editable.
+                      type: string
+                    keyVaultURL:
+                      description: URL of the Azure Key Vault. Immutable.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "keyVaultURL is immutable"
+                    keyName:
+                      description: Name of the key within the Key Vault. Immutable.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "keyName is immutable"
+                    keyAlgorithm:
+                      description: Key algorithm. Currently only RSA is supported. Immutable.
+                      type: string
+                      enum:
+                        - RSA
+                      default: RSA
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "keyAlgorithm is immutable"
+                    keySize:
+                      description: Key size in bits. Immutable.
+                      type: integer
+                      enum:
+                        - 2048
+                        - 3072
+                        - 4096
+                      default: 2048
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "keySize is immutable"
+                  required:
+                    - keyVaultURL
+                    - keyName
+
+                oci:
+                  description: Configuration for OCI KMS. Required when provider is OCI.
+                  type: object
+                  properties:
+                    userOCID:
+                      description: OCID of the OCI user. Editable.
+                      type: string
+                    fingerprint:
+                      description: Fingerprint of the API signing key. Editable.
+                      type: string
+                    privateKeySecret:
+                      description: Secret holding the PEM private key. Editable (rotatable).
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the Secret.
+                          type: string
+                        namespace:
+                          description: Namespace of the Secret. Defaults to the resource namespace.
+                          type: string
+                        key:
+                          description: Key within the Secret data holding the PEM.
+                          type: string
+                      required:
+                        - name
+                        - key
+                    tenancyOCID:
+                      description: OCID of the OCI tenancy. Immutable.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "tenancyOCID is immutable"
+                    region:
+                      description: OCI region of the vault. Immutable.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "region is immutable"
+                    compartmentOCID:
+                      description: OCID of the compartment. Immutable.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "compartmentOCID is immutable"
+                    vaultOCID:
+                      description: OCID of the OCI vault. Immutable.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "vaultOCID is immutable"
+                    keyName:
+                      description: Name of the key to create or use within the vault. Immutable.
+                      type: string
+                      default: yba-master-key
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "keyName is immutable"
+                    keyOCID:
+                      description: OCID of an existing key to use. If empty, a key is created. Immutable.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "keyOCID is immutable"
+                  required:
+                    - userOCID
+                    - tenancyOCID
+                    - fingerprint
+                    - privateKeySecret
+                    - region
+                    - compartmentOCID
+                    - vaultOCID
+
+                cipherTrust:
+                  description: Configuration for CipherTrust KMS. Required when provider is CIPHERTRUST.
+                  type: object
+                  x-kubernetes-validations:
+                    - rule: "(self.authType == 'USER_CREDENTIALS') == has(self.userCredentials)"
+                      message: "userCredentials must be set if and only if authType is USER_CREDENTIALS"
+                    - rule: "(self.authType == 'REFRESH_TOKEN') == has(self.refreshTokenSecret)"
+                      message: "refreshTokenSecret must be set if and only if authType is REFRESH_TOKEN"
+                  properties:
+                    managerURL:
+                      description: URL of the CipherTrust Manager. Immutable.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "managerURL is immutable"
+                    authType:
+                      description: Authentication method used against the CipherTrust Manager. Editable.
+                      type: string
+                      enum:
+                        - USER_CREDENTIALS
+                        - REFRESH_TOKEN
+                    userCredentials:
+                      description: Username and password. Required when authType is USER_CREDENTIALS. Editable.
+                      type: object
+                      properties:
+                        username:
+                          description: CipherTrust Manager username.
+                          type: string
+                        passwordSecret:
+                          description: Secret holding the password.
+                          type: object
+                          properties:
+                            name:
+                              description: Name of the Secret.
+                              type: string
+                            namespace:
+                              description: Namespace of the Secret. Defaults to the resource namespace.
+                              type: string
+                            key:
+                              description: Key within the Secret data holding the value.
+                              type: string
+                          required:
+                            - name
+                            - key
+                      required:
+                        - username
+                        - passwordSecret
+                    refreshTokenSecret:
+                      description: Secret holding the refresh token. Required when authType is REFRESH_TOKEN. Editable.
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the Secret.
+                          type: string
+                        namespace:
+                          description: Namespace of the Secret. Defaults to the resource namespace.
+                          type: string
+                        key:
+                          description: Key within the Secret data holding the value.
+                          type: string
+                      required:
+                        - name
+                        - key
+                    keyName:
+                      description: Name of the key to create or use. Immutable.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "keyName is immutable"
+                    keyAlgorithm:
+                      description: Key algorithm. Currently only AES is supported. Immutable.
+                      type: string
+                      enum:
+                        - AES
+                      default: AES
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "keyAlgorithm is immutable"
+                    keySize:
+                      description: Key size in bits. Immutable.
+                      type: integer
+                      enum:
+                        - 128
+                        - 192
+                        - 256
+                      default: 256
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "keySize is immutable"
+                  required:
+                    - managerURL
+                    - authType
+                    - keyName
+
+                vault:
+                  description: Configuration for HashiCorp Vault. Required when provider is HASHICORP.
+                  type: object
+                  x-kubernetes-validations:
+                    - rule: "(self.authType == 'TOKEN') == has(self.tokenSecret)"
+                      message: "tokenSecret must be set if and only if authType is TOKEN"
+                    - rule: "(self.authType == 'APPROLE') == has(self.appRole)"
+                      message: "appRole must be set if and only if authType is APPROLE"
+                    - rule: "!has(self.authNamespace) || self.authType == 'APPROLE'"
+                      message: "authNamespace is only valid when authType is APPROLE"
+                  properties:
+                    address:
+                      description: Address of the Vault server. Immutable.
+                      type: string
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "address is immutable"
+                    authType:
+                      description: Authentication method used against Vault. Editable.
+                      type: string
+                      enum:
+                        - TOKEN
+                        - APPROLE
+                    tokenSecret:
+                      description: Secret holding the Vault token. Required when authType is TOKEN. Editable.
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the Secret.
+                          type: string
+                        namespace:
+                          description: Namespace of the Secret. Defaults to the resource namespace.
+                          type: string
+                        key:
+                          description: Key within the Secret data holding the value.
+                          type: string
+                      required:
+                        - name
+                        - key
+                    appRole:
+                      description: AppRole credentials. Required when authType is APPROLE. Editable.
+                      type: object
+                      properties:
+                        roleID:
+                          description: Vault AppRole role ID.
+                          type: string
+                        secretIdSecret:
+                          description: Secret holding the AppRole secret ID.
+                          type: object
+                          properties:
+                            name:
+                              description: Name of the Secret.
+                              type: string
+                            namespace:
+                              description: Namespace of the Secret. Defaults to the resource namespace.
+                              type: string
+                            key:
+                              description: Key within the Secret data holding the value.
+                              type: string
+                          required:
+                            - name
+                            - key
+                      required:
+                        - roleID
+                        - secretIdSecret
+                    authNamespace:
+                      description: >
+                        Optional Vault namespace used for AppRole authentication. Only valid when
+                        authType is APPROLE. Editable.
+                      type: string
+                    keyName:
+                      description: Name of the transit key in Vault. Immutable.
+                      type: string
+                      default: key_yugabyte
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "keyName is immutable"
+                    secretEngine:
+                      description: Secret engine type. Fixed to transit. Immutable.
+                      type: string
+                      enum:
+                        - transit
+                      default: transit
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "secretEngine is immutable"
+                    mountPath:
+                      description: >
+                        Mount path of the transit secrets engine, relative to authNamespace when
+                        one is set (the operator prefixes it automatically). Immutable.
+                      type: string
+                      default: transit/
+                      x-kubernetes-validations:
+                        - rule: self == oldSelf
+                          message: "mountPath is immutable"
+                  required:
+                    - address
+                    - authType
+              required:
+                - name
+                - provider

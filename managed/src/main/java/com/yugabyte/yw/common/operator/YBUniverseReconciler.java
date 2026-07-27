@@ -5,6 +5,7 @@ package com.yugabyte.yw.common.operator;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.nimbusds.oauth2.sdk.util.MapUtils;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -38,6 +39,7 @@ import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
@@ -811,6 +813,16 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                 universe, k8ResourceDetails, TaskType.CertsRotateKubernetesUpgrade.name());
             taskUUID = rotateCertsYbUniverse(universeDetails, cust, ybUniverse);
             break;
+          case TlsToggleKubernetes:
+            if (checkAndHandleUniverseLock(
+                ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+              return;
+            }
+            log.info("Re-running TLS toggle with new params");
+            kubernetesStatusUpdater.createYBUniverseEventStatus(
+                universe, k8ResourceDetails, TaskType.TlsToggleKubernetes.name());
+            taskUUID = toggleTlsYbUniverse(universeDetails, cust, ybUniverse);
+            break;
           default:
             log.error("Unexpected task, this should not happen!");
             throw new RuntimeException("Unexpected task tried for re-run");
@@ -860,6 +872,29 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           updateThrottleParams(universe, ybUniverse);
           kubernetesStatusUpdater.updateUniverseState(
               KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.READY);
+          // Handle encryption-in-transit (TLS) toggle. Checked before certificate rotation because
+          // enabling TLS with a rootCA specified would otherwise look like a rotation.
+        } else if (operatorUtils.shouldToggleTls(currentUserIntent, ybUniverse)) {
+          log.info("Toggling TLS");
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.TlsToggleKubernetes.name());
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
+          taskUUID = toggleTlsYbUniverse(universeDetails, cust, ybUniverse);
+          // Handle certificate rotation before any other edit/upgrade operation.
+        } else if (operatorUtils.shouldRotateCerts(universe, ybUniverse, cust.getUuid())) {
+          log.info("Rotating certificates");
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.CertsRotateKubernetesUpgrade.name());
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
+          taskUUID = rotateCertsYbUniverse(universeDetails, cust, ybUniverse);
           // Handle immutable YBC (useYbdbInbuiltYbc) toggle
         } else if (currentUserIntent.isUseYbdbInbuiltYbc()
             != ybUniverse.getSpec().getUseYbdbInbuiltYbc()) {
@@ -873,17 +908,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           taskUUID =
               toggleYbcYbUniverse(
                   universeDetails, cust, ybUniverse, ybUniverse.getSpec().getUseYbdbInbuiltYbc());
-          // Handle certificate rotation before any other edit/upgrade operation.
-        } else if (operatorUtils.shouldRotateCerts(universe, ybUniverse, cust.getUuid())) {
-          log.info("Rotating certificates");
-          kubernetesStatusUpdater.createYBUniverseEventStatus(
-              universe, k8ResourceDetails, TaskType.CertsRotateKubernetesUpgrade.name());
-          if (checkAndHandleUniverseLock(
-              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
-            return;
-          }
-          kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
-          taskUUID = rotateCertsYbUniverse(universeDetails, cust, ybUniverse);
           // Case with new edits
         } else if (!HelmUtils.equal(
             incomingIntent.universeOverrides, currentUserIntent.universeOverrides)) {
@@ -1231,6 +1255,63 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     requestParams.setUniverseUUID(oldUniverse.getUniverseUUID());
     log.info("Rotating certificates for universe {}", oldUniverse.getName());
     return upgradeUniverseHandler.rotateCerts(requestParams, cust, oldUniverse);
+  }
+
+  private UUID toggleTlsYbUniverse(
+      UniverseDefinitionTaskParams taskParams, Customer cust, YBUniverse ybUniverse) {
+    ObjectMapper mapper =
+        Json.mapper()
+            .copy()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+    TlsToggleParams requestParams = new TlsToggleParams();
+    try {
+      // TlsToggleParams requires enableNodeToNodeEncrypt/enableClientToNodeEncrypt as creator
+      // properties, but UniverseDefinitionTaskParams does not carry them at the top level (they
+      // live
+      // in clusters[].userIntent). Inject the target encryption state from the spec into the JSON
+      // tree before deserializing so the required creator properties are satisfied.
+      ObjectNode taskParamsNode = mapper.valueToTree(taskParams);
+      taskParamsNode.put(
+          "enableNodeToNodeEncrypt", ybUniverse.getSpec().getEnableNodeToNodeEncrypt());
+      taskParamsNode.put(
+          "enableClientToNodeEncrypt", ybUniverse.getSpec().getEnableClientToNodeEncrypt());
+      requestParams = mapper.treeToValue(taskParamsNode, TlsToggleParams.class);
+    } catch (Exception e) {
+      log.error("Failed at creating tls toggle params", e);
+      throw new RuntimeException("Failed to create tls toggle params", e);
+    }
+
+    // TLS toggle is only supported in a non-rolling manner (PLAT-9434), so the spec's upgradeOption
+    // does not apply here.
+    requestParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
+
+    // Resolve the rootCA from the spec if provided. For Kubernetes, rootCA and clientRootCA must be
+    // the same. If no cert is specified, YBA creates a self-signed one in the toggle handler.
+    String rootCAName = ybUniverse.getSpec().getRootCA();
+    if (rootCAName != null && !rootCAName.trim().isEmpty()) {
+      CertificateInfo rootCACert = CertificateInfo.get(cust.getUuid(), rootCAName);
+      if (rootCACert != null) {
+        requestParams.rootCA = rootCACert.getUuid();
+        requestParams.setClientRootCA(rootCACert.getUuid());
+        requestParams.rootAndClientRootCASame = true;
+        log.info("Using rootCA {} for TLS toggle", rootCACert.getUuid());
+      } else {
+        log.error("RootCA certificate '{}' not found for customer {}", rootCAName, cust.getUuid());
+        throw new RuntimeException("RootCA certificate '" + rootCAName + "' not found");
+      }
+    }
+
+    Universe oldUniverse =
+        Universe.maybeGetUniverseByName(cust.getId(), getUniverseName(ybUniverse)).orElse(null);
+
+    requestParams.setUniverseUUID(oldUniverse.getUniverseUUID());
+    log.debug(
+        "Toggling TLS for universe {} (nodeToNode={}, clientToNode={})",
+        oldUniverse.getName(),
+        requestParams.enableNodeToNodeEncrypt,
+        requestParams.enableClientToNodeEncrypt);
+    return upgradeUniverseHandler.toggleTls(requestParams, cust, oldUniverse);
   }
 
   private UUID updateYBUniverse(

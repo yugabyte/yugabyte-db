@@ -45,7 +45,8 @@ const dropdownColKeys = {
   },
   'Total Time': {
     value: 'total_time',
-    type: 'number'
+    type: 'number',
+    display: 'Total Time (ms)'
   },
   Rows: {
     value: 'rows',

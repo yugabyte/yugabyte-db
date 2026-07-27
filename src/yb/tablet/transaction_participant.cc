@@ -27,6 +27,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
+#include "yb/client/transaction_status_tablets.h"
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
@@ -117,6 +118,12 @@ DEFINE_RUNTIME_AUTO_bool(cdc_write_post_apply_metadata, kLocalPersisted, false, 
 DEFINE_RUNTIME_bool(cdc_immediate_transaction_cleanup, true,
     "Clean up transactions from memory after apply, even if its changes have not yet been "
     "streamed by CDC.");
+
+DEFINE_RUNTIME_bool(cdc_enable_time_based_intent_retention, false,
+    "When true, the cleanup of intent sst files for tablets under CDCSDK replication is done based "
+    "on the age of these files. These files will be retained for at least "
+    "cdc_min_sec_to_retain_intent seconds and then will be asynchronously deleted.");
+
 DEFINE_test_flag(int32, stopactivetxns_sleep_in_abort_cb_ms, 0,
     "Delays the abort callback in StopActiveTxns to repro GitHub #23399.");
 
@@ -912,7 +919,14 @@ class TransactionParticipant::Impl
       std::lock_guard lock(mutex_);
       const OpId& cdcsdk_checkpoint_op_id = GetLatestCheckPointUnlocked();
 
-      if (cdcsdk_checkpoint_op_id != OpId::Max()) {
+      if (cdcsdk_checkpoint_op_id != OpId::Max() &&
+          FLAGS_cdc_enable_time_based_intent_retention) {
+        // Time-based intent retention is enabled on this CDC tablet. Defer the intent cleanup to
+        // the intent SST file cleanup pathway, which enforces the retention interval. Leaving the
+        // set empty means no intents are removed here.
+        VLOG_WITH_PREFIX(2)
+            << "Skipping aborted transaction intent cleanup due to time-based intent retention";
+      } else if (cdcsdk_checkpoint_op_id != OpId::Max()) {
         for (const auto& [transaction_id, apply_op_id] : txns) {
           const OpId* apply_record_op_id = &apply_op_id;
           if (!apply_op_id.valid()) {
@@ -1026,6 +1040,7 @@ class TransactionParticipant::Impl
       }
       if (data.apply_to_storages.Any()) {
         auto apply_state = applier_.ApplyIntents(data);
+        TEST_SYNC_POINT("TransactionParticipant::ApplyIntentsDone");
 
         VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
                             << apply_state.ToString();
@@ -1254,8 +1269,16 @@ class TransactionParticipant::Impl
   // Returns kMax if there are no running transactions.
   HybridTime MinRunningHybridTime() {
     auto result = min_running_ht_.load(std::memory_order_acquire);
+    // Refreshing the status of the oldest running transaction below is best-effort. Issuing the
+    // status request needs a ready local client (SendStatusRequest blocks on
+    // client_future().get()). This code runs on the Raft apply path (Tablet::ApplyIntents ->
+    // MinRunningHybridTime), and blocking there can deadlock: local client initialization itself
+    // depends on this tablet's apply making progress (e.g. the master sys catalog right after a
+    // restart, where the client cannot locate a leader master until the pending write is applied).
+    // Skip the refresh until the client is ready; it will be retried later.
     if (result == HybridTime::kMax || result == HybridTime::kInvalid
-        || !transactions_loaded_.load()) {
+        || !transactions_loaded_.load()
+        || !IsReady(participant_context_.client_future())) {
       return result;
     }
     auto now = CoarseMonoClock::now();
@@ -1405,9 +1428,20 @@ class TransactionParticipant::Impl
         if (committed_ids.empty()) {
           break;
         } else {
-          // We are waiting only for committed transactions to be applied.
-          // So just add some delay.
-          std::this_thread::sleep_for(10ms * std::min<size_t>(10, committed_ids.size()));
+          // We are waiting only for committed transactions to be applied. Honor the deadline
+          // instead of spinning forever: the resolver returns quickly for already-committed
+          // transactions, so nothing in this loop observes the deadline otherwise. A committed
+          // transaction that never gets applied (e.g. when the applier is stopped during
+          // shutdown) would keep this loop sleeping indefinitely and block callers such as CDC
+          // GetChanges from returning.
+          auto now = CoarseMonoClock::Now();
+          if (now >= deadline) {
+            return STATUS(
+                TimedOut, "Timed out waiting for committed transactions to be applied");
+          }
+          // So just add some delay, but don't sleep past the deadline.
+          std::this_thread::sleep_for(std::min<CoarseMonoClock::Duration>(
+              10ms * std::min<size_t>(10, committed_ids.size()), deadline - now));
         }
       }
     }
@@ -1617,11 +1651,14 @@ class TransactionParticipant::Impl
   }
 
   void RecordConflictResolutionScanLatency(MonoDelta latency) {
-    metric_conflict_resolution_latency_->Increment(latency.ToMilliseconds());
+    metric_conflict_resolution_latency_->Increment(latency.ToMicroseconds());
   }
 
   Result<HybridTime> SimulateProcessRecentlyAppliedTransactions(
       const OpId& retryable_requests_flushed_op_id) EXCLUDES(mutex_) {
+    // Wait until the loader has finished iterating IntentsDB in order to have the correct bootstrap
+    // state threshold
+    RETURN_NOT_OK(loader_.WaitAllLoaded());
     std::lock_guard lock(mutex_);
     return DoProcessRecentlyAppliedTransactions(
         retryable_requests_flushed_op_id, false /* persist */);
@@ -1854,7 +1891,8 @@ class TransactionParticipant::Impl
         for (const auto& [txn_id, pending_apply] : pending_applies) {
           auto it = transactions_.find(txn_id);
           if (it == transactions_.end()) {
-            LOG_WITH_PREFIX(INFO) << "Unknown transaction for pending apply: " << AsString(txn_id);
+            LOG_WITH_PREFIX(DFATAL)
+                << "Unknown transaction for pending apply: " << AsString(txn_id);
             continue;
           }
 
@@ -2019,7 +2057,13 @@ class TransactionParticipant::Impl
     const TransactionId& txn_id = (**it).id();
     const OpId& op_id = (**it).GetApplyOpId();
     if (op_id <= checkpoint_op_id) {
-      if (PREDICT_TRUE(!FLAGS_TEST_no_schedule_remove_intents)) {
+      // When time-based intent retention is enabled on a CDCSDK tablet, we skip the per-transaction
+      // intent deletion entirely and rely on the intent SST file cleanup pathway to remove intents
+      // only after they are old enough.
+      const bool cdc_active = checkpoint_op_id != OpId::Max();
+      const bool skip_intent_removal =
+          FLAGS_cdc_enable_time_based_intent_retention && cdc_active;
+      if (PREDICT_TRUE(!FLAGS_TEST_no_schedule_remove_intents) && !skip_intent_removal) {
         (**it).ScheduleRemoveIntents(*it, reason);
       }
     } else {
@@ -2327,6 +2371,7 @@ class TransactionParticipant::Impl
   }
 
   void HandleApplying(std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
+    TEST_SYNC_POINT("TransactionParticipant::HandleApplying");
     if (RandomActWithProbability(FLAGS_TEST_transaction_ignore_applying_probability)) {
       VLOG_WITH_PREFIX(2)
           << "TEST: Rejected apply: "
@@ -2622,6 +2667,9 @@ class TransactionParticipant::Impl
     recently_applied_.insert(AppliedTransactionState{apply_op_id, first_write_ht});
     metric_wal_replayable_applied_transactions_->IncrementBy(1 - static_cast<int64_t>(cleaned));
     UpdateMinReplayTxnFirstWriteTimeIfNeeded();
+    TEST_SYNC_POINT_CALLBACK(
+        "TransactionParticipant::Impl::AddRecentlyAppliedTransaction",
+        const_cast<TransactionId*>(&transaction.id()));
   }
 
   Result<HybridTime> DoProcessRecentlyAppliedTransactions(
@@ -2665,6 +2713,11 @@ class TransactionParticipant::Impl
   HybridTime GetMinReplayTxnFirstWriteTime(RecentlyAppliedTransactions& recently_applied) {
     if (!FLAGS_use_bootstrap_intent_ht_filter) {
       return HybridTime::kInvalid;
+    }
+    // Return the existing atomic which reflects the last validly-computed (transactions_loaded_=
+    // true) value, or HybridTime::kInvalid if none yet, both safe.
+    if (!transactions_loaded_) {
+      return min_replay_txn_first_write_ht_.load(std::memory_order_acquire);
     }
 
     auto min_running_ht = min_running_ht_.load(std::memory_order_acquire);

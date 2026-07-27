@@ -33,11 +33,11 @@
 
       "Bash(mkdir -p /tmp/claude)",
       "Edit(/tmp/claude/**)",
-      "Read(/tmp/claude/**)",
-      "Write(/tmp/claude/**)"
+      "Read(/tmp/claude/**)"
     ],
     "deny": [
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git * push *)"
     ]
   }
 }

@@ -633,9 +633,7 @@ DEFINE_validator(vector_index_backend,
 TAG_FLAG(vector_index_backend, hidden);
 TAG_FLAG(vector_index_backend, advanced);
 
-// TODO(GH31886): this flag will be coverted into an auto-flag when all ownership and
-// new value format changes are completed.
-DEFINE_RUNTIME_bool(enable_table_owned_vector_reverse_mapping, false,
+DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
     "When true, newly created YSQL tables hold vector reverse mapping ownership. "
     "Such tables write vector reverse mappings on row insert/update regardless of "
     "whether a vector index exists, and vector index backfill skips reverse mapping.");
@@ -3088,6 +3086,10 @@ Status CatalogManager::ShouldSplitValidCandidate(
     return STATUS_FORMAT(IllegalState, "Tablet $0 may have uncompacted post-split data.",
         tablet_info.id());
   }
+  if (drive_info.has_active_vector_index_backfill) {
+    return STATUS_FORMAT(
+        IllegalState, "Tablet $0 has a vector index backfill in progress.", tablet_info.id());
+  }
   ssize_t size = drive_info.sst_files_size;
   DCHECK(size >= 0) << "Detected overflow in casting sst_files_size to signed int.";
   if (size < FLAGS_tablet_split_low_phase_size_threshold_bytes) {
@@ -3164,7 +3166,7 @@ class SplitScope {
   SplitScope(CatalogManager& catalog, TabletInfo& source_tablet_info, size_t num_split_parts)
       : catalog_(catalog), source_tablet_info_(source_tablet_info),
         num_split_parts_(num_split_parts) {
-    tables_.push_back(source_tablet_info_.table());
+    tables_.push_back(TableInfoWithWriteLock(source_tablet_info_.table()));
     MakeTempTablets();
   }
 
@@ -3179,13 +3181,17 @@ class SplitScope {
     }
   }
 
-  auto& source_table() {
-    return tables_.front();
+  auto& source_table() const {
+    return source_tablet_info_.table();
   }
 
-  auto& source_table_lock() {
-    DCHECK(!table_locks_.empty());
-    return table_locks_.front();
+  auto& source_table_lock() const {
+    auto it = std::ranges::lower_bound(
+        tables_, source_table()->id(), std::less<>{},
+        [](const auto& table_with_lock) -> const TableId& { return table_with_lock->id(); });
+    DCHECK(it != tables_.end() && (*it)->id() == source_table()->id());
+    DCHECK((*it).lock.locked());
+    return (*it).lock;
   }
 
   auto& source_tablet_meta() {
@@ -3193,28 +3199,25 @@ class SplitScope {
   }
 
   Status Lock() NO_THREAD_SAFETY_ANALYSIS {
-    auto primary_lock = source_table()->LockForWrite();
-
     // Collect vector index tables.
     auto vector_index_ids = source_table()->GetVectorIndexIds();
     tables_.reserve(1 + vector_index_ids.size());
     for (const auto& id : vector_index_ids) {
-      tables_.push_back(catalog_.GetTableInfoUnlocked(id));
-      SCHECK_NOTNULL(tables_.back().get());
+      auto table = catalog_.GetTableInfoUnlocked(id);
+      SCHECK_NOTNULL(table);
+      tables_.push_back(TableInfoWithWriteLock(table));
     }
 
-    // Sort vector tables by table_id, don't touch source table.
+    // Sort tables by table_id.
     DCHECK(!tables_.empty());
     std::ranges::sort(
-        std::ranges::next(std::ranges::begin(tables_)),
+        std::ranges::begin(tables_),
         std::ranges::end(tables_), /* comp = */ {},
         [](const auto& table) -> const TableId& { return table->id(); });
 
-    // Take write locks for vector tables.
-    table_locks_.reserve(1 + vector_index_ids.size());
-    table_locks_.push_back(std::move(primary_lock));
-    for (auto it = std::next(tables_.begin()); it != tables_.end(); ++it) {
-      table_locks_.push_back((*it)->LockForWrite());
+    // Take write locks for all tables in sorted order.
+    for (auto& table : tables_) {
+      table.Lock();
     }
 
     // Lock tablets in the correct order.
@@ -3233,16 +3236,16 @@ class SplitScope {
   }
 
   int PropagateNextPartitionListVersion() {
-    // Take the version from the source table, and push it to all vector indexes.
+    // Take the version from the source table and propagate it to all tables in the split scope.
     auto new_version = source_table_lock().mutable_data()->pb.partition_list_version() + 1;
 
-    for (auto& lock : table_locks_) {
-      auto old_version = lock.mutable_data()->pb.partition_list_version();
+    for (auto& table : tables_) {
+      auto old_version = table.lock.mutable_data()->pb.partition_list_version();
       if (new_version > old_version) {
-        LOG_WITH_FUNC(INFO)
-            << "Table " << lock->pb.name() << " partition list version changed from "
-            << old_version << " => " << new_version;
-        lock.mutable_data()->pb.set_partition_list_version(new_version);
+        LOG_WITH_FUNC(INFO) << "Table " << table.lock->pb.name()
+                            << " partition list version changed from " << old_version << " => "
+                            << new_version;
+        table.lock.mutable_data()->pb.set_partition_list_version(new_version);
       } else {
         DCHECK_GE(new_version, old_version);
       }
@@ -3274,7 +3277,8 @@ class SplitScope {
 
     int new_partition_list_version = PropagateNextPartitionListVersion();
 
-    RETURN_NOT_OK(sys_catalog.Upsert(epoch, tables_, new_tablets, &source_tablet_info_));
+    auto table_infos = GetTableInfos();
+    RETURN_NOT_OK(sys_catalog.Upsert(epoch, table_infos, new_tablets, &source_tablet_info_));
 
     MAYBE_FAULT(FLAGS_TEST_crash_after_registering_split_tablets);
     if (PREDICT_FALSE(FLAGS_TEST_error_after_registering_split_tablets)) {
@@ -3295,7 +3299,7 @@ class SplitScope {
                 << ", split_depth: " << new_split_depth << ") to split the tablet "
                 << source_tablet_info_.tablet_id() << " ("
                 << AsDebugHexString(source_tablet_meta.partition()) << ") for table(s) "
-                << AsString(tables_)
+                << AsString(table_infos)
                 << ", new partition_list_version: " << new_partition_list_version;
     }
     return Status::OK();
@@ -3303,8 +3307,8 @@ class SplitScope {
 
   void Commit() {
     source_tablet_lock_.Commit();
-    for (auto& lock : table_locks_ | std::views::reverse) {
-      lock.Commit();
+    for (auto& table : tables_ | std::views::reverse) {
+      table.Commit();
     }
   }
 
@@ -3332,14 +3336,28 @@ class SplitScope {
     return Status::OK();
   }
 
+  std::vector<TableInfoPtr> GetTableInfos() const {
+    std::vector<TableInfoPtr> result;
+    result.reserve(tables_.size());
+    for (const auto& table : tables_) {
+      result.push_back(table.info);
+    }
+    return result;
+  }
+
+  auto GetSecondaryTables() const {
+    return tables_ | std::views::filter(
+                         [this](const auto& table) { return table->id() != source_table()->id(); });
+  }
+
   void AddSecondaryTablesTo(TabletInfo& tablet) {
-    // No need to add first tablet because it was added during CreateChildTablet().
+    // The primary table id was added during CreateChildTablet(); add the remaining tables.
     DCHECK_GE(tables_.size(), 1);
-    for (auto it = std::next(tables_.begin()); it != tables_.end(); ++it) {
+    for (const auto& table : GetSecondaryTables()) {
       if (FLAGS_use_parent_table_id_field) {
-        tablet.AddTableId((*it)->id());
+        tablet.AddTableId(table->id());
       } else {
-        tablet.mutable_metadata()->mutable_dirty()->pb.add_table_ids((*it)->id());
+        tablet.mutable_metadata()->mutable_dirty()->pb.add_table_ids(table->id());
       }
     }
 
@@ -3357,8 +3375,7 @@ class SplitScope {
   TabletInfo& source_tablet_info_;
   size_t num_split_parts_;
   TabletInfo::WriteLock source_tablet_lock_;
-  std::vector<TableInfoPtr> tables_;
-  std::vector<TableInfo::WriteLock> table_locks_;
+  std::vector<TableInfoWithWriteLock> tables_;
   std::vector<TabletInfoPtr> temp_tablet_info_;
   bool temp_tablet_info_locked_ = false; // To determine if it is safe to abort the mutation.
 };
@@ -3407,7 +3424,13 @@ Status CatalogManager::DoSplitTablet(
       return s;
     }
 
-    if (!is_manual_split) {
+    const bool children_already_registered =
+        scope.source_tablet_meta().split_tablet_ids().size() > 0;
+    // Skip validation for tablets whose children have already been registered in the past, as we
+    // might be retrying a previously failed split operation (failed at the tserver), and the table
+    // could have entered a different split phase now.
+    const bool should_validate_split = !is_manual_split && !children_already_registered;
+    if (should_validate_split) {
       auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
 
       // It is possible that we queued up a split candidate in TabletSplitManager which was, at the
@@ -3427,7 +3450,7 @@ Status CatalogManager::DoSplitTablet(
     // After this point, we expect to split the tablet.
 
     // If child tablets are already registered, use the existing split keys and tablets.
-    if (scope.source_tablet_meta().split_tablet_ids().size() > 0) {
+    if (children_already_registered) {
       num_split_parts = scope.source_tablet_meta().split_tablet_ids().size();
       for (auto i = 0; i < num_split_parts; ++i) {
         const auto& split_tablet_id = scope.source_tablet_meta().split_tablet_ids(i);
@@ -3686,7 +3709,7 @@ Status CatalogManager::XReplValidateSplitCandidateTableUnlocked(const TableId& t
   }
 
   if (!FLAGS_enable_tablet_split_of_replication_slot_streamed_tables &&
-      IsTablePartOfCDCSDK(table_id, /*require_replication_slot=*/true)) {
+      IsTablePartOfCDCSDK(table_id, /*require_logical_replication=*/true)) {
     return STATUS_FORMAT(
         NotSupported,
         "Tablet splitting is not supported for tables that are a part of a replication slot, "
@@ -4534,10 +4557,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       "Colocated table should specify a table ID");
 
   // If ysql_enable_colocated_tables_with_tablespaces is not enabled then tablespaces cannot be
-  // specified for indexes on colocated tables.
+  // specified for indexes on colocated tables. Vector indexes are exempt: they are copartitioned
+  // with (and stored on) the indexed table's tablets, so a tablespace recorded for them only
+  // mirrors the indexed table's tablespace for catalog consistency and is never used for the
+  // vector index's (shared) placement.
   SCHECK(
       FLAGS_ysql_enable_colocated_tables_with_tablespaces || !colocated || !IsIndex(req) ||
-          !req.has_tablespace_id(),
+          is_vector_index || !req.has_tablespace_id(),
       InvalidArgument, "TABLESPACE is not supported for indexes on colocated tables.");
 
   // TODO: If this is a colocated index table, convert any hash partition columns into
@@ -4928,11 +4954,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // Clone will create its own tablets as part of repartitioning.
   if (!joining_colocation_group && !req.is_clone()) {
-    auto opt_wal_retention = xcluster_manager_->GetDefaultWalRetentionSec(namespace_id);
-    if (opt_wal_retention) {
-      table->mutable_metadata()->mutable_dirty()->pb.set_wal_retention_secs(*opt_wal_retention);
-    }
-
     for (const auto& tablet : tablets) {
       // If new tablets are created, they will be in PREPARING state.
       CHECK_EQ(SysTabletsEntryPB::PREPARING, tablet->metadata().dirty().pb.state());
@@ -8485,6 +8506,37 @@ Result<NamespaceId> CatalogManager::GetTableNamespaceId(TableId table_id) {
   return table->namespace_id();
 }
 
+std::optional<std::string> CatalogManager::LookupPgSchemaNameForTable(
+    const TableInfo& table, const ReadHybridTime& read_time) const {
+  if (!table.ShouldLookupPgSchemaName()) {
+    return std::nullopt;
+  }
+
+  const auto pg_tbl_oids = table.GetPgTableAllOids();
+  if (!pg_tbl_oids.ok()) {
+    // Usually it happens for test cases when YSQL IDs are randomly generated UUIDs.
+    LOG(WARNING) << "Unable to get PG Oids from UUIDs for table " << table.id() << ": "
+                 << pg_tbl_oids.status();
+    return std::nullopt;
+  }
+
+  auto pgschema_name = ysql_manager_->GetPgSchemaName(*pg_tbl_oids, read_time);
+  if (!pgschema_name.ok() || pgschema_name->empty()) {
+    // DOCDB_TABLE_NOT_COMMITTED is expected for orphaned / mid-DDL DocDB tables.
+    const bool expected_not_committed = !pgschema_name.ok()
+        && MasterError(pgschema_name.status()) == MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED;
+    (expected_not_committed ? LOG(INFO) : LOG(WARNING))
+        << "Unable to find schema name for "
+        << (expected_not_committed ? "not committed " : "")
+        << "YSQL table " << table.namespace_name()
+        << "." << table.name() << " id " << table.id()
+        << " due to error: " << pgschema_name;
+    return std::nullopt;
+  }
+
+  return std::move(*pgschema_name);
+}
+
 Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
                                       GetTableSchemaResponsePB* resp) {
   return GetTableSchemaInternal(req, resp, /* always_get_fully_applied_indexes= */ false);
@@ -8502,7 +8554,6 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     return Status::OK();
   }
 
-  PgTableAllOids pg_tbl_oids;
   // Due to differences in the way proxies handle version mismatch (pull for yql vs push for sql).
   // For YQL tables, we will return the "set of indexes" being applied instead of the ones
   // that are fully completed.
@@ -8530,20 +8581,6 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
       // Case 1: There's no AlterTable, the regular schema is "fully applied".
       // Case 2: get_fully_applied_indexes == false (for YCQL). Always return the latest schema.
       resp->mutable_schema()->CopyFrom(l->pb.schema());
-    }
-
-    // Get pgschema_name for YSQL tables from PG Catalog. Skip for some special cases.
-    if (l->table_type() == TableType::PGSQL_TABLE_TYPE && !table->is_system() &&
-        !table->IsSequencesSystemTable() && !table->IsColocationParentTable()) {
-      // Store the table OIDs and use it after the Table lock releasing.
-      const auto pg_tbl_oids_res = table->GetPgTableAllOids();
-      if (pg_tbl_oids_res.ok()) {
-        pg_tbl_oids = *pg_tbl_oids_res;
-      } else {
-        // Usually it happens for test cases when YSQL IDs are randomly generated UUIDs.
-        LOG(WARNING) << "Unable to get PG Oids from UUIDs for table "
-                     << table->id() << ": " << pg_tbl_oids_res.status();
-      }
     }
 
     if (get_fully_applied_indexes && l->pb.has_fully_applied_schema()) {
@@ -8600,15 +8637,9 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     }
   }
 
-  if (pg_tbl_oids.initiated()) {
-    auto pgschema_name = ysql_manager_->GetPgSchemaName(pg_tbl_oids);
-    if (!pgschema_name.ok() || pgschema_name->empty()) {
-      LOG(WARNING) << "Unable to find schema name for YSQL table " << table->namespace_name()
-                   << "." << table->name() << " id " << table->id()
-                   << " due to error: " << pgschema_name;
-    } else {
-      resp->mutable_schema()->set_deprecated_pgschema_name(std::move(*pgschema_name));
-    }
+  auto pgschema_name = LookupPgSchemaNameForTable(*table, ReadHybridTime());
+  if (pgschema_name) {
+    resp->mutable_schema()->set_deprecated_pgschema_name(std::move(*pgschema_name));
   }
 
   auto ns_result = FindNamespaceById(table->namespace_id());
@@ -8847,7 +8878,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       }
       table->set_state(ltm->pb.state());
 
-      if (ltm->table_type() == PGSQL_TABLE_TYPE) {
+      if (table_info->ShouldLookupPgSchemaName(ltm)) {
         pg_tables.emplace_back(resp->tables().size() - 1, table_info);
       }
 
@@ -8869,8 +8900,14 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       const auto pgschema_name_res =
           ysql_manager_->GetCachedPgSchemaName(*pg_tbl_oids_res, pg_rel_nsp_cache);
       if (!pgschema_name_res.ok() || pgschema_name_res->empty()) {
-        LOG(WARNING) << "Unable to find schema name for YSQL table " << table.namespace_().name()
-                     << "." << table.name() << " due to error: " << pgschema_name_res;
+        // DOCDB_TABLE_NOT_COMMITTED is expected for orphaned / mid-DDL DocDB tables.
+        const bool expected_not_committed = !pgschema_name_res.ok()
+            && MasterError(pgschema_name_res.status()) == MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED;
+        (expected_not_committed ? LOG(INFO) : LOG(WARNING))
+            << "Unable to find schema name for "
+            << (expected_not_committed ? "not committed " : "")
+            << "YSQL table " << table.namespace_().name()
+            << "." << table.name() << " due to error: " << pgschema_name_res;
       } else {
         table.set_pgschema_name(*pgschema_name_res);
       }
@@ -8926,19 +8963,9 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableNa
 
     if (!ltm->started_deleting() && ltm->namespace_id() == ns->id() &&
         boost::iequals(ltm->name(), table_name)) {
-      auto pg_tbl_oids = table->GetPgTableAllOids();
-      if (pg_tbl_oids.ok()) {
-        auto tbl_pg_schema_name = ysql_manager_->GetPgSchemaName(*pg_tbl_oids);
-        if (!tbl_pg_schema_name.ok() || tbl_pg_schema_name->empty()) {
-          LOG(WARNING) << "Unable to find schema name for YSQL table " << ltm->namespace_name()
-                       << "." << ltm->name() << " due to error: " << tbl_pg_schema_name;
-        } else if (boost::iequals(*tbl_pg_schema_name, pg_schema_name)) {
-          return table;
-        }
-      } else {
-        LOG(WARNING) << "Unable to get PG Oids for YSQL table " << ltm->namespace_name()
-                     << "." << ltm->name() << " id " << table->id() << " due to error: "
-                     << pg_tbl_oids.status();
+      auto tbl_pg_schema_name = LookupPgSchemaNameForTable(*table, ReadHybridTime());
+      if (tbl_pg_schema_name && boost::iequals(*tbl_pg_schema_name, pg_schema_name)) {
+        return table;
       }
     }
   }
@@ -12348,7 +12375,7 @@ Status CatalogManager::SendCreateTabletRequests(
         // one stream with replication slot consumption exists on the namespace.
         if (PREDICT_FALSE(FLAGS_TEST_cdc_add_dynamic_index_to_state_table) ||
             (stream->IsCDCSDKStream() && stream->namespace_id() == namespace_id &&
-             !stream->GetCdcsdkYsqlReplicationSlotName().empty() &&
+             IsCdcLogicalReplicationStream(*stream) &&
              IsTableEligibleForCDCSDKStream(
                  tablet->table(), tablet->table()->LockForRead(), /*check_schema=*/true,
                  stream->IsTablesWithoutPrimaryKeyAllowed(),
@@ -12720,7 +12747,7 @@ Status CatalogManager::BuildLocationsForTablet(
       std::vector<TabletId> split_tablet_ids(
           l_tablet->pb.split_tablet_ids().begin(), l_tablet->pb.split_tablet_ids().end());
       return STATUS(
-          NotFound, "Tablet deleted", l_tablet->pb.state_msg(),
+          Deleted, "Tablet deleted", l_tablet->pb.state_msg(),
           SplitChildTabletIdsData(split_tablet_ids));
     }
     if (PREDICT_FALSE(!l_tablet->is_running())) {
@@ -12793,12 +12820,7 @@ Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(Table
 
 Status CatalogManager::GetTabletLocations(
     TabletIdView tablet_id, TabletLocationsPB* locs_pb, IncludeHidden include_hidden) {
-  auto tablet_info_result = GetTabletInfo(tablet_id);
-  if (!tablet_info_result.ok()) {
-    // Some clients expect non-ok statuses to have a certain form.
-    return STATUS_FORMAT(NotFound, "Unknown tablet $0", tablet_id);
-  }
-  const auto& tablet_info = *tablet_info_result;
+  auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
   Status s = GetTabletLocations(tablet_info, locs_pb, include_hidden);
   auto num_replicas = GetNumTabletReplicas(tablet_info);
   if (num_replicas.ok() && *num_replicas > 0 &&
@@ -12870,7 +12892,8 @@ Status CatalogManager::GetTableLocations(
     TabletLocationsPB* locs_pb = resp->add_tablet_locations();
     locs_pb->set_expected_live_replicas(expected_live_replicas);
     locs_pb->set_expected_read_replicas(expected_read_replicas);
-    auto status = BuildLocationsForTablet(tablet, locs_pb, IncludeHidden::kTrue, partitions_only);
+    auto status = BuildLocationsForTablet(
+        tablet, locs_pb, IncludeHidden::kTrue, partitions_only);
     if (!status.ok()) {
       // Not running.
       if (require_tablets_runnings) {
@@ -13187,13 +13210,9 @@ Result<size_t> CatalogManager::GetNumTabletReplicas(const TabletInfoPtr& tablet)
 
 Status CatalogManager::GetExpectedNumberOfReplicasForTablet(
     const TabletId& tablet_id, int* num_live_replicas, int* num_read_replicas) {
-  auto tablet_info_result = GetTabletInfo(tablet_id);
-  if (!tablet_info_result.ok()) {
-    // Some clients expect non-ok statuses to have a certain form.
-    return STATUS_FORMAT(NotFound, "Unknown tablet $0", tablet_id);
-  }
+  auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
   return GetExpectedNumberOfReplicasForTable(
-      (*tablet_info_result)->table(), num_live_replicas, num_read_replicas);
+      tablet_info->table(), num_live_replicas, num_read_replicas);
 }
 
 Status CatalogManager::GetExpectedNumberOfReplicasForTable(
@@ -13937,6 +13956,13 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
   master_->snapshot_coordinator().SysCatalogLoaded(state.epoch.leader_term);
 
   xcluster_manager_->SysCatalogLoaded(state.epoch);
+
+  WARN_NOT_OK(BackfillLegacyGrpcStreams(state.epoch), "Failed to backfill legacy gRPC CDC streams");
+
+  WARN_NOT_OK(
+      BackfillNotificationsStreamsPluginName(state.epoch),
+      "Failed to backfill plugin name for notifications CDC streams");
+
   SchedulePostTabletCreationTasksForPendingTables(state.epoch);
   restoring_sys_catalog_ = false;
 

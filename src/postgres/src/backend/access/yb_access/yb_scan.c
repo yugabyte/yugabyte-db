@@ -2401,66 +2401,6 @@ ybBindOrdinaryScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 
 	memset(key_folded, 0, sizeof(bool) * (ybScan->nkeys + 1));
 
-	/* Prioritize binding SAOPs that are pinned by merge scan. */
-	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&ybScan->keys[i]))
-	{
-		ScanKey		key = ybScan->keys[i];
-
-		if (YbIsSearchArray(key))
-		{
-			Datum		this_array_const;
-			ListCell   *lc;
-			YbMergeScanInfo *yb_merge_scan_info = NULL;
-
-			this_array_const = YbGetArrayConst(&ybScan->keys[i]);
-
-			if (scan)
-			{
-				if (IsA(scan, IndexScan))
-					yb_merge_scan_info =
-						((IndexScan *) scan)->yb_merge_scan_info;
-				else if (IsA(scan, IndexOnlyScan))
-					yb_merge_scan_info =
-						((IndexOnlyScan *) scan)->yb_merge_scan_info;
-			}
-
-			if (yb_merge_scan_info)
-			{
-				foreach(lc, yb_merge_scan_info->saop_cols)
-				{
-					ScalarArrayOpExpr *pinned_saop =
-						((YbMergeScanSaopColInfo *) lfirst(lc))->saop;
-					Datum		pinned_array_const =
-						((Const *) lsecond(pinned_saop->args))->constvalue;
-
-					/*
-					 * Direct datum comparison (compared to datumIsEqual) is
-					 * safe because yb_match_in_index_clause and
-					 * ExecIndexBuildScanKeys set pinned_array_const and
-					 * this_array_const, respectively, to the same field in
-					 * memory.
-					 */
-					if (this_array_const == pinned_array_const)
-					{
-						bool		bail_out = false;
-
-						/* YbBindSearchArray updates is_column_bound. */
-						YbBindSearchArray(ybScan, scan_plan, i,
-										  is_for_precheck,
-										  NULL,
-										  is_column_bound,
-										  &bail_out);
-
-						if (bail_out)
-							return false;
-
-						break;
-					}
-				}
-			}
-		}
-	}
-
 	if (yb_enable_advanced_index_cond_fold && !is_for_precheck)
 	{
 		/*
@@ -2799,6 +2739,70 @@ ybBindOrdinaryScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 	/*
 	 * Non-fold path: priority-based binding. To be cleaned up.
 	 *
+	 * Bind the merge-scan pinned SAOPs first so that the priority-based
+	 * binding below finds their columns already bound and leaves them to drive
+	 * the merge streams.
+	 */
+	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&ybScan->keys[i]))
+	{
+		ScanKey		key = ybScan->keys[i];
+
+		if (YbIsSearchArray(key))
+		{
+			Datum		this_array_const;
+			ListCell   *lc;
+			YbMergeScanInfo *yb_merge_scan_info = NULL;
+
+			this_array_const = YbGetArrayConst(&ybScan->keys[i]);
+
+			if (scan)
+			{
+				if (IsA(scan, IndexScan))
+					yb_merge_scan_info =
+						((IndexScan *) scan)->yb_merge_scan_info;
+				else if (IsA(scan, IndexOnlyScan))
+					yb_merge_scan_info =
+						((IndexOnlyScan *) scan)->yb_merge_scan_info;
+			}
+
+			if (yb_merge_scan_info)
+			{
+				foreach(lc, yb_merge_scan_info->saop_cols)
+				{
+					ScalarArrayOpExpr *pinned_saop =
+						((YbMergeScanSaopColInfo *) lfirst(lc))->saop;
+					Datum		pinned_array_const =
+						((Const *) lsecond(pinned_saop->args))->constvalue;
+
+					/*
+					 * Direct datum comparison (compared to datumIsEqual) is
+					 * safe because yb_match_in_index_clause and
+					 * ExecIndexBuildScanKeys set pinned_array_const and
+					 * this_array_const, respectively, to the same field in
+					 * memory.
+					 */
+					if (this_array_const == pinned_array_const)
+					{
+						bool		bail_out = false;
+
+						/* YbBindSearchArray updates is_column_bound. */
+						YbBindSearchArray(ybScan, scan_plan, i,
+										  is_for_precheck,
+										  NULL,
+										  is_column_bound,
+										  &bail_out);
+
+						if (bail_out)
+							return false;
+
+						break;
+					}
+				}
+			}
+		}
+	}
+
+	/*
 	 * Find an order of relevant keys such that for the same column, an EQUAL
 	 * condition is encountered before IN or BETWEEN. is_column_bound is then
 	 * used to establish priority order ROW IN > EQUAL > IN > BETWEEN.
@@ -3952,17 +3956,11 @@ YbBeginScan(Relation table,
 	 *
 	 * Initdb and walsender don't have local catalog version, so ignore for
 	 * those cases as well.
-	 *
-	 * Also skip when the catalog cache version is uninitialized. This
-	 * happens in the logical replication pull model path where
-	 * assign_yb_read_time resets it to 0 for historical reads. Sending 0
-	 * would cause the tserver to reject the request with MISMATCHED_SCHEMA.
 	 */
 	if (!(is_internal_scan && IsSystemRelation(table)) &&
 		!IsBootstrapProcessingMode() &&
 		MyBackendType != B_WAL_SENDER &&
-		MyBackendType != YB_YSQL_CONN_MGR_WAL_SENDER &&
-		YbGetCatalogCacheVersion() != YB_CATCACHE_VERSION_UNINITIALIZED)
+		MyBackendType != YB_YSQL_CONN_MGR_WAL_SENDER)
 		YbSetCatalogCacheVersion(ybScan->handle,
 								 YbGetCatalogCacheVersion());
 
@@ -5637,16 +5635,14 @@ yb_remove_key_unsynchronized(YBParallelPartitionKeys ppk)
 
 /*
  * Structure to encapsulate ppk_buffer_fetch_callback's state.
- * When worker fetches next portion of keys the buffer may become full. In such
- * a case rest of the keys have to be discarded to avoid skipping keys.
- * There's no way to let caller know about discarded keys, so callback should
- * remember the fact in its state and ignore the rest of the keys.
- * The ppk_buffer_initialize_callback changes the fetch status back to IDLE for
- * the same purpose because it uses the YBParallelPartitionKeys structure
- * exclusively, but ppk_buffer_fetch_callback may work concurrently with other
- * workers taking keys from the buffer, and at some point other worker may need
- * to fetch more and change the fetch state to WORKING. Hence the separate
- * field, a counter, to be able to report inefficient fetch.
+ *
+ * One field, the ppk is a pointer to the YB parallel scan state, which has
+ * the buffer to write the parallel keys to.
+ * The other field is a counter of the discarded parallel keys.
+ * Since callback discards a key due to insufficient space in the buffer, it
+ * should discard all subsequent keys within the same fetch. The callback can
+ * detect this by checking if the discarded value is greater than zero. Also
+ * the fetcher may take the value into the account to plan the next fetch.
  */
 typedef struct YbFetchKeysParam
 {
@@ -5720,41 +5716,57 @@ ppk_buffer_fetch_callback(void *param, const char *key, size_t key_size)
 static void
 yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 {
-	const char *latest_key;
-	size_t		latest_key_size;
-	uint64_t	max_num_ranges;
+	const char *lower_bound_key = NULL;
+	size_t		lower_bound_key_size = 0;
+	const char *upper_bound_key = NULL;
+	size_t		upper_bound_key_size = 0;
+	uint64_t	max_num_ranges = YB_PARTITION_KEYS_DEFAULT_FETCH_SIZE;
 	YbFetchKeysParam fkp = {0, ppk};
 
 	/* Estimate fetch parameter values */
 	SpinLockAcquire(&ppk->mutex);
 	/* Until fetch is done at least one key must remain in the buffer */
 	Assert(ppk->key_count > 0);
-	yb_keylen_t key_len;
+	if (ppk->total_key_count > 0)
+	{
+		const char *latest_key;
+		yb_keylen_t key_len;
+		double		average_key_size;
 
-	memcpy(&key_len, KEY_LEN(ppk, ppk->high_offset), sizeof(yb_keylen_t));
-	latest_key_size = key_len;
-	/* Empty key indicates the end of the keys, fetch shouldn't be possible. */
-	Assert(latest_key_size);
-	/*
-	 * It is safe to refer the key data in place, since the highest key can not
-	 * be removed from the buffer until fetch is completed.
-	 */
-	latest_key = KEY_DATA(ppk, ppk->high_offset);
+		/* Find average key size so far. */
+		average_key_size = ppk->total_key_size / ppk->total_key_count;
+		/* Account for the key length stored in the buffer */
+		average_key_size += sizeof(yb_keylen_t);
+		max_num_ranges =
+			floor(ppk->key_data_capacity / average_key_size) - ppk->key_count;
+		/* Global minimum and maximum limits for number of parallel ranges */
+		if (max_num_ranges < 16)
+			max_num_ranges = 16;
+		else if (max_num_ranges > 1024)
+			max_num_ranges = 1024;
 
-	/*
-	 * Find average key size so far. We expect reasonable number have already
-	 * been received during initialization.
-	 */
-	double		average_key_size = ppk->total_key_size / ppk->total_key_count;
-
-	/* Account for the key length stored in the buffer */
-	average_key_size += sizeof(yb_keylen_t);
-	max_num_ranges =
-		floor(ppk->key_data_capacity / average_key_size) - ppk->key_count;
-	if (max_num_ranges < 16)
-		max_num_ranges = 16;
-	else if (max_num_ranges > 1024)
-		max_num_ranges = 1024;
+		/*
+		 * Determine starting point to fetch from.
+		 * Currently the ending point is always null.
+		 */
+		memcpy(&key_len, KEY_LEN(ppk, ppk->high_offset), sizeof(yb_keylen_t));
+		Assert(key_len);
+		/*
+		 * It is safe to refer the key data in place, since the latest key can
+		 * not be removed from the buffer until fetch is completed.
+		 */
+		latest_key = KEY_DATA(ppk, ppk->high_offset);
+		if (ppk->is_forward)
+		{
+			lower_bound_key = latest_key;
+			lower_bound_key_size = key_len;
+		}
+		else
+		{
+			upper_bound_key = latest_key;
+			upper_bound_key_size = key_len;
+		}
+	}
 	SpinLockRelease(&ppk->mutex);
 
 	/*
@@ -5765,12 +5777,10 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 	 */
 	HandleYBStatus(YBCGetTableKeyRanges(ppk->database_oid,
 										ppk->table_relfilenode_oid,
-										ppk->is_forward ? latest_key : NULL /* lower_bound_key */ ,
-										ppk->is_forward ? latest_key_size : 0 /* lower_bound_key_size */ ,
-										ppk->is_forward ? NULL : latest_key /* upper_bound_key */ ,
-										ppk->is_forward ? 0 : latest_key_size /* upper_bound_key_size */ ,
+										lower_bound_key, lower_bound_key_size,
+										upper_bound_key, upper_bound_key_size,
 										max_num_ranges, yb_parallel_range_size, ppk->is_forward,
-										(ppk->key_data_capacity / 3) - sizeof(yb_keylen_t) /* max_key_length */ ,
+										(ppk->key_data_capacity / 3) - sizeof(yb_keylen_t),
 										ppk_buffer_fetch_callback, &fkp));
 	SpinLockAcquire(&ppk->mutex);
 	/* Update fetch status */
@@ -5791,63 +5801,33 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 			 ppk->total_key_count, ppk->total_key_size);
 }
 
-static void
-ppk_buffer_initialize_callback(void *param, const char *key, size_t key_size)
-{
-	YBParallelPartitionKeys ppk = (YBParallelPartitionKeys) param;
-
-	if (ppk->fetch_status != FETCH_STATUS_WORKING)
-	{
-		/*
-		 * Status changes from WORKING to IDLE when buffer is full, in that
-		 * case the remaining keys are ignored.
-		 * Status changes to DONE if the key is empty, indicating the end of
-		 * the keys, callback must not be called after that.
-		 */
-		Assert(ppk->fetch_status == FETCH_STATUS_IDLE);
-		return;
-	}
-	if (key_size == 0)
-	{
-		elog(LOG,
-			 "All ranges are fetched at once, received %.0f keys (%.0f bytes)",
-			 ppk->total_key_count, ppk->total_key_size);
-		ppk->fetch_status = FETCH_STATUS_DONE;
-	}
-	else if (!yb_add_key_unsynchronized(ppk, key, key_size))
-	{
-		elog(LOG, "Buffer is full after %d initial keys are loaded, "
-			 "discard the rest", ppk->key_count);
-		ppk->fetch_status = FETCH_STATUS_IDLE;
-	}
-}
-
 /*
  * ybParallelPrepare
  *
- * Load initial data into the parallel state structure.
- * When this function is working, no parallel worker is started yet, so
- * the parallel state is owned exclusively, no locking is needed.
+ * Assign the scan details (relation id and direction) to the parallel state.
+ * In Postgres the parallel DSM block initialization routines are parameterless,
+ * but for Yugabyte parallel scan we need to know some details about the scan.
+ *
+ * The scan details need to be set only once after the parallel state is
+ * initialized, however due to the parameters, it is hard to fit into the DSM
+ * initialization routines where the state is exclusive to the main worker.
+ * Hence it is called by each parallel worker, and has to be idempotent in
+ * concurrent environment. To achieve this, the function acquires the lock and
+ * checks if the relation id is already set. If it is, the function returns
+ * without making any changes. Otherwise it proceeds with the initialization.
  */
 void
 ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
-				  YbcPgExecParameters *exec_params, bool is_forward)
+							  bool is_forward)
 {
-	/*
-	 * The index scan access method's DSM initialization routines do not
-	 * disclose if DSM is initialized for main process or for the background
-	 * worker. However, it is still guaranteed that background workers do not
-	 * start until main worker DSM initialization is completed.
-	 * Hence we always call ybParallelPrepare and use table_relfilenode_oid as
-	 * an indicator: if table_relfilenode_oid is valid, it is a background
-	 * worker and no initialization is needed.
-	 * The table_relfilenode_oid is never changed once initialized,
-	 * so spinlock is not required to check it. The rest of the code still
-	 * has the YBParallelPartitionKeys structure exclusively.
-	 */
+	Oid database_oid = YBCGetDatabaseOid(relation);
+	Oid rel_oid = YbGetRelfileNodeId(relation);
+	SpinLockAcquire(&ppk->mutex);
 	if (OidIsValid(ppk->table_relfilenode_oid))
 	{
-		Assert(ppk->table_relfilenode_oid == YbGetRelfileNodeId(relation));
+		Assert(ppk->table_relfilenode_oid == rel_oid &&
+			   ppk->database_oid == database_oid);
+		SpinLockRelease(&ppk->mutex);
 		return;
 	}
 
@@ -5856,31 +5836,26 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 	Assert(ppk->low_offset == 0);
 	Assert(ppk->high_offset == 0);
 	Assert(ppk->key_count == 0);
-	ppk->database_oid = YBCGetDatabaseOid(relation);
-	ppk->table_relfilenode_oid = YbGetRelfileNodeId(relation);
+
+	ppk->database_oid = database_oid;
+	ppk->table_relfilenode_oid = rel_oid;
 	ppk->is_forward = is_forward;
+
 	/*
-	 * Put empty key as the first to be taken.
-	 * Empty key means lower bound unchanged, so if original request has
-	 * lower bound, it will be used.
-	 * TODO(#19465) Scan conditions may allow to determine boundaries, and we
-	 * have algorithms to do so, however, in practice it happens much later to
-	 * be useful here. We need to move this logic.
+	 * Put empty key as the first to be taken. Empty key corresponds to the
+	 * beginning of the relation.
+	 * Currently the parallel ranges start from the beginning. If the request
+	 * has the scan bounds derived from the conditions, the PgGate will
+	 * calculate the intersection of the scan bounds and the parallel range
+	 * bounds. If the intersection is empty, the request won't be sent to DocDB
+	 * for this parallel range. That way the overhead is minimized.
+	 * TODO(#19465) It is possible to eliminate the overhead by taking the scan
+	 * bounds from the request and using them here as the first and the last
+	 * keys. We may have to change PgGate to move the conditions analysis
+	 * logic earlier to take advantage of it at this point.
 	 */
 	yb_add_key_unsynchronized(ppk, NULL, 0);
-	/* Fetch the first set of keys */
-	ppk->fetch_status = FETCH_STATUS_WORKING;
-	HandleYBStatus(YBCGetTableKeyRanges(ppk->database_oid,
-										ppk->table_relfilenode_oid,
-										NULL /* lower_bound_key */ , 0 /* lower_bound_key_size */ ,
-										NULL /* upper_bound_key */ , 0 /* upper_bound_key_size */ ,
-										YB_PARTITION_KEYS_DEFAULT_FETCH_SIZE,
-										yb_parallel_range_size, is_forward,
-										(ppk->key_data_capacity / 3) - sizeof(yb_keylen_t),
-										ppk_buffer_initialize_callback, ppk));
-	/* Update fetch status, unless updated by the callback */
-	if (ppk->fetch_status == FETCH_STATUS_WORKING)
-		ppk->fetch_status = FETCH_STATUS_IDLE;
+	SpinLockRelease(&ppk->mutex);
 }
 
 typedef enum YbNextRangeResult

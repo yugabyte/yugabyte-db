@@ -21,6 +21,7 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_util.h"
+#include "yb/common/constants.h"
 #include "yb/common/opid.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema_pbutil.h"
@@ -850,10 +851,13 @@ bool IsColocatedTableQualifiedForStreaming(
 
 Result<CDCRecordType> GetRecordTypeForPopulatingBeforeImage(
     const StreamMetadata& metadata, const TableId& table_id) {
-  if (FLAGS_ysql_yb_enable_replica_identity && IsReplicationSlotStream(metadata)) {
+  // record_type is set only for gRPC streams without a replica_identity_map (legacy/backfilled/
+  // yb-admin). Logical and PG-syntax gRPC streams use replica_identity_map instead.
+  auto record_type = metadata.GetRecordType();
+  if (FLAGS_ysql_yb_enable_replica_identity && !record_type.has_value()) {
     auto replica_identity_map = metadata.GetReplicaIdentities();
     if (replica_identity_map.find(table_id) != replica_identity_map.end()) {
-      PgReplicaIdentity replica_identity = metadata.GetReplicaIdentities().at(table_id);
+      PgReplicaIdentity replica_identity = replica_identity_map.at(table_id);
       switch (replica_identity) {
         case PgReplicaIdentity::CHANGE:
           return CDCRecordType::CHANGE;
@@ -871,7 +875,10 @@ Result<CDCRecordType> GetRecordTypeForPopulatingBeforeImage(
       return STATUS_FORMAT(InternalError, "Replica Identity not found for table: $0", table_id);
     }
   } else {
-    return metadata.GetRecordType();
+    RSTATUS_DCHECK(
+        record_type.has_value(), InternalError,
+        "record_type must be set for a stream that does not use replica identities");
+    return *record_type;
   }
 }
 
@@ -2112,8 +2119,9 @@ Status GetConsistentWALRecords(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const MemTrackerPtr& mem_tracker,
     consensus::ReplicateMsgsHolder* msgs_holder, ScopedTrackedConsumption* consumption,
     uint64_t* consistent_safe_time, const OpId& historical_max_op_id,
-    bool* wait_for_wal_update, OpId* last_seen_op_id, int64_t& last_readable_opid_index,
-    const int64_t& safe_hybrid_time_req, const CoarseTimePoint& deadline,
+    bool* wait_for_wal_update, OpId* last_seen_op_id, OpId* last_skipped_op_id,
+    int64_t& last_readable_opid_index, const int64_t& safe_hybrid_time_req,
+    const CoarseTimePoint& deadline,
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* consistent_wal_records,
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* all_checkpoints,
     HybridTime* last_read_wal_op_record_time, bool* is_entire_wal_read) {
@@ -2160,6 +2168,8 @@ Status GetConsistentWALRecords(
 
       if (IsIntent(msg) || (IsUpdateTransactionOp(msg) &&
                             msg->transaction_state().status() != TransactionStatus::APPLYING)) {
+        last_skipped_op_id->term = msg->id().term();
+        last_skipped_op_id->index = msg->id().index();
         continue;
       }
 
@@ -2609,11 +2619,6 @@ Status HandleGetChangesForSnapshotRequest(
   return Status::OK();
 }
 
-bool IsReplicationSlotStream(const StreamMetadata& stream_metadata) {
-  return stream_metadata.GetReplicationSlotName().has_value() &&
-         !stream_metadata.GetReplicationSlotName()->empty();
-}
-
 // Response safe time follows the invaraint:
 // Request safe time <= Response safe time <= value from GetConsistentStreamSafeTime().
 // If response safe time is set to GetConsistentStreamSafeTime()'s value, then it implies that we
@@ -2734,6 +2739,7 @@ Status GetChangesForCDCSDK(
     OpId last_seen_op_id;
     last_seen_op_id.term = from_op_id.term();
     last_seen_op_id.index = from_op_id.index();
+    OpId last_skipped_op_id = OpId::Invalid();
     HybridTime commit_timestamp;
     uint32_t xrepl_origin_id = 0;
 
@@ -2744,8 +2750,8 @@ Status GetChangesForCDCSDK(
     if (FLAGS_cdc_enable_consistent_records)
       RETURN_NOT_OK(GetConsistentWALRecords(
           tablet_peer, mem_tracker, msgs_holder, &consumption, &consistent_stream_safe_time,
-          historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, *last_readable_opid_index,
-          safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints,
+          historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, &last_skipped_op_id,
+          *last_readable_opid_index, safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints,
           &last_read_wal_op_record_time, &is_entire_wal_read));
     else
       // 'skip_intents' is true here because we want the first transaction to be the partially
@@ -2830,6 +2836,7 @@ Status GetChangesForCDCSDK(
     }
   } else {
     OpId last_seen_op_id = op_id;
+    OpId last_skipped_op_id = OpId::Invalid();
     bool saw_non_actionable_message = false;
     std::unordered_set<std::string> streamed_txns;
 
@@ -2864,9 +2871,9 @@ Status GetChangesForCDCSDK(
       if (FLAGS_cdc_enable_consistent_records)
         RETURN_NOT_OK(GetConsistentWALRecords(
             tablet_peer, mem_tracker, msgs_holder, &consumption, &consistent_stream_safe_time,
-            historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, *last_readable_opid_index,
-            safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints,
-            &last_read_wal_op_record_time, &is_entire_wal_read));
+            historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, &last_skipped_op_id,
+            *last_readable_opid_index, safe_hybrid_time_req, deadline, &wal_records,
+            &all_checkpoints, &last_read_wal_op_record_time, &is_entire_wal_read));
       else
         // 'skip_intents' is false otherwise in case the complete wal segment is filled with
         // intents we will break the loop thinking that WAL has no more records.
@@ -2889,7 +2896,19 @@ Status GetChangesForCDCSDK(
                           << "last_seen_op_id: " << last_seen_op_id << ", last_readable_opid_index "
                           << *last_readable_opid_index << ", safe_hybrid_time "
                           << safe_hybrid_time_req << ", consistent_safe_time "
-                          << consistent_stream_safe_time;
+                          << consistent_stream_safe_time << ", last_skipped_op_id: "
+                          << last_skipped_op_id;
+
+        // This means that all the records read from the WAL were either intents or aborted
+        // transactions' UPDATE_TRANSACTION_OPs. These would always be filtered out, so we move the
+        // cdc_sdk_checkpoint forward to the last skipped op id.
+        if (last_skipped_op_id.valid()) {
+          checkpoint_updated = true;
+          checkpoint.set_term(last_skipped_op_id.term);
+          checkpoint.set_index(last_skipped_op_id.index);
+          VLOG_WITH_FUNC(1) << "Advancing checkpoint to last skipped op id: " << last_skipped_op_id
+                            << " on tablet: " << tablet_id;
+        }
         break;
       }
 

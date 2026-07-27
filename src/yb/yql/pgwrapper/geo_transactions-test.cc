@@ -13,7 +13,10 @@
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
+#include "yb/client/transaction_status_tablets.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
@@ -24,16 +27,18 @@
 
 using std::string;
 
-DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
-DECLARE_bool(enable_tablespace_based_transaction_placement);
-DECLARE_bool(force_global_transactions);
-DECLARE_bool(use_tablespace_based_transaction_placement);
-DECLARE_bool(transaction_tables_use_preferred_zones);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_tablespace_based_transaction_placement);
+DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_bool(force_global_transactions);
+DECLARE_bool(transaction_tables_use_preferred_zones);
+DECLARE_bool(use_tablespace_based_transaction_placement);
 DECLARE_bool(ysql_enable_concurrent_ddl);
+DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(TEST_fatal_on_transaction_status_request_failure);
 DECLARE_bool(TEST_perform_ignore_pg_is_region_local);
 
 using namespace std::literals;
@@ -1393,6 +1398,118 @@ TEST_F(GeoTransactionsTablespaceLocalityTest, TestAlterSetTablespace) {
       kTablespace2, kTableName, external_table,
       SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
       ExpectedLocality::kGlobal);
+}
+
+class GeoTransactionsMultiTabletTest : public GeoTransactionsTest {
+ public:
+  constexpr static auto kTablespace = "tablespace_large";
+  constexpr static auto kTableNamePrefix = "table_large";
+
+  void SetUp() override {
+    GeoTransactionsTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_tablespace_based_transaction_placement) = true;
+  }
+
+  void SetupTablespaces() override {
+    GeoTransactionsTest::SetupTablespaces();
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat(R"#(
+        CREATE TABLESPACE $0 WITH (replica_placement='{
+          "num_replicas": 1,
+          "placement_blocks": [
+            {
+              "cloud": "cloud0",
+              "region": "*",
+              "zone": "*",
+              "min_num_replicas": 1
+            }
+          ]
+        }')
+    )#", kTablespace));
+  }
+
+  void SetupTables(size_t tables_per_region) override {
+    auto version = GetCurrentVersion();
+    auto conn = ASSERT_RESULT(Connect());
+    for (size_t i = 1; i <= tables_per_region; ++i) {
+      ASSERT_OK(conn.ExecuteFormat(R"#(
+          CREATE TABLE $1_$2(value int PRIMARY KEY)
+          TABLESPACE $0
+          SPLIT INTO 3 TABLETS
+      )#", kTablespace, kTableNamePrefix, i));
+    }
+    WaitForStatusTabletsVersion(version + 1);
+  }
+};
+
+TEST_F(GeoTransactionsMultiTabletTest, TestTransactionTableDeletionParticipantRestart) {
+  constexpr auto kLongTxnTime = 10000ms;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ts_rpc_timeout_ms) = 5000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fatal_on_transaction_status_request_failure) = true;
+  SetupTablesAndTablespaces(/*tables_per_region=*/2);
+
+  const auto kTableName1 = Format("$0_$1", kTableNamePrefix, 1);
+  const auto kTableName2 = Format("$0_$1", kTableNamePrefix, 2);
+
+  CheckSuccess(
+      kTablespace, kTableName1, kTableName2,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kLocal);
+
+  std::vector<pgwrapper::PGConn> connections;
+  for (int i = 0; i < 2; ++i) {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    // Insert enough rows to cover all tablets.
+    for (int j = 0; j < 100; ++j) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0(value) VALUES (100000+1000*$1+$2)", kTableName2, i, j));
+    }
+    connections.push_back(std::move(conn));
+  }
+
+  // Prevent transaction table from getting recreated.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
+
+  // This deletion should not go through until the long-running transactions end.
+  StartDeleteTransactionTable(kTablespace);
+
+  std::this_thread::sleep_for(kLongTxnTime);
+
+  for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders)) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    if (tablet->regular_db()) {
+      ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+      break;
+    }
+  }
+
+  ASSERT_OK(connections[0].CommitTransaction());
+  ASSERT_OK(connections[1].RollbackTransaction());
+
+  WaitForDeleteTransactionTableToFinish(kTablespace);
+
+  // Restart tserver hosting participant but not the transaction tablet.
+  ASSERT_OK(ShutdownTabletServersByRegion(kOtherRegion));
+  ASSERT_OK(StartTabletServersByRegion(kOtherRegion));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
+
+  // Check data.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  int64_t count = ASSERT_RESULT(conn.FetchRow<int64_t>(strings::Substitute(
+        "SELECT COUNT(*) FROM $0", kTableName1)));
+  ASSERT_EQ(1, count);
+  count = ASSERT_RESULT(conn.FetchRow<int64_t>(strings::Substitute(
+        "SELECT COUNT(*) FROM $0", kTableName2)));
+  ASSERT_EQ(101, count);
 }
 
 class GeoTransactionsWildcardTest : public GeoTransactionsTest {

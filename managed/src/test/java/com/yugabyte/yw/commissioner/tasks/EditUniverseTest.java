@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.EDIT;
+import static com.yugabyte.yw.models.TaskInfo.State.Aborted;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
@@ -116,6 +117,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer, // check if postgres is up
           TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
+          TaskType.MarkRollbackUnsafe,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.AnsibleClusterServerCtl,
@@ -171,6 +173,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer, // check if postgres is up
           TaskType.SwamperTargetsFileUpdate,
           TaskType.ModifyBlackList,
+          TaskType.MarkRollbackUnsafe,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.AnsibleClusterServerCtl,
@@ -248,6 +251,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       when(mockClient.waitForAreLeadersOnPreferredOnlyCondition(anyLong())).thenReturn(true);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
+      mockDbNodePortConnectivityResponse(mockNodeUniverseManager);
       when(mockClient.getLoadMoveCompletion())
           .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
       ListLiveTabletServersResponse mockListLiveTabletServersResponse =
@@ -726,6 +730,154 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
+  public void testStateTransitionDeltaClearedOnSuccessfulExpand() {
+    Universe universe = defaultUniverse;
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertNull(universe.getStateTransitionDetails());
+  }
+
+  @Test
+  public void testStateTransitionDeltaCapturedOnFailedExpand() {
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                ShellResponse listResponse = new ShellResponse();
+                listResponse.message = "";
+                return listResponse;
+              }
+              ShellResponse shellResponse = new ShellResponse();
+              shellResponse.code = 100;
+              shellResponse.message = "Nope";
+              return shellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "false");
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertNotNull(universe.getStateTransitionDetails());
+    assertTrue(universe.getStateTransitionDetails().isRollbackSafe());
+    assertNotNull(universe.getStateTransitionDetails().getDelta());
+    JsonNode nodeDetailsDelta =
+        universe.getStateTransitionDetails().getDelta().get("nodeDetailsSet");
+    assertNotNull(nodeDetailsDelta);
+    boolean hasAdd = false;
+    for (JsonNode node : nodeDetailsDelta) {
+      if (node.has("$deltaType") && "ADD".equals(node.get("$deltaType").asText())) {
+        hasAdd = true;
+        assertEquals(NodeState.Live.name(), node.get("$newValue").get("state").asText());
+      }
+    }
+    assertTrue(hasAdd);
+    assertNoMasterStateInNodeDetailsDelta(nodeDetailsDelta);
+  }
+
+  @Test
+  public void testStateTransitionDeltaRollbackUnsafeAfterCheckpoint() {
+    Universe universe = defaultUniverse;
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "false");
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    int markRollbackUnsafePosition =
+        UNIVERSE_EXPAND_TASK_SEQUENCE.indexOf(TaskType.MarkRollbackUnsafe);
+    assertTrue(markRollbackUnsafePosition >= 0);
+    // Abort before the next subtask so MarkRollbackUnsafe has already committed.
+    setAbortPosition(markRollbackUnsafePosition + 1);
+    try {
+      TaskInfo taskInfo = submitTask(taskParams);
+      assertEquals(Aborted, taskInfo.getTaskState());
+      boolean sawMarkRollbackUnsafe =
+          taskInfo.getSubTasks().stream()
+              .anyMatch(
+                  t ->
+                      t.getTaskType() == TaskType.MarkRollbackUnsafe
+                          && t.getTaskState() == Success);
+      assertTrue(sawMarkRollbackUnsafe);
+      universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+      assertNotNull(universe.getStateTransitionDetails());
+      assertFalse(universe.getStateTransitionDetails().isRollbackSafe());
+    } finally {
+      clearAbortOrPausePositions();
+    }
+  }
+
+  @Test
+  public void testStateTransitionDeltaCapturedOnFailedShrink() {
+    doAnswer(
+            invocation -> {
+              if (NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                ShellResponse listResponse = new ShellResponse();
+                listResponse.message = "";
+                return listResponse;
+              }
+              ShellResponse shellResponse = new ShellResponse();
+              shellResponse.code = 100;
+              shellResponse.message = "Nope";
+              return shellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    Universe universe = defaultUniverse;
+    factory.globalRuntimeConf().setValue("yb.task.enable_edit_auto_rollback", "false");
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    factory.forUniverse(universe).setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    UniverseDefinitionTaskParams taskParams = performShrink(universe);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertNotNull(universe.getStateTransitionDetails());
+    JsonNode nodeDetailsDelta =
+        universe.getStateTransitionDetails().getDelta().get("nodeDetailsSet");
+    assertNotNull(nodeDetailsDelta);
+    boolean hasDelete = false;
+    for (JsonNode node : nodeDetailsDelta) {
+      if (node.has("$deltaType") && "DELETE".equals(node.get("$deltaType").asText())) {
+        hasDelete = true;
+        break;
+      }
+    }
+    assertTrue(hasDelete);
+    assertNoMasterStateInNodeDetailsDelta(nodeDetailsDelta);
+  }
+
+  @Test
+  public void testStateTransitionDeltaNotCapturedOnPrecheckFailure() {
+    UniverseDefinitionTaskParams taskParams = getTaskParamsForDiskSizeValidation(onPremUniverse);
+    mockMetrics(
+        taskParams,
+        taskParams.nodeDetailsSet,
+        n -> n.state != NodeState.ToBeAdded,
+        90.0 /* Used */,
+        59.0 /* Free */);
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+    assertNull(universe.getStateTransitionDetails());
+  }
+
+  @Test
   public void testExpandRollback() {
     doAnswer(
             invocation -> {
@@ -754,6 +906,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertTrue(universe.getUniverseDetails().autoRollbackPerformed);
     assertNotNull(universe.getUniverseDetails().updatingTaskUUID);
     assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
+    assertNull(universe.getStateTransitionDetails());
   }
 
   @Test
@@ -970,5 +1123,54 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     doReturn(freeResponseList)
         .when(mockMetricQueryHelper)
         .queryDirect(contains("node_filesystem_free_bytes"));
+  }
+
+  private void assertNoMasterStateInNodeDetailsDelta(JsonNode nodeDetailsDelta) {
+    for (JsonNode node : nodeDetailsDelta) {
+      assertFalse("Delta must not contain masterState", nodeDeltaContainsMasterState(node));
+    }
+  }
+
+  private boolean nodeDeltaContainsMasterState(JsonNode node) {
+    if (node == null || node.isNull()) {
+      return false;
+    }
+    // DELETE entries reflect the pre-task node; transient masterState on old values is expected.
+    if (node.has("$deltaType") && "DELETE".equals(node.get("$deltaType").asText())) {
+      return false;
+    }
+    if (node.has("masterState") && !node.get("masterState").isNull()) {
+      return true;
+    }
+    if (node.has("$deltaType")) {
+      String deltaType = node.get("$deltaType").asText();
+      if ("ADD".equals(deltaType) && node.has("$newValue")) {
+        return containsNonNullMasterState(node.get("$newValue"));
+      }
+    }
+    java.util.Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+    while (fields.hasNext()) {
+      Map.Entry<String, JsonNode> entry = fields.next();
+      if (entry.getKey().startsWith("$")) {
+        continue;
+      }
+      if ("masterState".equals(entry.getKey())) {
+        JsonNode masterStateDelta = entry.getValue();
+        if (masterStateDelta.has("$deltaType")
+            && masterStateDelta.has("$newValue")
+            && !masterStateDelta.get("$newValue").isNull()) {
+          return true;
+        }
+        continue;
+      }
+      if (nodeDeltaContainsMasterState(entry.getValue())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private boolean containsNonNullMasterState(JsonNode node) {
+    return node != null && node.has("masterState") && !node.get("masterState").isNull();
   }
 }

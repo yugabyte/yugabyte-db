@@ -5,7 +5,7 @@ package api.v2.mappers;
 import api.v2.models.DrConfigInfo;
 import api.v2.models.DrConfigSpec;
 import api.v2.models.DrConfigUniverseReplicationState;
-import api.v2.models.TableType;
+import api.v2.models.XClusterTableType;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
@@ -29,7 +29,7 @@ public interface DrConfigEnumMapper {
     @ValueMapping(target = "YSQL", source = "YSQL"),
     @ValueMapping(target = "YCQL", source = "YCQL")
   })
-  TableType toTableTypeEnum(com.yugabyte.yw.models.XClusterConfig.TableType tableType);
+  XClusterTableType toTableTypeEnum(com.yugabyte.yw.models.XClusterConfig.TableType tableType);
 
   @ValueMappings({
     @ValueMapping(target = "BASIC", source = "Basic"),

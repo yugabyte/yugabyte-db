@@ -61,6 +61,7 @@ import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
@@ -93,12 +94,7 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
-import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
-import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
-import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
-import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
-import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
@@ -115,7 +111,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -2071,11 +2066,8 @@ public class NodeManager extends DevopsBase {
               commandArgs,
               taskParam,
               taskParam.otelCollectorEnabled,
-              taskParam.auditLogConfig,
-              taskParam.queryLogConfig,
-              taskParam.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(
-                  taskParam.queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              taskParam.telemetryConfig,
+              gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV),
               provider,
               userIntent);
 
@@ -2140,11 +2132,8 @@ public class NodeManager extends DevopsBase {
               commandArgs,
               taskParam,
               taskParam.otelCollectorEnabled,
-              taskParam.auditLogConfig,
-              taskParam.queryLogConfig,
-              taskParam.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(
-                  taskParam.queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              taskParam.telemetryConfig,
+              gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV),
               provider,
               userIntent);
           commandArgs.addAll(getInlineWaitForClockSyncCommandArgs(this.confGetter));
@@ -2521,11 +2510,8 @@ public class NodeManager extends DevopsBase {
               commandArgs,
               params,
               params.installOtelCollector,
-              params.auditLogConfig,
-              params.queryLogConfig,
-              params.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(
-                  params.queryLogConfig, params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              params.telemetryConfig,
+              params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV),
               provider,
               userIntent);
           if (params.useSudo) {
@@ -2876,28 +2862,21 @@ public class NodeManager extends DevopsBase {
       List<String> commandArgs,
       NodeTaskParams taskParams,
       boolean installOtelCollector,
-      AuditLogConfig auditLogConfig,
-      QueryLogConfig queryLogConfig,
-      MetricsExportConfig metricsExportConfig,
-      String logLinePrefix,
+      TelemetryConfig telemetryConfig,
+      String ysqlPgConfCsv,
       Provider provider,
       UserIntent userIntent) {
     if (installOtelCollector) {
       commandArgs.add("--install_otel_collector");
     }
-    if (auditLogConfig == null && queryLogConfig == null && metricsExportConfig == null) {
+    if (telemetryConfig == null || !telemetryConfig.hasAnyConfig()) {
       return;
     }
-    // Check if any config exists and is enabled. If none are enabled, return early.
-    boolean anyConfigEnabled =
-        (auditLogConfig != null && OtelCollectorUtil.isAuditLogEnabledInUniverse(auditLogConfig))
-            || (queryLogConfig != null
-                && OtelCollectorUtil.isQueryLogEnabledInUniverse(queryLogConfig))
-            || (metricsExportConfig != null
-                && OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig));
-    if (!anyConfigEnabled) {
+    // Return early if no telemetry section is enabled in the universe.
+    if (!OtelCollectorUtil.hasAnyTelemetryEnabledInUniverse(telemetryConfig)) {
       return;
     }
+    AuditLogConfig auditLogConfig = telemetryConfig.getAuditLogConfig();
     if (auditLogConfig != null && auditLogConfig.getYcqlAuditConfig() != null) {
       YCQLAuditConfig.YCQLAuditLogLevel logLevel =
           auditLogConfig.getYcqlAuditConfig().getLogLevel() != null
@@ -2906,9 +2885,7 @@ public class NodeManager extends DevopsBase {
       commandArgs.add("--ycql_audit_log_level");
       commandArgs.add(logLevel.name());
     }
-    if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig)
-        || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)
-        || OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
+    if (OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig)) {
       // Get the node agent for the node if its present.
       Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
       NodeDetails nodeDetails = universe.getNode(taskParams.nodeName);
@@ -2918,6 +2895,9 @@ public class NodeManager extends DevopsBase {
         commandArgs.add("--otel_col_max_memory");
         commandArgs.add(Integer.toString(otelColMaxMemory));
       }
+      // Derive the log line prefix from telemetryConfig (single source of truth) + the gflag.
+      String logLinePrefix =
+          GFlagsUtil.getLogLinePrefix(telemetryConfig.getQueryLogConfig(), ysqlPgConfCsv);
       commandArgs.add("--otel_col_config_file");
       commandArgs.add(
           otelCollectorConfigGenerator
@@ -2925,36 +2905,14 @@ public class NodeManager extends DevopsBase {
                   taskParams,
                   provider,
                   userIntent,
-                  auditLogConfig,
-                  queryLogConfig,
-                  metricsExportConfig,
+                  telemetryConfig,
                   logLinePrefix,
                   getOtelColMetricsPort(taskParams),
                   NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip).orElse(null))
               .toAbsolutePath()
               .toString());
 
-      Set<UUID> exporterUUIDs = new HashSet<>();
-      if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig)) {
-        for (UniverseLogsExporterConfig logsExporterConfig :
-            auditLogConfig.getUniverseLogsExporterConfig()) {
-          exporterUUIDs.add(logsExporterConfig.getExporterUuid());
-        }
-      }
-      if (OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)) {
-        for (UniverseQueryLogsExporterConfig logsExporterConfig :
-            queryLogConfig.getUniverseLogsExporterConfig()) {
-          exporterUUIDs.add(logsExporterConfig.getExporterUuid());
-        }
-      }
-      if (OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
-        for (UniverseMetricsExporterConfig exporterConfig :
-            metricsExportConfig.getUniverseMetricsExporterConfig()) {
-          exporterUUIDs.add(exporterConfig.getExporterUuid());
-        }
-      }
-
-      for (UUID exporterUUID : exporterUUIDs) {
+      for (UUID exporterUUID : OtelCollectorUtil.getActiveExporterUuids(telemetryConfig)) {
         addOtelColArgsForExporters(
             commandArgs, exporterUUID, taskParams.getUniverseUUID(), taskParams.nodeUuid);
       }

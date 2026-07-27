@@ -22,12 +22,12 @@ export const DatabaseValidationSchema = () => {
           .matches(PASSWORD_REGEX, t('createUniverseV2.validation.passwordStrength')),
         otherwise: Yup.string().notRequired()
       }),
-      confirm_pwd: Yup.string().when('password', (password, field) => {
-        return password
-          ? field
-              .required('Please re-enter your password')
-              .oneOf([Yup.ref('password')], t('createUniverseV2.validation.confirmPassword'))
-          : field;
+      confirm_pwd: Yup.string().when(['enable_auth', 'enable'], {
+        is: true,
+        then: Yup.string()
+          .required('Please re-enter your password')
+          .oneOf([Yup.ref('password')], t('createUniverseV2.validation.confirmPassword')),
+        otherwise: Yup.string().notRequired()
       })
     }),
     ycql: Yup.object({
@@ -42,12 +42,12 @@ export const DatabaseValidationSchema = () => {
           .matches(PASSWORD_REGEX, t('createUniverseV2.validation.passwordStrength')),
         otherwise: Yup.string().notRequired()
       }),
-      confirm_pwd: Yup.string().when('password', (password, field) => {
-        return password
-          ? field
-              .required('Please re-enter your password')
-              .oneOf([Yup.ref('password')], t('createUniverseV2.validation.confirmPassword'))
-          : field;
+      confirm_pwd: Yup.string().when(['enable_auth', 'enable'], {
+        is: true,
+        then: Yup.string()
+          .required('Please re-enter your password')
+          .oneOf([Yup.ref('password')], t('createUniverseV2.validation.confirmPassword')),
+        otherwise: Yup.string().notRequired()
       })
     })
   }).test(

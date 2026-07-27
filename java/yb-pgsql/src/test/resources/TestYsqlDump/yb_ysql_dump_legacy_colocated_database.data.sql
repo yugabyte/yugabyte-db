@@ -74,7 +74,7 @@ CREATE TABLE public.htest (
     v2 text
 )
 PARTITION BY HASH (k1)
-WITH (colocation_id='123456', yb_presplit='');
+WITH (colocation_id='123456');
 
 
 \if :use_roles

@@ -26,6 +26,8 @@
 
 #include "yb/master/master_client.pb.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"

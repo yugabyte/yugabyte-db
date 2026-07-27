@@ -40,6 +40,7 @@
 #include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/status_log.h"
 
 DEFINE_UNKNOWN_int32(remote_bootstrap_begin_session_timeout_ms, 5000,
     "Tablet server RPC client timeout for BeginRemoteBootstrapSession calls.");
@@ -56,10 +57,11 @@ namespace tserver {
 
 using tablet::RaftGroupMetadataPtr;
 
-RemoteClientBase::RemoteClientBase(const TabletId& tablet_id, FsManager* fs_manager)
+RemoteClientBase::RemoteClientBase(
+    const TabletId& tablet_id, FsManager* fs_manager, std::function<bool()> is_cancelled)
     : tablet_id_(std::move(tablet_id)),
       log_prefix_(Format("T $0 P $1: Remote client base: ", tablet_id_, fs_manager->uuid())),
-      downloader_(&log_prefix_, fs_manager) {}
+      downloader_(&log_prefix_, fs_manager, std::move(is_cancelled)) {}
 
 RemoteClientBase::~RemoteClientBase() {
   // Note: Ending the remote session releases anchors on the remote.

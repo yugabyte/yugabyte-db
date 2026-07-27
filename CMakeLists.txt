@@ -304,6 +304,14 @@ if(NOT APPLE AND NOT "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^(aarch64|arm64)$" )
   ADD_CXX_FLAGS("-DYB_ENABLE_YSQL_DOCUMENTDB_EXT")
 endif()
 
+# pg_duckdb links a prebuilt DuckDB bundle from yugabyte-db-thirdparty that is currently built
+# uninstrumented-only. Linking an uninstrumented DuckDB core into a sanitizer-instrumented backend 
+# gives broken TSAN / blind ASAN, so for now pg_duckdb is not available on sanitizer (ASAN/TSAN) builds.
+if(NOT IS_SANITIZER)
+  set(YB_ENABLE_YSQL_PG_DUCKDB_EXT TRUE)
+  ADD_CXX_FLAGS("-DYB_ENABLE_YSQL_PG_DUCKDB_EXT")
+endif()
+
 # -------------------------------------------------------------------------------------------------
 # Build type (debug, release, fastdebug, etc.)
 # -------------------------------------------------------------------------------------------------

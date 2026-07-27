@@ -406,7 +406,7 @@
     "id" : 10,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "cpu_usage",
+      "legendFormat" : "Usage",
       "expr" : "avg(avg_over_time(container_cpu_usage{container_name=\"yb-tserver\", node_prefix=~\"$dbcluster\", pod_name=~\"yb-tserver-(.*)\"}[300s])) * 100",
       "refId" : "A"
     } ],
@@ -498,7 +498,7 @@
     "id" : 11,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "memory_usage",
+      "legendFormat" : "Usage",
       "expr" : "avg(avg_over_time(container_memory_working_set_bytes{container_name=\"yb-tserver\", node_prefix=~\"$dbcluster\", pod_name=~\"yb-tserver-(.*)\"}[300s])) / 1073741824",
       "refId" : "A"
     } ],
@@ -590,7 +590,7 @@
     "id" : 12,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "used",
+      "legendFormat" : "Used",
       "expr" : "sum(kubelet_volume_stats_capacity_bytes{node_prefix=~\"$dbcluster\", persistentvolumeclaim=~\"(.*)-yb-tserver-(.*)\"}) / 1073741824",
       "refId" : "A"
     } ],
@@ -682,7 +682,7 @@
     "id" : 13,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "used",
+      "legendFormat" : "Used",
       "expr" : "sum(kubelet_volume_stats_used_bytes{node_prefix=~\"$dbcluster\", persistentvolumeclaim=~\"(.*)-yb-tserver-(.*)\"}) / 1073741824",
       "refId" : "A"
     } ],
@@ -774,7 +774,7 @@
     "id" : 14,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Container Usage",
+      "legendFormat" : "Used",
       "expr" : "((sum(kubelet_volume_stats_used_bytes{node_prefix=~\"$dbcluster\", persistentvolumeclaim=~\"(.*)-yb-tserver-(.*)\"}) / 1073741824) / (sum(kubelet_volume_stats_capacity_bytes{node_prefix=~\"$dbcluster\", persistentvolumeclaim=~\"(.*)-yb-tserver-(.*)\"}) / 1073741824)) * 100",
       "refId" : "A"
     } ],

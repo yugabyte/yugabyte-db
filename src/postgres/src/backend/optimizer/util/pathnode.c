@@ -68,6 +68,9 @@ static bool contain_references_to(PlannerInfo *root, Node *clause,
 								  Relids relids);
 static bool ris_contain_references_to(PlannerInfo *root, List *rinfos,
 									  Relids relids);
+/* YB declarations */
+static void yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields,
+											 RelOptInfo *rel, Path *subpath);
 
 
 /*****************************************************************************
@@ -2699,8 +2702,8 @@ create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 		subpath->parallel_safe;
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 	pathnode->path.pathkeys = pathkeys;
-	yb_propagate_fields(&pathnode->path.yb_path_info,
-						&subpath->yb_path_info);
+	yb_propagate_subqueryscan_fields(&pathnode->path.yb_path_info, rel,
+									 subpath);
 	pathnode->subpath = subpath;
 
 	cost_subqueryscan(pathnode, root, rel, pathnode->path.param_info);
@@ -5764,4 +5767,27 @@ yb_assign_unique_path_node_id(PlannerInfo *root, Path *path)
 			path->ybHasHintedUid = true;
 		}
 	}
+}
+
+/*
+ * Propagate YugabyteDB fields through a SubqueryScanPath.
+ *
+ * SubqueryScanPath crosses a namespace boundary:
+ * fields represented in the subquery's terms must be translated to
+ * the outer query.
+ */
+static void
+yb_propagate_subqueryscan_fields(YbPathInfo *parent_fields, RelOptInfo *rel,
+								 Path *subpath)
+{
+	if (!IsYugaByteEnabled())
+		return;
+
+	if (subpath->yb_path_info.yb_uniqkeys == NIL)
+		return;
+
+	parent_fields->yb_uniqkeys =
+		yb_convert_subquery_uniqkeys(rel,
+									 subpath->yb_path_info.yb_uniqkeys,
+									 make_tlist_from_pathtarget(subpath->pathtarget));
 }

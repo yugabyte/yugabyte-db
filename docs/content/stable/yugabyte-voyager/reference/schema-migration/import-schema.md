@@ -95,6 +95,15 @@ import-schema:
 
 | Imports the schema objects in the order specified via the `--object-type-list` flag. <br>Default: false<br> Example: `yb-voyager import schema ... --object-type-list 'TYPE,TABLE,VIEW...'  --straight-order true` <br> Accepted parameters: true, false, yes, no, 0, 1 |
 
+| --target-db-type |
+
+```yaml
+import-schema:
+  target-db-type
+```
+
+| Target database type to import into. <br> Accepted values: yugabytedb (default), yugabytedb-amp (more details coming soon) |
+
 | --target-db-host |
 
 ```yaml{.nocopy}

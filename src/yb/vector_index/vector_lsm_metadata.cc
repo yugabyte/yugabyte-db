@@ -20,8 +20,10 @@
 #include "yb/gutil/endian.h"
 
 #include "yb/util/crc.h"
+#include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 
 namespace yb::vector_index {

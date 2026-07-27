@@ -310,10 +310,19 @@ class Tablet : public AbstractTablet,
   // This transitions from kBootstrapping to kOpen state.
   void MarkFinishedBootstrapping();
 
+  // Starts tablet subsystems that must not run until the tablet is fully created and published by
+  // its TabletPeer (in particular vector index backfill, which resolves transaction statuses and
+  // therefore needs the TabletPeer to be able to serve safe time). Called from TabletPeer::Start.
+  void Start();
+
   // This can be called to proactively prevent new operations from being handled, even before
   // Shutdown() is called.
   // Returns true if it was the first call to StartShutdown.
-  bool StartShutdown();
+  // On the first call this also starts shutting the RocksDB instances down (StartShutdownStorages),
+  // so that writers parked in a RocksDB write stall are released before the peer strand is drained.
+  // See issue #32211. The resulting operation pauses are kept in shutdown_op_pauses_ until the
+  // RocksDB instances are destroyed in CompleteShutdownStorages.
+  bool StartShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
   bool IsShutdownRequested() const {
     return shutdown_requested_.load(std::memory_order::acquire);
   }
@@ -323,10 +332,9 @@ class Tablet : public AbstractTablet,
   // - transaction participant
   // - RocksDB instances
   // - etc.
-  // By default, RocksDB shutdown flushes the memtable. This behavior is overriden depending on the
-  // provided value of disable_flush_on_shutdown.
-  // If abort_ops is specified, aborts pending RocksDB operations that are abortable.
-  void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
+  // StartShutdown (which controls flush-on-shutdown and pending-operation aborting) must have been
+  // called first; CompleteShutdown consumes the operation pauses it produced.
+  void CompleteShutdown();
 
   // Triggered by a corresponding tablet peer when it has been moved into RUNNING state.
   Status CompleteStartup();
@@ -1001,10 +1009,18 @@ class Tablet : public AbstractTablet,
   // `max_num_ranges` and adds to `keys_buffer` a list of these ranges boundary keys (depending on
   // is_forward).
   //
-  // It is guaranteed that returned keys are at most max_key_length bytes.
-  // Both lower_bound_key and upper_bound_key are exclusive. They are adjusted by this function
-  // to be within tablet boundaries (key_bounds_ if set or based on metadata()->partition() if
-  // key_bounds_ is not set) and to be no longer than max_key_length.
+  // It is guaranteed that returned keys are:
+  // - valid encoded DocKeys or encoded partition keys (see GetEncodedPartitionKey in
+  //   dockv/partition.h).
+  // - at most max_key_length bytes.
+  //
+  // Both lower_bound_key and upper_bound_key are exclusive and should be valid encoded DocKeys or
+  // encoded partition keys (see GetEncodedPartitionKey in dockv/partition.h).
+  // They are adjusted by this function to be within the following boundaries:
+  // - For a colocated table: the colocated_table_id key prefix
+  // - For non-colocated: tablet partition bounds.
+  // Note: the max_key_length cap above applies to the full encoded DocKeys retrieved from the data;
+  // the terminating tablet boundary key is returned as-is and is not length-capped.
   //
   // If `is_forward` is set, list will consist of:
   // - 1st_range_boundary_key \in (adjusted_lower_bound_key, adjusted_upper_bound_key)
@@ -1053,6 +1069,10 @@ class Tablet : public AbstractTablet,
 
   void TEST_SleepBeforeDeleteIntentsFile(MonoDelta value) {
     TEST_sleep_before_delete_intents_file_ = value;
+  }
+
+  void TEST_SetDisableFlushOnShutdown(bool value) {
+    TEST_disable_flush_on_shutdown_ = value;
   }
 
   // Reads the current value of FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and
@@ -1287,6 +1307,11 @@ class Tablet : public AbstractTablet,
   // operations.
   std::atomic_bool shutdown_requested_{false};
 
+  // Read/write operation pauses produced by StartShutdownStorages, populated by StartShutdown and
+  // consumed by CompleteShutdown. They keep operations paused while the RocksDB instances are being
+  // torn down, so they must stay alive across the gap between StartShutdown and CompleteShutdown.
+  TabletScopedRWOperationPauses shutdown_op_pauses_;
+
   // This is a special atomic counter per tablet that increases monotonically.
   // It is like timestamp, but doesn't need locks to read or update.
   // This is raft replicated as well. Each replicate message contains the current number.
@@ -1453,6 +1478,7 @@ class Tablet : public AbstractTablet,
 
   MonoDelta TEST_sleep_before_apply_intents_;
   MonoDelta TEST_sleep_before_delete_intents_file_;
+  std::atomic<bool> TEST_disable_flush_on_shutdown_{false};
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };

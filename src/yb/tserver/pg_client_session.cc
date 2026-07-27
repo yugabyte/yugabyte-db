@@ -44,12 +44,15 @@
 #include "yb/common/common_util.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/transaction_priority.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/object_lock_shared_state_manager.h"
+
+#include "yb/dockv/doc_vector_id.h"
 
 #include "yb/master/master_ddl.pb.h"
 
@@ -89,6 +92,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
+#include "yb/util/transit_owner.h"
 #include "yb/util/write_buffer.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -1940,12 +1944,25 @@ class PgClientSession::Impl {
     if (req.increment_schema_version()) {
       alterer->set_increment_schema_version();
     }
+    std::optional<dockv::VectorValueFormat> vector_value_format;
     for (const auto& add_column : req.add_columns()) {
       const auto yb_type = QLType::Create(ToLW(
           static_cast<PersistentDataType>(add_column.attr_ybtype())));
-      alterer->AddColumn(add_column.attr_name())
-            ->Type(yb_type)->Order(add_column.attr_num())->PgTypeOid(add_column.attr_pgoid())
-            ->SetMissing(add_column.attr_missing_val());
+      auto column_spec = alterer->AddColumn(add_column.attr_name())
+            ->Type(yb_type)->Order(add_column.attr_num())->PgTypeOid(add_column.attr_pgoid());
+      auto missing_val = add_column.attr_missing_val();
+      if (yb_type->main() == DataType::VECTOR && !IsNull(missing_val)) {
+        if (!vector_value_format) {
+          client::YBTablePtr yb_table;
+          RETURN_NOT_OK(GetTable(table_id, table_cache(), &yb_table));
+          vector_value_format = yb_table->schema().table_properties().owns_vector_reverse_mapping()
+              ? dockv::VectorValueFormat::kTyped
+              : dockv::VectorValueFormat::kLegacy;
+        }
+        missing_val =
+            VERIFY_RESULT(dockv::EncodeVectorSchemaMissingValue(missing_val, *vector_value_format));
+      }
+      column_spec->SetMissing(missing_val);
       // Do not set 'nullable' attribute as PgCreateTable::AddColumn() does not do it.
     }
     for (const auto& rename_column : req.rename_columns()) {
@@ -2254,7 +2271,10 @@ class PgClientSession::Impl {
                           kind == PgClientSessionKind::kPlain ? "kPlain" : "kAutonomousDdl",
                           subtxn_id));
     const auto deadline = context->GetClientDeadline();
-    RETURN_NOT_OK(transaction->RollbackToSubTransaction(subtxn_id, deadline));
+    bool is_heartbeat_aborted_or_expired = false;
+    RETURN_NOT_OK(
+        transaction->RollbackToSubTransaction(
+            subtxn_id, deadline, &is_heartbeat_aborted_or_expired));
 
     if (YsqlDdlSavepointEnabled() &&
         is_ddl_mode && req.options().ddl_use_regular_transaction_block() &&
@@ -2266,6 +2286,17 @@ class PgClientSession::Impl {
       RSTATUS_DCHECK(ddl_txn_metadata_.transaction_id == transaction->id(), IllegalState,
                      Format("Unexpected DDL transaction metadata found. Expected: $0, found: $1",
                             transaction->id(), ddl_txn_metadata_.transaction_id));
+
+      // Prevent split-brain: if the transaction is completely aborted at the DocDB level,
+      // we must propagate an error back to PostgreSQL so it triggers a full rollback and
+      // clears the stale relcache.
+      if (is_heartbeat_aborted_or_expired) {
+        return STATUS_FORMAT(
+            Aborted,
+            "Distributed transaction $0 was aborted due to deadlock or other failure",
+            transaction->id());
+      }
+
       RETURN_NOT_OK(client_.RollbackDocdbSchemaToSubtxn(ddl_txn_metadata_, subtxn_id));
       RETURN_NOT_OK(
           client_.WaitForRollbackDocdbSchemaToSubtxnToFinish(ddl_txn_metadata_, subtxn_id));
@@ -2278,10 +2309,16 @@ class PgClientSession::Impl {
   void FinishTransaction(
       const PgFinishTransactionRequestPB& req, PgFinishTransactionResponsePB* resp,
       rpc::RpcContext&& context, PgSessionGuard& guard) {
-    const auto opt_status = DoFinishTransaction(req, resp, std::move(context), guard);
+    TransitOwner context_owner{std::move(context)};
+    const auto opt_status = DoFinishTransaction(req, resp, context_owner, guard);
     if (opt_status) {
+      if (!context_owner.Owns()) {
+        LOG_WITH_FUNC(DFATAL)
+            << "RpcContext ownership was unexpectedly transferred, unable to send response";
+        return;
+      }
       StatusToPB(*opt_status, resp->mutable_status());
-      context.RespondSuccess();
+      context_owner->RespondSuccess();
     }
   }
 
@@ -2689,9 +2726,9 @@ class PgClientSession::Impl {
     read_request->set_is_forward_scan(req.is_forward());
     auto* embedded_req = read_request->mutable_get_tablet_key_ranges_request();
 
-    // IsInclusive is actually ignored by Tablet::GetTabletKeyRanges, and it always treats both
-    // boundaries as inclusive. But we are setting it here to avoid check failures inside
-    // YBPgsqlReadOp.
+    // IsInclusive is actually ignored by Tablet::GetTabletKeyRanges, it does not matter for
+    // the parallel ranges collection. We set it here to route the request to the correct tablet,
+    // if the bound is equal to the tablet key.
     if (!req.lower_bound_key().empty()) {
       read_request->mutable_lower_bound()->set_is_inclusive(true);
       for (auto* dest_key :
@@ -2702,7 +2739,7 @@ class PgClientSession::Impl {
       }
     }
     if (!req.upper_bound_key().empty()) {
-      read_request->mutable_upper_bound()->set_is_inclusive(true);
+      read_request->mutable_upper_bound()->set_is_inclusive(false);
       for (auto* dest_key :
            {embedded_req->mutable_upper_bound_key(),
             read_request->mutable_upper_bound()->mutable_key()}) {
@@ -3466,6 +3503,13 @@ class PgClientSession::Impl {
             read_time_serial_no_, txn_str);
       }
     }
+
+    if (const auto* read_point = setup_session_result.is_plain ? session->read_point() : nullptr;
+        read_point && read_point->GetReadTime()) {
+      VLOG_WITH_PREFIX(3) << "Saving read time that is already picked";
+      read_point_history_.Save(*read_point, read_time_serial_no_);
+    }
+
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {
       ADOPT_TRACE(trace.get());
@@ -3486,15 +3530,6 @@ class PgClientSession::Impl {
         Trace::DumpTraceIfNecessary(trace.get(), FLAGS_txn_print_trace_every_n, must_log_trace);
       }
     });
-    if (setup_session_result.is_plain) {
-      const auto& read_point = *session->read_point();
-      if (read_point.GetReadTime()) {
-        VLOG_WITH_PREFIX(3) << "Read time is already picked, saving it "
-            << AsString(read_point.GetReadTime()) << " to read time serial no: "
-            << read_time_serial_no_;
-        read_point_history_.Save(read_point, read_time_serial_no_);
-      }
-    }
     return Status::OK();
   }
 
@@ -4063,10 +4098,8 @@ class PgClientSession::Impl {
       return Status::OK();
     }
     auto& session_data = GetSessionData(PgClientSessionKind::kPlain);
-    auto& session = *session_data.session;
-    const auto& read_point = *session.read_point();
     TabletReadTime read_time_data;
-    if (!read_point.GetReadTime()) {
+    {
       auto& used_read_time = plain_session_used_read_time_.value;
       std::lock_guard guard(used_read_time.lock);
       if (!used_read_time.data) {
@@ -4093,15 +4126,19 @@ class PgClientSession::Impl {
     }
     plain_session_used_read_time_.pending_update = false;
     // At this point the read_time_data.value could be empty in 2 cases:
-    // - session already has a read time (i.e. read_point.GetReadTime() is true)
-    // - pending request has finished failed with an error (status != OK). Empty read time is used
-    //   in this case.
-    // Both cases are valid and in both cases the plain_session_used_read_time_.pending_update
-    // must be set to false because no further update is expected.
+    // - session already has a read time (i.e. was selected prior to sending of the request)
+    // - request has finished with error
+    auto& session = *session_data.session;
     if (read_time_data.value) {
       VLOG_WITH_PREFIX(3) << "Applying non empty used read time: " << read_time_data.value
           << " to read time serial no: " << read_time_serial_no_;
       session.SetReadPoint(read_time_data.value, read_time_data.tablet_id);
+    }
+
+    // Update history because a read point could have been chosen (due to multiple reasons:
+    // a used read time was received from DocDB or a read time was chosen while sending previous
+    // request).
+    if (const auto& read_point = *session.read_point(); read_point.GetReadTime()) {
       read_point_history_.Save(read_point, read_time_serial_no_);
     }
     return Status::OK();
@@ -4181,7 +4218,7 @@ class PgClientSession::Impl {
 
   std::optional<Status> DoFinishTransaction(
       const PgFinishTransactionRequestPB& req, PgFinishTransactionResponsePB* resp,
-      rpc::RpcContext&& context, PgSessionGuard& guard) {
+      TransitOwner<rpc::RpcContext>& context_owner, PgSessionGuard& guard) {
     saved_priority_.reset();
     const auto is_ddl_mode = req.has_ddl_mode();
     const auto is_commit = req.commit();
@@ -4189,7 +4226,7 @@ class PgClientSession::Impl {
         is_ddl_mode && req.ddl_mode().use_regular_transaction_block();
     const auto kind =
         GetSessionKindBasedOnDDLOptions(is_ddl_mode, ddl_use_regular_transaction_block);
-    const auto deadline = context.GetClientDeadline();
+    const auto deadline = context_owner->GetClientDeadline();
     auto& txn = GetSessionData(kind).transaction;
     if (!txn) {
       VLOG_WITH_PREFIX_AND_FUNC(2)
@@ -4244,7 +4281,7 @@ class PgClientSession::Impl {
           disabler = silently_altered_db
               ? response_cache().Disable(*silently_altered_db) : PgResponseCache::Disabler(),
           holder = MakeSharedFromMoveOnly(
-              MakeTypedPBRpcContextHolder(req, resp, std::move(context)),
+              MakeTypedPBRpcContextHolder(req, resp, context_owner.Release()),
               guard.ConvertToCrossThreadGuard(),
               std::move(metadata_cleanupper))](Status commit_status) {
         auto& [context, guard, metadata_cleanupper] = *holder;

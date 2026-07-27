@@ -76,6 +76,7 @@
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
 using namespace yb::size_literals;
@@ -142,8 +143,9 @@ using tablet::RaftGroupMetadata;
 using tablet::RaftGroupMetadataPtr;
 using tablet::TabletStatusListener;
 
-RemoteBootstrapClient::RemoteBootstrapClient(const TabletId& tablet_id, FsManager* fs_manager)
-    : RemoteClientBase(tablet_id, fs_manager) {
+RemoteBootstrapClient::RemoteBootstrapClient(
+    const TabletId& tablet_id, FsManager* fs_manager, std::function<bool()> is_cancelled)
+    : RemoteClientBase(tablet_id, fs_manager, std::move(is_cancelled)) {
   AddComponent<RemoteBootstrapSnapshotsComponent>();
 }
 
@@ -293,6 +295,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   // them to the right path.
   kv_store->clear_rocksdb_dir();
   superblock_->clear_wal_dir();
+  // Tiered storage: drop the source node's tier_paths since they describe the source's disk layout,
+  // not ours. This node's tier_paths (all local disks) are set on meta_ by CreateNew/BuildTierPaths
+  // below and re-applied to the persisted superblock in FetchAll(). RBS downloads all SSTs into the
+  // local home dir (path_id 0); a subsequent tier reconcile can migrate them later.
+  kv_store->clear_tier_paths();
 
   superblock_->set_tablet_data_state(tablet::TABLET_DATA_COPYING);
   wal_seqnos_.assign(resp.deprecated_wal_segment_seqnos().begin(),
@@ -445,7 +452,22 @@ Status RemoteBootstrapClient::FetchAll(TabletStatusListener* status_listener) {
 
   new_superblock_ = *superblock_;
   // Replace rocksdb_dir with our rocksdb_dir
-  new_superblock_.mutable_kv_store()->set_rocksdb_dir(meta_->rocksdb_dir());
+  auto* new_kv_store = new_superblock_.mutable_kv_store();
+  new_kv_store->set_rocksdb_dir(meta_->rocksdb_dir());
+
+  // Tiered storage: the source node's tier_paths were cleared in Start() because they describe the
+  // source's disk layout. Persist THIS node's tier_paths here (populated by CreateNew via
+  // BuildTierPaths, or inherited from the tombstoned replica) so the on-disk superblock matches the
+  // in-memory metadata. Without this, ReplaceSuperBlock() below writes new_superblock_ verbatim to
+  // disk (with no tier_paths), leaving the on-disk superblock diverged from meta_ until a restart
+  // re-migrates it.
+  new_kv_store->clear_tier_paths();
+  for (const auto& tp : meta_->tier_paths()) {
+    auto* tppb = new_kv_store->add_tier_paths();
+    tppb->set_path_id(tp.path_id);
+    tppb->set_tier(tp.tier);
+    tppb->set_path(tp.path);
+  }
 
   auto scope_exit = ScopeExit([this] { status_listener_->ClearRbsProgressInfo(); });
   status_listener_->SetInitialRbsProgressInfo(
@@ -506,8 +528,7 @@ Status RemoteBootstrapClient::Finish() {
 }
 
 Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
-    const shared_ptr<consensus::Consensus>& shared_consensus,
-    const std::function<bool()>& is_cancelled) {
+    const shared_ptr<consensus::Consensus>& shared_consensus) {
 
   if (!shared_consensus) {
     return STATUS(InvalidArgument, "Invalid consensus object");
@@ -520,7 +541,7 @@ Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
   RaftConfigPB committed_config;
 
   do {
-    if (is_cancelled && is_cancelled()) {
+    if (IsCancelled()) {
       return STATUS_FORMAT(
           ShutdownInProgress,
           "Abandoning VerifyChangeRoleSucceeded for peer $0: cancellation requested (likely "

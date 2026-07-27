@@ -5045,6 +5045,16 @@ yb_try_derive_equal_from_clauses(PlannerInfo *root, Index relid,
 		return NULL;
 
 	/*
+	 * Skip the derivation if yb_safely_fold_substituted reports the
+	 * substituted side is unsafe (fold errored or folded to NULL Const).
+	 * In the OR-arm case every Var was replaced by a Const above, so
+	 * the folded result is Const-only; no Var-bearing fallback is needed
+	 * here (cf. the EC path's yb_expr_safe_to_derive allowlist).
+	 */
+	if (yb_safely_fold_substituted(root, substituted) == NULL)
+		return NULL;
+
+	/*
 	 * Build the clause and its RestrictInfo with the same helpers as the
 	 * equivalence-class path, so the derived qual carries the query's security
 	 * level and is run through check_mergejoinable/check_batchable.

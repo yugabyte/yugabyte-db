@@ -6,9 +6,10 @@ import { AssignPublicIPField, IPV6Field, NetworkAcessField } from '../../create-
 import { useEditUniverse } from '../../../../../v2/api/universe/universe';
 import { useEditUniverseTaskHandler } from '../hooks/useEditUniverseTaskHandler';
 import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
-// import { createErrorMessage } from '../../../../../utils/ObjectUtils';
+import { createErrorMessage } from '../../../../../utils/ObjectUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/helpers/dtos';
+import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 
 const { YBModal } = yba;
 const { styled, Box, boxClasses } = mui;
@@ -33,14 +34,14 @@ interface NetworkAcessFormProps {
 export const EditNetworkAcessModal = ({ open, onClose }: EditNetworkAcessModalProps) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.security' });
   const { universeData } = useEditUniverseContext();
-  // const editUniverse = useEditUniverse();
+  const editUniverse = useEditUniverse();
   const universeUUID = universeData?.info?.universe_uuid;
-  // const handleEditUniverseSuccess = useEditUniverseTaskHandler(universeUUID);
+  const handleEditUniverseSuccess = useEditUniverseTaskHandler(universeUUID);
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
   const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
-
-  const assignPublicIPValue = !!universeData?.spec?.networking_spec?.assign_public_ip;
-  const ipv6Value = !!universeData?.spec?.networking_spec?.enable_ipv6;
+  const networkingSpec = universeData?.spec?.networking_spec;
+  const assignPublicIPValue = !!networkingSpec?.assign_public_ip;
+  const ipv6Value = !!networkingSpec?.enable_ipv6;
   const k8sPublicIPValue = Boolean(
     primaryCluster?.networking_spec?.enable_exposing_service === 'EXPOSED'
   );
@@ -58,33 +59,42 @@ export const EditNetworkAcessModal = ({ open, onClose }: EditNetworkAcessModalPr
   const { handleSubmit } = methods;
 
   const handleFormSubmit = handleSubmit(async (values) => {
-    //TODO: Complete this once API is ready
     if (!universeUUID || !primaryCluster?.uuid) {
       toast.error(t('unableToApplyChanges'));
       return;
     }
-    // editUniverse.mutate(
-    //   {
-    //     uniUUID: universeUUID,
-    //     data: {
-    //       expected_universe_version: -1,
-    //       clusters: [
-    //         {
-    //           uuid: primaryCluster.uuid
-    //         }
-    //       ]
-    //     }
-    //   },
-    //   {
-    //     onSuccess: (response) => {
-    //       handleEditUniverseSuccess(response.task_uuid);
-    //       onClose();
-    //     },
-    //     onError: (error: unknown) => {
-    //       toast.error(createErrorMessage(error));
-    //     }
-    //   }
-    // );
+    editUniverse.mutate(
+      {
+        uniUUID: universeUUID,
+        data: {
+          expected_universe_version: -1,
+          clusters: [
+            {
+              uuid: primaryCluster.uuid
+            }
+          ],
+          networking_spec: {
+            ...networkingSpec,
+            ...(providerCode === CloudType.kubernetes
+              ? {
+                  enable_ipv6: values.enableIPV6
+                }
+              : {
+                  assign_public_ip: values.assignPublicIP
+                })
+          }
+        }
+      },
+      {
+        onSuccess: (response) => {
+          handleEditUniverseSuccess(response.task_uuid);
+          onClose();
+        },
+        onError: (error: unknown) => {
+          toast.error(createErrorMessage(error));
+        }
+      }
+    );
   });
 
   return (
@@ -102,7 +112,7 @@ export const EditNetworkAcessModal = ({ open, onClose }: EditNetworkAcessModalPr
     >
       <FormProvider {...methods}>
         <ModalContent>
-          {[CloudType.aws, CloudType.gcp, CloudType.azu].includes(providerCode) && (
+          {isCloudVendorCloudType(providerCode) && (
             <AssignPublicIPField disabled={false} providerCode={providerCode} />
           )}
           {providerCode === CloudType.kubernetes && (

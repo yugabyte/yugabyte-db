@@ -14,6 +14,7 @@
 #include "yb/util/file_system.h"
 
 #include "yb/util/result.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 

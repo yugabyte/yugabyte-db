@@ -38,11 +38,14 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
 using strings::Substitute;

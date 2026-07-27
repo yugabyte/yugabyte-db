@@ -56,6 +56,7 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
 
 using std::future;

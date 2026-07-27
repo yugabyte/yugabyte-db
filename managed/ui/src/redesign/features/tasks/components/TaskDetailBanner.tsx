@@ -317,7 +317,9 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
                         setIsDbUpgradeManagementSidePanelOpen(true);
                       }}
                     >
-                      {t('universeActions.dbUpgrade.clusterBanner.actions.openUpgradeMonitor')}
+                      {t(
+                        'universeActions.dbUpgrade.clusterBanner.actions.openUpgradeMonitorToContinue'
+                      )}
                     </YBButton>
                   }
                   description={t(

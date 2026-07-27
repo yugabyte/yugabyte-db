@@ -16,6 +16,8 @@
 #include "yb/client/yb_table_name.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+#include "yb/server/clock.h"
+
 DECLARE_uint64(reject_writes_min_disk_space_mb);
 DECLARE_uint32(reject_writes_min_disk_space_pct);
 DECLARE_uint32(reject_writes_min_disk_space_check_interval_sec);

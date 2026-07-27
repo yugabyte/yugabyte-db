@@ -26,6 +26,7 @@ describe('parseEditUniverseTabFromPath', () => {
 describe('isValidEditUniverseTab', () => {
   it('returns true for valid tab values', () => {
     expect(isValidEditUniverseTab('security')).toBe(true);
+    expect(isValidEditUniverseTab('telemetry-export')).toBe(true);
   });
 
   it('returns false for invalid or missing values', () => {

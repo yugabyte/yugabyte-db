@@ -22,9 +22,11 @@
 
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 
 #include "yb/common/vector_types.h"
 

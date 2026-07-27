@@ -36,6 +36,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/flags.h"
+#include "yb/util/status_format.h"
 
 #include "yb/common/hybrid_time.h"
 

@@ -37,6 +37,8 @@ extern "C" {
 #include "nodes/value.h"      // strVal
 #include "utils/fmgrprotos.h" // pg_sequence_last_value
 #include "utils/lsyscache.h"  // get_relname_relid
+/* YB includes */
+#include "fmgr.h"
 }
 
 namespace pgduckdb {
@@ -231,11 +233,41 @@ DuckDBManager::Reset() {
 	UnclaimBgwSessionHint();
 }
 
+/*
+ * YB: pg_sequence_last_value() returns SQL NULL unconditionally (sequence.c short-circuits when
+ * IsYugaByteEnabled(): "TODO(hector): Read the sequence's data").
+ * Upstream reads it via DirectFunctionCall1Coll(), which raises an error when the callee returns
+ * SQL NULL.  To read the value without erroring on that NULL, we invoke pg_sequence_last_value()
+ * directly through a manually-initialized FunctionCallInfo and then check fcinfo->isnull ourselves.
+ *
+ * Effect on YB: since pg_sequence_last_value() always returns NULL, this returns 0, so the
+ * extensions-table sequence gate (IsExtensionsSeqLessThan) in RefreshConnectionState never trips.
+ * That disables the mid-session refresh -- an already-running backend won't pick up extensions-table
+ * changes made by another session. It does NOT gate extension loading in general.
+ * Initialize() runs LoadExtensions() unconditionally (and InstallExtensions() when
+ * autoinstall_known_extensions is on -- the default), and query-time autoloading is independent of
+ * this sequence.
+ *
+ * TODO(#31823): Enforce supporting only the bundled duckdb extensions (json/icu/httpfs) in YB.
+ */
+static int64
+YbGetSeqLastValueImpl(Oid table_seq_oid) {
+	LOCAL_FCINFO(fcinfo, 1);
+	InitFunctionCallInfoData(*fcinfo, NULL, 1, InvalidOid, NULL, NULL);
+	fcinfo->args[0].value = ObjectIdGetDatum(table_seq_oid);
+	fcinfo->args[0].isnull = false;
+	Datum result = pg_sequence_last_value(fcinfo);
+	if (fcinfo->isnull) {
+		return 0;
+	}
+	return DatumGetInt64(result);
+}
+
 int64
 GetSeqLastValue(const char *seq_name) {
 	Oid duckdb_namespace = get_namespace_oid("duckdb", false);
 	Oid table_seq_oid = get_relname_relid(seq_name, duckdb_namespace);
-	return PostgresFunctionGuard(DirectFunctionCall1Coll, pg_sequence_last_value, InvalidOid, table_seq_oid);
+	return PostgresFunctionGuard(YbGetSeqLastValueImpl, table_seq_oid);
 }
 
 void

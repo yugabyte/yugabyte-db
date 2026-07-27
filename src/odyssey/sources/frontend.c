@@ -777,7 +777,8 @@ void yb_drain_parse_queue_till_sync(od_server_t *server, od_client_t *client)
 				}
 				return;
 			}
-			case YB_PARSE_QUEUE_STMT_NAME:
+			case YB_PARSE_QUEUE_PARSE_COMPLETE:
+			case YB_PARSE_QUEUE_NO_PARSE_COMPLETE:
 				break;
 		}
 
@@ -790,7 +791,7 @@ void yb_drain_parse_queue_till_sync(od_server_t *server, od_client_t *client)
 						server, "failed to dequeue parse queue");
 			}
 			// TODO(GH#31147): Full unnamed prepared-statement support.
-			od_log(&instance->logger, "parse queue cleanup", client,
+			od_debug(&instance->logger, "parse queue cleanup", client,
 					server, "unnamed prepared statement support not implemented");
 			continue;
 		}
@@ -844,13 +845,15 @@ void yb_drain_parse_queue_till_sync(od_server_t *server, od_client_t *client)
 		yb_evict_prep_stmt_by_keyhash(server, "parse queue cleanup", yb_stmt_hash);
 		free(server_key);
 
-		od_hashmap_list_item_t *item = yb_od_hashmap_find_item(
-			client->prep_stmt_ids, keyhash, &key);
-		if (item) {
-			od_hashmap_list_item_free(item);
-			od_debug(&instance->logger, "parse queue cleanup",
-				 client, server,
-				 "evicted %s from client hashmap", stmt_name);
+		if (entry.kind == YB_PARSE_QUEUE_PARSE_COMPLETE) {
+			od_hashmap_list_item_t *item = yb_od_hashmap_find_item(
+				client->prep_stmt_ids, keyhash, &key);
+			if (item) {
+				od_hashmap_list_item_free(item);
+				od_debug(&instance->logger, "parse queue cleanup",
+					client, server,
+					"evicted %s from client hashmap", stmt_name);
+			}
 		}
 
 		int res = yb_od_parse_queue_dequeue(parse_queue);
@@ -859,6 +862,11 @@ void yb_drain_parse_queue_till_sync(od_server_t *server, od_client_t *client)
 					server, "failed to dequeue parse queue");
 		}
 	}
+}
+
+static bool yb_is_relay_paused(od_relay_t *relay)
+{
+	return relay->yb_paused;
 }
 
 /*
@@ -970,14 +978,43 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 			return relay->error_read;
 		break;
 	case KIWI_BE_COPY_IN_RESPONSE:
-		server->in_out_response_received++;
+		server->yb_in_response_received++;
 		/*
 		 * YB: Resume the client relay so CopyDone, CopyData
 		 * packets can be forwarded to the backend if not already
 		 * forwarded.
 		 */
-		if (server->in_out_response_received !=
-			server->done_fail_response_received) {
+		if (yb_is_server_in_copy_in_mode(server) &&
+			yb_is_relay_paused(&client->relay))
+		{
+			assert(instance->config.yb_wait_for_rfq_on_sync);
+			/*
+				* YB: Copy command has been sent via extended query
+				* protocol, so don't expect a ReadyForQuery nor YB_BE_SYNC_ACK
+				* packet for the sync already forwarded.
+				*/
+			od_server_sync_reply(server);
+			/*
+				* YB: A Sync was enqueued into the parse queue (see KIWI_FE_SYNC
+				* handling) for which no RFQ nor YB_SYNC_ACK would be returned
+				* by backend, therefore dequeue it.
+				* The last entry of the parse queue must be a SYNC.
+				*/
+			yb_od_parse_queue_entry_t tail_entry;
+			if (yb_od_parse_queue_peek_last(&server->parse_queue,
+							&tail_entry) != 0) {
+				od_error(&instance->logger, "copy in response resume relay", client,
+						server, "failed to peek last entry in parse queue");
+				return relay->error_read;
+			}
+			if (tail_entry.kind != YB_PARSE_QUEUE_SYNC) {
+				od_error(&instance->logger, "copy in response resume relay", client,
+						server, "last entry in parse queue is not a SYNC");
+				return relay->error_read;
+			}
+			yb_od_parse_queue_remove_last(&server->parse_queue);
+
+			/* Resume the client relay */
 			rc = yb_resume_client_relay(client);
 			if (rc != 0) {
 				od_error(&instance->logger, "copy in response resume relay", client,
@@ -990,13 +1027,13 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		}
 		break;
 	case KIWI_BE_COPY_OUT_RESPONSE:
-		server->in_out_response_received++;
+		server->yb_out_response_received++;
 		break;
 	case KIWI_BE_COPY_DONE:
 		/* should go after copy out
 		* states that backend copy ended
 		*/
-		server->done_fail_response_received++;
+		server->yb_done_fail_for_copy_out_response++;
 		break;
 	case KIWI_BE_COPY_FAIL:
 		/*
@@ -1349,7 +1386,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 	case KIWI_FE_COPY_DONE:
 	case KIWI_FE_COPY_FAIL:
 		/* client finished copy */
-		server->done_fail_response_received++;
+		server->yb_done_fail_for_copy_in_response++;
 		/*
 		 * YB: CopyDone/CopyFail packets work like Sync, as the
 		 * backend will exit Copy sub-protocol and then revert to
@@ -1368,6 +1405,10 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 		od_server_sync_request(server, 1);
 		break;
 	case KIWI_FE_SYNC:
+		if (yb_is_server_in_copy_in_mode(server)) {
+			/* YB: User has executed COPY From, forward the packet as it is */
+			break;
+		}
 		/* update server sync state */
 		od_server_sync_request(server, 1);
 		if (route->rule->pool->reserve_prepared_statement) {
@@ -1434,7 +1475,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				 * queue only tracks counts (empty string is not in prep_stmt_ids).
 				 */
 				if (yb_od_parse_queue_enqueue_stmt_name(&server->parse_queue,
-									"") == -1)
+									"", YB_PARSE_QUEUE_NO_PARSE_COMPLETE) == -1)
 					return OD_EOOM;
 
 				rc = machine_iov_add(relay->iov, msg_new);
@@ -1557,7 +1598,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 				if (yb_od_parse_queue_enqueue_stmt_name(
 					    &server->parse_queue,
-					    operator_name) == -1)
+					    operator_name,
+						YB_PARSE_QUEUE_NO_PARSE_COMPLETE) == -1)
 					return OD_EOOM;
 			} else {
 				yb_lru_on_cache_hit(server, yb_stmt_hash,
@@ -1619,7 +1661,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 
 				/* TODO(GH#31147): See unnamed Describe path — placeholder queue entry. */
-				if (yb_od_parse_queue_enqueue_stmt_name(&server->parse_queue, "") == -1)
+				if (yb_od_parse_queue_enqueue_stmt_name(&server->parse_queue, "",
+					YB_PARSE_QUEUE_PARSE_COMPLETE) == -1)
 					return OD_EOOM;
 
 				server->yb_unnamed_prep_stmt_client_id = client->id;
@@ -1810,7 +1853,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 				if (yb_od_parse_queue_enqueue_stmt_name(
 					    &server->parse_queue,
-					    desc.operator_name) == -1)
+					    desc.operator_name,
+						YB_PARSE_QUEUE_PARSE_COMPLETE) == -1)
 					return OD_EOOM;
 			} else {
 				yb_lru_on_cache_hit(server, yb_stmt_hash,
@@ -1831,7 +1875,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 						KIWI_FE_PARSE);
 					if (yb_od_parse_queue_enqueue_stmt_name(
 						    &server->parse_queue,
-						    desc.operator_name) == -1)
+						    desc.operator_name,
+						    YB_PARSE_QUEUE_PARSE_COMPLETE) == -1)
 						return OD_EOOM;
 				}
 				else {
@@ -1933,7 +1978,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 				/* TODO(GH#31147): See unnamed Describe path — placeholder queue entry. */
 				if (yb_od_parse_queue_enqueue_stmt_name(&server->parse_queue,
-									"") == -1)
+									"",
+									YB_PARSE_QUEUE_NO_PARSE_COMPLETE) == -1)
 					return OD_EOOM;
 
 				rc = machine_iov_add(relay->iov, msg_new);
@@ -2055,7 +2101,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 				if (yb_od_parse_queue_enqueue_stmt_name(
 					    &server->parse_queue,
-					    operator_name) == -1)
+					    operator_name,
+						YB_PARSE_QUEUE_NO_PARSE_COMPLETE) == -1)
 					return OD_EOOM;
 			} else {
 				yb_lru_on_cache_hit(server, yb_stmt_hash,

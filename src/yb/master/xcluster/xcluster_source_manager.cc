@@ -42,6 +42,7 @@
 
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 
 DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
     "When set, it enables automatic tablet splitting for tables that are part of an "
@@ -344,21 +345,6 @@ XClusterSourceManager::GetPostTabletCreateTasks(
   }
 
   return tasks;
-}
-
-std::optional<uint32> XClusterSourceManager::GetDefaultWalRetentionSec(
-    const NamespaceId& namespace_id) const {
-  if (namespace_id == kSystemNamespaceId) {
-    return std::nullopt;
-  }
-
-  for (const auto& outbound_replication_group : GetAllOutboundGroups()) {
-    if (outbound_replication_group->HasNamespace(namespace_id)) {
-      return FLAGS_cdc_wal_retention_time_secs;
-    }
-  }
-
-  return std::nullopt;
 }
 
 Status XClusterSourceManager::CreateOutboundReplicationGroup(

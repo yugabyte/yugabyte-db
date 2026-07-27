@@ -27,6 +27,8 @@ Using the `node-agent-provision.sh` script, you can automatically provision a VM
 
 - YugabyteDB Anywhere is [installed and running](../../../install-yugabyte-platform/).
 
+- VMs are accessible to YugabyteDB Anywhere over ports 9070 and 443. See [Networking requirements](../../networking/) for more information.
+
 ## How to prepare the nodes for use in a database cluster
 
 After you have created the VMs with the operating system and additional software, you must further prepare the VMs as follows:

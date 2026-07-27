@@ -18,6 +18,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace tserver {

@@ -49,8 +49,6 @@ class XClusterSourceManager {
 
   void CleanupStreamFromMaps(const CDCStreamInfo& stream);
 
-  std::optional<uint32> GetDefaultWalRetentionSec(const NamespaceId& namespace_id) const;
-
   void PopulateTabletDeleteRetainerInfoForTabletDrop(
       const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const
       EXCLUDES(tables_to_stream_map_mutex_);

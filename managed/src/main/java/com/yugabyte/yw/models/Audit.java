@@ -653,6 +653,10 @@ public class Audit extends Model {
 
     @EnumValue("Delete File Collection from Database Nodes")
     DeleteFileCollection,
+
+    // Used for both primary and read replica cluster updates in V2.
+    @EnumValue("Update Clusters")
+    UpdateClusters,
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

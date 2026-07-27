@@ -64,6 +64,7 @@
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/random_util.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
@@ -2153,11 +2154,14 @@ static std::string CompressibleString(Random* rnd, int len) {
 
 TEST_F(DBTest, FailMoreDbPaths) {
   Options options = CurrentOptions();
+  // db_paths is capped at kMaxPathId + 1 entries (path_id is packed into kFilePathIdBits bits,
+  // so the largest valid index is kMaxPathId). Configuring one more than that must fail with
+  // NotSupported. Add kMaxPathId + 2 paths (home + kMaxPathId + 1 extras) to cross the limit.
   options.db_paths.emplace_back(dbname_, 10000000);
-  options.db_paths.emplace_back(dbname_ + "_2", 1000000);
-  options.db_paths.emplace_back(dbname_ + "_3", 1000000);
-  options.db_paths.emplace_back(dbname_ + "_4", 1000000);
-  options.db_paths.emplace_back(dbname_ + "_5", 1000000);
+  for (uint32_t i = 1; i <= kMaxPathId + 1; ++i) {
+    options.db_paths.emplace_back(dbname_ + "_" + std::to_string(i + 1), 1000000);
+  }
+  ASSERT_EQ(options.db_paths.size(), kMaxPathId + 2);
   ASSERT_TRUE(TryReopen(options).IsNotSupported());
 }
 
@@ -6118,7 +6122,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
     ASSERT_OK(Put(Key(count), RandomString(&rnd, 1024), wo));
     ASSERT_OK(dbfull()->TEST_FlushMemTable(true));
     count++;
-    if (dbfull()->TEST_write_controler().IsStopped()) {
+    if (dbfull()->TEST_write_controller().IsStopped()) {
       sleeping_task_low.WakeUp();
       break;
     }
@@ -6148,7 +6152,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
     ASSERT_OK(Put(Key(count), RandomString(&rnd, 1024), wo));
     ASSERT_OK(dbfull()->TEST_FlushMemTable(true));
     count++;
-    if (dbfull()->TEST_write_controler().IsStopped()) {
+    if (dbfull()->TEST_write_controller().IsStopped()) {
       sleeping_task_low.WakeUp();
       break;
     }
@@ -7057,7 +7061,7 @@ TEST_F(DBTest, SoftLimit) {
     // Flush the file. File size is around 30KB.
     ASSERT_OK(Flush());
   }
-  ASSERT_TRUE(dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(dbfull()->TEST_write_controller().NeedsDelay());
 
   sleeping_task_low.WakeUp();
   sleeping_task_low.WaitUntilDone();
@@ -7068,7 +7072,7 @@ TEST_F(DBTest, SoftLimit) {
   // The L1 file size is around 30KB.
 
   ASSERT_EQ(NumTableFilesAtLevel(1), 1);
-  ASSERT_TRUE(!dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(!dbfull()->TEST_write_controller().NeedsDelay());
 
   // Only allow one compactin going through.
   yb::SyncPoint::GetInstance()->SetCallBack(
@@ -7105,7 +7109,7 @@ TEST_F(DBTest, SoftLimit) {
   // doesn't trigger soft_pending_compaction_bytes_limit. Another compaction
   // promoting the L1 file to L2 is unscheduled.
   ASSERT_EQ(NumTableFilesAtLevel(1), 1);
-  ASSERT_TRUE(!dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(!dbfull()->TEST_write_controller().NeedsDelay());
 
   // Create 3 L0 files, making score of L0 to be 3, higher than L0.
   for (int i = 0; i < 3; i++) {
@@ -7124,12 +7128,12 @@ TEST_F(DBTest, SoftLimit) {
   // Now there is one L2 file (around 60KB) which doesn't trigger
   // soft_pending_compaction_bytes_limit but the 3 L0 files do get the delay token
   ASSERT_EQ(NumTableFilesAtLevel(2), 1);
-  ASSERT_TRUE(dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(dbfull()->TEST_write_controller().NeedsDelay());
 
   sleeping_task_low.WakeUp();
   sleeping_task_low.WaitUntilSleeping();
 
-  ASSERT_TRUE(!dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(!dbfull()->TEST_write_controller().NeedsDelay());
 
   // shrink level base so L2 will hit soft limit easier.
   ASSERT_OK(dbfull()->SetOptions({
@@ -7138,7 +7142,7 @@ TEST_F(DBTest, SoftLimit) {
 
   ASSERT_OK(Put("", ""));
   ASSERT_OK(Flush());
-  ASSERT_TRUE(dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(dbfull()->TEST_write_controller().NeedsDelay());
 
   sleeping_task_low.WaitUntilSleeping();
   yb::SyncPoint::GetInstance()->DisableProcessing();
@@ -7172,11 +7176,11 @@ TEST_F(DBTest, LastWriteBufferDelay) {
     for (int j = 0; j < kNumKeysPerMemtable; j++) {
       ASSERT_OK(Put(Key(j), ""));
     }
-    ASSERT_TRUE(!dbfull()->TEST_write_controler().NeedsDelay());
+    ASSERT_TRUE(!dbfull()->TEST_write_controller().NeedsDelay());
   }
   // Inserting a new entry would create a new mem table, triggering slow down.
   ASSERT_OK(Put(Key(0), ""));
-  ASSERT_TRUE(dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(dbfull()->TEST_write_controller().NeedsDelay());
 
   sleeping_task.WakeUp();
   sleeping_task.WaitUntilDone();
@@ -7239,7 +7243,7 @@ TEST_F(DBTest, MaxFlushingBytes) {
            ++i, ++key_idx) {
         ASSERT_OK(Put(Key(key_idx), RandomString(&rnd, value_size)));
       }
-      auto& write_controller = dbfull()->TEST_write_controler();
+      auto& write_controller = dbfull()->TEST_write_controller();
       ASSERT_FALSE(write_controller.NeedsDelay());
       ASSERT_FALSE(write_controller.IsStopped());
       ASSERT_EQ(0, callback_count.load());
@@ -8661,7 +8665,7 @@ TEST_F(DBTest, CancelBackgroundWorkWithFlush) {
       ASSERT_OK(Put(Key(++key), RandomString(&rnd, kValueSize), wo));
     }
 
-    db_->SetDisableFlushOnShutdown(true);
+    db_->SetDisableFlushOnShutdown();
     CancelAllBackgroundWork(db_);
 
     // Write one more key, that should trigger scheduling flush.

@@ -50,6 +50,7 @@
 
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_bool(enable_pg_cron);
+DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(xcluster_cleanup_tables_frequency_secs);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
@@ -1124,6 +1125,57 @@ TEST_F(XClusterDDLReplicationTest, DropPartitionedIndexOnOnlyReplicates) {
   ASSERT_OK(VerifyWrittenRecords({kSecondTableName}));
 }
 
+TEST_F(XClusterDDLReplicationTest, AttachPartitionWhenParentHasIndex) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const std::string kParentTable = "main_table";
+  const std::string kExistingPart = "main_table_p1";
+  const std::string kNewPart = "part_table";
+  const std::string kParentIndex = "main_table_v_idx";
+  const std::string kKeyCol = "key";
+  const std::string kPartCol = "p";
+  const std::string kValCol = "v";
+
+  // Parent with one partition and a partitioned index. ATTACH of another partition later will
+  // create a matching child index on the new partition as a side effect.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 ($1 int, $2 text, $3 int, PRIMARY KEY ($1, $2)) PARTITION BY LIST ($2)",
+      kParentTable, kKeyCol, kPartCol, kValCol));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 PARTITION OF $1 FOR VALUES IN ('p1')", kExistingPart, kParentTable));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON $1 ($2)", kParentIndex, kParentTable, kValCol));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Standalone table (no index), then ATTACH - this will create a child index as well.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 ($1 int, $2 text, $3 int, PRIMARY KEY ($1, $2))", kNewPart, kKeyCol,
+      kPartCol, kValCol));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER TABLE $0 ATTACH PARTITION $1 FOR VALUES IN ('p2')", kParentTable, kNewPart));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // CREATE TABLE PARTITION OF also creates a matching child index since the parent already has
+  // a partitioned index.
+  const std::string kCreatedPart = "main_table_p3";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 PARTITION OF $1 FOR VALUES IN ('p3')", kCreatedPart, kParentTable));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (1, 'p1', 10), (2, 'p2', 20), (3, 'p3', 30)", kParentTable));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kParentTable}));
+
+  const auto kIndexScan = Format(
+      "/*+ IndexScan($0) */ SELECT COUNT(*) FROM $1 WHERE $2 >= 0", kParentIndex, kParentTable,
+      kValCol);
+  ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<int64_t>(kIndexScan)), 3);
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(kIndexScan)), 3);
+}
+
 TEST_F(XClusterDDLReplicationTest, AlterPhantomIndexLifecycleDoesNotHaltReplication) {
   ASSERT_OK(SetUpClustersAndReplication());
 
@@ -1485,8 +1537,16 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedIndexes) {
   ASSERT_OK(producer_conn_->ExecuteFormat(
       "INSERT INTO $0 SELECT i, i%2, i::text FROM generate_series(1, 100) as i;", kNewTableName));
 
+  // Ensure the base table CREATE is fully replicated and applied on the target before pausing DDL
+  // replication. Otherwise, if the target's DDL queue handler is still catching up on this CREATE
+  // TABLE when we pause, it repeatedly fails that unrelated DDL and can hit the max-retries cap,
+  // permanently pausing DDL replication (which would never recover once we unpause).
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
   // Pause DDL replication to test that we handle the index data correctly.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) = 10000;
 
   // Create index on column a and insert some more rows.
   ASSERT_OK(producer_conn_->ExecuteFormat("CREATE INDEX ON $0(a DESC)", kNewTableName));
@@ -2007,7 +2067,7 @@ TEST_F(XClusterDDLReplicationTest, SingleDDLQueueHandler) {
   ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
 
   // Use a syncpoint to block the first DDL queue handler.
-  int sync_point_count = 0;
+  std::atomic<int> sync_point_count = 0;
   SyncPoint::GetInstance()->SetCallBack(
       "XClusterDDLQueueHandler::AdvisoryLockAcquired",
       [&sync_point_count](void*) { sync_point_count++; });
@@ -2015,7 +2075,15 @@ TEST_F(XClusterDDLReplicationTest, SingleDDLQueueHandler) {
       {{.predecessor = "XClusterDDLReplicationTest::ResumeDDLQueueHandler",
         .successor = "XClusterDDLQueueHandler::AdvisoryLockAcquired"}});
   SyncPoint::GetInstance()->EnableProcessing();
-  // Now that we've set up replication, we can cache the connection and hold the advisory lock.
+
+  // Wait for a handler to create a fresh connection, acquire the advisory lock and block at the
+  // sync point.
+  ASSERT_OK(WaitFor(
+      [&sync_point_count] { return sync_point_count.load() == 1; }, kTimeout,
+      "DDL queue handler to acquire advisory lock and block"));
+
+  // Now that a handler is holding the advisory lock, we can cache the connection so the lock is
+  // held across the ddl_queue tablet stepdown below.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) = true;
 
   // Run some DDLs on the producer (don't run anything that uses xcluster_context as this is rf3).
@@ -2029,14 +2097,14 @@ TEST_F(XClusterDDLReplicationTest, SingleDDLQueueHandler) {
   auto original_propagation_timeout = propagation_timeout_;
   propagation_timeout_ = 10s;
   ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
-  ASSERT_EQ(sync_point_count, 1);
+  ASSERT_EQ(sync_point_count.load(), 1);
 
   // Step down the ddl_queue tablet.
   ASSERT_OK(StepDownDdlQueueTablet(consumer_cluster_));
 
   // Replication should still be stuck, even with a new queue handler.
   ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
-  ASSERT_EQ(sync_point_count, 1);  // The new poller should not have tried to process the queue.
+  ASSERT_EQ(sync_point_count.load(), 1);  // The new poller should not have tried to process queue.
 
   // Resume the ddl_queue handler.
   TEST_SYNC_POINT("XClusterDDLReplicationTest::ResumeDDLQueueHandler");
@@ -5363,6 +5431,68 @@ TEST_F(XClusterDDLReplicationTest, ReconnectAfterTargetPostgresRestart) {
   ASSERT_OK(producer_conn_->Execute("INSERT INTO test_table VALUES (1, 10)"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{"test_table"}));
+}
+
+// ADD CONSTRAINT ... FOREIGN KEY must not re-validate existing rows. child and parent
+// replicate on independent pollers, so a child row can arrive before the parent
+// row it references, and validation would fail.
+TEST_F(XClusterDDLReplicationTest, AddForeignKeySkipsValidationOnTarget) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE parent (id int PRIMARY KEY)"));
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE child (key int PRIMARY KEY, fk_col int)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Pause the DDL handler, and later unpause so that ADD CONSTRAINT is validated only
+  // after the child (not the parent) row has replicated.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  ASSERT_OK(producer_conn_->Execute(
+      "ALTER TABLE child ADD CONSTRAINT child_fk FOREIGN KEY (fk_col) REFERENCES parent (id)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+
+  // Freeze the parent tablets so its incoming row does not replicate, while the child does.
+  auto parent_table =
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "parent"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(producer_client()->GetTabletsFromTableId(parent_table.table_id(), 0, &tablets));
+  std::unordered_set<TabletId> parent_tablet_ids;
+  std::string filter;
+  for (const auto& t : tablets) {
+    parent_tablet_ids.insert(t.tablet_id());
+    filter += (filter.empty() ? "" : ",") + t.tablet_id();
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = filter;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+
+  // Wait until the parent-tablet pollers are sleeping on the filter, so no in-flight GetChanges can
+  // still fetch the parent row inserted below.
+  ASSERT_OK(WaitForConsumerPollersToSleep(parent_tablet_ids));
+
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO parent VALUES (6)"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO child VALUES (1, 6)"));
+  ASSERT_OK(consumer_conn_->Execute("SET yb_xcluster_consistency_level = tablet"));
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(consumer_conn_->FetchRow<int64_t>(
+                   "SELECT COUNT(*) FROM child WHERE fk_col = 6")) == 1;
+      },
+      kTimeout, "child row replicated"));
+
+  // Resume the ddl queue handler, verify that target skips fk validation. Otherwise target
+  // DDL would fail due to validation failure.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(consumer_conn_->FetchRow<int64_t>(
+                   "SELECT COUNT(*) FROM pg_constraint WHERE conname = 'child_fk'")) == 1;
+      },
+      kTimeout, "constraint created on target"));
+
+  // Unfreeze and confirm the lagging parent row catch up.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchRow<int32_t>("SELECT id FROM parent WHERE id = 6")), 6);
 }
 
 }  // namespace yb

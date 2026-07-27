@@ -2197,9 +2197,41 @@ selectDumpableExtension(ExtensionInfo *extinfo, DumpOptions *dopt)
 	 * user installed extension if the user drops and then re-creates it.
 	 * Avoid dumping plpgsql to prevent potential issues with upgrade:
 	 * see GH issue #25346.
+	 *
+	 * All the objects under builtin extensions are created in pg_catalog
+	 * schema with an OID not greater than g_last_builtin_oid. If an user
+	 * drops and recreates it, it will be created in some other schema than
+	 * pg_catalog (creating objects in pg_catalog is only allowed during
+	 * initdb and ysql upgrade) with an OID more than g_last_builtin_oid.
+	 *
+	 * Without the following check on postgres_fdw and pg_stat_statements,
+	 * if the user then creates a backup with --include-yb-metadata after
+	 * dropping and recreating a system created extension,
+	 * DROP EXTENSION IF EXISTS ... is emitted in the restore script, followed
+	 * by creating the extension via binary_upgrade_create_empty_extension,
+	 * and then the related objects in the same schema are created and linked
+	 * to the extension.
+	 *
+	 * Global views add dependency on postgres_fdw and pg_stat_statements,
+	 * so a DROP EXTENSION postgres_fdw / pg_stat_statements fails with an
+	 * error message saying there are dependent objects and you need to run it
+	 * with CASCADE.
+	 *
+	 * During restore, the DROP EXTENSION IF EXISTS ... and the subsequent
+	 * creation of extension via binary_upgrade_create_empty_extension fails,
+	 * but the rest of the script creates the functions linked to the
+	 * extensions. The end result is that there is a copy of each function of
+	 * the extension, one in pg_catalog schema that was created by the system,
+	 * one in the schema where the user created.
+	 *
+	 * With the following check on postgres_fdw and pg_stat_statements, we
+	 * avoid the duplicate objects by excluding DROP + CREATE of these
+	 * extensions from the restore script.
 	 */
 	if (extinfo->dobj.catId.oid <= (Oid) g_last_builtin_oid ||
-		strcmp("plpgsql", extinfo->dobj.name) == 0)
+		strcmp("plpgsql", extinfo->dobj.name) == 0 ||
+		strcmp("postgres_fdw", extinfo->dobj.name) == 0 ||
+		strcmp("pg_stat_statements", extinfo->dobj.name) == 0)
 		extinfo->dobj.dump = extinfo->dobj.dump_contains = DUMP_COMPONENT_ACL;
 	else
 	{
@@ -9538,7 +9570,7 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 bool
 shouldPrintColumn(const DumpOptions *dopt, const TableInfo *tbinfo, int colno)
 {
-	if (dopt->binary_upgrade || dopt->include_yb_metadata)
+	if (dopt->binary_upgrade)
 		return true;
 	if (tbinfo->attisdropped[colno])
 		return false;
@@ -9998,6 +10030,15 @@ getForeignServers(Archive *fout, int *numForeignServers)
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(srvinfo[i].dobj), fout);
+
+		/*
+		 * YB: yb_global_views_server is created during initdb (see
+		 * yb_global_views.sql) and exists in every database. Dumping it would
+		 * break clone/restore with "server already exists", so never dump it.
+		 */
+		if (IsYugabyteEnabled &&
+			strcmp(srvinfo[i].dobj.name, "yb_global_views_server") == 0)
+			srvinfo[i].dobj.dump = DUMP_COMPONENT_NONE;
 
 		/* Servers have user mappings */
 		srvinfo[i].dobj.components |= DUMP_COMPONENT_USERMAP;
@@ -16833,7 +16874,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 					 */
 					if (OidIsValid(tbinfo->reloftype) &&
 						!print_default && !print_notnull &&
-						!dopt->binary_upgrade && !dopt->include_yb_metadata)
+						!dopt->binary_upgrade)
 						continue;
 
 					/* Format properly if not first attr */
@@ -17224,10 +17265,11 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				if (tbinfo->attisdropped[j])
 				{
 					/*
-					 * For YB backups, we also need to recreate and drop the dropped columns
-					 * (even if the docdb snapshot import can handle such gaps in the col order)
-					 * because the table can be used as a type - referenced by another table column.
+					 * For YB backups, we don't need to recreate dropped cols because
+					 * docdb snapshot import can handle such gaps in the col order.
 					 */
+					if (!dopt->include_yb_metadata)
+					{
 						appendPQExpBufferStr(q, "\n-- For binary upgrade, recreate dropped column.\n");
 						appendPQExpBuffer(q, "UPDATE pg_catalog.pg_attribute\n"
 										  "SET attlen = %d, "
@@ -17249,6 +17291,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 											  qualrelname);
 						appendPQExpBuffer(q, "DROP COLUMN %s;\n",
 										  fmtId(tbinfo->attnames[j]));
+					}
 				}
 				else if (!tbinfo->attislocal[j] && (IsYugabyteEnabled && !tbinfo->ispartition))
 				{
@@ -20300,8 +20343,15 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbcTableProperties properties,
 		 * Gated by the yb_dump_presplit_in_create AutoFlag: the sentinel is
 		 * only emitted once the folded-WITH form is safe for the restore
 		 * target (see ybDumpPresplitInCreate).
+		 *
+		 * Skip partitioned PARENT tables (RELKIND_PARTITIONED_TABLE): they
+		 * have no storage and never emit a SPLIT clause, so folding the
+		 * sentinel into their WITH clause produces a spurious
+		 * "PARTITION BY ... WITH (yb_presplit='')".  This mirrors the
+		 * SPLIT-clause emission which already excludes partitioned tables.
 		 */
 		if (ybDumpPresplitInCreate(fout) &&
+			relkind != RELKIND_PARTITIONED_TABLE &&
 			!extractYbPresplitFromReloptions(existing_reloptions))
 			appendPGArray(reloptions_buf, "yb_presplit=");
 	}

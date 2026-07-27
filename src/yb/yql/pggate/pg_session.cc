@@ -108,24 +108,46 @@ void Erase(Container* container, const Key& key) {
   }
 }
 
-void PublishPendingRpcTableInfo(
-    const std::vector<yb::PgObjectId>& relations,
-    const std::unordered_map<yb::PgObjectId, PgTableDescPtr, yb::PgObjectIdHash>& table_cache) {
-  if (!dist_trace::HasActiveContext() || relations.empty()) {
+template<class Pb>
+requires(requires(const Pb& pb) { pb.has_table_id(); })
+Slice FetchTableId(const Pb& pb) {
+  return pb.has_table_id() ? pb.table_id() : Slice{};
+}
+
+Slice FetchTableId(const PgsqlOp& op) {
+  return op.is_read()
+      ? FetchTableId(down_cast<const PgsqlReadOp&>(op).read_request())
+      : FetchTableId(down_cast<const PgsqlWriteOp&>(op).write_request());
+}
+
+void PublishPendingRpcTableInfo(const PgsqlOps& ops, const PgSession::TableCache& table_cache) {
+  if (!dist_trace::HasActiveContext() || ops.empty()) {
     return;
   }
   dist_trace::ClearPendingRpcAttrs();
-  std::set<PgObjectId> unique_relations(relations.begin(), relations.end());
   std::string joined_names;
-  for (const auto& relation : unique_relations) {
-    if (!relation.IsValid()) {
+  joined_names.reserve(128);
+  std::set<std::string_view> processed;
+  for (const auto& op : ops) {
+    const auto table_id_str = FetchTableId(*op);
+    if (table_id_str.empty()) {
+      continue;
+    }
+    const auto ipair = processed.insert(table_id_str);
+    if (!ipair.second) {
+      continue;
+    }
+    const PgObjectId table_id{table_id_str};
+    if (!table_id.IsValid()) {
+      continue;
+    }
+    const auto it = table_cache.find(table_id);
+    if (it == table_cache.end() || !it->second) {
       continue;
     }
     if (!joined_names.empty()) {
       joined_names += ", ";
     }
-    auto it = table_cache.find(relation);
-    DCHECK(it != table_cache.end());
     joined_names += it->second->table_name().table_name();
   }
   if (!joined_names.empty()) {
@@ -170,10 +192,6 @@ Result<bool> ShouldHandleTransactionally(const PgTxnManager& txn_manager,
   }
   const auto has_non_ddl_txn = txn_manager.IsTxnInProgress();
 
-  if (!YBCIsLegacyModeForCatalogOps()) {
-    return true;
-  }
-
   if (!table.schema().table_properties().is_ysql_catalog_table()) {
     SCHECK(has_non_ddl_txn, IllegalState, "Transactional operation requires transaction");
     return true;
@@ -188,6 +206,11 @@ Result<bool> ShouldHandleTransactionally(const PgTxnManager& txn_manager,
                          "Transaction for catalog table write operation '$0' not found",
                          table.table_name().table_name());
   }
+
+  if (!YBCIsLegacyModeForCatalogOps()) {
+    return true;
+  }
+
   return false;
 }
 
@@ -991,9 +1014,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   PgsqlOps operations;
   PgObjectIds relations;
   std::move(ops).MoveTo(operations, relations);
-  // Must run before `relations` is moved into PerformFuture below; otherwise the vector is
-  // empty and no table info gets published for the upcoming RPC client span.
-  PublishPendingRpcTableInfo(relations, table_cache_);
+  PublishPendingRpcTableInfo(operations, table_cache_);
   return PerformFuture(
       pg_client_.PerformAsync(&options, std::move(operations), metrics_),
       std::move(relations));

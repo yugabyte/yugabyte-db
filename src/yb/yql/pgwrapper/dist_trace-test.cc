@@ -45,6 +45,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
@@ -1911,6 +1912,94 @@ TEST_F(DistTraceRpcTest, TestRpcSpanAttributes) {
     ASSERT_FALSE(table_names_it->second.empty()) << "rpc.table_names should not be empty";
     ASSERT_STR_CONTAINS(table_names_it->second, "rpc_attr_test");
   }
+}
+
+// Regression test for the rpc.table_names publish path across a table rewrite.
+TEST_F(DistTraceRpcTest, TestRpcSpanTableNamesAfterTruncate) {
+  ASSERT_OK(CreateTable("rewrite_test", 5));
+
+  // Pre-rewrite: relfilenode == pg_table_id, so the traced SELECT works and publishes the name.
+  auto tp_before = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp_before.full));
+  ASSERT_OK(conn_->Fetch("SELECT * FROM rewrite_test"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.FindRpcSpanWithTableName(tp_before.trace_id, "rewrite_test").has_value();
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "RPC span with table name to appear for SELECT before TRUNCATE"));
+  ASSERT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
+
+  // TRUNCATE rewrites the table, rotating its relfilenode away from the stable pg_table_id.
+  ASSERT_OK(conn_->Execute("TRUNCATE rewrite_test"));
+
+  // Post-rewrite traced SELECT: must NOT crash the backend, and must still publish the name.
+  auto tp_after = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp_after.full));
+  ASSERT_OK(conn_->Fetch("SELECT * FROM rewrite_test"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.FindRpcSpanWithTableName(tp_after.trace_id, "rewrite_test").has_value();
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "RPC span with table name to appear for SELECT after TRUNCATE"));
+
+  auto span = collector_.FindRpcSpanWithTableName(tp_after.trace_id, "rewrite_test");
+  ASSERT_TRUE(span) << "Expected an RPC span carrying rpc.table_names after TRUNCATE";
+  auto table_names_it = span->str_attrs.find("rpc.table_names");
+  ASSERT_NE(table_names_it, span->str_attrs.end())
+      << "rpc.table_names attribute missing on RPC span after TRUNCATE";
+  ASSERT_STR_CONTAINS(table_names_it->second, "rewrite_test");
+
+  // The connection must still be alive (backend did not crash).
+  ASSERT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
+  // TODO (#30816): FetchRow<T> for non-string types fails on simple query protocol connections,
+  // so fetch the count as text.
+  ASSERT_EQ(
+      ASSERT_RESULT(conn_->FetchRow<std::string>("SELECT count(*)::text FROM rewrite_test")), "0");
+}
+
+// Regression test for a backend crash on the first traced write after ADD PRIMARY KEY on a
+// published table. The rewrite gives the table a new relfilenode while keeping its pg_table_id;
+// a catcache invalidation of the old pg_class tuple then erased the tracing name mapping keyed
+// by that shared pg_table_id, and the traced INSERT's flush failed to resolve the table name.
+// The publication is required: it makes the old-relfilenode descriptor stay cached until after
+// the rewritten table's descriptor (and mapping) is stored, so the erase hits the fresh entry.
+TEST_F(DistTraceRpcTest, TestRpcSpanTableNamesAfterPkRewriteOnPublishedTable) {
+  ASSERT_OK(CreateTable("pk_rewrite_test", 1));
+  ASSERT_OK(conn_->Execute("CREATE PUBLICATION pk_rewrite_pub FOR ALL TABLES"));
+  ASSERT_OK(conn_->Execute("ALTER TABLE pk_rewrite_test ADD PRIMARY KEY (id)"));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  // This INSERT used to abort the backend (NotFound in release builds).
+  ASSERT_OK(conn_->Execute("INSERT INTO pk_rewrite_test VALUES (100, 'after_rewrite')"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return collector_.FindRpcSpanWithTableName(tp.trace_id, "pk_rewrite_test").has_value();
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "RPC span with table name to appear for INSERT after ADD PRIMARY KEY"));
+
+  auto span = collector_.FindRpcSpanWithTableName(tp.trace_id, "pk_rewrite_test");
+  ASSERT_TRUE(span) << "Expected an RPC span carrying rpc.table_names after the PK rewrite";
+  auto table_names_it = span->str_attrs.find("rpc.table_names");
+  ASSERT_NE(table_names_it, span->str_attrs.end())
+      << "rpc.table_names attribute missing on RPC span after the PK rewrite";
+  ASSERT_STR_CONTAINS(table_names_it->second, "pk_rewrite_test");
+
+  // The connection must still be alive (backend did not crash).
+  ASSERT_OK(conn_->Execute("RESET yb_dist_tracecontext"));
+  // TODO (#30816): FetchRow<T> for non-string types fails on simple query protocol connections,
+  // so fetch the count as text.
+  ASSERT_EQ(
+      ASSERT_RESULT(conn_->FetchRow<std::string>(
+          "SELECT count(*)::text FROM pk_rewrite_test")), "2");
 }
 
 }  // namespace yb::pgwrapper

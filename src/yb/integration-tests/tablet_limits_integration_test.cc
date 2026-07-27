@@ -27,6 +27,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 

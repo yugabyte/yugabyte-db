@@ -352,13 +352,24 @@ TEST_F(TabletSplitITest, BootstrapStateCopiedToChildren) {
       kDefaultNumRows, /*wait_for_intents=*/true));
 
   for (auto& tablet_peer : ASSERT_RESULT(ListTestTableActiveTabletPeers())) {
-    ASSERT_OK(tablet_peer->FlushBootstrapState());
+    // A follower may not have applied the write op yet, in which case its retryable requests are
+    // empty and FlushBootstrapState finds nothing to save (no file on disk). Retry the flush until
+    // the state is actually persisted so the subsequent split copies it to every child replica.
+    ASSERT_OK(WaitFor([&tablet_peer]() -> bool {
+      WARN_NOT_OK(tablet_peer->FlushBootstrapState(), "Failed to flush bootstrap state");
+      return tablet_peer->TEST_HasBootstrapStateOnDisk();
+    }, 30s, "Parent bootstrap state flushed to disk on all replicas"));
   }
   StringWaiterLogSink yes_sink{": Initialized TabletBootstrapStateManager, found a file ? yes"};
   StringWaiterLogSink no_sink{": Initialized TabletBootstrapStateManager, found a file ? no"};
   ASSERT_OK(SplitSingleTablet(split_hash_code));
   ASSERT_OK(WaitForTestTableTabletPeersPostSplitCompacted(30s));
-  // 2 children * 3 replicas.
+  // 2 children * 3 replicas. A lagging replica may receive its children via remote bootstrap, which
+  // initializes the bootstrap state manager later than the post-split compaction wait completes, so
+  // wait for all 6 replicas to report the copied file instead of checking the count immediately.
+  ASSERT_OK(WaitFor([&yes_sink]() -> bool {
+    return yes_sink.GetEventCount() >= 6;
+  }, 30s, "All 6 child replicas initialized bootstrap state from copied file"));
   ASSERT_EQ(yes_sink.GetEventCount(), 6);
   ASSERT_EQ(no_sink.GetEventCount(), 0);
 }
@@ -2066,6 +2077,57 @@ TEST_F(AutomaticTabletSplitITest, FailedSplitIsRestarted) {
   ASSERT_OK(WaitForTabletSplitCompletion(2));
 }
 
+// The below test asserts that the split validation logic on master doesn't gate
+// retry of split op in the following case -
+// 1. master initiated split which then bumped the table from low phase to high phase splitting.
+// 2. master encountered failure on the split rpc to the tserver for
+//    FLAGS_unresponsive_ts_rpc_retry_limit times, and gave up on the rpc.
+// 3. Child tablets are stuck in creating state, and are being accounted towards num_partitions.
+TEST_F(AutomaticTabletSplitITest, PhasePromotionAccountsForSplitRetry) {
+  constexpr int kNumRowsPerBatch = 1000;
+
+  ASSERT_EQ(cluster_->num_tablet_servers(), 3);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 8;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 1_GB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 2_GB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 1;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  CreateSingleTablet();
+  ASSERT_OK(WriteRowsAndFlush(kNumRowsPerBatch));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+
+  // Fail the split at the tserver, and bump the table to high phase splitting
+  // at the master.
+  StringWaiterLogSink log_waiter(
+      "Failing tablet split due to FLAGS_TEST_fail_tablet_split_probability");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+  ASSERT_OK(log_waiter.WaitFor(60s * kTimeMultiplier));
+  LOG(INFO) << "Split RPC failed. Grandchildren registered but split not applied.";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 0;
+
+  // Allow the split to proceed. The split manager should detect the CREATING grandchildren,
+  // add the parent to splits_to_restart, and successfully restart the split. With the fix
+  // (skipping ShouldSplitValidCandidate for tablets with registered children), this succeeds
+  // despite the table now being in the high phase.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 0;
+
+  ASSERT_OK(WaitForTabletSplitCompletion(
+    /* expected_non_split_tablets */ 2,
+    /* expected_split_tablets */ 0,
+    /* num_replicas_online */ 0,
+    /* table */ client::kTableName,
+    /* core_dump_on_failure */ false));
+}
+
 TEST_F(AutomaticTabletSplitITest, TabletSplitCandidatesMetric) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 1;
@@ -3073,6 +3135,43 @@ TEST_F(TabletSplitExternalMiniClusterITest, FaultedSplitNodeRejectsRemoteBootstr
   SleepFor(1ms * kTabletSplitInjectDelayMs);
   EXPECT_OK(WaitForTablets(2));
   EXPECT_OK(WaitForTablets(2, faulted_follower_idx));
+
+  // After the delayed split apply, the faulted follower's child replicas may fail to bootstrap
+  // locally ("Found rowsets but no log segments") and are recovered by the child leaders evicting
+  // the FAILED replica and re-replicating it via remote bootstrap. A freshly re-bootstrapped
+  // replica rejoins the config as PRE_VOTER and is only later promoted to VOTER once it catches up.
+  // Shutting down the healthy follower below leaves a child tablet with quorum only if the faulted
+  // follower is already a committed VOTER; while it is still a PRE_VOTER the child is left with a
+  // single voter, cannot elect a leader, and the write never succeeds. So wait until the faulted
+  // follower is a committed VOTER in both child tablets while all three servers are still up.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto tablets = VERIFY_RESULT(cluster_->GetTablets(faulted_follower));
+    size_t voter_children = 0;
+    for (const auto& tablet : tablets) {
+      if (tablet.table_name() != table_->name().table_name() || tablet.tablet_id() == tablet_id) {
+        continue;
+      }
+      consensus::GetConsensusStateRequestPB cstate_req;
+      consensus::GetConsensusStateResponsePB cstate_resp;
+      rpc::RpcController controller;
+      controller.set_timeout(kRpcTimeout);
+      cstate_req.set_dest_uuid(faulted_follower->uuid());
+      cstate_req.set_tablet_id(tablet.tablet_id());
+      cstate_req.set_type(consensus::CONSENSUS_CONFIG_COMMITTED);
+      if (!cluster_->GetConsensusProxy(faulted_follower)
+               .GetConsensusState(cstate_req, &cstate_resp, &controller).ok() ||
+          cstate_resp.has_error()) {
+        return false;
+      }
+      for (const auto& peer : cstate_resp.cstate().config().peers()) {
+        if (peer.permanent_uuid() == faulted_follower->uuid() &&
+            peer.member_type() == consensus::PeerMemberType::VOTER) {
+          ++voter_children;
+        }
+      }
+    }
+    return voter_children == 2;
+  }, 60s * kTimeMultiplier, "Wait for faulted follower to become a voter in both child tablets"));
 
   // By shutting down the healthy follower and writing rows to the table, we ensure the faulted
   // follower is eventually able to rejoin the raft group.

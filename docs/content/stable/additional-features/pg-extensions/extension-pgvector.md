@@ -10,6 +10,8 @@ menu:
     identifier: extension-pgvector
     parent: pg-extensions
     weight: 20
+rightNav:
+  hideH4: true
 type: docs
 aliases:
   - /stable/explore/ysql-language-features/pg-extensions/extension-pgvector
@@ -17,11 +19,43 @@ aliases:
 
 The [pgvector](https://github.com/pgvector/pgvector) PostgreSQL extension allows you to store and query vectors, for use in performing similarity searches.
 
+YugabyteDB includes pgvector `0.8.0-yb-1.0` on PostgreSQL 15-compatible YSQL. Most SQL-level types, functions, operators, casts, and aggregates match upstream pgvector 0.8.0. Approximate nearest neighbor (ANN) search uses the distributed `ybhnsw` access method (backed by DocDB Vector LSM) instead of native PostgreSQL `hnsw` / `ivfflat`.
+
 Vector distance functions measure similarity or difference between high-dimensional data points. Choosing the right function depends on the use case, such as search, ranking, or clustering. YugabyteDB supports the following distance functions:
 
 - Cosine Distance - Measures the angle between two vectors. Used for comparing direction rather than magnitude. Best for text similarity and recommendation systems.
 - L2 (Euclidean) Distance - Measures the straight-line distance between two points in space. Best when absolute differences in values matter, like in image recognition.
 - Inner Product - Measures similarity by multiplying corresponding elements and summing them. Often used in ranking and recommendation models, where larger values indicate higher similarity.
+
+## Supported features
+
+The following pgvector capabilities are supported in YugabyteDB.
+
+### Types and SQL
+
+| Feature | Details |
+| :--- | :--- |
+| `vector`, `halfvec`, and `sparsevec` types | Same user-facing SQL as upstream pgvector 0.8.0 (up to 16,000 dimensions for `vector` / `halfvec`) |
+| Distance operators | `<->` (L2), `<#>` (inner product), `<=>` (cosine), `<+>` (L1) |
+| Bit distance functions | `hamming_distance` and `jaccard_distance` |
+| Vector functions | Including `l2_distance`, `inner_product`, `cosine_distance`, `l1_distance`, `l2_normalize`, `subvector`, `binary_quantize`, `vector_dims`, and `vector_norm` |
+| Aggregates | `avg` and `sum` on `vector` and `halfvec` |
+| Casts and array input | Casts among `vector`, `halfvec`, `sparsevec`, and arrays (`integer[]`, `real[]`, `double precision[]`, `numeric[]`) |
+| DML and `COPY` | `INSERT`, `UPDATE`, `DELETE`, text `COPY`, and binary `COPY` for `vector`, `halfvec`, and `sparsevec` |
+
+### Exact and approximate search
+
+| Feature | Details |
+| :--- | :--- |
+| Exact (sequential) search | Supported for all distance metrics, including L1 (`<+>`) and queries on `halfvec` / `sparsevec` |
+| HNSW ANN indexes on `vector` | `ybhnsw` with `vector_l2_ops`, `vector_ip_ops`, and `vector_cosine_ops` |
+| `USING hnsw` compatibility | Rewritten internally to `ybhnsw` for PostgreSQL migration compatibility |
+| Indexed dimensions | Up to 16,000 dimensions on `ybhnsw` (column must declare fixed dimensions, for example `vector(768)`) |
+| Index options | `m`, `m0`, and `ef_construction` |
+| Query-time tuning | `hnsw.ef_search` |
+| Materialized views | Vector columns and `ybhnsw` indexes on materialized views |
+
+Top-k queries of the form `ORDER BY embedding <-> query LIMIT k` use the `ybhnsw` index. You can combine ANN search with a `WHERE` filter; the filter is applied after the index scan.
 
 ## Enable the extension
 
@@ -200,7 +234,7 @@ To use the Cosine distance function:
 CREATE INDEX NONCONCURRENTLY ON items USING ybhnsw (embedding vector_cosine_ops);
 ```
 
-YugabyteDB currently supports the `vector` type.
+ANN indexes are supported on the `vector` type. You can store and run exact searches on `halfvec` and `sparsevec` columns; for HNSW indexing, use a `vector` column (or cast / densify to `vector`).
 
 #### HNSW index options
 
@@ -209,6 +243,7 @@ You can fine-tune HNSW indexing using the following parameters:
 | Parameter | Description | Default |
 | :--- | :--- | :--- |
 | m | Maximum number of connections per layer. Valid range: 5–64. | 32 |
+| m0 | Maximum number of connections in the base layer. | Derived from `m` |
 | ef_construction | Size of the dynamic candidate list for constructing the graph. Valid range: 50–1000. | 200 |
 
 For example:

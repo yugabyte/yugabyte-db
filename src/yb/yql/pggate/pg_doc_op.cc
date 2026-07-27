@@ -942,6 +942,31 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
   // Done creating request, but not all partition or operator has arguments (inactive).
   MoveInactiveOpsOutside();
 
+  // Sort each active partition's batch_arguments ascending by ybctid binary value when row
+  // order isn't preserved by per-arg orders. This gives the server monotonic key access
+  // (filter-block / data-block cache locality) while keeping wire order == processed order so
+  // count-based pagination stays correct.
+  // Sorting once at population time means paginated re-sends see an already-sorted suffix
+  // (pop_front preserves relative order), so no work is redone on the wire.
+  //
+  // We must NOT sort when keep_order is set. Order tags are assigned in generator-traversal
+  // order, and the client's k-way merge over per-partition response streams (priority_queue
+  // keyed by row_orders_[head]) requires each stream to be monotonically non-decreasing in
+  // its order tags. The server preserves that invariant by iterating wire-order; reordering
+  // the wire by ybctid would scramble the tags within each stream and break the merge.
+  if (!keep_order) {
+    for (auto& read_req : ActiveOps() |
+                          std::views::filter(&IsReadOp) |
+                          std::views::transform(&AsReadReq)) {
+      auto* args = read_req.mutable_batch_arguments();
+      if (args->size() > 1) {
+        args->sort([](const LWPgsqlBatchArgumentPB& a, const LWPgsqlBatchArgumentPB& b) {
+          return a.ybctid().value().binary_value() < b.ybctid().value().binary_value();
+        });
+      }
+    }
+  }
+
   return Status::OK();
 }
 

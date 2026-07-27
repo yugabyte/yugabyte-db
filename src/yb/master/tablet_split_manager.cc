@@ -41,6 +41,8 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
 #include "yb/util/unique_lock.h"
@@ -69,7 +71,7 @@ DEFINE_RUNTIME_bool(enable_tablet_split_of_pitr_tables, true,
     "When set, it enables automatic tablet splitting of tables covered by "
     "Point In Time Restore schedules.");
 
-DEFINE_RUNTIME_bool(enable_tablet_split_of_tables_with_vector_index, false,
+DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_tables_with_vector_index, kExternal, false, true,
     "When set, it enables automatic tablet splitting for tables with vector indexes");
 
 DEFINE_RUNTIME_uint64(tablet_split_limit_per_table, 0,

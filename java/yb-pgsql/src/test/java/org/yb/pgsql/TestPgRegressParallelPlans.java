@@ -17,7 +17,7 @@ import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
-import org.yb.util.BuildTypeUtil;
+import org.yb.util.RequiresReleaseBuild;
 
 /**
  * Runs the pg_regress test suite on YB code.
@@ -45,10 +45,10 @@ public class TestPgRegressParallelPlans extends BasePgRegressTest {
     return flags;
   }
 
+  // Complex parallel query plans may timeout on slow builds
   @Test
+  @RequiresReleaseBuild
   public void schedule() throws Exception {
-    if (BuildTypeUtil.isRelease()) {
-      runPgRegressTest("yb_parallel_plans_schedule");
-    }
+    runPgRegressTest("yb_parallel_plans_schedule");
   }
 }

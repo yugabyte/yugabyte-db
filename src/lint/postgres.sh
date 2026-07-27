@@ -24,9 +24,9 @@ is_yb_file() {
     echo "Invalid arguments $*" >&2
     exit 1
   fi
-  if [[ "$1" =~ /yb[^/]+\.[ch]$ ||
-        "$1" =~ /pg_yb[^/]+\.[ch]$ ||
-        "$1" =~ /nodeYb[^/]+\.[ch]$ ||
+  if [[ "$1" =~ /yb[^/]+\.[ch](pp)?$ ||
+        "$1" =~ /pg_yb[^/]+\.[ch](pp)?$ ||
+        "$1" =~ /nodeYb[^/]+\.[ch](pp)?$ ||
         "$1" =~ /yb-extensions/ ]]; then
     return 0
   else

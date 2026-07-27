@@ -102,7 +102,7 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 		       0);
 
 	char yb_logical_conn_type[2] = "x";
-	yb_logical_conn_type[0] = client->tls ? YB_LOGICAL_ENCRYPTED_CONN :
+	yb_logical_conn_type[0] = client->startup.yb_ssl_established ? YB_LOGICAL_ENCRYPTED_CONN :
 						YB_LOGICAL_UNENCRYPTED_CONN;
 
 	msg = yb_kiwi_fe_write_authentication(NULL);

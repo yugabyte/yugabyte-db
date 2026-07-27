@@ -47,6 +47,8 @@ Legacy provisioning of on-premises nodes is deprecated. Before you can upgrade Y
 
 When YugabyteDB Anywhere (YBA) has access to an SSH user with passwordless sudo privileges (for example, the `ec2-user` on AWS EC2 instances), then YBA can provision the VMs automatically.
 
+Note that the SSH user you provide must not be named `yugabyte`.
+
 ## With Internet or Yum connectivity
 
 If your VM has Internet or Yum connectivity, you must provide to YBA a VM with the following pre-installed:

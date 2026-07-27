@@ -420,14 +420,12 @@ void
 ExecYbSeqScanInitializeDSM(YbSeqScanState *node,
 						   ParallelContext *pcxt)
 {
-	EState	   *estate = node->ss.ps.state;
 	YBParallelPartitionKeys pscan;
 
 	pscan = shm_toc_allocate(pcxt->toc, node->pscan_len);
 	yb_init_partition_key_data(pscan);
 	shm_toc_insert(pcxt->toc, node->ss.ps.plan->plan_node_id, pscan);
-	ybParallelPrepare(pscan, node->ss.ss_currentRelation,
-					  &estate->yb_exec_params, true /* is_forward */ );
+	ybParallelPrepare(pscan, node->ss.ss_currentRelation, true /* is_forward */ );
 	node->pscan = pscan;
 }
 
@@ -441,12 +439,10 @@ void
 ExecYbSeqScanReInitializeDSM(YbSeqScanState *node,
 							 ParallelContext *pcxt)
 {
-	EState	   *estate = node->ss.ps.state;
 	YBParallelPartitionKeys pscan = node->pscan;
 
 	yb_rescan_partition_key_data(pscan);
-	ybParallelPrepare(pscan, node->ss.ss_currentRelation,
-					  &estate->yb_exec_params, true /* is_forward */ );
+	ybParallelPrepare(pscan, node->ss.ss_currentRelation, true /* is_forward */ );
 }
 
 /* ----------------------------------------------------------------
@@ -460,10 +456,8 @@ ExecYbSeqScanInitializeWorker(YbSeqScanState *node,
 							  ParallelWorkerContext *pwcxt)
 {
 	YBParallelPartitionKeys pscan;
-	EState	   *estate = node->ss.ps.state;
 
 	pscan = shm_toc_lookup(pwcxt->toc, node->ss.ps.plan->plan_node_id, false);
-	ybParallelPrepare(pscan, node->ss.ss_currentRelation,
-					  &estate->yb_exec_params, true /* is_forward */ );
+	ybParallelPrepare(pscan, node->ss.ss_currentRelation, true /* is_forward */ );
 	node->pscan = pscan;
 }

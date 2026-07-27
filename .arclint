@@ -171,7 +171,9 @@
       ],
       "include": [
         "([.]c$)",
-        "([.]h$)"
+        "([.]cpp$)",
+        "([.]h$)",
+        "([.]hpp$)"
       ],
       "script-and-regex.script": "src/lint/postgres.sh",
       "script-and-regex.regex":
@@ -193,9 +195,10 @@
         "(^src/postgres/third-party-extensions/pg_partman/test/(.+/)*[^/]*$)"
       ],
       "exclude": [
-        "(^src/postgres/third-party-extensions/mage/sql/)",
         "(^src/postgres/third-party-extensions/documentdb/pg_documentdb/sql/.*$)",
         "(^src/postgres/third-party-extensions/documentdb/pg_documentdb_core/sql/.*$)",
+        "(^src/postgres/third-party-extensions/mage/sql/)",
+        "(^src/postgres/third-party-extensions/pg_duckdb/sql/.*$)",
         "(^src/postgres/third-party-extensions/pg_hint_plan/.*$)",
         "(^src/postgres/third-party-extensions/pgvector/sql/.*$)"
       ],

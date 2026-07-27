@@ -1215,7 +1215,10 @@ public class HealthChecker {
       commandToRun.add("--cronbased");
     }
 
-    if (!nodeInfo.isK8s()) {
+    // Only run the YNP version skew check when the global runtime config is enabled. When it is
+    // disabled, we skip passing the YBA YNP version so the node health script reports no skew and
+    // the YNP_VERSION_SKEW alert does not fire.
+    if (!nodeInfo.isK8s() && confGetter.getGlobalConf(GlobalConfKeys.enableYnpVersionCheck)) {
       Object ynpVersion =
           configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata).get("ynp_version");
       if (ynpVersion != null) {

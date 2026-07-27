@@ -464,7 +464,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertBadRequest(result, "Enable atleast one endpoint among YSQL and YCQL");
+    assertBadRequest(result, "Enable at least one endpoint among YSQL and YCQL");
   }
 
   @Test

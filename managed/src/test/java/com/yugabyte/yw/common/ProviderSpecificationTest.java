@@ -3,11 +3,19 @@
 package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.forms.HierarchicalNodesSpec;
+import com.yugabyte.yw.forms.HierarchicalNodesSpec.AzNodesSpec;
+import com.yugabyte.yw.forms.HierarchicalNodesSpec.RegionNodesSpec;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.ProxyConfig;
@@ -17,17 +25,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Consumer;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.BlockJUnit4ClassRunner;
 
-@RunWith(BlockJUnit4ClassRunner.class)
-public class ProviderSpecificationTest {
+public class ProviderSpecificationTest extends FakeDBApplication {
 
-  private UUID providerUUID = UUID.randomUUID();
-  private Common.CloudType providerType = Common.CloudType.gcp;
+  private Customer customer;
+  private Provider provider;
   private UUID imageBundleUUID = UUID.randomUUID();
   private Map<String, String> tags = Map.of("a", "b");
   private DeviceInfo deviceInfo;
@@ -35,6 +39,9 @@ public class ProviderSpecificationTest {
 
   @Before
   public void init() {
+    customer = ModelFactory.testCustomer();
+    provider = ModelFactory.newProvider(customer, Common.CloudType.gcp);
+
     deviceInfo = new DeviceInfo();
     deviceInfo.storageType = PublicCloudConstants.StorageType.GP2;
     deviceInfo.diskIops = 1000;
@@ -48,12 +55,16 @@ public class ProviderSpecificationTest {
 
   @Test
   public void testSingleProviderSpec() {
+    Region region = Region.create(provider, "default-region", "Default Region", "yb-image");
+    AvailabilityZone az =
+        AvailabilityZone.createOrThrow(region, "default-az", "Default AZ", "subnet");
+
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
         new UniverseDefinitionTaskParams.ProviderSpecification();
-    providerSpecification.setProviderUUID(providerUUID);
-    providerSpecification.setProviderType(providerType);
+    providerSpecification.setProviderUUID(provider.getUuid());
+    providerSpecification.setProviderType(Common.CloudType.gcp);
     providerSpecification.setInstanceTags(tags);
     providerSpecification.setImageBundleUUID(imageBundleUUID);
     providerSpecification.setEnableLoadBalancer(true);
@@ -63,27 +74,29 @@ public class ProviderSpecificationTest {
     providerSpecification.setExposingServiceState(
         UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED);
     providerSpecification.setAwsInstanceProfile("aws profile");
-    UniverseDefinitionTaskParams.NodesSpecification nodesSpecification =
-        new UniverseDefinitionTaskParams.NodesSpecification();
-    UniverseDefinitionTaskParams.NodeSpecification tserverSpec =
-        new UniverseDefinitionTaskParams.NodeSpecification();
-    tserverSpec.setInstanceType("tserverType");
-    tserverSpec.setCgroupSize(10);
-    tserverSpec.setDeviceInfo(deviceInfo);
-    tserverSpec.setProxyConfig(proxyConfig);
-    nodesSpecification.setTserverSpecification(tserverSpec);
-    providerSpecification.setBaseNodesSpecification(nodesSpecification);
+
+    providerSpecification.setNodesSpecs(
+        HierarchicalNodesSpec.RootNodesSpec.builder()
+            .tserverSpecification(
+                HierarchicalNodesSpec.NodeSpec.builder()
+                    .backupProxyConfig(proxyConfig)
+                    .instanceType("tserverType")
+                    .cgroupSize(10)
+                    .deviceInfo(deviceInfo)
+                    .build())
+            .build());
+
     userIntent.providerSpecifications = Collections.singletonList(providerSpecification);
 
     NodeDetails nodeDetails = new NodeDetails();
-    nodeDetails.azUuid = UUID.randomUUID();
+    nodeDetails.azUuid = az.getUuid();
 
-    assertEquals(Set.of(providerUUID), userIntent.getAllProviderUUIDs());
+    assertEquals(Set.of(provider.getUuid()), userIntent.getAllProviderUUIDs());
     assertEquals(Arrays.asList(Common.CloudType.gcp), userIntent.getAllCloudTypes());
-    assertEquals(providerSpecification, userIntent.getProviderSpecification(providerUUID));
+    assertEquals(providerSpecification, userIntent.getProviderSpecification(provider.getUuid()));
     assertEquals(List.of(imageBundleUUID), userIntent.getAllImageBundles());
-    assertEquals(imageBundleUUID, userIntent.getImageBundleUUIDForProvider(providerUUID));
-    assertEquals("accessKey", userIntent.getAccessKeyCodeForProvider(providerUUID));
+    assertEquals(imageBundleUUID, userIntent.getImageBundleUUIDForProvider(provider.getUuid()));
+    assertEquals("accessKey", userIntent.getAccessKeyCodeForProvider(provider.getUuid()));
     assertEquals(10, userIntent.getCGroupSize(nodeDetails).intValue());
     assertEquals("tserverType", userIntent.getInstanceTypeForNode(nodeDetails));
     assertEquals(deviceInfo, userIntent.getDeviceInfoForNode(nodeDetails));
@@ -91,171 +104,215 @@ public class ProviderSpecificationTest {
   }
 
   @Test
-  public void testNodeSpecOverrides() {
-    UniverseDefinitionTaskParams.UserIntent userIntent =
-        new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.dedicatedNodes = true;
+  public void testRegionLevelInstanceTypeOverride() {
+    Region r1 = Region.create(provider, "r1", "Region 1", "yb-image");
+    Region r2 = Region.create(provider, "r2", "Region 2", "yb-image");
+    AvailabilityZone r1Az =
+        AvailabilityZone.createOrThrow(r1, "r1z1", "Region 1 AZ 1", "subnet-r1z1");
+    AvailabilityZone r2Az =
+        AvailabilityZone.createOrThrow(r2, "r2z1", "Region 2 AZ 1", "subnet-r2z1");
+
     UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
         new UniverseDefinitionTaskParams.ProviderSpecification();
-    providerSpecification.setProviderUUID(providerUUID);
-    UniverseDefinitionTaskParams.NodeSpecification tserverSpec =
-        new UniverseDefinitionTaskParams.NodeSpecification();
-    tserverSpec.setInstanceType("tserverType");
-    tserverSpec.setCgroupSize(10);
-    tserverSpec.setDeviceInfo(deviceInfo);
-    tserverSpec.setProxyConfig(proxyConfig);
+    providerSpecification.setProviderUUID(provider.getUuid());
+    providerSpecification.setNodesSpecs(
+        HierarchicalNodesSpec.RootNodesSpec.builder()
+            .tserverSpecification(
+                HierarchicalNodesSpec.NodeSpec.builder().instanceType("default-type").build())
+            .build()
+            .addRegion(
+                RegionNodesSpec.builder()
+                    .regionCode("r1")
+                    .tserverSpecification(
+                        HierarchicalNodesSpec.NodeSpec.builder()
+                            .instanceType("region-r1-type")
+                            .build())
+                    .build()));
 
-    DeviceInfo masterDeviceInfo = new DeviceInfo();
-    masterDeviceInfo.storageType = PublicCloudConstants.StorageType.GP3;
-    masterDeviceInfo.diskIops = 2000;
-    masterDeviceInfo.numVolumes = 2;
-    masterDeviceInfo.throughput = 100;
-    masterDeviceInfo.volumeSize = 500;
-
-    UniverseDefinitionTaskParams.NodeSpecification masterSpec =
-        new UniverseDefinitionTaskParams.NodeSpecification();
-    masterSpec.setInstanceType("masterType");
-    masterSpec.setCgroupSize(20);
-    masterSpec.setDeviceInfo(masterDeviceInfo);
-
-    providerSpecification.setBaseNodesSpecification(
-        UniverseDefinitionTaskParams.NodesSpecification.of(tserverSpec, masterSpec));
-
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
     userIntent.providerSpecifications = Collections.singletonList(providerSpecification);
 
-    NodeDetails nodeDetails = new NodeDetails();
-    nodeDetails.azUuid = UUID.randomUUID();
+    NodeDetails r1Node = new NodeDetails();
+    r1Node.azUuid = r1Az.getUuid();
+    NodeDetails r2Node = new NodeDetails();
+    r2Node.azUuid = r2Az.getUuid();
 
-    NodeDetails masterNodeDetails = new NodeDetails();
-    nodeDetails.azUuid = UUID.randomUUID();
-    masterNodeDetails.dedicatedTo = UniverseTaskBase.ServerType.MASTER;
-
-    UUID tserverOverridenAZ = UUID.randomUUID();
-    UUID masterOverridenAZ = UUID.randomUUID();
-    UUID bothOverridenAZ = UUID.randomUUID();
-
-    UniverseDefinitionTaskParams.NodeSpecification overridenTserver =
-        new UniverseDefinitionTaskParams.NodeSpecification();
-    overridenTserver.setInstanceType("overridenTserver");
-    overridenTserver.setCgroupSize(100);
-    DeviceInfo overridenTserverDevice = new DeviceInfo();
-    overridenTserverDevice.volumeSize = deviceInfo.volumeSize + 1;
-    overridenTserver.setDeviceInfo(overridenTserverDevice);
-
-    UniverseDefinitionTaskParams.NodeSpecification overridenMaster =
-        new UniverseDefinitionTaskParams.NodeSpecification();
-    overridenMaster.setInstanceType("overridenMaster");
-    overridenMaster.setCgroupSize(200);
-    DeviceInfo overridenMasterDevice = new DeviceInfo();
-    overridenMasterDevice.numVolumes = 10;
-    overridenMaster.setDeviceInfo(overridenMasterDevice);
-
-    providerSpecification.setPerAZOverrides(
-        Map.of(
-            tserverOverridenAZ,
-                UniverseDefinitionTaskParams.NodesSpecification.of(overridenTserver, null),
-            masterOverridenAZ,
-                UniverseDefinitionTaskParams.NodesSpecification.of(null, overridenMaster),
-            bothOverridenAZ,
-                UniverseDefinitionTaskParams.NodesSpecification.of(
-                    overridenTserver, overridenMaster)));
-
-    assertEquals("tserverType", userIntent.getInstanceTypeForNode(nodeDetails));
-    assertEquals(deviceInfo, userIntent.getDeviceInfoForNode(nodeDetails));
-    assertEquals(proxyConfig, userIntent.getProxyConfig(nodeDetails.azUuid));
-
-    assertEquals("masterType", userIntent.getInstanceTypeForNode(masterNodeDetails));
-    assertEquals(masterDeviceInfo, userIntent.getDeviceInfoForNode(masterNodeDetails));
-    assertEquals(proxyConfig, userIntent.getProxyConfig(masterNodeDetails.azUuid));
-
-    NodeDetails overridenTsNode = new NodeDetails();
-    overridenTsNode.azUuid = tserverOverridenAZ;
-
-    NodeDetails overridenMsNode = new NodeDetails();
-    overridenMsNode.azUuid = masterOverridenAZ;
-    overridenMsNode.dedicatedTo = UniverseTaskBase.ServerType.MASTER;
-
-    assertEquals("overridenTserver", userIntent.getInstanceTypeForNode(overridenTsNode));
-    assertEquals(
-        modify(deviceInfo, d -> d.volumeSize = overridenTserverDevice.volumeSize),
-        userIntent.getDeviceInfoForNode(overridenTsNode));
-    assertEquals(100, userIntent.getCGroupSize(overridenTsNode).intValue());
-
-    assertEquals("overridenMaster", userIntent.getInstanceTypeForNode(overridenMsNode));
-    assertEquals(
-        modify(masterDeviceInfo, d -> d.numVolumes = 10),
-        userIntent.getDeviceInfoForNode(overridenMsNode));
-    assertEquals(200, userIntent.getCGroupSize(overridenMsNode).intValue());
-
-    nodeDetails.azUuid = bothOverridenAZ;
-    assertEquals("overridenTserver", userIntent.getInstanceTypeForNode(nodeDetails));
-    assertEquals(
-        modify(deviceInfo, d -> d.volumeSize = overridenTserverDevice.volumeSize),
-        userIntent.getDeviceInfoForNode(nodeDetails));
-    assertEquals(100, userIntent.getCGroupSize(nodeDetails).intValue());
-    nodeDetails.dedicatedTo = UniverseTaskBase.ServerType.MASTER;
-    assertEquals("overridenMaster", userIntent.getInstanceTypeForNode(nodeDetails));
-    assertEquals(
-        modify(masterDeviceInfo, d -> d.numVolumes = 10),
-        userIntent.getDeviceInfoForNode(nodeDetails));
-    assertEquals(200, userIntent.getCGroupSize(nodeDetails).intValue());
+    assertEquals("region-r1-type", userIntent.getInstanceTypeForNode(r1Node));
+    assertEquals("default-type", userIntent.getInstanceTypeForNode(r2Node));
   }
 
   @Test
-  public void testNodeSpecOverridesUpdate() {
+  public void testAzLevelInstanceTypeOverride() {
+    Region r1 = Region.create(provider, "r1", "Region 1", "yb-image");
+    AvailabilityZone r1z1 =
+        AvailabilityZone.createOrThrow(r1, "r1z1", "Region 1 AZ 1", "subnet-r1z1");
+
+    Region r2 = Region.create(provider, "r2", "Region 2", "yb-image");
+    AvailabilityZone r2z1 =
+        AvailabilityZone.createOrThrow(r2, "r2z1", "Region 2 AZ 1", "subnet-r2z1");
+    AvailabilityZone r2z2 =
+        AvailabilityZone.createOrThrow(r2, "r2z2", "Region 2 AZ 2", "subnet-r2z2");
+
     UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
         new UniverseDefinitionTaskParams.ProviderSpecification();
-    providerSpecification.setProviderUUID(providerUUID);
-    UniverseDefinitionTaskParams.NodeSpecification tserverSpec =
-        new UniverseDefinitionTaskParams.NodeSpecification();
-    tserverSpec.setInstanceType("tserverType");
-    tserverSpec.setCgroupSize(10);
-    providerSpecification.setBaseNodesSpecification(
-        UniverseDefinitionTaskParams.NodesSpecification.of(tserverSpec, null));
-
-    UniverseDefinitionTaskParams.ProviderSpecification providerSpecification2 =
-        new UniverseDefinitionTaskParams.ProviderSpecification();
-    UniverseDefinitionTaskParams.NodeSpecification masterSpec =
-        new UniverseDefinitionTaskParams.NodeSpecification();
-    masterSpec.setInstanceType("masterType");
-    masterSpec.setCgroupSize(20);
-
-    providerSpecification2.setBaseNodesSpecification(
-        UniverseDefinitionTaskParams.NodesSpecification.of(tserverSpec, masterSpec));
-    UUID overridenAZ = UUID.randomUUID();
-    UniverseDefinitionTaskParams.NodeSpecification overridenTSpec =
-        new UniverseDefinitionTaskParams.NodeSpecification();
-    overridenTSpec.setInstanceType("tserverType2");
-    overridenTSpec.setCgroupSize(5);
-    providerSpecification2.setPerAZOverrides(
-        Map.of(
-            overridenAZ, UniverseDefinitionTaskParams.NodesSpecification.of(overridenTSpec, null)));
-
-    providerSpecification.mergeNodesSpecification(
-        providerSpecification2,
-        ctx -> {
-          ctx.getCurrent().setInstanceType(ctx.getTarget().getInstanceType());
-        });
+    providerSpecification.setProviderUUID(provider.getUuid());
+    providerSpecification.setNodesSpecs(
+        HierarchicalNodesSpec.RootNodesSpec.builder()
+            .tserverSpecification(
+                HierarchicalNodesSpec.NodeSpec.builder().instanceType("default-type").build())
+            .build()
+            .addRegion(
+                RegionNodesSpec.builder()
+                    .regionCode("r2")
+                    .tserverSpecification(
+                        HierarchicalNodesSpec.NodeSpec.builder().instanceType("az-r2-type").build())
+                    .build()
+                    .addZone(
+                        AzNodesSpec.builder()
+                            .azCode("r2z2")
+                            .tserverSpecification(
+                                HierarchicalNodesSpec.NodeSpec.builder()
+                                    .instanceType("az-r2z2-type")
+                                    .build())
+                            .build())));
 
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.dedicatedNodes = true;
     userIntent.providerSpecifications = Collections.singletonList(providerSpecification);
 
-    NodeDetails basicNode = new NodeDetails();
-    basicNode.azUuid = UUID.randomUUID();
-    assertEquals("tserverType", userIntent.getInstanceTypeForNode(basicNode));
-    basicNode.dedicatedTo = UniverseTaskBase.ServerType.MASTER;
-    assertEquals("masterType", userIntent.getInstanceTypeForNode(basicNode));
+    NodeDetails r1Node = new NodeDetails();
+    r1Node.azUuid = r1z1.getUuid();
 
-    NodeDetails overridenNode = new NodeDetails();
-    overridenNode.azUuid = overridenAZ;
-    assertEquals("tserverType2", userIntent.getInstanceTypeForNode(overridenNode));
+    NodeDetails r2z1Node = new NodeDetails();
+    r2z1Node.azUuid = r2z1.getUuid();
+    NodeDetails r2z2Node = new NodeDetails();
+    r2z2Node.azUuid = r2z2.getUuid();
+
+    assertEquals("default-type", userIntent.getInstanceTypeForNode(r1Node));
+    assertEquals("az-r2-type", userIntent.getInstanceTypeForNode(r2z1Node));
+    assertEquals("az-r2z2-type", userIntent.getInstanceTypeForNode(r2z2Node));
   }
 
-  private DeviceInfo modify(DeviceInfo original, Consumer<DeviceInfo> mutator) {
-    DeviceInfo clone = original.clone();
-    mutator.accept(clone);
-    return clone;
+  @Test
+  public void testValidateProviderSpecification() {
+    UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
+        new UniverseDefinitionTaskParams.ProviderSpecification();
+    providerSpecification.setProviderUUID(provider.getUuid());
+    providerSpecification.setProviderType(Common.CloudType.azu);
+    providerSpecification.setNodesSpecs(
+        HierarchicalNodesSpec.RootNodesSpec.builder()
+            .tserverSpecification(
+                HierarchicalNodesSpec.NodeSpec.builder().instanceType("tserverType").build())
+            .build());
+    providerSpecification.validate(false);
+
+    providerSpecification.setProviderUUID(null);
+    expectValidationError(providerSpecification, false, "providerUUID must be set");
+    providerSpecification.setProviderUUID(provider.getUuid());
+
+    providerSpecification.setProviderType(null);
+    expectValidationError(providerSpecification, false, "providerType must be set");
+    providerSpecification.setProviderType(Common.CloudType.azu);
+
+    providerSpecification.setNodesSpecs(null);
+    expectValidationError(providerSpecification, false, "nodesSpecs must be set");
+    providerSpecification.setNodesSpecs(HierarchicalNodesSpec.RootNodesSpec.builder().build());
+    expectValidationError(
+        providerSpecification, false, "nodesSpecs.tserverSpecification must be set");
+  }
+
+  @Test
+  public void testValidateProviderSpecificationPartialUpdate() {
+    UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
+        new UniverseDefinitionTaskParams.ProviderSpecification();
+    providerSpecification.setProviderUUID(provider.getUuid());
+    providerSpecification.setProviderType(Common.CloudType.gcp);
+    providerSpecification.setNodesSpecs(
+        HierarchicalNodesSpec.RootNodesSpec.builder()
+            .regionNodesSpecs(
+                Arrays.asList(
+                    RegionNodesSpec.builder()
+                        .regionCode("r1")
+                        .azNodesSpecs(
+                            Arrays.asList(
+                                AzNodesSpec.builder()
+                                    .azCode("r1z1")
+                                    .tserverSpecification(
+                                        HierarchicalNodesSpec.NodeSpec.builder()
+                                            .backupProxyConfig(proxyConfig)
+                                            .build())
+                                    .build()))
+                        .build()))
+            .build());
+
+    // Partial updates (e.g. proxy config) may omit root tserverSpecification.
+    providerSpecification.validate(true);
+
+    providerSpecification.setProviderUUID(null);
+    expectValidationError(providerSpecification, true, "providerUUID must be set");
+    providerSpecification.setProviderUUID(provider.getUuid());
+
+    providerSpecification.setProviderType(null);
+    expectValidationError(providerSpecification, true, "providerType must be set");
+    providerSpecification.setProviderType(Common.CloudType.gcp);
+
+    providerSpecification.setNodesSpecs(null);
+    expectValidationError(providerSpecification, true, "nodesSpecs must be set");
+  }
+
+  @Test
+  public void testValidateDuplicateRegionCode() {
+    UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
+        new UniverseDefinitionTaskParams.ProviderSpecification();
+    providerSpecification.setProviderUUID(provider.getUuid());
+    providerSpecification.setProviderType(Common.CloudType.gcp);
+    providerSpecification.setNodesSpecs(
+        HierarchicalNodesSpec.RootNodesSpec.builder()
+            .tserverSpecification(
+                HierarchicalNodesSpec.NodeSpec.builder().instanceType("tserverType").build())
+            .regionNodesSpecs(
+                Arrays.asList(
+                    RegionNodesSpec.builder().regionCode("r1").build(),
+                    RegionNodesSpec.builder().regionCode("r1").build()))
+            .build());
+    expectValidationError(providerSpecification, false, "RootNodesSpec: found duplicate code: r1");
+  }
+
+  @Test
+  public void testValidateDuplicateAzCode() {
+    UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
+        new UniverseDefinitionTaskParams.ProviderSpecification();
+    providerSpecification.setProviderUUID(provider.getUuid());
+    providerSpecification.setProviderType(Common.CloudType.gcp);
+    providerSpecification.setNodesSpecs(
+        HierarchicalNodesSpec.RootNodesSpec.builder()
+            .tserverSpecification(
+                HierarchicalNodesSpec.NodeSpec.builder().instanceType("tserverType").build())
+            .regionNodesSpecs(
+                Arrays.asList(
+                    RegionNodesSpec.builder()
+                        .regionCode("r1")
+                        .azNodesSpecs(
+                            Arrays.asList(
+                                AzNodesSpec.builder().azCode("z1").build(),
+                                AzNodesSpec.builder().azCode("z1").build()))
+                        .build()))
+            .build());
+    expectValidationError(
+        providerSpecification, false, "RegionNodesSpec(r1): found duplicate code: z1");
+  }
+
+  private void expectValidationError(
+      UniverseDefinitionTaskParams.ProviderSpecification providerSpecification,
+      boolean isPartialUpdate,
+      String expectedMessage) {
+    try {
+      providerSpecification.validate(isPartialUpdate);
+      fail("Expected PlatformServiceException");
+    } catch (PlatformServiceException e) {
+      assertEquals(BAD_REQUEST, e.getHttpStatus());
+      assertEquals(expectedMessage, e.getMessage());
+    }
   }
 }

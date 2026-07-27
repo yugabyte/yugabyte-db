@@ -16,25 +16,23 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import java.util.concurrent.ExecutionException;
-import java.util.function.Function;
+import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.pekko.stream.Materializer;
-import org.apache.pekko.util.ByteString;
 import play.libs.Json;
 import play.mvc.Http;
-import play.mvc.Http.Request;
-import play.mvc.Http.RequestBody;
-import play.mvc.Result;
 
 @Slf4j
 public class ApiControllerUtils {
-  @Inject private AuditService auditService;
-  @Inject private Materializer mat;
+  private final AuditService auditService;
+
+  @Inject
+  public ApiControllerUtils(AuditService auditService) {
+    this.auditService = auditService;
+  }
+
   protected ObjectMapper mapper =
       Json.mapper()
           .copy()
@@ -64,43 +62,6 @@ public class ApiControllerUtils {
       throw new PlatformServiceException(Http.Status.BAD_REQUEST, "Failed at creating target type");
     }
     return target;
-  }
-
-  protected Request replaceRequestBody(Request request, Object data) {
-    return request.withBody(new RequestBody(Json.toJson(data)));
-  }
-
-  protected <T> T extractFromResult(Result result, Class<T> resultType)
-      throws InterruptedException, JsonProcessingException, ExecutionException {
-    ByteString resultBytes =
-        result.body().consumeData(mat).thenApply(Function.identity()).toCompletableFuture().get();
-    String resultString = resultBytes.decodeString(result.charset().orElse("utf-8"));
-    T resultObj = mapper.readValue(resultString, resultType);
-    return resultObj;
-  }
-
-  /*
-   * Convert the given source bean into targetClassType and add to request body. The first step assumes that the source is mappable to the given target type. Throws exception otherwise.
-   */
-  protected <S, T> Request convertToRequest(
-      S source,
-      Class<T> targetClassType,
-      JsonDeserializer<? extends T> targetDeser,
-      Request request) {
-    return replaceRequestBody(request, convert(source, targetClassType, targetDeser));
-  }
-
-  /*
-   * Extracts the body from given result with the assumption that it is of type sourceType, and bean maps that to the targetType.
-   */
-  protected <S, T> T convertResult(
-      Result result,
-      Class<S> sourceType,
-      Class<T> targetType,
-      JsonDeserializer<? extends T> targetDeser)
-      throws Exception {
-    S source = extractFromResult(result, sourceType);
-    return convert(source, targetType, targetDeser);
   }
 
   protected AuditService auditService() {

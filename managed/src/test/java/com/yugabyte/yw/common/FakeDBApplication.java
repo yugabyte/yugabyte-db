@@ -88,6 +88,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public AWSUtil mockAWSUtil = mock(AWSUtil.class);
   public GCPUtil mockGCPUtil = mock(GCPUtil.class);
   public AZUtil mockAZUtil = mock(AZUtil.class);
+  public OCIUtil mockOCIUtil = mock(OCIUtil.class);
   public JsonFieldsValidator mockJsonFieldValidator = mock(JsonFieldsValidator.class);
   public NFSUtil mockNfsUtil = mock(NFSUtil.class);
   public YbcClientService mockYbcClientService = mock(YbcClientService.class);

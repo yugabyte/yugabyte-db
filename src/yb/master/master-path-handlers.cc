@@ -102,6 +102,7 @@
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/object_provider.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_case.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/url-coding.h"
@@ -1094,6 +1095,10 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
           jw.Uint64(path_metric.second.used_space);
           jw.String("total_space_size");
           jw.Uint64(path_metric.second.total_space);
+          if (!path_metric.second.storage_tier.empty()) {
+            jw.String("storage_tier");
+            jw.String(path_metric.second.storage_tier);
+          }
           jw.EndObject();
         }
         jw.EndArray();
@@ -1314,17 +1319,17 @@ string GetOnDiskSizeInHtml(const TabletReplicaDriveInfo &info) {
   std::ostringstream disk_size_html;
   disk_size_html << "<ul>"
                  << "<li>" << "Total: "
-                 << HumanReadableNumBytes::ToString(
+                 << HumanizeBytes(
                         info.sst_files_size + info.wal_files_size + info.vector_index_size)
                  << "<li>" << "WAL Files: "
-                 << HumanReadableNumBytes::ToString(info.wal_files_size)
+                 << HumanizeBytes(info.wal_files_size)
                  << "<li>" << "SST Files: "
-                 << HumanReadableNumBytes::ToString(info.sst_files_size)
+                 << HumanizeBytes(info.sst_files_size)
                  << "<li>" << "SST Files Uncompressed: "
-                 << HumanReadableNumBytes::ToString(info.uncompressed_sst_file_size);
+                 << HumanizeBytes(info.uncompressed_sst_file_size);
   if (info.vector_index_size > 0) {
     disk_size_html << "<li>" << "Vector Indexes: "
-                   << HumanReadableNumBytes::ToString(info.vector_index_size);
+                   << HumanizeBytes(info.vector_index_size);
   }
   disk_size_html << "</ul>";
 
@@ -1671,20 +1676,20 @@ void MasterPathHandlers::HandleAllTablesJSON(
         jw.String("on_disk_size");
         jw.StartObject();
         jw.String("wal_files_size");
-        jw.String(HumanReadableNumBytes::ToString(table.second.on_disk_size.wal_files_size));
+        jw.String(HumanizeBytes(table.second.on_disk_size.wal_files_size));
         jw.String("wal_files_size_bytes");
         jw.Uint64(table.second.on_disk_size.wal_files_size);
         jw.String("sst_files_size");
-        jw.String(HumanReadableNumBytes::ToString(table.second.on_disk_size.sst_files_size));
+        jw.String(HumanizeBytes(table.second.on_disk_size.sst_files_size));
         jw.String("sst_files_size_bytes");
         jw.Uint64(table.second.on_disk_size.sst_files_size);
         jw.String("uncompressed_sst_file_size");
         jw.String(
-            HumanReadableNumBytes::ToString(table.second.on_disk_size.uncompressed_sst_file_size));
+            HumanizeBytes(table.second.on_disk_size.uncompressed_sst_file_size));
         jw.String("uncompressed_sst_file_size_bytes");
         jw.Uint64(table.second.on_disk_size.uncompressed_sst_file_size);
         jw.String("vector_index_size");
-        jw.String(HumanReadableNumBytes::ToString(table.second.on_disk_size.vector_index_size));
+        jw.String(HumanizeBytes(table.second.on_disk_size.vector_index_size));
         jw.String("vector_index_size_bytes");
         jw.Uint64(table.second.on_disk_size.vector_index_size);
         jw.String("has_missing_size");
@@ -3812,9 +3817,9 @@ string MasterPathHandlers::ReplicaInfoToHtml(
     html << Format("UUID: $0<br/>", ts_uuid);
     html << Format(
         "Active SSTs size: $0<br/>",
-        HumanReadableNumBytes::ToString(replica.drive_info.sst_files_size));
+        HumanizeBytes(replica.drive_info.sst_files_size));
     html << Format(
-        "WALs size: $0\n", HumanReadableNumBytes::ToString(replica.drive_info.wal_files_size));
+        "WALs size: $0\n", HumanizeBytes(replica.drive_info.wal_files_size));
   }
   html << "</ul>\n";
   return html.str();

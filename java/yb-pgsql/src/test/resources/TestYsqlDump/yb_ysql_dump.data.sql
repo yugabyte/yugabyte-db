@@ -930,8 +930,7 @@ CREATE TABLE public.part_uniq_const (
     v3 integer NOT NULL,
     CONSTRAINT part_uniq_const_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
-PARTITION BY RANGE (v1)
-WITH (yb_presplit='');
+PARTITION BY RANGE (v1);
 
 
 \if :use_roles

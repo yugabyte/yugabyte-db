@@ -1,0 +1,64 @@
+title: RestoreInfo
+description: System-recorded restore metadata and status.
+type: object
+properties:
+  uuid:
+    description: Restore UUID.
+    type: string
+    format: uuid
+    readOnly: true
+  customer_uuid:
+    description: Customer UUID that owns the restore.
+    type: string
+    format: uuid
+    readOnly: true
+  universe_uuid:
+    description: Target universe UUID that was restored into.
+    type: string
+    format: uuid
+    readOnly: true
+  state:
+    description: Current restore state.
+    $ref: "./RestoreState.yaml"
+    readOnly: true
+  universe_name:
+    description: Target universe name.
+    type: string
+    readOnly: true
+  source_universe_uuid:
+    description: Source universe UUID the backup was taken from.
+    type: string
+    format: uuid
+    readOnly: true
+  source_universe_name:
+    description: Source universe name the backup was taken from.
+    type: string
+    readOnly: true
+  backup_type:
+    description: Table type of the restored backup.
+    $ref: "./TableType.yaml"
+    readOnly: true
+  backup_created_on_date:
+    description: Creation time of the backup that was restored.
+    type: string
+    format: date-time
+    readOnly: true
+  create_time:
+    description: Time when the restore was created.
+    type: string
+    format: date-time
+    readOnly: true
+  update_time:
+    description: Time when the restore was last updated.
+    type: string
+    format: date-time
+    readOnly: true
+  restore_size_in_bytes:
+    description: 'Total restored size, in bytes.'
+    type: integer
+    format: int64
+    readOnly: true
+  is_source_universe_present:
+    description: Whether the source universe still exists.
+    type: boolean
+    readOnly: true

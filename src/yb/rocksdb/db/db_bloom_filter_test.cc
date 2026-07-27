@@ -14,9 +14,12 @@
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/perf_context.h"
 #include "yb/rocksdb/port/stack_trace.h"
+#include "yb/rocksdb/table/block_based_table_reader.h"
 
 #include "yb/util/format.h"
 #include "yb/util/random_util.h"
+
+DECLARE_bool(enable_bloom_filter_block_cache);
 
 using std::unique_ptr;
 
@@ -1366,6 +1369,79 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
             TestGetTickerCount(options, BLOCK_CACHE_MULTI_TOUCH_ADD));
 }
 
+
+// Tests fixed-size bloom filter block cache. Builds an SST with multiple blocks bloom filter, then
+// scans non-monotonic sequence of filter keys through the BloomFilterAwareFileFilter using variable
+// filter mode. Checks that results with the cache enabled and disabled are byte-for-byte identical.
+TEST_F(DBBloomFilterTest, FilterBlockCacheConsistency) {
+  Options options = CurrentOptions();
+  options.env = env_;
+  options.disable_auto_compactions = true;
+
+  BlockBasedTableOptions table_options;
+  // Configure small fixed-size filter block to produce many filter blocks.
+  table_options.filter_policy.reset(NewFixedSizeFilterPolicy(
+      /* total_bits = */ 512, FilterPolicy::kDefaultFixedSizeFilterErrorRate,
+      /* logger = */ nullptr));
+  table_options.cache_index_and_filter_blocks = true;
+  table_options.no_block_cache = false;
+  options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+
+  DestroyAndReopen(options);
+
+  // Populate a single SST. Insert only even-indexed keys so that odd-indexed probe keys are
+  // absent for testing purposes.
+  constexpr int kNumKeys = 2000;
+  for (int i = 0; i < kNumKeys; ++i) {
+    ASSERT_OK(Put(Key(2 * i), "v" + std::to_string(i)));
+  }
+  ASSERT_OK(Flush());
+
+  // Deterministic non-monotonic probe order over the whole key space, mixing present (even) and
+  // absent (odd) keys.
+  constexpr int kNumProbes = 2 * kNumKeys;
+  constexpr int kStride = 977;  // prime, coprime with kNumProbes
+  std::vector<int> probe_order;
+  probe_order.reserve(kNumProbes);
+  for (int i = 0; i < kNumProbes; ++i) {
+    probe_order.push_back((i * kStride) % kNumProbes);
+  }
+
+  // Runs the probe sequence through a variable-filter iterator and records, per probe, whether
+  // the seek landed and on which key/value.
+  auto collect_results = [&]() {
+    static const BloomFilterAwareFileFilter bloom_filter_aware_file_filter;
+    ReadOptions read_opts;
+    read_opts.iterator_filter = &bloom_filter_aware_file_filter;
+    read_opts.defer_iterator_filter = true;
+    std::unique_ptr<Iterator> iter(db_->NewIterator(read_opts));
+    std::vector<std::string> results;
+    results.reserve(kNumProbes);
+    for (int idx : probe_order) {
+      const auto key = Key(idx);
+      iter->UpdateFilterKey(/* user_key_for_filter = */ key, /* seek_key = */ key);
+      const auto& entry = iter->Seek(key);
+      if (entry.Valid()) {
+        results.push_back(entry.key.ToBuffer() + "=" + entry.value.ToBuffer());
+      } else {
+        EXPECT_OK(iter->status());
+        results.push_back("<invalid>");
+      }
+    }
+    return results;
+  };
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_bloom_filter_block_cache) = true;
+  const auto with_cache = collect_results();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_bloom_filter_block_cache) = false;
+  const auto without_cache = collect_results();
+
+  ASSERT_EQ(with_cache.size(), without_cache.size());
+  for (size_t i = 0; i < with_cache.size(); ++i) {
+    ASSERT_EQ(with_cache[i], without_cache[i])
+        << "Mismatch at probe " << i << " (key index " << probe_order[i] << ")";
+  }
+}
 
 }  // namespace rocksdb
 

@@ -35,9 +35,11 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <ranges>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -2878,6 +2880,54 @@ Status WaitForTableIntentsApplied(
     ExternalMiniCluster *cluster, const TableId&, MonoDelta timeout) {
   // TODO(jhe) - Check for just table_id, currently checking for all intents.
   return CHECK_NOTNULL(cluster)->WaitForAllIntentsApplied(timeout);
+}
+
+void DumpTabletDistribution(ExternalMiniCluster* cluster, bool running_only) {
+  const auto num_ts = cluster->num_tablet_servers();
+
+  // table_name -> per-tserver replica counts, indexed by tserver index.
+  std::map<std::string, std::vector<int>> table_to_ts_loads;
+  std::vector<int> ts_totals(num_ts, 0);
+  for (size_t i = 0; i < num_ts; ++i) {
+    auto* ts = cluster->tablet_server(i);
+    auto tablets_result = cluster->GetTablets(ts);
+    if (!tablets_result.ok()) {
+      LOG(WARNING) << "Failed to list tablets for tserver " << ts->uuid() << ": "
+                   << tablets_result.status();
+      continue;
+    }
+    for (const auto& tablet : *tablets_result) {
+      // Skip replicas that are not actively serving (e.g. tombstoned replicas left behind after
+      // the load balancer moved a peer to another tserver); counting them would over-report load
+      // and disagree with the committed placement seen through the master.
+      if (running_only && tablet.state() != tablet::RUNNING) {
+        continue;
+      }
+      auto& loads = table_to_ts_loads[tablet.table_name()];
+      if (loads.empty()) {
+        loads.resize(num_ts);
+      }
+      loads[i]++;
+      ts_totals[i]++;
+    }
+  }
+
+  std::ostringstream out;
+  out << "Tablet distribution across " << num_ts << " tservers (replicas per table per tserver):";
+  for (size_t i = 0; i < num_ts; ++i) {
+    out << "\n  TS" << i << " = " << cluster->tablet_server(i)->uuid();
+  }
+  for (const auto& [table_name, loads] : table_to_ts_loads) {
+    out << "\n  " << table_name << ":";
+    for (size_t i = 0; i < num_ts; ++i) {
+      out << " " << (i < loads.size() ? loads[i] : 0);
+    }
+  }
+  out << "\n  TOTAL:";
+  for (size_t i = 0; i < num_ts; ++i) {
+    out << " " << ts_totals[i];
+  }
+  LOG(INFO) << out.str();
 }
 
 }  // namespace yb

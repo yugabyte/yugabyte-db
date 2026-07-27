@@ -22,7 +22,7 @@ import {
 } from '../../../../../../components/configRedesign/providerRedesign/constants';
 
 //icons
-import InfoIcon from '../../../../../assets/info-new.svg';
+import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 interface ProviderConfigurationFieldProps<T extends FieldValues>
   extends Omit<YBSelectProps, 'name' | 'control'> {

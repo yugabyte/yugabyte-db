@@ -11,6 +11,7 @@
 
 #include "yb/qlexpr/ql_serialization.h"
 
+#include "yb/util/status_log.h"
 #include "yb/util/write_buffer.h"
 
 namespace yb::qlexpr {

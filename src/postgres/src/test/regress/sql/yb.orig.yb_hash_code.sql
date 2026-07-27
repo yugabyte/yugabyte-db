@@ -54,15 +54,15 @@ DROP TYPE mood;
 CREATE TABLE test_table_one_primary (x INT PRIMARY KEY, y INT);
 INSERT INTO test_table_one_primary SELECT i,i FROM generate_series(1, 10000) i;
 \set query ':P SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) = 10427;'
-\i :iter_P2
+\i :run_query
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512;
 SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512 LIMIT 5;
 \set query ':P SELECT x, yb_hash_code(x) FROM test_table_one_primary WHERE x IN (1, 2, 3, 4) AND yb_hash_code(x) < 50000 ORDER BY x;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT yb_hash_code(x) FROM test_table_one_primary WHERE yb_hash_code(x) <= 20 AND yb_hash_code(x) < 9;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT yb_hash_code(x) FROM test_table_one_primary WHERE yb_hash_code(x) <= 20 AND yb_hash_code(x) > 90;'
-\i :iter_P2
+\i :run_query
 
 -- this should not be pushed down as (x,y) is not a hash primary key yet
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) < 512;
@@ -74,16 +74,16 @@ CREATE INDEX test_secondary ON test_table_one_primary ((x, y) HASH);
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) < 512;
 SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) < 512 LIMIT 5;
 \set query ':P SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) = 10;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT yb_hash_code(x, y) FROM test_table_one_primary WHERE yb_hash_code(x, y) <= 20 AND yb_hash_code(x, y) < 11;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT yb_hash_code(x, y) FROM test_table_one_primary WHERE yb_hash_code(x, y) <= 20 AND yb_hash_code(x, y) > 110;'
-\i :iter_P2
+\i :run_query
 
 
 -- testing with a qualification on yb_hash_code(x) and x
 \set query ':P SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512 AND x < 90;'
-\i :iter_P2
+\i :run_query
 
 -- should not be pushed down as the selectivity of this filter is too high
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) < 60000;
@@ -97,46 +97,46 @@ SELECT * FROM test_table_one_primary WHERE yb_hash_code(y,x) < 512 LIMIT 7;
 
 -- should not be pushed down as we don't support pushdown on IN filters yet
 \set query ':P SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) IN (1, 200, 326);'
-\i :iter_P2
+\i :run_query
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)  SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) BETWEEN 4 AND 512;
 SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) BETWEEN 4 AND 512 LIMIT 5;
 
 -- test ordering
 \set query ':P SELECT yb_hash_code(x), * FROM test_table_one_primary ORDER BY yb_hash_code(x), x LIMIT 10;'
-\i :iter_P2
+\i :run_query
 
 -- incomplete key
 \set query ':P SELECT yb_hash_code(x), * FROM test_table_one_primary ORDER BY yb_hash_code(x) LIMIT 10;'
-\i :iter_P2
+\i :run_query
 
 -- reverse order
 \set query ':P SELECT yb_hash_code(x), * FROM test_table_one_primary ORDER BY yb_hash_code(x) DESC, x DESC LIMIT 10;'
-\i :iter_P2
+\i :run_query
 
 -- yb_hash_code mismatch
 \set query ':P SELECT yb_hash_code(y), * FROM test_table_one_primary ORDER BY yb_hash_code(y), x LIMIT 10;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT yb_hash_code(x, -y), * FROM test_table_one_primary ORDER BY yb_hash_code(x, -y), x LIMIT 10;'
-\i :iter_P2
+\i :run_query
 
 -- direction mismatch
 \set query ':P SELECT yb_hash_code(x), * FROM test_table_one_primary ORDER BY yb_hash_code(x) DESC, x ASC LIMIT 10;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT yb_hash_code(x), * FROM test_table_one_primary ORDER BY yb_hash_code(x) ASC, x DESC LIMIT 10;'
-\i :iter_P2
+\i :run_query
 
 -- redundant key
 \set query ':P SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) = 11 ORDER BY x;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) = 11 ORDER BY x DESC;'
-\i :iter_P2
+\i :run_query
 
 -- non-redundant key
 \set query ':P SELECT * FROM test_table_one_primary WHERE yb_hash_code(y) = 11 ORDER BY x;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT * FROM test_table_one_primary WHERE yb_hash_code(x + 1) = 11 ORDER BY x;'
-\i :iter_P2
+\i :run_query
 
 DROP TABLE test_table_one_primary;
 
@@ -144,38 +144,38 @@ DROP TABLE test_table_one_primary;
 CREATE TABLE text_table (hr text, ti text, tj text, i int, j int, primary key (hr));
 INSERT INTO text_table SELECT i::TEXT, i::TEXT, i::TEXT, i, i FROM generate_series(1,10000) i;
 \set query ':P SELECT * FROM text_table WHERE yb_hash_code(hr) = 30;'
-\i :iter_P2
+\i :run_query
 
 -- testing pushdown on a secondary index with a text hash column
 CREATE INDEX textidx ON text_table (tj);
 \set query ':P SELECT * FROM text_table WHERE yb_hash_code(tj) = 63;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT * FROM text_table WHERE yb_hash_code(tj) <= 63;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT tj FROM text_table WHERE yb_hash_code(tj) <= 63;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT hr FROM text_table WHERE yb_hash_code(tj) < 63;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT tj FROM text_table WHERE 63 >= yb_hash_code(tj);'
-\i :iter_P2
+\i :run_query
 
 -- test ordering
 \set query ':P SELECT yb_hash_code(tj), * FROM text_table ORDER BY yb_hash_code(tj), tj LIMIT 5;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT yb_hash_code(tj), tj FROM text_table ORDER BY yb_hash_code(tj), tj LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- reverse order
 \set query ':P SELECT yb_hash_code(tj), * FROM text_table ORDER BY yb_hash_code(tj) DESC, tj DESC LIMIT 5;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT yb_hash_code(tj), tj FROM text_table ORDER BY yb_hash_code(tj) DESC, tj DESC LIMIT 5;'
-\i :iter_P2
+\i :run_query
 
 -- redundant key
 \set query ':P SELECT * FROM text_table WHERE yb_hash_code(tj) = 63 ORDER BY tj;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT * FROM text_table WHERE yb_hash_code(tj) = 63 ORDER BY tj DESC;'
-\i :iter_P2
+\i :run_query
 
 DROP TABLE text_table;
 
@@ -184,27 +184,27 @@ DROP TABLE text_table;
 CREATE TABLE test_table_multi_col_key(h1 BIGINT, h2 FLOAT, h3 TEXT, r1 TIMESTAMPTZ, r2 DOUBLE PRECISION, v1 INT, v2  DATE, v3 BOOLEAN, PRIMARY KEY ((h1, h2, h3) HASH, r1, r2));
 INSERT INTO test_table_multi_col_key SELECT i::BIGINT, i::FLOAT, i::TEXT, '2018-12-18 04:59:54-08'::TIMESTAMPTZ, i::DOUBLE PRECISION, i::INT, '2016-06-02'::DATE,(i%2)::BOOLEAN FROM generate_series(1, 10000) i;
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;'
-\i :iter_P2
+\i :run_query
 
 -- limit and order by
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 LIMIT 3;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 ORDER BY h1;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 ORDER BY h1 LIMIT 3;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT yb_hash_code(h1,h2,h3), * from test_table_multi_col_key ORDER BY yb_hash_code(h1,h2,h3), h1, h2, h3 LIMIT 3;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT yb_hash_code(h1,h2,h3), * from test_table_multi_col_key ORDER BY yb_hash_code(h1,h2,h3), h1, h2 LIMIT 3;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT yb_hash_code(h1,h2,h3), * from test_table_multi_col_key ORDER BY yb_hash_code(h1,h2,h3), h1 LIMIT 3;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) = 7 ORDER BY h1, h2, h3;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) = 7 ORDER BY h1 DESC;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) = 7 ORDER BY h1, h3;'
-\i :iter_P2
+\i :run_query
 
 -- create an index with the same set of primary keys as
 -- the primary index
@@ -217,16 +217,16 @@ CREATE INDEX multi_key_index_3 ON test_table_multi_col_key((r1, r2, v2, v3) HASH
 
 -- index only scan on multi_key_index
 \set query ':P SELECT h1 from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;'
-\i :iter_P2
+\i :run_query
 
 -- index scan on primary key index
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;'
-\i :iter_P2
+\i :run_query
 
 -- sequential scan as the selectivity of this filter is
 -- high
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60000 LIMIT 10;'
-\i :iter_P2
+\i :run_query
 
 -- testing pushdown where the input to the yb_hash_code
 -- does not match any index hash key
@@ -234,36 +234,36 @@ CREATE INDEX multi_key_index_3 ON test_table_multi_col_key((r1, r2, v2, v3) HASH
 -- sequential scan as no index has (h1,h2,h3,v1) as the
 -- hash key
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3,v1) < 60 LIMIT 10;'
-\i :iter_P2
+\i :run_query
 
 -- sequential scan as no index has (h1,h3,h2) as the
 -- hash key
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h3,h2) < 60 LIMIT 10;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,v3,v2,r2) < 60 LIMIT 10;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(r2,r1,v1) < 60 LIMIT 10;'
-\i :iter_P2
+\i :run_query
 
 -- pushdown for multi_key_index_2 and multi_key_index_3
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v1) < 60 LIMIT 10;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 60 LIMIT 10;'
-\i :iter_P2
+\i :run_query
 
 \set query ':P SELECT yb_hash_code(r1,r2,v1), * from test_table_multi_col_key ORDER BY yb_hash_code(r1,r2,v1), r1, r2, v1 LIMIT 3;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT yb_hash_code(r1,r2,v2,v3), * from test_table_multi_col_key ORDER BY yb_hash_code(r1,r2,v2,v3), r1, r2, v2 LIMIT 3;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT yb_hash_code(r1,r2,v1), * from test_table_multi_col_key ORDER BY yb_hash_code(r1,r2,v1), r1, r2, v2 LIMIT 3;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v1) = 6 ORDER BY r1, r2, v1;'
-\i :iter_P2
+\i :run_query
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) = 9 ORDER BY r1 DESC, r2 DESC;'
-\i :iter_P2
+\i :run_query
 
 -- cost model tests to make sure that pushdown occurs on the
 -- most selective yb_hash_code filter
@@ -271,7 +271,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
 SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 600 AND yb_hash_code(h1,h2,h3) < 65500 AND yb_hash_code(r1, r2, v1) > 5500 LIMIT 10;
 
 \set query ':P SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 600 AND yb_hash_code(h1,h2,h3) > 65500 AND yb_hash_code(r1, r2, v1) > 5500;'
-\i :iter_P2
+\i :run_query
 
 -- all given filters here have very high selectivity so this
 -- should be a sequential scan
@@ -285,7 +285,7 @@ CREATE TABLE test_index_only_scan_recheck(k INT PRIMARY KEY, v1 INT, v2 INT, v3 
 CREATE INDEX ON test_index_only_scan_recheck(v4) INCLUDE (v1);
 INSERT INTO test_index_only_scan_recheck SELECT s, s, s, s, s FROM generate_series(1, 100) AS s;
 \set query ':P SELECT v1, yb_hash_code(v4) FROM test_index_only_scan_recheck WHERE v4 IN (1, 2, 3) AND yb_hash_code(v4) < 50000;'
-\i :iter_P2
+\i :run_query
 
 DROP TABLE test_index_only_scan_recheck;
 
@@ -293,7 +293,7 @@ DROP TABLE test_index_only_scan_recheck;
 CREATE TABLE t as select x, x as y from generate_series(1, 10) x;
 CREATE INDEX t_x_hash_y_asc_idx ON t (x HASH, y ASC);
 \set query ':P SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);'
-\i :iter_P2
+\i :run_query
 DROP TABLE t;
 
 CREATE TABLE tt (i int, j int);
@@ -305,55 +305,55 @@ INSERT INTO tt VALUES (1, 2);
 \set explain 'EXPLAIN (COSTS OFF)'
 \set Q1 '/*+IndexScan(tt)*/'
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) > -1;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) >= -2;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) = -3;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) < -4;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) <= -5;'
-\i :iter_P2
+\i :run_query
 
 -- Higher than upper bound values
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) > 65536;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) >= 65537;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) = 65538;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) < 65539;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) <= 65540;'
-\i :iter_P2
+\i :run_query
 
 -- Values other than int4
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) > -2147483649;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) >= -2147483650;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) = -2147483651;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) < -2147483652;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) <= -2147483653;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) > 9223372036854775808;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) >= 9223372036854775809;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) = 9223372036854775810;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) < 9223372036854775811;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) <= 9223372036854775812;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) > -0.01;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) >= 123456.78;'
-\i :iter_P2
+\i :run_query
 \set query ':P :Q1 SELECT * FROM tt WHERE yb_hash_code(i) = 3.14;'
-\i :iter_P2
+\i :run_query
 
 -- GH18347 : yb_hash_code() in row constructor in predicate with an inequality fails
 TRUNCATE TABLE tt;
@@ -378,20 +378,19 @@ INSERT INTO tt VALUES(-2147483648, 3);
 \set Q1 '/*+IndexOnlyScan(tt)*/'
 \set Q2 '/*+SeqScan(tt)*/'
 \set query ':P :Q SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(1) hash_code_1 FROM tt WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2;'
-\set Pnext :iter_Q2
-\i :iter_P2
+\i :run_query
 
 -- Try variation.
 \set query ':P :Q SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(2) hash_code_2 FROM tt WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2;'
-\i :iter_P2
+\i :run_query
 
 -- Try a 1 element IN with row constructor. Should get an index scan since this turns into an equality.
 \set query ':P :Q SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(1) hash_code_1 FROM tt WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2;'
-\i :iter_P2
+\i :run_query
 
 -- Try an IN with yb_hash_code().
 -- TODO(#23362): expect index condition to be pushed down rather than PG filter.
 \set query ':P :Q SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(1) hash_code_1, yb_hash_code(2) hash_code_2 FROM tt WHERE yb_hash_code(i) IN (yb_hash_code(1), yb_hash_code(2)) ORDER BY 1, 2;'
-\i :iter_P2
+\i :run_query
 
 drop table tt;

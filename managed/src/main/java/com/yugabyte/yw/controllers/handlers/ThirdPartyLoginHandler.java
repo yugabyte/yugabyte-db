@@ -100,7 +100,7 @@ public class ThirdPartyLoginHandler {
    * @return the newly created user
    */
   public Users findUserByEmailOrCreateNewUser(Request request, String email) {
-    int customerCount = Customer.getAll().size();
+    int customerCount = Customer.find.query().findCount();
     boolean multiTenant = confGetter.getStaticConf().getBoolean("yb.multiTenant");
     if (multiTenant || customerCount > 1) {
       throw new PlatformServiceException(

@@ -21,6 +21,8 @@
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
+#include "yb/util/status_format.h"
+
 DEFINE_RUNTIME_uint32(xcluster_failover_restoration_wait_secs, 120,
     "Maximum number of seconds to wait for an xCluster failover restoration to finish before "
     "abandoning the wait and cleaning up the snapshot.");

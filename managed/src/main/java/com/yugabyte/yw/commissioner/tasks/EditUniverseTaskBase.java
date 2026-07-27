@@ -361,7 +361,9 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     }
 
     if (moveMastersFirst) {
-      // Example tasks are like ReplaceNode, DecommissionNode where there is only one node removal.
+      // Example tasks are like ReplaceNode, DecommissionNode where there is only one node
+      // removal.safe.
+      createMarkRollbackUnsafeTaskOnce();
       maybeMoveMasters(
           universe, clusters, liveNodes, newMasters, newTservers, mastersToStop, removeMasters);
     }
@@ -375,6 +377,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
     // Update placement info on master leader.
+    createMarkRollbackUnsafeTaskOnce();
     createPlacementInfoTask(null /* additional blacklist */, taskParams().clusters)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 

@@ -503,6 +503,7 @@ RpcAndWebServerBase::RpcAndWebServerBase(
   fs_opts.parent_mem_tracker = mem_tracker_;
   fs_opts.wal_paths = options.fs_opts.wal_paths;
   fs_opts.data_paths = options.fs_opts.data_paths;
+  fs_opts.tier_by_path = options.fs_opts.tier_by_path;
   fs_opts.server_type = options.server_type;
   fs_manager_.reset(new FsManager(options.env, fs_opts));
 

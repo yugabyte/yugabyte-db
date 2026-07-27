@@ -4,7 +4,7 @@ package api.v2.mappers;
 
 import api.v2.models.DrConfigReplicationDetailStatus;
 import api.v2.models.TableRelationType;
-import api.v2.models.TableType;
+import api.v2.models.XClusterTableType;
 import com.yugabyte.yw.models.XClusterNamespaceConfig.Status;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.XClusterTableConfig.ReplicationStatusError;
@@ -44,15 +44,15 @@ public interface DrConfigDetailEnumMapper {
   })
   DrConfigReplicationDetailStatus toDbDetailStatus(Status status);
 
-  default TableType toTableType(org.yb.CommonTypes.TableType tableType) {
+  default XClusterTableType toTableType(org.yb.CommonTypes.TableType tableType) {
     if (tableType == null) {
       return null;
     }
 
     return switch (tableType) {
-      case PGSQL_TABLE_TYPE -> TableType.YSQL;
-      case YQL_TABLE_TYPE -> TableType.YCQL;
-      default -> TableType.UNKNOWN;
+      case PGSQL_TABLE_TYPE -> XClusterTableType.YSQL;
+      case YQL_TABLE_TYPE -> XClusterTableType.YCQL;
+      default -> XClusterTableType.UNKNOWN;
     };
   }
 

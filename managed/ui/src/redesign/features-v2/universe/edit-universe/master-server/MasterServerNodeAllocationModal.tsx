@@ -48,6 +48,7 @@ const StyledEditMasterServerPanel = styled('div')(({ theme }) => ({
   display: 'flex',
   flexDirection: 'column',
   marginLeft: '58px',
+  marginTop: '8px',
   marginBottom: '24px',
   padding: '8px 16px',
   marginRight: '24px'
@@ -75,9 +76,8 @@ export const MasterServerNodeAllocationModal: FC<MasterServerNodeAllocationModal
   });
   const { universeData, providerRegions } = useEditUniverseContext();
   const [editHardwareOpen, setEditHardwareOpen] = useState(false);
-  const [pendingInstanceSettings, setPendingInstanceSettings] = useState<InstanceSettingProps | null>(
-    null
-  );
+  const [pendingInstanceSettings, setPendingInstanceSettings] =
+    useState<InstanceSettingProps | null>(null);
 
   const primaryCluster = universeData
     ? getClusterByType(universeData, ClusterSpecClusterType.PRIMARY)
@@ -104,11 +104,7 @@ export const MasterServerNodeAllocationModal: FC<MasterServerNodeAllocationModal
       return undefined;
     }
     const stats = countRegionsAzsAndNodes(placementForModal);
-    return mapUniversePayloadToResilienceAndRegionsProps(
-      providerRegions,
-      stats,
-      resilienceEntity
-    );
+    return mapUniversePayloadToResilienceAndRegionsProps(providerRegions, stats, resilienceEntity);
   }, [universeData, providerRegions, placementForModal, resilienceEntity]);
 
   const formDefaults = useMemo(() => {
@@ -143,7 +139,13 @@ export const MasterServerNodeAllocationModal: FC<MasterServerNodeAllocationModal
     return null;
   }
 
-  if (!universeData || !providerRegions?.length || !placementForModal || !regions || !formDefaults) {
+  if (
+    !universeData ||
+    !providerRegions?.length ||
+    !placementForModal ||
+    !regions ||
+    !formDefaults
+  ) {
     return null;
   }
 
@@ -160,9 +162,10 @@ export const MasterServerNodeAllocationModal: FC<MasterServerNodeAllocationModal
         onClose={handleClose}
         onSubmit={handleSubmit((data) => onApply(data, pendingInstanceSettings))}
         title={t('title')}
-        submitLabel={t('save', { keyPrefix: 'common' })}
+        submitLabel={t('save', { keyPrefix: 'applyChanges' })}
         cancelLabel={t('cancel', { keyPrefix: 'common' })}
         size="md"
+        titleSeparator
         buttonProps={{
           primary: {
             dataTestId: 'master-server-allocation-apply',
@@ -177,7 +180,7 @@ export const MasterServerNodeAllocationModal: FC<MasterServerNodeAllocationModal
       >
         <CreateUniverseContext.Provider
           value={
-            ([
+            [
               {
                 activeStep: 1,
                 resilienceAndRegionsSettings: regions
@@ -188,7 +191,7 @@ export const MasterServerNodeAllocationModal: FC<MasterServerNodeAllocationModal
                 ) => {},
                 moveToNextPage: () => {}
               }
-            ] as unknown) as createUniverseFormProps
+            ] as unknown as createUniverseFormProps
           }
         >
           <FormProvider {...methods}>

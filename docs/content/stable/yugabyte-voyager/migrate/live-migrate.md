@@ -16,14 +16,7 @@ rightNav:
 
 The following instructions describe the steps to perform and verify a successful live migration to YugabyteDB, including changes that continuously occur on the source.
 
-## Feature availability
-
-Live migration availability varies by the source database type as described in the following table:
-
-| Source database | Feature Maturity |
-| :---- | :---- |
-| PostgreSQL | {{<tags/feature/ga>}} |
-| Oracle | {{<tags/feature/tp>}} |
+Live migration for PostgreSQL source databases (using YugabyteDB Connector) is {{<tags/feature/ga>}}.
 
 ## Live migration workflow
 
@@ -69,315 +62,6 @@ Before proceeding with migration, ensure that you have completed the following s
 ## Prepare the source database
 
 Create a new database user, and assign the necessary user permissions.
-
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
-  <li>
-    <a href="#oracle" class="nav-link active" id="oracle-tab" data-bs-toggle="tab"
-      role="tab" aria-controls="oracle" aria-selected="true">
-      <i class="icon-oracle" aria-hidden="true"></i>
-      Oracle
-    </a>
-  </li>
-  <li >
-    <a href="#pg" class="nav-link" id="pg-tab" data-bs-toggle="tab"
-      role="tab" aria-controls="pg" aria-selected="false">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      PostgreSQL
-    </a>
-  </li>
-</ul>
-<div class="tab-content">
-  <div id="oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="oracle-tab">
-
-Live migration is {{<tags/feature/tp>}} for Oracle source databases.
-
-{{< tabpane text=true >}}
-
-  {{% tab header="Standalone Oracle Container Database" %}}
-
-1. Ensure that your database log_mode is `archivelog` as follows:
-
-    ```sql
-    SELECT LOG_MODE FROM V$DATABASE;
-    ```
-
-    ```output
-    LOG_MODE
-    ------------
-    ARCHIVELOG
-    ```
-
-    If log_mode is NOARCHIVELOG (that is, not enabled), run the following command:
-
-    ```sql
-    sqlplus /nolog
-    SQL>alter system set db_recovery_file_dest_size = 10G;
-    SQL>alter system set db_recovery_file_dest = '<oracle_path>/oradata/recovery_area' scope=spfile;
-    SQL> connect / as sysdba
-    SQL> Shutdown immediate
-    SQL> Startup mount
-    SQL> Alter database archivelog;
-    SQL> Alter database open;
-    ```
-
-1. Create the tablespaces as follows:
-
-    1. Connect to Pluggable database (PDB) as sysdba and run the following command:
-
-        ```sql
-        CREATE TABLESPACE logminer_tbs DATAFILE '/opt/oracle/oradata/ORCLCDB/ORCLPDB1/logminer_tbs.dbf'
-          SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
-        ```
-
-    1. Connect to Container database (CDB) as sysdba and run the following command:
-
-        ```sql
-        CREATE TABLESPACE logminer_tbs DATAFILE '/opt/oracle/oradata/ORCLCDB/logminer_tbs.dbf'
-          SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
-        ```
-
-1. Run the following commands from CDB as sysdba:
-
-    ```sql
-    CREATE USER c##ybvoyager IDENTIFIED BY password
-      DEFAULT TABLESPACE logminer_tbs
-      QUOTA UNLIMITED ON logminer_tbs
-      CONTAINER=ALL;
-
-    GRANT CREATE SESSION TO c##ybvoyager CONTAINER=ALL;
-    GRANT SET CONTAINER TO c##ybvoyager CONTAINER=ALL;
-    GRANT SELECT ON V_$DATABASE to c##ybvoyager CONTAINER=ALL;
-    GRANT FLASHBACK ANY TABLE TO c##ybvoyager CONTAINER=ALL;
-    GRANT SELECT ANY TABLE TO c##ybvoyager CONTAINER=ALL;
-    GRANT SELECT_CATALOG_ROLE TO c##ybvoyager CONTAINER=ALL;
-    GRANT EXECUTE_CATALOG_ROLE TO c##ybvoyager CONTAINER=ALL;
-    GRANT SELECT ANY TRANSACTION TO c##ybvoyager CONTAINER=ALL;
-    GRANT LOGMINING TO c##ybvoyager CONTAINER=ALL;
-
-    GRANT CREATE TABLE TO c##ybvoyager CONTAINER=ALL;
-    GRANT LOCK ANY TABLE TO c##ybvoyager CONTAINER=ALL;
-    GRANT CREATE SEQUENCE TO c##ybvoyager CONTAINER=ALL;
-
-    GRANT EXECUTE ON DBMS_LOGMNR TO c##ybvoyager CONTAINER=ALL;
-    GRANT EXECUTE ON DBMS_LOGMNR_D TO c##ybvoyager CONTAINER=ALL;
-
-    GRANT SELECT ON V_$LOG TO c##ybvoyager CONTAINER=ALL;
-    GRANT SELECT ON V_$LOG_HISTORY TO c##ybvoyager CONTAINER=ALL;
-    GRANT SELECT ON V_$LOGMNR_LOGS TO c##ybvoyager CONTAINER=ALL;
-    GRANT SELECT ON V_$LOGMNR_CONTENTS TO c##ybvoyager CONTAINER=ALL;
-    GRANT SELECT ON V_$LOGMNR_PARAMETERS TO c##ybvoyager CONTAINER=ALL;
-    GRANT SELECT ON V_$LOGFILE TO c##ybvoyager CONTAINER=ALL;
-    GRANT SELECT ON V_$ARCHIVED_LOG TO c##ybvoyager CONTAINER=ALL;
-    GRANT SELECT ON V_$ARCHIVE_DEST_STATUS TO c##ybvoyager CONTAINER=ALL;
-    GRANT SELECT ON V_$TRANSACTION TO c##ybvoyager CONTAINER=ALL;
-
-    GRANT SELECT ON V_$MYSTAT TO c##ybvoyager CONTAINER=ALL;
-    GRANT SELECT ON V_$STATNAME TO c##ybvoyager CONTAINER=ALL;
-    ```
-
-1. Enable supplemental logging in the database as follows:
-
-    ```sql
-    ALTER DATABASE ADD SUPPLEMENTAL LOG DATA;
-    ALTER DATABASE ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
-    ```
-
-  {{% /tab %}}
-
-  {{% tab header="RDS Oracle" %}}
-
-**Note** that the following steps assume you're using SQL*Plus or a compatible Oracle client that supports `EXEC`. If your client doesn't support `EXEC`, use the standard SQL CALL syntax instead.
-
-1. Ensure that your database log_mode is `archivelog` as follows:
-
-    ```sql
-    SELECT LOG_MODE FROM V$DATABASE;
-    ```
-
-    ```output
-    LOG_MODE
-    ------------
-    ARCHIVELOG
-    ```
-
-    If log_mode is NOARCHIVELOG (that is, not enabled), run the following command:
-
-    ```sql
-    exec rdsadmin.rdsadmin_util.set_configuration('archivelog retention hours',24);
-    ```
-
-1. Connect to your database as an admin user, and create the tablespaces as follows:
-
-    ```sql
-    CREATE TABLESPACE logminer_tbs DATAFILE SIZE 25M AUTOEXTEND ON MAXSIZE UNLIMITED;
-    ```
-
-1. Run the following commands connected to the admin or privileged user:
-
-    ```sql
-    CREATE USER ybvoyager IDENTIFIED BY password
-      DEFAULT TABLESPACE logminer_tbs
-      QUOTA UNLIMITED ON logminer_tbs;
-
-    GRANT CREATE SESSION TO YBVOYAGER;
-    begin rdsadmin.rdsadmin_util.grant_sys_object(
-          p_obj_name  => 'V_$DATABASE',
-          p_grantee   => 'YBVOYAGER',
-          p_privilege => 'SELECT');
-    end;
-    /
-
-    GRANT FLASHBACK ANY TABLE TO YBVOYAGER;
-    GRANT SELECT ANY TABLE TO YBVOYAGER;
-    GRANT SELECT_CATALOG_ROLE TO YBVOYAGER;
-    GRANT EXECUTE_CATALOG_ROLE TO YBVOYAGER;
-    GRANT SELECT ANY TRANSACTION TO YBVOYAGER;
-    GRANT LOGMINING TO YBVOYAGER;
-
-    GRANT CREATE TABLE TO YBVOYAGER;
-    GRANT LOCK ANY TABLE TO YBVOYAGER;
-    GRANT CREATE SEQUENCE TO YBVOYAGER;
-
-
-    begin rdsadmin.rdsadmin_util.grant_sys_object(
-          p_obj_name => 'DBMS_LOGMNR',
-          p_grantee => 'YBVOYAGER',
-          p_privilege => 'EXECUTE',
-          p_grant_option => true);
-    end;
-    /
-
-    begin rdsadmin.rdsadmin_util.grant_sys_object(
-          p_obj_name => 'DBMS_LOGMNR_D',
-          p_grantee => 'YBVOYAGER',
-          p_privilege => 'EXECUTE',
-          p_grant_option => true);
-    end;
-    /
-
-    begin rdsadmin.rdsadmin_util.grant_sys_object(
-          p_obj_name  => 'V_$LOG',
-          p_grantee   => 'YBVOYAGER',
-          p_privilege => 'SELECT');
-    end;
-    /
-
-    begin
-        rdsadmin.rdsadmin_util.grant_sys_object(
-            p_obj_name  => 'V_$LOG_HISTORY',
-            p_grantee   => 'YBVOYAGER',
-            p_privilege => 'SELECT');
-    end;
-    /
-
-    begin
-        rdsadmin.rdsadmin_util.grant_sys_object(
-            p_obj_name  => 'V_$LOGMNR_LOGS',
-            p_grantee   => 'YBVOYAGER',
-            p_privilege => 'SELECT');
-    end;
-    /
-
-    begin
-        rdsadmin.rdsadmin_util.grant_sys_object(
-            p_obj_name  => 'V_$LOGMNR_CONTENTS',
-            p_grantee   => 'YBVOYAGER',
-            p_privilege => 'SELECT');
-    end;
-    /
-
-    begin
-        rdsadmin.rdsadmin_util.grant_sys_object(
-            p_obj_name  => 'V_$LOGMNR_PARAMETERS',
-            p_grantee   => 'YBVOYAGER',
-            p_privilege => 'SELECT');
-    end;
-    /
-
-    begin
-        rdsadmin.rdsadmin_util.grant_sys_object(
-            p_obj_name  => 'V_$LOGFILE',
-            p_grantee   => 'YBVOYAGER',
-            p_privilege => 'SELECT');
-    end;
-    /
-
-    begin
-        rdsadmin.rdsadmin_util.grant_sys_object(
-            p_obj_name  => 'V_$ARCHIVED_LOG',
-            p_grantee   => 'YBVOYAGER',
-            p_privilege => 'SELECT');
-    end;
-    /
-
-    begin
-        rdsadmin.rdsadmin_util.grant_sys_object(
-            p_obj_name  => 'V_$ARCHIVE_DEST_STATUS',
-            p_grantee   => 'YBVOYAGER',
-            p_privilege => 'SELECT');
-    end;
-    /
-
-    begin
-        rdsadmin.rdsadmin_util.grant_sys_object(
-            p_obj_name  => 'V_$TRANSACTION',
-            p_grantee   => 'YBVOYAGER',
-            p_privilege => 'SELECT');
-    end;
-    /
-
-    begin
-        rdsadmin.rdsadmin_util.grant_sys_object(
-            p_obj_name  => 'V_$MYSTAT',
-            p_grantee   => 'YBVOYAGER',
-            p_privilege => 'SELECT');
-    end;
-    /
-
-    begin
-        rdsadmin.rdsadmin_util.grant_sys_object(
-            p_obj_name  => 'V_$STATNAME',
-            p_grantee   => 'YBVOYAGER',
-            p_privilege => 'SELECT');
-    end;
-    /
-    ```
-
-1. Enable supplemental logging in the database as follows:
-
-    ```sql
-    exec rdsadmin.rdsadmin_util.alter_supplemental_logging('ADD');
-
-    begin
-        rdsadmin.rdsadmin_util.alter_supplemental_logging(
-            p_action => 'ADD',
-            p_type   => 'ALL');
-    end;
-    /
-    ```
-
-  {{% /tab %}}
-
-{{< /tabpane >}}
-
-If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
-
-{{< note title="Connecting to Oracle instances" >}}
-
-You can use only one of the following arguments in the `source` parameter (configuration file) or CLI flag to connect to your Oracle instance:
-
-| `source` section parameters (configuration file)  | CLI Flag | Description |
-|---|---|---|
-|`db-schema`|`--source-db-schema`|Schema name of the source database.|
-|`oracle-db-sid`|`--oracle-db-sid`|Oracle System Identifier you can use while exporting data from Oracle instances.|
-|`oracle-tns-alias`|`--oracle-tns-alias`|TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.|
-
-{{< /note >}}
-
-  </div>
-  <div id="pg" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-tab">
-
-Live migration for PostgreSQL source database (using YugabyteDB Connector) is {{<tags/feature/ga>}}.
 
 {{< tabpane text=true >}}
 
@@ -478,8 +162,6 @@ Live migration for PostgreSQL source database (using YugabyteDB Connector) is {{
 {{< /tabpane >}}
 
 If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
-
-</div>
 
 ## Prepare the target database
 
@@ -609,7 +291,7 @@ target:
   db-host: <target-db-host>
   db-port: <target-db-port>
   db-name: <target-db-name>
-  db-schema: <target-db-schema> # MySQL and Oracle only
+  db-schema: <target-db-schema>
   db-user: <target-db-username>
   db-password: <target-db-password> # Enclose the password in single quotes if it contains special characters.
 ```
@@ -646,8 +328,6 @@ Configure the yugabyted UI as follows:
         ```
 
 ## Assess migration
-
-This step applies to PostgreSQL and Oracle migrations only.
 
 Assess migration analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB.
 
@@ -735,16 +415,7 @@ To begin, export the schema from the source database. Once exported, analyze the
 
 #### Export schema
 
-The `yb-voyager export schema` command extracts the schema from the source database, converts it into PostgreSQL format (if the source database is Oracle or MySQL), and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories.
-
-**For PostgreSQL migrations**:
-
-- Recommended schema optimizations from the [assess migration](#assess-migration) report are applied to ensure YugabyteDB compatibility and optimal performance.
-- A **Schema Optimization Report**, with details and an explanation of every change, is generated for your review.
-
-**For Oracle migrations**:
-
-- `source-db-schema` (CLI) or `db-schema` (configuration file) can take only one schema name and you can migrate _only one_ schema at a time.
+The `yb-voyager export schema` command extracts the schema from the source database, and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories. Recommended schema optimizations from the [assess migration](#assess-migration) report are applied to ensure YugabyteDB compatibility and optimal performance. A **Schema Optimization Report**, with details and an explanation of every change, is generated for your review.
 
 The `db-schema` key inside the `source` section parameters (configuration file), or the `--source-db-schema` flag (CLI), is used to specify the schema(s) to migrate from the source database.
 
@@ -959,8 +630,6 @@ yb-voyager creates a replication slot in the source database where disk space ca
 
 #### Caveats
 
-- Some data types are unsupported. For a detailed list, refer to [datatype mappings](../../reference/datatype-mapping-oracle/).
-- For Oracle where sequences are not attached to a column, resume value generation is unsupported.
 - `parallel-jobs` config parameter under the `export-data-from-source` section or the `--parallel-jobs` CLI argument (specifies the number of tables to be exported in parallel from the source database at a time) has no effect on live migration.
 
 Refer to [export data](../../reference/data-migration/export-data/#export-data) for more information on the use of the command.
@@ -1026,7 +695,7 @@ yb-voyager import data to target --export-dir <EXPORT_DIR> \
         --target-db-user <TARGET_DB_USER> \
         --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
         --target-db-name <TARGET_DB_NAME> \
-        --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only.
+        --target-db-schema <TARGET_DB_SCHEMA>
 ```
 
   {{% /tab %}}
@@ -1067,31 +736,6 @@ When importing a very large database, run the import data command in a `screen` 
 If the `yb-voyager import data to target` command terminates before completing the data ingestion, you can re-run it with the same arguments and the command will resume the data import operation.
 
 {{< /tip >}}
-
-##### Migrating Oracle source databases with large row sizes
-
-When migrating from Oracle source, when the snapshot import process, the default row size limit for data import is 32MB. If a row exceeds this limit but is smaller than the `batch-size * max-row-size`, you can increase the limit for the import data process by setting the `csv-reader-max-buffer-size-bytes` parameter in the `import-data-to-target` (configuration file) or export the environment variable `CSV_READER_MAX_BUFFER_SIZE_BYTES` with the value.
-
-{{< tabpane text=true >}}
-
-  {{% tab header="Config file" lang="config" %}}
-
-```yaml
-import-data-to-target:
-  csv-reader-max-buffer-size-bytes: <MAX_ROW_SIZE_IN_BYTES>
-```
-
-  {{% /tab %}}
-
-  {{% tab header="CLI" lang="cli" %}}
-
-```sh
-export CSV_READER_MAX_BUFFER_SIZE_BYTES = <MAX_ROW_SIZE_IN_BYTES>
-```
-
-{{< /tab >}}
-
-{{< /tabpane >}}
 
 #### get data-migration-report
 
@@ -1235,7 +879,7 @@ yb-voyager finalize-schema-post-data-import --export-dir <EXPORT_DIR> \
     --target-db-user <TARGET_DB_USER> \
     --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
     --target-db-name <TARGET_DB_NAME> \
-    --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
+    --target-db-schema <TARGET_DB_SCHEMA>
 
 ```
 
@@ -1305,7 +949,7 @@ yb-voyager compare-performance --export-dir <EXPORT_DIR> \
        --target-db-user <TARGET_DB_USER> \
        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
        --target-db-name <TARGET_DB_NAME> \
-       --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
+       --target-db-schema <TARGET_DB_SCHEMA>
 ```
 
   {{% /tab %}}
@@ -1389,10 +1033,7 @@ DROP USER ybvoyager;
 - Adding or deleting partitions of a partitioned table is not supported during the live migration.
 - Tables without primary key are not supported.
 - Truncating a table on the source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
-- Some Oracle data types are unsupported - User Defined Types (UDT), NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.
 - Some PostgreSQL data types are unsupported - POINT, LINE, LSEG, BOX, PATH, POLYGON, CIRCLE, GEOMETRY, GEOGRAPHY, BOX2D, BOX3D, TOPOGEOMETRY, RASTER, PG_LSN, TXID_SNAPSHOT, LO, INT4MULTIRANGE, INT8MULTIRANGE, NUMMULTIRANGE, TSMULTIRANGE, TSTZMULTIRANGE, DATEMULTIRANGE, VECTOR, TIMETZ.
-- Case-sensitive table names or column names are partially supported. YugabyteDB Voyager converts them to case-insensitive names. For example, an "Accounts" table in a source Oracle database is migrated as `accounts` (case-insensitive) to a YugabyteDB database.
-- For Oracle source databases, schema, table, and column names with more than 30 characters are not supported.
+- Case-sensitive table names or column names are partially supported. YugabyteDB Voyager converts them to case-insensitive names.
 - Sequences that are not associated with any column or are attached to columns of non-integer types are not supported for resuming value generation. These sequences must be manually resumed during the cutover phase.
-- For Oracle, only the values of identity columns on the migrating tables will be restored. The user will have to resume other sequences manually.
 

@@ -10,7 +10,10 @@ import api.v2.models.PitrConfigPagedQuerySpec;
 import api.v2.models.PitrConfigPagedResp;
 import api.v2.utils.NormalizedPaginationSpec;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.pitr.PitrConfigHelper;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import io.ebean.PagedList;
@@ -22,7 +25,12 @@ public class PitrApiControllerImp extends PitrApiControllerImpInterface {
   private final PitrConfigHelper helper;
 
   @Inject
-  public PitrApiControllerImp(PitrConfigHelper helper) {
+  public PitrApiControllerImp(
+      AuditService auditService,
+      Config config,
+      GFlagsAuditHandler gFlagsAuditHandler,
+      PitrConfigHelper helper) {
+    super(auditService, config, gFlagsAuditHandler);
     this.helper = helper;
   }
 

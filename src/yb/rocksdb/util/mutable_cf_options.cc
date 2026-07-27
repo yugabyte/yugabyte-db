@@ -140,6 +140,8 @@ void MutableCFOptions::Dump(Logger* log) const {
       verify_checksums_in_compaction);
   RLOG(log, "        max_sequential_skip_in_iterations: %" PRIu64,
       max_sequential_skip_in_iterations);
+  RLOG(log, "                          target_path_id: %" PRIu32,
+      target_path_id);
 }
 
 }  // namespace rocksdb

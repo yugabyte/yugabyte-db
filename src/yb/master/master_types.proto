@@ -233,6 +233,9 @@ message TServerMetricsPB {
     required bytes path_id = 1;
     optional uint64 used_space = 2;
     optional uint64 total_space = 3;
+    // Storage-tier label for this path (e.g. "ssd", "hdd").
+    // Absent means the path carries no explicit tier label (legacy deployments).
+    optional string storage_tier = 4;
   }
   repeated PathMetrics path_metrics = 8;
   optional bool disable_tablet_split_if_default_ttl = 9;

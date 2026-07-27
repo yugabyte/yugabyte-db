@@ -34,6 +34,12 @@ class PgSingleServerRestartTest : public LibPqTestBase {
   int GetNumTabletServers() const override {
     return 1;
   }
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    LibPqTestBase::UpdateMiniClusterOptions(options);
+    // Need to disable write pipelining since this test uses TEST_pause_update_majority_replicated
+    // to block writes and expects inserts to fail immediately.
+    options->extra_tserver_flags.push_back("--ysql_enable_write_pipelining=false");
+  }
 };
 
 // Test for rf-1 setup, during tablet bootstrap, max_safe_time_without_lease_ is updated to kNow

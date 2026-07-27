@@ -59,6 +59,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/url-coding.h"

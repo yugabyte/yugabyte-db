@@ -423,6 +423,7 @@ typedef struct ErrorData
 	/* context containing associated non-constant strings */
 	struct MemoryContextData *assoc_context;
 	bool		yb_owns_file_and_func;	/* Whether we own filename/funcname. */
+	int			yb_backtrace_extra_frames_skip;
 } ErrorData;
 
 extern void EmitErrorReport(void);
@@ -498,6 +499,25 @@ extern void write_stderr(const char *fmt,...) pg_attribute_printf(1, 2);
  */
 extern void write_stderr_signal_safe(const char *fmt);
 
+typedef struct YbStatusErrorDataFormatText {
+	const char *fmt;
+	size_t nargs;
+	const char **args;
+} YbStatusErrorDataFormatText;
+
+typedef struct YbStatusErrorDataErrorLocation {
+	const char *filename;
+	int lineno;
+	const char *funcname;
+} YbStatusErrorDataErrorLocation;
+
+typedef struct YbStatusErrorData {
+	YbStatusErrorDataFormatText msg;
+	YbStatusErrorDataFormatText detail;
+	YbStatusErrorDataFormatText detail_log;
+	YbStatusErrorDataErrorLocation location;
+} YbStatusErrorData;
+
 /* YB */
 /* YB_TODO (amartsinchyk)
  * These function needs review and modifications to match Pg15.
@@ -505,10 +525,8 @@ extern void write_stderr_signal_safe(const char *fmt);
 extern bool yb_errstart(int elevel);
 extern pg_attribute_cold bool yb_errstart_cold(int elevel);
 extern void yb_errfinish(const char *filename, int lineno, const char *funcname);
-extern int	yb_errmsg_from_status(const char *fmt, const size_t nargs, const char **args);
-extern int	yb_errdetail_from_status(const char *fmt, const size_t nargs, const char **args);
-extern int	yb_errdetail_log_from_status(const char *fmt, const size_t nargs, const char **args);
-extern void yb_errlocation_from_status(const char *filename, int lineno, const char *funcname);
+extern void yb_errapply_yb_status(const YbStatusErrorData *status_data,
+								  int backtrace_extra_frames_skip);
 extern sigjmp_buf *yb_get_exception_stack(void);
 extern void yb_set_exception_stack(sigjmp_buf *new_sigjmp_buf);
 extern void yb_reset_error_status(void);

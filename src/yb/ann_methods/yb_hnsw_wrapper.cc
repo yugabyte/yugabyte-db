@@ -17,6 +17,7 @@
 
 #include "yb/util/lockfree.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 
 #include "yb/vector_index/index_wrapper_base.h"
 

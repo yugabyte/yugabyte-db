@@ -28,7 +28,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
 @RunWith(value = YBTestRunner.class)
@@ -45,7 +44,7 @@ public class TestPgDdlFaultTolerance extends BasePgSQLTest {
     flags.put("ysql_enable_concurrent_ddl", "false");
     flags.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
         (e, a) -> e + "," + a);
-    flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    flags.put("ysql_yb_ddl_transaction_block_enabled", "true");
     return flags;
   }
 

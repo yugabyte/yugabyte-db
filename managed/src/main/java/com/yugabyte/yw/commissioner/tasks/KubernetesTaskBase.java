@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -94,6 +96,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
   protected boolean isSkipPrechecks() {
     return false;
+  }
+
+  protected TelemetryConfig getDesiredTelemetryConfig() {
+    return ExportTelemetryConfig.getForUniverse(taskParams().getUniverseUUID())
+        .map(ExportTelemetryConfig::getTelemetryConfig)
+        .orElse(null);
   }
 
   public static class KubernetesPlacement {
@@ -2006,6 +2014,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.azCode = azCode;
     params.providerUUID = providerUUID;
     params.universeDetails = taskParams();
+    params.telemetryConfig = getDesiredTelemetryConfig();
     params.helmReleaseName =
         KubernetesUtil.getHelmReleaseName(
             taskParams().nodePrefix,
@@ -2241,6 +2250,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     if (commandType == CommandType.HELM_INSTALL || commandType == CommandType.HELM_UPGRADE) {
       params.universeDetails = taskParams();
       params.universeConfig = universe.getConfig();
+      params.telemetryConfig = getDesiredTelemetryConfig();
     }
     // Case when new Universe is being created, we set the gflag "master_join_existing_cluster"
     // to 'false'.
@@ -2305,6 +2315,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.commandType = CommandType.HELM_UPGRADE;
     params.universeDetails = taskParams();
     params.universeConfig = universe.getConfig();
+    params.telemetryConfig = getDesiredTelemetryConfig();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.azCode = az;
     params.helmReleaseName =
@@ -2777,6 +2788,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.universeOverrides = universeOverrides;
     params.azOverrides = azOverrides;
     params.universeName = universeName;
+    params.telemetryConfig = getDesiredTelemetryConfig();
     // sending in the entire taskParams only for selected commandTypes that need it
     if (commandType == CommandType.HELM_INSTALL) {
       params.universeDetails = taskParams();
@@ -2916,6 +2928,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     if (commandType == CommandType.HELM_INSTALL || commandType == CommandType.HELM_UPGRADE) {
       params.universeDetails = taskParams();
       params.universeConfig = universe.getConfig();
+      params.telemetryConfig = getDesiredTelemetryConfig();
     }
     if (masterAddresses != null) {
       params.masterAddresses = masterAddresses;
@@ -2995,6 +3008,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.universeName = universeName;
     params.universeDetails = taskParams();
     params.universeConfig = universe.getConfig();
+    params.telemetryConfig = getDesiredTelemetryConfig();
     if (masterAddresses != null) {
       params.masterAddresses = masterAddresses;
     }

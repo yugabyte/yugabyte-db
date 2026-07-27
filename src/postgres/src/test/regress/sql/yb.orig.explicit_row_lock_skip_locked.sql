@@ -337,7 +337,6 @@ CLOSE cur;
 ROLLBACK;
 
 -- FETCH 1 -- returns 1 row and is expected to lock 1 row.
--- Overlocking: 3 extra rows (batch size = 4)locked beyond what was requested (GH-32001).
 BEGIN;
 DECLARE cur CURSOR FOR SELECT * FROM t_asc FOR UPDATE SKIP LOCKED;
 FETCH 1 FROM cur;

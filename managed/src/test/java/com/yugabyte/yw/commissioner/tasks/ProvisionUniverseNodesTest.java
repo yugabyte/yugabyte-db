@@ -33,7 +33,10 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -124,18 +127,40 @@ public class ProvisionUniverseNodesTest extends CommissionerBaseTest {
 
   @Test
   public void testRunIneligibleNodeNameRejected() {
+    // An unknown node name is rejected up front during params validation.
     ProvisionUniverseNodesParams params = createTaskParams();
     params.nodeNames = ImmutableSet.of("nonexistent-node");
-    TaskInfo taskInfo = submitTask(params);
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertThrows(PlatformServiceException.class, () -> submitTask(params));
   }
 
   @Test
   public void testRunSpecificNodeNameAccepted() {
+    // Only the explicitly requested node must be re-provisioned.
     String firstNodeName = defaultUniverse.getNodes().iterator().next().getNodeName();
     ProvisionUniverseNodesParams params = createTaskParams();
     params.nodeNames = ImmutableSet.of(firstNodeName);
+    params.expectedUniverseVersion = -1;
+    params.sleepAfterMasterRestartMillis = 5;
+    params.sleepAfterTServerRestartMillis = 5;
+    params.skipNodeChecks = true;
     TaskInfo taskInfo = submitTask(params);
+    assertEquals(ImmutableSet.of(firstNodeName), provisionedNodeNames(taskInfo));
+  }
+
+  @Test
+  public void testRunEmptyNodeNamesProvisionsAllNodes() {
+    // An empty nodeNames set keeps the "all nodes" behavior.
+    ProvisionUniverseNodesParams params = createTaskParams();
+    params.expectedUniverseVersion = -1;
+    params.sleepAfterMasterRestartMillis = 5;
+    params.sleepAfterTServerRestartMillis = 5;
+    params.skipNodeChecks = true;
+    TaskInfo taskInfo = submitTask(params);
+    Set<String> allNodeNames =
+        defaultUniverse.getNodes().stream()
+            .map(NodeDetails::getNodeName)
+            .collect(Collectors.toSet());
+    assertEquals(allNodeNames, provisionedNodeNames(taskInfo));
   }
 
   @Test
@@ -240,5 +265,15 @@ public class ProvisionUniverseNodesTest extends CommissionerBaseTest {
   private static String getStringParam(TaskInfo taskInfo, String field) {
     JsonNode params = taskInfo.getTaskParams();
     return (params != null && params.hasNonNull(field)) ? params.get(field).textValue() : null;
+  }
+
+  // Collects the names of the nodes that the task actually re-provisioned, derived from the
+  // per-node SetupYNP subtasks.
+  private static Set<String> provisionedNodeNames(TaskInfo taskInfo) {
+    return taskInfo.getSubTasks().stream()
+        .filter(t -> t.getTaskType() == TaskType.SetupYNP)
+        .map(t -> getStringParam(t, "nodeName"))
+        .filter(Objects::nonNull)
+        .collect(Collectors.toSet());
   }
 }

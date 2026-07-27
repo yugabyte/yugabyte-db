@@ -84,6 +84,14 @@ class TableReader {
   // be close to the file length.
   virtual uint64_t ApproximateOffsetOf(const Slice& key) = 0;
 
+  // Given a key, return the byte offset of the smallest key in the file that is greater than or
+  // equal to the given key.
+  // If the key is greater than the last key in the file, return the approximate end of the data
+  // If the key is less than the first key in the file, return 0.
+  virtual yb::Result<uint64_t> SeekOffsetOf(const Slice& key) {
+    return STATUS(NotSupported, "SeekOffsetOf() not supported");
+  }
+
   // Set up the table for Compaction. Might change some parameters with
   // posix_fadvise
   virtual void SetupForCompaction() = 0;

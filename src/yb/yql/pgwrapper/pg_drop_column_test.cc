@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/util/status_format.h"
+
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
 using std::string;

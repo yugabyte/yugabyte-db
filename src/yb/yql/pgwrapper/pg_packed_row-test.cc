@@ -1360,7 +1360,7 @@ namespace {
 std::optional<SchemaVersion> GetMinPrimarySchemaVersion(rocksdb::DB* db) {
   std::unordered_map<Uuid, SchemaVersion> versions;
   {
-    auto smallest = db->CalcMemTableFrontier(storage::UpdateUserValueType::kSmallest);
+    auto smallest = db->GetInMemoryFrontier(storage::UpdateUserValueType::kSmallest);
     if (smallest) {
       down_cast<docdb::ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(&versions);
     }

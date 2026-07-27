@@ -34,6 +34,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/type_traits.h"
 #include "yb/util/uuid.h"

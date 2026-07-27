@@ -1,7 +1,8 @@
-import { values } from 'lodash';
+import { isEmpty, values } from 'lodash';
 import { Region } from '@app/redesign/helpers/dtos';
 import {
   assignRegionsAZNodeByReplicationFactor,
+  getExpertNodesStepDefaultPlacement,
   getFaultToleranceNeeded,
   getGuidedNodesStepReplicationFactor
 } from '../../create-universe/CreateUniverseUtils';
@@ -45,6 +46,66 @@ function selectedRegionCodes(resilience: ResilienceAndRegionsProps): Set<string>
   return new Set((resilience.regions ?? []).map((region) => region.code));
 }
 
+/** Same region-key equality as useNodesAvailabilityStep.regionCodesMatchAvailabilityZones. */
+function regionCodesMatchAvailabilityZones(
+  regions: Region[],
+  availabilityZones: NodeAvailabilityProps['availabilityZones'] | undefined
+): boolean {
+  const selectedCodes = new Set(regions.map((r) => r.code));
+  const zoneKeys = new Set(Object.keys(availabilityZones ?? {}));
+  if (selectedCodes.size !== zoneKeys.size) {
+    return false;
+  }
+  for (const code of zoneKeys) {
+    if (!selectedCodes.has(code)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Prefer existing (universe) AZ rows for regions that stay selected; only fill
+ * missing/new regions from expert defaults (or guided assign fallback).
+ */
+function recalculateExpertNodesAvailability(
+  resilience: ResilienceAndRegionsProps,
+  nodesAndAvailability: NodeAvailabilityProps
+): NodeAvailabilityProps {
+  const selectedCodes = selectedRegionCodes(resilience);
+  const keptExisting = filterToSelectedRegions(
+    nodesAndAvailability.availabilityZones ?? {},
+    selectedCodes
+  );
+  const expertPlacement = getExpertNodesStepDefaultPlacement(resilience);
+  const defaultZones =
+    expertPlacement?.availabilityZones ?? assignRegionsAZNodeByReplicationFactor(resilience);
+
+  const mergedZones: NodeAvailabilityProps['availabilityZones'] = {};
+  for (const region of resilience.regions ?? []) {
+    const existing = keptExisting[region.code];
+    if (existing?.length) {
+      mergedZones[region.code] = existing;
+      continue;
+    }
+    const generated = defaultZones[region.code];
+    if (generated?.length) {
+      mergedZones[region.code] = generated;
+    }
+  }
+
+  return {
+    ...nodesAndAvailability,
+    useDedicatedNodes: nodesAndAvailability.useDedicatedNodes,
+    availabilityZones: mergedZones,
+    [REPLICATION_FACTOR]:
+      expertPlacement?.replicationFactor ??
+      nodesAndAvailability[REPLICATION_FACTOR] ??
+      resilience.resilienceFactor ??
+      1
+  };
+}
+
 function filterToSelectedRegions(
   availabilityZones: NodeAvailabilityProps['availabilityZones'],
   selectedCodes: Set<string>
@@ -56,19 +117,6 @@ function filterToSelectedRegions(
     }
   }
   return filtered;
-}
-
-function flattenZonesInRegionOrder(
-  availabilityZones: NodeAvailabilityProps['availabilityZones'],
-  regions: Region[]
-): Zone[] {
-  const flat: Zone[] = [];
-  for (const region of regions) {
-    for (const zone of availabilityZones[region.code] ?? []) {
-      flat.push(zone);
-    }
-  }
-  return flat;
 }
 
 function trimAzRowsToCount(
@@ -99,14 +147,18 @@ function trimAzRowsToCount(
   return result;
 }
 
+/**
+ * Map existing AZ rows onto the expected layout by matching uuid/name within the
+ * same region. Existing universe AZs are placed first so guided mode can treat
+ * them as the lead AZ (node count source). Remaining slots are filled from
+ * expected without duplicating names/uuids.
+ */
 function overlayExistingOntoExpected(
   expected: NodeAvailabilityProps['availabilityZones'],
   existing: NodeAvailabilityProps['availabilityZones'],
   regions: Region[]
 ): NodeAvailabilityProps['availabilityZones'] {
-  const flatExisting = flattenZonesInRegionOrder(existing, regions);
   const result: NodeAvailabilityProps['availabilityZones'] = {};
-  let existingIndex = 0;
   let rank = AZ_PREFFERED_HIGHEST_RANK;
 
   for (const region of regions) {
@@ -114,26 +166,88 @@ function overlayExistingOntoExpected(
     if (!expectedZones.length) {
       continue;
     }
-    result[region.code] = expectedZones.map((expectedZone) => {
-      const fromExisting = flatExisting[existingIndex];
-      existingIndex += 1;
-      if (fromExisting) {
-        return {
-          ...expectedZone,
-          ...fromExisting,
-          uuid: fromExisting.uuid || expectedZone.uuid,
-          name: fromExisting.name || expectedZone.name,
-          nodeCount: fromExisting.nodeCount ?? expectedZone.nodeCount,
-          preffered: rank++
-        };
+
+    const existingInRegion = existing[region.code] ?? [];
+    const usedKeys = new Set<string>();
+    const merged: Zone[] = [];
+
+    const markUsed = (zone: Zone) => {
+      if (zone.uuid) usedKeys.add(zone.uuid);
+      if (zone.name) usedKeys.add(zone.name);
+    };
+    const isUsed = (zone: Zone) =>
+      (Boolean(zone.uuid) && usedKeys.has(zone.uuid)) ||
+      (Boolean(zone.name) && usedKeys.has(zone.name));
+
+    // Existing universe zones first (matched to expected when possible).
+    for (const fromExisting of existingInRegion) {
+      if (merged.length >= expectedZones.length) {
+        break;
       }
-      return {
-        ...expectedZone,
-        preffered: rank++
+      if (isUsed(fromExisting)) {
+        continue;
+      }
+      const matchedExpected = expectedZones.find(
+        (expectedZone) =>
+          (Boolean(fromExisting.uuid) && fromExisting.uuid === expectedZone.uuid) ||
+          (Boolean(fromExisting.name) && fromExisting.name === expectedZone.name)
+      );
+      const zone = {
+        ...(matchedExpected ?? {}),
+        ...fromExisting,
+        uuid: fromExisting.uuid || matchedExpected?.uuid,
+        name: fromExisting.name || matchedExpected?.name,
+        nodeCount: fromExisting.nodeCount ?? matchedExpected?.nodeCount ?? 1,
+        preffered: AZ_NOT_PREFERRED
       };
-    });
+      merged.push(zone);
+      markUsed(zone);
+    }
+
+    // Fill remaining slots from expected, skipping already-selected AZs.
+    for (const expectedZone of expectedZones) {
+      if (merged.length >= expectedZones.length) {
+        break;
+      }
+      if (isUsed(expectedZone)) {
+        continue;
+      }
+      merged.push({ ...expectedZone, preffered: AZ_NOT_PREFERRED });
+      markUsed(expectedZone);
+    }
+
+    result[region.code] = merged.map((zone) => ({
+      ...zone,
+      preffered: rank++
+    }));
   }
 
+  return result;
+}
+
+/** Guided mode: every AZ uses the first AZ's node count (same rule as the nodes step UI). */
+function syncGuidedNodeCountsToFirstAz(
+  availabilityZones: NodeAvailabilityProps['availabilityZones'],
+  regions: Region[]
+): NodeAvailabilityProps['availabilityZones'] {
+  let nodeCount: number | undefined;
+  for (const region of regions) {
+    const first = availabilityZones[region.code]?.[0];
+    if (first && typeof first.nodeCount === 'number' && first.nodeCount >= 1) {
+      nodeCount = first.nodeCount;
+      break;
+    }
+  }
+  if (nodeCount === undefined) {
+    return availabilityZones;
+  }
+
+  const result: NodeAvailabilityProps['availabilityZones'] = {};
+  for (const [code, zones] of Object.entries(availabilityZones ?? {})) {
+    result[code] = zones.map((zone) =>
+      zone.nodeCount === nodeCount ? zone : { ...zone, nodeCount }
+    );
+  }
   return result;
 }
 
@@ -219,7 +333,15 @@ export function normalizeEditPlacementNodesAvailability(
   }
 
   if (resilience.resilienceFormMode === ResilienceFormMode.EXPERT_MODE) {
-    return nodesAndAvailability;
+    const regions = resilience.regions ?? [];
+    const { availabilityZones } = nodesAndAvailability;
+    if (
+      !isEmpty(availabilityZones) &&
+      regionCodesMatchAvailabilityZones(regions, availabilityZones)
+    ) {
+      return nodesAndAvailability;
+    }
+    return recalculateExpertNodesAvailability(resilience, nodesAndAvailability);
   }
 
   const { availabilityZones, ...rest } = nodesAndAvailability;
@@ -247,8 +369,12 @@ export function normalizeEditPlacementNodesAvailability(
     } else {
       normalizedZones = overlayExistingOntoExpected(expectedZones, filteredExisting, regions);
     }
+    normalizedZones = syncGuidedNodeCountsToFirstAz(normalizedZones, regions);
   } else {
-    normalizedZones = overlayExistingOntoExpected(expectedZones, filteredExisting, regions);
+    normalizedZones = syncGuidedNodeCountsToFirstAz(
+      overlayExistingOntoExpected(expectedZones, filteredExisting, regions),
+      regions
+    );
   }
 
   return {

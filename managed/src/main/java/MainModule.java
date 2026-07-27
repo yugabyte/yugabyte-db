@@ -95,6 +95,7 @@ import com.yugabyte.yw.common.operator.utils.UniverseImporter;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.rbac.RoleUtil;
+import com.yugabyte.yw.common.rollback.TaskRollbackModule;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
@@ -220,6 +221,18 @@ public class MainModule extends AbstractModule {
       System.clearProperty(TMPDIR_PROPERTY);
     }
 
+    // snappy-java extracts libsnappyjava.so into java.io.tmpdir on first use and
+    // dlopen()s it. When /tmp is mounted with noexec that load fails with
+    // UnsatisfiedLinkError, breaking Prometheus Remote Read (see RemoteReadClient).
+    // Point snappy-java at the same storage-path region we already use for BC FIPS
+    // natives (guaranteed exec-safe).
+    Path snappyTempPath = storagePath.resolve("snappy");
+    if (!snappyTempPath.toFile().exists() && !snappyTempPath.toFile().mkdirs()) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Failed to create snappy temp dir " + snappyTempPath);
+    }
+    System.setProperty("org.xerial.snappy.tempdir", snappyTempPath.toAbsolutePath().toString());
+
     TLSConfig.modifyTLSDisabledAlgorithms(config);
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
     bind(RuntimeConfigCacheInvalidator.class).asEagerSingleton();
@@ -230,6 +243,7 @@ public class MainModule extends AbstractModule {
     bind(RuntimeConfigCache.class).asEagerSingleton();
 
     install(new CloudModules());
+    install(new TaskRollbackModule());
     PrometheusRegistry.defaultRegistry.clear();
     try {
       DomainValidator.updateTLDOverride(DomainValidator.ArrayType.LOCAL_PLUS, TLD_OVERRIDE);

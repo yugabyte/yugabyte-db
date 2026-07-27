@@ -314,7 +314,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - Global objects like Users, Roles, and Tablespaces are not replicated. These objects must be manually managed on the standby universe.
 - DDLs related to Materialized Views (`CREATE`, `DROP`, and `REFRESH`) are not replicated. You can manually run these on both universes by setting the YSQL configuration parameter `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`.
-- `ALTER COLUMN TYPE`, `ADD COLUMN ... SERIAL`, and `ALTER LARGE OBJECT` DDLs are not supported.
+- `ALTER COLUMN TYPE`, `ADD COLUMN ... SERIAL`, and [ALTER LARGE OBJECT](https://www.postgresql.org/docs/15/sql-alterlargeobject.html) DDLs are not supported (YugabyteDB does not support [large objects](https://www.postgresql.org/docs/15/largeobjects.html), see issue {{<issue 25318>}}).
 - DDLs related to `PUBLICATION` and `SUBSCRIPTION` are not supported.
 - Replication of colocated tables is not yet supported.  See {{<issue 25926>}}.
 - Rewinding of sequences (for example, restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
@@ -324,7 +324,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 #### Transactional Semi-Automatic and Manual mode
 
-- Schema changes are not automatically replicated. All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables).
+- Schema changes are not automatically replicated. All DDL changes must be manually applied to both source and target universes. For more information, refer to [DDLs in semi-automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/#making-ddl-changes) and [DDLs in manual mode](../../../deploy/multi-dc/async-replication/async-transactional-tables/).
 
   An exception are DDLs related to PUBLICATION and SUBSCRIPTION, which should only be used on the source universe.
 

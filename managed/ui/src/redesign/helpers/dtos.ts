@@ -101,7 +101,7 @@ export interface DeviceInfo {
   numVolumes: number;
   diskIops: number | null;
   throughput: number | null;
-  storageClass: 'standard'; // hardcoded in DeviceInfo.java
+  storageClass: string;
   mountPoints: string | null;
   storageType: StorageType | null;
 }
