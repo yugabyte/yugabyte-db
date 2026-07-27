@@ -65,6 +65,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   // Public types.
   using ScopedRefPtr = PgSessionPtr;
   using RunRWOperationsHook = std::function<Status(std::optional<PgSessionRunOperationMarker>)>;
+  using TableCache = std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash>;
 
   // Constructors.
   PgSession(
@@ -371,7 +372,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   std::string errmsg_;
 
   uint64_t table_cache_min_ysql_catalog_version_ = 0;
-  std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
+  TableCache table_cache_;
 
   using InsertOnConflictPlanBuffer = std::pair<void *, InsertOnConflictBuffer>;
   std::vector<InsertOnConflictPlanBuffer> insert_on_conflict_buffers_;
