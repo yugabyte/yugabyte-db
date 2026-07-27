@@ -1,0 +1,27 @@
+name: "yb-gh"
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+    paths:
+      - 'src/**/*.proto'
+
+jobs:
+  pr-upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR upgrade info
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          body="$PR_BODY"
+          UPG_RE='upgrade.*(downgrade|rollback)\ssafety'
+          # downcase the body for regex matching
+          if [[ ! "${body,,}" =~ $UPG_RE ]]; then
+            echo "::error ::PR description must include upgrade/rollback safety information"
+            echo "::error ::for any changes to .proto files."
+            echo "::error ::This should include whether the change is safe for rollback"
+            echo "::error ::and any special procedures needed."
+            echo "::error ::Example: Upgrade/Downgrade Safety: ..."
+            exit 1
+          fi
