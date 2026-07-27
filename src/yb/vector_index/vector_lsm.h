@@ -93,6 +93,7 @@ struct VectorLSMOptions {
   MergeFilterFactory vector_merge_filter_factory;
   std::string file_extension;
   MetricEntityPtr metric_entity;
+  size_t block_cache_capacity = 0;
 };
 
 YB_DEFINE_ENUM(CompactionType, (kBackground)(kManual));
@@ -376,5 +377,8 @@ void MergeChunkResults(
     std::vector<VectorWithDistance<DistanceResult>>& combined_results,
     std::vector<VectorWithDistance<DistanceResult>>& chunk_results,
     size_t max_num_results);
+
+// Resolves max mem-store size for a Vector LSM compaction output chunk. Returns 0 for no limit.
+size_t TEST_GetCompactionChunkMaxMemStoreBytes(size_t block_cache_capacity);
 
 }  // namespace yb::vector_index
