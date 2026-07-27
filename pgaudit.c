@@ -1803,32 +1803,41 @@ pgaudit_ProcessUtility_hook(PlannedStmt *pstmt,
         stack_valid(stackId);
 
         /*
-         * If row tracking is on and a select/dml audit entry was deferred for
-         * this utility command then log it here.  Table-form COPY is checked
-         * via ExecutorCheckPerms (which saves rangeTabls on the stack item)
-         * but is executed entirely within DoCopy() and never runs ExecutorEnd,
-         * so the deferred entry would otherwise be lost.  Use the processed
-         * count from the completed command as the rows affected.
+         * The executor hooks do not supply the rows affected for a utility
+         * command that defers a select/dml audit entry, nor for COPY.  Use the
+         * processed count from the completed command instead.
          */
-        if (auditLogRows && stackItem->auditEvent.rangeTabls != NULL)
+        if (auditLogRows &&
+            (stackItem->auditEvent.rangeTabls != NULL ||
+             stackItem->auditEvent.commandTag == T_CopyStmt))
         {
             stackItem->auditEvent.rows = qc ? qc->nprocessed : 0;
 
-            log_select_dml(stackItem->auditEvent.auditOid,
-                           stackItem->auditEvent.rangeTabls,
-                           stackItem->auditEvent.permInfos);
+            /*
+             * Table-form COPY has its permissions checked via
+             * ExecutorCheckPerms, which saves rangeTabls on the stack item and
+             * defers the select/dml audit entry to ExecutorEnd.  Since the
+             * command is executed entirely within DoCopy() ExecutorEnd is never
+             * reached, so log the deferred entry here or it would be lost.
+             * Query-form COPY (COPY (query) TO) never has rangeTabls set on its
+             * stack item, because permissions are checked against the inner
+             * query's stack item, so it is logged by log_audit_event() below.
+             */
+            if (stackItem->auditEvent.rangeTabls != NULL)
+            {
+                AuditEventStackItem *auditEventStackFull = auditEventStack;
+
+                /* Reset auditEventStack to use in log_select_dml() */
+                auditEventStack = stackItem;
+
+                log_select_dml(stackItem->auditEvent.auditOid,
+                               stackItem->auditEvent.rangeTabls,
+                               stackItem->auditEvent.permInfos);
+
+                /* Switch back to the previous auditEventStack */
+                auditEventStack = auditEventStackFull;
+            }
         }
-        /*
-         * Query-form COPY (COPY (query) TO) runs its inner query through the
-         * executor, which logs a separate select/dml entry with the row count,
-         * and then the COPY statement itself is logged by log_audit_event()
-         * below.  Apply the processed count so that entry also reports the rows
-         * affected instead of zero.  (Table-form COPY is handled by the flush
-         * above, which marks the entry logged, so it is skipped here.)
-         */
-        else if (auditLogRows &&
-                 stackItem->auditEvent.commandTag == T_CopyStmt)
-            stackItem->auditEvent.rows = qc ? qc->nprocessed : 0;
 
         /*
          * Log the utility command if logging is on, the command has not
