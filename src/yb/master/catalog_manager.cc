@@ -6332,9 +6332,12 @@ Result<scoped_refptr<TableInfo>> CatalogManager::FindTableByIdUnlocked(
     const TableId& table_id, bool include_deleted) const {
   auto table = tables_->FindTableOrNull(table_id);
   if (table == nullptr || (!include_deleted && table->is_deleted())) {
+    // Use the same wording as CheckIfTableDeletedOrNotVisibleToClient uses for the DELETING state,
+    // so the error for a concurrently dropped table does not depend on how far the asynchronous
+    // deletion progressed.
     return STATUS_EC_FORMAT(
         NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
-        "Table with identifier $0 not found", table_id);
+        "Table with id $0 does not exist", table_id);
   }
   return table;
 }
