@@ -17,6 +17,7 @@ import {
   getNodesAvailabilityDefaultsForEditPlacement,
   getResilienceAndRegionsProps,
   isCurrentConfigSupportedByGuidedMode,
+  resolveEditPlacementNodesOnSave,
   useGetEditPlacementContext
 } from './EditPlacementUtils';
 import { EditPlacementSteps } from './EditPlacementContext';
@@ -36,15 +37,18 @@ export const EditPlacementResilience = () => {
   );
   const resilienceRef = useRef<StepsRef>(null);
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.steps' });
-  const [{ resilience }, addEditPlacementMethods, { hideModal }] = useGetEditPlacementContext();
+  const [{ resilience, nodesAndAvailability }, addEditPlacementMethods, { hideModal }] =
+    useGetEditPlacementContext();
 
-  const enableGuidedMode = useMemo(() => {
-    const nodesAndAvailability = getNodesAvailabilityDefaultsForEditPlacement(
-      universeData!,
-      selectedPartitionUUID
-    );
-    return isCurrentConfigSupportedByGuidedMode(resilienceProps, nodesAndAvailability).isSupported;
-  }, [resilienceProps, selectedPartitionUUID]);
+  const universeNodesDefaults = useMemo(
+    () => getNodesAvailabilityDefaultsForEditPlacement(universeData!, selectedPartitionUUID),
+    [universeData, selectedPartitionUUID]
+  );
+
+  const enableGuidedMode = useMemo(
+    () => isCurrentConfigSupportedByGuidedMode(resilienceProps, universeNodesDefaults).isSupported,
+    [resilienceProps, universeNodesDefaults]
+  );
 
   return (
     <CreateUniverseContext.Provider
@@ -53,6 +57,7 @@ export const EditPlacementResilience = () => {
           {
             activeStep: 1,
             resilienceAndRegionsSettings: resilience ?? resilienceProps,
+            nodesAvailabilitySettings: nodesAndAvailability,
             generalSettings: {
               cloud: primaryCluster?.placement_spec?.cloud_list?.[0]?.code,
               providerConfiguration: {
@@ -64,15 +69,17 @@ export const EditPlacementResilience = () => {
           {
             setResilienceType: () => {},
             saveResilienceAndRegionsSettings: (data: ResilienceAndRegionsProps) => {
-              const nodesAndAvailability = getNodesAvailabilityDefaultsForEditPlacement(
-                universeData!,
-                selectedPartitionUUID
-              );
               addEditPlacementMethods.setResilience(data);
-              addEditPlacementMethods.setNodesAndAvailability(nodesAndAvailability);
+              // Seed universe placement once; do not overwrite on every persist/unmount flush
+              // (region-change clears to {} so nodes step can rebuild for newly selected regions).
+              if (!nodesAndAvailability) {
+                addEditPlacementMethods.setNodesAndAvailability(universeNodesDefaults);
+              }
             },
             saveNodesAvailabilitySettings: (data: NodeAvailabilityProps) => {
-              addEditPlacementMethods.setNodesAndAvailability(data);
+              addEditPlacementMethods.setNodesAndAvailability(
+                resolveEditPlacementNodesOnSave(data, universeNodesDefaults)
+              );
             },
             moveToNextPage: () => {
               addEditPlacementMethods.setActiveStep(

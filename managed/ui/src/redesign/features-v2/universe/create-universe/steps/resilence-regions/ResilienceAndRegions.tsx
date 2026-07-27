@@ -29,7 +29,8 @@ import {
   computeResilienceTypeFromProvider,
   getAZCount,
   getFaultToleranceNeeded,
-  isCurrentConfigSupportedByGuidedMode
+  isCurrentConfigSupportedByGuidedMode,
+  getGuidedNodesStepReplicationFactor
 } from '../../CreateUniverseUtils';
 import {
   CreateUniverseContext,
@@ -222,13 +223,20 @@ export const ResilienceAndRegions = forwardRef<
 
     if (formMode === ResilienceFormMode.EXPERT_MODE) {
       const ft = methods.getValues(FAULT_TOLERANCE_TYPE);
-      if (ft === FaultToleranceType.NODE_LEVEL || ft === FaultToleranceType.NONE) {
-        methods.setValue(FAULT_TOLERANCE_TYPE, FaultToleranceType.AZ_LEVEL, { shouldValidate: true });
-        saveResilienceAndRegionsSettings({
-          ...methods.getValues(),
-          [FAULT_TOLERANCE_TYPE]: FaultToleranceType.AZ_LEVEL
-        });
-      }
+      const factor = methods.getValues(RESILIENCE_FACTOR);
+      const nextFt =
+        ft === FaultToleranceType.NODE_LEVEL || ft === FaultToleranceType.NONE
+          ? FaultToleranceType.AZ_LEVEL
+          : ft;
+      // Guided stores FT degree; expert stores raw RF (mirror RF→FT when entering guided).
+      const nextRf = getGuidedNodesStepReplicationFactor(ft, factor);
+      methods.setValue(FAULT_TOLERANCE_TYPE, nextFt, { shouldValidate: true });
+      methods.setValue(RESILIENCE_FACTOR, nextRf, { shouldValidate: true });
+      saveResilienceAndRegionsSettings({
+        ...methods.getValues(),
+        [FAULT_TOLERANCE_TYPE]: nextFt,
+        [RESILIENCE_FACTOR]: nextRf
+      });
     }
   }, [formMode, methods, saveNodesAvailabilitySettings, saveResilienceAndRegionsSettings]);
 
