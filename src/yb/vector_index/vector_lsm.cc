@@ -22,6 +22,8 @@
 
 #include "yb/ash/wait_state.h"
 
+#include "yb/gutil/strings/human_readable.h"
+
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/storage/frontier.h"
@@ -70,7 +72,18 @@ DEFINE_RUNTIME_uint64(vector_index_compaction_always_include_size_threshold, 64_
 
 DEFINE_RUNTIME_uint64(vector_index_compaction_chunk_max_mem_store_size_mb, 0,
     "Maximum in-memory size in megabytes for a single output chunk built during Vector LSM "
-    "compaction. 0 means no limit (single output chunk).");
+    "compaction. 0 means no limit (single output chunk). When non-zero, this flag takes priority "
+    "over `vector_index_compaction_chunk_max_mem_store_size_percentage`.");
+
+DEFINE_RUNTIME_uint32(vector_index_compaction_chunk_max_mem_store_size_percentage, 60,
+    "Maximum in-memory size for a single output chunk built during Vector LSM "
+    "compaction, as a percentage of the vector index block cache capacity. "
+    "0 means no limit (single output chunk). Values above 100 are treated as 100. "
+    "Ignored when `vector_index_compaction_chunk_max_mem_store_size_mb` is non-zero or "
+    "concurrent compactions are allowed (`vector_index_num_compactions_limit` is not 1).");
+
+DEFINE_RUNTIME_uint32(vector_index_num_compactions_limit, 1,
+    "Number of vector index compaction per tserver. 0 - no limit per tserver.");
 
 DEFINE_RUNTIME_int32(vector_index_compaction_priority_start_bound, 0,
     "Compaction task of Vector LSM that has number of chunk files less than specified will have "
@@ -133,6 +146,53 @@ namespace {
 YB_DEFINE_ENUM(ImmutableChunkState, (kInMemory)(kOnDisk)(kInManifest));
 YB_DEFINE_ENUM(CompactionState, (kNone)(kCompacting)(kCompacted));
 YB_DEFINE_ENUM(ManifestUpdateType, (kFull)(kActual));
+
+// Resolves the max mem-store size for a Vector LSM compaction output chunk from gflags.
+// --vector_index_compaction_chunk_max_mem_store_size_mb takes priority when non-zero.
+// Otherwise --vector_index_compaction_chunk_max_mem_store_size_percentage of block_cache_capacity
+// is used when --vector_index_num_compactions_limit is 1 (meaning no concurrent compactions).
+// Returned bytes == 0 means no limit.
+struct CompactionChunkMemStoreLimit {
+  size_t bytes = 0;
+  std::string description = "-";
+};
+
+CompactionChunkMemStoreLimit GetCompactionChunkMaxMemStoreBytes(size_t block_cache_capacity) {
+  const auto max_mem_store_size_mb = FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb;
+  if (max_mem_store_size_mb) {
+    return {
+      .bytes = max_mem_store_size_mb * 1_MB,
+      .description = Format("$0 MB", max_mem_store_size_mb),
+    };
+  }
+
+  // Concurrent compactions disable the percentage limit (no automatic budget).
+  // Users should set --vector_index_compaction_chunk_max_mem_store_size_mb.
+  if (FLAGS_vector_index_num_compactions_limit != 1) {
+    LOG_IF(WARNING, FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage != 0)
+        << "vector_index_compaction_chunk_max_mem_store_size_percentage is ignored because "
+        << "concurrent vector index compactions are allowed; set "
+        << "vector_index_compaction_chunk_max_mem_store_size_mb";
+    return {.description = "- (percentage disabled by concurrent compactions)"};
+  }
+
+  auto percentage = FLAGS_vector_index_compaction_chunk_max_mem_store_size_percentage;
+  if (percentage > 100) {
+     LOG(WARNING) << "Setting vector_index_compaction_chunk_max_mem_store_size_percentage to 100";
+     percentage = 100;
+  }
+
+  const size_t bytes = block_cache_capacity * percentage / 100;
+  if (!bytes) {
+    return {};
+  }
+  return {
+    .bytes = bytes,
+    .description = Format(
+        "$0% of block cache ($1)", percentage,
+        HumanReadableNumBytes::ToString(block_cache_capacity)),
+  };
+}
 
 // While mutable chunk is running, this value is added to num_tasks.
 // During stop, we decrease num_tasks by this value. So zero num_tasks means that mutable chunk
@@ -2685,22 +2745,22 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(
   // Input chunks collection must be sorted by order_no and each chunk must be in manifest.
   DCHECK(!input_chunks.empty());
 
-  std::stringstream output_chunk_limit_info;
   size_t max_vectors_per_output_chunk = 0;
-  if (FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb) {
-    const size_t bytes_limit = FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb * 1_MB;
-    max_vectors_per_output_chunk = EstimateNumVectorsForBytes(bytes_limit);
+  auto [limit, info] = GetCompactionChunkMaxMemStoreBytes(options_.block_cache_capacity);
+  if (limit) {
+    max_vectors_per_output_chunk = EstimateNumVectorsForBytes(limit);
     LOG_IF_WITH_PREFIX(DFATAL, max_vectors_per_output_chunk == 0)
-        << "Max vector per output chunks estimated to 0 for " << bytes_limit << " bytes, "
-        << "chunked compaction will be ineffective";
-    output_chunk_limit_info
-        << FLAGS_vector_index_compaction_chunk_max_mem_store_size_mb << " MB, "
-        << bytes_limit << " bytes, up to " << max_vectors_per_output_chunk << " vectors per chunk";
+        << "Max vector per output chunks estimated to 0 for "
+        << HumanReadableNumBytes::ToString(limit)
+        << ", chunked compaction will be ineffective";
+    info = Format(
+        "$0, $1, up to $2 vectors per chunk",
+        info, HumanReadableNumBytes::ToString(limit), max_vectors_per_output_chunk);
   }
 
   LOG_WITH_PREFIX(INFO)
       << "Compaction input [chunks: " << input_chunks.size() << "], output chunk limit: "
-      << output_chunk_limit_info.str();
+      << info;
 
   RSTATUS_DCHECK(options_.vector_merge_filter_factory,
       IllegalState, "Vector merge filter factory must be specified");
@@ -3092,5 +3152,9 @@ template void MergeChunkResults<float>(
     std::vector<VectorWithDistance<float>>& combined_results,
     std::vector<VectorWithDistance<float>>& chunk_results,
     size_t max_num_results);
+
+size_t TEST_GetCompactionChunkMaxMemStoreBytes(size_t block_cache_capacity) {
+  return GetCompactionChunkMaxMemStoreBytes(block_cache_capacity).bytes;
+}
 
 }  // namespace yb::vector_index
