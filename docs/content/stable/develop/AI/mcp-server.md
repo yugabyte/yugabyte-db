@@ -271,7 +271,9 @@ over the ~2-year period covered by the dataset.
 
 For shared or remote deployments (HTTP transport), you can enable OIDC (AWS Cognito or a generic OIDC provider) so each authenticated caller runs SQL under their own YugabyteDB role via `SET ROLE`.
 
-Identity mapping mirrors YSQL's native OIDC role mapping (`ysql_ident_conf_csv` / `matching_claim_key`):
+Using identity mapping, you can map usernames and group names authenticated via OIDC to roles in the YugabyteDB database. This way, OIDC usernames and groups dont need to be an exact match for role names in the YugabyteDB database. For example, you can map a username `yng` in Okta (via a regular expression match) to a YugabyteDB database role `yng_role`. When the OIDC user `yng` logs in, the user inherits the permissions associated with the mapped `yng_role` role.
+
+Identity mapping mirrors YSQL's native OIDC role mapping (`ysql_ident_conf_csv` / `jwt_matching_claim_key`):
 
 | Environment variable | Purpose |
 | -------------------- | ------- |
