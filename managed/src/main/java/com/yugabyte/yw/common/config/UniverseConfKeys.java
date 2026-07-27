@@ -1117,6 +1117,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "and the node does not have any tablets assigned to it in the tserver quorum.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> checkShellConnectivity =
+      new ConfKeyInfo<>(
+          "yb.checks.check_shell_connectivity",
+          ScopeType.UNIVERSE,
+          "Enable shell connectivity check",
+          "If enabled, performs a pre-check to verify YSQL/YCQL client connectivity"
+              + " before kubernetes software upgrades.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> clusterMembershipCheckTimeout =
       new ConfKeyInfo<>(
           "yb.checks.cluster_membership.timeout",
