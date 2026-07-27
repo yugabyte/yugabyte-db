@@ -21985,6 +21985,11 @@
       "legendFormat" : "Total",
       "expr" : "sum(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"ysql_conn_mgr_clients_total\"}[300s])) by (saved_name)",
       "refId" : "D"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Sticky",
+      "expr" : "sum(avg_over_time({node_prefix=~\"$dbcluster\", saved_name=\"ysql_conn_mgr_sticky_connections\"}[300s])) by (saved_name)",
+      "refId" : "E"
     } ],
     "gridPos" : {
       "w" : 12,
