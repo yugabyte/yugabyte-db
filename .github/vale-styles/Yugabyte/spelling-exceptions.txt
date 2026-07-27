@@ -733,6 +733,7 @@ tablespace
 tablespaces
 tanuki
 tcpdump
+Tectia
 templated
 Thanos
 Thoughtbot

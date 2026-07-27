@@ -801,6 +801,10 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
   private void createCheckShellConnectivityTask() {
     Universe universe = getUniverse();
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.checkShellConnectivity)) {
+      log.info("Skipping shell connectivity check.");
+      return;
+    }
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (userIntent.enableClientToNodeEncrypt) {

@@ -5,6 +5,8 @@ import {
   YSQLAuditConfigLogLevel
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
+import { getPreservedTelemetrySections } from '../../shared/telemetryConfigPreserveUtils';
+
 export const AUDIT_LOG_TRANSLATION_KEY_PREFIX = 'editUniverse.logs.auditLogSettings';
 
 export type AuditLogOperation = 'create' | 'edit';
@@ -75,37 +77,32 @@ const buildYsqlAuditConfig = (
   return ysqlConfig as YSQLAuditConfig;
 };
 
-/**
- * The export-telemetry-configs API fully replaces the telemetry config, so we preserve the
- * existing query_logs and metrics sections and only modify audit_logs. Existing audit-log
- * exporters and YCQL config are preserved as-is (export selection is managed via Telemetry Export).
- *
- * The GET returns audit_logs/metrics as null when those exports are disabled, but the API
- * rejects null sections, so we only carry them over when they are actually configured.
- */
 export const buildTelemetryConfig = (
   values: AuditLogFormValues,
   currentTelemetryConfig?: TelemetryConfig
 ): TelemetryConfig => {
-  const telemetryConfig: TelemetryConfig = {
+  const preserved = getPreservedTelemetrySections(currentTelemetryConfig);
+  const existingAuditLogs = preserved.audit_logs;
+
+  return {
+    ...preserved,
     audit_logs: {
       ysql_audit_config: buildYsqlAuditConfig(
         values,
         currentTelemetryConfig?.audit_logs?.ysql_audit_config
       ),
-      ...(currentTelemetryConfig?.audit_logs?.ycql_audit_config && {
-        ycql_audit_config: currentTelemetryConfig.audit_logs.ycql_audit_config
+      ...(existingAuditLogs?.ycql_audit_config && {
+        ycql_audit_config: existingAuditLogs.ycql_audit_config
       }),
       exporters: currentTelemetryConfig?.audit_logs?.exporters ?? []
     }
   };
+};
 
-  if (currentTelemetryConfig?.query_logs) {
-    telemetryConfig.query_logs = currentTelemetryConfig.query_logs;
-  }
-  if (currentTelemetryConfig?.metrics) {
-    telemetryConfig.metrics = currentTelemetryConfig.metrics;
-  }
-
-  return telemetryConfig;
+export const buildDisableTelemetryConfig = (
+  currentTelemetryConfig?: TelemetryConfig
+): TelemetryConfig => {
+  const preserved = getPreservedTelemetrySections(currentTelemetryConfig);
+  delete preserved.audit_logs;
+  return preserved;
 };

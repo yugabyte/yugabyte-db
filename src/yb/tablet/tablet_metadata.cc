@@ -804,6 +804,10 @@ bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
 }
 
 // ============================================================================
+std::string GetDataRootFromTabletDir(const std::string& tablet_rocksdb_dir) {
+  return DirName(DirName(DirName(tablet_rocksdb_dir)));
+}
+
 namespace {
 
 constexpr size_t kMaxTierPaths = 32;
@@ -812,7 +816,7 @@ constexpr size_t kMaxTierPaths = 32;
 std::vector<TierPathInfo> BuildTierPaths(
     FsManager* fs_manager, const std::string& home_rocksdb_dir) {
   // home_rocksdb_dir == <data_root>/rocksdb/table-X/tablet-Y  (3 levels under the data root).
-  const std::string home_data_root = DirName(DirName(DirName(home_rocksdb_dir)));
+  const std::string home_data_root = GetDataRootFromTabletDir(home_rocksdb_dir);
   // Relative suffix shared by every slot, e.g. "rocksdb/table-X/tablet-Y".
   std::string rel_suffix;
   // safety check: home_rocksdb_dir should be a subdirectory of home_data_root
@@ -2297,7 +2301,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   partition.ToPB(superblock.mutable_partition());
 
   fs_manager_->SetTabletPathByDataPath(raft_group_id,
-                                       DirName(DirName(DirName(kv_store_.rocksdb_dir))));
+                                       GetDataRootFromTabletDir(kv_store_.rocksdb_dir));
   RaftGroupMetadataPtr metadata(new RaftGroupMetadata(fs_manager_, raft_group_id));
   RETURN_NOT_OK(metadata->LoadFromSuperBlock(superblock, /* local_superblock = */ true));
   metadata->state_ = kInitialized;

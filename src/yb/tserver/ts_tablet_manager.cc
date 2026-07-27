@@ -1004,7 +1004,8 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
     RaftConfigPB config,
     const bool colocated,
     const std::vector<SnapshotScheduleId>& snapshot_schedules,
-    const std::unordered_set<StatefulServiceKind>& hosted_services) {
+    const std::unordered_set<StatefulServiceKind>& hosted_services,
+    const std::string& target_storage_tier) {
   LOG_WITH_FUNC(INFO) << "Table: " << table_info->ToString();
 
   SCOPED_WAIT_STATUS(CreatingNewTablet);
@@ -1029,7 +1030,8 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
   string data_root_dir;
   string wal_root_dir;
   GetAndRegisterDataAndWalDir(
-      fs_manager_, table_info->table_id, tablet_id, &data_root_dir, &wal_root_dir);
+      fs_manager_, table_info->table_id, tablet_id, &data_root_dir, &wal_root_dir,
+      target_storage_tier);
   fs_manager_->SetTabletPathByDataPath(tablet_id, data_root_dir);
   auto create_result = RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
     .fs_manager = fs_manager_,
@@ -3277,7 +3279,8 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
                                                   const string& table_id,
                                                   const string& tablet_id,
                                                   string* data_root_dir,
-                                                  string* wal_root_dir) {
+                                                  string* wal_root_dir,
+                                                  const string& target_tier) {
   // Skip sys catalog table and kudu table from modifying the map.
   if (table_id == master::kSysCatalogTableId) {
     return;
@@ -3295,33 +3298,40 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
       table_data_assignment_map_[table_id][data_root_iter] = tablet_id_set;
     }
   }
-  // Find the data directory with the least count of tablets for this table.
-  // Break ties by choosing the data directory with the least number of tablets overall.
-  table_data_assignment_iter = table_data_assignment_map_.find(table_id);
-  auto data_assignment_value_map = table_data_assignment_iter->second;
-  string min_dir;
-  uint64_t min_dir_count = kuint64max;
-  uint64_t min_tablet_counts_across_tables = kuint64max;
-  for (auto& [dir, tablets_in_dir] : data_assignment_value_map) {
-    if (min_dir_count > tablets_in_dir.size() ||
-        (min_dir_count == tablets_in_dir.size() &&
-         min_tablet_counts_across_tables > data_dirs_per_drive_[dir])) {
-      min_dir = dir;
-      min_dir_count = tablets_in_dir.size();
-      min_tablet_counts_across_tables = data_dirs_per_drive_[min_dir];
+
+  // Tiered storage: if a target tier was requested (e.g. from the tablespace's storage_tier),
+  // restrict the candidate disks to that tier so the new tablet's home dir (path_id 0) lands
+  // on the right tier. If the tier isn't configured on this node, fall back to all disks rather
+  // than failing tablet creation outright.
+  // TODO(TieredStorage): wire up LB detection/reconciliation for tier-violating replicas.
+  // For this fallback to be safe long-term, the master's load balancer needs to detect a
+  // replica that isn't respecting its tablespace's tier placement and reconcile it
+  // (locally via AlterTabletTier, or RBS).
+  std::vector<string> candidate_dirs = data_root_dirs;
+  if (!target_tier.empty()) {
+    auto tier_dirs = fs_manager->GetDataRootDirsForTier(target_tier);
+    if (tier_dirs.empty()) {
+      LOG(WARNING) << Format(
+          "No data roots configured for target storage tier '$0' on this node; falling back to "
+          "default disk selection for tablet $1", target_tier, tablet_id);
+    } else {
+      candidate_dirs = std::move(tier_dirs);
     }
   }
+
+  // Find the data directory with the least count of tablets for this table.
+  // Break ties by choosing the data directory with the least number of tablets overall.
+  string min_dir = PickMinLoadDataRootUnlocked(table_id, candidate_dirs);
   *data_root_dir = min_dir;
   // Increment the count for min_dir.
-  auto data_assignment_value_iter = table_data_assignment_map_[table_id].find(min_dir);
-  data_assignment_value_iter->second.insert(tablet_id);
+  table_data_assignment_map_[table_id][min_dir].insert(tablet_id);
   data_dirs_per_drive_[min_dir] += 1;
 
   // Find the wal directory with the least count of tablets for this table.
   // Break ties by choosing the wal directory with the least number of tablets overall.
   min_dir = "";
-  min_dir_count = kuint64max;
-  min_tablet_counts_across_tables = kuint64max;
+  uint64_t min_dir_count = kuint64max;
+  uint64_t min_tablet_counts_across_tables = kuint64max;
   auto wal_root_dirs = fs_manager->GetWalRootDirs();
   CHECK(!wal_root_dirs.empty()) << "No wal root directories found";
   auto table_wal_assignment_iter = table_wal_assignment_map_.find(table_id);
@@ -3346,6 +3356,68 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
   auto wal_assignment_value_iter = table_wal_assignment_map_[table_id].find(min_dir);
   wal_assignment_value_iter->second.insert(tablet_id);
   wal_dirs_per_drive_[min_dir] += 1;
+}
+
+Result<uint32_t> TSTabletManager::SelectPathIdForTier(
+    const tablet::RaftGroupMetadata& meta,
+    const std::string& table_id,
+    const std::string& target_tier) {
+  // Get candidate data roots directly from FsManager's tier map (built from --fs_data_dirs).
+  // These are the same directory strings used as keys in table_data_assignment_map_.
+  const auto candidate_dirs = fs_manager_->GetDataRootDirsForTier(target_tier);
+  if (candidate_dirs.empty()) {
+    return STATUS_FORMAT(
+        NotFound,
+        "No data roots configured for tier '$0' on this node (tablet $1)",
+        target_tier, meta.raft_group_id());
+  }
+
+  std::lock_guard dir_assignment_lock(dir_assignment_mutex_);
+  const std::string chosen_dir = PickMinLoadDataRootUnlocked(table_id, candidate_dirs);
+
+  // Map chosen data root back to path_id via the tablet's tier_paths.
+  for (const auto& tp : meta.tier_paths()) {
+    if (tp.tier == target_tier && tablet::GetDataRootFromTabletDir(tp.path) == chosen_dir) {
+      return tp.path_id;
+    }
+  }
+  return STATUS_FORMAT(
+      InternalError,
+      "Data root '$0' selected for tier '$1' has no matching tier_paths entry in tablet $2",
+      chosen_dir, target_tier, meta.raft_group_id());
+}
+
+std::string TSTabletManager::PickMinLoadDataRootUnlocked(
+    const std::string& table_id,
+    const std::vector<std::string>& candidate_dirs) {
+  std::string min_dir;
+  // Number of tablets belonging to table_id already on the candidate dir (per-table count).
+  uint64_t min_tablet_count = kuint64max;
+  // Number of tablets from any table already on the candidate dir (global tie-break count).
+  uint64_t min_global_count = kuint64max;
+
+  auto table_it = table_data_assignment_map_.find(table_id);
+  for (const auto& dir : candidate_dirs) {
+    uint64_t tablet_count = 0;
+    if (table_it != table_data_assignment_map_.end()) {
+      auto dir_it = table_it->second.find(dir);
+      if (dir_it != table_it->second.end()) {
+        tablet_count = dir_it->second.size();
+      }
+    }
+    uint64_t global_count = 0;
+    auto gc_it = data_dirs_per_drive_.find(dir);
+    if (gc_it != data_dirs_per_drive_.end()) {
+      global_count = gc_it->second;
+    }
+    if (tablet_count < min_tablet_count ||
+        (tablet_count == min_tablet_count && global_count < min_global_count)) {
+      min_dir = dir;
+      min_tablet_count = tablet_count;
+      min_global_count = global_count;
+    }
+  }
+  return min_dir;
 }
 
 void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,

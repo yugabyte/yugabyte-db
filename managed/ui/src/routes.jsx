@@ -38,6 +38,7 @@ import { testFeatureFlagsLocalStorageKey } from './reducers/feature';
 import { Replication } from './pages/Replication';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
+import StateTransitionPage from './components/universes/UniverseDetail/compounds/StateTransitionDetails';
 import { SlotDetail } from './redesign/features/universe/universe-tabs/replication-slots/components/SlotDetail';
 import {
   clearRbacCreds,
@@ -262,6 +263,12 @@ export default (store) => {
       <Route
         path="/universes/:uuid/add-read-replica"
         component={(props) => <AddReadReplica {...props} />}
+        onEnter={authenticatedSession}
+        onChange={checkIfAuthenticated}
+      />
+      <Route
+        path="/universes/:uuid/state_transition"
+        component={StateTransitionPage}
         onEnter={authenticatedSession}
         onChange={checkIfAuthenticated}
       />

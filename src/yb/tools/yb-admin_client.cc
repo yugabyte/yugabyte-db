@@ -4090,6 +4090,8 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
   }
 
   cout << "CDC Stream ID: " << resp.db_stream_id() << endl;
+  cout << "WARNING: yb-admin create_change_data_stream is deprecated. "
+       << "Use pg_create_logical_replication_slot('<slot>', 'yb_grpc') instead." << endl;
   return Status::OK();
 }
 

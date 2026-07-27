@@ -1954,22 +1954,22 @@ Status Log::CopyTo(const std::string& dest_wal_dir, const OpId max_included_op_i
   });
 
   SegmentSequence segments;
-  scoped_refptr<LogIndex> log_index;
   {
     UniqueLock<PerCpuRwMutex> l(state_lock_);
-    if (log_state_ != kLogInitialized) {
-      SCHECK_EQ(log_state_, kLogWriting, IllegalState, Format("Invalid log state: $0", log_state_));
+    SCHECK(
+        log_state_ == kLogInitialized || log_state_ == kLogWriting, IllegalState,
+        Format("Invalid log state: $0", log_state_));
+    {
       ReverseLock<decltype(l)> rlock(l);
+      // If the log is not yet open for writing (kLogInitialized, e.g. when SPLIT_OP is replayed
+      // during tablet bootstrap), open it first so we can rollover current active segment if it is
+      // not empty.
+      RETURN_NOT_OK(EnsureSegmentInitialized());
       // Rollover current active segment if it is not empty.
       RETURN_NOT_OK(AllocateSegmentAndRollOver());
     }
 
-    SCHECK(
-        log_state_ == kLogInitialized || log_state_ == kLogWriting, IllegalState,
-        Format("Invalid log state: $0", log_state_));
-    // Remember log_index, because it could be reset if someone closes the log after we release
-    // state_lock_.
-    log_index = log_index_;
+    SCHECK_EQ(log_state_, kLogWriting, IllegalState, Format("Invalid log state: $0", log_state_));
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
 
     // We skip the last snapshot segment because it might be mutable and is either:

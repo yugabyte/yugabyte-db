@@ -626,6 +626,11 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
 
   @Test
   public void testPgInheritsCacheConsistency() throws Exception {
+    // Force a single backend so stmt2's transaction reuses the backend that cached
+    // prt, matching the snapshot assumptions below. Under Connection Manager the
+    // default warmup spreads queries across backends, so the transaction could pin
+    // its snapshot on a backend that loads prt after the concurrent CREATE.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
     try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
          Connection connection2 = getConnectionBuilder().withTServer(1).connect();
          Statement stmt1 = connection1.createStatement();

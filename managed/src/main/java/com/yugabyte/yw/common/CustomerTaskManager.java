@@ -9,7 +9,6 @@ import static io.ebean.DB.commitTransaction;
 import static io.ebean.DB.endTransaction;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-import static play.mvc.Http.Status.NOT_IMPLEMENTED;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
@@ -32,9 +31,11 @@ import com.yugabyte.yw.common.YsqlQueryExecutor.ConsistencyInfoResp;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.rollback.RollbackContext;
+import com.yugabyte.yw.common.rollback.RollbackSubmission;
+import com.yugabyte.yw.common.rollback.TaskRollbackComputer;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -83,7 +84,6 @@ import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
-import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.YBAError;
@@ -131,7 +131,7 @@ public class CustomerTaskManager {
   private final FileDataService fileDataService;
   private final ReleaseManager releaseManager;
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
-  private final UpgradeUniverseHandler upgradeUniverseHandler;
+  private final Map<TaskType, TaskRollbackComputer> taskRollbackComputers;
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskManager.class);
   private static final List<TaskType> LOAD_BALANCER_TASK_TYPES =
@@ -152,7 +152,7 @@ public class CustomerTaskManager {
       FileDataService fileDataService,
       ReleaseManager releaseManager,
       SoftwareUpgradeHelper softwareUpgradeHelper,
-      UpgradeUniverseHandler upgradeUniverseHandler) {
+      Map<TaskType, TaskRollbackComputer> taskRollbackComputers) {
     this.ybService = ybService;
     this.commissioner = commissioner;
     this.ybcManager = ybcManager;
@@ -161,7 +161,7 @@ public class CustomerTaskManager {
     this.fileDataService = fileDataService;
     this.releaseManager = releaseManager;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
-    this.upgradeUniverseHandler = upgradeUniverseHandler;
+    this.taskRollbackComputers = taskRollbackComputers;
   }
 
   // Invoked if the task is in incomplete state.
@@ -810,71 +810,9 @@ public class CustomerTaskManager {
       String errMsg = String.format("Invalid task: Task %s cannot be rolled back", taskUUID);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
-    AbstractTaskParams taskParams;
-    CustomerTask.TaskType customerTaskType;
-    if (Objects.requireNonNull(taskType) == TaskType.SwitchoverDrConfig) {
-      taskParams = Json.fromJson(oldTaskParams, DrConfigTaskParams.class);
-      DrConfigTaskParams drConfigTaskParams = (DrConfigTaskParams) taskParams;
-      drConfigTaskParams.refreshIfExists();
-      taskType = TaskType.SwitchoverDrConfigRollback;
-      customerTaskType = CustomerTask.TaskType.SwitchoverRollback;
 
-      // Roll back cannot be done if the old xCluster config is partially or fully deleted.
-      XClusterConfig currentXClusterConfig = drConfigTaskParams.getOldXClusterConfig();
-      if (Objects.isNull(currentXClusterConfig)
-          || !currentXClusterConfig.getTables().stream()
-              .allMatch(XClusterTableConfig::isReplicationSetupDone)) {
-        // At this point, the replication group on the new primary is deleted and it is
-        // possible that the user has written data to the new primary, so setting up
-        // replication from the new primary to the old primary is not safe and might need
-        // bootstrapping which cannot be done in the rollback of the switchover.
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            "The old xCluster config or its associated replication group is deleted and cannot do a"
-                + " roll back; At this point the user is able to write to the new primary universe."
-                + " You may retry the switchover task. If your intention is make the new primary"
-                + " universe the dr universe again, you can run another switchover task.");
-      }
-      log.debug("Rolling back switchover task with old xCluster config: {}", currentXClusterConfig);
-    } else if (taskType == TaskType.SoftwareUpgradeYB
-        || taskType == TaskType.SoftwareKubernetesUpgradeYB) {
-      // Roll back a failed software upgrade via the dedicated downgrade path. It gates on the
-      // universe's software-upgrade state and must run as a fresh task (no previousTaskUUID),
-      // so we submit and return directly instead of using the shared tail below.
-      Universe universe = Universe.getOrBadRequest(customerTask.getTargetUUID(), customer);
-      RollbackUpgradeParams rollbackParams =
-          Json.fromJson(oldTaskParams, RollbackUpgradeParams.class);
-      // Skip the version check for this programmatically-submitted task.
-      rollbackParams.expectedUniverseVersion = -1;
-      UUID newTaskUUID = upgradeUniverseHandler.rollbackUpgrade(rollbackParams, customer, universe);
-      log.info(
-          "Submitted rollback (downgrade) for failed software upgrade task {} on {}:{}, task uuid"
-              + " = {}.",
-          taskUUID,
-          customerTask.getTargetUUID(),
-          customerTask.getTargetName(),
-          newTaskUUID);
-      return CustomerTask.getOrBadRequest(customerUUID, newTaskUUID);
-    } else if (taskType == TaskType.EditUniverse || taskType == TaskType.EditKubernetesUniverse) {
-      // Edit-universe rollback is gated behind a runtime flag while the feature is built out. The
-      // eligibility gate/annotation should also consult this flag once the rollback path lands.
-      if (!confGetter.getGlobalConf(GlobalConfKeys.allowEditUniverseRollback)) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            String.format(
-                "Rollback of %s tasks is not enabled. Set yb.task.allow_edit_universe_rollback to"
-                    + " enable it.",
-                taskType));
-      }
-      // TODO(PLAT-21484, PLAT-21485): edit-universe rollback (VM + K8s) placeholder. Wired up once
-      // the rollback tasks and registry land.
-      throw new PlatformServiceException(
-          NOT_IMPLEMENTED,
-          String.format(
-              "Rollback for task type %s is not yet supported; edit-universe rollback is under"
-                  + " development (tracked by PLAT-21484).",
-              taskType));
-    } else {
+    TaskRollbackComputer computer = taskRollbackComputers.get(taskType);
+    if (computer == null) {
       String errMsg =
           String.format(
               "Invalid task type: %s cannot be rolled back, the task is annotated to be able to"
@@ -882,14 +820,21 @@ public class CustomerTaskManager {
               taskType);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errMsg);
     }
-    if (Objects.isNull(customerTaskType)) {
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "CustomerTaskType is null");
-    }
+
+    RollbackSubmission submission =
+        computer.compute(new RollbackContext(customer, customerTask, taskInfo, oldTaskParams));
+
+    AbstractTaskParams taskParams = submission.getParams();
+    CustomerTask.TaskType customerTaskType = submission.getCustomerTaskType();
 
     // Reset the error string.
     taskParams.setErrorString(null);
-    taskParams.setPreviousTaskUUID(taskUUID);
-    UUID newTaskUUID = commissioner.submit(taskType, taskParams);
+    if (submission.isSetPreviousTaskUUID()) {
+      // Set previousTaskUUID only when rollback continues the same failed task (inherit
+      // runtimeInfo / retry semantics). Leave unset for a fresh rollback TaskType.
+      taskParams.setPreviousTaskUUID(taskUUID);
+    }
+    UUID newTaskUUID = commissioner.submit(submission.getRollbackTaskType(), taskParams);
     log.info(
         "Submitted rollback task for target {}:{}, task uuid = {}.",
         customerTask.getTargetUUID(),

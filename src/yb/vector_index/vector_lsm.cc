@@ -110,6 +110,9 @@ DEFINE_RUNTIME_bool(vector_index_dump_stats, false,
 DEFINE_RUNTIME_bool(vector_index_enable_compactions, true,
     "Enable Vector LSM background compactions.");
 
+DEFINE_RUNTIME_bool(vector_index_allow_parallel_compactions, false,
+    "Allow running multiple compactions of the same vector LSM in parallel.");
+
 DEFINE_test_flag(bool, vector_index_exact, false,
     "Use exact brute-force search in vector index to guarantee deterministic results.");
 
@@ -751,12 +754,17 @@ class VectorLSM<Vector, DistanceResult>::CompactionScope {
     return chunks_;
   }
 
-  bool contains(size_t chunk_index) const {
-    return index() <= chunk_index && chunk_index < end_index();
-  }
-
-  size_t index() const {
-    return index_;
+  // Returns a stateful predicate matching the scope's chunks by identity.
+  // The scope's chunks must form a sublist of the chunks fed to the predicate.
+  // Wrap into std::ref for standard algorithms, they may copy predicates.
+  auto MakeChunkMatcher() const {
+    return [it = chunks_.begin(), end = chunks_.end()](const ImmutableChunkPtr& chunk) mutable {
+      if (it != end && chunk == *it) {
+        ++it;
+        return true;
+      }
+      return false;
+    };
   }
 
   bool empty() const {
@@ -772,16 +780,10 @@ class VectorLSM<Vector, DistanceResult>::CompactionScope {
   }
 
   // Must be triggered under LSM::mutex_ to have thread safe access to chunk's state.
-  bool TryLock(size_t chunk_index, const ImmutableChunkPtr& chunk) {
+  bool TryLock(const ImmutableChunkPtr& chunk) {
     DCHECK(chunk.get());
     if (!chunk->IsInManifest() || !chunk->TryLockForCompaction()) {
       return false;
-    }
-
-    if (empty()) {
-      index_ = chunk_index;
-    } else {
-      DCHECK_EQ(chunk_index, end_index());
     }
 
     chunks_.emplace_back(chunk);
@@ -801,7 +803,6 @@ class VectorLSM<Vector, DistanceResult>::CompactionScope {
     }
     // Required to unreference immutable chunks and their members.
     chunks_.clear();
-    index_ = 0;
   }
 
   void AddToUpdate(VectorLSMUpdatePB& update) {
@@ -817,18 +818,10 @@ class VectorLSM<Vector, DistanceResult>::CompactionScope {
     static auto chunks_formatter = [](const auto& chunk) {
       return chunk->ToShortString();
     };
-    return YB_CLASS_TO_STRING(index, (chunks, AsString(chunks_, chunks_formatter)));
+    return YB_CLASS_TO_STRING((chunks, AsString(chunks_, chunks_formatter)));
   }
 
  private:
-  // Exclusive upper bound.
-  size_t end_index() const {
-    return index_ + size();
-  }
-
-  // Index of the front chunk from chunks in the LSM's immutable chunks collection.
-  size_t index_ = 0;
-
   // Continuous interval of chunks from LSM's immutable chunks collection.
   ImmutableChunkPtrs chunks_;
 };
@@ -2153,11 +2146,11 @@ VectorLSM<Vector, DistanceResult>::PickChunksForFullCompaction() const {
   {
     SharedLock lock(mutex_);
     scope.reserve(immutable_chunks_.size());
-    for (size_t i = 0; i < immutable_chunks_.size(); ++i) {
-      if (!scope.TryLock(i, immutable_chunks_[i])) {
+    for (const auto& chunk : immutable_chunks_) {
+      if (!scope.TryLock(chunk)) {
         break;
       }
-      VLOG_WITH_PREFIX(1) << "Manual compaction picking " << immutable_chunks_[i]->ToShortString();
+      VLOG_WITH_PREFIX(1) << "Manual compaction picking " << chunk->ToShortString();
     }
   }
 
@@ -2175,7 +2168,7 @@ VectorLSM<Vector, DistanceResult>::PickChunksReadyForCompaction(
   scope.reserve(end_idx - begin_idx);
   for (size_t idx = begin_idx; idx != end_idx; ++idx) {
     const auto& chunk = immutable_chunks_[idx];
-    if (scope.TryLock(idx, chunk)) {
+    if (scope.TryLock(chunk)) {
       LOG_WITH_PREFIX(INFO) << reason << " picking " << chunk->ToShortString();
     } else {
       // It is not expected to happen.
@@ -2795,6 +2788,9 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   // keep the data consistence, as the old chunks are in manifested state. This means, manifest
   // file update should be done before in-memory structure update.
 
+  TEST_SYNC_POINT_CALLBACK(
+      "VectorLSM::DoCompact:Merged", const_cast<CompactionType*>(&context.type));
+
   // Lock manifest file for writes to be able to not miss any upcoming chunk.
   AcquireManifest();
   TEST_SYNC_POINT("VectorLSM::DoCompact:ManifestAcquired");
@@ -2814,12 +2810,11 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   {
     std::lock_guard lock(mutex_);
     if (full_update) {
-      for (size_t i = 0; i < immutable_chunks_.size(); ++i) {
-        const auto& chunk = immutable_chunks_[i];
-        if (!chunk->IsInManifest() || scope.contains(i)) {
-          continue;
+      auto is_compacted = scope.MakeChunkMatcher();
+      for (const auto& chunk : immutable_chunks_) {
+        if (!is_compacted(chunk) && chunk->IsInManifest()) {
+          chunk->AddToUpdate(update);
         }
-        chunk->AddToUpdate(update);
       }
     }
 
@@ -2839,12 +2834,20 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   ImmutableChunkPtr writing_chunk;
   {
     std::lock_guard lock(mutex_);
-    auto compacted_begin = immutable_chunks_.begin() + scope.index();
-    auto compacted_end   = compacted_begin + scope.size();
     for (auto& chunk : merged_chunks) {
       chunk->state = ImmutableChunkState::kInManifest;
     }
-    auto insert_pos = immutable_chunks_.erase(compacted_begin, compacted_end);
+
+    // A parallel compaction may shift chunk positions, so match the compacted chunks by identity.
+    auto is_compacted = scope.MakeChunkMatcher();
+    auto num_erased = std::erase_if(immutable_chunks_, std::ref(is_compacted));
+    RSTATUS_DCHECK_EQ(
+        num_erased, scope.size(), RuntimeError,
+        "Compacted chunk is missing in immutable chunks");
+
+    // Merged chunks carry their inputs' order_no, defining the insertion position.
+    auto insert_pos = std::ranges::lower_bound(
+        immutable_chunks_, merged_chunks.front()->order_no, {}, &ImmutableChunk::order_no);
     immutable_chunks_.insert(insert_pos, merged_chunks.begin(), merged_chunks.end());
     if (!updates_queue_.empty() && updates_queue_.begin()->second->IsOnDisk()) {
       writing_chunk = updates_queue_.begin()->second;
@@ -2858,6 +2861,8 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
     RETURN_NOT_OK(UpdateManifest(
         *manifest_file, std::move(writing_chunk), /* schedule_compaction = */ false));
   }
+  TEST_SYNC_POINT_CALLBACK(
+      "VectorLSM::DoCompact:ChunksUpdated", const_cast<CompactionType*>(&context.type));
 
   // TODO(vector_index): merge the cleanup logic with the same from CreateCheckpoint().
   // Mark input chunks as obsolete and maybe delete corresponding files.
@@ -2930,8 +2935,11 @@ VectorLSM<Vector, DistanceResult>::CreateBackgroundCompactionTask(CompactionTask
   if (finished_task) {
     RemoveTaskUnlocked(*finished_task);
   }
+  // Unless parallel compactions are allowed, at most one compaction task may run per VectorLSM.
+  // A pending manual compaction always blocks new background tasks to avoid starving its
+  // registration. Deferred work is not lost: task completion schedules a successor.
   if (has_pending_manual_compaction_ ||
-      ContainsTask(compaction_tasks_, CompactionType::kBackground)) {
+      (!FLAGS_vector_index_allow_parallel_compactions && !compaction_tasks_.empty())) {
     VLOG_WITH_PREFIX(2) << "Skipping background compaction due to another compaction is running";
     return CompactionTaskPtr();
   }

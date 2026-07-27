@@ -346,7 +346,14 @@ DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, false,
 DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
     "Whether to include vector indexes into tablet's post split compaction");
 
+DEFINE_RUNTIME_uint64(cdc_min_sec_to_retain_intent, 8 * 3600,
+    "Minimum number of seconds for which intent SST files of tablets under CDCSDK replication are "
+    "retained when cdc_enable_time_based_intent_retention is true. Intent SST files are not "
+    "deleted until their maximum hybrid time is at least this many seconds old. This flag is not "
+    "applicable when cdc_enable_time_based_intent_retention is false.");
+
 DECLARE_bool(cdc_immediate_transaction_cleanup);
+DECLARE_bool(cdc_enable_time_based_intent_retention);
 DECLARE_bool(consistent_restore);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
@@ -564,10 +571,11 @@ class Tablet::RocksDbListener : public rocksdb::EventListener {
       VLOG_WITH_PREFIX_AND_FUNC(2)
           << "RocksDB flush completed, triggering cleanup of recently applied transactions";
       auto status = participant->ProcessRecentlyAppliedTransactions();
-      if (!status.ok() && !tablet_.shutdown_requested_.load(std::memory_order_acquire)) {
-        LOG_WITH_PREFIX_AND_FUNC(DFATAL)
-            << "Failed to clean up recently applied transactions: " << status;
-      }
+      // Best-effort cleanup; a failure is not fatal. Suppress the expected ShutdownInProgress (a
+      // full shutdown stops the scoped-op counter); the rarer TryAgain during restore/truncate
+      // still warns to aid investigation.
+      LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
+          << "Failed to clean up recently applied transactions: " << status;
     }
   }
 
@@ -611,9 +619,9 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
   void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo& flush_job_info) override {
     RocksDbListener::OnFlushCompleted(db, flush_job_info);
     auto status = tablet_.MayModifyIntentsDbFlushedOpId();
-    if (!status.ok() && !tablet_.shutdown_requested_.load(std::memory_order_acquire)) {
-      LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "Failed to update intents db flushed op id: " << status;
-    }
+    // Best-effort; not fatal. As above, suppress ShutdownInProgress and let TryAgain warn.
+    LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !status.ok() && !status.IsShutdownInProgress())
+        << "Failed to update intents db flushed op id: " << status;
   }
 
  private:
@@ -1539,14 +1547,23 @@ void Tablet::DoCleanupIntentFiles() {
 
     auto min_start_ht_cdc_unstreamed_txns =
         transaction_participant_->GetMinStartHTCDCUnstreamedTxns();
-    if (FLAGS_cdc_immediate_transaction_cleanup &&
-        metadata_->is_under_cdc_sdk_replication()) {
-      if (!min_start_ht_cdc_unstreamed_txns.is_valid() ||
-          min_start_ht_cdc_unstreamed_txns <= best_file_max_ht) {
-        VLOG_WITH_PREFIX_AND_FUNC(4)
-            << "Cannot delete because of CDC, min_start_ht_cdc_unstreamed_txns: "
-            << min_start_ht_cdc_unstreamed_txns << ", best file max ht: " << best_file_max_ht;
-        break;
+    if (metadata_->is_under_cdc_sdk_replication()) {
+      if (FLAGS_cdc_enable_time_based_intent_retention) {
+        auto file_age = clock_->Now().PhysicalDiff(best_file_max_ht);
+        if (file_age.ToSeconds() < static_cast<int64_t>(FLAGS_cdc_min_sec_to_retain_intent)) {
+          VLOG_WITH_PREFIX_AND_FUNC(4)
+              << "Cannot delete because of time-based intent retention, file age (seconds): "
+              << file_age.ToSeconds() << ", best file max ht: " << best_file_max_ht;
+          break;
+        }
+      } else if (FLAGS_cdc_immediate_transaction_cleanup) {
+        if (!min_start_ht_cdc_unstreamed_txns.is_valid() ||
+            min_start_ht_cdc_unstreamed_txns <= best_file_max_ht) {
+          VLOG_WITH_PREFIX_AND_FUNC(4)
+              << "Cannot delete because of CDC, min_start_ht_cdc_unstreamed_txns: "
+              << min_start_ht_cdc_unstreamed_txns << ", best file max ht: " << best_file_max_ht;
+          break;
+        }
       }
     }
     if (best_file->name_id == previous_name_id) {

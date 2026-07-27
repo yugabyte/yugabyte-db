@@ -236,7 +236,8 @@ public interface UniverseDefinitionTaskParamsMapper {
         .enableNodeToNodeEncrypt(primaryUserIntent.enableNodeToNodeEncrypt)
         .enableClientToNodeEncrypt(primaryUserIntent.enableClientToNodeEncrypt)
         .rootCa(universeDetails.rootCA)
-        .clientRootCa(universeDetails.getClientRootCA());
+        .clientRootCa(universeDetails.getClientRootCA())
+        .rootAndClientRootCaSame(universeDetails.rootAndClientRootCASame);
   }
 
   default YSQLSpec toV2YsqlSpec(UniverseDefinitionTaskParams universeDetails) {

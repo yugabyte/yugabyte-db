@@ -47,9 +47,9 @@ import lombok.extern.slf4j.Slf4j;
 @Retryable
 // TODO(PLAT-21484): add @CanRollback here once RollbackUniverseEdit (PLAT-21484), the
 // state_transition_details safe-window gate (PLAT-21387 / PLAT-21483) and the runtime flag
-// (PLAT-21488) are in place. See the edit-universe placeholder in
-// CustomerTaskManager.rollbackCustomerTask. Annotating before those exist would surface
-// canRollback=true in the UI/API while the rollback action is not yet implemented.
+// (PLAT-21488) are in place. The TaskRollbackComputer registry already has a placeholder
+// (EditUniverseRollbackComputer) that rejects until those land. Annotating before they exist
+// would surface canRollback=true in the UI/API while the rollback action is not yet implemented.
 public class EditUniverse extends EditUniverseTaskBase {
   private final AtomicBoolean dedicatedNodesChanged = new AtomicBoolean();
   private final AtomicBoolean primaryRFChanged = new AtomicBoolean();

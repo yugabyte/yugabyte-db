@@ -1245,6 +1245,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
       node.masterState = null;
     }
+    target.updateInProgress = false;
     return target;
   }
 

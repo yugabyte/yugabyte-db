@@ -115,10 +115,16 @@ void DbServerBase::Shutdown() {
   if (transaction_pool) {
     transaction_pool->Shutdown();
   }
+  // Shut down the client before the txn manager. Transaction rpcs registered in the txn manager's
+  // Rpcs depend on the client's meta-cache and master leader resolution to complete. During cluster
+  // shutdown the masters are unreachable, so these lookups would keep re-resolving and never invoke
+  // their callbacks, leaving the rpcs pending and causing TransactionManager::Shutdown()'s
+  // CompleteShutdown() to abort on the calls_.empty() check. Shutting the client down first marks
+  // it closing and drains those pending master-leader callbacks so the rpcs can complete.
+  async_client_init_->Shutdown();
   if (txn_manager) {
     txn_manager->Shutdown();
   }
-  async_client_init_->Shutdown();
 }
 
 const std::shared_future<client::YBClient*>& DbServerBase::client_future() const {

@@ -711,6 +711,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.GET,
         endpoint: '/universes/$uniUUID<[^/]+>/status'
     },
+    GET_STATE_TRANSITION: {
+        requestType: ApiRequestType.GET,
+        endpoint: '/universes/$uniUUID<[^/]+>/state_transition'
+    },
 
     CREATE_SUPPORT_BUNDLE: {
         requestType: ApiRequestType.POST,

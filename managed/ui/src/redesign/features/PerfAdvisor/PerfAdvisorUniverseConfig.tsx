@@ -35,6 +35,7 @@ interface PerfAdvisorUniverseConfigProps {
   customerUUID: string;
   apiToken: string;
   tpApiToken: string;
+  embedded: boolean;
   onRefetchConfig: () => void;
 }
 
@@ -50,6 +51,7 @@ export const PerfAdvisorUniverseConfig = ({
   inUseStatus,
   apiToken,
   tpApiToken,
+  embedded,
   onRefetchConfig
 }: PerfAdvisorUniverseConfigProps) => {
   const { t } = useTranslation();
@@ -151,19 +153,27 @@ export const PerfAdvisorUniverseConfig = ({
               className={helperClasses.textBox}
             />
           </Box>
-          <Box className={helperClasses.buttonBox}>
-            <YBButton variant="primary" size="large" onClick={onEditPaConfigButtonClick}>
-              {t('common.edit')}
-            </YBButton>
-            <YBButton
-              variant="primary"
-              size="large"
-              className={helperClasses.button}
-              onClick={onDeletePaConfigButtonClick}
-            >
-              {t('common.delete')}
-            </YBButton>
-          </Box>
+          {/*
+            * Hide edit/delete for the embedded collector - it is fully owned by
+            * EmbeddedCollectorInitializer on the YBA side, and any mutation via the API
+            * would be reverted on the next initializer tick. Manage it via the yb.pa.url
+            * runtime config instead.
+            */}
+          {!embedded && (
+            <Box className={helperClasses.buttonBox}>
+              <YBButton variant="primary" size="large" onClick={onEditPaConfigButtonClick}>
+                {t('common.edit')}
+              </YBButton>
+              <YBButton
+                variant="primary"
+                size="large"
+                className={helperClasses.button}
+                onClick={onDeletePaConfigButtonClick}
+              >
+                {t('common.delete')}
+              </YBButton>
+            </Box>
+          )}
           {showEditPaConfigDialog && (
             <EditPerfAdvisorConfigModal
               open={showEditPaConfigDialog}

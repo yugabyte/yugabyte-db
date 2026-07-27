@@ -132,7 +132,7 @@ struct LogEntryMetadata {
   }
 };
 
-// A sequence of segments, ordered by increasing sequence number.
+// A sequence of log entries, ordered by increasing sequence number.
 using LogEntries = std::vector<std::shared_ptr<LWLogEntryPB>>;
 
 struct ReadEntriesResult {

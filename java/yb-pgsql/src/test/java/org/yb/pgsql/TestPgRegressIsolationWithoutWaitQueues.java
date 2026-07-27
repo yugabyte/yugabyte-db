@@ -57,6 +57,11 @@ public class TestPgRegressIsolationWithoutWaitQueues extends BasePgRegressTest {
   }
 
   @Test
+  // Same Connection Manager incompatibility as testPgRegressWithoutSkipPrefixLocks above: this
+  // method runs the same check-constraint-locking spec, and a session's transaction gets rolled
+  // back once its backend is reused, so the coordinator reports "Request to unknown transaction"
+  // for the following COMMIT. Run on the Postgres port so every session keeps its own backend.
+  @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testPgRegressWithSkipPrefixLocks() throws Exception {
     Map<String, String> flagMap = new HashMap<>();
     flagMap.put("skip_prefix_locks", "true");

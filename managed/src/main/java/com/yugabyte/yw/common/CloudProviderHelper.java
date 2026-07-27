@@ -1022,9 +1022,10 @@ public class CloudProviderHelper {
                   });
         }
 
-        if (enableVMOSPatching && provider.getCloudCode() == CloudType.aws) {
+        if (enableVMOSPatching && provider.getCloudCode().usesPerRegionImages()) {
           // Validate the image_bundles when the VM OS Patching is enabled
-          // for AWS providers, as these only have the concept the per region AMIs.
+          // for providers with per-region images (AWS, OCI), as these have the
+          // concept of a per region image.
           validateImageBundles(region, bundles);
         }
       }
@@ -1062,7 +1063,7 @@ public class CloudProviderHelper {
   public void validateImageBundles(Region region, List<ImageBundle> bundles) {
     /*
      * Utility function for validating the image bundle when the region is added to
-     * the AWS provider.
+     * a provider with per-region images (AWS, OCI).
      * We will validate as follows:
      * 1. YBA_ACTIVE: No Validation
      * 2. YBA_DEPRECATED: In case the region is not present, we will mark the bundle
@@ -1088,7 +1089,7 @@ public class CloudProviderHelper {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 String.format(
-                    "Specify the AMI for the region %s in the image bundle %s",
+                    "Specify the image for the region %s in the image bundle %s",
                     region.getCode(), bundle.getName()));
           }
         }

@@ -92,6 +92,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
+#include "yb/util/transit_owner.h"
 #include "yb/util/write_buffer.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -2308,10 +2309,16 @@ class PgClientSession::Impl {
   void FinishTransaction(
       const PgFinishTransactionRequestPB& req, PgFinishTransactionResponsePB* resp,
       rpc::RpcContext&& context, PgSessionGuard& guard) {
-    const auto opt_status = DoFinishTransaction(req, resp, std::move(context), guard);
+    TransitOwner context_owner{std::move(context)};
+    const auto opt_status = DoFinishTransaction(req, resp, context_owner, guard);
     if (opt_status) {
+      if (!context_owner.Owns()) {
+        LOG_WITH_FUNC(DFATAL)
+            << "RpcContext ownership was unexpectedly transferred, unable to send response";
+        return;
+      }
       StatusToPB(*opt_status, resp->mutable_status());
-      context.RespondSuccess();
+      context_owner->RespondSuccess();
     }
   }
 
@@ -3496,6 +3503,13 @@ class PgClientSession::Impl {
             read_time_serial_no_, txn_str);
       }
     }
+
+    if (const auto* read_point = setup_session_result.is_plain ? session->read_point() : nullptr;
+        read_point && read_point->GetReadTime()) {
+      VLOG_WITH_PREFIX(3) << "Saving read time that is already picked";
+      read_point_history_.Save(*read_point, read_time_serial_no_);
+    }
+
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {
       ADOPT_TRACE(trace.get());
@@ -3516,15 +3530,6 @@ class PgClientSession::Impl {
         Trace::DumpTraceIfNecessary(trace.get(), FLAGS_txn_print_trace_every_n, must_log_trace);
       }
     });
-    if (setup_session_result.is_plain) {
-      const auto& read_point = *session->read_point();
-      if (read_point.GetReadTime()) {
-        VLOG_WITH_PREFIX(3) << "Read time is already picked, saving it "
-            << AsString(read_point.GetReadTime()) << " to read time serial no: "
-            << read_time_serial_no_;
-        read_point_history_.Save(read_point, read_time_serial_no_);
-      }
-    }
     return Status::OK();
   }
 
@@ -4093,10 +4098,8 @@ class PgClientSession::Impl {
       return Status::OK();
     }
     auto& session_data = GetSessionData(PgClientSessionKind::kPlain);
-    auto& session = *session_data.session;
-    const auto& read_point = *session.read_point();
     TabletReadTime read_time_data;
-    if (!read_point.GetReadTime()) {
+    {
       auto& used_read_time = plain_session_used_read_time_.value;
       std::lock_guard guard(used_read_time.lock);
       if (!used_read_time.data) {
@@ -4123,15 +4126,19 @@ class PgClientSession::Impl {
     }
     plain_session_used_read_time_.pending_update = false;
     // At this point the read_time_data.value could be empty in 2 cases:
-    // - session already has a read time (i.e. read_point.GetReadTime() is true)
-    // - pending request has finished failed with an error (status != OK). Empty read time is used
-    //   in this case.
-    // Both cases are valid and in both cases the plain_session_used_read_time_.pending_update
-    // must be set to false because no further update is expected.
+    // - session already has a read time (i.e. was selected prior to sending of the request)
+    // - request has finished with error
+    auto& session = *session_data.session;
     if (read_time_data.value) {
       VLOG_WITH_PREFIX(3) << "Applying non empty used read time: " << read_time_data.value
           << " to read time serial no: " << read_time_serial_no_;
       session.SetReadPoint(read_time_data.value, read_time_data.tablet_id);
+    }
+
+    // Update history because a read point could have been chosen (due to multiple reasons:
+    // a used read time was received from DocDB or a read time was chosen while sending previous
+    // request).
+    if (const auto& read_point = *session.read_point(); read_point.GetReadTime()) {
       read_point_history_.Save(read_point, read_time_serial_no_);
     }
     return Status::OK();
@@ -4211,7 +4218,7 @@ class PgClientSession::Impl {
 
   std::optional<Status> DoFinishTransaction(
       const PgFinishTransactionRequestPB& req, PgFinishTransactionResponsePB* resp,
-      rpc::RpcContext&& context, PgSessionGuard& guard) {
+      TransitOwner<rpc::RpcContext>& context_owner, PgSessionGuard& guard) {
     saved_priority_.reset();
     const auto is_ddl_mode = req.has_ddl_mode();
     const auto is_commit = req.commit();
@@ -4219,7 +4226,7 @@ class PgClientSession::Impl {
         is_ddl_mode && req.ddl_mode().use_regular_transaction_block();
     const auto kind =
         GetSessionKindBasedOnDDLOptions(is_ddl_mode, ddl_use_regular_transaction_block);
-    const auto deadline = context.GetClientDeadline();
+    const auto deadline = context_owner->GetClientDeadline();
     auto& txn = GetSessionData(kind).transaction;
     if (!txn) {
       VLOG_WITH_PREFIX_AND_FUNC(2)
@@ -4274,7 +4281,7 @@ class PgClientSession::Impl {
           disabler = silently_altered_db
               ? response_cache().Disable(*silently_altered_db) : PgResponseCache::Disabler(),
           holder = MakeSharedFromMoveOnly(
-              MakeTypedPBRpcContextHolder(req, resp, std::move(context)),
+              MakeTypedPBRpcContextHolder(req, resp, context_owner.Release()),
               guard.ConvertToCrossThreadGuard(),
               std::move(metadata_cleanupper))](Status commit_status) {
         auto& [context, guard, metadata_cleanupper] = *holder;

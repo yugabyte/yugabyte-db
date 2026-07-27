@@ -347,6 +347,7 @@ public class KubernetesOperator {
                   Thread pitrConfigReconcilerThread = null;
                   Thread pitrRestoreReconcilerThread = null;
                   Thread drConfigReconcilerThread = null;
+                  Thread kmsConfigReconcilerThread = null;
 
                   if (!ossMode) {
                     YBCertificateReconciler ybCertificateReconciler =
@@ -366,12 +367,15 @@ public class KubernetesOperator {
                         reconcilerFactory.getPitrRestoreReconciler(client);
                     DrConfigReconciler drConfigReconciler =
                         reconcilerFactory.getDrConfigReconciler(client);
+                    KMSConfigReconciler kmsConfigReconciler =
+                        reconcilerFactory.getKMSConfigReconciler(client);
 
                     scheduledBackupReconcilerThread =
                         new Thread(() -> scheduledBackupReconciler.run());
                     pitrConfigReconcilerThread = new Thread(() -> pitrConfigReconciler.run());
                     pitrRestoreReconcilerThread = new Thread(() -> pitrRestoreReconciler.run());
                     drConfigReconcilerThread = new Thread(() -> drConfigReconciler.run());
+                    kmsConfigReconcilerThread = new Thread(() -> kmsConfigReconciler.run());
                   }
 
                   if (confGetter.getGlobalConf(
@@ -384,6 +388,7 @@ public class KubernetesOperator {
                       pitrConfigReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                       pitrRestoreReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                       drConfigReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
+                      kmsConfigReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                     }
                   }
 
@@ -394,6 +399,7 @@ public class KubernetesOperator {
                     pitrConfigReconcilerThread.start();
                     pitrRestoreReconcilerThread.start();
                     drConfigReconcilerThread.start();
+                    kmsConfigReconcilerThread.start();
                   }
 
                   ybUniverseReconcilerThread.join();
@@ -403,6 +409,7 @@ public class KubernetesOperator {
                     pitrConfigReconcilerThread.join();
                     pitrRestoreReconcilerThread.join();
                     drConfigReconcilerThread.join();
+                    kmsConfigReconcilerThread.join();
                   }
 
                   LOG.info(

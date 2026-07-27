@@ -1767,7 +1767,7 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
 
   auto const tablet_peer_result = server_->tablet_manager()->CreateNewTablet(
       table_info, req->tablet_id(), partition, req->config(), req->colocated(), snapshot_schedules,
-      hosted_services);
+      hosted_services, req->target_storage_tier());
   if (PREDICT_FALSE(!tablet_peer_result.ok())) {
     status = tablet_peer_result.status();
     auto is_already_present = status.IsAlreadyPresent();

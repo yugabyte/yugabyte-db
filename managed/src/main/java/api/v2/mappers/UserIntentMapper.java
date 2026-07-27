@@ -8,8 +8,8 @@ import api.v2.models.CloudVolumeEncryption;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterGFlags;
+import api.v2.models.ClusterNetworkingEditSpec;
 import api.v2.models.ClusterNetworkingSpec;
-import api.v2.models.ClusterNetworkingSpec.EnableExposingServiceEnum;
 import api.v2.models.ClusterNodeSpec;
 import api.v2.models.ClusterProviderEditSpec;
 import api.v2.models.ClusterProviderSpec;
@@ -19,6 +19,7 @@ import api.v2.models.ClusterSpec;
 import api.v2.models.ClusterSpec.ClusterTypeEnum;
 import api.v2.models.ClusterStorageSpec;
 import api.v2.models.ClusterStorageSpec.StorageTypeEnum;
+import api.v2.models.ExposingServiceState;
 import api.v2.models.NodeProxyConfig;
 import api.v2.models.PerProcessNodeSpec;
 import api.v2.models.UniverseResizeNodesCluster;
@@ -30,7 +31,6 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
@@ -176,7 +176,7 @@ public interface UserIntentMapper {
     ClusterNetworkingSpec clusterNetworkingSpec = new ClusterNetworkingSpec();
     clusterNetworkingSpec.setEnableLb(userIntent.enableLB);
     clusterNetworkingSpec.setEnableExposingService(
-        toV2EnableExposingServiceEnum(userIntent.enableExposingService));
+        toV2ExposingServiceState(userIntent.enableExposingService));
     clusterNetworkingSpec.setProxyConfig(toV2ProxyConfig(userIntent.getProxyConfig()));
     // per az
     if (userIntent.getAZProxyConfigMap() != null) {
@@ -196,8 +196,8 @@ public interface UserIntentMapper {
 
   NodeProxyConfig toV2ProxyConfig(ProxyConfig v1ProxyConfig);
 
-  EnableExposingServiceEnum toV2EnableExposingServiceEnum(
-      ExposingServiceState v1ExposingServiceState);
+  ExposingServiceState toV2ExposingServiceState(
+      UniverseDefinitionTaskParams.ExposingServiceState v1ExposingServiceState);
 
   @Mapping(target = "kmsConfigUuid", source = "kmsConfigUUID")
   CloudVolumeEncryption toV2CloudVolumeEncryption(
@@ -304,6 +304,7 @@ public interface UserIntentMapper {
       userIntent.numNodes = clusterEditSpec.getNumNodes();
     }
     fillUserIntentFromClusterNodeSpec(clusterEditSpec.getNodeSpec(), userIntent);
+    fillUserIntentFromClusterNetworkingEditSpec(clusterEditSpec.getNetworkingSpec(), userIntent);
     fillUserIntentFromClusterProviderEditSpec(clusterEditSpec.getProviderSpec(), userIntent);
     Map<String, String> instanceTags = clusterEditSpec.getInstanceTags();
     if (instanceTags != null) {
@@ -663,7 +664,8 @@ public interface UserIntentMapper {
 
   ProxyConfig toV1ProxyConfig(NodeProxyConfig nodeProxyConfig);
 
-  ExposingServiceState toV1ExposingServiceState(EnableExposingServiceEnum v2EnableExposingService);
+  UniverseDefinitionTaskParams.ExposingServiceState toV1ExposingServiceState(
+      ExposingServiceState v2ExposingServiceState);
 
   AuditLogConfig toV1AuditLogConfig(api.v2.models.AuditLogConfig v2AuditLogConfig);
 
@@ -682,6 +684,29 @@ public interface UserIntentMapper {
     userIntent.enableExposingService =
         toV1ExposingServiceState(clusterNetworkingSpec.getEnableExposingService());
     return userIntent;
+  }
+
+  default UserIntent fillUserIntentFromClusterNetworkingEditSpec(
+      ClusterNetworkingEditSpec clusterNetworkingEditSpec, UserIntent userIntent) {
+    if (clusterNetworkingEditSpec == null) {
+      return userIntent;
+    }
+    if (clusterNetworkingEditSpec.getEnableExposingService() != null) {
+      userIntent.enableExposingService =
+          toV1ExposingServiceState(clusterNetworkingEditSpec.getEnableExposingService());
+    }
+    return userIntent;
+  }
+
+  // Used by ClusterMapper.deepCopyClusterEditSpecWithoutPlacementSpec when inheriting
+  // primary ClusterSpec networking into ClusterEditSpec.
+  default ClusterNetworkingEditSpec toClusterNetworkingEditSpec(ClusterNetworkingSpec source) {
+    if (source == null) {
+      return null;
+    }
+    ClusterNetworkingEditSpec editSpec = new ClusterNetworkingEditSpec();
+    editSpec.setEnableExposingService(source.getEnableExposingService());
+    return editSpec;
   }
 
   default UserIntent fillUserIntentFromUpdateProxyConfigSpec(
