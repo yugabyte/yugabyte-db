@@ -19,21 +19,15 @@
  * there is deliberately NO client-side metacache, batcher, or tablet
  * invoker on the caller's side.
  *
- * VERSIONING / BACKWARD COMPATIBILITY: this library is built, shipped and
- * consumed OUTSIDE the YugabyteDB build tree, and it is upgraded BEFORE the
- * tserver — so a given build of it must keep working against an OLDER tserver
- * than the one it was compiled against. Keep its on-the-wire usage
- * BACKWARD-COMPATIBLE with older servers:
- *   - Only send Perform requests / set protobuf fields / rely on RPCs and
- *     semantics that the OLDEST supported tserver already understands. Never
- *     require a request field, op, or behavior that only a newer tserver added
- *     — an older server will ignore or reject it.
- *   - Tolerate responses from an older server that lack fields a newer server
- *     would set; never depend on such a field being present.
- * The C ABI below is likewise a stable contract: make only ADDITIVE changes
- * (new functions; new fields appended to the END of structs; new enum values
- * appended at the END). Never renumber/repurpose an existing enum value,
- * reorder or remove a struct field, or change a function signature in place.
+ * VERSIONING / BACKWARD COMPATIBILITY: this library is built and shipped
+ * OUTSIDE the YugabyteDB tree and upgraded BEFORE the tserver, so a given build
+ * must keep working against an OLDER tserver. On the wire: only rely on request
+ * fields, RPCs and semantics the OLDEST supported tserver understands, and
+ * tolerate responses missing fields a newer server would set.
+ * The C ABI below is likewise stable — make only ADDITIVE changes (new
+ * functions; fields appended to the END of structs; enum values appended at the
+ * END). Never renumber an enum value, reorder or remove a struct field, or
+ * change a function signature in place.
  *
  * Ownership: every out-pointer the library fills is owned by it and freed
  * with the matching `*_free`/`*_destroy` below. Input arrays and strings are
@@ -83,15 +77,14 @@ typedef struct {
   const char* key_path;     /* client key;  NULL if not using mTLS        */
 } ybthin_tls_opts;
 
-/* Session/connection pool sizing. A single PgClientService session serializes
- * its Performs by serial number server-side, so concurrency comes from having
- * many sessions; connections spread those sessions across tserver nodes (behind
- * a ClusterIP VIP, each new connection may land on a different tserver).
- * `sessions_per_conn` sessions are packed onto each connection; the client opens
- * ceil((read_sessions + write_sessions) / sessions_per_conn) connections.
- * Reads round-robin the read sessions; upserts round-robin the write sessions
- * (falling back to read sessions when write_sessions == 0). A field of 0 (or a
- * NULL ybthin_pool_opts) selects the default for that field. */
+/* Session/connection pool sizing. The server serializes a single session's
+ * Performs by serial number, so concurrency comes from having many sessions;
+ * connections spread them across tserver nodes (behind a ClusterIP VIP, each
+ * new connection may land on a different one). `sessions_per_conn` sessions are
+ * packed per connection, so the client opens
+ * ceil((read_sessions + write_sessions) / sessions_per_conn) of them. Reads and
+ * upserts each round-robin their pool (upserts fall back to the read sessions
+ * when write_sessions == 0). A 0 field (or NULL opts) takes the default. */
 typedef struct {
   uint32_t read_sessions;      /* 0 => default (4)                          */
   uint32_t write_sessions;     /* 0 => default (1)                          */
@@ -275,18 +268,15 @@ typedef void (*ybthin_read_cb)(void* ctx, ybthin_status status,
 typedef void (*ybthin_write_cb)(void* ctx, ybthin_status status);
 
 /* Run a batch of read ops as the ops of ONE Perform: one RPC, one read
- * session, one snapshot. `results[i]` in the delivered ybthin_read_result
- * corresponds to `ops[i]`. `read_time_ht` pins the batch snapshot (0 => the
- * server picks a clamped read point). An op with `paging_state_in` set continues
- * that op's scan; a continuation automatically stays on the scan's ORIGINAL
- * snapshot (the paging_state carries it), so paging a scan with `read_time_ht`
- * left 0 on every page is snapshot-consistent — no rows are dropped even if data
- * changes mid-scan. Passing a prior batch's `used_read_time_ht` as `read_time_ht`
- * is only needed to force a NEW batch of scans onto an existing snapshot. Mixed
- * fresh/continuation batches are legal, but all continuation ops must share the
- * paging session (and snapshot) that issued them.
- * Status is batch-level: any op failure fails the whole call (no partial
- * results) — on YBTHIN_READ_RESTART the caller re-issues from fresh pages. */
+ * session, one snapshot. `results[i]` corresponds to `ops[i]`.
+ * `read_time_ht` pins the batch snapshot (0 => the server picks one); pass a
+ * prior batch's `used_read_time_ht` only to force a NEW batch onto an existing
+ * snapshot. An op with `paging_state_in` set continues that op's scan and stays
+ * on the scan's original snapshot automatically, so paging with `read_time_ht`
+ * left 0 throughout is still consistent — no rows are dropped mid-scan.
+ * Continuation ops in one batch must all share the paging session that issued
+ * them. Status is batch-level: any op failure fails the whole call with no
+ * partial results; on YBTHIN_READ_RESTART re-issue the scan from a fresh page. */
 void ybthin_read_async(ybthin_client*, const ybthin_read_op* ops, size_t n_ops,
                        uint64_t read_time_ht, ybthin_read_cb cb, void* ctx);
 

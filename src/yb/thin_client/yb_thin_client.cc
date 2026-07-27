@@ -17,11 +17,9 @@
 // YBSession / Batcher / metacache / TabletInvoker: each op carries its own partition routing info
 // (hash_code + partition_key) and the tserver routes it, exactly as it does for pggate.
 //
-// BACKWARD COMPATIBILITY: this library is shipped and consumed outside the YugabyteDB build and is
-// upgraded before the tserver, so it must keep working against an OLDER tserver than it was
-// compiled against. Keep the wire usage backward-compatible: only send request fields / rely on
-// RPCs and semantics the oldest supported tserver understands, and tolerate responses that lack
-// fields a newer server would set. Keep the C ABI (see yb_thin_client.h) additive-only.
+// BACKWARD COMPATIBILITY: this library is upgraded before the tserver, so it must keep working
+// against an OLDER one -- only rely on request fields and semantics the oldest supported tserver
+// understands, and tolerate responses missing newer fields. See yb_thin_client.h for the full rule.
 //
 
 #include "yb/thin_client/yb_thin_client.h"
@@ -103,10 +101,8 @@ static constexpr int kDefaultNumReactors = 4;
 static constexpr uint32_t kDefaultReadSessions = 4;
 static constexpr uint32_t kDefaultWriteSessions = 1;
 static constexpr uint32_t kDefaultSessionsPerConn = 4;
-// read_time_serial_no_history_min is set this far BELOW the current read serial (matching
-// yb_tsclient): the server keeps the read points of that many recent serials so paged scans /
-// continuations can restore their snapshot, while older ones are pruned. Setting it EQUAL to the
-// serial prunes everything and is part of what left the shim's read point sticky.
+// How far below the current read serial to set read_time_serial_no_history_min: the server keeps
+// the read points of that many recent serials, so continuations can restore their snapshot.
 static constexpr uint64_t kReadSerialHistoryWindow = 65536;
 
 // ---- opaque handles -------------------------------------------------------
@@ -122,12 +118,10 @@ struct ybthin_connection {
 };
 
 // One PgClientService session. The server serializes a session's Performs by a contiguous serial
-// starting at 0 (pg_client_service.cc next_expected_serial_no_), so serial_no / read_time_serial /
-// stmt_id are per-session and serial_no MUST start at 0 and be allocated only for dispatched
-// Performs (a gap stalls later Performs until their deadline). `generation` identifies this
-// incarnation: a paged scan pinned to (session, generation) becomes invalid once the session is
-// reopened with a fresh session_id (serials reset), so continuations on a stale generation are
-// reported as YBTHIN_READ_RESTART.
+// starting at 0 (pg_client_service.cc next_expected_serial_no_), so serial_no must start at 0 and
+// be allocated only for dispatched Performs -- a gap stalls later ones until their deadline.
+// Reopening the session resets the serials and bumps `generation`, invalidating scans pinned to
+// the old incarnation (reported as YBTHIN_READ_RESTART).
 struct ybthin_session {
   size_t conn_index = 0;
   std::mutex mu;  // guards {open, session_id, serial_no, read_time_serial, stmt_id, generation}
@@ -146,18 +140,15 @@ struct ybthin_client {
   std::vector<std::unique_ptr<ybthin_session>> write_sessions;
   std::atomic<size_t> read_rr{0};   // round-robin cursor for read-session selection
   std::atomic<size_t> write_rr{0};  // round-robin cursor for write-session selection
-  // A fresh txn_serial_no is stamped on every Perform. The server keeps a plain session's read
-  // point (and transaction) alive across Performs that carry the SAME txn_serial_no, so a constant
-  // would freeze the read point at the first read -- reads would never see later commits. Advancing
-  // it per Perform makes each one a fresh logical transaction that picks a new read point (this is
-  // what pggate/yb_tsclient do; see pg_client_session.cc gating on txn_serial_no_).
+  // The server keeps a plain session's read point alive across Performs carrying the SAME
+  // txn_serial_no, so a fresh one per Perform makes each a new logical transaction that picks a
+  // new read point (see pg_client_session.cc gating on txn_serial_no_).
   std::atomic<uint64_t> txn_serial{1};
   std::vector<HostPort> hosts;
   MonoDelta timeout;
   int num_reactors = kDefaultNumReactors;
 
-  // Keepalive. Deliberately std::thread, not yb::Thread: this .so is self-contained and must not
-  // pull in YB's global thread registry / tracking machinery for a single background heartbeat.
+  // std::thread, not yb::Thread: a self-contained .so must not pull in YB's global thread registry.
   std::thread keepalive_thread;  // NOLINT(build/std_thread)
   std::mutex mu;
   std::condition_variable cv;
@@ -173,7 +164,7 @@ struct ybthin_table {
   };
   std::string table_id;
   uint32_t schema_version = 0;
-  Schema schema;  // num_hash_key_columns() / num_key_columns() are read directly off this
+  Schema schema;
   PartitionSchema partition_schema;
   std::vector<ColInfo> columns;  // owns the name strings referenced by ybthin_column
 };
@@ -375,21 +366,15 @@ ybthin_session* NextWriteSession(ybthin_client* client) {
   return pool[client->write_rr.fetch_add(1, std::memory_order_relaxed) % pool.size()].get();
 }
 
-// Wrapped paging state =
+// Wrapped paging state, passed back opaquely by the caller:
 //   [magic][version][u32 read-session index][u32 generation][u64 read_time_serial][u64 txn_serial]
 //   + the server's paging state.
-// The caller passes this back opaquely. On continuation the shim routes to the same session
-// (generation-checked) AND replays the scan's original read_time_serial / txn_serial rather than
-// allocating new ones -- keeping read_time_serial_no constant across a scan's pages, exactly as
-// pggate does within a single statement, so the server restores this scan's read point and every
-// page observes ONE snapshot. (Advancing the serial per page made the server's
-// ENSURE_READ_TIME_IS_SET pick a fresh, later read time each page, dropping rows deleted mid-scan.)
+// A continuation routes back to the same session (generation-checked) and replays the scan's
+// original serials, so every page of a scan reads at one snapshot (see SetReadTimeSerial).
 constexpr uint8_t kPagingMagic = 0xB1;
 constexpr uint8_t kPagingVersion = 2;
 constexpr size_t kPagingHeaderLen = 2 + 4 + 4 + 8 + 8;
 
-// Little-endian pack/unpack via gutil's tested primitives (LittleEndian::{Store,Load}{32,64}),
-// wrapped so the append-to-string / read-from-pointer call sites stay compact.
 void PutU32LE(std::string* s, uint32_t v) {
   char buf[sizeof(v)];
   LittleEndian::Store32(buf, v);
@@ -421,8 +406,9 @@ std::string WrapPagingState(
 struct PinInfo {
   uint32_t session_index;
   uint32_t generation;
-  uint64_t read_time_serial;  // the scan's original serials; a continuation replays them so the
-  uint64_t txn_serial;        // server restores this scan's read point instead of picking a new one
+  // The scan's original serials, replayed by a continuation so the server restores its read point.
+  uint64_t read_time_serial;
+  uint64_t txn_serial;
   Slice server_paging_state;
 };
 Result<PinInfo> UnwrapPagingState(const uint8_t* data, size_t len) {
@@ -435,9 +421,8 @@ Result<PinInfo> UnwrapPagingState(const uint8_t* data, size_t len) {
 }
 
 // Stamps a Perform's read serial and the matching windowed history_min. The server keeps the read
-// points of serials in [serial - kReadSerialHistoryWindow, serial] so paged scans / continuations
-// can restore their snapshot; setting history_min == serial would prune them. The read and write
-// dispatch paths both call this so the window (a non-obvious server coupling) lives in one place.
+// points of serials in [serial - kReadSerialHistoryWindow, serial] so continuations can restore
+// their snapshot; setting history_min == serial would prune them.
 template <class ReadTimeOptionsPB>
 void SetReadTimeSerial(ReadTimeOptionsPB* rto, uint64_t serial) {
   rto->set_read_time_serial_no(serial);
@@ -474,24 +459,25 @@ ybthin_status PgsqlResponseError(const yb::PgsqlResponsePB& r) {
 // ---- async call contexts --------------------------------------------------
 
 struct ReadCall {
-  ybthin_session* session;      // the one session this batch runs on
-  uint32_t session_index;       // its index into client->read_sessions (for wrapping)
-  uint32_t generation;          // session incarnation this batch ran at (for wrapping)
-  bool has_continuation;        // any op is a continuation -> its pinned session must still match
-  uint32_t pinned_generation;   // generation the continuation ops were pinned to
-  uint64_t pinned_read_time_serial;  // a continuation replays the scan's original serials (below)
-  uint64_t pinned_txn_serial;        // instead of advancing, so the server restores its read point
-  uint64_t read_time_serial;    // serials actually used for THIS Perform; wrapped into the response
-  uint64_t txn_serial;          // paging state so the next page replays them
+  ybthin_session* session;     // the one session this batch runs on
+  uint32_t session_index;      // its index into client->read_sessions (for wrapping)
+  uint32_t generation;         // session incarnation this batch ran at (for wrapping)
+  bool has_continuation;       // any op is a continuation -> its pinned session must still match
+  // What the continuation ops were pinned to, and what this Perform actually ran at. The latter is
+  // wrapped into the response paging state for the next page to replay.
+  uint32_t pinned_generation;
+  uint64_t pinned_read_time_serial;
+  uint64_t pinned_txn_serial;
+  uint64_t read_time_serial;
+  uint64_t txn_serial;
   tserver::PgPerformRequestPB req;
   tserver::PgPerformResponsePB resp;
   rpc::RpcController controller;
   ybthin_read_cb cb;
   void* ctx;
   uint64_t used_read_time_ht;
-  // Per-op target column value types, in target (== response cell) order. The
-  // row sidecar isn't self-describing, so decoding each op's response needs
-  // these; the shim has them from the opened tables' schemas.
+  // Per-op target column types, in target (== response cell) order: the row sidecar is not
+  // self-describing, so decoding needs the types from the opened table's schema.
   std::vector<std::vector<ybthin_value_type>> op_target_types;
 };
 
@@ -504,13 +490,10 @@ struct WriteCall {
   void* ctx;
 };
 
-// Decodes the pg_doc_data row sidecar into a flat, row-major array of
-// (n_rows * target_types.size()) cells using YugabyteDB's own PgWire/PgDocData
-// readers (the single source of truth for the wire format). The cells and the
-// TEXT/BYTEA byte payloads they point into are returned as ONE malloc'd block
-// (the byte arena trails the cell array), so the caller frees it with a single
-// free(*out_cells). `target_types` gives each target column's type in target
-// (== cell) order, since the sidecar is not self-describing.
+// Decodes the pg_doc_data row sidecar into a row-major array of (n_rows * target_types.size())
+// cells, using YugabyteDB's own PgWire/PgDocData readers for the wire format. The cells and the
+// TEXT/BYTEA payloads they point into are returned as ONE malloc'd block (the byte arena trails
+// the cell array), so the caller frees it with a single free(*out_cells).
 Status DecodeReadRows(
     Slice sidecar, const std::vector<ybthin_value_type>& target_types,
     ybthin_cell** out_cells, size_t* out_n_rows) {
@@ -648,10 +631,8 @@ void FinishRead(ReadCall* raw) {
   result->results = static_cast<ybthin_read_op_result*>(
       calloc(n_ops ? n_ops : 1, sizeof(ybthin_read_op_result)));
 
-  // The hybrid time the batch actually ran at (all ops share one snapshot). For a pinned batch it
-  // is the caller's read_time_ht; for a fresh (read_time_ht == 0) batch the server picks it and
-  // reports it in the paging state -- surface it so the caller can pin follow-up pages/batches to
-  // the same snapshot.
+  // For a fresh batch the server picks the snapshot and reports it in the paging state; surface it
+  // so the caller can pin follow-up batches to the same one.
   uint64_t picked_read_ht = 0;
 
   for (size_t i = 0; i < n_ops; ++i) {
@@ -680,8 +661,6 @@ void FinishRead(ReadCall* raw) {
     // A missing paging_state means this op's scan is exhausted; otherwise wrap the server's paging
     // state with the pinning header so a continuation returns to this batch's session.
     if (op.has_paging_state()) {
-      // The server stamps the snapshot it chose into the paging state; capture it as the batch's
-      // used read time (all ops ran at one snapshot).
       if (op.paging_state().read_time().has_read_ht()) {
         picked_read_ht = op.paging_state().read_time().read_ht();
       }
@@ -954,9 +933,8 @@ void ybthin_read_async(
   call->ctx = ctx;
   call->used_read_time_ht = read_time_ht;
 
-  // Select the batch's session. Continuation ops (paging_state_in set) return to the session that
-  // issued them, so all continuations in a batch must pin the SAME session; a batch with no
-  // continuations round-robins the read pool. Fresh ops ride whichever session is chosen.
+  // Continuation ops must return to the session that issued them, so all of them in a batch must
+  // pin the same one; a batch with no continuations round-robins the read pool.
   bool have_pinned = false;
   size_t session_index = 0;
   uint32_t pinned_generation = 0;
@@ -1078,25 +1056,20 @@ void ybthin_read_async(
   // One snapshot for the whole batch.
   auto* rto = req.mutable_options()->mutable_read_time_options();
   if (read_time_ht == 0) {
-    // Let the server pick the read point. ENSURE + clamp + the read serial (set at dispatch) drive
-    // it: for a FRESH scan the serial advances, so the server picks a new clamped read time (a new
-    // snapshot that observes the latest commits -- read-after-write). For a CONTINUATION the serial
-    // is REPLAYED (unchanged), so the server restores the scan's read point and ENSURE is a no-op
-    // -- every page reads at one snapshot. This mirrors pggate: advance read_time_serial_no per
-    // statement, hold it constant across that statement's pages.
+    // Let the server pick the read point; the read serial set at dispatch decides which one -- a
+    // fresh serial gets a new snapshot, a replayed one restores the scan's (ENSURE then no-ops).
     rto->set_read_time_manipulation(tserver::ENSURE_READ_TIME_IS_SET);
     rto->set_clamp_uncertainty_window(true);
   } else {
-    // Pin the batch to an explicit snapshot (e.g. paged-scan continuation, or a second batch that
-    // must observe the same snapshot as a prior one via its used_read_time_ht).
+    // Pin the batch to an explicit snapshot, e.g. a prior batch's used_read_time_ht.
     auto* rt = rto->mutable_read_time();
     rt->set_read_ht(read_time_ht);
     rt->set_global_limit_ht(read_time_ht);
   }
 
-  // Bind the session identity and dispatch under the session lock: reopen the session if a prior
-  // failure dropped it; a continuation whose session was reopened can no longer be served, so
-  // report READ_RESTART. The Perform serial is allocated last so a failed build never leaves a gap.
+  // Dispatch under the session lock, reopening the session if a prior failure dropped it. A
+  // continuation whose session was reopened can no longer be served, so report READ_RESTART.
+  // The Perform serial is allocated last so a failed build leaves no gap.
   ReadCall* raw = call.release();
   auto* s = raw->session;
   ybthin_status early = OkStatus();
@@ -1113,16 +1086,14 @@ void ybthin_read_async(
       uint64_t read_serial;
       uint64_t txn_serial;
       if (raw->has_continuation) {
-        // Continue the scan on its ORIGINAL serials (carried in the paging state) instead of
-        // allocating new ones. With read_time_serial_no unchanged, the server restores this scan's
-        // read point (pg_client_session.cc read_point_history_) and every page reads at one
-        // snapshot -- the way pggate keeps read_time_serial_no constant across a statement's pages.
+        // Replay the scan's original serials: with read_time_serial_no unchanged the server
+        // restores its read point (pg_client_session.cc read_point_history_), so every page of the
+        // scan reads at one snapshot. This is how pggate holds a statement's pages together.
         read_serial = raw->pinned_read_time_serial;
         txn_serial = raw->pinned_txn_serial;
       } else {
-        // Fresh scan == a new statement: advance to a new read point so it observes the latest
-        // committed data (read-after-write), and a fresh transaction serial so the server does not
-        // reuse this session's prior read point.
+        // A fresh scan is a new statement: advance both serials so it gets a new read point and
+        // observes the latest committed data.
         read_serial = s->read_time_serial++;
         txn_serial = client->txn_serial.fetch_add(1);
       }
@@ -1133,8 +1104,7 @@ void ybthin_read_async(
       raw->req.mutable_options()->set_txn_serial_no(txn_serial);
       raw->req.set_session_id(s->session_id);
       raw->req.set_serial_no(s->serial_no++);
-      // Remember the serials this Perform ran at so FinishRead can wrap them into the response
-      // paging state for the next page to replay.
+      // FinishRead wraps these into the response paging state for the next page to replay.
       raw->read_time_serial = read_serial;
       raw->txn_serial = txn_serial;
       dispatch = true;
@@ -1210,10 +1180,9 @@ void ybthin_upsert_batch_async(
     return;
   }
 
-  // Bind the session identity and dispatch under the session lock. A non-transactional write
-  // carries a read-time serial (+ history min) and lets the storage layer pick the read time for
-  // conflict resolution (pg_txn_manager.cc SetupReadTimeOptions). The Perform serial is allocated
-  // last so a failed build never leaves a gap in the session's contiguous serial sequence.
+  // Dispatch under the session lock. A non-transactional write still carries a read-time serial and
+  // lets the storage layer pick the read time for conflict resolution (pg_txn_manager.cc
+  // SetupReadTimeOptions). The Perform serial is allocated last so a failed build leaves no gap.
   WriteCall* raw = call.release();
   auto* s = raw->session;
   ybthin_status early = OkStatus();
