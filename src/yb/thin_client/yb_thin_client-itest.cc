@@ -15,6 +15,7 @@
 // table_open (schema check) -> upsert_batch -> paged read, and cross-checks the shim's writes and
 // reads against ordinary SQL through the same tserver.
 
+#include <algorithm>
 #include <array>
 #include <future>
 #include <string>
@@ -278,6 +279,113 @@ class PgThinClientTest : public PgMiniTestBase {
 
 TEST_F(PgThinClientTest, OpenUpsertReadPaged) {
   RunOpenUpsertReadPaged(/* tls= */ nullptr);
+}
+
+// Regression test for row drops across page boundaries.
+//
+// A paged scan must observe ONE consistent snapshot for its whole duration -- every row that
+// existed when the scan started must be returned, even if it is deleted while the scan is still
+// paging. This test starts a scan, then commits a DELETE of the not-yet-scanned tail between the
+// first and second pages; a snapshot-consistent scan must still return those rows (the delete is
+// after the scan's snapshot), so nothing is dropped mid-scan.
+//
+// It continues the scan by only passing the server's paging_state back (read_time_ht == 0 on every
+// call -- the natural "just keep paging" usage, and exactly what OpenUpsertReadPaged above does).
+// The shim advances its per-session read_time_serial on every Perform, including continuations,
+// which makes the server's ENSURE_READ_TIME_IS_SET pick a FRESH (current) read time for each page
+// (pg_client_session.cc ProcessReadTimeManipulation) instead of restoring page 1's; that fresh time
+// is forwarded to the tablet as an explicit read time, so DocDB ignores the read time embedded in
+// the paging_state (pgsql_operation.cc, guarded by !is_explicit_request_read_time) and continues
+// the scan at the newer snapshot. Rows deleted between pages therefore vanish from the result --
+// the "paged scan drops rows across a page boundary" failure this guards against.
+TEST_F(PgThinClientTest, PagedReadHoldsSnapshotAcrossPages) {
+  constexpr int kHashKey = 7;
+  constexpr int kNumRows = 200;          // v in [0, 199]
+  constexpr int kDeleteFrom = 100;       // rows v in [100, 199] deleted after page 1
+  constexpr uint64_t kPageLimit = 50;    // forces several pages (first page returns v in [0, 49])
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE p (k int, v int, PRIMARY KEY((k) HASH, v))"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO p SELECT $0, gs FROM generate_series(0, $1) gs", kHashKey, kNumRows - 1));
+
+  const auto db_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT oid FROM pg_database "
+                                                     "WHERE datname = current_database()"));
+  const auto table_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT 'p'::regclass::oid"));
+
+  const auto addr = TServerAddr();
+  const char* addrs[] = {addr.c_str()};
+  ybthin_client* client = nullptr;
+  {
+    auto st = ybthin_client_create(
+        addrs, 1, /* tls= */ nullptr, /* pool= */ nullptr, /* rpc_timeout_ms= */ 60000,
+        /* num_reactors= */ 0, &client);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ybthin_table* table = nullptr;
+  ybthin_table_info info = {};
+  {
+    auto st = ybthin_table_open(client, db_oid, table_oid, &table, &info);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  const int32_t v_id = info.columns[1].id;
+
+  ybthin_bind hash_values[] = {I32(kHashKey)};
+  int32_t target_ids[] = {v_id};
+  ybthin_read_spec spec = {};
+  spec.hash_values = hash_values;
+  spec.n_hash = 1;
+  spec.target_ids = target_ids;
+  spec.n_targets = 1;
+  spec.limit = kPageLimit;
+  spec.is_forward_scan = 1;
+
+  std::vector<int32_t> seen;
+  std::vector<uint8_t> paging_state;
+  int pages = 0;
+  bool deleted = false;
+  do {
+    std::promise<ReadOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_read_op op = {};
+    op.table = table;
+    op.spec = spec;
+    op.paging_state_in = paging_state.empty() ? nullptr : paging_state.data();
+    op.paging_state_in_len = paging_state.size();
+    // Continue the scan with just the paging_state (read_time_ht == 0): the scan must stay on its
+    // original snapshot on its own, not silently jump to a newer one on each page.
+    ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+    auto out = future.get();
+    ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
+    for (size_t r = 0; r < out.n_rows; ++r) {
+      const DecodedCell& v_cell = out.cells[r * out.n_cols + 0];
+      ASSERT_EQ(v_cell.tag, YBTHIN_BIND_I32);
+      seen.push_back(static_cast<int32_t>(v_cell.i));
+    }
+    paging_state = std::move(out.paging_state);
+    ++pages;
+    // After the first page, commit a delete of the not-yet-scanned tail. A scan that holds its
+    // snapshot must still return these rows on later pages.
+    if (!deleted) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "DELETE FROM p WHERE k = $0 AND v >= $1", kHashKey, kDeleteFrom));
+      deleted = true;
+    }
+    ASSERT_LT(pages, 100) << "paging did not terminate";
+  } while (!paging_state.empty());
+
+  std::sort(seen.begin(), seen.end());
+  seen.erase(std::unique(seen.begin(), seen.end()), seen.end());
+  ASSERT_GT(pages, 1) << "expected the scan to span multiple pages at limit " << kPageLimit;
+  ASSERT_EQ(seen.size(), static_cast<size_t>(kNumRows))
+      << "paged scan dropped rows across a page boundary: the concurrent delete of v >= "
+      << kDeleteFrom << " became visible mid-scan, so the scan did not hold its snapshot";
+  EXPECT_EQ(seen.front(), 0);
+  EXPECT_EQ(seen.back(), kNumRows - 1);
+
+  ybthin_columns_free(info.columns, info.n_columns);
+  ybthin_table_close(table);
+  ybthin_client_destroy(client);
 }
 
 // TLS variant: the cluster runs with node-to-node encryption, and the thin client connects over TLS

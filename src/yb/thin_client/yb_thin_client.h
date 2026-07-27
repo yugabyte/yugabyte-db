@@ -277,10 +277,14 @@ typedef void (*ybthin_write_cb)(void* ctx, ybthin_status status);
 /* Run a batch of read ops as the ops of ONE Perform: one RPC, one read
  * session, one snapshot. `results[i]` in the delivered ybthin_read_result
  * corresponds to `ops[i]`. `read_time_ht` pins the batch snapshot (0 => the
- * server picks a clamped read point); pass a prior batch's `used_read_time_ht`
- * to continue its scans under the same snapshot. An op with `paging_state_in`
- * set continues that op's scan; mixed fresh/continuation batches are legal, but
- * all continuation ops must share the paging session that issued them.
+ * server picks a clamped read point). An op with `paging_state_in` set continues
+ * that op's scan; a continuation automatically stays on the scan's ORIGINAL
+ * snapshot (the paging_state carries it), so paging a scan with `read_time_ht`
+ * left 0 on every page is snapshot-consistent — no rows are dropped even if data
+ * changes mid-scan. Passing a prior batch's `used_read_time_ht` as `read_time_ht`
+ * is only needed to force a NEW batch of scans onto an existing snapshot. Mixed
+ * fresh/continuation batches are legal, but all continuation ops must share the
+ * paging session (and snapshot) that issued them.
  * Status is batch-level: any op failure fails the whole call (no partial
  * results) — on YBTHIN_READ_RESTART the caller re-issues from fresh pages. */
 void ybthin_read_async(ybthin_client*, const ybthin_read_op* ops, size_t n_ops,

@@ -101,6 +101,11 @@ static constexpr int kDefaultNumReactors = 4;
 static constexpr uint32_t kDefaultReadSessions = 4;
 static constexpr uint32_t kDefaultWriteSessions = 1;
 static constexpr uint32_t kDefaultSessionsPerConn = 4;
+// read_time_serial_no_history_min is set this far BELOW the current read serial (matching
+// yb_tsclient): the server keeps the read points of that many recent serials so paged scans /
+// continuations can restore their snapshot, while older ones are pruned. Setting it EQUAL to the
+// serial prunes everything and is part of what left the shim's read point sticky.
+static constexpr uint64_t kReadSerialHistoryWindow = 65536;
 
 // ---- opaque handles -------------------------------------------------------
 
@@ -370,12 +375,18 @@ ybthin_session* NextWriteSession(ybthin_client* client) {
   return pool[client->write_rr.fetch_add(1, std::memory_order_relaxed) % pool.size()].get();
 }
 
-// Wrapped paging state = [magic][version][u32 read-session index][u32 generation] + the server's
-// paging state. The caller passes this back opaquely; on continuation the shim routes to the same
-// session (generation-checked), which is where the server's read point for the scan lives.
+// Wrapped paging state =
+//   [magic][version][u32 read-session index][u32 generation][u64 read_time_serial][u64 txn_serial]
+//   + the server's paging state.
+// The caller passes this back opaquely. On continuation the shim routes to the same session
+// (generation-checked) AND replays the scan's original read_time_serial / txn_serial rather than
+// allocating new ones -- keeping read_time_serial_no constant across a scan's pages, exactly as
+// pggate does within a single statement, so the server restores this scan's read point and every
+// page observes ONE snapshot. (Advancing the serial per page made the server's
+// ENSURE_READ_TIME_IS_SET pick a fresh, later read time each page, dropping rows deleted mid-scan.)
 constexpr uint8_t kPagingMagic = 0xB1;
-constexpr uint8_t kPagingVersion = 1;
-constexpr size_t kPagingHeaderLen = 2 + 4 + 4;
+constexpr uint8_t kPagingVersion = 2;
+constexpr size_t kPagingHeaderLen = 2 + 4 + 4 + 8 + 8;
 
 void PutU32LE(std::string* s, uint32_t v) {
   for (int i = 0; i < 4; ++i) s->push_back(static_cast<char>((v >> (8 * i)) & 0xff));
@@ -385,14 +396,26 @@ uint32_t GetU32LE(const uint8_t* p) {
   for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(p[i]) << (8 * i);
   return v;
 }
+void PutU64LE(std::string* s, uint64_t v) {
+  for (int i = 0; i < 8; ++i) s->push_back(static_cast<char>((v >> (8 * i)) & 0xff));
+}
+uint64_t GetU64LE(const uint8_t* p) {
+  uint64_t v = 0;
+  for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(p[i]) << (8 * i);
+  return v;
+}
 
-std::string WrapPagingState(uint32_t session_index, uint32_t generation, const std::string& srv) {
+std::string WrapPagingState(
+    uint32_t session_index, uint32_t generation, uint64_t read_time_serial, uint64_t txn_serial,
+    const std::string& srv) {
   std::string out;
   out.reserve(kPagingHeaderLen + srv.size());
   out.push_back(static_cast<char>(kPagingMagic));
   out.push_back(static_cast<char>(kPagingVersion));
   PutU32LE(&out, session_index);
   PutU32LE(&out, generation);
+  PutU64LE(&out, read_time_serial);
+  PutU64LE(&out, txn_serial);
   out.append(srv);
   return out;
 }
@@ -400,6 +423,8 @@ std::string WrapPagingState(uint32_t session_index, uint32_t generation, const s
 struct PinInfo {
   uint32_t session_index;
   uint32_t generation;
+  uint64_t read_time_serial;  // the scan's original serials; a continuation replays them so the
+  uint64_t txn_serial;        // server restores this scan's read point instead of picking a new one
   Slice server_paging_state;
 };
 Result<PinInfo> UnwrapPagingState(const uint8_t* data, size_t len) {
@@ -407,7 +432,7 @@ Result<PinInfo> UnwrapPagingState(const uint8_t* data, size_t len) {
     return STATUS(InvalidArgument, "malformed wrapped paging state");
   }
   return PinInfo{
-      GetU32LE(data + 2), GetU32LE(data + 6),
+      GetU32LE(data + 2), GetU32LE(data + 6), GetU64LE(data + 10), GetU64LE(data + 18),
       Slice(data + kPagingHeaderLen, len - kPagingHeaderLen)};
 }
 
@@ -445,6 +470,10 @@ struct ReadCall {
   uint32_t generation;          // session incarnation this batch ran at (for wrapping)
   bool has_continuation;        // any op is a continuation -> its pinned session must still match
   uint32_t pinned_generation;   // generation the continuation ops were pinned to
+  uint64_t pinned_read_time_serial;  // a continuation replays the scan's original serials (below)
+  uint64_t pinned_txn_serial;        // instead of advancing, so the server restores its read point
+  uint64_t read_time_serial;    // serials actually used for THIS Perform; wrapped into the response
+  uint64_t txn_serial;          // paging state so the next page replays them
   tserver::PgPerformRequestPB req;
   tserver::PgPerformResponsePB resp;
   rpc::RpcController controller;
@@ -649,7 +678,8 @@ void FinishRead(ReadCall* raw) {
       }
       std::string srv;
       op.paging_state().SerializeToString(&srv);
-      std::string wrapped = WrapPagingState(call->session_index, call->generation, srv);
+      std::string wrapped = WrapPagingState(
+          call->session_index, call->generation, call->read_time_serial, call->txn_serial, srv);
       op_result.paging_state = DupBytes(wrapped.data(), wrapped.size());
       op_result.paging_state_len = wrapped.size();
     }
@@ -922,6 +952,8 @@ void ybthin_read_async(
   bool have_pinned = false;
   size_t session_index = 0;
   uint32_t pinned_generation = 0;
+  uint64_t pinned_read_time_serial = 0;
+  uint64_t pinned_txn_serial = 0;
   std::vector<Slice> server_paging_states(n_ops);  // empty entry => fresh op
   for (size_t i = 0; i < n_ops; ++i) {
     const auto& op = ops[i];
@@ -941,7 +973,13 @@ void ybthin_read_async(
       have_pinned = true;
       session_index = pin->session_index;
       pinned_generation = pin->generation;
-    } else if (pin->session_index != session_index || pin->generation != pinned_generation) {
+      pinned_read_time_serial = pin->read_time_serial;
+      pinned_txn_serial = pin->txn_serial;
+    } else if (pin->session_index != session_index || pin->generation != pinned_generation ||
+               pin->read_time_serial != pinned_read_time_serial ||
+               pin->txn_serial != pinned_txn_serial) {
+      // One Perform carries one snapshot (one read_time_serial_no), so continuation ops batched
+      // together must all belong to the same scan/snapshot -- i.e. share the session and serials.
       cb(ctx, MakeStatus(
              YBTHIN_INVALID, "all continuation ops in a batch must share the paging session"),
          nullptr);
@@ -956,6 +994,8 @@ void ybthin_read_async(
   call->session_index = static_cast<uint32_t>(session_index);
   call->has_continuation = have_pinned;
   call->pinned_generation = pinned_generation;
+  call->pinned_read_time_serial = pinned_read_time_serial;
+  call->pinned_txn_serial = pinned_txn_serial;
 
   // Build one Perform with n_ops read requests, in caller order (results map back by index).
   auto& req = call->req;
@@ -1030,11 +1070,14 @@ void ybthin_read_async(
   // One snapshot for the whole batch.
   auto* rto = req.mutable_options()->mutable_read_time_options();
   if (read_time_ht == 0) {
-    // Fresh read point for this batch: ensure a read time is set (the fresh txn_serial_no stamped
-    // at dispatch already dropped any prior read point, so the server picks a current one here).
-    // This mirrors yb_tsclient's plain-read path. Read-after-write correctness comes from the fresh
-    // txn_serial_no, not from this manipulation alone.
+    // Let the server pick the read point. ENSURE + clamp + the read serial (set at dispatch) drive
+    // it: for a FRESH scan the serial advances, so the server picks a new clamped read time (a new
+    // snapshot that observes the latest commits -- read-after-write). For a CONTINUATION the serial
+    // is REPLAYED (unchanged), so the server restores the scan's read point and ENSURE is a no-op
+    // -- every page reads at one snapshot. This mirrors pggate: advance read_time_serial_no per
+    // statement, hold it constant across that statement's pages.
     rto->set_read_time_manipulation(tserver::ENSURE_READ_TIME_IS_SET);
+    rto->set_clamp_uncertainty_window(true);
   } else {
     // Pin the batch to an explicit snapshot (e.g. paged-scan continuation, or a second batch that
     // must observe the same snapshot as a prior one via its used_read_time_ht).
@@ -1059,16 +1102,35 @@ void ybthin_read_async(
       early = MakeStatus(YBTHIN_READ_RESTART, "pinned read session was reopened");
     } else {
       raw->generation = s->generation;
-      const uint64_t read_serial = s->read_time_serial++;
+      uint64_t read_serial;
+      uint64_t txn_serial;
+      if (raw->has_continuation) {
+        // Continue the scan on its ORIGINAL serials (carried in the paging state) instead of
+        // allocating new ones. With read_time_serial_no unchanged, the server restores this scan's
+        // read point (pg_client_session.cc read_point_history_) and every page reads at one
+        // snapshot -- the way pggate keeps read_time_serial_no constant across a statement's pages.
+        read_serial = raw->pinned_read_time_serial;
+        txn_serial = raw->pinned_txn_serial;
+      } else {
+        // Fresh scan == a new statement: advance to a new read point so it observes the latest
+        // committed data (read-after-write), and a fresh transaction serial so the server does not
+        // reuse this session's prior read point.
+        read_serial = s->read_time_serial++;
+        txn_serial = client->txn_serial.fetch_add(1);
+      }
       rto->set_read_time_serial_no(read_serial);
-      rto->set_read_time_serial_no_history_min(read_serial);
+      rto->set_read_time_serial_no_history_min(
+          read_serial > kReadSerialHistoryWindow ? read_serial - kReadSerialHistoryWindow : 0);
       for (auto& op : *raw->req.mutable_ops()) {
         op.mutable_read()->set_stmt_id(s->stmt_id++);
       }
-      // Fresh transaction per Perform so the server does not reuse this session's prior read point.
-      raw->req.mutable_options()->set_txn_serial_no(client->txn_serial.fetch_add(1));
+      raw->req.mutable_options()->set_txn_serial_no(txn_serial);
       raw->req.set_session_id(s->session_id);
       raw->req.set_serial_no(s->serial_no++);
+      // Remember the serials this Perform ran at so FinishRead can wrap them into the response
+      // paging state for the next page to replay.
+      raw->read_time_serial = read_serial;
+      raw->txn_serial = txn_serial;
       dispatch = true;
     }
   }
@@ -1161,7 +1223,8 @@ void ybthin_upsert_batch_async(
       auto* rto = raw->req.mutable_options()->mutable_read_time_options();
       const uint64_t serial = s->read_time_serial++;
       rto->set_read_time_serial_no(serial);
-      rto->set_read_time_serial_no_history_min(serial);
+      rto->set_read_time_serial_no_history_min(
+          serial > kReadSerialHistoryWindow ? serial - kReadSerialHistoryWindow : 0);
       // Fresh transaction per Perform (stateless writes), matching the read path and yb_tsclient.
       raw->req.mutable_options()->set_txn_serial_no(client->txn_serial.fetch_add(1));
       raw->req.set_session_id(s->session_id);
