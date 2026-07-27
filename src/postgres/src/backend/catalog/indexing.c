@@ -533,6 +533,11 @@ YBCatalogTupleUpdate(Relation heapRel, HeapTuple tup,
 	if (has_indices)
 	{
 		YbFetchHeapTuple(heapRel, HEAPTUPLE_YBCTID(tup), &oldtup);
+		if (!HeapTupleIsValid(oldtup))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("catalog tuple with YBCTID %s does not exist",
+							YBDatumToString(HEAPTUPLE_YBCTID(tup), BYTEAOID))));
 		CatalogIndexDelete(indstate, oldtup);
 	}
 
