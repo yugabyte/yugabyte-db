@@ -216,6 +216,8 @@ Type "help" for help.
 yugabyte=#
 ```
 
+`--host $(hostname)` is required: ysqlsh defaults to `localhost`, but inside the container YugabyteDB listens on the container hostname (its Docker network address), not on loopback.
+
 To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](/stable/develop/sample-data/retail-analytics/).
 
 ## Monitor your cluster
