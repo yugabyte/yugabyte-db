@@ -4244,7 +4244,7 @@ TEST_F(PgLibPqTest, TempTableMultiNodeNamespaceConflict) {
 }
 
 TEST_F(PgLibPqTest, CatalogCacheMemoryLeak) {
-  FLAGS_vmodule = "libpq_utils*=1";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpq_utils*=1";
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
   ASSERT_OK(conn1.Execute("SET log_statement='ALL';"));

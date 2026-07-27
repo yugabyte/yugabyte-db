@@ -660,7 +660,7 @@ TEST_F(TabletSplitITest, SlowSplitSingleTablet) {
   // Reduce raft_heartbeat_interval_ms for leader lease to be reliably replicated.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = FLAGS_leader_lease_duration_ms / 2;
   // Keep leader failure timeout the same to avoid flaky losses of leader with short heartbeats.
-  FLAGS_leader_failure_max_missed_heartbeat_periods =
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) =
       leader_failure_timeout / FLAGS_raft_heartbeat_interval_ms;
 
   constexpr auto kNumRows = 50;
