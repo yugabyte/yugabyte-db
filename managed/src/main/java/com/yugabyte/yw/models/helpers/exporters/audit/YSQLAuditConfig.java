@@ -62,6 +62,14 @@ public class YSQLAuditConfig {
   @ApiModelProperty(value = "Log statement once", accessMode = READ_WRITE)
   private boolean logStatementOnce;
 
+  @ApiModelProperty(
+      value =
+          "Number of days to keep extracted YSQL audit log archives on the node."
+              + " 0 or unset disables the dedicated audit-log retention pipeline and keeps the"
+              + " default size-based postgres log purge behavior.",
+      accessMode = READ_WRITE)
+  private Integer logRetentionDays;
+
   public enum YSQLAuditStatementClass {
     READ,
     WRITE,

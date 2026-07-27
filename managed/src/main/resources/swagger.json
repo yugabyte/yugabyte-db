@@ -988,6 +988,9 @@
             "PA_UNIVERSE_COLLECTION_FAILURE",
             "PA_UNIVERSE_COLLECTION_STALE",
             "PA_EMBEDDED_COLLECTOR_ERROR",
+            "NODE_MAINTENANCE_SERVICE_FAILED",
+            "NODE_MAINTENANCE_SERVICE_NOT_RUN",
+            "NODE_MAINTENANCE_SERVICE_DEFINITION_MISSING",
             "YBA_NODE_CPU_USAGE",
             "YBA_NODE_MEMORY_USAGE",
             "YBA_NODE_DISK_USAGE",
@@ -1184,6 +1187,9 @@
             "PA_UNIVERSE_COLLECTION_FAILURE",
             "PA_UNIVERSE_COLLECTION_STALE",
             "PA_EMBEDDED_COLLECTOR_ERROR",
+            "NODE_MAINTENANCE_SERVICE_FAILED",
+            "NODE_MAINTENANCE_SERVICE_NOT_RUN",
+            "NODE_MAINTENANCE_SERVICE_DEFINITION_MISSING",
             "YBA_NODE_CPU_USAGE",
             "YBA_NODE_MEMORY_USAGE",
             "YBA_NODE_DISK_USAGE",
@@ -1476,6 +1482,9 @@
             "PA_UNIVERSE_COLLECTION_FAILURE",
             "PA_UNIVERSE_COLLECTION_STALE",
             "PA_EMBEDDED_COLLECTOR_ERROR",
+            "NODE_MAINTENANCE_SERVICE_FAILED",
+            "NODE_MAINTENANCE_SERVICE_NOT_RUN",
+            "NODE_MAINTENANCE_SERVICE_DEFINITION_MISSING",
             "YBA_NODE_CPU_USAGE",
             "YBA_NODE_MEMORY_USAGE",
             "YBA_NODE_DISK_USAGE",
@@ -32158,6 +32167,11 @@
             "ERROR"
           ],
           "type" : "string"
+        },
+        "logRetentionDays" : {
+          "description" : "Number of days to keep gzipped YCQL audit log archives on the node. 0 or unset disables the dedicated audit-log retention pipeline and keeps the default size-based tserver log purge behavior.",
+          "format" : "int32",
+          "type" : "integer"
         }
       },
       "required" : [
@@ -32232,6 +32246,11 @@
         "logRelation" : {
           "description" : "Log relation",
           "type" : "boolean"
+        },
+        "logRetentionDays" : {
+          "description" : "Number of days to keep extracted YSQL audit log archives on the node. 0 or unset disables the dedicated audit-log retention pipeline and keeps the default size-based postgres log purge behavior.",
+          "format" : "int32",
+          "type" : "integer"
         },
         "logRows" : {
           "description" : "Log rows",
