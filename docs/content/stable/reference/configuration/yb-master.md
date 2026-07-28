@@ -2048,7 +2048,7 @@ Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for bac
 
 These flags control per-database CPU isolation, which lets you treat each database as a tenant and prevent one database from starving others of CPU. For an overview and setup instructions, see [Multitenancy](../../../additional-features/multitenancy/).
 
-Set the resource governor flags on both YB-Master and YB-TServer. Descriptions for the flags common to both processes ([qos_max_db_cpu_percent](../yb-tserver/#qos-max-db-cpu-percent), [qos_evaluation_window_us](../yb-tserver/#qos-evaluation-window-us), and [qos_system_high_cpu_reserved_percent](../yb-tserver/#qos-system-high-cpu-reserved-percent)) are given in the [YB-TServer reference](../yb-tserver/#multitenancy-resource-governor-flags).
+For information on other resource governor configuration flags, see the [YB-TServer reference](../yb-tserver/#multitenancy-resource-governor-flags).
 
 ##### --enable_qos
 
