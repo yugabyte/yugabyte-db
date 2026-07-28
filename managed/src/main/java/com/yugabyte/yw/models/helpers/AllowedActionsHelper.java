@@ -133,6 +133,7 @@ public class AllowedActionsHelper {
     LOG.debug(
         "Found {} nodes equivalent to current node {} (dedicatedTo={}, isMaster={}, isTserver={})",
         numNodesToCheck,
+        node.nodeName,
         node.dedicatedTo,
         node.isMaster,
         node.isTserver);
