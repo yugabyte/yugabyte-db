@@ -1708,7 +1708,6 @@ ExecutePlan(QueryDesc *queryDesc,
 		use_parallel_mode = queryDesc->plannedstmt->parallelModeNeeded;
 		yb_read_ahead_allowed = IsYugaByteEnabled() && YbIsReadAheadAllowed();
 	}
-		use_parallel_mode = queryDesc->plannedstmt->parallelModeNeeded;
 	queryDesc->already_executed = true;
 
 	estate->es_use_parallel_mode = use_parallel_mode;
