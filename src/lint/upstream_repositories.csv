@@ -6,7 +6,7 @@ src/postgres/contrib/passwordcheck/sql/passwordcheck.sql,contrib/passwordcheck/s
 src/postgres/third-party-extensions/age,,https://github.com/yugabyte/age,a9dc043d824071b1991fe5d2a8745175b318fa10
 src/postgres/third-party-extensions/documentdb,,https://github.com/documentdb/documentdb,6d82f06dd5c0852cf1ceea9af015bcacbf71551a
 src/postgres/third-party-extensions/hypopg,,https://github.com/HypoPG/hypopg,21d5461ad1868434cc47d9aa656d7afc2b24c464
-src/postgres/third-party-extensions/orafce,,https://github.com/orafce/orafce,6adbd66c429dabb828f10d764d356824efeb8396
+src/postgres/third-party-extensions/orafce,,https://github.com/orafce/orafce,3a206638f4abcdbdca92957fe0c0051d4b548d8d
 src/postgres/third-party-extensions/pg_cron,,https://github.com/citusdata/pg_cron,TODO
 src/postgres/third-party-extensions/pg_hint_plan,,https://github.com/ossc-db/pg_hint_plan,7a41e7ba94c8769895fefbb282f6943067adac2e
 src/postgres/third-party-extensions/pg_parquet,,https://github.com/CrunchyData/pg_parquet,9092f65678b9fcfc59e8918c74ad25259034c089
