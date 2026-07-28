@@ -256,6 +256,8 @@ class VectorLSMInsertTask :
   using InsertRegistry = VectorLSMInsertRegistryBase<Vector, DistanceResult>;
   using InsertCallback = boost::function<void(const Status&)>;
   using VectorIndexPtr = typename VectorLSM<Vector, DistanceResult>::VectorIndexPtr;
+  using VectorWithDistance = typename VectorLSM<Vector, DistanceResult>::VectorWithDistance;
+  using SearchHeap = std::priority_queue<VectorWithDistance>;
 
   void Bind(const VectorIndexPtr& index, std::shared_ptr<InsertRegistry> registry,
             InsertCallback insert_callback) {
@@ -294,31 +296,7 @@ class VectorLSMInsertTask :
     registry->TaskDone(this);
   }
 
- protected:
-  Status DoInsert() {
-    DCHECK(index_);
-    for (const auto& [vector_id, vector] : vectors_) {
-      RETURN_NOT_OK(index_->Insert(vector_id, vector));
-    }
-    return Status::OK();
-  }
-
-  mutable rw_spinlock mutex_;
-  std::shared_ptr<InsertRegistry> registry_;
-  VectorIndexPtr index_;
-  InsertCallback insert_callback_;
-  std::vector<std::pair<VectorId, Vector>> vectors_;
-};
-
-template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class VectorLSMInsertTaskSearchWrapper final : public VectorLSMInsertTask<Vector, DistanceResult> {
- public:
-  using Base = VectorLSMInsertTask<Vector, DistanceResult>;
-  using VectorWithDistance = typename VectorLSM<Vector, DistanceResult>::VectorWithDistance;
-  using SearchHeap = std::priority_queue<VectorWithDistance>;
-
-  void Search(
-      SearchHeap& heap, const Vector& query_vector, const SearchOptions& options) const {
+  void Search(SearchHeap& heap, const Vector& query_vector, const SearchOptions& options) const {
     SharedLock lock(mutex_);
     for (const auto& [id, vector] : vectors_) {
       if (!options.filter(id)) {
@@ -335,11 +313,20 @@ class VectorLSMInsertTaskSearchWrapper final : public VectorLSMInsertTask<Vector
     }
   }
 
- private:
-  // The class is just a wrapper variables must be defined.
-  using Base::mutex_;
-  using Base::index_;
-  using Base::vectors_;
+ protected:
+  Status DoInsert() {
+    DCHECK(index_);
+    for (const auto& [vector_id, vector] : vectors_) {
+      RETURN_NOT_OK(index_->Insert(vector_id, vector));
+    }
+    return Status::OK();
+  }
+
+  mutable rw_spinlock mutex_;
+  std::shared_ptr<InsertRegistry> registry_;
+  VectorIndexPtr index_;
+  InsertCallback insert_callback_;
+  std::vector<std::pair<VectorId, Vector>> vectors_;
 };
 
 // Registry for all active Vector LSM insert subtasks.
@@ -368,11 +355,24 @@ class VectorLSMInsertRegistryBase
   }
 
   void ExecuteTasks(InsertTaskList& list) EXCLUDES(mutex_) {
-    for (auto& task : list) {
+    DCHECK(!list.empty());
+    auto last = --list.end();
+    auto it = list.begin();
+    {
+      std::lock_guard lock(mutex_);
+      // splice does not invalidate iterators, so `it` and `last` stay usable below.
+      active_tasks_.splice(active_tasks_.end(), list);
+    }
+    // ++it reads the visited task's successor link without the mutex. This is safe up to `last`:
+    // the link is only rewritten when the successor is unlinked, which cannot happen before the
+    // successor is enqueued, i.e. after the read. The link of `last` could be rewritten by a
+    // concurrent splice at any moment, so iteration stops at `last` and never reads it.
+    while (it != last) {
+      auto& task = *it++;
       thread_pool_.Enqueue(&task);
     }
-    std::lock_guard lock(mutex_);
-    active_tasks_.splice(active_tasks_.end(), list);
+    thread_pool_.Enqueue(&*last);
+    TEST_SYNC_POINT("VectorLSMInsertRegistryBase::ExecuteTasks:Enqueued");
   }
 
   void TaskDone(InsertTask* raw_task) EXCLUDES(mutex_) {
@@ -382,6 +382,8 @@ class VectorLSMInsertRegistryBase
     {
       std::lock_guard lock(mutex_);
       --allocated_tasks_;
+      // Catches a task that completed before ExecuteTasks moved it to active_tasks_.
+      DCHECK(!active_tasks_.empty());
       active_tasks_.erase(active_tasks_.iterator_to(*raw_task));
       if (task_pool_.size() < FLAGS_vector_index_task_pool_size) {
         task_pool_.push_back(std::move(task));
@@ -480,13 +482,11 @@ class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, Dista
   }
 
   SearchResults Search(const Vector& query_vector, const SearchOptions& options) {
-    using SearchWrapper = VectorLSMInsertTaskSearchWrapper<Vector, DistanceResult>;
-    using SearchHeap = typename SearchWrapper::SearchHeap;
-    SearchHeap heap;
+    typename InsertTask::SearchHeap heap;
     {
       SharedLock lock(mutex_);
       for (const auto& task : active_tasks_) {
-        static_cast<const SearchWrapper&>(task).Search(heap, query_vector, options);
+        task.Search(heap, query_vector, options);
       }
     }
     return ReverseHeapToVector(heap);
