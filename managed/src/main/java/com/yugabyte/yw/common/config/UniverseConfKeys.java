@@ -949,6 +949,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " operation using PITR to be completed; otherwise, it will fail the operation",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> restoreSnapshotScheduleTimeout =
+      new ConfKeyInfo<>(
+          "yb.client.restore_snapshot_schedule_timeout",
+          ScopeType.UNIVERSE,
+          "YB client timeout for restoring a snapshot schedule",
+          "The admin operation and socket read timeout used by the YB client when restoring a"
+              + " snapshot schedule",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> pitrCreateTimeout =
       new ConfKeyInfo<>(
           "yb.pitr.create_timeout",

@@ -7,6 +7,8 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
+import com.yugabyte.yw.common.services.config.YbClientConfig;
+import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
@@ -28,13 +30,16 @@ public class RestoreSnapshotSchedule extends UniverseTaskBase {
       ImmutableList.of(State.RESTORING, State.RESTORED);
 
   private final OperatorStatusUpdater kubernetesStatus;
+  private final YbClientConfigFactory ybClientConfigFactory;
 
   @Inject
   protected RestoreSnapshotSchedule(
       BaseTaskDependencies baseTaskDependencies,
-      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory,
+      YbClientConfigFactory ybClientConfigFactory) {
     super(baseTaskDependencies);
     this.kubernetesStatus = operatorStatusUpdaterFactory.create();
+    this.ybClientConfigFactory = ybClientConfigFactory;
   }
 
   @Override
@@ -57,7 +62,7 @@ public class RestoreSnapshotSchedule extends UniverseTaskBase {
     log.info("Running {}", getName());
 
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClient client = getClientToRestoreSnapshotSchedule(universe)) {
 
       UUID restorationUuid = null;
 
@@ -116,6 +121,20 @@ public class RestoreSnapshotSchedule extends UniverseTaskBase {
     kubernetesStatus.updatePitrRestoreStatus(
         "The PITR restore task finished successfully", getUserTaskUUID(), universe);
     log.info("Completed {}", getName());
+  }
+
+  protected YBClient getClientToRestoreSnapshotSchedule(Universe universe) {
+    long timeoutMs =
+        confGetter
+            .getConfForScope(universe, UniverseConfKeys.restoreSnapshotScheduleTimeout)
+            .toMillis();
+    YbClientConfig clientConfig =
+        ybClientConfigFactory.create(
+            universe.getMasterAddresses(),
+            universe.getCertificateNodetoNode(),
+            timeoutMs,
+            timeoutMs);
+    return ybService.getClientWithConfig(clientConfig);
   }
 
   private void ensureStateIsRestored(YBClient client, Universe universe, UUID restorationUuid) {
