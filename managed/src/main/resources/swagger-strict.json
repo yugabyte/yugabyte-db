@@ -2267,6 +2267,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -5029,6 +5032,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -8093,6 +8099,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -8874,6 +8883,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -10392,6 +10404,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -11109,6 +11124,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -15295,6 +15313,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -16305,6 +16326,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -17144,6 +17168,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -18653,6 +18680,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -20927,6 +20957,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -22016,6 +22049,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -23323,6 +23359,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -23987,6 +24026,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -24913,6 +24955,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -25548,6 +25593,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -26179,6 +26227,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -27319,6 +27370,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -28427,6 +28481,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [

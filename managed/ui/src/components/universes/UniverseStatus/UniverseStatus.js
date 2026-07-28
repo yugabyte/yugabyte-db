@@ -198,6 +198,18 @@ export default class UniverseStatus extends Component {
           </div>
         );
       }
+    } else if (universeStatus.state === UniverseState.CREATION_FAILED) {
+      // Dedicated rendering so operators immediately see that this universe never came up.
+      // Health checks and alert definitions are intentionally suppressed for it on the backend,
+      // and no failed task button is required here beyond the standard task details drawer.
+      const failedTask = getcurrentUniverseFailedTask(currentUniverse, customerTaskList);
+      taskToDisplayInDrawer = failedTask;
+      statusDisplay = (
+        <div className={showLabelText ? 'status-error' : ''}>
+          <i className="fa fa-times-circle" />
+          {showLabelText && <span>{universeStatus.state.text}</span>}
+        </div>
+      );
     } else if (
       universeStatus.state === UniverseState.BAD ||
       universeStatus.state === UniverseState.WARNING
@@ -301,7 +313,11 @@ export default class UniverseStatus extends Component {
       >
         {statusDisplay}
         {showTaskDetails &&
-          [UniverseState.PENDING, UniverseState.BAD].includes(universeStatus.state) && (
+          [
+            UniverseState.PENDING,
+            UniverseState.BAD,
+            UniverseState.CREATION_FAILED
+          ].includes(universeStatus.state) && (
             <TaskDetailSimpleComp
               taskUUID={taskToDisplayInDrawer?.id}
               universeUUID={currentUniverse.universeUUID}

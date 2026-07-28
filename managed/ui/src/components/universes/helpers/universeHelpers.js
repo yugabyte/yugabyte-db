@@ -27,6 +27,13 @@ export const UniverseState = {
     text: 'Error',
     className: 'bad'
   },
+  // Universe creation never finished successfully. Health checks and alert definitions are
+  // intentionally suppressed for universes in this state because there is nothing running to
+  // monitor. Operators should either retry creation or delete the universe.
+  CREATION_FAILED: {
+    text: 'Universe creation failed',
+    className: 'bad'
+  },
   UNKNOWN: {
     text: 'Loading',
     className: 'unknown'
@@ -63,6 +70,7 @@ export const getUniverseStatus = (universe) => {
   const {
     updateInProgress,
     updateSucceeded,
+    creationSucceeded,
     universePaused,
     placementModificationTaskUuid,
     errorString
@@ -82,6 +90,12 @@ export const getUniverseStatus = (universe) => {
     return { state: UniverseState.PENDING, error: errorString };
   }
   if (!updateInProgress && !allUpdatesSucceeded) {
+    // creationSucceeded stays false forever if the initial Create task never finished. In that
+    // case surface a dedicated "Universe creation failed" state so operators know why health
+    // checks and alerts are quiet on this universe.
+    if (creationSucceeded === false) {
+      return { state: UniverseState.CREATION_FAILED, error: errorString };
+    }
     return errorString === 'Preflight checks failed.'
       ? { state: UniverseState.WARNING, error: errorString }
       : { state: UniverseState.BAD, error: errorString };

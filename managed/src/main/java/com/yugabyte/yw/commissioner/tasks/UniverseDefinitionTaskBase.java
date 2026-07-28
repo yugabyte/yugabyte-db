@@ -1190,9 +1190,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Update the swamper target file.
     createSwamperTargetUpdateTask(false /* removeFile */);
 
-    // Create alert definitions.
-    createUnivCreateAlertDefinitionsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
     // Create default redis table.
     checkAndCreateRedisTableTask(primaryCluster);
 

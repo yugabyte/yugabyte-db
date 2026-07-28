@@ -340,6 +340,11 @@ public class ModelFactory {
       params.nodeDetailsSet.add(node2);
     }
     params.upsertPrimaryCluster(userIntent, pi);
+    // Test universes stand in for fully created universes; keep the default behavior of health
+    // checks and alert definitions covering them by pretending creation succeeded. Tests that
+    // specifically want to exercise the "creation failed" behavior can override this on the
+    // returned universe.
+    params.creationSucceeded = true;
     return Universe.create(params, customerId);
   }
 
@@ -375,6 +380,8 @@ public class ModelFactory {
     params.setYbcInstalled(enableYbc);
     params.nodePrefix = Util.getNodePrefix(customerId, universeName);
     params.upsertPrimaryCluster(userIntent, pi);
+    // Same rationale as createUniverse(): test universes stand in for fully created universes.
+    params.creationSucceeded = true;
     Universe u = Universe.create(params, customerId);
     Map<String, String> config = new HashMap<>();
     config.put(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString());
