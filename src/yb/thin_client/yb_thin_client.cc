@@ -32,10 +32,8 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
 #include <memory>
 #include <mutex>
-#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -50,7 +48,10 @@
 #include "yb/common/value.pb.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/partition.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/endian.h"
 
@@ -68,6 +69,8 @@
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/util/pg_wire.h"
 
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/ref_cnt_buffer.h"
@@ -77,6 +80,7 @@
 #include "yb/util/status_format.h"
 
 using yb::DataType;
+using yb::faststring;
 using yb::HostPort;
 using yb::MonoDelta;
 using yb::RefCntSlice;
@@ -89,6 +93,7 @@ using yb::dockv::PartitionSchema;
 namespace tserver = yb::tserver;
 namespace rpc = yb::rpc;
 namespace pggate = yb::pggate;
+namespace dockv = yb::dockv;
 
 // Default tserver RPC port used when a "host" is passed without ":port".
 static constexpr uint16_t kDefaultTserverRpcPort = 9100;
@@ -270,20 +275,6 @@ Status BuildComparison(const ybthin_cond& c, yb::PgsqlExpressionPB* out) {
   return BindToQLValue(c.value, cond->add_operands()->mutable_value());
 }
 
-// Sets hash_code + partition_key from already-populated partition_column_values so the tserver can
-// route the op without a scan. No-op for a table with no hash columns.
-template <class ReqPB>
-Status SetPartitionRouting(const ybthin_table& table, ReqPB* req) {
-  if (req->partition_column_values().empty()) {
-    return Status::OK();
-  }
-  auto partition_key = VERIFY_RESULT(
-      table.partition_schema.EncodePgsqlHash(req->partition_column_values()));
-  req->set_hash_code(PartitionSchema::DecodeMultiColumnHashValue(partition_key));
-  req->set_partition_key(std::move(partition_key));
-  return Status::OK();
-}
-
 Result<ybthin_value_type> MapDataType(DataType dt) {
   switch (dt) {
     case DataType::BOOL: return YBTHIN_T_BOOL;
@@ -298,13 +289,9 @@ Result<ybthin_value_type> MapDataType(DataType dt) {
 }
 
 Result<std::string> ReadFile(const char* path) {
-  std::ifstream f(path, std::ios::binary);
-  if (!f) {
-    return STATUS_FORMAT(IOError, "cannot open $0", path);
-  }
-  std::stringstream ss;
-  ss << f.rdbuf();
-  return ss.str();
+  faststring data;
+  RETURN_NOT_OK(yb::ReadFileToString(yb::Env::Default(), path, &data));
+  return data.ToString();
 }
 
 // Sends one Heartbeat. `create` true opens a new session (send pid); false keeps `session_id_`
@@ -990,6 +977,27 @@ void ybthin_read_async(
   for (size_t i = 0; i < n_ops; ++i) {
     const ybthin_table* table = ops[i].table;
     const ybthin_read_spec* spec = &ops[i].spec;
+    // Binding the wrong kind of key would leave the partition key unset and quietly read only the
+    // first tablet, so reject it instead.
+    const bool range_sharded = table->schema.num_hash_key_columns() == 0;
+    if (range_sharded && spec->n_hash > 0) {
+      cb(ctx, MakeStatus(
+             YBTHIN_INVALID, "table is range-sharded: use spec.range_values, not hash_values"),
+         nullptr);
+      return;
+    }
+    if (!range_sharded && spec->n_range > 0) {
+      cb(ctx, MakeStatus(
+             YBTHIN_INVALID, "table is hash-sharded: use spec.hash_values, not range_values"),
+         nullptr);
+      return;
+    }
+    if (spec->n_hash > table->schema.num_hash_key_columns() ||
+        spec->n_range > table->schema.num_range_key_columns()) {
+      cb(ctx, MakeStatus(YBTHIN_INVALID, "more key values than key columns"), nullptr);
+      return;
+    }
+
     auto* read = req.add_ops()->mutable_read();
     read->set_client(yb::YQL_CLIENT_PGSQL);
     read->set_table_id(table->table_id);
@@ -999,8 +1007,31 @@ void ybthin_read_async(
       build = BindToQLValue(
           spec->hash_values[h], read->add_partition_column_values()->mutable_value());
     }
+    for (size_t r = 0; r < spec->n_range && build.ok(); ++r) {
+      build = BindToQLValue(
+          spec->range_values[r], read->add_range_column_values()->mutable_value());
+    }
+    // A read is routed off its scan bounds, not its range_column_values (only writes use those --
+    // see InitRange/WritePartitionKey), so turn the supplied key prefix into encoded bounds. A
+    // partial prefix widens to its whole range: -Inf on the lower side, +Inf on the upper.
+    if (build.ok() && spec->n_range > 0) {
+      auto lower = dockv::GetRangeComponents(
+          table->schema, read->range_column_values(), /* lower_bound= */ true);
+      auto upper = dockv::GetRangeComponents(
+          table->schema, read->range_column_values(), /* lower_bound= */ false);
+      if (!lower.ok() || !upper.ok()) {
+        cb(ctx, FromStatus(lower.ok() ? upper.status() : lower.status()), nullptr);
+        return;
+      }
+      auto* lb = read->mutable_lower_bound();
+      lb->set_key(dockv::DocKey(std::move(*lower)).Encode().ToStringBuffer());
+      lb->set_is_inclusive(true);
+      auto* ub = read->mutable_upper_bound();
+      ub->set_key(dockv::DocKey(std::move(*upper)).Encode().ToStringBuffer());
+      ub->set_is_inclusive(true);
+    }
     if (build.ok()) {
-      build = SetPartitionRouting(*table, read);
+      build = dockv::InitPartitionKey(table->schema, table->partition_schema, read);
     }
     if (build.ok() && spec->n_conds > 0) {
       if (spec->n_conds == 1) {
@@ -1048,6 +1079,13 @@ void ybthin_read_async(
       if (!read->mutable_paging_state()->ParseFromArray(
               ps.data(), static_cast<int>(ps.size()))) {
         cb(ctx, MakeStatus(YBTHIN_INVALID, "could not parse paging_state_in"), nullptr);
+        return;
+      }
+      // Re-route: InitPartitionKey resumes on whichever tablet the paging state names, which
+      // for a scan crossing a boundary is a different one.
+      build = dockv::InitPartitionKey(table->schema, table->partition_schema, read);
+      if (!build.ok()) {
+        cb(ctx, FromStatus(build), nullptr);
         return;
       }
     }
@@ -1153,6 +1191,11 @@ void ybthin_upsert_batch_async(
   for (size_t r = 0; r < n_rows && build.ok(); ++r) {
     const auto& row = rows[r];
     const ybthin_table* table = row.table;
+    // A write needs the whole primary key; a short one is padded out and hits a different row.
+    if (row.n_keys != table->schema.num_key_columns()) {
+      cb(ctx, MakeStatus(YBTHIN_INVALID, "upsert row must bind every primary key column"));
+      return;
+    }
     auto* write = req.add_ops()->mutable_write();
     write->set_client(yb::YQL_CLIENT_PGSQL);
     write->set_stmt_type(yb::PgsqlWriteRequestPB::PGSQL_UPSERT);
@@ -1167,7 +1210,7 @@ void ybthin_upsert_batch_async(
       build = BindToQLValue(row.key_values[i], expr->mutable_value());
     }
     if (build.ok()) {
-      build = SetPartitionRouting(*table, write);
+      build = dockv::InitPartitionKey(table->schema, table->partition_schema, write);
     }
     for (size_t i = 0; i < row.n_values && build.ok(); ++i) {
       auto* cv = write->add_column_values();

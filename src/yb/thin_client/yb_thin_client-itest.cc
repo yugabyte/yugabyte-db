@@ -388,6 +388,174 @@ TEST_F(PgThinClientTest, PagedReadHoldsSnapshotAcrossPages) {
   ybthin_client_destroy(client);
 }
 
+// Range-sharded tables. Routing is the client's job on the Perform path (PgClientSession never
+// derives a partition key), and a range table has no hash columns to derive one from, so the shim
+// builds it from the range key. The table is split into 4 tablets so anything that mis-routes --
+// or that fails to follow the paging state onto the next tablet -- loses rows instead of quietly
+// passing on a single-tablet table.
+TEST_F(PgThinClientTest, RangeShardedTable) {
+  constexpr int kNumRows = 200;         // r in [0, 199], split across 4 tablets
+  constexpr uint64_t kPageLimit = 32;   // several pages per tablet
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE rs (r int, payload bytea, PRIMARY KEY(r ASC)) "
+      "SPLIT AT VALUES ((50), (100), (150))"));
+
+  const auto db_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT oid FROM pg_database "
+                                                     "WHERE datname = current_database()"));
+  const auto table_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT 'rs'::regclass::oid"));
+
+  const auto addr = TServerAddr();
+  const char* addrs[] = {addr.c_str()};
+  ybthin_client* client = nullptr;
+  {
+    auto st = ybthin_client_create(
+        addrs, 1, /* tls= */ nullptr, /* pool= */ nullptr, /* rpc_timeout_ms= */ 60000,
+        /* num_reactors= */ 0, &client);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ybthin_table* table = nullptr;
+  ybthin_table_info info = {};
+  {
+    auto st = ybthin_table_open(client, db_oid, table_oid, &table, &info);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  // No hash columns: the key column is RANGE.
+  ASSERT_EQ(info.n_columns, 2);
+  ASSERT_EQ(std::string(info.columns[0].name), "r");
+  ASSERT_EQ(info.columns[0].kind, YBTHIN_COL_RANGE);
+  const int32_t r_id = info.columns[0].id;
+  const int32_t payload_id = info.columns[1].id;
+
+  // ---- upserts spanning every tablet --------------------------------------
+  const std::string payload = "rangeval";
+  std::vector<std::array<ybthin_bind, 1>> keys(kNumRows);
+  std::vector<ybthin_bind> values(kNumRows);
+  std::vector<int32_t> value_ids(kNumRows, payload_id);
+  std::vector<ybthin_upsert_row> rows(kNumRows);
+  for (int i = 0; i < kNumRows; ++i) {
+    keys[i] = {I32(i)};
+    values[i] = Bytea(payload);
+    rows[i] = ybthin_upsert_row{table, keys[i].data(), 1, &value_ids[i], &values[i], 1};
+  }
+  {
+    std::promise<WriteOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_upsert_batch_async(client, rows.data(), rows.size(), &OnWriteDone, &promise);
+    auto out = future.get();
+    ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
+  }
+  // Cross-check via SQL: every row landed, and on the right tablet (a mis-routed write would be
+  // rejected or land under a different key).
+  ASSERT_EQ(kNumRows, ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM rs")));
+  ASSERT_EQ(kNumRows, ASSERT_RESULT(conn.FetchRow<PGUint64>(
+                          Format("SELECT count(*) FROM rs WHERE payload = '$0'::bytea",
+                                 payload))));
+
+  // ---- point read: exact range key routes to one tablet --------------------
+  {
+    ybthin_bind range_values[] = {I32(137)};  // in the 4th tablet
+    int32_t target_ids[] = {r_id};
+    ybthin_read_spec spec = {};
+    spec.range_values = range_values;
+    spec.n_range = 1;
+    spec.target_ids = target_ids;
+    spec.n_targets = 1;
+    spec.is_forward_scan = 1;
+
+    std::promise<ReadOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_read_op op = {};
+    op.table = table;
+    op.spec = spec;
+    ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+    auto out = future.get();
+    ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
+    ASSERT_EQ(out.n_rows, 1u);
+    ASSERT_EQ(out.cells[0].tag, YBTHIN_BIND_I32);
+    EXPECT_EQ(out.cells[0].i, 137);
+  }
+
+  // ---- full paged scan must cross every tablet boundary --------------------
+  {
+    int32_t target_ids[] = {r_id};
+    ybthin_read_spec spec = {};
+    spec.target_ids = target_ids;   // no range_values: scan from the start of the table
+    spec.n_targets = 1;
+    spec.limit = kPageLimit;
+    spec.is_forward_scan = 1;
+
+    std::vector<int32_t> seen;
+    std::vector<uint8_t> paging_state;
+    int pages = 0;
+    do {
+      std::promise<ReadOutcome> promise;
+      auto future = promise.get_future();
+      ybthin_read_op op = {};
+      op.table = table;
+      op.spec = spec;
+      op.paging_state_in = paging_state.empty() ? nullptr : paging_state.data();
+      op.paging_state_in_len = paging_state.size();
+      ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+      auto out = future.get();
+      ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
+      for (size_t i = 0; i < out.n_rows; ++i) {
+        ASSERT_EQ(out.cells[i].tag, YBTHIN_BIND_I32);
+        seen.push_back(static_cast<int32_t>(out.cells[i].i));
+      }
+      paging_state = std::move(out.paging_state);
+      ++pages;
+      ASSERT_LT(pages, 100) << "paging did not terminate";
+    } while (!paging_state.empty());
+
+    std::sort(seen.begin(), seen.end());
+    seen.erase(std::unique(seen.begin(), seen.end()), seen.end());
+    ASSERT_EQ(seen.size(), static_cast<size_t>(kNumRows))
+        << "scan did not cover every tablet: an unset/stale partition key routes the continuation "
+           "back to the first tablet, so the scan stops at that tablet's last row";
+    EXPECT_EQ(seen.front(), 0);
+    EXPECT_EQ(seen.back(), kNumRows - 1);
+  }
+
+  // ---- fail fast: hash values on a range-sharded table ---------------------
+  {
+    ybthin_bind hash_values[] = {I32(1)};
+    int32_t target_ids[] = {r_id};
+    ybthin_read_spec spec = {};
+    spec.hash_values = hash_values;
+    spec.n_hash = 1;
+    spec.target_ids = target_ids;
+    spec.n_targets = 1;
+
+    std::promise<ReadOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_read_op op = {};
+    op.table = table;
+    op.spec = spec;
+    ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+    auto out = future.get();
+    ASSERT_EQ(out.code, YBTHIN_INVALID) << "expected hash_values on a range table to be rejected";
+  }
+
+  // ---- fail fast: an upsert that does not bind the whole primary key -------
+  {
+    ybthin_bind no_keys[] = {I32(0)};
+    int32_t vid = payload_id;
+    ybthin_bind val = Bytea(payload);
+    ybthin_upsert_row bad = {table, no_keys, 0, &vid, &val, 1};  // n_keys == 0
+    std::promise<WriteOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_upsert_batch_async(client, &bad, 1, &OnWriteDone, &promise);
+    auto out = future.get();
+    ASSERT_EQ(out.code, YBTHIN_INVALID) << "expected a partial primary key to be rejected";
+  }
+
+  ybthin_columns_free(info.columns, info.n_columns);
+  ybthin_table_close(table);
+  ybthin_client_destroy(client);
+}
+
 // TLS variant: the cluster runs with node-to-node encryption, and the thin client connects over TLS
 // authenticating the server against the test CA. Also asserts the TLS-only endpoint rejects a
 // plaintext client.

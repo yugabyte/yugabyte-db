@@ -18,7 +18,7 @@
 # mechanism yb_release uses to produce the self-contained server binaries -- then packages it, the
 # C ABI header, and the version file into a tarball placed next to yb_release's release tarballs
 # ($YB_SRC_ROOT/build), named with the version/commit/architecture. Tarball layout:
-#   libyb_thin_client-<version>-<commit>-<build_type>-<system>-<arch>/
+#   yb_thin_client-<version>-<commit>-<build_type>-<system>-<arch>/
 #     lib/libyb_thin_client.so    include/yb_thin_client.h    version.txt
 #
 # The .so statically links the entire PgClientServiceProxy closure and depends only on system
@@ -160,7 +160,7 @@ version=$( tr -d '[:space:]' < "$yb_src_root/version.txt" 2>/dev/null || echo "0
 commit=$( cd "$yb_src_root" && git rev-parse --short HEAD 2>/dev/null || echo unknown )
 arch=$( uname -m )
 system=$( uname -s | tr '[:upper:]' '[:lower:]' )
-pkg_name="libyb_thin_client-${version}-${commit}-${build_type}-${system}-${arch}"
+pkg_name="yb_thin_client-${version}-${commit}-${build_type}-${system}-${arch}"
 
 stage=$( mktemp -d )
 pkg_dir="$stage/$pkg_name"

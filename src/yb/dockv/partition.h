@@ -40,6 +40,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
+#include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/partial_row.h"
 
 #include "yb/util/enums.h"
@@ -535,5 +536,28 @@ class PartitionSchema {
   RangeSchema range_schema_;
   std::optional<YBHashSchema> hash_schema_;  // Defined only for table that is hash-partitioned.
 };
+
+// DocKey range components for a possibly PARTIAL list of range column values; columns that were
+// not supplied become -Inf (`lower_bound`) or +Inf, so a leading prefix addresses its whole range.
+template <class Col>
+Result<KeyEntryValues> GetRangeComponents(
+    const Schema& schema, const Col& range_cols, bool lower_bound);
+
+// Partition key of the row (or range prefix) named by `range_cols`; the range-sharded counterpart
+// of PartitionSchema::EncodePgsqlHash. Fails for a hash-sharded table.
+template <class Col>
+Result<std::string> GetRangePartitionKey(const Schema& schema, const Col& range_cols);
+
+// Sets request->partition_key (plus hash code bounds when hash-sharded) so the op can be routed,
+// resuming on the tablet the paging state names. Callers must do this themselves: the tserver only
+// reads the field back, and an unset key routes to the first tablet.
+Status InitPartitionKey(
+    const Schema& schema, const PartitionSchema& partition_schema, PgsqlReadRequestPB* request);
+Status InitPartitionKey(
+    const Schema& schema, const PartitionSchema& partition_schema, PgsqlWriteRequestPB* request);
+Status InitPartitionKey(
+    const Schema& schema, const PartitionSchema& partition_schema, LWPgsqlReadRequestPB* request);
+Status InitPartitionKey(
+    const Schema& schema, const PartitionSchema& partition_schema, LWPgsqlWriteRequestPB* request);
 
 }  // namespace yb::dockv

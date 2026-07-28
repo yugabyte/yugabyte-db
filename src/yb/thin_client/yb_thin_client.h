@@ -192,6 +192,11 @@ typedef struct {
   size_t n_targets;
   uint64_t limit;      /* rows per page; 0 => server default              */
   int is_forward_scan; /* bool: PK stores lsn DESC, so forward == desc    */
+  /* Range key cols in schema order, for a RANGE-sharded table: a full key
+   * targets one row, a prefix that prefix's range, NULL/0 the whole table.
+   * Mixing these with hash_values returns YBTHIN_INVALID. */
+  const ybthin_bind* range_values;
+  size_t n_range;
 } ybthin_read_spec;
 
 /* A decoded cell of a read result. NULL is a tag (tag == YBTHIN_BIND_NULL);
