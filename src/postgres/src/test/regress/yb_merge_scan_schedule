@@ -41,3 +41,6 @@ test: yb.orig.merge_scan_rls
 # These tests touch multiple tables.
 test: yb.orig.merge_scan_join
 test: yb.orig.merge_scan_derive
+
+# This test defines its own tables.
+test: yb.orig.merge_scan_degenerate

@@ -183,9 +183,21 @@ ybDeriveSaopFromOpExpr(OpExpr *opexpr,
 	if (funcexpr->funcid != F_YB_HASH_CODE)
 		return false;
 
+	/*
+	 * Reject degenerate moduli.  A null modulus makes the whole expression
+	 * yield null for every row, and modulo zero raises an error, so neither
+	 * yields any stream.  A negative modulus buckets the same as its
+	 * absolute value because yb_hash_code is non-negative, but such a schema
+	 * is almost certainly a mistake, and normalizing it by negation would
+	 * overflow for INT32_MIN, so do not derive from it either.
+	 */
+	if (const_node->constisnull)
+		return false;
+
 	int			modulus = DatumGetInt32(const_node->constvalue);
 
-	modulus = (modulus < 0) ? -modulus : modulus;
+	if (modulus <= 0)
+		return false;
 
 	/*
 	 * No point trying to derive a SAOP that has higher cardinality than an
