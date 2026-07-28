@@ -29,4 +29,9 @@ Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> ImportYbHnsw(
     const hnsw::UsearchIndexDense& index, const std::string& path,
     const hnsw::BlockCachePtr& block_cache);
 
+template <class Vector, class DistanceResult>
+Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> ImportYbHnsw(
+    const hnsw::HnswlibIndex<DistanceResult>& index, const std::string& path,
+    const hnsw::BlockCachePtr& block_cache);
+
 } // namespace yb::ann_methods

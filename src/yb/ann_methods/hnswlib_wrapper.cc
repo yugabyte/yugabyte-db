@@ -20,27 +20,7 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index_container.hpp>
 
-#pragma GCC diagnostic push
-
-// For https://gist.githubusercontent.com/mbautin/db70c2fcaa7dd97081b0c909d72a18a8/raw
-#pragma GCC diagnostic ignored "-Wunused-function"
-
-#ifdef __clang__
-#pragma GCC diagnostic ignored "-Wshorten-64-to-32"
-#endif
-
-#if defined(__x86_64__) || defined(_M_X64)
-#define USE_AVX512
-#define USE_AVX
-#endif
-
-#include "hnswlib/hnswlib.h"
-#include "hnswlib/hnswalg.h"
-
-#undef USE_AVX
-#undef USE_AVX512
-
-#pragma GCC diagnostic pop
+#include "yb/ann_methods/yb_hnsw_wrapper.h"
 
 #include "yb/hnsw/hnsw_block_cache.h"
 
@@ -53,6 +33,7 @@
 
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/index_wrapper_base.h"
+#include "yb/vector_index/hnswlib_include.h"
 #include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/vector_index_if.h"
 
@@ -195,10 +176,11 @@ class HnswlibIndex :
   using HNSWImpl = hnswlib::HierarchicalNSW<DistanceResult, VectorId>;
 
   HnswlibIndex(
-      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options,
+      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options, HnswBackend backend,
       const MemTrackerPtr& mem_tracker)
       : block_cache_(block_cache),
         options_(options),
+        backend_(backend),
         space_(CHECK_RESULT((CreateSpace<Scalar, DistanceResult>(options)))) {
     consumption_.Init(mem_tracker);
     static std::once_flag once_flag;
@@ -277,6 +259,9 @@ class HnswlibIndex :
   }
 
   Result<VectorIndexIfPtr<Vector, DistanceResult>> DoSaveToFile(const std::string& path) {
+    if (std::is_same_v<DistanceResult, float> && backend_ == HnswBackend::YB_HNSW_HNSWLIB) {
+      return ImportYbHnsw<Vector, DistanceResult>(*hnsw_, path, block_cache_);
+    }
     try {
       hnsw_->saveIndex(path);
     } catch (std::exception& e) {
@@ -387,7 +372,8 @@ class HnswlibIndex :
   }
 
   const hnsw::BlockCachePtr block_cache_;
-  HNSWOptions options_;
+  const HNSWOptions options_;
+  const HnswBackend backend_;
   std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
   std::unique_ptr<HNSWImpl> hnsw_;
   IndexMemoryConsumption consumption_;
@@ -429,8 +415,16 @@ class HnswlibVectorIterator : public AbstractIterator<std::pair<VectorId, Vector
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 VectorIndexIfPtr<Vector, DistanceResult> HnswlibIndexFactory<Vector, DistanceResult>::Create(
     vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
-    const HNSWOptions& options, const MemTrackerPtr& mem_tracker) {
-  return std::make_shared<HnswlibIndex<Vector, DistanceResult>>(block_cache, options, mem_tracker);
+    const vector_index::HNSWOptions& options, HnswBackend backend,
+    const std::shared_ptr<MemTracker>& mem_tracker) {
+  LOG_IF(DFATAL, backend != HnswBackend::HNSWLIB && backend != HnswBackend::YB_HNSW_HNSWLIB) <<
+      "Invalid backed for Hnswlib index: " << HnswBackend_Name(backend);
+  if (std::is_same_v<DistanceResult, float> && backend == HnswBackend::YB_HNSW_HNSWLIB &&
+      mode == vector_index::FactoryMode::kLoad) {
+    return CreateYbHnsw<Vector, DistanceResult>(block_cache, options);
+  }
+  return std::make_shared<HnswlibIndex<Vector, DistanceResult>>(
+      block_cache, options, backend, mem_tracker);
 }
 
 template class HnswlibIndexFactory<FloatVector, float>;
