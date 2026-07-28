@@ -198,7 +198,15 @@ class TestFrontier : public storage::UserFrontier {
   VectorId vertex_id_;
 };
 
-using TestFrontiers = storage::UserFrontiersBase<TestFrontier>;
+class TestFrontiers : public storage::UserFrontiersBase<TestFrontier> {
+ public:
+  TestFrontiers() = default;
+
+  explicit TestFrontiers(const InsertEntries& entries) {
+    Smallest().SetVertexId(entries.front().vector_id);
+    Largest().SetVertexId(entries.front().vector_id);
+  }
+};
 
 class VectorLSMTest
     : public hnsw::VectorIndexTestBase,
@@ -408,9 +416,7 @@ Status VectorLSMTest::InsertCube(
       begin += delta;
     }
     FloatVectorLSM::InsertEntries block_entries(begin, end);
-    TestFrontiers frontiers;
-    frontiers.Smallest().SetVertexId(block_entries.front().vector_id);
-    frontiers.Largest().SetVertexId(block_entries.front().vector_id);
+    TestFrontiers frontiers(block_entries);
     for (; begin != end; ++begin) {
       key_value_storage_.StoreVector(
           begin->vector_id, begin - inserted_entries_.begin() + 1);
@@ -431,9 +437,7 @@ Status VectorLSMTest::InsertRandom(
     auto begin = inserted_entries_.begin() + i;
     auto end = inserted_entries_.begin() + std::min(i + batch_size, inserted_entries_.size());
     FloatVectorLSM::InsertEntries block_entries(begin, end);
-    TestFrontiers frontiers;
-    frontiers.Smallest().SetVertexId(block_entries.front().vector_id);
-    frontiers.Largest().SetVertexId(block_entries.front().vector_id);
+    TestFrontiers frontiers(block_entries);
     for (; begin != end; ++begin) {
       key_value_storage_.StoreVector(
           begin->vector_id, begin - inserted_entries_.begin() + 1);
@@ -950,6 +954,48 @@ TEST_P(VectorLSMTest, ShutdownDuringBackgroundMerge) {
   lsm.CompleteShutdown();
 }
 
+// Reproduces a race in VectorLSMInsertRegistryBase::ExecuteTasks: tasks used to be enqueued
+// before being moved from the caller's stack-local list to active_tasks_, so a task completing
+// within that window unlinked itself from the local list from a worker thread. The sync point
+// sleep widens the window; such tasks reach TaskDone with active_tasks_ empty, tripping its
+// DCHECK. Concurrent batches also let TSAN catch an unsynchronized read of a spliced task's
+// successor in ExecuteTasks.
+TEST_P(VectorLSMTest, InsertTaskRegistrationRace) {
+  constexpr size_t kDimensions = 8;
+  constexpr size_t kBatchSize = 16;
+  constexpr size_t kBatches = 20;
+  constexpr size_t kNumThreads = 8;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_task_size) = 1;
+
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "VectorLSMInsertRegistryBase::ExecuteTasks:Enqueued",
+      [](void*) { std::this_thread::sleep_for(10ms * kTimeMultiplier); });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, /* vectors_per_chunk = */ 1024));
+
+  ThreadHolder threads;
+  for (size_t i = 0; i != kNumThreads; ++i) {
+    threads.AddThreadFunctor([&lsm] {
+      for (size_t batch = 0; batch != kBatches; ++batch) {
+        auto entries = RandomEntries(kDimensions, kBatchSize);
+        TestFrontiers frontiers(entries);
+        ASSERT_OK(lsm.Insert(entries, { .frontiers = &frontiers }));
+      }
+    });
+  }
+  threads.JoinAll();
+
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+}
+
 void VectorLSMTest::TestBackgroundCompactionSizeRatio(bool test_metrics) {
   constexpr size_t kDimensions = 8;
   constexpr size_t kNumLargeChunks = 2;
@@ -1317,9 +1363,7 @@ TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
     key_value_storage_.StoreVector(inserted_entries_[i].vector_id, i + 1);
   }
 
-  TestFrontiers frontiers;
-  frontiers.Smallest().SetVertexId(inserted_entries_.front().vector_id);
-  frontiers.Largest().SetVertexId(inserted_entries_.front().vector_id);
+  TestFrontiers frontiers(inserted_entries_);
   ASSERT_OK(lsm.Insert(inserted_entries_, {
     .frontiers = &frontiers,
     .chunk_size = num_vectors,
