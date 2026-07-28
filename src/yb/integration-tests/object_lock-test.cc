@@ -44,10 +44,12 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -59,6 +61,7 @@ DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_skip_launch_release_request);
+DECLARE_bool(TEST_pause_obj_lock_release_relaunch);
 DECLARE_int32(heartbeat_max_failures_before_backoff);
 DECLARE_int32(retrying_ts_rpc_max_delay_ms);
 DECLARE_int32(retrying_rpc_max_jitter_ms);
@@ -991,6 +994,69 @@ TEST_F(ObjectLockTest, BootstrapTServersUponAddition) {
               << " TestGrantedLocksSize: "
               << ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize();
     ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), expected_locks);
+  }
+}
+
+// Without checking lease epoch in RelaunchIfNecessary, a tserver that already acked the release,
+// then restarted and bootstrapped from still-persisted lock state, is treated as already covered
+// (same TSDescriptor) and never receives the release again - leaving a leaked object lock.
+TEST_F(ObjectLockTest, ReleaseRelaunchesAfterTServerLeaseEpochChange) {
+  google::SetVLOGLevel("object_lock_info_manager*", 2);
+  const auto& kSessionHostUuid = TSUuid(0);
+  constexpr size_t kTsToRestartIdx = 1;
+  auto* ts_to_restart = cluster_->mini_tablet_server(kTsToRestartIdx);
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+
+  ASSERT_OK(AcquireLockGlobally(&master_proxy, kSessionHostUuid, kTxn2, kDatabaseID, kRelationId));
+  auto expected_locks =
+      cluster_->mini_tablet_server(0)->server()->ts_local_lock_manager()->TEST_GrantedLocksSize();
+  ASSERT_GE(expected_locks, 1);
+  ASSERT_EQ(
+      ts_to_restart->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), expected_locks);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_release_relaunch) = true;
+  auto se = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_release_relaunch) = false;
+  });
+
+  auto release_timeout = MonoDelta::FromSeconds(60);
+  Status release_status;
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&] {
+    release_status = ReleaseLockGloballyAt(
+        &master_proxy, kSessionHostUuid, kTxn2, kLeaseEpoch, nullptr, std::nullopt,
+        release_timeout);
+  });
+
+  ASSERT_OK(WaitFor(
+      [&]() -> bool {
+        for (const auto& ts : cluster_->mini_tablet_servers()) {
+          if (ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize() != 0) {
+            return false;
+          }
+        }
+        return true;
+      },
+      kTimeout, "Wait for release RPCs to clear locks on all tservers"));
+
+  ASSERT_OK(RestartTabletServer(*ts_to_restart, kTimeout));
+
+  ASSERT_OK(WaitFor(
+      [ts_to_restart, expected_locks]() {
+        return ts_to_restart->server()->ts_local_lock_manager()->TEST_GrantedLocksSize() ==
+               expected_locks;
+      },
+      kTimeout, "Wait for restarted tserver to bootstrap stale object locks"));
+
+  StringWaiterLogSink log_waiter_1("New TServers were added");
+  StringWaiterLogSink log_waiter_2("DoCallbackAndRespond: release OK");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_release_relaunch) = false;
+  thread_holder.JoinAll();
+  ASSERT_OK(release_status);
+  ASSERT_OK(log_waiter_1.WaitFor(kTimeout));
+  ASSERT_OK(log_waiter_2.WaitFor(kTimeout));
+  for (const auto& ts : cluster_->mini_tablet_servers()) {
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 0);
   }
 }
 
