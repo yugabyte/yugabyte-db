@@ -1067,14 +1067,30 @@ void RemoteBootstrapITest::CreateTableAssignLeaderAndWaitForTabletServersReady(
 
   // Elect leaders on each tablet for term 1. All leaders will be on TS leader_index.
   const string kLeaderUuid = cluster_->tablet_server(leader_index)->uuid();
+  TServerDetails* const desired_leader = ts_map_[kLeaderUuid].get();
   for (const string& tablet_id : *tablet_ids) {
-    ASSERT_OK(itest::StartElection(ts_map_[kLeaderUuid].get(), tablet_id, timeout));
+    ASSERT_OK(itest::StartElection(desired_leader, tablet_id, timeout));
   }
 
   for (const string& tablet_id : *tablet_ids) {
-    TServerDetails* leader_ts = nullptr;
-    ASSERT_OK(FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
-    ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(3, leader_ts, tablet_id, timeout));
+    // The master's create-table leader hint can win term 1 before the election started above,
+    // which then loses. Step the elected leader down in favor of the requested one.
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          TServerDetails* leader_ts = nullptr;
+          if (!FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts).ok()) {
+            return false;
+          }
+          if (leader_ts == desired_leader) {
+            return true;
+          }
+          WARN_NOT_OK(
+              itest::LeaderStepDown(leader_ts, tablet_id, desired_leader, timeout),
+              "Step down in favor of the requested leader failed");
+          return false;
+        },
+        timeout, "Leader of tablet " + tablet_id + " is on TS " + kLeaderUuid));
+    ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(3, desired_leader, tablet_id, timeout));
   }
 }
 
