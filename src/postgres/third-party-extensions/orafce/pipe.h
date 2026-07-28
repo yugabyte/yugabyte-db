@@ -7,37 +7,41 @@
 #define MAX_EVENTS 30
 #define MAX_LOCKS  256
 
-typedef struct _message_item {
-	char *message;
-	float8 timestamp;
+typedef struct _message_item
+{
+	char	   *message;
+	float8		timestamp;
 	struct _message_item *next_message;
 	struct _message_item *prev_message;
 	unsigned char message_id;
-	int *receivers;                     /* copy of array all registered receivers */
-	int receivers_number;
+	int		   *receivers;		/* copy of array all registered receivers */
+	int			receivers_number;
 } message_item;
 
-typedef struct _message_echo {
+typedef struct _message_echo
+{
 	struct _message_item *message;
 	unsigned char message_id;
 	struct _message_echo *next_echo;
 } message_echo;
 
-typedef struct {
-	char *event_name;
+typedef struct
+{
+	char	   *event_name;
 	unsigned char max_receivers;
-	int *receivers;
-	int receivers_number;
+	int		   *receivers;
+	int			receivers_number;
 	struct _message_item *messages;
 } alert_event;
 
-typedef struct {
-	int sid;
-	int pid;
+typedef struct
+{
+	int			sid;
+	int			pid;
 	message_echo *echo;
-} alert_lock;
+}			alert_lock;
 
-bool ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool reset);
+bool		ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool reset);
 
 #define ERRCODE_ORA_PACKAGES_LOCK_REQUEST_ERROR        MAKE_SQLSTATE('3','0', '0','0','1')
 
@@ -48,3 +52,13 @@ bool ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, b
 	 errdetail("Failed exclusive locking of shared memory."), \
 	 errhint("Restart PostgreSQL server.")));
 #endif
+
+extern alert_event *events;
+extern alert_lock * locks;
+
+extern int	sid;
+extern LWLockId shmem_lockid;
+
+#include "storage/condition_variable.h"
+
+extern ConditionVariable *alert_cv;

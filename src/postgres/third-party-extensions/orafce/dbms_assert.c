@@ -1,17 +1,12 @@
 #include "postgres.h"
 #include "funcapi.h"
-#include "assert.h"
+#include "dbms_assert.h"
 #include "miscadmin.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/syscache.h"
 #include "catalog/namespace.h"
-
-#if PG_VERSION_NUM >= 120000
-
 #include "catalog/pg_namespace_d.h"
-
-#endif
 
 #include "orafce.h"
 #include "builtins.h"
@@ -50,6 +45,38 @@ static bool check_sql_name(char *cp, int len);
 static bool ParseIdentifierString(char *rawstring);
 
 /*
+ * Is character a valid identifier start?
+ * Must match scan.l's {ident_start} character class.
+ */
+static bool
+orafce_is_ident_start(unsigned char c)
+{
+	/* Underscores and ASCII letters are OK */
+	if (c == '_')
+		return true;
+	if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+		return true;
+	/* Any high-bit-set character is OK (might be part of a multibyte char) */
+	if (IS_HIGHBIT_SET(c))
+		return true;
+	return false;
+}
+
+/*
+ * Is character a valid identifier continuation?
+ * Must match scan.l's {ident_cont} character class.
+ */
+static bool
+orafce_is_ident_cont(unsigned char c)
+{
+	/* Can be digit or dollar sign ... */
+	if ((c >= '0' && c <= '9') || c == '$')
+		return true;
+	/* ... or an identifier start character */
+	return orafce_is_ident_start(c);
+}
+
+/*
  * Procedure ParseIdentifierString is based on SplitIdentifierString
  * from varlena.c. We need different behave of quote symbol evaluation.
  */
@@ -78,7 +105,7 @@ ParseIdentifierString(char *rawstring)
 			{
 				endp = strchr(nextp + 1, '\"');
 				if (endp == NULL)
-					return false;		/* mismatched quotes */
+					return false;	/* mismatched quotes */
 
 				if (endp[1] != '\"')
 					break;		/* found end of quoted name */
@@ -93,20 +120,16 @@ ParseIdentifierString(char *rawstring)
 		}
 		else
 		{
-			char	   *curname;
-
 			/* Unquoted name --- extends to separator or whitespace */
-			curname = nextp;
-			while (*nextp && *nextp != '.' &&
-				   !isspace((unsigned char) *nextp))
+			if (orafce_is_ident_start(*nextp))
 			{
-				if (!isalnum(*nextp) && *nextp != '_')
-					return false;
 				nextp++;
-			}
 
-			if (curname == nextp)
-				return false;	/* empty unquoted name not allowed */
+				while (*nextp && orafce_is_ident_cont(*nextp))
+					nextp++;
+			}
+			else
+				return false;
 		}
 
 		while (isspace((unsigned char) *nextp))
@@ -168,9 +191,9 @@ dbms_assert_enquote_literal(PG_FUNCTION_ARGS)
 Datum
 dbms_assert_enquote_name(PG_FUNCTION_ARGS)
 {
-	Datum name  = PG_GETARG_DATUM(0);
-	bool loweralize = PG_GETARG_BOOL(1);
-	Oid collation = PG_GET_COLLATION();
+	Datum		name = PG_GETARG_DATUM(0);
+	bool		loweralize = PG_GETARG_BOOL(1);
+	Oid			collation = PG_GET_COLLATION();
 
 	name = DirectFunctionCall1(quote_ident, name);
 
@@ -195,7 +218,7 @@ dbms_assert_enquote_name(PG_FUNCTION_ARGS)
 Datum
 dbms_assert_noop(PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_P(0);
+	text	   *str = PG_GETARG_TEXT_P(0);
 
 	PG_RETURN_TEXT_P(TextPCopy(str));
 }
@@ -217,7 +240,7 @@ dbms_assert_noop(PG_FUNCTION_ARGS)
 Datum
 dbms_assert_qualified_sql_name(PG_FUNCTION_ARGS)
 {
-	text *qname;
+	text	   *qname;
 
 	if (PG_ARGISNULL(0))
 		ISNOT_QUALIFIED_SQL_NAME_EXCEPTION();
@@ -251,9 +274,9 @@ dbms_assert_schema_name(PG_FUNCTION_ARGS)
 {
 	Oid			namespaceId;
 	AclResult	aclresult;
-	text *sname;
-	char *nspname;
-	List	*names;
+	text	   *sname;
+	char	   *nspname;
+	List	   *names;
 
 	if (PG_ARGISNULL(0))
 		INVALID_SCHEMA_NAME_EXCEPTION();
@@ -277,27 +300,16 @@ dbms_assert_schema_name(PG_FUNCTION_ARGS)
 	if (list_length(names) != 1)
 		INVALID_SCHEMA_NAME_EXCEPTION();
 
-#if PG_VERSION_NUM >= 120000
-
 	namespaceId = GetSysCacheOid(NAMESPACENAME, Anum_pg_namespace_oid,
-							CStringGetDatum(strVal(linitial(names))),
-							0, 0, 0);
-
-#else
-
-	namespaceId = GetSysCacheOid(NAMESPACENAME,
-							CStringGetDatum(strVal(linitial(names))),
-							0, 0, 0);
-
-#endif
-
+								 CStringGetDatum(strVal(linitial(names))),
+								 0, 0, 0);
 
 	if (!OidIsValid(namespaceId))
 		INVALID_SCHEMA_NAME_EXCEPTION();
 
 #if PG_VERSION_NUM >= 160000
 
-	aclresult = object_aclcheck(NamespaceRelationId,namespaceId, GetUserId(),
+	aclresult = object_aclcheck(NamespaceRelationId, namespaceId, GetUserId(),
 								ACL_USAGE);
 
 #else
@@ -361,10 +373,20 @@ check_sql_name(char *cp, int len)
 	}
 	else
 	{
-		/* Doesn't allow national characters in sql name :( */
-		for (; len-- > 0; cp++)
-			if (!isalnum(*cp) && *cp != '_')
-				return false;
+		if (orafce_is_ident_start(*cp))
+		{
+			char	   *last = cp + len - 1;
+
+			cp += 1;
+
+			while (cp < last)
+			{
+				if (!orafce_is_ident_cont(*cp++))
+					return false;
+			}
+		}
+		else
+			return false;
 	}
 
 	return true;
@@ -373,9 +395,9 @@ check_sql_name(char *cp, int len)
 Datum
 dbms_assert_simple_sql_name(PG_FUNCTION_ARGS)
 {
-	text  *sname;
-	int		len;
-	char *cp;
+	text	   *sname;
+	int			len;
+	char	   *cp;
 
 	if (PG_ARGISNULL(0))
 		ISNOT_SIMPLE_SQL_NAME_EXCEPTION();
@@ -410,10 +432,10 @@ dbms_assert_simple_sql_name(PG_FUNCTION_ARGS)
 Datum
 dbms_assert_object_name(PG_FUNCTION_ARGS)
 {
-	List	*names;
-	text	*str;
-	char	*object_name;
-	Oid 		classId;
+	List	   *names;
+	text	   *str;
+	char	   *object_name;
+	Oid			classId;
 
 	if (PG_ARGISNULL(0))
 		INVALID_OBJECT_NAME_EXCEPTION();

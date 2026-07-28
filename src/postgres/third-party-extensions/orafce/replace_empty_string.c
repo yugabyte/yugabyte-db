@@ -19,7 +19,7 @@ PG_FUNCTION_INFO_V1(orafce_replace_null_strings);
 static void
 trigger_sanity_check(FunctionCallInfo fcinfo, const char *fname)
 {
-	TriggerData	   *trigdata = (TriggerData *) fcinfo->context;
+	TriggerData *trigdata = (TriggerData *) fcinfo->context;
 
 	/* sanity checks from autoinc.c */
 	if (!CALLED_AS_TRIGGER(fcinfo))
@@ -38,8 +38,8 @@ trigger_sanity_check(FunctionCallInfo fcinfo, const char *fname)
 static HeapTuple
 get_rettuple(FunctionCallInfo fcinfo)
 {
-	TriggerData	   *trigdata = (TriggerData *) fcinfo->context;
-	HeapTuple		rettuple = NULL;
+	TriggerData *trigdata = (TriggerData *) fcinfo->context;
+	HeapTuple	rettuple = NULL;
 
 	if (TRIGGER_FIRED_BY_INSERT(trigdata->tg_event))
 		rettuple = trigdata->tg_trigtuple;
@@ -59,18 +59,18 @@ get_rettuple(FunctionCallInfo fcinfo)
 static bool
 should_raise_warnings(FunctionCallInfo fcinfo, bool *raise_error)
 {
-	TriggerData	   *trigdata = (TriggerData *) fcinfo->context;
-	Trigger		   *trigger = trigdata->tg_trigger;
+	TriggerData *trigdata = (TriggerData *) fcinfo->context;
+	Trigger    *trigger = trigdata->tg_trigger;
 
 	*raise_error = false;
 
 	if (trigger->tgnargs > 0)
 	{
-		char		  **args = trigger->tgargs;
+		char	  **args = trigger->tgargs;
 
 		if (strcmp(args[0], "on") == 0 ||
-				strcmp(args[0], "true") == 0 ||
-				strcmp(args[0], "warning") == 0)
+			strcmp(args[0], "true") == 0 ||
+			strcmp(args[0], "warning") == 0)
 			return true;
 
 		if (strcmp(args[0], "error") == 0)
@@ -89,19 +89,20 @@ should_raise_warnings(FunctionCallInfo fcinfo, bool *raise_error)
 Datum
 orafce_replace_empty_strings(PG_FUNCTION_ARGS)
 {
-	TriggerData	   *trigdata = (TriggerData *) fcinfo->context;
-	HeapTuple		rettuple = NULL;
-	TupleDesc		tupdesc;
-	int			   *resetcols = NULL;
-	Datum		   *values = NULL;
-	bool		   *nulls = NULL;
-	Oid				prev_typid = InvalidOid;
-	bool			is_string = false;
-	int				nresetcols = 0;
-	int				attnum;
-	bool			raise_warning = false;
-	bool			raise_error;
-	char		   *relname = NULL;
+	TriggerData *trigdata = (TriggerData *) fcinfo->context;
+	HeapTuple	rettuple = NULL;
+	TupleDesc	tupdesc;
+	int		   *resetcols = NULL;
+	Datum	   *values = NULL;
+	bool	   *nulls = NULL;
+	Oid			prev_typid = InvalidOid;
+	bool		is_string = false;
+	bool		is_bpchar = false;
+	int			nresetcols = 0;
+	int			attnum;
+	bool		raise_warning = false;
+	bool		raise_error;
+	char	   *relname = NULL;
 
 	trigger_sanity_check(fcinfo, "replace_empty_strings");
 	raise_warning = should_raise_warnings(fcinfo, &raise_error);
@@ -112,20 +113,24 @@ orafce_replace_empty_strings(PG_FUNCTION_ARGS)
 	/* iterate over record's fields */
 	for (attnum = 1; attnum <= tupdesc->natts; attnum++)
 	{
-		Oid typid;
+		Oid			typid;
+
+		if (TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
+			continue;
 
 		/* simple cache - lot of time columns with same type is side by side */
-		typid = SPI_gettypeid(tupdesc, attnum);
+		typid = TupleDescAttr(tupdesc, attnum - 1)->atttypid;
 		if (typid != prev_typid)
 		{
 			TYPCATEGORY category;
 			bool		ispreferred;
-			Oid base_typid;
+			Oid			base_typid;
 
 			base_typid = getBaseType(typid);
 			get_type_category_preferred(base_typid, &category, &ispreferred);
 
 			is_string = (category == TYPCATEGORY_STRING);
+			is_bpchar = (base_typid == BPCHAROID);
 			prev_typid = typid;
 		}
 
@@ -137,10 +142,30 @@ orafce_replace_empty_strings(PG_FUNCTION_ARGS)
 			value = SPI_getbinval(rettuple, tupdesc, attnum, &isnull);
 			if (!isnull)
 			{
-				text *txt = DatumGetTextP(value);
+				text	   *txt = DatumGetTextP(value);
+				int32		len;
+				bool		is_emptystr;
+
+				len = VARSIZE_ANY_EXHDR(txt);
+				is_emptystr = (len == 0);
+
+				if (is_bpchar && !is_emptystr)
+				{
+					char	   *s = VARDATA_ANY(txt);
+					int			i;
+
+					is_emptystr = true;
+
+					for (i = 0; i < len; i++)
+						if (s[i] != ' ')
+						{
+							is_emptystr = false;
+							break;
+						}
+				}
 
 				/* is it empty string (has zero length */
-				if (VARSIZE_ANY_EXHDR(txt) == 0)
+				if (is_emptystr)
 				{
 					if (!resetcols)
 					{
@@ -160,8 +185,8 @@ orafce_replace_empty_strings(PG_FUNCTION_ARGS)
 							relname = SPI_getrelname(trigdata->tg_relation);
 
 						elog(raise_error ? ERROR : WARNING,
-				"Field \"%s\" of table \"%s\" is empty string (replaced by NULL).",
-								SPI_fname(tupdesc, attnum), relname);
+							 "Field \"%s\" of table \"%s\" is empty string (replaced by NULL).",
+							 SPI_fname(tupdesc, attnum), relname);
 					}
 				}
 			}
@@ -194,19 +219,20 @@ orafce_replace_empty_strings(PG_FUNCTION_ARGS)
 Datum
 orafce_replace_null_strings(PG_FUNCTION_ARGS)
 {
-	TriggerData	   *trigdata = (TriggerData *) fcinfo->context;
-	HeapTuple		rettuple = NULL;
-	TupleDesc		tupdesc;
-	int			   *resetcols = NULL;
-	Datum		   *values = NULL;
-	bool		   *nulls = NULL;
-	Oid				prev_typid = InvalidOid;
-	bool			is_string = false;
-	int				nresetcols = 0;
-	int				attnum;
-	bool			raise_warning = false;
-	bool			raise_error;
-	char		   *relname = NULL;
+	TriggerData *trigdata = (TriggerData *) fcinfo->context;
+	HeapTuple	rettuple = NULL;
+	TupleDesc	tupdesc;
+	int		   *resetcols = NULL;
+	Datum	   *values = NULL;
+	bool	   *nulls = NULL;
+	Oid			prev_typid = InvalidOid;
+	bool		is_string = false;
+	bool		is_bpchar = false;
+	int			nresetcols = 0;
+	int			attnum;
+	bool		raise_warning = false;
+	bool		raise_error;
+	char	   *relname = NULL;
 
 	trigger_sanity_check(fcinfo, "replace_null_strings");
 	raise_warning = should_raise_warnings(fcinfo, &raise_error);
@@ -222,20 +248,27 @@ orafce_replace_null_strings(PG_FUNCTION_ARGS)
 	/* iterate over record's fields */
 	for (attnum = 1; attnum <= tupdesc->natts; attnum++)
 	{
-		Oid typid;
+		Oid			typid;
+		int32		typmod;
+
+		if (TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
+			continue;
 
 		/* simple cache - lot of time columns with same type is side by side */
-		typid = SPI_gettypeid(tupdesc, attnum);
+		typid = TupleDescAttr(tupdesc, attnum - 1)->atttypid;
+		typmod = TupleDescAttr(tupdesc, attnum - 1)->atttypmod;
+
 		if (typid != prev_typid)
 		{
 			TYPCATEGORY category;
 			bool		ispreferred;
-			Oid base_typid;
+			Oid			base_typid;
 
 			base_typid = getBaseType(typid);
 			get_type_category_preferred(base_typid, &category, &ispreferred);
 
 			is_string = (category == TYPCATEGORY_STRING);
+			is_bpchar = base_typid == BPCHAROID;
 			prev_typid = typid;
 		}
 
@@ -255,7 +288,21 @@ orafce_replace_null_strings(PG_FUNCTION_ARGS)
 				}
 
 				resetcols[nresetcols] = attnum;
-				values[nresetcols] = PointerGetDatum(cstring_to_text_with_len("", 0));
+
+				if (is_bpchar && typmod != -1)
+				{
+					BpChar	   *result;
+
+					/* code from bpcharin */
+					result = (BpChar *) palloc(typmod);
+					SET_VARSIZE(result, typmod);
+					memset(VARDATA(result), ' ', typmod - VARHDRSZ);
+
+					values[nresetcols] = PointerGetDatum(result);
+				}
+				else
+					values[nresetcols] = PointerGetDatum(cstring_to_text_with_len("", 0));
+
 				nulls[nresetcols++] = false;
 
 				if (raise_warning)
@@ -264,8 +311,8 @@ orafce_replace_null_strings(PG_FUNCTION_ARGS)
 						relname = SPI_getrelname(trigdata->tg_relation);
 
 					elog(raise_error ? ERROR : WARNING,
-				"Field \"%s\" of table \"%s\" is NULL (replaced by '').",
-								SPI_fname(tupdesc, attnum), relname);
+						 "Field \"%s\" of table \"%s\" is NULL (replaced by '').",
+						 SPI_fname(tupdesc, attnum), relname);
 				}
 			}
 		}

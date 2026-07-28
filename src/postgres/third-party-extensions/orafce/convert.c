@@ -8,16 +8,10 @@
 #include "utils/numeric.h"
 #include "utils/pg_locale.h"
 #include "utils/formatting.h"
+#include "utils/memutils.h"
 
 #include "orafce.h"
 #include "builtins.h"
-
-#if PG_VERSION_NUM < 130000
-
-#include "catalog/namespace.h"
-#include "utils/memutils.h"
-
-#endif
 
 #if PG_VERSION_NUM >= 160000
 
@@ -36,13 +30,7 @@ PG_FUNCTION_INFO_V1(orafce_to_multi_byte);
 PG_FUNCTION_INFO_V1(orafce_to_single_byte);
 PG_FUNCTION_INFO_V1(orafce_unistr);
 
-static int getindex(const char **map, char *mbchar, int mblen);
-
-#if PG_VERSION_NUM < 130000
-
-static FmgrInfo *orafce_Utf8ToServerConvProc = NULL;
-
-#endif
+static int	getindex(const char **map, char *mbchar, int mblen);
 
 Datum
 orafce_to_char_int4(PG_FUNCTION_ARGS)
@@ -105,7 +93,7 @@ orafce_to_char_numeric(PG_FUNCTION_ARGS)
 	StringInfo	buf = makeStringInfo();
 	struct lconv *lconv = PGLC_localeconv();
 	char	   *p;
-	char       *decimal = NULL;
+	char	   *decimal = NULL;
 
 	appendStringInfoString(buf, DatumGetCString(DirectFunctionCall1(numeric_out, NumericGetDatum(arg0))));
 
@@ -113,19 +101,21 @@ orafce_to_char_numeric(PG_FUNCTION_ARGS)
 		if (*p == '.')
 		{
 			*p = lconv->decimal_point[0];
-			decimal = p; /* save decimal point position for the next loop */
+			decimal = p;		/* save decimal point position for the next
+								 * loop */
 		}
 
-	/* Simulate the default Oracle to_char template (TM9 - Text Minimum)
-	   by removing unneeded digits after the decimal point;
-	   if no digits are left, then remove the decimal point too
-	*/
-	for (p = buf->data + buf->len - 1; decimal && p >= decimal; p--)
+	/*
+	 * Simulate the default Oracle to_char template (TM9 - Text Minimum) by
+	 * removing unneeded digits after the decimal point; if no digits are
+	 * left, then remove the decimal point too
+	 */
+	for (p = buf->data + buf->len - 1; decimal &&p >= decimal; p--)
 	{
 		if (*p == '0' || *p == lconv->decimal_point[0])
 			*p = 0;
 		else
-			break; /* non-zero digit found, exit the loop */
+			break;				/* non-zero digit found, exit the loop */
 	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(buf->data));
@@ -148,12 +138,12 @@ orafce_to_char_numeric(PG_FUNCTION_ARGS)
 Datum
 orafce_to_char_timestamp(PG_FUNCTION_ARGS)
 {
-	Timestamp ts = PG_GETARG_TIMESTAMP(0);
-	text *result = NULL;
+	Timestamp	ts = PG_GETARG_TIMESTAMP(0);
+	text	   *result = NULL;
 
-	if(nls_date_format && strlen(nls_date_format) > 0)
+	if (nls_date_format && strlen(nls_date_format) > 0)
 	{
-		/* it will return the DATE in nls_date_format*/
+		/* it will return the DATE in nls_date_format */
 		result = DatumGetTextP(DirectFunctionCall2(timestamp_to_char,
 												   TimestampGetDatum(ts),
 												   CStringGetTextDatum(nls_date_format)));
@@ -161,7 +151,7 @@ orafce_to_char_timestamp(PG_FUNCTION_ARGS)
 	else
 	{
 		result = cstring_to_text(DatumGetCString(DirectFunctionCall1(timestamp_out,
-									TimestampGetDatum(ts))));
+																	 TimestampGetDatum(ts))));
 	}
 
 	PG_RETURN_TEXT_P(result);
@@ -208,8 +198,7 @@ orafce_to_number(PG_FUNCTION_ARGS)
  */
 #define JA_TO_FULL_WIDTH_TILDE	1
 
-static const char *
-TO_MULTI_BYTE_UTF8[95] =
+static const char *TO_MULTI_BYTE_UTF8[95] =
 {
 	"\343\200\200",
 	"\357\274\201",
@@ -312,8 +301,7 @@ TO_MULTI_BYTE_UTF8[95] =
 #endif
 };
 
-static const char *
-TO_MULTI_BYTE_EUCJP[95] =
+static const char *TO_MULTI_BYTE_EUCJP[95] =
 {
 	"\241\241",
 	"\241\252",
@@ -379,7 +367,7 @@ TO_MULTI_BYTE_EUCJP[95] =
 	"\241\317",
 	"\241\260",
 	"\241\262",
-	"\241\306",		/* Oracle returns different value \241\307 */
+	"\241\306",					/* Oracle returns different value \241\307 */
 	"\243\341",
 	"\243\342",
 	"\243\343",
@@ -416,8 +404,7 @@ TO_MULTI_BYTE_EUCJP[95] =
 #endif
 };
 
-static const char *
-TO_MULTI_BYTE__EUCCN[95] =
+static const char *TO_MULTI_BYTE__EUCCN[95] =
 {
 	"\241\241",
 	"\243\241",
@@ -527,13 +514,13 @@ orafce_to_multi_byte(PG_FUNCTION_ARGS)
 
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(__amd64__))
 
-	__int64			dstlen;
+	__int64		dstlen;
 
 #else
 
 	int			dstlen;
 
-	#endif
+#endif
 
 	int			i;
 	const char **map;
@@ -550,25 +537,38 @@ orafce_to_multi_byte(PG_FUNCTION_ARGS)
 		case PG_EUC_CN:
 			map = TO_MULTI_BYTE__EUCCN;
 			break;
-		/*
-		 * TODO: Add converter for encodings.
-		 */
-		default:	/* no need to convert */
+
+			/*
+			 * TODO: Add converter for encodings.
+			 */
+		default:				/* no need to convert */
 			PG_RETURN_DATUM(PG_GETARG_DATUM(0));
 	}
 
 	src = PG_GETARG_TEXT_PP(0);
 	s = VARDATA_ANY(src);
 	srclen = VARSIZE_ANY_EXHDR(src);
+
+	if (srclen < 0)
+		srclen = 0;
+
+	if ((Size) srclen > (MaxAllocSize - VARHDRSZ) / MAX_CONVERSION_GROWTH)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("requested length too large")));
+
 	dst = (text *) palloc(VARHDRSZ + srclen * MAX_CONVERSION_GROWTH);
+
 	d = VARDATA(dst);
 
 	for (i = 0; i < srclen; i++)
 	{
-		unsigned char	u = (unsigned char) s[i];
+		unsigned char u = (unsigned char) s[i];
+
 		if (0x20 <= u && u <= 0x7e)
 		{
 			const char *m = map[u - 0x20];
+
 			while (*m)
 			{
 				*d++ = *m++;
@@ -589,7 +589,7 @@ orafce_to_multi_byte(PG_FUNCTION_ARGS)
 static int
 getindex(const char **map, char *mbchar, int mblen)
 {
-	int		i;
+	int			i;
 
 	for (i = 0; i < 95; i++)
 	{
@@ -611,10 +611,10 @@ orafce_to_single_byte(PG_FUNCTION_ARGS)
 
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(__amd64__))
 
-	__int64			dstlen;
+	__int64		dstlen;
 
 #else
-	
+
 	int			dstlen;
 
 #endif
@@ -633,10 +633,11 @@ orafce_to_single_byte(PG_FUNCTION_ARGS)
 		case PG_EUC_CN:
 			map = TO_MULTI_BYTE__EUCCN;
 			break;
-		/*
-		 * TODO: Add converter for encodings.
-		 */
-		default:	/* no need to convert */
+
+			/*
+			 * TODO: Add converter for encodings.
+			 */
+		default:				/* no need to convert */
 			PG_RETURN_DATUM(PG_GETARG_DATUM(0));
 	}
 
@@ -650,9 +651,9 @@ orafce_to_single_byte(PG_FUNCTION_ARGS)
 
 	while (s - VARDATA_ANY(src) < srclen)
 	{
-		char   *u = s;
-		int		clen;
-		int		mapindex;
+		char	   *u = s;
+		int			clen;
+		int			mapindex;
 
 		clen = pg_mblen(u);
 		s += clen;
@@ -661,7 +662,8 @@ orafce_to_single_byte(PG_FUNCTION_ARGS)
 			*d++ = *u;
 		else if ((mapindex = getindex(map, u, clen)) >= 0)
 		{
-			const char m = 0x20 + mapindex;
+			const char	m = 0x20 + mapindex;
+
 			*d++ = m;
 		}
 		else
@@ -698,10 +700,10 @@ hexval(unsigned char c)
 static bool
 isxdigit_four(const char *instr)
 {
-	return isxdigit((unsigned char)  instr[0]) &&
-			isxdigit((unsigned char) instr[1]) &&
-			isxdigit((unsigned char) instr[2]) &&
-			isxdigit((unsigned char) instr[3]);
+	return isxdigit((unsigned char) instr[0]) &&
+		isxdigit((unsigned char) instr[1]) &&
+		isxdigit((unsigned char) instr[2]) &&
+		isxdigit((unsigned char) instr[3]);
 }
 
 /*
@@ -711,143 +713,10 @@ static long int
 hexval_four(const char *instr)
 {
 	return (hexval(instr[0]) << 12) +
-			(hexval(instr[1]) << 8) +
-			(hexval(instr[2]) << 4) +
-			 hexval(instr[3]);
+		(hexval(instr[1]) << 8) +
+		(hexval(instr[2]) << 4) +
+		hexval(instr[3]);
 }
-
-#if PG_VERSION_NUM < 130000
-
-
-static bool
-is_utf16_surrogate_first(pg_wchar c)
-{
-	return (c >= 0xD800 && c <= 0xDBFF);
-}
-
-static bool
-is_utf16_surrogate_second(pg_wchar c)
-{
-	return (c >= 0xDC00 && c <= 0xDFFF);
-}
-
-static pg_wchar
-surrogate_pair_to_codepoint(pg_wchar first, pg_wchar second)
-{
-	return ((first & 0x3FF) << 10) + 0x10000 + (second & 0x3FF);
-}
-
-static inline bool
-is_valid_unicode_codepoint(pg_wchar c)
-{
-	return (c > 0 && c <= 0x10FFFF);
-}
-
-#define MAX_UNICODE_EQUIVALENT_STRING	16
-
-/*
- * Convert a single Unicode code point into a string in the server encoding.
- *
- * The code point given by "c" is converted and stored at *s, which must
- * have at least MAX_UNICODE_EQUIVALENT_STRING+1 bytes available.
- * The output will have a trailing '\0'.  Throws error if the conversion
- * cannot be performed.
- *
- * Note that this relies on having previously looked up any required
- * conversion function.  That's partly for speed but mostly because the parser
- * may call this outside any transaction, or in an aborted transaction.
- */
-static void
-pg_unicode_to_server(pg_wchar c, unsigned char *s)
-{
-	unsigned char c_as_utf8[MAX_MULTIBYTE_CHAR_LEN + 1];
-	int			c_as_utf8_len;
-	int			server_encoding;
-
-	/*
-	 * Complain if invalid Unicode code point.  The choice of errcode here is
-	 * debatable, but really our caller should have checked this anyway.
-	 */
-	if (!is_valid_unicode_codepoint(c))
-		ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("invalid Unicode code point")));
-
-	/* Otherwise, if it's in ASCII range, conversion is trivial */
-	if (c <= 0x7F)
-	{
-		s[0] = (unsigned char) c;
-		s[1] = '\0';
-		return;
-	}
-
-	/* If the server encoding is UTF-8, we just need to reformat the code */
-	server_encoding = GetDatabaseEncoding();
-	if (server_encoding == PG_UTF8)
-	{
-		unicode_to_utf8(c, s);
-		s[pg_utf_mblen(s)] = '\0';
-		return;
-	}
-
-	/* For all other cases, we must have a conversion function available */
-	if (orafce_Utf8ToServerConvProc == NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("conversion between UTF8 and %s is not supported",
-						GetDatabaseEncodingName())));
-
-	/* Construct UTF-8 source string */
-	unicode_to_utf8(c, c_as_utf8);
-	c_as_utf8_len = pg_utf_mblen(c_as_utf8);
-	c_as_utf8[c_as_utf8_len] = '\0';
-
-	/* Convert, or throw error if we can't */
-	FunctionCall5(orafce_Utf8ToServerConvProc,
-				  Int32GetDatum(PG_UTF8),
-				  Int32GetDatum(server_encoding),
-				  CStringGetDatum(c_as_utf8),
-				  CStringGetDatum(s),
-				  Int32GetDatum(c_as_utf8_len));
-}
-
-static void
-initializeUtf8ToServerConvProc(void)
-{
-	int			current_server_encoding;
-
-	orafce_Utf8ToServerConvProc = NULL;
-
-	/*
-	 * Also look up the UTF8-to-server conversion function if needed.  Since
-	 * the server encoding is fixed within any one backend process, we don't
-	 * have to do this more than once.
-	 */
-	current_server_encoding = GetDatabaseEncoding();
-	if (current_server_encoding != PG_UTF8 &&
-		current_server_encoding != PG_SQL_ASCII)
-	{
-		Oid			utf8_to_server_proc;
-
-		utf8_to_server_proc =
-			FindDefaultConversionProc(PG_UTF8,
-									  current_server_encoding);
-		/* If there's no such conversion, just leave the pointer as NULL */
-		if (OidIsValid(utf8_to_server_proc))
-		{
-			FmgrInfo   *finfo;
-
-			finfo = (FmgrInfo *) MemoryContextAlloc(TopMemoryContext,
-													sizeof(FmgrInfo));
-			fmgr_info_cxt(utf8_to_server_proc, finfo,
-						  TopMemoryContext);
-			/* Set Utf8ToServerConvProc only after data is fully valid */
-			orafce_Utf8ToServerConvProc = finfo;
-		}
-	}
-}
-
-#endif
 
 /* is Unicode code point acceptable? */
 static void
@@ -865,7 +734,7 @@ check_unicode_value(pg_wchar c)
 Datum
 orafce_unistr(PG_FUNCTION_ARGS)
 {
-	StringInfoData		str;
+	StringInfoData str;
 	text	   *input_text;
 	text	   *result;
 	pg_wchar	pair_first = 0;
@@ -882,12 +751,6 @@ orafce_unistr(PG_FUNCTION_ARGS)
 	len = VARSIZE_ANY_EXHDR(input_text);
 
 	initStringInfo(&str);
-
-#if PG_VERSION_NUM < 130000
-
-	initializeUtf8ToServerConvProc();
-
-#endif
 
 	while (len > 0)
 	{
@@ -945,8 +808,8 @@ orafce_unistr(PG_FUNCTION_ARGS)
 				pg_wchar	unicode;
 
 				unicode = (hexval_four(&instr[2]) << 8) +
-								(hexval(instr[6]) << 4) +
-								 hexval(instr[7]);
+					(hexval(instr[6]) << 4) +
+					hexval(instr[7]);
 
 				check_unicode_value(unicode);
 

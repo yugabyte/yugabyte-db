@@ -21,49 +21,55 @@
 
 #define LIST_ITEMS  512
 
-int context;
 
-typedef struct {
-	size_t size;
-	void* first_byte_ptr;
-	bool dispossible;
+typedef struct
+{
+	size_t		size;
+	void	   *first_byte_ptr;
+	bool		dispossible;
 /*	int16 context; */
 } list_item;
 
-typedef struct {
-	int list_c;
-	size_t max_size;
-	vardata data[1];	 /* flexible array member */
+typedef struct
+{
+	int			list_c;
+	size_t		max_size;
+	vardata		data[1];		/* flexible array member */
 } mem_desc;
 
 #define MAX_SIZE 82688
 
 static size_t asize[] = {
 	32,
-	64,       96,   160,  256,
-	416,     672,  1088,  1760,
-	2848,   4608,  7456, 12064,
-	19520, 31584, 51104, 82688};
+	64, 96, 160, 256,
+	416, 672, 1088, 1760,
+	2848, 4608, 7456, 12064,
+19520, 31584, 51104, 82688};
 
 
-int *list_c = NULL;
-list_item *list = NULL;
-size_t max_size;
+static int *list_c = NULL;
+static list_item *list = NULL;
+static size_t max_size;
 
-int cycle = 0;
+/*
+ * for debug
 
+static int cycle = 0;
+static int context;
+
+ */
 
 /* align requested size */
 
 static int
-ptr_comp(const void* a, const void* b)
+ptr_comp(const void *a, const void *b)
 {
-	ptrdiff_t d;
+	ptrdiff_t	d;
 
-	list_item *_a = (list_item*) a;
-	list_item *_b = (list_item*) b;
+	list_item  *_a = (list_item *) a;
+	list_item  *_b = (list_item *) b;
 
-	d = (uintptr_t)_a->first_byte_ptr - (uintptr_t)_b->first_byte_ptr;
+	d = (uintptr_t) _a->first_byte_ptr - (uintptr_t) _b->first_byte_ptr;
 
 	return d > 0 ? 1 : (d < 0 ? -1 : 0);
 }
@@ -71,18 +77,18 @@ ptr_comp(const void* a, const void* b)
 char *
 ora_sstrcpy(char *str)
 {
-	size_t len;
-	char *result;
+	size_t		len;
+	char	   *result;
 
 	len = strlen(str);
-	if (NULL != (result = ora_salloc(len+1)))
+	if (NULL != (result = ora_salloc(len + 1)))
 		memcpy(result, str, len + 1);
 	else
 		ereport(ERROR,
-			(errcode(ERRCODE_OUT_OF_MEMORY),
-			errmsg("out of memory"),
-			errdetail("Failed while allocation block %d bytes in shared memory.", (int) len+1),
-			errhint("Increase SHMEMMSGSZ and recompile package.")));
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory"),
+				 errdetail("Failed while allocation block %d bytes in shared memory.", (int) len + 1),
+				 errhint("Increase SHMEMMSGSZ and recompile package.")));
 
 	return result;
 }
@@ -90,22 +96,22 @@ ora_sstrcpy(char *str)
 char *
 ora_scstring(text *str)
 {
-	int len;
-	char *result;
+	int			len;
+	char	   *result;
 
 	len = VARSIZE_ANY_EXHDR(str);
 
-	if (NULL != (result = ora_salloc(len+1)))
+	if (NULL != (result = ora_salloc(len + 1)))
 	{
 		memcpy(result, VARDATA_ANY(str), len);
 		result[len] = '\0';
 	}
 	else
 		ereport(ERROR,
-			(errcode(ERRCODE_OUT_OF_MEMORY),
-			errmsg("out of memory"),
-			errdetail("Failed while allocation block %d bytes in shared memory.", (int) len+1),
-			errhint("Increase SHMEMMSGSZ and recompile package.")));
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory"),
+				 errdetail("Failed while allocation block %d bytes in shared memory.", (int) len + 1),
+				 errhint("Increase SHMEMMSGSZ and recompile package.")));
 
 	return result;
 }
@@ -117,7 +123,8 @@ ora_scstring(text *str)
 static void
 defragmentation()
 {
-	int src, target;
+	int			src,
+				target;
 
 	/* Sort the array to pointer order */
 	qsort(list, *list_c, sizeof(list_item), ptr_comp);
@@ -145,7 +152,7 @@ defragmentation()
 static size_t
 align_size(size_t size)
 {
-	int i;
+	int			i;
 
 	/* default, we can allocate max MAX_SIZE memory block */
 
@@ -154,10 +161,10 @@ align_size(size_t size)
 			return asize[i];
 
 	ereport(ERROR,
-		   (errcode(ERRCODE_OUT_OF_MEMORY),
-		    errmsg("too much large memory block request"),
-		    errdetail("Failed while allocation block %lu bytes in shared memory.", (unsigned long) size),
-		    errhint("Increase MAX_SIZE constant, fill table a_size and recompile package.")));
+			(errcode(ERRCODE_OUT_OF_MEMORY),
+			 errmsg("too much large memory block request"),
+			 errdetail("Failed while allocation block %lu bytes in shared memory.", (unsigned long) size),
+			 errhint("Increase MAX_SIZE constant, fill table a_size and recompile package.")));
 
 	return 0;
 }
@@ -173,15 +180,16 @@ ora_sinit(void *ptr, size_t size, bool create)
 {
 	if (list == NULL)
 	{
-		mem_desc *m = (mem_desc*)ptr;
-		list = (list_item*)m->data;
+		mem_desc   *m = (mem_desc *) ptr;
+
+		list = (list_item *) m->data;
 		list_c = &m->list_c;
 		max_size = m->max_size = size;
 
 		if (create)
 		{
-			list[0].size = size - sizeof(list_item)*LIST_ITEMS - sizeof(mem_desc);
-			list[0].first_byte_ptr = ((char *) &m->data) + sizeof(list_item)*LIST_ITEMS;
+			list[0].size = size - sizeof(list_item) * LIST_ITEMS - sizeof(mem_desc);
+			list[0].first_byte_ptr = ((char *) &m->data) + sizeof(list_item) * LIST_ITEMS;
 			list[0].dispossible = true;
 			*list_c = 1;
 		}
@@ -189,20 +197,20 @@ ora_sinit(void *ptr, size_t size, bool create)
 }
 
 
-void*
+void *
 ora_salloc(size_t size)
 {
-	size_t aligned_size;
-	int repeat_c;
-	void *ptr = NULL;
+	size_t		aligned_size;
+	int			repeat_c;
+	void	   *ptr = NULL;
 
 	aligned_size = align_size(size);
 
 	for (repeat_c = 0; repeat_c < 2; repeat_c++)
 	{
-		size_t	max_min = max_size;
-		int		select = -1;
-		int		i;
+		size_t		max_min = max_size;
+		int			select = -1;
+		int			i;
 
 		/* find first good free block */
 		for (i = 0; i < *list_c; i++)
@@ -239,7 +247,7 @@ ora_salloc(size_t size)
 		 * space, and return the slot of the right size.
 		 */
 		list[*list_c].size = list[select].size - aligned_size;
-		list[*list_c].first_byte_ptr = (char*)list[select].first_byte_ptr + aligned_size;
+		list[*list_c].first_byte_ptr = (char *) list[select].first_byte_ptr + aligned_size;
 		list[*list_c].dispossible = true;
 		list[select].size = aligned_size;
 		list[select].dispossible = false;
@@ -287,12 +295,12 @@ ora_sfree(void *ptr)
 }
 
 
-void*
+void *
 ora_srealloc(void *ptr, size_t size)
 {
-	void *result;
-	size_t aux_s = 0;
-	int i;
+	void	   *result;
+	size_t		aux_s = 0;
+	int			i;
 
 	for (i = 0; i < *list_c; i++)
 		if (list[i].first_byte_ptr == ptr)
@@ -304,10 +312,10 @@ ora_srealloc(void *ptr, size_t size)
 
 	if (aux_s == 0)
 		ereport(ERROR,
-			(errcode(ERRCODE_INTERNAL_ERROR),
-			errmsg("corrupted pointer"),
-			errdetail("Failed while reallocating memory block in shared memory."),
-			errhint("Please report this bug to the package authors.")));
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("corrupted pointer"),
+				 errdetail("Failed while reallocating memory block in shared memory."),
+				 errhint("Please report this bug to the package authors.")));
 
 
 	if (NULL != (result = ora_salloc(size)))
@@ -323,32 +331,32 @@ ora_srealloc(void *ptr, size_t size)
  *  alloc shared memory, raise exception if not
  */
 
-void*
+void *
 salloc(size_t size)
 {
-	void* result;
+	void	   *result;
 
 	if (NULL == (result = ora_salloc(size)))
 		ereport(ERROR,
-			(errcode(ERRCODE_OUT_OF_MEMORY),
-			errmsg("out of memory"),
-			errdetail("Failed while allocation block %lu bytes in shared memory.", (unsigned long) size),
-			errhint("Increase SHMEMMSGSZ and recompile package.")));
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory"),
+				 errdetail("Failed while allocation block %lu bytes in shared memory.", (unsigned long) size),
+				 errhint("Increase SHMEMMSGSZ and recompile package.")));
 
 	return result;
 }
 
-void*
+void *
 srealloc(void *ptr, size_t size)
 {
-	void* result;
+	void	   *result;
 
 	if (NULL == (result = ora_srealloc(ptr, size)))
 		ereport(ERROR,
-			(errcode(ERRCODE_OUT_OF_MEMORY),
-			errmsg("out of memory"),
-			errdetail("Failed while reallocation block %lu bytes in shared memory.", (unsigned long) size),
-			errhint("Increase SHMEMMSGSZ and recompile package.")));
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory"),
+				 errdetail("Failed while reallocation block %lu bytes in shared memory.", (unsigned long) size),
+				 errhint("Increase SHMEMMSGSZ and recompile package.")));
 
 	return result;
 }

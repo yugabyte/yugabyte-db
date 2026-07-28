@@ -1,6 +1,12 @@
 Orafce News - History of user-visible changes
 Copyright (C) 2008-2023  Orafce Global Development Group
 
+Version 4.12.0 - 30 Aug 2024
+* fix (from Oracle's perspective) function to_date('', 'J')
+
+Version 4.11.0 -
+* new function oracle.sys_extract_date
+
 Version 4.6.0 - 
 * emit signal by XactCallback instead deferred trigger, store not yet emmited events in
   transaction scope memory instead in temporary table. New solution strongly reduces delay

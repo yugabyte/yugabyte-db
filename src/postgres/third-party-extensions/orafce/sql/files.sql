@@ -101,8 +101,8 @@ SELECT utl_file.fopen(utl_file.tmpdir(),'non_existent_file.txt','r');
 
 --Other test cases
 --run this under unprivileged user
-CREATE ROLE test_role_files LOGIN;
-SET ROLE TO test_role_files;
+CREATE ROLE regress_test_role_files LOGIN;
+SET ROLE TO regress_test_role_files;
 
 -- should to fail, unpriviliged user cannot to change utl_file_dir
 INSERT INTO utl_file.utl_file_dir(dir) VALUES('test_tmp_dir');
@@ -121,7 +121,6 @@ SELECT checkFlushFile(utl_file.tmpdir());
 SELECT utl_file.fremove(utl_file.tmpdir(), 'regressflush_orafce.txt');
 
 SET ROLE TO DEFAULT;
-DROP ROLE test_role_files;
 
 DROP FUNCTION checkFlushFile(text);
 DELETE FROM utl_file.utl_file_dir;
@@ -136,3 +135,14 @@ DROP FUNCTION gen_file(text);
 DROP FUNCTION read_file(text);
 
 DELETE FROM utl_file.utl_file_dir;
+
+-- reconnect
+\c
+
+SET ROLE TO regress_test_role_files;
+
+-- use any function from orafce, should not to fail
+SELECT oracle.add_months('2024-05-20', 1);
+
+SET ROLE TO DEFAULT;
+DROP ROLE regress_test_role_files;

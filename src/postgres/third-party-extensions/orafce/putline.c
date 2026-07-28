@@ -32,9 +32,9 @@ extern PGDLLIMPORT ProtocolVersion FrontendProtocol;	/* for mingw */
 
 static bool is_server_output = false;
 static char *buffer = NULL;
-static int   buffer_size = 0;	/* allocated bytes in buffer */
-static int   buffer_len = 0;	/* used bytes in buffer */
-static int   buffer_get = 0;	/* retrieved bytes in buffer */
+static int	buffer_size = 0;	/* allocated bytes in buffer */
+static int	buffer_len = 0;		/* used bytes in buffer */
+static int	buffer_get = 0;		/* retrieved bytes in buffer */
 
 static void add_str(const char *str, int len);
 static void add_text(text *str);
@@ -56,10 +56,10 @@ add_str(const char *str, int len)
 
 	if (buffer_len + len > buffer_size)
 		ereport(ERROR,
-			(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-			 errmsg("buffer overflow"),
-			 errdetail("Buffer overflow, limit of %d bytes", buffer_size),
-			 errhint("Increase buffer size in dbms_output.enable() next time")));
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+				 errmsg("buffer overflow"),
+				 errdetail("Buffer overflow, limit of %d bytes", buffer_size),
+				 errhint("Increase buffer size in dbms_output.enable() next time")));
 
 	memcpy(buffer + buffer_len, str, len);
 	buffer_len += len;
@@ -75,7 +75,7 @@ add_text(text *str)
 static void
 add_newline(void)
 {
-	add_str("", 1);	/* add \0 */
+	add_str("", 1);				/* add \0 */
 	if (is_server_output)
 		send_buffer();
 }
@@ -87,7 +87,7 @@ send_buffer()
 	if (buffer_len > 0)
 	{
 		StringInfoData msgbuf;
-		char *cursor = buffer;
+		char	   *cursor = buffer;
 
 		while (--buffer_len > 0)
 		{
@@ -98,9 +98,9 @@ send_buffer()
 
 		if (*cursor != '\0')
 			ereport(ERROR,
-				    (errcode(ERRCODE_INTERNAL_ERROR),
-				     errmsg("internal error"),
-				     errdetail("Wrong message format detected")));
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("internal error"),
+					 errdetail("Wrong message format detected")));
 
 		pq_beginmessage(&msgbuf, 'N');
 
@@ -180,7 +180,7 @@ Datum
 dbms_output_enable_default(PG_FUNCTION_ARGS)
 {
 	dbms_output_enable_internal(BUFSIZE_DEFAULT);
-    PG_RETURN_VOID();
+	PG_RETURN_VOID();
 }
 
 
@@ -189,7 +189,7 @@ PG_FUNCTION_INFO_V1(dbms_output_enable);
 Datum
 dbms_output_enable(PG_FUNCTION_ARGS)
 {
-	int32 n_buf_size;
+	int32		n_buf_size;
 
 	if (PG_ARGISNULL(0))
 		n_buf_size = BUFSIZE_UNLIMITED;
@@ -278,7 +278,8 @@ dbms_output_next(void)
 {
 	if (buffer_get < buffer_len)
 	{
-		text *line = cstring_to_text(buffer + buffer_get);
+		text	   *line = cstring_to_text(buffer + buffer_get);
+
 		buffer_get += VARSIZE_ANY_EXHDR(line) + 1;
 		return line;
 	}
@@ -295,7 +296,7 @@ dbms_output_get_line(PG_FUNCTION_ARGS)
 	Datum		result;
 	HeapTuple	tuple;
 	Datum		values[2];
-	bool		nulls[2] = { false, false };
+	bool		nulls[2] = {false, false};
 	text	   *line;
 
 	/* Build a tuple descriptor for our result type */
@@ -329,7 +330,7 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
 	Datum		result;
 	HeapTuple	tuple;
 	Datum		values[2];
-	bool		nulls[2] = { false, false };
+	bool		nulls[2] = {false, false};
 	text	   *line;
 
 	int32		max_lines = PG_GETARG_INT32(0);
@@ -343,7 +344,7 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
 	for (n = 0; n < max_lines && (line = dbms_output_next()) != NULL; n++)
 	{
 		astate = accumArrayResult(astate, PointerGetDatum(line), false,
-					TEXTOID, CurrentMemoryContext);
+								  TEXTOID, CurrentMemoryContext);
 	}
 
 	/* 0: lines as text array */
@@ -358,9 +359,9 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
 
 		get_typlenbyvalalign(TEXTOID, &typlen, &typbyval, &typalign);
 		arr = construct_md_array(
-			NULL,
-			NULL,
-			0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);
+								 NULL,
+								 NULL,
+								 0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);
 		values[0] = PointerGetDatum(arr);
 	}
 

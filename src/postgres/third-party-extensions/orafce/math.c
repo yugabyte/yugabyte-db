@@ -102,10 +102,10 @@ static Numeric
 get_numeric_in(const char *str)
 {
 	return DatumGetNumeric(
-			  DirectFunctionCall3(numeric_in,
-								  CStringGetDatum(str),
-								  ObjectIdGetDatum(0),
-								  Int32GetDatum(-1)));
+						   DirectFunctionCall3(numeric_in,
+											   CStringGetDatum(str),
+											   ObjectIdGetDatum(0),
+											   Int32GetDatum(-1)));
 }
 
 static bool
@@ -156,33 +156,48 @@ orafce_reminder_numeric(PG_FUNCTION_ARGS)
 	if (orafce_numeric_is_inf(num2))
 		duplicate_numeric(num1);
 
-#if PG_VERSION_NUM >= 150000
+#if PG_VERSION_NUM >= 190000
+
+	result = numeric_sub_safe(
+							  num1,
+							  numeric_mul_safe(
+											   DatumGetNumeric(
+															   DirectFunctionCall2(
+																				   numeric_round,
+																				   NumericGetDatum(
+																								   numeric_div_safe(num1, num2, NULL)),
+																				   Int32GetDatum(0))),
+											   num2,
+											   NULL),
+							  NULL);
+
+#elif PG_VERSION_NUM >= 150000
 
 	result = numeric_sub_opt_error(
-				num1,
-				numeric_mul_opt_error(
-					DatumGetNumeric(
-						DirectFunctionCall2(
-							numeric_round,
-							NumericGetDatum(
-								numeric_div_opt_error(num1, num2,NULL)),
-							Int32GetDatum(0))),
-					num2,
-					NULL),
-				NULL);
+								   num1,
+								   numeric_mul_opt_error(
+														 DatumGetNumeric(
+																		 DirectFunctionCall2(
+																							 numeric_round,
+																							 NumericGetDatum(
+																											 numeric_div_opt_error(num1, num2, NULL)),
+																							 Int32GetDatum(0))),
+														 num2,
+														 NULL),
+								   NULL);
 
 #else
 
 	result = DatumGetNumeric(
-			DirectFunctionCall2(numeric_sub,
-				NumericGetDatum(num1),
-				DirectFunctionCall2(numeric_mul,
-					DirectFunctionCall2(numeric_round,
-						DirectFunctionCall2(numeric_div,
-											NumericGetDatum(num1),
-											NumericGetDatum(num2)),
-						Int32GetDatum(0)),
-					NumericGetDatum(num2))));
+							 DirectFunctionCall2(numeric_sub,
+												 NumericGetDatum(num1),
+												 DirectFunctionCall2(numeric_mul,
+																	 DirectFunctionCall2(numeric_round,
+																						 DirectFunctionCall2(numeric_div,
+																											 NumericGetDatum(num1),
+																											 NumericGetDatum(num2)),
+																						 Int32GetDatum(0)),
+																	 NumericGetDatum(num2))));
 
 #endif
 

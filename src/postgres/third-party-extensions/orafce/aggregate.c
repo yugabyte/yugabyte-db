@@ -22,18 +22,18 @@ PG_FUNCTION_INFO_V1(orafce_median8_finalfn);
 
 typedef struct
 {
-	int	alen;		/* allocated length */
-	int	nextlen;	/* next allocated length */
-	int	nelems;		/* number of valid entries */
+	int			alen;			/* allocated length */
+	int			nextlen;		/* next allocated length */
+	int			nelems;			/* number of valid entries */
 	union
 	{
-		float4	*float4_values;
-		float8  *float8_values;
-	} d;
+		float4	   *float4_values;
+		float8	   *float8_values;
+	}			d;
 } MedianState;
 
-int orafce_float4_cmp(const void *a, const void *b);
-int orafce_float8_cmp(const void *a, const void *b);
+int			orafce_float4_cmp(const void *a, const void *b);
+int			orafce_float8_cmp(const void *a, const void *b);
 
 /****************************************************************
  * listagg
@@ -90,7 +90,7 @@ orafce_listagg1_transfn(PG_FUNCTION_ARGS)
 	{
 		if (state == NULL)
 			state = makeStringAggState(fcinfo);
-		appendStringInfoText(state, PG_GETARG_TEXT_PP(1));		/* value */
+		appendStringInfoText(state, PG_GETARG_TEXT_PP(1));	/* value */
 	}
 
 	/*
@@ -115,7 +115,7 @@ orafce_wm_concat_transfn(PG_FUNCTION_ARGS)
 		else
 			appendStringInfoChar(state, ',');
 
-		appendStringInfoText(state, PG_GETARG_TEXT_PP(1));		/* value */
+		appendStringInfoText(state, PG_GETARG_TEXT_PP(1));	/* value */
 	}
 
 	/*
@@ -159,13 +159,13 @@ accumFloat4(MedianState *mstate, float4 value, MemoryContext aggcontext)
 		/* enlarge float4_values if needed */
 		if (mstate->nelems >= mstate->alen)
 		{
-			int	newlen = mstate->nextlen;
+			int			newlen = mstate->nextlen;
 
 			oldcontext = MemoryContextSwitchTo(aggcontext);
 			mstate->nextlen += mstate->alen;
 			mstate->alen = newlen;
 			mstate->d.float4_values = repalloc(mstate->d.float4_values,
-									    mstate->alen * sizeof(float4));
+											   mstate->alen * sizeof(float4));
 			MemoryContextSwitchTo(oldcontext);
 		}
 	}
@@ -196,13 +196,13 @@ accumFloat8(MedianState *mstate, float8 value, MemoryContext aggcontext)
 		/* enlarge float4_values if needed */
 		if (mstate->nelems >= mstate->alen)
 		{
-			int	newlen = mstate->nextlen;
+			int			newlen = mstate->nextlen;
 
 			oldcontext = MemoryContextSwitchTo(aggcontext);
 			mstate->nextlen += mstate->alen;
 			mstate->alen = newlen;
 			mstate->d.float8_values = repalloc(mstate->d.float8_values,
-									    mstate->alen * sizeof(float8));
+											   mstate->alen * sizeof(float8));
 			MemoryContextSwitchTo(oldcontext);
 		}
 	}
@@ -215,9 +215,9 @@ accumFloat8(MedianState *mstate, float8 value, MemoryContext aggcontext)
 Datum
 orafce_median4_transfn(PG_FUNCTION_ARGS)
 {
-	MemoryContext	aggcontext;
+	MemoryContext aggcontext;
 	MedianState *state = NULL;
-	float4 elem;
+	float4		elem;
 
 	if (!AggCheckCallContext(fcinfo, &aggcontext))
 	{
@@ -238,8 +238,8 @@ orafce_median4_transfn(PG_FUNCTION_ARGS)
 int
 orafce_float4_cmp(const void *_a, const void *_b)
 {
-	float4 a = *((float4 *) _a);
-	float4 b = *((float4 *) _b);
+	float4		a = *((float4 *) _a);
+	float4		b = *((float4 *) _b);
 
 	if (isnan(a))
 	{
@@ -267,9 +267,9 @@ Datum
 orafce_median4_finalfn(PG_FUNCTION_ARGS)
 {
 	MedianState *state = NULL;
-	int	lidx;
-	int	hidx;
-	float4 result;
+	int			lidx;
+	int			hidx;
+	float4		result;
 
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
@@ -295,9 +295,9 @@ orafce_median4_finalfn(PG_FUNCTION_ARGS)
 Datum
 orafce_median8_transfn(PG_FUNCTION_ARGS)
 {
-	MemoryContext	aggcontext;
+	MemoryContext aggcontext;
 	MedianState *state = NULL;
-	float8 elem;
+	float8		elem;
 
 	if (!AggCheckCallContext(fcinfo, &aggcontext))
 	{
@@ -318,8 +318,8 @@ orafce_median8_transfn(PG_FUNCTION_ARGS)
 int
 orafce_float8_cmp(const void *_a, const void *_b)
 {
-	float8 a = *((float8 *) _a);
-	float8 b = *((float8 *) _b);
+	float8		a = *((float8 *) _a);
+	float8		b = *((float8 *) _b);
 
 	if (isnan(a))
 	{
@@ -348,9 +348,9 @@ Datum
 orafce_median8_finalfn(PG_FUNCTION_ARGS)
 {
 	MedianState *state = NULL;
-	int	lidx;
-	int	hidx;
-	float8 result;
+	int			lidx;
+	int			hidx;
+	float8		result;
 
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();

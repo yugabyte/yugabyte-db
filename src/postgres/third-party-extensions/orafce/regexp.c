@@ -58,157 +58,6 @@ PG_FUNCTION_INFO_V1(orafce_textregexreplace_extended);
 PG_FUNCTION_INFO_V1(orafce_textregexreplace_extended_no_n);
 PG_FUNCTION_INFO_V1(orafce_textregexreplace_extended_no_flags);
 
-#if PG_VERSION_NUM <  120000
-
-
-/* this is the maximum number of cached regular expressions */
-#ifndef MAX_CACHED_RES
-#define MAX_CACHED_RES	32
-#endif
-
-/* this structure describes one cached regular expression */
-typedef struct cached_re_str
-{
-	char	   *cre_pat;		/* original RE (not null terminated!) */
-	int			cre_pat_len;	/* length of original RE, in bytes */
-	int			cre_flags;		/* compile flags: extended,icase etc */
-	Oid			cre_collation;	/* collation to use */
-	regex_t		cre_re;			/* the compiled regular expression */
-} cached_re_str;
-
-static int	num_res = 0;		/* # of cached re's */
-static cached_re_str re_array[MAX_CACHED_RES];	/* cached re's */
-
-
-/*
- * RE_compile_and_cache - compile a RE, caching if possible
- *
- * Returns regex_t *
- *
- *	text_re --- the pattern, expressed as a TEXT object
- *	cflags --- compile options for the pattern
- *	collation --- collation to use for LC_CTYPE-dependent behavior
- *
- * Pattern is given in the database encoding.  We internally convert to
- * an array of pg_wchar, which is what Spencer's regex package wants.
- */
-static regex_t *
-RE_compile_and_cache(text *text_re, int cflags, Oid collation)
-{
-	int			text_re_len = VARSIZE_ANY_EXHDR(text_re);
-	char	   *text_re_val = VARDATA_ANY(text_re);
-	pg_wchar   *pattern;
-	int			pattern_len;
-	int			i;
-	int			regcomp_result;
-	cached_re_str re_temp;
-	char		errMsg[100];
-
-	/*
-	 * Look for a match among previously compiled REs.  Since the data
-	 * structure is self-organizing with most-used entries at the front, our
-	 * search strategy can just be to scan from the front.
-	 */
-	for (i = 0; i < num_res; i++)
-	{
-		if (re_array[i].cre_pat_len == text_re_len &&
-			re_array[i].cre_flags == cflags &&
-			re_array[i].cre_collation == collation &&
-			memcmp(re_array[i].cre_pat, text_re_val, text_re_len) == 0)
-		{
-			/*
-			 * Found a match; move it to front if not there already.
-			 */
-			if (i > 0)
-			{
-				re_temp = re_array[i];
-				memmove(&re_array[1], &re_array[0], i * sizeof(cached_re_str));
-				re_array[0] = re_temp;
-			}
-
-			return &re_array[0].cre_re;
-		}
-	}
-
-	/*
-	 * Couldn't find it, so try to compile the new RE.  To avoid leaking
-	 * resources on failure, we build into the re_temp local.
-	 */
-
-	/* Convert pattern string to wide characters */
-	pattern = (pg_wchar *) palloc((text_re_len + 1) * sizeof(pg_wchar));
-	pattern_len = pg_mb2wchar_with_len(text_re_val,
-									   pattern,
-									   text_re_len);
-
-	regcomp_result = pg_regcomp(&re_temp.cre_re,
-								pattern,
-								pattern_len,
-								cflags,
-								collation);
-
-	pfree(pattern);
-
-	if (regcomp_result != REG_OKAY)
-	{
-		/* re didn't compile (no need for pg_regfree, if so) */
-
-		/*
-		 * Here and in other places in this file, do CHECK_FOR_INTERRUPTS
-		 * before reporting a regex error.  This is so that if the regex
-		 * library aborts and returns REG_CANCEL, we don't print an error
-		 * message that implies the regex was invalid.
-		 */
-		CHECK_FOR_INTERRUPTS();
-
-		pg_regerror(regcomp_result, &re_temp.cre_re, errMsg, sizeof(errMsg));
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_REGULAR_EXPRESSION),
-				 errmsg("invalid regular expression: %s", errMsg)));
-	}
-
-	/*
-	 * We use malloc/free for the cre_pat field because the storage has to
-	 * persist across transactions, and because we want to get control back on
-	 * out-of-memory.  The Max() is because some malloc implementations return
-	 * NULL for malloc(0).
-	 */
-	re_temp.cre_pat = malloc(Max(text_re_len, 1));
-	if (re_temp.cre_pat == NULL)
-	{
-		pg_regfree(&re_temp.cre_re);
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-	}
-	memcpy(re_temp.cre_pat, text_re_val, text_re_len);
-	re_temp.cre_pat_len = text_re_len;
-	re_temp.cre_flags = cflags;
-	re_temp.cre_collation = collation;
-
-	/*
-	 * Okay, we have a valid new item in re_temp; insert it into the storage
-	 * array.  Discard last entry if needed.
-	 */
-	if (num_res >= MAX_CACHED_RES)
-	{
-		--num_res;
-		Assert(num_res < MAX_CACHED_RES);
-		pg_regfree(&re_array[num_res].cre_re);
-		free(re_array[num_res].cre_pat);
-	}
-
-	if (num_res > 0)
-		memmove(&re_array[1], &re_array[0], num_res * sizeof(cached_re_str));
-
-	re_array[0] = re_temp;
-	num_res++;
-
-	return &re_array[0].cre_re;
-}
-
-#endif
-
 #if PG_VERSION_NUM <  150000
 
 /*
@@ -391,9 +240,9 @@ appendStringInfoRegexpSubstr(StringInfo str, text *replace_text,
  */
 static text *
 orafce_replace_text_regexp(text *src_text, text *pattern_text,
-					text *replace_text,
-					int cflags, Oid collation,
-					int search_start, int n)
+						   text *replace_text,
+						   int cflags, Oid collation,
+						   int search_start, int n)
 {
 	text	   *ret_text;
 	regex_t    *re;
@@ -965,10 +814,14 @@ orafce_regexp_instr(PG_FUNCTION_ARGS)
 			PG_RETURN_NULL();
 
 		endoption = PG_GETARG_INT32(4);
-		if (endoption != 0 && endoption != 1)
+		if (endoption < 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("argument 'return_opt' must be 0 or 1")));
+					 errmsg("argument 'return_opt' is out of range")));
+
+		/* Reset value greater than 1 */
+		if (endoption > 0)
+			endoption = 1;
 	}
 	if (PG_NARGS() > 5)
 	{
@@ -1081,8 +934,8 @@ orafce_textregexreplace_noopt(PG_FUNCTION_ARGS)
 	r = PG_GETARG_TEXT_PP(2);
 
 	PG_RETURN_TEXT_P(orafce_replace_text_regexp(s, p, r,
-										 REG_ADVANCED, PG_GET_COLLATION(),
-										 0, 0));
+												REG_ADVANCED, PG_GET_COLLATION(),
+												0, 0));
 }
 
 /*
@@ -1105,9 +958,9 @@ orafce_textregexreplace(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 
 	/*
-	 * Special case for second parameter in REGEXP_REPLACE, when NULL
-	 * returns the original value unless the start position or occurrences
-	 * are NULL too. In this case, it returns NULL (see instruction above).
+	 * Special case for second parameter in REGEXP_REPLACE, when NULL returns
+	 * the original value unless the start position or occurrences are NULL
+	 * too. In this case, it returns NULL (see instruction above).
 	 */
 	if (PG_ARGISNULL(1) && !PG_ARGISNULL(0))
 		PG_RETURN_TEXT_P(PG_GETARG_TEXT_PP(0));
@@ -1144,8 +997,8 @@ orafce_textregexreplace(PG_FUNCTION_ARGS)
 	parse_re_flags(&flags, opt);
 
 	PG_RETURN_TEXT_P(orafce_replace_text_regexp(s, p, r,
-										 flags.cflags, PG_GET_COLLATION(),
-										 0, 0));
+												flags.cflags, PG_GET_COLLATION(),
+												0, 0));
 }
 
 /*
@@ -1172,9 +1025,9 @@ orafce_textregexreplace_extended(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 
 	/*
-	 * Special case for second parameter in REGEXP_REPLACE, when NULL
-	 * returns the original value unless the start position or occurrences
-	 * are NULL too. In this case, it returns NULL (see instruction above).
+	 * Special case for second parameter in REGEXP_REPLACE, when NULL returns
+	 * the original value unless the start position or occurrences are NULL
+	 * too. In this case, it returns NULL (see instruction above).
 	 */
 	if (PG_ARGISNULL(1) && !PG_ARGISNULL(0))
 		PG_RETURN_TEXT_P(PG_GETARG_TEXT_PP(0));
@@ -1219,16 +1072,16 @@ orafce_textregexreplace_extended(PG_FUNCTION_ARGS)
 				 errmsg("modifier 'g' is not supported by this function")));
 
 	/*
-	 * If N was not specified, force the 'g' modifier. This is the
-	 * default in Oracle when no occurence is specified.
+	 * If N was not specified, force the 'g' modifier. This is the default in
+	 * Oracle when no occurence is specified.
 	 */
 	if (PG_NARGS() <= 4)
 		n = 0;
 
 	/* Do the replacement(s) */
 	PG_RETURN_TEXT_P(orafce_replace_text_regexp(s, p, r,
-										 re_flags.cflags, PG_GET_COLLATION(),
-										 start - 1, n));
+												re_flags.cflags, PG_GET_COLLATION(),
+												start - 1, n));
 }
 
 /* This is separate to keep the opr_sanity regression test from complaining */

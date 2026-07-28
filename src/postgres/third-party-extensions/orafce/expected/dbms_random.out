@@ -83,40 +83,52 @@ SELECT dbms_random.value(10,15)::numeric(10, 8);
  10.23233882
 (1 row)
 
-SELECT dbms_random.terminate();
- terminate 
------------
+SELECT dbms_random.value(10,10)::numeric(10, 8);
+    value    
+-------------
+ 10.00000000
+(1 row)
+
+SELECT dbms_random.value(15,10)::numeric(10, 8);
+    value    
+-------------
+ 10.40015223
+(1 row)
+
+SELECT dbms_random.seed(5);
+ seed 
+------
  
 (1 row)
 
 SELECT dbms_random.string('u', 10);
    string   
 ------------
- ZCDCHLMXAH
+ HBZCDCHLMX
 (1 row)
 
 SELECT dbms_random.string('l', 10);
    string   
 ------------
- zfkgjhkghl
+ ahzfkgjhkg
 (1 row)
 
 SELECT dbms_random.string('a', 10);
    string   
 ------------
- xodQYutYyH
+ pxxodQYutY
 (1 row)
 
 SELECT dbms_random.string('x', 10);
    string   
 ------------
- 0GQ5J0M1WM
+ HN0GQ5J0M1
 (1 row)
 
 SELECT dbms_random.string('p', 10);
    string   
 ------------
- hX"|=i1&/h
+ VEhX"|=i1&
 (1 row)
 
 SELECT dbms_random.string('uu', 10); -- error
@@ -124,6 +136,14 @@ ERROR:  this first parameter value is more than 1 characters long
 SELECT dbms_random.string('w', 10);
    string   
 ------------
- AXPCTOMDNY
+ MIAXPCTOMD
+(1 row)
+
+-- although it is useless, and deprecated on Oracle
+-- it should be last command
+SELECT dbms_random.terminate();
+ terminate 
+-----------
+ 
 (1 row)
 

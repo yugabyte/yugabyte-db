@@ -24,10 +24,10 @@
 #endif
 
 /*  default value */
-char  *nls_date_format = NULL;
-char  *orafce_timezone = NULL;
+char	   *nls_date_format = NULL;
+char	   *orafce_timezone = NULL;
 
-extern char *orafce_sys_guid_source;
+bool		orafce_initialized = false;
 
 static const struct config_enum_entry orafce_compatibility_options[] = {
 	{"warning_oracle", ORAFCE_COMPATIBILITY_WARNING_ORACLE, false},
@@ -117,41 +117,41 @@ _PG_init(void)
 
 	/* Define custom GUC variables. */
 	DefineCustomStringVariable("orafce.nls_date_format",
-									"Emulate oracle's date output behaviour.",
-									NULL,
-									&nls_date_format,
-									NULL,
-									PGC_USERSET,
-									0,
-									NULL,
-									NULL, NULL);
+							   "Emulate oracle's date output behaviour.",
+							   NULL,
+							   &nls_date_format,
+							   NULL,
+							   PGC_USERSET,
+							   0,
+							   NULL,
+							   NULL, NULL);
 
 	DefineCustomStringVariable("orafce.timezone",
-									"Specify timezone used for sysdate function.",
-									NULL,
-									&orafce_timezone,
-									"GMT",
-									PGC_USERSET,
-									0,
-									check_timezone, NULL, NULL);
+							   "Specify timezone used for sysdate function.",
+							   NULL,
+							   &orafce_timezone,
+							   "GMT",
+							   PGC_USERSET,
+							   0,
+							   check_timezone, NULL, NULL);
 
 	DefineCustomBoolVariable("orafce.varchar2_null_safe_concat",
-									"Specify timezone used for sysdate function.",
-									NULL,
-									&orafce_varchar2_null_safe_concat,
-									false,
-									PGC_USERSET,
-									0,
-									NULL, NULL, NULL);
+							 "Specify wether empty string should be used instead of NULL in concat clauses with varchar2 and nvarchar2 data type.",
+							 NULL,
+							 &orafce_varchar2_null_safe_concat,
+							 false,
+							 PGC_USERSET,
+							 0,
+							 NULL, NULL, NULL);
 
 	DefineCustomStringVariable("orafce.sys_guid_source",
-									"Specify function from uuid-ossp extension used for making result.",
-									NULL,
-									&orafce_sys_guid_source,
-									"uuid_generate_v1",
-									PGC_USERSET,
-									0,
-									check_sys_guid_source, NULL, NULL);
+							   "Specify function from uuid-ossp extension used for making result.",
+							   NULL,
+							   &orafce_sys_guid_source,
+							   "uuid_generate_v1",
+							   PGC_USERSET,
+							   0,
+							   check_sys_guid_source, NULL, NULL);
 
 	DefineCustomEnumVariable("orafce.using_substring_zero_width_in_substr",
 							 gettext_noop("behaviour of substr function when substring_length argument is zero"),
@@ -162,8 +162,28 @@ _PG_init(void)
 							 PGC_USERSET, 0,
 							 NULL, NULL, NULL);
 
+	DefineCustomStringVariable("orafce.umask",
+							   "Specify umask used by utl_file.fopen.",
+							   NULL,
+							   &orafce_umask_str,
+							   "0077",
+							   PGC_USERSET,
+							   0,
+							   orafce_umask_check_hook,
+							   orafce_umask_assign_hook, NULL);
+
+	DefineCustomBoolVariable("orafce.oracle_compatibility_date_limit",
+							 "Specify if an error is raised when the Oracle to_date() bug is reached.",
+							 NULL,
+							 &orafce_emit_error_on_date_bug,
+							 true,
+							 PGC_USERSET,
+							 0,
+							 NULL, NULL, NULL);
 
 	EmitWarningsOnPlaceholders("orafce");
 
 	RegisterXactCallback(orafce_xact_cb, NULL);
+
+	orafce_initialized = true;
 }
