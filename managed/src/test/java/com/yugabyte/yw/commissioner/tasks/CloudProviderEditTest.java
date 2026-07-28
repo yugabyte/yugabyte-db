@@ -1043,7 +1043,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     awsProvider.getRegions().add(Json.fromJson(getAWSRegionJson(), Region.class));
     Provider updatedProvider = awsProvider;
     Result result = assertPlatformException(() -> editProvider(updatedProvider, false));
-    assertBadRequest(result, "Specify the AMI for the region us-west-2 in the image bundle ib-1");
+    assertBadRequest(result, "Specify the image for the region us-west-2 in the image bundle ib-1");
 
     regionImageInfo.put("us-west-2", new ImageBundleDetails.BundleInfo());
     iB.getDetails().setRegions(regionImageInfo);

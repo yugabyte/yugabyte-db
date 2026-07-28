@@ -178,6 +178,11 @@ public class ApiUtils {
         universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
+        // Test universes are treated as fully created ones for legacy behavior parity - health
+        // checks and alert definitions should cover them just like they did before the
+        // creationSucceeded flag existed. Tests that specifically exercise the "creation failed"
+        // path should override this on the resulting universe.
+        universeDetails.creationSucceeded = true;
         universeDetails.setEnableYbc(enableYbc);
         universeDetails.setYbcInstalled(enableYbc);
         List<UUID> azUUIDList = null;
@@ -273,6 +278,9 @@ public class ApiUtils {
         universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
+        // See the note on mockUniverseUpdater about creationSucceeded - k8s helper follows
+        // the same convention.
+        universeDetails.creationSucceeded = true;
         PlacementCloud placementCloud = placementInfo.cloudList.get(0);
         for (PlacementRegion rp : placementCloud.regionList) {
           for (PlacementAZ az : rp.azList) {
