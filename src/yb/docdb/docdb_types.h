@@ -37,6 +37,7 @@ YB_DEFINE_ENUM(
     (kReverseTxnKey)
     (kPlainSubDocKey)
     (kTransactionMetadata)
+    (kTransactionMetadataUpdate)
     (kPostApplyTransactionMetadata)
     (kExternalIntents)
     (kApplyState)

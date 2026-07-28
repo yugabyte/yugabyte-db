@@ -282,6 +282,8 @@ TransactionalWriter::TransactionalWriter(
 //   Prefix + SubDocKey (no HybridTime) + IntentType + HybridTime -> TxnId + value of the intent
 // Transaction metadata
 //   TxnId -> status tablet id + isolation level
+// Transaction metadata update
+//   TxnId + Update HybridTime -> update to metadata (merged in order)
 // Reverse index by txn id
 //   TxnId + HybridTime -> Main intent data key
 // Post-apply transaction metadata
@@ -574,6 +576,25 @@ Status PostApplyMetadataWriter::Apply(rocksdb::DirectWriteHandler& handler) {
   return Status::OK();
 }
 
+TransactionMetadataUpdateWriter::TransactionMetadataUpdateWriter(
+    Slice transaction_id, HybridTime update_time, const LWTransactionMetadataPB& metadata_update)
+    : transaction_id_{transaction_id}, update_time_{update_time},
+      metadata_update_{metadata_update} {}
+
+Status TransactionMetadataUpdateWriter::Apply(rocksdb::DirectWriteHandler& handler) {
+  auto update_time = BigEndian::FromHost64(update_time_.ToUint64());
+  std::array key = {
+      Slice(&KeyEntryTypeAsChar::kTransactionId, 1),
+      transaction_id_,
+      Slice(&KeyEntryTypeAsChar::kTransactionMetadataUpdateTime, 1),
+      Slice::FromPod(&update_time),
+  };
+  auto value = metadata_update_.SerializeAsString();
+  Slice value_slice(value);
+  handler.Put(key, SliceParts(&value_slice, 1));
+  return Status::OK();
+}
+
 DocHybridTimeBuffer::DocHybridTimeBuffer() {
   buffer_[0] = KeyEntryTypeAsChar::kHybridTime;
 }
@@ -641,10 +662,13 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler& handler) {
       continue;
     }
 
-    // Check if they key is transaction metadata (1 byte prefix + transaction id) or
-    // post-apply transaction metadata (1 byte prefix + transaction id + 1 byte suffix).
-    bool metadata = key_slice.size() == 1 + TransactionId::StaticSize() ||
-                    key_slice.size() == 2 + TransactionId::StaticSize();
+    // Check if the key is metadata. Metadata section starts with the transaction metadata record
+    // (1 byte prefix + transaction id) and ends with the last transaction metadata update record
+    // (1 byte prefix + transaction id + kTransactionMetadataUpdateTime prefix + update time).
+    bool metadata =
+        !(key_slice.size() > 2 + TransactionId::StaticSize() &&
+          key_slice[1 + TransactionId::StaticSize()] >
+              KeyEntryTypeAsChar::kTransactionMetadataUpdateTime);
     if (ignore_metadata_ && metadata) {
       // For advisory lock Unlock all operation, we don't want to remove txn metadata entry.
       continue;
