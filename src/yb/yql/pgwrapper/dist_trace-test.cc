@@ -1756,7 +1756,7 @@ TEST_F(DistTraceTest, TestDdlRpcReachesMaster) {
       "CREATE TABLE master_crossing_test (id int PRIMARY KEY, val text)"));
 
   auto server_span = ASSERT_RESULT(collector_.WaitForRemoteChildSpan(
-      tp.trace_id, "rpc ",
+      tp.trace_id, "rpc yb.master.",
       "TabletServer" /* client_service */, "Master" /* server_service */,
       "inbound_rpc" /* expected_rpc_system */));
 
