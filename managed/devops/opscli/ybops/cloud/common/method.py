@@ -35,6 +35,13 @@ from ybops.utils.ssh import wait_for_ssh, format_rsa_key, validated_key_file, \
 from ybops.utils import remote_exec_command
 
 
+# Timeout for waiting for a node to reboot and its boot_id to change.
+REBOOT_ID_WAIT_TIMEOUT_SEC = 300
+
+# Time to wait for a node to go into stopped state after reboot command is issued.
+REBOOT_SLEEP_TIME_SEC = 10
+
+
 class ConsoleLoggingErrorHandler(object):
     def __init__(self, cloud):
         self.cloud = cloud
@@ -2063,6 +2070,7 @@ class RebootInstancesMethod(AbstractInstancesMethod):
 
         # Populate extra_vars.
         self.update_ansible_vars_with_args(args)
+        old_boot_id = None
         if args.use_ssh:
             self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port,
                                                              default_port=True))
@@ -2071,15 +2079,45 @@ class RebootInstancesMethod(AbstractInstancesMethod):
                 "node_agent_user": ssh_user
             })
             self.update_open_ssh_port(args)
-            _, _, stderr = remote_exec_command(self.extra_vars, 'sudo reboot')
-            # Cannot rely on rc, as for reboot script won't exit gracefully,
-            # & we will be returned -1.
-            if (isinstance(stderr, list) and len(stderr) > 0):
-                raise YBOpsRecoverableError(f"Failed to connect to {args.search_pattern}")
+            # Fetch this only for sudo reboot which requires login.
+            old_boot_id = self._get_boot_id()
+            remote_exec_command(self.extra_vars, 'sudo reboot')
         else:
             server_ports = self.get_server_ports_to_check(args)
             self.cloud.reboot_instance(host_info, server_ports)
+        # Give the node some time to reboot.
+        time.sleep(REBOOT_SLEEP_TIME_SEC)
+        self._wait_for_host_post_reboot(old_boot_id, args)
+
+    def _get_boot_id(self):
+        """Get the boot_id of the node."""
+        _, stdout, _ = remote_exec_command(
+            self.extra_vars,
+            "cat /proc/sys/kernel/random/boot_id 2>/dev/null || true")
+        return stdout.strip() if stdout else None
+
+    def _wait_for_host_post_reboot(self, old_boot_id, args):
+        """Wait until the node is reachable and its boot_id differs from the
+        pre-reboot value.
+        """
         self.wait_for_host(args, False)
+        if not old_boot_id:
+            logging.info("Skipping wait for boot_id change for {}".format(args.search_pattern))
+            return
+        logging.info("Waiting for boot_id to change for {} (boot_id: {})"
+                     .format(args.search_pattern, old_boot_id))
+        retries = 0
+        while retries < REBOOT_ID_WAIT_TIMEOUT_SEC:
+            new_boot_id = self._get_boot_id()
+            if new_boot_id and new_boot_id != old_boot_id:
+                logging.info("Confirmed reboot of {} (boot_id changed)"
+                             .format(args.search_pattern))
+                return
+            time.sleep(1)
+            retries += 1
+        raise YBOpsRecoverableError(
+            "Timed out waiting for instance '{}' to reboot "
+            "(boot_id did not change)".format(args.search_pattern))
 
 
 class HardRebootInstancesMethod(AbstractInstancesMethod):

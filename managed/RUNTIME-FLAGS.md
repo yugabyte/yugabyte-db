@@ -378,3 +378,4 @@
 | "Upgrade Master Sleep Time Per AZ" | "yb.upgrade.upgrade_master_stage_pause_duration_ms" | "UNIVERSE" | "Time to sleep after upgrading masters in each AZ" | "Long" |
 | "Upgrade TServer Sleep Time Per AZ" | "yb.upgrade.upgrade_tserver_stage_pause_duration_ms" | "UNIVERSE" | "Time to sleep after upgrading tservers in each AZ" | "Long" |
 | "Run Immediate Backup On Schedule Resume" | "yb.backup.run_immediate_backup_on_resume" | "UNIVERSE" | "When true, resumes a stopped backup schedule by running a full or incremental backup immediately instead of waiting for the next scheduled time. This will only change the default functionality, and which can still be overwritten with an api payload." | "Boolean" |
+| "Node Agent Server Wait Timeout" | "yb.node_agent.server.wait_timeout" | "UNIVERSE" | "Timeout for waiting for node agent server to be ready" | "Duration" |

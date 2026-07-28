@@ -1817,4 +1817,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " payload.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentServerWaitTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server.wait_timeout",
+          ScopeType.UNIVERSE,
+          "Node Agent Server Wait Timeout",
+          "Timeout for waiting for node agent server to be ready",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
