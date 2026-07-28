@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
@@ -2390,8 +2391,9 @@ public class OperatorUtils {
    * plus the provider-specific auth-config fields expected by the backend EncryptionAtRest services
    * (the same shape the REST API accepts as the request body).
    *
-   * <p>HASHICORP (Vault) is implemented with TOKEN and APPROLE auth; every other provider throws
-   * {@link UnsupportedOperationException} as an explicit placeholder for future support.
+   * <p>HASHICORP (Vault) is implemented with TOKEN and APPROLE auth, and AZU with a service
+   * principal or managed identity; every other provider throws {@link
+   * UnsupportedOperationException} as an explicit placeholder for future support.
    */
   public ObjectNode getKMSConfigFormDataFromCr(KMSConfig kmsConfig) {
     ObjectNode spec = objectMapper.valueToTree(kmsConfig.getSpec());
@@ -2403,12 +2405,53 @@ public class OperatorUtils {
       case HASHICORP:
         buildHashicorpAuthConfig(formData, spec.get("vault"), resourceNamespace);
         break;
+      case AZU:
+        buildAzureAuthConfig(formData, spec.get("azure"), resourceNamespace);
+        break;
       default:
         throw new UnsupportedOperationException(
             String.format(
                 "%s KMS is not yet supported via the Kubernetes operator", provider.name()));
     }
     return formData;
+  }
+
+  private void buildAzureAuthConfig(ObjectNode formData, JsonNode azure, String resourceNamespace) {
+    if (azure == null || azure.isNull()) {
+      throw new RuntimeException("azure configuration is required for AZU KMS");
+    }
+    formData.put(AzuKmsAuthConfigField.CLIENT_ID.fieldName, azure.get("clientID").asText());
+    formData.put(AzuKmsAuthConfigField.TENANT_ID.fieldName, azure.get("tenantID").asText());
+    formData.put(AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName, azure.get("keyVaultURL").asText());
+    formData.put(AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName, azure.get("keyName").asText());
+    formData.put(
+        AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName,
+        getTextOrDefault(azure, "keyAlgorithm", "RSA"));
+    formData.put(
+        AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName, getIntOrDefault(azure, "keySize", 2048));
+
+    // A managed identity authenticates through DefaultAzureCredential and omits the client secret;
+    // a service principal requires it. clientID and tenantID are required in both cases.
+    boolean useManagedIdentity =
+        azure.hasNonNull("useManagedIdentity") && azure.get("useManagedIdentity").asBoolean();
+    if (!useManagedIdentity) {
+      JsonNode clientSecretSecret = azure.get("clientSecretSecret");
+      if (clientSecretSecret == null || clientSecretSecret.isNull()) {
+        throw new RuntimeException(
+            "clientSecretSecret is required for AZU KMS unless useManagedIdentity is true");
+      }
+      formData.put(
+          AzuKmsAuthConfigField.CLIENT_SECRET.fieldName,
+          resolveSecretRef(clientSecretSecret, resourceNamespace));
+    }
+  }
+
+  private static int getIntOrDefault(JsonNode node, String field, int defaultValue) {
+    JsonNode value = node.get(field);
+    if (value == null || value.isNull()) {
+      return defaultValue;
+    }
+    return value.asInt();
   }
 
   private void buildHashicorpAuthConfig(

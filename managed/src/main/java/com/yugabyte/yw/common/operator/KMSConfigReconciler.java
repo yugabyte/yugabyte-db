@@ -5,6 +5,7 @@ package com.yugabyte.yw.common.operator;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.kms.KMSConfigHelper;
+import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
@@ -36,7 +37,7 @@ import org.apache.commons.collections4.CollectionUtils;
  * KMSConfigHelper} and tracked by task UUID. The CR status ({@code resourceUUID}, {@code state},
  * {@code message}, {@code taskUUID}) is written back from the reconciler once tasks complete.
  *
- * <p>The HASHICORP (Vault) provider is supported with TOKEN and APPROLE auth; other providers are
+ * <p>The HASHICORP (Vault) and AZU (Azure Key Vault) providers are supported; other providers are
  * gated behind {@link UnsupportedOperationException} placeholders in {@link OperatorUtils} and
  * surface as an {@code Error} state on the CR.
  */
@@ -303,10 +304,11 @@ public class KMSConfigReconciler extends AbstractReconciler<KMSConfig> {
     return taskUUID;
   }
 
-  // Only editable fields are compared. HASHICORP is supported; other providers report no edit.
+  // Only editable fields are compared. HASHICORP and AZU are supported; other providers report no
+  // edit.
   private boolean requiresEdit(KMSConfig kmsConfig, KmsConfig model) {
     KeyProvider provider = operatorUtils.getKMSConfigProvider(kmsConfig);
-    if (provider != KeyProvider.HASHICORP) {
+    if (provider != KeyProvider.HASHICORP && provider != KeyProvider.AZU) {
       return false;
     }
     ObjectNode desired = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
@@ -314,10 +316,21 @@ public class KMSConfigReconciler extends AbstractReconciler<KMSConfig> {
     if (current == null) {
       return false;
     }
-    return fieldChanged(desired, current, HashicorpVaultConfigParams.HC_VAULT_TOKEN)
-        || fieldChanged(desired, current, HashicorpVaultConfigParams.HC_VAULT_ROLE_ID)
-        || fieldChanged(desired, current, HashicorpVaultConfigParams.HC_VAULT_SECRET_ID)
-        || fieldChanged(desired, current, HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE);
+    switch (provider) {
+      case HASHICORP:
+        return fieldChanged(desired, current, HashicorpVaultConfigParams.HC_VAULT_TOKEN)
+            || fieldChanged(desired, current, HashicorpVaultConfigParams.HC_VAULT_ROLE_ID)
+            || fieldChanged(desired, current, HashicorpVaultConfigParams.HC_VAULT_SECRET_ID)
+            || fieldChanged(desired, current, HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE);
+      case AZU:
+        // A missing client secret means managed identity is in use; the client secret field then
+        // drops out of the auth config, so a toggle in either direction is a field change.
+        return fieldChanged(desired, current, AzuKmsAuthConfigField.CLIENT_ID.fieldName)
+            || fieldChanged(desired, current, AzuKmsAuthConfigField.CLIENT_SECRET.fieldName)
+            || fieldChanged(desired, current, AzuKmsAuthConfigField.TENANT_ID.fieldName);
+      default:
+        return false;
+    }
   }
 
   // Appends the underlying task error to the status message when one is available.
@@ -336,7 +349,8 @@ public class KMSConfigReconciler extends AbstractReconciler<KMSConfig> {
 
   private boolean isSupportedProvider(KMSConfig kmsConfig) {
     try {
-      return operatorUtils.getKMSConfigProvider(kmsConfig) == KeyProvider.HASHICORP;
+      KeyProvider provider = operatorUtils.getKMSConfigProvider(kmsConfig);
+      return provider == KeyProvider.HASHICORP || provider == KeyProvider.AZU;
     } catch (Exception e) {
       return false;
     }

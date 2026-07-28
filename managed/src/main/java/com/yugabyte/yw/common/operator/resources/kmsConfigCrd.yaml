@@ -216,18 +216,22 @@ spec:
                     - cryptoKeyName
 
                 azure:
-                  description: Configuration for Azure KMS. Required when provider is AZURE.
+                  description: Configuration for Azure KMS. Required when provider is AZU.
                   type: object
                   x-kubernetes-validations:
-                    - rule: "self.useManagedIdentity || (has(self.clientID) && has(self.clientSecretSecret) && has(self.tenantID))"
-                      message: "clientID, clientSecretSecret and tenantID are required unless useManagedIdentity is true"
+                    - rule: "self.useManagedIdentity || has(self.clientSecretSecret)"
+                      message: "clientSecretSecret is required unless useManagedIdentity is true"
                   properties:
                     useManagedIdentity:
-                      description: Authenticate with an Azure managed identity instead of a service principal.
+                      description: >
+                        Authenticate with an Azure managed identity (omit clientSecretSecret)
+                        instead of a service principal. clientID and tenantID are still required.
                       type: boolean
                       default: false
                     clientID:
-                      description: Azure service principal client ID. Editable.
+                      description: >
+                        Azure client ID (service principal, or the managed identity client ID when
+                        useManagedIdentity is true). Required. Editable.
                       type: string
                     clientSecretSecret:
                       description: Secret holding the Azure client secret. Editable (rotatable).
@@ -246,7 +250,7 @@ spec:
                         - name
                         - key
                     tenantID:
-                      description: Azure Active Directory tenant ID. Editable.
+                      description: Azure Active Directory tenant ID. Required. Editable.
                       type: string
                     keyVaultURL:
                       description: URL of the Azure Key Vault. Immutable.
@@ -270,17 +274,17 @@ spec:
                         - rule: self == oldSelf
                           message: "keyAlgorithm is immutable"
                     keySize:
-                      description: Key size in bits. Immutable.
+                      description: Key size in bits. One of 2048, 3072, 4096. Immutable.
                       type: integer
-                      enum:
-                        - 2048
-                        - 3072
-                        - 4096
                       default: 2048
                       x-kubernetes-validations:
                         - rule: self == oldSelf
                           message: "keySize is immutable"
+                        - rule: self in [2048, 3072, 4096]
+                          message: "keySize must be one of 2048, 3072, 4096"
                   required:
+                    - clientID
+                    - tenantID
                     - keyVaultURL
                     - keyName
 
@@ -435,16 +439,14 @@ spec:
                         - rule: self == oldSelf
                           message: "keyAlgorithm is immutable"
                     keySize:
-                      description: Key size in bits. Immutable.
+                      description: Key size in bits. One of 128, 192, 256. Immutable.
                       type: integer
-                      enum:
-                        - 128
-                        - 192
-                        - 256
                       default: 256
                       x-kubernetes-validations:
                         - rule: self == oldSelf
                           message: "keySize is immutable"
+                        - rule: self in [128, 192, 256]
+                          message: "keySize must be one of 128, 192, 256"
                   required:
                     - managerURL
                     - authType
