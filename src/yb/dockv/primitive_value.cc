@@ -591,6 +591,10 @@ void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
       key_bytes->AppendIntentTypeSet(ObsoleteIntentTypeSetToNew(uint16_val_));
       return;
 
+    case KeyEntryType::kTransactionMetadataUpdateTime:
+      key_bytes->AppendUInt64(hybrid_time_val_.hybrid_time().ToUint64());
+      return;
+
     case KeyEntryType::kIntentTypeSet:
       key_bytes->AppendIntentTypeSet(IntentTypeSet(uint16_val_));
       return;
@@ -1198,6 +1202,20 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       }
 
       type_ref = KeyEntryType::kHybridTime;
+      return Status::OK();
+    }
+
+    case KeyEntryType::kTransactionMetadataUpdateTime: {
+      if (slice->size() < sizeof(uint64_t)) {
+        return STATUS_FORMAT(
+            Corruption, "Invalid number of bytes for a TransactionMetadataUpdateTime: $0",
+            slice->size());
+      }
+      if (out) {
+        new (&out->hybrid_time_val_) DocHybridTime(HybridTime(BigEndian::Load64(slice->data())));
+      }
+      slice->remove_prefix(sizeof(uint64_t));
+      type_ref = KeyEntryType::kTransactionMetadataUpdateTime;
       return Status::OK();
     }
 
@@ -2654,6 +2672,16 @@ const FrozenContainer& KeyEntryValue::GetFrozen() const {
   return *frozen_val_;
 }
 
+bool KeyEntryValue::IsHybridTime() const {
+  return KeyEntryType::kHybridTime == type_ ||
+         KeyEntryType::kTransactionMetadataUpdateTime == type_;
+}
+
+const DocHybridTime& KeyEntryValue::GetHybridTime() const {
+  DCHECK(IsHybridTime());
+  return hybrid_time_val_;
+}
+
 bool KeyEntryValue::IsInetAddress() const {
   return type_ == KeyEntryType::kInetaddress || type_ == KeyEntryType::kInetaddressDescending;
 }
@@ -2894,6 +2922,8 @@ std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {
       return Substitute("TransactionId($0)", uuid_val_.ToString());
     case KeyEntryType::kSubTransactionId:
       return Substitute("SubTransactionId($0)", uint32_val_);
+    case KeyEntryType::kTransactionMetadataUpdateTime:
+      return Format("TransactionMetadataUpdateTime($0)", HybridTime(uint64_val_));
     case KeyEntryType::kIntentTypeSet:
       return Format("Intents($0)", IntentTypeSet(uint16_val_));
     case KeyEntryType::kObsoleteIntentTypeSet:
@@ -2964,6 +2994,7 @@ int KeyEntryValue::CompareTo(const KeyEntryValue& other) const {
       return CompareUsingLessThan(uint32_val_, other.uint32_val_);
     case KeyEntryType::kUInt64Descending:
       return CompareUsingLessThan(other.uint64_val_, uint64_val_);
+    case KeyEntryType::kTransactionMetadataUpdateTime: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUInt64:
       return CompareUsingLessThan(uint64_val_, other.uint64_val_);
     case KeyEntryType::kInt64: FALLTHROUGH_INTENDED;
@@ -3186,6 +3217,7 @@ bool operator==(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
     case KeyEntryType::kUInt32:
         return lhs.uint32_val_ == rhs.uint32_val_;
 
+    case KeyEntryType::kTransactionMetadataUpdateTime: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUInt64Descending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUInt64:
         return lhs.uint64_val_ == rhs.uint64_val_;

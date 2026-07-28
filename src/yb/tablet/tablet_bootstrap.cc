@@ -1156,6 +1156,12 @@ class TabletBootstrap {
             << ", apply_to_storages: " << apply_to_storages.ToString();
         return {true, apply_to_storages};
       }
+      // We need promotions to persist to intents RocksDB before we can skip it.
+      if (txn_status == TransactionStatus::PROMOTING) {
+        VLOG_WITH_PREFIX_AND_FUNC(3)
+            << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
+        return {index > flushed_op_ids.intents.index};
+      }
       // For other types of transaction updates, we ignore them if they have been flushed to the
       // regular RocksDB.
       VLOG_WITH_PREFIX_AND_FUNC(3)

@@ -109,6 +109,7 @@ class KeyEntryValue {
   bool IsDecimal() const;
   bool IsVarInt() const;
   bool IsTimestamp() const;
+  bool IsHybridTime() const;
 
   const std::string& GetString() const;
   uint16_t GetUInt16Hash() const;
@@ -126,6 +127,7 @@ class KeyEntryValue {
   const std::string& GetVarInt() const;
   Timestamp GetTimestamp() const;
   const FrozenContainer& GetFrozen() const;
+  const DocHybridTime& GetHybridTime() const;
 
   static KeyEntryValue NullValue(SortingType sorting_type);
 

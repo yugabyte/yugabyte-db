@@ -330,6 +330,9 @@ DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, true,
 DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
     "Whether to include vector indexes into tablet's post split compaction");
 
+DEFINE_RUNTIME_AUTO_bool(enable_transaction_metadata_update, kLocalPersisted, false, true,
+    "Allow transaction metadata update records to be written to intentsdb.");
+
 DECLARE_bool(cdc_immediate_transaction_cleanup);
 DECLARE_bool(consistent_restore);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
@@ -1860,6 +1863,29 @@ Status Tablet::ApplyOperation(
   }
   return ApplyKeyValueRowOperations(
       batch_idx, write_batch, frontiers, write_hybrid_time, batch_hybrid_time, apply_to_storages);
+}
+
+Status Tablet::WriteTransactionMetadataUpdate(
+    OpId op_id, HybridTime write_hybrid_time, Slice transaction_id,
+    const LWTransactionMetadataPB& metadata_update) {
+  if (!FLAGS_enable_transaction_metadata_update) {
+    return Status::OK();
+  }
+
+  docdb::ConsensusFrontiers frontiers;
+  InitFrontiers(op_id, write_hybrid_time, /*commit_ht=*/HybridTime::kInvalid, frontiers);
+
+  docdb::TransactionMetadataUpdateWriter writer(transaction_id, write_hybrid_time, metadata_update);
+  rocksdb::WriteBatch write_batch;
+  write_batch.SetDirectWriter(&writer);
+
+  RequestScope request_scope = VERIFY_RESULT(CreateRequestScope(/* allow_when_closing= */ true));
+  WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
+  if (auto duration = write_batch.GetWriteGroupJoinDuration().ToMicroseconds()) {
+    metrics_->Increment(TabletEventStats::kIntentDbWriteThreadJoinDuration, duration);
+  }
+
+  return Status::OK();
 }
 
 Status Tablet::WriteTransactionalBatch(

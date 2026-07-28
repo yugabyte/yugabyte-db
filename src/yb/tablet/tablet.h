@@ -365,6 +365,10 @@ class Tablet : public AbstractTablet,
 
   Status UpdateOpIdForOperation(WriteOperation* operation);
 
+  Status WriteTransactionMetadataUpdate(
+      OpId op_id, HybridTime write_hybrid_time, Slice transaction_id,
+      const LWTransactionMetadataPB& metadata_update) override;
+
   // `apply_to_storages`: see ApplyRowOperations.
   Status ApplyOperation(
       const Operation& operation, int64_t batch_idx,
