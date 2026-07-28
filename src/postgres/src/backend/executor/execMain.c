@@ -2007,7 +2007,7 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 		bool		yb_skip_unmodified = (mtstate &&
 										  (mtstate->operation == CMD_UPDATE ||
 										   mtstate->operation == CMD_DELETE) &&
-										  !mtstate->yb_fetch_target_tuple);
+										  mtstate->yb_skip_fetch_target_tuple);
 		Bitmapset  *yb_modifiedCols = NULL;
 
 		if (yb_skip_unmodified)
