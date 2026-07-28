@@ -342,6 +342,10 @@ class Tablet : public AbstractTablet,
       WriteOperation* operation,
       AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
 
+  Status WriteTransactionMetadataUpdate(
+      OpId op_id, HybridTime write_hybrid_time, Slice transaction_id,
+      const LWTransactionMetadataPB& metadata_update) override;
+
   Status ApplyOperation(
       const Operation& operation, int64_t batch_idx,
       const docdb::LWKeyValueWriteBatchPB& write_batch,

@@ -41,6 +41,7 @@
 
 #include "yb/server/clock.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/cleanup_aborts_task.h"
 #include "yb/tablet/cleanup_intents_task.h"
 #include "yb/tablet/operations/update_txn_operation.h"
@@ -1519,11 +1520,13 @@ class TransactionParticipant::Impl
   }
 
   Status ReplicateUpdateTransactionStatusLocation(
-      const TransactionId& transaction_id, const TabletId& new_status_tablet) {
+      const TransactionId& transaction_id, const ReplicatedData& data,
+      const TabletId& new_status_tablet) {
     RETURN_NOT_OK(loader_.WaitLoaded(transaction_id));
     MinRunningNotifier min_running_notifier(&applier_);
 
     TransactionStatusResult txn_status_res;
+    bool signal_promoted{wait_queue_};
     {
       std::lock_guard lock(mutex_);
 
@@ -1536,17 +1539,23 @@ class TransactionParticipant::Impl
       auto& transaction = *it;
       // Leader has already applied the update.
       if (transaction->metadata().status_tablet == new_status_tablet) {
-        return Status::OK();
+        signal_promoted = false;
+      } else {
+        txn_status_res = DoUpdateTransactionStatusLocation(*transaction, new_status_tablet);
+        TransactionsModifiedUnlocked(&min_running_notifier);
       }
-
-      txn_status_res = DoUpdateTransactionStatusLocation(*transaction, new_status_tablet);
-      TransactionsModifiedUnlocked(&min_running_notifier);
     }
 
-    if (wait_queue_) {
+    if (signal_promoted) {
       wait_queue_->SignalPromoted(transaction_id, std::move(txn_status_res));
     }
-    return Status::OK();
+
+    VLOG_WITH_PREFIX(3) << "Writing status moved metadata for promoted operation";
+    yb::LWTransactionMetadataPB update(&data.state.arena());
+    update.set_locality(TransactionLocality::GLOBAL);
+    update.ref_status_tablet(data.state.tablets().front());
+    return applier_.WriteTransactionMetadataUpdate(
+        data.op_id, data.hybrid_time, data.state.transaction_id(), update);
   }
 
   void RecordConflictResolutionKeysScanned(int64_t num_keys) {
@@ -2190,7 +2199,8 @@ class TransactionParticipant::Impl
                            "Expected only one tablet during PROMOTING, state received: $0",
                            data.state);
     }
-    return ReplicateUpdateTransactionStatusLocation(id, data.state.tablets().front().ToBuffer());
+    return ReplicateUpdateTransactionStatusLocation(
+        id, data, data.state.tablets().front().ToBuffer());
   }
 
   Status ReplicatedApplying(const TransactionId& id, const ReplicatedData& data) {

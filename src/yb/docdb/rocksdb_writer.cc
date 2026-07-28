@@ -221,6 +221,8 @@ TransactionalWriter::TransactionalWriter(
 //   Prefix + SubDocKey (no HybridTime) + IntentType + HybridTime -> TxnId + value of the intent
 // Transaction metadata
 //   TxnId -> status tablet id + isolation level
+// Transaction metadata update
+//   TxnId + Update HybridTime -> update to metadata (merged in order)
 // Reverse index by txn id
 //   TxnId + HybridTime -> Main intent data key
 // Post-apply transaction metadata
@@ -430,6 +432,25 @@ Status PostApplyMetadataWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   return Status::OK();
 }
 
+TransactionMetadataUpdateWriter::TransactionMetadataUpdateWriter(
+    Slice transaction_id, HybridTime update_time, const LWTransactionMetadataPB& metadata_update)
+    : transaction_id_{transaction_id}, update_time_{update_time},
+      metadata_update_{metadata_update} {}
+
+Status TransactionMetadataUpdateWriter::Apply(rocksdb::DirectWriteHandler* handler) {
+  auto update_time = BigEndian::FromHost64(update_time_.ToUint64());
+  std::array key = {
+      Slice(&KeyEntryTypeAsChar::kTransactionId, 1),
+      transaction_id_,
+      Slice(&KeyEntryTypeAsChar::kTransactionMetadataUpdateTime, 1),
+      Slice::FromPod(&update_time),
+  };
+  auto value = metadata_update_.SerializeAsString();
+  Slice value_slice(value);
+  handler->Put(key, SliceParts(&value_slice, 1));
+  return Status::OK();
+}
+
 DocHybridTimeBuffer::DocHybridTimeBuffer() {
   buffer_[0] = KeyEntryTypeAsChar::kHybridTime;
 }
@@ -474,10 +495,13 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 
     auto reverse_index_value = reverse_index_iter_.value();
 
-    // Check if they key is transaction metadata (1 byte prefix + transaction id) or
-    // post-apply transaction metadata (1 byte prefix + transaction id + 1 byte suffix).
-    bool metadata = key_slice.size() == 1 + TransactionId::StaticSize() ||
-                    key_slice.size() == 2 + TransactionId::StaticSize();
+    // Check if the key is metadata. Metadata section starts with the transaction metadata record
+    // (1 byte prefix + transaction id) and ends with the last transaction metadata update record
+    // (1 byte prefix + transaction id + kTransactionMetadataUpdateTime prefix + update time).
+    bool metadata =
+        !(key_slice.size() > 2 + TransactionId::StaticSize() &&
+          key_slice[1 + TransactionId::StaticSize()] >
+              KeyEntryTypeAsChar::kTransactionMetadataUpdateTime);
     // At this point, txn_reverse_index_prefix is a prefix of key_slice. If key_slice is equal to
     // txn_reverse_index_prefix in size, then they are identical, and we are seeked to transaction
     // metadata. Otherwise, we're seeked to an intent entry in the index which we may process.

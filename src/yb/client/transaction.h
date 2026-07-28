@@ -164,6 +164,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   std::shared_future<Result<TransactionMetadata>> GetMetadata(CoarseTimePoint deadline) const;
 
+  Result<TransactionMetadata> metadata() const;
+
   std::string ToString() const;
 
   IsolationLevel isolation() const;

@@ -291,6 +291,9 @@ DEFINE_test_flag(bool, skip_remove_intent, false,
 DEFINE_test_flag(bool, simulate_load_txn_for_cdc, false,
                  "If true GetMinStartHTRunningTxnsForCDCProducer returns kInvalid");
 
+DEFINE_RUNTIME_AUTO_bool(enable_transaction_metadata_update, kLocalPersisted, false, true,
+    "Allow transaction metadata update records to be written to intentsdb.");
+
 DECLARE_bool(cdc_immediate_transaction_cleanup);
 DECLARE_bool(consistent_restore);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
@@ -1651,6 +1654,26 @@ Status Tablet::ApplyOperation(
   return ApplyKeyValueRowOperations(
       batch_idx, write_batch, frontiers_ptr, write_hybrid_time, batch_hybrid_time,
       already_applied_to_regular_db);
+}
+
+Status Tablet::WriteTransactionMetadataUpdate(
+    OpId op_id, HybridTime write_hybrid_time, Slice transaction_id,
+    const LWTransactionMetadataPB& metadata_update) {
+  if (!FLAGS_enable_transaction_metadata_update) {
+    return Status::OK();
+  }
+
+  docdb::ConsensusFrontiers frontiers;
+  InitFrontiers(op_id, write_hybrid_time, /*commit_ht=*/HybridTime::kInvalid, &frontiers);
+
+  docdb::TransactionMetadataUpdateWriter writer(transaction_id, write_hybrid_time, metadata_update);
+  rocksdb::WriteBatch write_batch;
+  write_batch.SetDirectWriter(&writer);
+
+  RequestScope request_scope = VERIFY_RESULT(CreateRequestScope());
+  WriteToRocksDB(&frontiers, &write_batch, StorageDbType::kIntents);
+
+  return Status::OK();
 }
 
 Status Tablet::WriteTransactionalBatch(

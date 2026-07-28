@@ -1136,6 +1136,12 @@ class TabletBootstrap {
                                      << " intents_flushed_index: " << intents_flushed_index;
         return {true, AlreadyAppliedToRegularDB::kTrue};
       }
+      // We need promotions to persist to intents RocksDB before we can skip it.
+      if (txn_status == TransactionStatus::PROMOTING) {
+        VLOG_WITH_PREFIX_AND_FUNC(3)
+            << "index: " << index << " intents_flushed_index: " << intents_flushed_index;
+        return {index > intents_flushed_index};
+      }
       // For other types of transaction updates, we ignore them if they have been flushed to the
       // regular RocksDB.
       VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " > "

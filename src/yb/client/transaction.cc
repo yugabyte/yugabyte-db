@@ -767,6 +767,19 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return metadata_future_;
   }
 
+  Result<TransactionMetadata> metadata() EXCLUDES(mutex_) {
+    {
+      std::lock_guard lock(mutex_);
+      if (!status_.ok()) {
+        return status_;
+      }
+      if (!ready_) {
+        return STATUS_FORMAT(IllegalState, "Transaction not ready");
+      }
+    }
+    return metadata_;
+  }
+
   void PrepareChild(
       ForceConsistentRead force_consistent_read, CoarseTimePoint deadline,
       PrepareChildCallback callback) {
@@ -2516,6 +2529,10 @@ Result<ChildTransactionResultPB> YBTransaction::FinishChild() {
 std::shared_future<Result<TransactionMetadata>> YBTransaction::GetMetadata(
     CoarseTimePoint deadline) const {
   return impl_->GetMetadata(deadline);
+}
+
+Result<TransactionMetadata> YBTransaction::metadata() const {
+  return impl_->metadata();
 }
 
 Status YBTransaction::ApplyChildResult(const ChildTransactionResultPB& result) {
