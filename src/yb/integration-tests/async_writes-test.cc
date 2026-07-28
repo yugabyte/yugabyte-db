@@ -1069,6 +1069,12 @@ TEST_F(YSqlAsyncWriteTest, SerializableIsolationHoldsAcrossLeaderCrash) {
   // Keep Y's tablet and the transaction status tablets clear of the crash.
   ASSERT_OK(MoveLeadersOffTserver(old_leader_idx, tablet_x));
 
+  // Warm this backend's catalog caches for the statement measured at trigger guard 1
+  ASSERT_EQ(
+      ASSERT_RESULT(
+          conn_->FetchRow<int32_t>(Format("SELECT balance FROM $0 WHERE id = 1", kAcctX))),
+      100);
+
   // conn1: read account Y first, while the whole cluster is healthy (creates the transaction and
   // its Y-side read intents on quorum-safe ground; see SelectForUpdateHoldsAcrossLeaderCrash for
   // why). The read is a plain SELECT: SERIALIZABLE turns it into a pipelined lock write.
