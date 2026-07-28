@@ -4366,12 +4366,23 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAdditionAfterHid
   ASSERT_OK(conn.Execute("INSERT INTO test_table_2 values (9999999,1)"));
   ASSERT_OK(conn.Execute("COMMIT;"));
 
-  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
-  ASSERT_TRUE(
-      change_resp.has_needs_publication_table_list_refresh() &&
-      change_resp.needs_publication_table_list_refresh() &&
-      change_resp.has_publication_refresh_time());
+  // A poll issued while the above txn is still being applied finds replicated but uncommitted
+  // records in the WAL, so the tablet echoes back the previously known safe time. The VWAL cannot
+  // ship the pub refresh record until the tablet's safe time moves past it, hence keep polling for
+  // the pub refresh record while asserting that no record is shipped before it.
+  GetConsistentChangesResponsePB change_resp;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        if (change_resp.cdc_sdk_proto_records_size() != 0) {
+          return STATUS(IllegalState, "Received records before the pub refresh record");
+        }
+        return change_resp.has_needs_publication_table_list_refresh() &&
+               change_resp.needs_publication_table_list_refresh() &&
+               change_resp.has_publication_refresh_time();
+      },
+      MonoDelta::FromSeconds(60 * kTimeMultiplier),
+      "Timed out waiting for the publication refresh record"));
   ASSERT_GT(change_resp.publication_refresh_time(), 0);
 
   // Update the publication's tables list.
