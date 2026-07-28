@@ -16,6 +16,7 @@
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
+#include "yb/common/txn_error_injection.h"
 
 #include "yb/common/transaction_error.h"
 #include "yb/dockv/doc_key.h"
@@ -183,6 +184,8 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   // returns invalid ReadHybridTime. Otherwise returns error status.
   Result<ReadRestartInfo> DoRead();
   Result<ReadRestartInfo> DoReadImpl();
+
+  void InjectReadRestart(ReadRestartInfo* result);
 
   Status Complete();
 
@@ -607,7 +610,10 @@ Status ReadQuery::Complete() {
     resp_->Clear();
     context_.sidecars().Reset();
     VLOG(1) << "Read time: " << read_time_ << ", safe: " << safe_ht_to_read_;
-    const auto result = VERIFY_RESULT(DoRead());
+    auto result = VERIFY_RESULT(DoRead());
+    if (!result.restart_time && ShouldInjectReadRestart(read_time_)) {
+      InjectReadRestart(&result);
+    }
     if (allow_retry_ && read_time_ && read_time_ == result.restart_time) {
       YB_LOG_EVERY_N_SECS(DFATAL, 5)
           << __func__ << ", restarting read with the same read time: " << result.restart_time;
@@ -717,6 +723,12 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoRead() {
     RETURN_NOT_OK(txn_participant.CheckAborted(txn_id));
   }
   return result;
+}
+
+void ReadQuery::InjectReadRestart(ReadRestartInfo* result) {
+  *result = FormReadRestartInfo(ReadRestartData{
+      InjectedReadRestartTime(read_time_, safe_ht_to_read_), {}});
+  VLOG(3) << "Injected read restart: " << result->restart_time;
 }
 
 Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
