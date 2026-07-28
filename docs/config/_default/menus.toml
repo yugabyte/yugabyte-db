@@ -126,7 +126,7 @@
   url = "/stable/yugabyte-voyager/"
   [main.params]
     classes = "product-item product-voyager"
-    description = "Database modernization service"
+    description = "Database modernization"
     excludeVersion = true
     imageUrl = "/images/migrate/migration-icon.svg"
 
@@ -491,7 +491,7 @@
     productsDropdown = true
 
 [[stable]]
-  name = "Overview"
+  name = "YugabyteDB"
   weight = 2
   identifier = "yugabytedb"
   url = "/stable/"
@@ -1024,7 +1024,7 @@
     productsDropdown = true
 
 [[stable_yugabyte-platform]]
-  name = "Overview"
+  name = "YugabyteDB Anywhere"
   weight = 2
   identifier = "yugabytedb-anywhere"
   [stable_yugabyte-platform.params]
@@ -1039,7 +1039,7 @@
     productsDropdown = true
 
 [[stable_yugabyte-cloud]]
-  name = "Overview"
+  name = "YugabyteDB Aeon"
   weight = 2
   identifier = "yugabytedb-managed"
   [stable_yugabyte-cloud.params]
@@ -1055,7 +1055,7 @@
     productsDropdown = true
 
 [[stable_yugabyte-voyager]]
-  name = "Overview"
+  name = "YugabyteDB Voyager"
   weight = 2
   identifier = "yugabytedb-voyager"
   [stable_yugabyte-voyager.params]
@@ -1115,7 +1115,7 @@
     productsDropdown = true
 
 [["v2025.2"]]
-  name = "Overview"
+  name = "YugabyteDB"
   weight = 2
   identifier = "yugabytedb"
   url = "/v2025.2/"
@@ -1193,7 +1193,7 @@
     productsDropdown = true
 
 [["v2025.2_yugabyte-platform"]]
-  name = "Overview"
+  name = "YugabyteDB Anywhere"
   weight = 2
   identifier = "yugabytedb-anywhere"
   ["v2025.2_yugabyte-platform".params]
@@ -1277,7 +1277,7 @@
     productsDropdown = true
 
 [["v2.25"]]
-  name = "Overview"
+  name = "YugabyteDB"
   weight = 2
   identifier = "yugabytedb"
   url = "/v2.25/"
@@ -1355,7 +1355,7 @@
     productsDropdown = true
 
 [["v2.25_yugabyte-platform"]]
-  name = "Overview"
+  name = "YugabyteDB Anywhere"
   weight = 2
   identifier = "yugabytedb-anywhere"
   ["v2.25_yugabyte-platform".params]
@@ -1431,7 +1431,7 @@
     productsDropdown = true
 
 [["v2024.2"]]
-  name = "Overview"
+  name = "YugabyteDB"
   weight = 2
   identifier = "yugabytedb"
   url = "/v2024.2/"
@@ -1509,7 +1509,7 @@
     productsDropdown = true
 
 [["v2024.2_yugabyte-platform"]]
-  name = "Overview"
+  name = "YugabyteDB Anywhere"
   weight = 2
   identifier = "yugabytedb-anywhere"
   ["v2024.2_yugabyte-platform".params]
@@ -1593,7 +1593,7 @@
     productsDropdown = true
 
 [["v2025.1"]]
-  name = "Overview"
+  name = "YugabyteDB"
   weight = 2
   identifier = "yugabytedb"
   url = "/v2025.1/"
@@ -1671,7 +1671,7 @@
     productsDropdown = true
 
 [["v2025.1_yugabyte-platform"]]
-  name = "Overview"
+  name = "YugabyteDB Anywhere"
   weight = 2
   identifier = "yugabytedb-anywhere"
   ["v2025.1_yugabyte-platform".params]
@@ -1755,7 +1755,7 @@
     productsDropdown = true
 
 [["v2.20"]]
-  name = "Overview"
+  name = "YugabyteDB"
   weight = 2
   identifier = "yugabytedb"
   url = "/v2.20/"
@@ -1833,7 +1833,7 @@
     productsDropdown = true
 
 [["v2.20_yugabyte-platform"]]
-  name = "Overview"
+  name = "YugabyteDB Anywhere"
   weight = 2
   identifier = "yugabytedb-anywhere"
   ["v2.20_yugabyte-platform".params]
