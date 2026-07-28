@@ -102,8 +102,6 @@ public class TestPgEncryption extends BasePgSQLTest {
       // ysql conn mgr layer itself and returns required / below error.
       assertThat(
         sqle.getMessage(),
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR ?
-        CoreMatchers.containsString("SSL is required") :
         CoreMatchers.containsString("no pg_hba.conf entry for")
       );
     }
@@ -113,8 +111,6 @@ public class TestPgEncryption extends BasePgSQLTest {
     } catch (SQLException sqle) {
       assertThat(
         sqle.getMessage(),
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR ?
-        CoreMatchers.containsString("SSL is required") :
         CoreMatchers.containsString("no pg_hba.conf entry for")
       );
     }
@@ -148,8 +144,6 @@ public class TestPgEncryption extends BasePgSQLTest {
     } catch (SQLException sqle) {
       assertThat(
         sqle.getMessage(),
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR ?
-        CoreMatchers.containsString("SSL is required") :
         CoreMatchers.containsString("no pg_hba.conf entry for")
       );
     }
@@ -159,8 +153,6 @@ public class TestPgEncryption extends BasePgSQLTest {
     } catch (SQLException sqle) {
       assertThat(
         sqle.getMessage(),
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR ?
-        CoreMatchers.containsString("SSL is required") :
         CoreMatchers.containsString("no pg_hba.conf entry for")
       );
     }
