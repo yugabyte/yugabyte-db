@@ -541,8 +541,6 @@ The following flags control the retention of data required by CDC:
 
 Starting from v2024.2.1, the default data retention for CDC is 8 hours, with support for maximum retention up to 24 hours. Prior to v2024.2.1, the default retention for CDC is 4 hours.
 
-Starting in v2025.2.5.2, you can optionally enable time-based intent retention for a rewind window (re-streaming already acknowledged transactions). Set [cdc_enable_time_based_intent_retention](../../../../reference/configuration/yb-tserver/#cdc-enable-time-based-intent-retention) to `true` and configure [cdc_min_sec_to_retain_intent](../../../../reference/configuration/yb-tserver/#cdc-min-sec-to-retain-intent) (default: 8 hours). Keep `cdc_wal_retention_time_secs` at least as long as that intent retention window.
-
 {{< warning title="Important" >}}
 When using ALL, FULL_ROW_NEW_IMAGE, or MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES before image modes, CDC preserves previous row values for UPDATE and DELETE operations. This is done by retaining history for each row in the database through a suspension of the compaction process. Compaction is halted by setting retention barriers to prevent cleanup of history for those rows that are yet to be streamed to the CDC client. These retention barriers are dynamically managed and advanced only after the CDC events are streamed and explicitly acknowledged by the client, thus allowing compaction of streamed rows.
 
