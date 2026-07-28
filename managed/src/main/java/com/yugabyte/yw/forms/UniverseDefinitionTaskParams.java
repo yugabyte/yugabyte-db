@@ -151,6 +151,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // operation.
   @ApiModelProperty public boolean updateSucceeded = true;
 
+  // Set to true the first time a CreateUniverse task successfully finishes on this universe. Once
+  // true it is never reset, so it distinguishes "universe was brought up at least once" from "the
+  // most recent operation on this universe succeeded" (which is what updateSucceeded tracks).
+  // Consumers such as HealthChecker and AlertConfigurationService use this to skip work for
+  // universes that never made it past the initial creation task. Existing universes are backfilled
+  // to true by a data migration.
+  @ApiModelProperty public boolean creationSucceeded = false;
+
   // This tracks whether the universe is in the paused state or not.
   @ApiModelProperty public boolean universePaused = false;
 
