@@ -1430,8 +1430,14 @@ typedef struct ModifyTableState
 	double		mt_merge_deleted;
 
 	/* YB specific attributes. */
-	bool		yb_fetch_target_tuple;	/* Perform initial scan to populate
-										 * the ybctid. */
+
+	/*
+	 * YB: Skip the initial scan that fetches the target tuple and its
+	 * ybctid.  Set only for single-row UPDATE/DELETE plans on YB relations,
+	 * so false (the makeNode default) is the safe state.
+	 */
+	bool		yb_skip_fetch_target_tuple;
+
 	/*
 	 * YB: If enabled, execution seeks to optimize secondary index updates,
 	 * constraint checks etc. This field is set to false for single row txns.
