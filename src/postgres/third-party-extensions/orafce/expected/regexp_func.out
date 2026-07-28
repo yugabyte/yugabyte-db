@@ -452,7 +452,7 @@ ERROR:  argument 'position' must be a number greater than 0
 SELECT REGEXP_INSTR('1234567890 1234567890 1234567890', '(123)(4(56)(78))', 1, -3, 1, 'i', 4);
 ERROR:  argument 'occurence' must be a number greater than 0
 SELECT REGEXP_INSTR('1234567890 1234567890 1234567890', '(123)(4(56)(78))', 1, 3, -1, 'i', 4);
-ERROR:  argument 'return_opt' must be 0 or 1
+ERROR:  argument 'return_opt' is out of range
 SELECT REGEXP_INSTR('1234567890 1234567890 1234567890', '(123)(4(56)(78))', 1, 3, 1, 'i', -4);
 ERROR:  argument 'group' must be a positive number
 -- ORACLE> SELECT REGEXP_INSTR('123 123456 1234567, 1234567 1234567 12', '[^ ]+', 1, 6) FROM DUAL; -> 37

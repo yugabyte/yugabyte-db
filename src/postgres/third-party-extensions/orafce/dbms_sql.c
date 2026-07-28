@@ -1,13 +1,6 @@
 #include "postgres.h"
 #include "fmgr.h"
 #include "funcapi.h"
-
-#if PG_VERSION_NUM < 120000
-
-#include "access/htup_details.h"
-
-#endif
-
 #include "access/tupconvert.h"
 #include "catalog/pg_type_d.h"
 #include "catalog/pg_type.h"
@@ -45,9 +38,11 @@ typedef struct
 	int16		typlen;
 
 	bool		isnull;
-	unsigned int varno;		/* number of assigned placeholder of parsed query */
-	bool		is_array;	/* true, when a value is assigned via bind_array */
-	Oid			typelemid;	/* Oid of element of a array */
+	unsigned int varno;			/* number of assigned placeholder of parsed
+								 * query */
+	bool		is_array;		/* true, when a value is assigned via
+								 * bind_array */
+	Oid			typelemid;		/* Oid of element of a array */
 	bool		typelembyval;
 	int16		typelemlen;
 	int			index1;
@@ -66,9 +61,10 @@ typedef struct
 	int16		typlen;
 	int32		typmod;
 	bool		typisstr;
-	Oid			typarrayoid;		/* oid of requested array output value */
-	uint64		rowcount;			/* maximal rows of requested array */
-	int			index1;				/* output array should be rewrited from this index */
+	Oid			typarrayoid;	/* oid of requested array output value */
+	uint64		rowcount;		/* maximal rows of requested array */
+	int			index1;			/* output array should be rewrited from this
+								 * index */
 } ColumnData;
 
 /*
@@ -78,17 +74,19 @@ typedef struct
  */
 typedef struct
 {
-	bool		isvalid;			/* true, when this cast can be used */
-	bool		without_cast;		/* true, when cast is not necessary */
-	Oid		targettypid;			/* used for domains */
-	Oid		array_targettypid;		/* used for array domains */
-	int32	targettypmod;			/* used for strings */
-	bool	typbyval;				/* used for copy result to outer memory context */
-	int16	typlen;					/* used for copy result to outer memory context */
-	bool	is_array;
+	bool		isvalid;		/* true, when this cast can be used */
+	bool		without_cast;	/* true, when cast is not necessary */
+	Oid			targettypid;	/* used for domains */
+	Oid			array_targettypid;	/* used for array domains */
+	int32		targettypmod;	/* used for strings */
+	bool		typbyval;		/* used for copy result to outer memory
+								 * context */
+	int16		typlen;			/* used for copy result to outer memory
+								 * context */
+	bool		is_array;
 
-	Oid		funcoid;
-	Oid		funcoid_typmod;
+	Oid			funcoid;
+	Oid			funcoid_typmod;
 	CoercionPathType path;
 	CoercionPathType path_typmod;
 	FmgrInfo	finfo;
@@ -111,12 +109,12 @@ typedef struct
 	List	   *variables;
 	List	   *columns;
 	char		cursorname[32];
-	Portal		portal;				/* one shot (execute) plan */
+	Portal		portal;			/* one shot (execute) plan */
 	SPIPlanPtr	plan;
 	MemoryContext cursor_cxt;
 	MemoryContext cursor_xact_cxt;
 	MemoryContext tuples_cxt;
-	MemoryContext result_cxt;		/* short life memory context */
+	MemoryContext result_cxt;	/* short life memory context */
 	HeapTuple	tuples[1000];
 	TupleDesc	coltupdesc;
 	TupleDesc	tupdesc;
@@ -126,8 +124,9 @@ typedef struct
 	uint64		start_read;
 	bool		assigned;
 	bool		executed;
-	Bitmapset  *array_columns;		/* set of array columns */
-	uint64		batch_rows;			/* how much rows should be fetched to fill target arrays */
+	Bitmapset  *array_columns;	/* set of array columns */
+	uint64		batch_rows;		/* how much rows should be fetched to fill
+								 * target arrays */
 } CursorData;
 
 typedef enum
@@ -169,8 +168,8 @@ PG_FUNCTION_INFO_V1(dbms_sql_describe_columns_f);
 PG_FUNCTION_INFO_V1(dbms_sql_debug_cursor);
 
 static uint64 last_row_count = 0;
-static MemoryContext	persist_cxt = NULL;
-static CursorData		cursors[MAX_CURSORS];
+static MemoryContext persist_cxt = NULL;
+static CursorData cursors[MAX_CURSORS];
 
 static void
 open_cursor(CursorData *c, int cid)
@@ -186,8 +185,8 @@ open_cursor(CursorData *c, int cid)
 	}
 
 	c->cursor_cxt = AllocSetContextCreate(persist_cxt,
-														   "dbms_sql cursor context",
-														   ALLOCSET_DEFAULT_SIZES);
+										  "dbms_sql cursor context",
+										  ALLOCSET_DEFAULT_SIZES);
 	c->assigned = true;
 }
 
@@ -197,7 +196,7 @@ open_cursor(CursorData *c, int cid)
 Datum
 dbms_sql_open_cursor(PG_FUNCTION_ARGS)
 {
-	int		i;
+	int			i;
 
 	(void) fcinfo;
 
@@ -225,13 +224,13 @@ dbms_sql_open_cursor(PG_FUNCTION_ARGS)
 static CursorData *
 get_cursor(FunctionCallInfo fcinfo, bool should_be_assigned)
 {
-	CursorData	   *cursor;
-	int				cid;
+	CursorData *cursor;
+	int			cid;
 
 	if (PG_ARGISNULL(0))
 		ereport(ERROR,
-			    (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-			     errmsg("cursor id is NULL")));
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("cursor id is NULL")));
 
 	cid = PG_GETARG_INT32(0);
 	if (cid < 0 || cid >= MAX_CURSORS)
@@ -254,7 +253,7 @@ get_cursor(FunctionCallInfo fcinfo, bool should_be_assigned)
 Datum
 dbms_sql_is_open(PG_FUNCTION_ARGS)
 {
-	CursorData	   *c;
+	CursorData *c;
 
 	c = get_cursor(fcinfo, false);
 
@@ -289,7 +288,7 @@ close_cursor(CursorData *c)
 Datum
 dbms_sql_close_cursor(PG_FUNCTION_ARGS)
 {
-	CursorData	   *c;
+	CursorData *c;
 
 	c = get_cursor(fcinfo, false);
 
@@ -304,8 +303,8 @@ dbms_sql_close_cursor(PG_FUNCTION_ARGS)
 Datum
 dbms_sql_debug_cursor(PG_FUNCTION_ARGS)
 {
-	CursorData	   *c;
-	ListCell	   *lc;
+	CursorData *c;
+	ListCell   *lc;
 
 	c = get_cursor(fcinfo, false);
 
@@ -329,9 +328,9 @@ dbms_sql_debug_cursor(PG_FUNCTION_ARGS)
 		{
 			if (!var->isnull)
 			{
-				Oid		typOutput;
-				bool	isVarlena;
-				char   *str;
+				Oid			typOutput;
+				bool		isVarlena;
+				char	   *str;
 
 				getTypeOutputInfo(var->typoid, &typOutput, &isVarlena);
 				str = OidOutputFunctionCall(typOutput, var->value);
@@ -350,8 +349,8 @@ dbms_sql_debug_cursor(PG_FUNCTION_ARGS)
 		ColumnData *col = (ColumnData *) lfirst(lc);
 
 		elog(NOTICE, "column definition for position %d is %s",
-					  col->position,
-					  format_type_with_typemod(col->typoid, col->typmod));
+			 col->position,
+			 format_type_with_typemod(col->typoid, col->typmod));
 	}
 
 	return (Datum) 0;
@@ -363,7 +362,7 @@ dbms_sql_debug_cursor(PG_FUNCTION_ARGS)
 static VariableData *
 get_var(CursorData *c, char *refname, int position, bool append)
 {
-	ListCell	   *lc;
+	ListCell   *lc;
 
 	foreach(lc, c->variables)
 	{
@@ -375,8 +374,8 @@ get_var(CursorData *c, char *refname, int position, bool append)
 
 	if (append)
 	{
-		VariableData   *nvar;
-		MemoryContext	oldcxt;
+		VariableData *nvar;
+		MemoryContext oldcxt;
 
 		oldcxt = MemoryContextSwitchTo(c->cursor_cxt);
 		nvar = palloc0(sizeof(VariableData));
@@ -411,8 +410,8 @@ dbms_sql_parse(PG_FUNCTION_ARGS)
 			   *ptr;
 	char	   *start;
 	size_t		len;
-	orafceTokenType	typ;
-	StringInfoData	sinfo;
+	orafceTokenType typ;
+	StringInfoData sinfo;
 	CursorData *c;
 	MemoryContext oldcxt;
 
@@ -420,12 +419,12 @@ dbms_sql_parse(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(1))
 		ereport(ERROR,
-			    (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-			     errmsg("parsed query string is NULL")));
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("parsed query string is NULL")));
 
 	if (c->parsed_query)
 	{
-		int		cid = c->cid;
+		int			cid = c->cid;
 
 		close_cursor(c);
 		open_cursor(c, cid);
@@ -502,7 +501,8 @@ bind_variable(PG_FUNCTION_ARGS)
 {
 	CursorData *c;
 	VariableData *var;
-	char *varname, *varname_downcase;
+	char	   *varname,
+			   *varname_downcase;
 	Oid			valtype;
 	bool		is_unknown = false;
 
@@ -510,8 +510,8 @@ bind_variable(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(1))
 		ereport(ERROR,
-			    (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-			     errmsg("name of bind variable is NULL")));
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("name of bind variable is NULL")));
 
 	varname = text_to_cstring(PG_GETARG_TEXT_P(1));
 	if (*varname == ':')
@@ -523,8 +523,8 @@ bind_variable(PG_FUNCTION_ARGS)
 	valtype = get_fn_expr_argtype(fcinfo->flinfo, 2);
 	if (valtype == RECORDOID)
 		ereport(ERROR,
-			    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			     errmsg("cannot to bind a value of record type")));
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot to bind a value of record type")));
 
 	valtype = getBaseType(valtype);
 	if (valtype == UNKNOWNOID)
@@ -548,7 +548,7 @@ bind_variable(PG_FUNCTION_ARGS)
 
 	if (!PG_ARGISNULL(2))
 	{
-		MemoryContext	oldcxt;
+		MemoryContext oldcxt;
 
 		get_typlenbyval(var->typoid, &var->typlen, &var->typbyval);
 
@@ -592,7 +592,8 @@ bind_array(FunctionCallInfo fcinfo, int index1, int index2)
 {
 	CursorData *c;
 	VariableData *var;
-	char *varname, *varname_downcase;
+	char	   *varname,
+			   *varname_downcase;
 	Oid			valtype;
 	Oid			elementtype;
 
@@ -600,8 +601,8 @@ bind_array(FunctionCallInfo fcinfo, int index1, int index2)
 
 	if (PG_ARGISNULL(1))
 		ereport(ERROR,
-			    (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-			     errmsg("name of bind variable is NULL")));
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("name of bind variable is NULL")));
 
 	varname = text_to_cstring(PG_GETARG_TEXT_P(1));
 	if (*varname == ':')
@@ -613,16 +614,16 @@ bind_array(FunctionCallInfo fcinfo, int index1, int index2)
 	valtype = get_fn_expr_argtype(fcinfo->flinfo, 2);
 	if (valtype == RECORDOID)
 		ereport(ERROR,
-			    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			     errmsg("cannot to bind a value of record type")));
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot to bind a value of record type")));
 
 	valtype = getBaseType(valtype);
 	elementtype = get_element_type(valtype);
 
 	if (!OidIsValid(elementtype))
 		ereport(ERROR,
-			    (errcode(ERRCODE_DATATYPE_MISMATCH),
-			     errmsg("value is not a array")));
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("value is not a array")));
 
 	if (var->typoid != InvalidOid)
 	{
@@ -643,7 +644,7 @@ bind_array(FunctionCallInfo fcinfo, int index1, int index2)
 
 	if (!PG_ARGISNULL(2))
 	{
-		MemoryContext	oldcxt;
+		MemoryContext oldcxt;
 
 		get_typlenbyval(var->typoid, &var->typlen, &var->typbyval);
 
@@ -679,12 +680,13 @@ dbms_sql_bind_array_3(PG_FUNCTION_ARGS)
 Datum
 dbms_sql_bind_array_5(PG_FUNCTION_ARGS)
 {
-	int		index1, index2;
+	int			index1,
+				index2;
 
 	if (PG_ARGISNULL(3) || PG_ARGISNULL(4))
 		ereport(ERROR,
-			    (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-			     errmsg("index is NULL")));
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("index is NULL")));
 
 	index1 = PG_GETARG_INT32(3);
 	index2 = PG_GETARG_INT32(4);
@@ -707,7 +709,7 @@ dbms_sql_bind_array_5(PG_FUNCTION_ARGS)
 static ColumnData *
 get_col(CursorData *c, int position, bool append)
 {
-	ListCell	   *lc;
+	ListCell   *lc;
 
 	foreach(lc, c->columns)
 	{
@@ -719,8 +721,8 @@ get_col(CursorData *c, int position, bool append)
 
 	if (append)
 	{
-		ColumnData	   *ncol;
-		MemoryContext	oldcxt;
+		ColumnData *ncol;
+		MemoryContext oldcxt;
 
 		oldcxt = MemoryContextSwitchTo(c->cursor_cxt);
 		ncol = palloc0(sizeof(ColumnData));
@@ -754,17 +756,17 @@ dbms_sql_define_column(PG_FUNCTION_ARGS)
 	ColumnData *col;
 	Oid			valtype;
 	Oid			basetype;
-	int		position;
-	int		colsize;
+	int			position;
+	int			colsize;
 	TYPCATEGORY category;
-	bool	ispreferred;
+	bool		ispreferred;
 
 	c = get_cursor(fcinfo, true);
 
 	if (PG_ARGISNULL(1))
 		ereport(ERROR,
-			    (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-			     errmsg("column position (number) is NULL")));
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("column position (number) is NULL")));
 
 	position = PG_GETARG_INT32(1);
 	col = get_col(c, position, true);
@@ -772,8 +774,8 @@ dbms_sql_define_column(PG_FUNCTION_ARGS)
 	valtype = get_fn_expr_argtype(fcinfo->flinfo, 2);
 	if (valtype == RECORDOID)
 		ereport(ERROR,
-			    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			     errmsg("cannot to define a column of record type")));
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot to define a column of record type")));
 
 	if (valtype == UNKNOWNOID)
 		valtype = TEXTOID;
@@ -782,15 +784,15 @@ dbms_sql_define_column(PG_FUNCTION_ARGS)
 
 	if (col->typoid != InvalidOid)
 		ereport(ERROR,
-			    (errcode(ERRCODE_DUPLICATE_COLUMN),
-			     errmsg("column is defined already")));
+				(errcode(ERRCODE_DUPLICATE_COLUMN),
+				 errmsg("column is defined already")));
 
 	col->typoid = valtype;
 
 	if (PG_ARGISNULL(3))
 		ereport(ERROR,
-			    (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-			     errmsg("column_size is NULL")));
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("column_size is NULL")));
 
 	colsize = PG_GETARG_INT32(3);
 
@@ -815,19 +817,19 @@ dbms_sql_define_array(PG_FUNCTION_ARGS)
 	ColumnData *col;
 	Oid			valtype;
 	Oid			basetype;
-	int		position;
-	int		rowcount;
-	int		index1;
-	Oid		elementtype;
+	int			position;
+	int			rowcount;
+	int			index1;
+	Oid			elementtype;
 	TYPCATEGORY category;
-	bool	ispreferred;
+	bool		ispreferred;
 
 	c = get_cursor(fcinfo, true);
 
 	if (PG_ARGISNULL(1))
 		ereport(ERROR,
-			    (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-			     errmsg("column position (number) is NULL")));
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("column position (number) is NULL")));
 
 	position = PG_GETARG_INT32(1);
 	col = get_col(c, position, true);
@@ -835,8 +837,8 @@ dbms_sql_define_array(PG_FUNCTION_ARGS)
 	valtype = get_fn_expr_argtype(fcinfo->flinfo, 2);
 	if (valtype == RECORDOID)
 		ereport(ERROR,
-			    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			     errmsg("cannot to define a column of record type")));
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot to define a column of record type")));
 
 	get_type_category_preferred(valtype, &category, &ispreferred);
 	if (category != TYPCATEGORY_ARRAY)
@@ -849,20 +851,20 @@ dbms_sql_define_array(PG_FUNCTION_ARGS)
 
 	if (!OidIsValid(elementtype))
 		ereport(ERROR,
-			    (errcode(ERRCODE_DATATYPE_MISMATCH),
-			     errmsg("column is not a array")));
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("column is not a array")));
 
 	if (col->typoid != InvalidOid)
 		ereport(ERROR,
-			    (errcode(ERRCODE_DUPLICATE_COLUMN),
-			     errmsg("column is defined already")));
+				(errcode(ERRCODE_DUPLICATE_COLUMN),
+				 errmsg("column is defined already")));
 
 	col->typoid = elementtype;
 
 	if (PG_ARGISNULL(3))
 		ereport(ERROR,
-			    (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-			     errmsg("cnt is NULL")));
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("cnt is NULL")));
 
 	rowcount = PG_GETARG_INT32(3);
 	if (rowcount <= 0)
@@ -874,8 +876,8 @@ dbms_sql_define_array(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(4))
 		ereport(ERROR,
-			    (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-			     errmsg("lower_bnd is NULL")));
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("lower_bnd is NULL")));
 
 	index1 = PG_GETARG_INT32(4);
 	if (index1 < 1)
@@ -885,8 +887,8 @@ dbms_sql_define_array(PG_FUNCTION_ARGS)
 
 	if (index1 != 1)
 		ereport(ERROR,
-			    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			     errmsg("lower_bnd can be only only \"1\"")));
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("lower_bnd can be only only \"1\"")));
 
 	col->index1 = index1;
 
@@ -940,7 +942,7 @@ execute(CursorData *c)
 	}
 	else
 	{
-		MemoryContext	save_cxt = c->cursor_xact_cxt;
+		MemoryContext save_cxt = c->cursor_xact_cxt;
 
 		MemoryContextReset(c->cursor_xact_cxt);
 		c->cursor_xact_cxt = save_cxt;
@@ -955,10 +957,10 @@ execute(CursorData *c)
 										  ALLOCSET_DEFAULT_SIZES);
 
 	/*
-	 * When column definitions are available, build final query
-	 * and open cursor for fetching. When column definitions are
-	 * missing, then the statement can be called with high frequency
-	 * etc INSERT, UPDATE, so use cached plan.
+	 * When column definitions are available, build final query and open
+	 * cursor for fetching. When column definitions are missing, then the
+	 * statement can be called with high frequency etc INSERT, UPDATE, so use
+	 * cached plan.
 	 */
 	if (c->columns)
 	{
@@ -984,12 +986,15 @@ execute(CursorData *c)
 
 			if (var->is_array)
 				ereport(ERROR,
-					    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					     errmsg("a array (bulk) variable can be used only when no column is defined")));
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("a array (bulk) variable can be used only when no column is defined")));
 
 			if (!var->isnull)
 			{
-				/* copy a value to xact memory context, to be independent on a outside */
+				/*
+				 * copy a value to xact memory context, to be independent on a
+				 * outside
+				 */
 				values[i] = datumCopy(var->value, var->typbyval, var->typlen);
 				nulls[i] = ' ';
 			}
@@ -998,32 +1003,27 @@ execute(CursorData *c)
 
 			if (var->typoid == InvalidOid)
 				ereport(ERROR,
-					    (errcode(ERRCODE_UNDEFINED_PARAMETER),
-					     errmsg("variable \"%s\" has not a value", var->refname)));
+						(errcode(ERRCODE_UNDEFINED_PARAMETER),
+						 errmsg("variable \"%s\" has not a value", var->refname)));
 
 			types[i] = var->typoid;
 			i += 1;
 		}
 
-		/* prepare or refresh target tuple descriptor, used for final tupconversion */
+		/*
+		 * prepare or refresh target tuple descriptor, used for final
+		 * tupconversion
+		 */
 		if (c->tupdesc)
 			FreeTupleDesc(c->tupdesc);
 
-#if PG_VERSION_NUM >= 120000
-
 		c->coltupdesc = CreateTemplateTupleDesc(c->max_colpos);
-
-#else
-
-		c->coltupdesc = CreateTemplateTupleDesc(c->max_colpos, false);
-
-#endif
 
 		/* prepare current result column tupdesc */
 		for (i = 1; i <= c->max_colpos; i++)
 		{
 			ColumnData *col = get_col(c, i, false);
-			char genname[32];
+			char		genname[32];
 
 			snprintf(genname, 32, "col%d", i);
 
@@ -1047,6 +1047,13 @@ execute(CursorData *c)
 
 			TupleDescInitEntry(c->coltupdesc, (AttrNumber) i, genname, col->typoid, col->typmod, 0);
 		}
+
+#if PG_VERSION_NUM >= 190000
+
+			TupleDescFinalize(c->coltupdesc);
+
+#endif
+
 
 		c->batch_rows = batch_rows;
 		Assert(c->coltupdesc->natts >= 0);
@@ -1080,8 +1087,8 @@ execute(CursorData *c)
 		/* Describe portal and prepare cast cache */
 		if (c->portal->tupDesc)
 		{
-			int		natts = 0;
-			TupleDesc tupdesc = c->portal->tupDesc;
+			int			natts = 0;
+			TupleDesc	tupdesc = c->portal->tupDesc;
 
 			for (i = 0; i < tupdesc->natts; i++)
 			{
@@ -1095,8 +1102,8 @@ execute(CursorData *c)
 
 			if (natts != c->coltupdesc->natts)
 				ereport(ERROR,
-					    (errcode(ERRCODE_DATA_EXCEPTION),
-					     errmsg("number of defined columns is different than number of query's columns")));
+						(errcode(ERRCODE_DATA_EXCEPTION),
+						 errmsg("number of defined columns is different than number of query's columns")));
 		}
 
 		c->executed = true;
@@ -1121,8 +1128,8 @@ execute(CursorData *c)
 		/* prepare, or reuse cached plan */
 		if (!c->plan)
 		{
-			Oid			   *types = NULL;
-			SPIPlanPtr		plan;
+			Oid		   *types = NULL;
+			SPIPlanPtr	plan;
 
 			types = palloc(sizeof(Oid) * c->nvariables);
 
@@ -1133,8 +1140,8 @@ execute(CursorData *c)
 
 				if (var->typoid == InvalidOid)
 					ereport(ERROR,
-						    (errcode(ERRCODE_UNDEFINED_PARAMETER),
-						     errmsg("variable \"%s\" has not a value", var->refname)));
+							(errcode(ERRCODE_UNDEFINED_PARAMETER),
+							 errmsg("variable \"%s\" has not a value", var->refname)));
 
 				types[i++] = var->is_array ? var->typelemid : var->typoid;
 			}
@@ -1229,7 +1236,7 @@ execute(CursorData *c)
 
 							if (var->is_array)
 							{
-								int		j;
+								int			j;
 
 								Assert(iterators[i]);
 
@@ -1335,17 +1342,17 @@ fetch_rows(CursorData *c, bool exact)
 
 	if (!c->executed)
 		ereport(ERROR,
-			    (errcode(ERRCODE_INVALID_CURSOR_STATE),
-			     errmsg("cursor is not executed")));
+				(errcode(ERRCODE_INVALID_CURSOR_STATE),
+				 errmsg("cursor is not executed")));
 
 	if (!c->portal)
 		ereport(ERROR,
-			    (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-			     errmsg("cursor has not portal")));
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("cursor has not portal")));
 
 	if (c->nread == c->processed)
 	{
-		MemoryContext	oldcxt;
+		MemoryContext oldcxt;
 		uint64		i;
 		int			batch_rows;
 
@@ -1378,15 +1385,15 @@ fetch_rows(CursorData *c, bool exact)
 
 		if (exact && SPI_processed > 1)
 			ereport(ERROR,
-				    (errcode(ERRCODE_TOO_MANY_ROWS),
-				     errmsg("too many rows"),
-				     errdetail("In exact mode only one row is expected")));
+					(errcode(ERRCODE_TOO_MANY_ROWS),
+					 errmsg("too many rows"),
+					 errdetail("In exact mode only one row is expected")));
 
 		if (exact && SPI_processed == 0)
 			ereport(ERROR,
-				    (errcode(ERRCODE_NO_DATA_FOUND),
-				     errmsg("no data found"),
-				     errdetail("In exact mode only one row is expected")));
+					(errcode(ERRCODE_NO_DATA_FOUND),
+					 errmsg("no data found"),
+					 errdetail("In exact mode only one row is expected")));
 
 		oldcxt = MemoryContextSwitchTo(c->tuples_cxt);
 
@@ -1442,8 +1449,8 @@ dbms_sql_execute_and_fetch(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(1))
 		ereport(ERROR,
-			    (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-			     errmsg("exact option is NULL")));
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("exact option is NULL")));
 
 	exact = PG_GETARG_BOOL(1);
 
@@ -1472,8 +1479,8 @@ init_cast_cache_entry(CastCacheData *ccast,
 					  int32 targettypmod,
 					  Oid sourcetypid)
 {
-	Oid		funcoid;
-	Oid		basetypid;
+	Oid			funcoid;
+	Oid			basetypid;
 
 	basetypid = getBaseType(targettypid);
 
@@ -1498,10 +1505,10 @@ init_cast_cache_entry(CastCacheData *ccast,
 
 		if (ccast->path == COERCION_PATH_NONE)
 			ereport(ERROR,
-			    (errcode(ERRCODE_CANNOT_COERCE),
-			     errmsg("cannot to find cast from source type \"%s\" to target type \"%s\"",
-						 format_type_be(sourcetypid),
-						 format_type_be(basetypid))));
+					(errcode(ERRCODE_CANNOT_COERCE),
+					 errmsg("cannot to find cast from source type \"%s\" to target type \"%s\"",
+							format_type_be(sourcetypid),
+							format_type_be(basetypid))));
 
 		if (ccast->path == COERCION_PATH_FUNC)
 		{
@@ -1509,7 +1516,7 @@ init_cast_cache_entry(CastCacheData *ccast,
 		}
 		else if (ccast->path == COERCION_PATH_COERCEVIAIO)
 		{
-			bool	typisvarlena;
+			bool		typisvarlena;
 
 			getTypeOutputInfo(sourcetypid, &funcoid, &typisvarlena);
 			fmgr_info(funcoid, &ccast->finfo_out);
@@ -1546,7 +1553,7 @@ cast_value(CastCacheData *ccast, Datum value, bool isnull)
 		}
 		else if (ccast->path == COERCION_PATH_COERCEVIAIO)
 		{
-			char *str;
+			char	   *str;
 
 			str = OutputFunctionCall(&ccast->finfo_out, value);
 			value = InputFunctionCall(&ccast->finfo_in,
@@ -1556,8 +1563,8 @@ cast_value(CastCacheData *ccast, Datum value, bool isnull)
 		}
 		else
 			ereport(ERROR,
-				    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				     errmsg("unsupported cast path yet %d", ccast->path)));
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("unsupported cast path yet %d", ccast->path)));
 
 		if (ccast->targettypmod != -1 && ccast->path_typmod == COERCION_PATH_FUNC)
 			value = FunctionCall3(&ccast->finfo_typmod,
@@ -1589,18 +1596,18 @@ column_value(CursorData *c, int pos, Oid targetTypeId, bool *isnull, bool spi_tr
 
 	if (last_row_count == 0)
 		ereport(ERROR,
-			    (errcode(ERRCODE_NO_DATA_FOUND),
-			     errmsg("no data found")));
+				(errcode(ERRCODE_NO_DATA_FOUND),
+				 errmsg("no data found")));
 
 	if (!c->tupdesc)
 		ereport(ERROR,
-			    (errcode(ERRCODE_INVALID_CURSOR_STATE),
-			     errmsg("cursor is not fetched")));
+				(errcode(ERRCODE_INVALID_CURSOR_STATE),
+				 errmsg("cursor is not fetched")));
 
 	if (!c->coltupdesc)
 		ereport(ERROR,
-			    (errcode(ERRCODE_UNDEFINED_COLUMN),
-			     errmsg("no column is defined")));
+				(errcode(ERRCODE_UNDEFINED_COLUMN),
+				 errmsg("no column is defined")));
 
 	if (pos < 1 && pos > c->coltupdesc->natts)
 		ereport(ERROR,
@@ -1616,8 +1623,8 @@ column_value(CursorData *c, int pos, Oid targetTypeId, bool *isnull, bool spi_tr
 
 	if (!ccast->isvalid)
 	{
-		Oid		basetype = getBaseType(targetTypeId);
-	
+		Oid			basetype = getBaseType(targetTypeId);
+
 		init_cast_cache_entry(ccast,
 							  columnTypeId,
 							  columnTypeMode,
@@ -1631,8 +1638,8 @@ column_value(CursorData *c, int pos, Oid targetTypeId, bool *isnull, bool spi_tr
 
 			if (get_array_type(getBaseType(columnTypeId)) != basetype)
 				ereport(ERROR,
-					    (errcode(ERRCODE_DATATYPE_MISMATCH),
-					     errmsg("unexpected target type \"%s\" (expected type \"%s\")",
+						(errcode(ERRCODE_DATATYPE_MISMATCH),
+						 errmsg("unexpected target type \"%s\" (expected type \"%s\")",
 								format_type_be(basetype),
 								format_type_be(get_array_type(getBaseType(columnTypeId))))));
 		}
@@ -1678,11 +1685,11 @@ column_value(CursorData *c, int pos, Oid targetTypeId, bool *isnull, bool spi_tr
 	{
 		/* Maybe it can be solved by uncached slower cast */
 		if (targetTypeId != columnTypeId)
-				ereport(ERROR,
-					    (errcode(ERRCODE_DATATYPE_MISMATCH),
-					     errmsg("unexpected target type \"%s\" (expected type \"%s\")",
-								format_type_be(targetTypeId),
-								format_type_be(columnTypeId))));
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("unexpected target type \"%s\" (expected type \"%s\")",
+							format_type_be(targetTypeId),
+							format_type_be(columnTypeId))));
 
 		value = SPI_getbinval(c->tuples[c->start_read], c->tupdesc, pos, isnull);
 
@@ -1715,7 +1722,6 @@ dbms_sql_column_value(PG_FUNCTION_ARGS)
 	Oid			resultTypeId;
 	TupleDesc	resulttupdesc;
 	HeapTuple	resulttuple;
-	MemoryContext	oldcxt;
 
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connact failed");
@@ -1724,22 +1730,19 @@ dbms_sql_column_value(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(1))
 		ereport(ERROR,
-			    (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-			     errmsg("column position (number) is NULL")));
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("column position (number) is NULL")));
 
 	pos = PG_GETARG_INT32(1);
 
 	if (!c->executed)
 		ereport(ERROR,
-			    (errcode(ERRCODE_INVALID_CURSOR_STATE),
-			     errmsg("cursor is not executed")));
-
-	oldcxt = MemoryContextSwitchTo(c->result_cxt);
-
+				(errcode(ERRCODE_INVALID_CURSOR_STATE),
+				 errmsg("cursor is not executed")));
 
 	/*
-	 * Setting of OUT field is little bit more complex, because although
-	 * there is only one output field, the result should be compisite type.
+	 * Setting of OUT field is little bit more complex, because although there
+	 * is only one output field, the result should be compisite type.
 	 */
 	if (get_call_result_type(fcinfo, &resultTypeId, &resulttupdesc) == TYPEFUNC_COMPOSITE)
 	{
@@ -1762,9 +1765,6 @@ dbms_sql_column_value(PG_FUNCTION_ARGS)
 
 	SPI_finish();
 
-	MemoryContextSwitchTo(oldcxt);
-	MemoryContextReset(c->result_cxt);
-
 	PG_RETURN_DATUM(result);
 }
 
@@ -1781,7 +1781,6 @@ dbms_sql_column_value_f(PG_FUNCTION_ARGS)
 	int			pos;
 	bool		isnull;
 	Oid			targetTypeId;
-	MemoryContext	oldcxt;
 
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "SPI_connact failed");
@@ -1790,25 +1789,21 @@ dbms_sql_column_value_f(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(1))
 		ereport(ERROR,
-			    (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-			     errmsg("column position (number) is NULL")));
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("column position (number) is NULL")));
 
 	pos = PG_GETARG_INT32(1);
 
 	if (!c->executed)
 		ereport(ERROR,
-			    (errcode(ERRCODE_INVALID_CURSOR_STATE),
-			     errmsg("cursor is not executed")));
-
-	oldcxt = MemoryContextSwitchTo(c->result_cxt);
+				(errcode(ERRCODE_INVALID_CURSOR_STATE),
+				 errmsg("cursor is not executed")));
 
 	targetTypeId = get_fn_expr_argtype(fcinfo->flinfo, 2);
 
 	value = column_value(c, pos, targetTypeId, &isnull, true);
 
 	SPI_finish();
-
-	MemoryContextSwitchTo(oldcxt);
 
 	PG_RETURN_DATUM(value);
 }
@@ -1863,7 +1858,7 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 
 	/* Postgres's dolar strings */
 	if (*str == '$' && (str[1] == '$' ||
-		is_identif((unsigned char) str[1]) || str[1] == '_'))
+						is_identif((unsigned char) str[1]) || str[1] == '_'))
 	{
 		char	   *aux = str + 1;
 		char	   *endstr;
@@ -1898,7 +1893,8 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 		}
 
 		/* now it looks like correct $ separator */
-		*start = aux; *sep = str;
+		*start = aux;
+		*sep = str;
 		Assert(aux >= str);
 		*seplen = (size_t) (aux - str);
 		*typ = TOKEN_DOLAR_STR;
@@ -1931,7 +1927,8 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 	/* Pair comments */
 	if (*str == '/' && str[1] == '*')
 	{
-		*start = str; str += 2;
+		*start = str;
+		str += 2;
 		while (*str)
 		{
 			if (*str == '*' && str[1] == '/')
@@ -1950,7 +1947,7 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 	/* Number */
 	if (isdigit(*str) || (*str == '.' && isdigit(str[1])))
 	{
-		bool	point = *str == '.';
+		bool		point = *str == '.';
 
 		*start = str++;
 		while (*str)
@@ -1959,7 +1956,8 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 				str++;
 			else if (*str == '.' && !point)
 			{
-				str++; point = true;
+				str++;
+				point = true;
 			}
 			else
 				break;
@@ -1983,7 +1981,8 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 	if (*str == ':' &&
 		(is_identif((unsigned char) str[1]) || str[1] == '_'))
 	{
-		*start = &str[1]; str += 2;
+		*start = &str[1];
+		str += 2;
 		while (*str)
 		{
 			if (is_identif((unsigned char) *str) ||
@@ -2002,7 +2001,8 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 	/* Extended string literal */
 	if ((*str == 'e' || *str == 'E') && str[1] == '\'')
 	{
-		*start = &str[2]; str += 2;
+		*start = &str[2];
+		str += 2;
 		while (*str)
 		{
 			if (*str == '\'')
@@ -2029,7 +2029,8 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 	/* String literal */
 	if (*str == '\'')
 	{
-		*start = &str[1]; str += 1;
+		*start = &str[1];
+		str += 1;
 		while (*str)
 		{
 			if (*str == '\'')
@@ -2055,7 +2056,8 @@ next_token(char *str, char **start, size_t *len, orafceTokenType *typ, char **se
 	/* Quoted identifier */
 	if (*str == '"')
 	{
-		*start = &str[1]; str += 1;
+		*start = &str[1];
+		str += 1;
 		while (*str)
 		{
 			if (*str == '"')
@@ -2124,7 +2126,7 @@ dbms_sql_describe_columns(PG_FUNCTION_ARGS)
 	Oid			desc_rec_typid;
 	Oid		   *types = NULL;
 	ArrayBuildState *abuilder;
-	SPIPlanPtr		plan;
+	SPIPlanPtr	plan;
 	CachedPlanSource *plansource = NULL;
 	int			ncolumns = 0;
 	int			rc;
@@ -2149,7 +2151,7 @@ dbms_sql_describe_columns(PG_FUNCTION_ARGS)
 
 	if (c->variables)
 	{
-		ListCell *lc;
+		ListCell   *lc;
 
 		types = palloc(sizeof(Oid) * c->nvariables);
 		i = 0;
@@ -2160,8 +2162,8 @@ dbms_sql_describe_columns(PG_FUNCTION_ARGS)
 
 			if (var->typoid == InvalidOid)
 				ereport(ERROR,
-					    (errcode(ERRCODE_UNDEFINED_PARAMETER),
-					     errmsg("variable \"%s\" has not a value", var->refname)));
+						(errcode(ERRCODE_UNDEFINED_PARAMETER),
+						 errmsg("variable \"%s\" has not a value", var->refname)));
 
 			types[i++] = var->is_array ? var->typelemid : var->typoid;
 		}
@@ -2193,24 +2195,20 @@ dbms_sql_describe_columns(PG_FUNCTION_ARGS)
 	{
 		HeapTuple	tp;
 		Form_pg_type typtup;
-		text	*txt;
+		text	   *txt;
 
 		Form_pg_attribute attr = TupleDescAttr(cursor_tupdesc, i);
 
 		/*
-		 * 0. col_type            BINARY_INTEGER := 0,
-		 * 1. col_max_len         BINARY_INTEGER := 0,
-		 * 2. col_name            VARCHAR2(32)   := '',
-		 * 3. col_name_len        BINARY_INTEGER := 0,
-		 * 4. col_schema_name     VARCHAR2(32)   := '',
-		 * 5. col_schema_name_len BINARY_INTEGER := 0,
-		 * 6. col_precision       BINARY_INTEGER := 0,
-		 * 7. col_scale           BINARY_INTEGER := 0,
-		 * 8. col_charsetid       BINARY_INTEGER := 0,
-		 * 9. col_charsetform     BINARY_INTEGER := 0,
-		 * 10. col_null_ok        BOOLEAN        := TRUE
-		 * 11. col_type_name      varchar2       := '',
-		 * 12. col_type_name_len  BINARY_INTEGER := 0 );
+		 * 0. col_type            BINARY_INTEGER := 0, 1. col_max_len
+		 * BINARY_INTEGER := 0, 2. col_name            VARCHAR2(32)   := '',
+		 * 3. col_name_len        BINARY_INTEGER := 0, 4. col_schema_name
+		 * VARCHAR2(32)   := '', 5. col_schema_name_len BINARY_INTEGER := 0,
+		 * 6. col_precision       BINARY_INTEGER := 0, 7. col_scale
+		 * BINARY_INTEGER := 0, 8. col_charsetid       BINARY_INTEGER := 0, 9.
+		 * col_charsetform     BINARY_INTEGER := 0, 10. col_null_ok BOOLEAN :=
+		 * TRUE 11. col_type_name      varchar2       := '', 12.
+		 * col_type_name_len  BINARY_INTEGER := 0 );
 		 */
 
 		values[0] = Int32GetDatum(attr->atttypid);

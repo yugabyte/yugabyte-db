@@ -176,6 +176,11 @@ RETURNS timestamp
 AS 'MODULE_PATHNAME','ora_to_date'
 LANGUAGE C STABLE STRICT PARALLEL SAFE;
 
+CREATE FUNCTION oracle.orafce__obsolete_to_date(str text, fmt text)
+RETURNS timestamp
+AS 'MODULE_PATHNAME','ora_to_date'
+LANGUAGE C STABLE STRICT PARALLEL SAFE;
+
 CREATE FUNCTION oracle.to_multi_byte(str text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_multi_byte'
@@ -468,8 +473,9 @@ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 
 CREATE FUNCTION oracle.months_between(TIMESTAMP WITH TIME ZONE,TIMESTAMP WITH TIME ZONE)
 RETURNS NUMERIC
-AS $$ SELECT oracle.months_between($1::pg_catalog.date,$2::pg_catalog.date); $$
-LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+AS 'MODULE_PATHNAME', 'months_between_timestamptz'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION oracle.months_between(TIMESTAMP WITH TIME ZONE, TIMESTAMP WITH TIME ZONE) IS 'returns the number of months between date1 and date2';
 
 CREATE FUNCTION oracle.next_day(TIMESTAMP WITH TIME ZONE,INTEGER)
 RETURNS TIMESTAMP
@@ -486,10 +492,15 @@ RETURNS oracle.date
 AS $$ SELECT oracle.orafce__obsolete_to_date($1)::oracle.date; $$
 LANGUAGE SQL STABLE STRICT PARALLEL SAFE;
 
-CREATE OR REPLACE FUNCTION oracle.to_date(TEXT,TEXT)
+CREATE FUNCTION oracle.to_date(TEXT, TEXT)
 RETURNS oracle.date
-AS $$ SELECT TO_TIMESTAMP($1,$2)::oracle.date; $$
-LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
+AS $$ SELECT oracle.orafce__obsolete_to_date($1, $2)::oracle.date; $$
+LANGUAGE SQL STABLE STRICT PARALLEL SAFE;
+
+CREATE FUNCTION oracle.to_date(integer, TEXT)
+RETURNS oracle.date
+AS $$ SELECT oracle.orafce__obsolete_to_date($1::text, $2)::oracle.date; $$
+LANGUAGE SQL STABLE STRICT PARALLEL SAFE;
 
 CREATE FUNCTION oracle.to_char(timestamp)
 RETURNS TEXT
@@ -514,6 +525,24 @@ RETURNS text
 AS 'MODULE_PATHNAME','orafce_dbtimezone'
 LANGUAGE C STABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.dbtimezone() IS 'Ruturns server time zone (orafce.timezone)';
+
+CREATE FUNCTION oracle.sys_extract_utc(timestamp with time zone)
+RETURNS timestamp without time zone
+AS 'MODULE_PATHNAME','orafce_sys_extract_utc'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION oracle.sysdate() IS 'Extract timestamp at utc time zone';
+
+CREATE FUNCTION oracle.sys_extract_utc(oracle.date)
+RETURNS oracle.date
+AS 'MODULE_PATHNAME','orafce_sys_extract_utc_oracle_date'
+LANGUAGE C STABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION oracle.sysdate() IS 'Extract timestamp at utc time zone';
+
+CREATE FUNCTION oracle.months_between(date1 oracle.date, date2 oracle.date)
+RETURNS numeric
+AS 'MODULE_PATHNAME', 'months_between_timestamp'
+LANGUAGE C IMMUTABLE STRICT PARALLEL SAFE;
+COMMENT ON FUNCTION oracle.months_between(oracle.date, oracle.date) IS 'returns the number of months between date1 and date2';
 
 -- emulation of dual table
 CREATE VIEW oracle.dual AS SELECT 'X'::varchar AS dummy;
@@ -1583,7 +1612,7 @@ COMMENT ON FUNCTION dbms_alert.set_defaults(float8) IS '';
 CREATE FUNCTION dbms_alert.signal(_event text, _message text)
 RETURNS void
 AS 'MODULE_PATHNAME','dbms_alert_signal'
-LANGUAGE C SECURITY DEFINER;
+LANGUAGE C;
 COMMENT ON FUNCTION dbms_alert.signal(text, text) IS 'Emit signal to all recipients';
 
 CREATE SCHEMA plvsubst;
@@ -3594,6 +3623,11 @@ RETURNS int AS $$
 SELECT coalesce($1, $2)
 $$ LANGUAGE sql IMMUTABLE PARALLEL SAFE;
 
+CREATE OR REPLACE FUNCTION oracle.nvl(double precision, int)
+RETURNS double precision AS $$
+SELECT coalesce($1, $2)
+$$ LANGUAGE sql IMMUTABLE PARALLEL SAFE;
+
 CREATE OR REPLACE FUNCTION oracle.numtodsinterval(double precision, text)
 RETURNS interval AS $$
   SELECT $1 * ('1' || $2)::interval
@@ -4314,3 +4348,10 @@ select str;
 $$ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE;
 COMMENT ON FUNCTION oracle.to_char(text) IS 'Convert string to string';
 
+DO $$
+BEGIN
+  IF NOT EXISTS(SELECT * FROM pg_roles where rolname = 'orafce_set_umask') THEN
+    CREATE ROLE orafce_set_umask INHERIT NOLOGIN;
+  END IF;
+END;
+$$;

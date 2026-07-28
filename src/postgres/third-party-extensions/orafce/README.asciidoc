@@ -13,7 +13,8 @@ Oracle application to PostgreSQL or that can be generally useful.
 
 Built-in Oracle date functions have been tested against Oracle 10 for
 conformance. Date ranges from 1960 to 2070 work correctly. Dates before
-1100-03-01 cannot be verified due to a bug in Oracle.
+1582-10-05 with the 'J' format and before 1100-03-01 with other formats
+cannot be verified due to a bug in Oracle.
 
 All functions are fully compatibles with Oracle and respect all known
 format strings. Detailed descriptions can be found on the internet.
@@ -91,6 +92,33 @@ year. The 16th of July will be rounded to August.
 	to_date('2014-0519 17:23:53+5:30')  -> 2014-05-19 17:23:53
 ----
 
+* to_date(text, text) timestamp - will typecast input text with the specified format to timestamp.
+ The GUC `orafce.orafce_emit_error_on_date_bug` is used to specify wether an error is reported
+when the date value hits the Oracle bug on dates. This bug appears with dates before `1582-10-05`
+when the `'J'` format is used (`'J2299159'`) and before `1100-03-01` with other formats. An error is
+reported by default, to disable this behavior `set orafce.orafce_emit_error_on_date_bug to off`.
+----
+	SELECT oracle.to_date('112012', 'J');
+	ERROR:  Dates before 1582-10-05 ('J2299159') cannot be verified due to a bug in Oracle.
+
+	SELECT oracle.to_date('1003-03-15', 'yyyy-mm-dd');
+	ERROR:  Dates before 1100-03-01 cannot be verified due to a bug in Oracle.
+
+	SET orafce.oracle_compatibility_date_limit TO off;
+
+	SELECT oracle.to_date('112012', 'J');
+		to_date
+	------------------------
+	 4407-07-30 00:00:00 BC
+	(1 row)
+
+	SELECT oracle.to_date('1003/03/15', 'yyyy/mm/dd');
+	       to_date
+	---------------------
+	 1003-03-15 00:00:00
+	(1 row)
+----
+
 == oracle.date data type
 
 This module contains implementation of oracle compatible DATE data type "oracle.date" and functions which are using DATE data type like oracle.add_months,oracle.last_day(),oracle.next_day(),oracle.months_between() etc.
@@ -158,21 +186,22 @@ Example:
 -----
 	oracle.sessiontimezone() -> Europe/Prague
 -----
+* oracle.sys_extract_utc(timestamp with timezone) - Returns timestamp in utc timezone
++
+-----
+	oracle.sys_extract_utc(current_timestamp)
+-----
+* oracle.sys_extract_utc(oracle.date) - Returns timestamp in utc timezone, when time zone is not specified, session (current PostgreSQL) timezone is used
++
+-----
+	oracle.sys_extract_utc(oracle.date '2005-05-24 11:21:12', 1) -> 2005-05-24 09:21:12
+-----
 * oracle.to_char(timestamp) - Returns timestamp in nls_date_format.
 +
 ----
 	orafce.nls_date_format='YY-MonDD HH24:MI:SS'
-----
-+
-----
 	oracle.to_char(to_date('14-Jan08 11:44:49+05:30')) -> 14-Jan08 11:44:49
-----
-+
-----
 	orafce.nls_date_format='YY-MonDD HH24:MI:SS'
-----
-+
-----
 	oracle.to_char(oracle.to_date('21052014 12:13:44+05:30','DDMMYYYY HH24:MI:SS')) -> 14-May21 12:13:44
 ----
 
@@ -688,7 +717,7 @@ select plvsubst.string('My name is $$ $$.', 'Pavel|Stěhule','|','$$');
 
 == Package DBMS_utility
 
-* dms_utility.format_call_stack()  -- return a formatted string with content of call stack
+* dbms_utility.format_call_stack()  -- return a formatted string with content of call stack
 
 ----
 postgres=# select foo2();

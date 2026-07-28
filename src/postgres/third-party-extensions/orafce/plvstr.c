@@ -3,7 +3,7 @@
   free available library PL/Vision. Please look www.quest.com
 
   Original author: Steven Feuerstein, 1996 - 2002
-  PostgreSQL implementation author: Pavel Stehule, 2006-2023
+  PostgreSQL implementation author: Pavel Stehule, 2006-2026
 
   This module is under BSD Licence
 
@@ -60,18 +60,18 @@ PG_FUNCTION_INFO_V1(oracle_substr3);
 PG_FUNCTION_INFO_V1(oracle_substrb2);
 PG_FUNCTION_INFO_V1(oracle_substrb3);
 
-int orafce_substring_length_is_zero = ORAFCE_COMPATIBILITY_WARNING_ORACLE;
+int			orafce_substring_length_is_zero = ORAFCE_COMPATIBILITY_WARNING_ORACLE;
 
 static text *ora_substr(Datum str, int start, int len);
 
 #define ora_substr_text(str, start, len) \
 	ora_substr(PointerGetDatum((str)), (start), (len))
 
-static const char* char_names[] = {
-	"NULL","SOH","STX","ETX","EOT","ENQ","ACK","DEL",
-	"BS",  "HT", "NL", "VT", "NP", "CR", "SO", "SI",
-	"DLE", "DC1","DC2","DC3","DC4","NAK","SYN","ETB",
-	"CAN", "EM","SUB","ESC","FS","GS","RS","US","SP"
+static const char *char_names[] = {
+	"NULL", "SOH", "STX", "ETX", "EOT", "ENQ", "ACK", "DEL",
+	"BS", "HT", "NL", "VT", "NP", "CR", "SO", "SI",
+	"DLE", "DC1", "DC2", "DC3", "DC4", "NAK", "SYN", "ETB",
+	"CAN", "EM", "SUB", "ESC", "FS", "GS", "RS", "US", "SP"
 };
 
 #define NON_EMPTY_CHECK(str) \
@@ -97,7 +97,7 @@ typedef enum
 	POSITION,
 	FIRST,
 	LAST
-}  position_mode;
+} position_mode;
 
 /*
  * Make substring, can handle negative start
@@ -106,10 +106,10 @@ typedef enum
 int
 ora_mb_strlen(text *str, char **sizes, int **positions)
 {
-	int r_len;
-	int cur_size = 0;
-	char *p;
-	int cur = 0;
+	int			r_len;
+	int			cur_size = 0;
+	char	   *p;
+	int			cur = 0;
 
 	p = VARDATA_ANY(str);
 	r_len = VARSIZE_ANY_EXHDR(str);
@@ -121,7 +121,7 @@ ora_mb_strlen(text *str, char **sizes, int **positions)
 
 	while (cur < r_len)
 	{
-		int sz;
+		int			sz;
 
 		sz = _pg_mblen(p);
 		if (sizes)
@@ -140,9 +140,9 @@ ora_mb_strlen(text *str, char **sizes, int **positions)
 int
 ora_mb_strlen1(text *str)
 {
-	int r_len;
-	int c;
-	char *p;
+	int			r_len;
+	int			c;
+	char	   *p;
 
 	r_len = VARSIZE_ANY_EXHDR(str);
 
@@ -153,7 +153,7 @@ ora_mb_strlen1(text *str)
 	c = 0;
 	while (r_len > 0)
 	{
-		int sz;
+		int			sz;
 
 		sz = _pg_mblen(p);
 		p += sz;
@@ -171,11 +171,11 @@ static text *
 ora_substr(Datum str, int start, int len)
 {
 	if (start == 0)
-		start = 1;	/* 0 is interpreted as 1 */
+		start = 1;				/* 0 is interpreted as 1 */
 	else if (start < 0)
 	{
-		text   *t;
-		int32	n;
+		text	   *t;
+		int32		n;
 
 		t = DatumGetTextPP(str);
 		n = pg_mbstrlen_with_len(VARDATA_ANY(t), VARSIZE_ANY_EXHDR(t));
@@ -187,10 +187,10 @@ ora_substr(Datum str, int start, int len)
 
 	if (len < 0)
 		return DatumGetTextP(DirectFunctionCall2(text_substr_no_len,
-			str, Int32GetDatum(start)));
+												 str, Int32GetDatum(start)));
 	else
 		return DatumGetTextP(DirectFunctionCall3(text_substr,
-			str, Int32GetDatum(start), Int32GetDatum(len)));
+												 str, Int32GetDatum(start), Int32GetDatum(len)));
 }
 
 /* simply search algorhitm - can be better */
@@ -198,11 +198,16 @@ ora_substr(Datum str, int start, int len)
 static int
 ora_instr_mb(text *txt, text *pattern, int start, int nth)
 {
-	int			c_len_txt, c_len_pat;
+	int			c_len_txt,
+				c_len_pat;
 	int			b_len_pat;
 	int		   *pos_txt;
-	const char *str_txt, *str_pat;
-	int			beg, end, i, dx;
+	const char *str_txt,
+			   *str_pat;
+	int			beg,
+				end,
+				i,
+				dx;
 
 	str_txt = VARDATA_ANY(txt);
 	c_len_txt = ora_mb_strlen(txt, NULL, &pos_txt);
@@ -216,7 +221,7 @@ ora_instr_mb(text *txt, text *pattern, int start, int nth)
 		beg = start - 1;
 		end = c_len_txt - c_len_pat + 1;
 		if (beg >= end)
-			return 0;	/* out of range */
+			return 0;			/* out of range */
 	}
 	else if (start < 0)
 	{
@@ -224,7 +229,7 @@ ora_instr_mb(text *txt, text *pattern, int start, int nth)
 		beg = Min(c_len_txt + start, c_len_txt - c_len_pat);
 		end = -1;
 		if (beg <= end)
-			return 0;	/* out of range */
+			return 0;			/* out of range */
 	}
 	else
 		return 0;
@@ -245,9 +250,14 @@ ora_instr_mb(text *txt, text *pattern, int start, int nth)
 int
 ora_instr(text *txt, text *pattern, int start, int nth)
 {
-	int			len_txt, len_pat;
-	const char *str_txt, *str_pat;
-	int			beg, end, i, dx;
+	int			len_txt,
+				len_pat;
+	const char *str_txt,
+			   *str_pat;
+	int			beg,
+				end,
+				i,
+				dx;
 
 	if (nth <= 0)
 		PARAMETER_ERROR("Four parameter isn't positive.");
@@ -267,7 +277,7 @@ ora_instr(text *txt, text *pattern, int start, int nth)
 		beg = start - 1;
 		end = len_txt - len_pat + 1;
 		if (beg >= end)
-			return 0;	/* out of range */
+			return 0;			/* out of range */
 	}
 	else if (start < 0)
 	{
@@ -275,7 +285,7 @@ ora_instr(text *txt, text *pattern, int start, int nth)
 		beg = Min(len_txt + start, len_txt - len_pat);
 		end = -1;
 		if (beg <= end)
-			return 0;	/* out of range */
+			return 0;			/* out of range */
 	}
 	else
 		return 0;
@@ -311,7 +321,9 @@ plvstr_normalize(PG_FUNCTION_ARGS)
 {
 	text	   *str = PG_GETARG_TEXT_PP(0);
 	text	   *result;
-	char	   *aux, *cur, *aux_cur;
+	char	   *aux,
+			   *cur,
+			   *aux_cur;
 	int			i;
 
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(__amd64__))
@@ -357,7 +369,7 @@ plvstr_normalize(PG_FUNCTION_ARGS)
 					sz = _pg_mblen(cur);
 					if (sz > 1 || (sz == 1 && c > 32))
 					{
-						int		j;
+						int			j;
 
 						if (write_spc)
 						{
@@ -375,25 +387,24 @@ plvstr_normalize(PG_FUNCTION_ARGS)
 					continue;
 
 				}
-				else
-					if (c > 32)
+				else if (c > 32)
+				{
+					if (write_spc)
 					{
-						if (write_spc)
-						{
-							*aux_cur++ = ' ';
-							write_spc = false;
-						}
-						*aux_cur++ = c;
-						ignore_stsp = false;
-						continue;
+						*aux_cur++ = ' ';
+						write_spc = false;
 					}
+					*aux_cur++ = c;
+					ignore_stsp = false;
+					continue;
+				}
 
 		}
 		cur += 1;
 	}
 
 	l = aux_cur - aux;
-	result = palloc(l+VARHDRSZ);
+	result = palloc(l + VARHDRSZ);
 	SET_VARSIZE(result, l + VARHDRSZ);
 	memcpy(VARDATA(result), aux, l);
 
@@ -418,31 +429,31 @@ plvstr_normalize(PG_FUNCTION_ARGS)
  ****************************************************************/
 
 Datum
-plvstr_instr2 (PG_FUNCTION_ARGS)
+plvstr_instr2(PG_FUNCTION_ARGS)
 {
-	text *arg1 = PG_GETARG_TEXT_PP(0);
-	text *arg2 = PG_GETARG_TEXT_PP(1);
+	text	   *arg1 = PG_GETARG_TEXT_PP(0);
+	text	   *arg2 = PG_GETARG_TEXT_PP(1);
 
 	PG_RETURN_INT32(ora_instr(arg1, arg2, 1, 1));
 }
 
 Datum
-plvstr_instr3 (PG_FUNCTION_ARGS)
+plvstr_instr3(PG_FUNCTION_ARGS)
 {
-	text *arg1 = PG_GETARG_TEXT_PP(0);
-	text *arg2 = PG_GETARG_TEXT_PP(1);
-	int arg3 = PG_GETARG_INT32(2);
+	text	   *arg1 = PG_GETARG_TEXT_PP(0);
+	text	   *arg2 = PG_GETARG_TEXT_PP(1);
+	int			arg3 = PG_GETARG_INT32(2);
 
 	PG_RETURN_INT32(ora_instr(arg1, arg2, arg3, 1));
 }
 
 Datum
-plvstr_instr4 (PG_FUNCTION_ARGS)
+plvstr_instr4(PG_FUNCTION_ARGS)
 {
-	text *arg1 = PG_GETARG_TEXT_PP(0);
-	text *arg2 = PG_GETARG_TEXT_PP(1);
-	int arg3 = PG_GETARG_INT32(2);
-	int arg4 = PG_GETARG_INT32(3);
+	text	   *arg1 = PG_GETARG_TEXT_PP(0);
+	text	   *arg2 = PG_GETARG_TEXT_PP(1);
+	int			arg3 = PG_GETARG_INT32(2);
+	int			arg4 = PG_GETARG_INT32(3);
 
 	PG_RETURN_INT32(ora_instr(arg1, arg2, arg3, arg4));
 }
@@ -468,7 +479,7 @@ plvstr_instr4 (PG_FUNCTION_ARGS)
 
 
 Datum
-plvstr_is_prefix_text (PG_FUNCTION_ARGS)
+plvstr_is_prefix_text(PG_FUNCTION_ARGS)
 {
 	text	   *str = PG_GETARG_TEXT_PP(0);
 	text	   *prefix = PG_GETARG_TEXT_PP(1);
@@ -486,8 +497,8 @@ plvstr_is_prefix_text (PG_FUNCTION_ARGS)
 
 	if (mb_encode && !case_sens)
 	{
-		str = (text*)DatumGetPointer(DirectFunctionCall1(lower, PointerGetDatum(str)));
-		prefix = (text*)DatumGetPointer(DirectFunctionCall1(lower, PointerGetDatum(prefix)));
+		str = (text *) DatumGetPointer(DirectFunctionCall1(lower, PointerGetDatum(str)));
+		prefix = (text *) DatumGetPointer(DirectFunctionCall1(lower, PointerGetDatum(prefix)));
 	}
 
 	ap = VARDATA_ANY(str);
@@ -514,7 +525,7 @@ plvstr_is_prefix_text (PG_FUNCTION_ARGS)
 }
 
 Datum
-plvstr_is_prefix_int (PG_FUNCTION_ARGS)
+plvstr_is_prefix_int(PG_FUNCTION_ARGS)
 {
 	int			n = PG_GETARG_INT32(0);
 	int			prefix = PG_GETARG_INT32(1);
@@ -538,11 +549,11 @@ plvstr_is_prefix_int (PG_FUNCTION_ARGS)
 }
 
 Datum
-plvstr_is_prefix_int64 (PG_FUNCTION_ARGS)
+plvstr_is_prefix_int64(PG_FUNCTION_ARGS)
 {
-	int64 n = PG_GETARG_INT64(0);
-	int64 prefix = PG_GETARG_INT64(1);
-	bool result = false;
+	int64		n = PG_GETARG_INT64(0);
+	int64		prefix = PG_GETARG_INT64(1);
+	bool		result = false;
 
 	if (prefix == 0)
 		PG_RETURN_BOOL(n == 0);
@@ -576,20 +587,31 @@ plvstr_is_prefix_int64 (PG_FUNCTION_ARGS)
  *
  ****************************************************************/
 
+static text *
+empty_string()
+{
+	text	   *result;
+
+	result = palloc(VARHDRSZ);
+	SET_VARSIZE(result, VARHDRSZ);
+
+	return result;
+}
+
 Datum
 plvstr_rvrs(PG_FUNCTION_ARGS)
 {
-	text *str;
-	int start;
-	int end;
-	int len;
-	int i;
-	int new_len;
-	text *result;
-	char *data;
-	char *sizes = NULL;
-	int *positions = NULL;
-	bool mb_encode;
+	text	   *str;
+	int			start;
+	int			end;
+	int			len;
+	int			i;
+	int			new_len;
+	text	   *result;
+	char	   *data;
+	char	   *sizes = NULL;
+	int		   *positions = NULL;
+	bool		mb_encode;
 
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
@@ -611,10 +633,18 @@ plvstr_rvrs(PG_FUNCTION_ARGS)
 
 	if (start < 0)
 	{
-		int new_start, new_end;
+		int			new_start,
+					new_end;
 
 		new_start = len + start + 1;
+
+		if (new_start < 1)
+			PG_RETURN_TEXT_P(empty_string());
+
 		new_end = len + end + 1;
+		if (new_end < 1)
+			new_end = 1;
+
 		start = new_end;
 		end = new_start;
 	}
@@ -627,36 +657,36 @@ plvstr_rvrs(PG_FUNCTION_ARGS)
 
 	if (mb_encode)
 	{
-		int max_size;
-		int cur_size;
-		char *p;
-		int j;
-		int fz_size;
+		int			max_size;
+		int			cur_size;
+		char	   *p;
+		int			j;
+		int			fz_size;
 
 		fz_size = VARSIZE_ANY_EXHDR(str);
 
-		if ((max_size = (new_len*pg_database_encoding_max_length())) > fz_size)
+		if ((max_size = (new_len * pg_database_encoding_max_length())) > fz_size)
 			result = palloc(fz_size + VARHDRSZ);
 		else
 			result = palloc(max_size + VARHDRSZ);
-		data = (char*) VARDATA(result);
+		data = (char *) VARDATA(result);
 
 		cur_size = 0;
 		p = VARDATA_ANY(str);
-		for (i = end - 1; i>= start - 1; i--)
+		for (i = end - 1; i >= start - 1; i--)
 		{
-			for (j=0; j<sizes[i]; j++)
-				*data++ = *(p+positions[i]+j);
+			for (j = 0; j < sizes[i]; j++)
+				*data++ = *(p + positions[i] + j);
 			cur_size += sizes[i];
 		}
 		SET_VARSIZE(result, cur_size + VARHDRSZ);
-
 	}
 	else
 	{
-		char *p = VARDATA_ANY(str);
+		char	   *p = VARDATA_ANY(str);
+
 		result = palloc(new_len + VARHDRSZ);
-		data = (char*) VARDATA(result);
+		data = (char *) VARDATA(result);
 		SET_VARSIZE(result, new_len + VARHDRSZ);
 
 		for (i = end - 1; i >= start - 1; i--)
@@ -684,14 +714,14 @@ plvstr_rvrs(PG_FUNCTION_ARGS)
  ****************************************************************/
 
 Datum
-plvstr_lpart (PG_FUNCTION_ARGS)
+plvstr_lpart(PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_P(0);
-	text *div = PG_GETARG_TEXT_P(1);
-	int start = PG_GETARG_INT32(2);
-	int nth   = PG_GETARG_INT32(3);
-	bool all_if_notfound  = PG_GETARG_BOOL(4);
-	int loc;
+	text	   *str = PG_GETARG_TEXT_P(0);
+	text	   *div = PG_GETARG_TEXT_P(1);
+	int			start = PG_GETARG_INT32(2);
+	int			nth = PG_GETARG_INT32(3);
+	bool		all_if_notfound = PG_GETARG_BOOL(4);
+	int			loc;
 
 	loc = ora_instr(str, div, start, nth);
 	if (loc == 0)
@@ -702,7 +732,7 @@ plvstr_lpart (PG_FUNCTION_ARGS)
 			PG_RETURN_NULL();
 	}
 	else
-		PG_RETURN_TEXT_P(ora_substr_text(str, 1, loc-1));
+		PG_RETURN_TEXT_P(ora_substr_text(str, 1, loc - 1));
 }
 
 
@@ -723,14 +753,14 @@ plvstr_lpart (PG_FUNCTION_ARGS)
  ****************************************************************/
 
 Datum
-plvstr_rpart (PG_FUNCTION_ARGS)
+plvstr_rpart(PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_P(0);
-	text *div = PG_GETARG_TEXT_P(1);
-	int start = PG_GETARG_INT32(2);
-	int nth   = PG_GETARG_INT32(3);
-	bool all_if_notfound  = PG_GETARG_BOOL(4);
-	int loc;
+	text	   *str = PG_GETARG_TEXT_P(0);
+	text	   *div = PG_GETARG_TEXT_P(1);
+	int			start = PG_GETARG_INT32(2);
+	int			nth = PG_GETARG_INT32(3);
+	bool		all_if_notfound = PG_GETARG_BOOL(4);
+	int			loc;
 
 	loc = ora_instr(str, div, start, nth);
 	if (loc == 0)
@@ -741,7 +771,7 @@ plvstr_rpart (PG_FUNCTION_ARGS)
 			PG_RETURN_NULL();
 	}
 	else
-		PG_RETURN_TEXT_P(ora_substr_text(str, loc+1, -1));
+		PG_RETURN_TEXT_P(ora_substr_text(str, loc + 1, -1));
 }
 
 
@@ -761,13 +791,14 @@ plvstr_rpart (PG_FUNCTION_ARGS)
  ****************************************************************/
 
 Datum
-plvstr_lstrip (PG_FUNCTION_ARGS)
+plvstr_lstrip(PG_FUNCTION_ARGS)
 {
 	text	   *str = PG_GETARG_TEXT_PP(0);
 	text	   *pat = PG_GETARG_TEXT_PP(1);
 	int			num = PG_GETARG_INT32(2);
 	int			count = 0;
-	int			len_p, len_s;
+	int			len_p,
+				len_s;
 	char	   *str_p;
 
 	len_p = VARSIZE_ANY_EXHDR(pat);
@@ -777,7 +808,8 @@ plvstr_lstrip (PG_FUNCTION_ARGS)
 	while (count < num)
 	{
 		int			i;
-		char	   *aux_str_p, *pat_p;
+		char	   *aux_str_p,
+				   *pat_p;
 
 		pat_p = VARDATA_ANY(pat);
 		aux_str_p = str_p;
@@ -800,7 +832,7 @@ plvstr_lstrip (PG_FUNCTION_ARGS)
 		break;
 	}
 
-	PG_RETURN_TEXT_P(cstring_to_text_with_len(str_p,len_s));
+	PG_RETURN_TEXT_P(cstring_to_text_with_len(str_p, len_s));
 }
 
 
@@ -820,13 +852,15 @@ plvstr_lstrip (PG_FUNCTION_ARGS)
  ****************************************************************/
 
 Datum
-plvstr_rstrip (PG_FUNCTION_ARGS)
+plvstr_rstrip(PG_FUNCTION_ARGS)
 {
 	text	   *str = PG_GETARG_TEXT_PP(0);
 	text	   *pat = PG_GETARG_TEXT_PP(1);
 	int			num = PG_GETARG_INT32(2);
 	int			count = 0;
-	int			len_p, len_s, i;
+	int			len_p,
+				len_s,
+				i;
 	char	   *str_p,
 			   *aux_str_p;
 
@@ -860,7 +894,7 @@ plvstr_rstrip (PG_FUNCTION_ARGS)
 		break;
 	}
 
-	PG_RETURN_TEXT_P(cstring_to_text_with_len(VARDATA_ANY(str),len_s));
+	PG_RETURN_TEXT_P(cstring_to_text_with_len(VARDATA_ANY(str), len_s));
 }
 
 
@@ -880,10 +914,11 @@ plvstr_rstrip (PG_FUNCTION_ARGS)
 
 
 Datum
-plvstr_left (PG_FUNCTION_ARGS)
+plvstr_left(PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_P(0);
-	int n = PG_GETARG_INT32(1);
+	text	   *str = PG_GETARG_TEXT_P(0);
+	int			n = PG_GETARG_INT32(1);
+
 	if (n < 0)
 		n = ora_mb_strlen1(str) + n;
 	n = n < 0 ? 0 : n;
@@ -906,10 +941,11 @@ plvstr_left (PG_FUNCTION_ARGS)
  ****************************************************************/
 
 Datum
-plvstr_right (PG_FUNCTION_ARGS)
+plvstr_right(PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_P(0);
-	int n = PG_GETARG_INT32(1);
+	text	   *str = PG_GETARG_TEXT_P(0);
+	int			n = PG_GETARG_INT32(1);
+
 	if (n < 0)
 		n = ora_mb_strlen1(str) + n;
 	n = (n < 0) ? 0 : n;
@@ -931,7 +967,7 @@ plvstr_right (PG_FUNCTION_ARGS)
  ****************************************************************/
 
 Datum
-plvstr_substr2 (PG_FUNCTION_ARGS)
+plvstr_substr2(PG_FUNCTION_ARGS)
 {
 	return oracle_substr2(fcinfo);
 }
@@ -951,7 +987,7 @@ plvstr_substr2 (PG_FUNCTION_ARGS)
  ****************************************************************/
 
 Datum
-plvstr_substr3 (PG_FUNCTION_ARGS)
+plvstr_substr3(PG_FUNCTION_ARGS)
 {
 	return oracle_substr3(fcinfo);
 }
@@ -971,7 +1007,7 @@ plvstr_substr3 (PG_FUNCTION_ARGS)
  ****************************************************************/
 
 Datum
-plvchr_nth (PG_FUNCTION_ARGS)
+plvchr_nth(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_TEXT_P(ora_substr(PG_GETARG_DATUM(0), PG_GETARG_INT32(1), 1));
 }
@@ -990,7 +1026,7 @@ plvchr_nth (PG_FUNCTION_ARGS)
  ****************************************************************/
 
 Datum
-plvchr_first (PG_FUNCTION_ARGS)
+plvchr_first(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_TEXT_P(ora_substr(PG_GETARG_DATUM(0), 1, 1));
 }
@@ -1009,7 +1045,7 @@ plvchr_first (PG_FUNCTION_ARGS)
  ****************************************************************/
 
 Datum
-plvchr_last (PG_FUNCTION_ARGS)
+plvchr_last(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_TEXT_P(ora_substr(PG_GETARG_DATUM(0), -1, 1));
 }
@@ -1054,30 +1090,30 @@ is_kind(char c, int kind)
 }
 
 Datum
-plvchr_is_kind_i (PG_FUNCTION_ARGS)
+plvchr_is_kind_i(PG_FUNCTION_ARGS)
 {
-	int32 c = PG_GETARG_INT32(0);
-	int32 k = PG_GETARG_INT32(1);
+	int32		c = PG_GETARG_INT32(0);
+	int32		k = PG_GETARG_INT32(1);
 
-	PG_RETURN_INT32(is_kind((char)c,k));
+	PG_RETURN_INT32(is_kind((char) c, k));
 }
 
 Datum
-plvchr_is_kind_a (PG_FUNCTION_ARGS)
+plvchr_is_kind_a(PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_PP(0);
-	int32 k = PG_GETARG_INT32(1);
-	char c;
+	text	   *str = PG_GETARG_TEXT_PP(0);
+	int32		k = PG_GETARG_INT32(1);
+	char		c;
 
 	NON_EMPTY_CHECK(str);
 	if (pg_database_encoding_max_length() > 1)
 	{
 		if (_pg_mblen(VARDATA_ANY(str)) > 1)
-			PG_RETURN_INT32( (k == 5) );
+			PG_RETURN_INT32((k == 5));
 	}
 
 	c = *VARDATA_ANY(str);
-	PG_RETURN_INT32(is_kind(c,k));
+	PG_RETURN_INT32(is_kind(c, k));
 }
 
 
@@ -1096,12 +1132,12 @@ plvchr_is_kind_a (PG_FUNCTION_ARGS)
 Datum
 plvchr_char_name(PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_PP(0);
-	text *result;
+	text	   *str = PG_GETARG_TEXT_PP(0);
+	text	   *result;
 	unsigned char c;
 
 	NON_EMPTY_CHECK(str);
-	c = (unsigned char)*(VARDATA_ANY(str));
+	c = (unsigned char) *(VARDATA_ANY(str));
 
 	if (c >= lengthof(char_names))
 		result = ora_substr_text(str, 1, 1);
@@ -1127,7 +1163,7 @@ plvchr_char_name(PG_FUNCTION_ARGS)
 Datum
 oracle_substr3(PG_FUNCTION_ARGS)
 {
-	int32	len = PG_GETARG_INT32(2);
+	int32		len = PG_GETARG_INT32(2);
 
 	if (len < 0)
 		PG_RETURN_NULL();
@@ -1135,11 +1171,11 @@ oracle_substr3(PG_FUNCTION_ARGS)
 	if (len == 0)
 	{
 		if (orafce_substring_length_is_zero == ORAFCE_COMPATIBILITY_WARNING_ORACLE ||
-			 orafce_substring_length_is_zero == ORAFCE_COMPATIBILITY_WARNING_ORAFCE)
+			orafce_substring_length_is_zero == ORAFCE_COMPATIBILITY_WARNING_ORAFCE)
 			elog(WARNING, "zero substring_length is used in substr function");
 
 		if (orafce_substring_length_is_zero == ORAFCE_COMPATIBILITY_WARNING_ORACLE ||
-			 orafce_substring_length_is_zero == ORAFCE_COMPATIBILITY_ORACLE)
+			orafce_substring_length_is_zero == ORAFCE_COMPATIBILITY_ORACLE)
 			PG_RETURN_NULL();
 	}
 
@@ -1153,17 +1189,17 @@ oracle_substr2(PG_FUNCTION_ARGS)
 }
 
 
-static text*
+static text *
 ora_concat2(text *str1, text *str2)
 {
-	int l1;
-	int l2;
-	text *result;
+	int			l1;
+	int			l2;
+	text	   *result;
 
 	l1 = VARSIZE_ANY_EXHDR(str1);
 	l2 = VARSIZE_ANY_EXHDR(str2);
 
-	result = palloc(l1+l2+VARHDRSZ);
+	result = palloc(l1 + l2 + VARHDRSZ);
 	memcpy(VARDATA(result), VARDATA_ANY(str1), l1);
 	memcpy(VARDATA(result) + l1, VARDATA_ANY(str2), l2);
 	SET_VARSIZE(result, l1 + l2 + VARHDRSZ);
@@ -1172,22 +1208,22 @@ ora_concat2(text *str1, text *str2)
 }
 
 
-static text*
+static text *
 ora_concat3(text *str1, text *str2, text *str3)
 {
-	int l1;
-	int l2;
-	int l3;
-	text *result;
+	int			l1;
+	int			l2;
+	int			l3;
+	text	   *result;
 
 	l1 = VARSIZE_ANY_EXHDR(str1);
 	l2 = VARSIZE_ANY_EXHDR(str2);
 	l3 = VARSIZE_ANY_EXHDR(str3);
 
-	result = palloc(l1+l2+l3+VARHDRSZ);
+	result = palloc(l1 + l2 + l3 + VARHDRSZ);
 	memcpy(VARDATA(result), VARDATA_ANY(str1), l1);
 	memcpy(VARDATA(result) + l1, VARDATA_ANY(str2), l2);
-	memcpy(VARDATA(result) + l1+l2, VARDATA_ANY(str3), l3);
+	memcpy(VARDATA(result) + l1 + l2, VARDATA_ANY(str3), l3);
 	SET_VARSIZE(result, l1 + l2 + l3 + VARHDRSZ);
 
 	return result;
@@ -1213,11 +1249,11 @@ ora_concat3(text *str1, text *str2, text *str3)
 Datum
 plvstr_swap(PG_FUNCTION_ARGS)
 {
-	text *string_in;
-	text *replace_in;
-	int start_in = 1;
-	int oldlen_in;
-	int v_len;
+	text	   *string_in;
+	text	   *replace_in;
+	int			start_in = 1;
+	int			oldlen_in;
+	int			v_len;
 
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
@@ -1237,7 +1273,7 @@ plvstr_swap(PG_FUNCTION_ARGS)
 	else
 		oldlen_in = PG_GETARG_INT32(3);
 
-	v_len =  ora_mb_strlen1(string_in);
+	v_len = ora_mb_strlen1(string_in);
 
 	start_in = start_in > 0 ? start_in : v_len + start_in + 1;
 
@@ -1245,12 +1281,12 @@ plvstr_swap(PG_FUNCTION_ARGS)
 		PG_RETURN_TEXT_P(TextPCopy(string_in));
 	else if (start_in == 1)
 		PG_RETURN_TEXT_P(ora_concat2(
-			replace_in, ora_substr_text(string_in, oldlen_in+1, -1)));
+									 replace_in, ora_substr_text(string_in, oldlen_in + 1, -1)));
 	else
 		PG_RETURN_TEXT_P(ora_concat3(
-			ora_substr_text(string_in, 1, start_in - 1),
-			replace_in,
-			ora_substr_text(string_in, start_in + oldlen_in, -1)));
+									 ora_substr_text(string_in, 1, start_in - 1),
+									 replace_in,
+									 ora_substr_text(string_in, start_in + oldlen_in, -1)));
 }
 
 /****************************************************************
@@ -1285,10 +1321,10 @@ plvstr_swap(PG_FUNCTION_ARGS)
 Datum
 plvstr_betwn_i(PG_FUNCTION_ARGS)
 {
-	text *string_in = PG_GETARG_TEXT_P(0);
-	int start_in = PG_GETARG_INT32(1);
-	int end_in = PG_GETARG_INT32(2);
-	bool inclusive = PG_GETARG_BOOL(3);
+	text	   *string_in = PG_GETARG_TEXT_P(0);
+	int			start_in = PG_GETARG_INT32(1);
+	int			end_in = PG_GETARG_INT32(2);
+	bool		inclusive = PG_GETARG_BOOL(3);
 
 	if ((start_in < 0 && end_in > 0) ||
 		(start_in > 0 && end_in < 0) ||
@@ -1297,7 +1333,8 @@ plvstr_betwn_i(PG_FUNCTION_ARGS)
 
 	if (start_in < 0)
 	{
-		int v_len =  ora_mb_strlen1(string_in);
+		int			v_len = ora_mb_strlen1(string_in);
+
 		start_in = v_len + start_in + 1;
 		end_in = v_len + start_in + 1;
 	}
@@ -1320,16 +1357,16 @@ plvstr_betwn_i(PG_FUNCTION_ARGS)
 Datum
 plvstr_betwn_c(PG_FUNCTION_ARGS)
 {
-	text *string_in;
-	text *start_in;
-	text *end_in;
-	int startnth_in;
-	int endnth_in;
-	bool inclusive;
-	bool gotoend;
+	text	   *string_in;
+	text	   *start_in;
+	text	   *end_in;
+	int			startnth_in;
+	int			endnth_in;
+	bool		inclusive;
+	bool		gotoend;
 
-	int v_start;
-	int v_end;
+	int			v_start;
+	int			v_end;
 
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) ||
 		PG_ARGISNULL(3) || PG_ARGISNULL(4) ||
@@ -1388,7 +1425,7 @@ static bytea *
 ora_substrb(Datum str, int start, int len)
 {
 	if (start == 0)
-		start = 1;	/* 0 is interpreted as 1 */
+		start = 1;				/* 0 is interpreted as 1 */
 	else if (start < 0)
 	{
 		bytea	   *t = DatumGetByteaPP(str);
@@ -1403,24 +1440,24 @@ ora_substrb(Datum str, int start, int len)
 
 	if (len < 0)
 		return DatumGetByteaP(DirectFunctionCall2(bytea_substr_no_len,
-			str, Int32GetDatum(start)));
+												  str, Int32GetDatum(start)));
 	else
 		return DatumGetByteaP(DirectFunctionCall3(bytea_substr,
-			str, Int32GetDatum(start), Int32GetDatum(len)));
+												  str, Int32GetDatum(start), Int32GetDatum(len)));
 }
 
 Datum
 oracle_substrb2(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_BYTEA_P(ora_substrb(PG_GETARG_DATUM(0),
-							   PG_GETARG_INT32(1),
-							   -1));
+								  PG_GETARG_INT32(1),
+								  -1));
 }
 
 Datum
 oracle_substrb3(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_BYTEA_P(ora_substrb(PG_GETARG_DATUM(0),
-							   PG_GETARG_INT32(1),
-							   PG_GETARG_INT32(2)));
+								  PG_GETARG_INT32(1),
+								  PG_GETARG_INT32(2)));
 }

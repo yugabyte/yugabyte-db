@@ -25,8 +25,8 @@ PG_FUNCTION_INFO_V1(orafce_bpcharlen);
 Datum
 orafce_bpcharlen(PG_FUNCTION_ARGS)
 {
-	BpChar     *arg = PG_GETARG_BPCHAR_PP(0);
-	int         len;
+	BpChar	   *arg = PG_GETARG_BPCHAR_PP(0);
+	int			len;
 
 	/* byte-length of the argument (trailing spaces not ignored) */
 	len = VARSIZE_ANY_EXHDR(arg);

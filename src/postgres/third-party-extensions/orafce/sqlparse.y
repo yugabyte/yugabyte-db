@@ -54,6 +54,9 @@ void orafce_sql_yyerror(List **result, const char *message);
 #define YYMALLOC	malloc	/* XXX: should use palloc? */
 #define YYFREE		free	/* XXX: should use pfree? */
 
+/* silence -Wmissing-variable-declarations */
+extern int orafce_sql_yychar;
+extern int orafce_sql_yynerrs;
 %}
 
 %locations

@@ -8,15 +8,11 @@
 #include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/sysattr.h"
-
-#if PG_VERSION_NUM >= 120000
-
 #include "access/table.h"
 
 #endif
 
-#endif
-
+#include "access/htup_details.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_extension.h"
 #include "catalog/pg_operator.h"
@@ -54,11 +50,11 @@
 static char *lc_collate_cache = NULL;
 static size_t multiplication = 1;
 
-text *def_locale = NULL;
+static text *def_locale = NULL;
 
-char *orafce_sys_guid_source;
+char	   *orafce_sys_guid_source;
 
-static Oid uuid_generate_func_oid = InvalidOid;
+static Oid	uuid_generate_func_oid = InvalidOid;
 static FmgrInfo uuid_generate_func_finfo;
 
 /* The oid of function should be valid in oene transaction */
@@ -88,25 +84,12 @@ get_extension_schema(Oid ext_oid)
 	HeapTuple	tuple;
 	ScanKeyData entry[1];
 
-#if PG_VERSION_NUM >= 120000
-
 	rel = table_open(ExtensionRelationId, AccessShareLock);
 
 	ScanKeyInit(&entry[0],
 				Anum_pg_extension_oid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(ext_oid));
-
-#else
-
-	rel = heap_open(ExtensionRelationId, AccessShareLock);
-
-	ScanKeyInit(&entry[0],
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(ext_oid));
-
-#endif
 
 	scandesc = systable_beginscan(rel, ExtensionOidIndexId, true,
 								  NULL, 1, entry);
@@ -120,16 +103,7 @@ get_extension_schema(Oid ext_oid)
 		result = InvalidOid;
 
 	systable_endscan(scandesc);
-
-#if PG_VERSION_NUM >= 120000
-
 	table_close(rel, AccessShareLock);
-
-#else
-
-	heap_close(rel, AccessShareLock);
-
-#endif
 
 	return result;
 }
@@ -147,13 +121,16 @@ get_uuid_generate_func_oid(bool *reset_fmgr)
 	{
 		if (strcmp(orafce_sys_guid_source, "gen_random_uuid") == 0)
 		{
-			/* generated uuid can have not nice features, but uses buildin functionality */
+			/*
+			 * generated uuid can have not nice features, but uses buildin
+			 * functionality
+			 */
 			result = fmgr_internal_function("gen_random_uuid");
 		}
 		else
 		{
-			Oid uuid_ossp_oid = InvalidOid;
-			Oid uuid_ossp_namespace_oid = InvalidOid;
+			Oid			uuid_ossp_oid = InvalidOid;
+			Oid			uuid_ossp_namespace_oid = InvalidOid;
 			CatCList   *catlist;
 			int			i;
 
@@ -177,22 +154,14 @@ get_uuid_generate_func_oid(bool *reset_fmgr)
 				Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
 
 				/*
-				 * Consider only procs in specified namespace,
-				 * with zero arguments and uuid type as result
+				 * Consider only procs in specified namespace, with zero
+				 * arguments and uuid type as result
 				 */
 				if (procform->pronamespace != uuid_ossp_namespace_oid ||
-					 procform->pronargs != 0 || procform->prorettype != UUIDOID)
+					procform->pronargs != 0 || procform->prorettype != UUIDOID)
 					continue;
 
-#if PG_VERSION_NUM >= 120000
-
 				result = procform->oid;
-
-#else
-
-				result = HeapTupleGetOid(proctup);
-
-#endif
 
 				break;
 			}
@@ -233,11 +202,11 @@ PG_FUNCTION_INFO_V1(ora_concat);
 Datum
 ora_concat(PG_FUNCTION_ARGS)
 {
-	text *t1;
-	text *t2;
-	int l1;
-	int l2;
-	text *result;
+	text	   *t1;
+	text	   *t2;
+	int			l1;
+	int			l2;
+	text	   *result;
 
 	if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
 		PG_RETURN_NULL();
@@ -254,7 +223,7 @@ ora_concat(PG_FUNCTION_ARGS)
 	l1 = VARSIZE_ANY_EXHDR(t1);
 	l2 = VARSIZE_ANY_EXHDR(t2);
 
-	result = palloc(l1+l2+VARHDRSZ);
+	result = palloc(l1 + l2 + VARHDRSZ);
 	memcpy(VARDATA(result), VARDATA_ANY(t1), l1);
 	memcpy(VARDATA(result) + l1, VARDATA_ANY(t2), l2);
 	SET_VARSIZE(result, l1 + l2 + VARHDRSZ);
@@ -300,7 +269,7 @@ PG_FUNCTION_INFO_V1(ora_set_nls_sort);
 Datum
 ora_set_nls_sort(PG_FUNCTION_ARGS)
 {
-	text *arg = PG_GETARG_TEXT_P(0);
+	text	   *arg = PG_GETARG_TEXT_P(0);
 
 	if (def_locale != NULL)
 	{
@@ -308,27 +277,27 @@ ora_set_nls_sort(PG_FUNCTION_ARGS)
 		def_locale = NULL;
 	}
 
-	def_locale = (text*) MemoryContextAlloc(TopMemoryContext, VARSIZE(arg));
+	def_locale = (text *) MemoryContextAlloc(TopMemoryContext, VARSIZE(arg));
 	memcpy(def_locale, arg, VARSIZE(arg));
 
 	PG_RETURN_VOID();
 }
 
-static text*
+static text *
 _nls_run_strxfrm(text *string, text *locale)
 {
 	char	   *string_str;
 	int			string_len;
 	char	   *locale_str = NULL;
-	text		*result;
+	text	   *result;
 	char	   *tmp = NULL;
 	size_t		rest = 0;
 	bool		changed_locale = false;
 
 	/*
-	 * Save the default, server-wide locale setting.
-	 * It should not change during the life-span of the server so it
-	 * is safe to save it only once, during the first invocation.
+	 * Save the default, server-wide locale setting. It should not change
+	 * during the life-span of the server so it is safe to save it only once,
+	 * during the first invocation.
 	 */
 	if (!lc_collate_cache)
 	{
@@ -370,9 +339,8 @@ _nls_run_strxfrm(text *string, text *locale)
 			*(locale_str + locale_len) = '\0';
 
 			/*
-			 * Try to set correct locales.
-			 * If setlocale failed, we know the default stayed the same,
-			 * co we can safely elog.
+			 * Try to set correct locales. If setlocale failed, we know the
+			 * default stayed the same, co we can safely elog.
 			 */
 			if (!setlocale(LC_COLLATE, locale_str))
 				elog(ERROR, "failed to set the requested LC_COLLATE value [%s]", locale_str);
@@ -382,18 +350,17 @@ _nls_run_strxfrm(text *string, text *locale)
 	}
 
 	/*
-	 * We do TRY / CATCH / END_TRY to catch ereport / elog that might
-	 * happen during palloc. Ereport during palloc would not be
-	 * nice since it would leave the server with changed locales
-	 * setting, resulting in bad things.
+	 * We do TRY / CATCH / END_TRY to catch ereport / elog that might happen
+	 * during palloc. Ereport during palloc would not be nice since it would
+	 * leave the server with changed locales setting, resulting in bad things.
 	 */
 	PG_TRY();
 	{
 		size_t		size = 0;
 
 		/*
-		 * Text transformation.
-		 * Increase the buffer until the strxfrm is able to fit.
+		 * Text transformation. Increase the buffer until the strxfrm is able
+		 * to fit.
 		 */
 		size = string_len * multiplication + 1;
 		tmp = palloc(size + VARHDRSZ);
@@ -405,17 +372,19 @@ _nls_run_strxfrm(text *string, text *locale)
 			size = rest + 1;
 			tmp = palloc(size + VARHDRSZ);
 			rest = strxfrm(tmp + VARHDRSZ, string_str, size);
+
 			/*
-			 * Cache the multiplication factor so that the next
-			 * time we start with better value.
+			 * Cache the multiplication factor so that the next time we start
+			 * with better value.
 			 */
 			if (string_len)
 				multiplication = (rest / string_len) + 2;
 		}
 	}
-	PG_CATCH ();
+	PG_CATCH();
 	{
-		if (changed_locale) {
+		if (changed_locale)
+		{
 			/*
 			 * Set original locale
 			 */
@@ -425,7 +394,7 @@ _nls_run_strxfrm(text *string, text *locale)
 
 		PG_RE_THROW();
 	}
-	PG_END_TRY ();
+	PG_END_TRY();
 
 	if (changed_locale)
 	{
@@ -454,8 +423,8 @@ PG_FUNCTION_INFO_V1(ora_nlssort);
 Datum
 ora_nlssort(PG_FUNCTION_ARGS)
 {
-	text *locale;
-	text *result;
+	text	   *locale;
+	text	   *result;
 
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
@@ -476,7 +445,7 @@ ora_nlssort(PG_FUNCTION_ARGS)
 
 	result = _nls_run_strxfrm(PG_GETARG_TEXT_PP(0), locale);
 
-	if (! result)
+	if (!result)
 		PG_RETURN_NULL();
 
 	PG_RETURN_BYTEA_P(result);
@@ -490,19 +459,19 @@ PG_FUNCTION_INFO_V1(ora_decode);
 Datum
 ora_decode(PG_FUNCTION_ARGS)
 {
-	int		nargs;
-	int		i;
-	int		retarg;
+	int			nargs;
+	int			i;
+	int			retarg;
 
 	/* default value is last arg or NULL. */
 	nargs = PG_NARGS();
 	if (nargs % 2 == 0)
 	{
 		retarg = nargs - 1;
-		nargs -= 1;		/* ignore the last argument */
+		nargs -= 1;				/* ignore the last argument */
 	}
 	else
-		retarg = -1;	/* NULL */
+		retarg = -1;			/* NULL */
 
 	if (PG_ARGISNULL(0))
 	{
@@ -518,7 +487,7 @@ ora_decode(PG_FUNCTION_ARGS)
 	else
 	{
 		FmgrInfo   *eq;
-		Oid		collation = PG_GET_COLLATION();
+		Oid			collation = PG_GET_COLLATION();
 
 		/*
 		 * On first call, get the input type's operator '=' and save at
@@ -526,9 +495,9 @@ ora_decode(PG_FUNCTION_ARGS)
 		 */
 		if (fcinfo->flinfo->fn_extra == NULL)
 		{
-			MemoryContext	oldctx;
-			Oid				typid = get_fn_expr_argtype(fcinfo->flinfo, 0);
-			Oid				eqoid = equality_oper_funcid(typid);
+			MemoryContext oldctx;
+			Oid			typid = get_fn_expr_argtype(fcinfo->flinfo, 0);
+			Oid			eqoid = equality_oper_funcid(typid);
 
 			oldctx = MemoryContextSwitchTo(fcinfo->flinfo->fn_mcxt);
 			eq = palloc(sizeof(FmgrInfo));
@@ -542,7 +511,7 @@ ora_decode(PG_FUNCTION_ARGS)
 
 		for (i = 1; i < nargs; i += 2)
 		{
-			Datum					result;
+			Datum		result;
 
 			if (PG_ARGISNULL(i))
 				continue;
@@ -569,7 +538,8 @@ ora_decode(PG_FUNCTION_ARGS)
 Oid
 equality_oper_funcid(Oid argtype)
 {
-	Oid	eq;
+	Oid			eq;
+
 	get_sort_group_operators(argtype, false, true, false, NULL, &eq, NULL, NULL);
 	return get_opcode(eq);
 }
@@ -577,7 +547,7 @@ equality_oper_funcid(Oid argtype)
 /*
  * dump(anyexpr [,format])
  *
- *  the dump function returns a varchar2 value that includes the datatype code, 
+ *  the dump function returns a varchar2 value that includes the datatype code,
  *  the length in bytes, and the internal representation of the expression.
  */
 PG_FUNCTION_INFO_V1(orafce_dump);
@@ -585,20 +555,18 @@ PG_FUNCTION_INFO_V1(orafce_dump);
 static void
 appendDatum(StringInfo str, const void *ptr, size_t length, int format)
 {
-	if (!PointerIsValid(ptr))
-		appendStringInfoChar(str, ':');
-	else
+	if (ptr)
 	{
 		const unsigned char *s = (const unsigned char *) ptr;
 		const char *formatstr;
-		size_t	i;
+		size_t		i;
 
 		switch (format)
 		{
 			case 8:
 				formatstr = "%ho";
 				break;
-			case 10: 
+			case 10:
 				formatstr = "%hu";
 				break;
 			case 16:
@@ -609,7 +577,7 @@ appendDatum(StringInfo str, const void *ptr, size_t length, int format)
 				break;
 			default:
 				elog(ERROR, "unknown format");
-				formatstr  = NULL; 	/* quite compiler */
+				formatstr = NULL;	/* quite compiler */
 		}
 
 		/* append a byte array with the specified format */
@@ -625,19 +593,21 @@ appendDatum(StringInfo str, const void *ptr, size_t length, int format)
 				appendStringInfo(str, formatstr, s[i]);
 		}
 	}
+	else
+		appendStringInfoChar(str, ':');
 }
 
 
 Datum
 orafce_dump(PG_FUNCTION_ARGS)
 {
-	Oid		valtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
-	int16	typlen;
-	bool	typbyval;
-	Size	length;
-	Datum	value;
-	int		format;
-	StringInfoData	str;
+	Oid			valtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
+	int16		typlen;
+	bool		typbyval;
+	Size		length;
+	Datum		value;
+	int			format;
+	StringInfoData str;
 
 	if (!OidIsValid(valtype))
 		elog(ERROR, "function is called from invalid context");
@@ -660,22 +630,26 @@ orafce_dump(PG_FUNCTION_ARGS)
 	}
 	else if (length <= 1)
 	{
-		char	v = DatumGetChar(value);
+		char		v = DatumGetChar(value);
+
 		appendDatum(&str, &v, sizeof(char), format);
 	}
 	else if (length <= 2)
 	{
-		int16	v = DatumGetInt16(value);
+		int16		v = DatumGetInt16(value);
+
 		appendDatum(&str, &v, sizeof(int16), format);
 	}
 	else if (length <= 4)
 	{
-		int32	v = DatumGetInt32(value);
+		int32		v = DatumGetInt32(value);
+
 		appendDatum(&str, &v, sizeof(int32), format);
 	}
 	else
 	{
-		int64	v = DatumGetInt64(value);
+		int64		v = DatumGetInt64(value);
+
 		appendDatum(&str, &v, sizeof(int64), format);
 	}
 
@@ -777,12 +751,12 @@ ora_greatest_least(FunctionCallInfo fcinfo, bool greater)
 {
 	Datum		result;
 	Datum		value;
-	ArrayType	*array;
+	ArrayType  *array;
 	ArrayIterator array_iterator;
-	Oid		element_type;
-	Oid		collation = PG_GET_COLLATION();
+	Oid			element_type;
+	Oid			collation = PG_GET_COLLATION();
 	ArrayMetaState *my_extra = NULL;
-	bool	isnull;
+	bool		isnull;
 
 	/* caller functions are marked as strict */
 	Assert(!PG_ARGISNULL(0));
@@ -801,7 +775,7 @@ ora_greatest_least(FunctionCallInfo fcinfo, bool greater)
 	if (my_extra == NULL)
 	{
 		my_extra = MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
-													  sizeof(ArrayMetaState));
+									  sizeof(ArrayMetaState));
 		my_extra->element_type = ~element_type;
 
 		fcinfo->flinfo->fn_extra = my_extra;
@@ -809,7 +783,7 @@ ora_greatest_least(FunctionCallInfo fcinfo, bool greater)
 
 	if (my_extra->element_type != element_type)
 	{
-		Oid		sortop_oid;
+		Oid			sortop_oid;
 
 		get_typlenbyvalalign(element_type,
 							 &my_extra->typlen,
@@ -837,7 +811,7 @@ ora_greatest_least(FunctionCallInfo fcinfo, bool greater)
 	{
 		/* not nulls, so run the operator */
 		if (!DatumGetBool(FunctionCall2Coll(&my_extra->proc, collation,
-										   result, value)))
+											result, value)))
 			result = value;
 	}
 
@@ -850,29 +824,6 @@ ora_greatest_least(FunctionCallInfo fcinfo, bool greater)
 
 	PG_RETURN_DATUM(result);
 }
-
-#if PG_VERSION_NUM < 120000
-
-static Datum
-FunctionCall0Coll(FmgrInfo *flinfo, Oid collation)
-{
-	FunctionCallInfoData fcinfo_data;
-	FunctionCallInfo fcinfo = &fcinfo_data;
-	Datum		result;
-
-	InitFunctionCallInfoData(*fcinfo, flinfo, 0, collation, NULL, NULL);
-
-	result = FunctionCallInvoke(fcinfo);
-
-	/* Check for null result, since caller is clearly not expecting one */
-	if (fcinfo->isnull)
-		elog(ERROR, "function %u returned NULL", flinfo->fn_oid);
-
-	return result;
-}
-
-#endif
-
 
 PG_FUNCTION_INFO_V1(orafce_sys_guid);
 
@@ -897,11 +848,11 @@ orafce_sys_guid(PG_FUNCTION_ARGS)
 
 	if (reset_fmgr)
 		fmgr_info_cxt(funcoid,
-					   &uuid_generate_func_finfo,
+					  &uuid_generate_func_finfo,
 					  TopTransactionContext);
 
-	uuid =  DatumGetUUIDP(FunctionCall0Coll(&uuid_generate_func_finfo,
-										    InvalidOid));
+	uuid = DatumGetUUIDP(FunctionCall0Coll(&uuid_generate_func_finfo,
+										   InvalidOid));
 
 	result = palloc(VARHDRSZ + UUID_LEN);
 	SET_VARSIZE(result, VARHDRSZ + UUID_LEN);

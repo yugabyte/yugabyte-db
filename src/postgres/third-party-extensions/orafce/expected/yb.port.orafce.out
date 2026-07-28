@@ -497,6 +497,20 @@ SELECT trunc(months_between('21-feb-2008 12:11:11', '2008-02-29 11:11:11'));
      0
 (1 row)
 
+SELECT sys_extract_utc(timestamptz '2024-08-17 00:41:26.655376+02');
+      sys_extract_utc       
+----------------------------
+ 2024-08-16 22:41:26.655376
+(1 row)
+
+SET timezone to 'europe/prague';
+SELECT sys_extract_utc(oracle.date '2024-08-17 00:41:26.655376');
+   sys_extract_utc   
+---------------------
+ 2024-08-16 22:41:27
+(1 row)
+
+SET timezone to default;
 select length('jmenuji se Pavel Stehule'),dbms_pipe.pack_message('jmenuji se Pavel Stehule');
  length | pack_message 
 --------+--------------
@@ -1491,6 +1505,24 @@ select nvl(NULL::int, 2);
    2
 (1 row)
 
+select nvl(NULL::double precision, 1);
+ nvl 
+-----
+   1
+(1 row)
+
+select nvl(1.1::double precision, 1);
+ nvl 
+-----
+ 1.1
+(1 row)
+
+select nvl(1.1::numeric, 1);
+ nvl 
+-----
+ 1.1
+(1 row)
+
 select nvl2('A'::text, 'B', 'C');
  nvl2 
 ------
@@ -2362,6 +2394,12 @@ select PLVstr.rvrs ('alphabet', 20, 200);
  
 (1 row)
 
+select PLVstr.rvrs ('l', -2, -5);
+ rvrs 
+------
+ 
+(1 row)
+
 select PLVstr.lstrip ('*val1|val2|val3|*', '*') = 'val1|val2|val3|*';
  ?column? 
 ----------
@@ -2600,6 +2638,47 @@ SELECT to_date('2009-01-02');
  2009-01-02 00:00:00
 (1 row)
 
+SELECT to_date('', 'yyyy-mm-dd');
+    to_date    
+---------------
+ 0001-01-01 BC
+(1 row)
+
+SELECT to_date('112012', 'J');
+    to_date    
+---------------
+ 4407-07-30 BC
+(1 row)
+
+SELECT to_date('1003/03/15', 'yyyy/mm/dd');
+  to_date   
+------------
+ 1003-03-15
+(1 row)
+
+SELECT oracle.to_date('', 'yyyy-mm-dd');
+ to_date 
+---------
+ 
+(1 row)
+
+SELECT oracle.to_date('112012', 'J');
+ERROR:  Dates before 1582-10-05 ('J2299159') cannot be verified due to a bug in Oracle.
+SELECT oracle.to_date('1003-03-15', 'yyyy-mm-dd');
+ERROR:  Dates before 1100-03-01 cannot be verified due to a bug in Oracle.
+SET orafce.oracle_compatibility_date_limit TO off;
+SELECT oracle.to_date('112012', 'J');
+        to_date         
+------------------------
+ 4407-07-30 00:00:00 BC
+(1 row)
+
+SELECT oracle.to_date('1003/03/15', 'yyyy/mm/dd');
+       to_date       
+---------------------
+ 1003-03-15 00:00:00
+(1 row)
+
 SELECT bitand(5,1), bitand(5,2), bitand(5,4);
  bitand | bitand | bitand 
 --------+--------+--------
@@ -2740,6 +2819,10 @@ select dbms_assert.object_name('pg_catalog.pg_class');
 
 select dbms_assert.object_name('dbms_assert.fooo');
 ERROR:  invalid object name
+select dbms_assert.qualified_sql_name('1broken');
+ERROR:  string is not qualified SQL name
+select dbms_assert.simple_sql_name('1broken');
+ERROR:  string is not simple SQL name
 select dbms_assert.enquote_literal(NULL);
  enquote_literal 
 -----------------
@@ -4423,36 +4506,46 @@ SELECT pos, token, class, mod FROM plvlex.tokens('select * from a.b.c join d on 
 --
 -- trigger functions
 --
-CREATE TABLE trg_test(a varchar, b int, c varchar, d date, e int);
+CREATE TABLE trg_test(a varchar, b int, c varchar, d date, e int, f char(10));
 CREATE TRIGGER trg_test_xx BEFORE INSERT OR UPDATE
   ON trg_test FOR EACH ROW EXECUTE PROCEDURE oracle.replace_empty_strings(true);
 \pset null ***
-INSERT INTO trg_test VALUES('',10, 'AHOJ', NULL, NULL);
+INSERT INTO trg_test VALUES('',10, 'AHOJ', NULL, NULL, '   ');
 WARNING:  Field "a" of table "trg_test" is empty string (replaced by NULL).
-INSERT INTO trg_test VALUES('AHOJ', NULL, '', '2020-01-01', 100);
+WARNING:  Field "f" of table "trg_test" is empty string (replaced by NULL).
+INSERT INTO trg_test VALUES('AHOJ', NULL, '', '2020-01-01', 100, 'Ahoj');
 WARNING:  Field "c" of table "trg_test" is empty string (replaced by NULL).
 SELECT * FROM (
 SELECT * FROM trg_test
 LIMIT ALL) ybview ORDER BY a DESC;
-  a   |  b  |  c   |     d      |  e  
-------+-----+------+------------+-----
- ***  |  10 | AHOJ | ***        | ***
- AHOJ | *** | ***  | 2020-01-01 | 100
+  a   |  b  |  c   |     d      |  e  |     f      
+------+-----+------+------------+-----+------------
+ ***  |  10 | AHOJ | ***        | *** | ***
+ AHOJ | *** | ***  | 2020-01-01 | 100 | Ahoj      
 (2 rows)
 
 DELETE FROM trg_test;
 DROP TRIGGER trg_test_xx ON trg_test;
 CREATE TRIGGER trg_test_xx BEFORE INSERT OR UPDATE
   ON trg_test FOR EACH ROW EXECUTE PROCEDURE oracle.replace_null_strings();
-INSERT INTO trg_test VALUES(NULL, 10, 'AHOJ', NULL, NULL);
-INSERT INTO trg_test VALUES('AHOJ', NULL, NULL, '2020-01-01', 100);
+INSERT INTO trg_test VALUES(NULL, 10, 'AHOJ', NULL, NULL, NULL);
+INSERT INTO trg_test VALUES('AHOJ', NULL, NULL, '2020-01-01', 100, 'AHOJ');
 SELECT * FROM (
 SELECT * FROM trg_test
 LIMIT ALL) ybview ORDER BY a NULLS FIRST;
-  a   |  b  |  c   |     d      |  e  
-------+-----+------+------------+-----
-      |  10 | AHOJ | ***        | ***
- AHOJ | *** |      | 2020-01-01 | 100
+  a   |  b  |  c   |     d      |  e  |     f      
+------+-----+------+------------+-----+------------
+      |  10 | AHOJ | ***        | *** |           
+ AHOJ | *** |      | 2020-01-01 | 100 | AHOJ      
+(2 rows)
+
+SELECT f::bytea FROM (
+SELECT * FROM trg_test
+LIMIT ALL) ybview ORDER BY a NULLS FIRST;
+           f            
+------------------------
+ \x20202020202020202020
+ \x41484f4a202020202020
 (2 rows)
 
 DROP TABLE trg_test;
@@ -4721,3 +4814,133 @@ SELECT v1, v2, oracle.remainder(v1::numeric, v2::numeric) FROM testorafce_remain
 (11 rows)
 
 DROP TABLE testorafce_remainder;
+select oracle.MONTHS_BETWEEN(oracle.TO_date('10/02/2025 00:00:00', 'mm/dd/yyyy HH24:MI:SS'), oracle.TO_date('10/02/2025 00:00:00', 'mm/dd/yyyy HH24:MI:SS'));
+ months_between 
+----------------
+              0
+(1 row)
+
+select oracle.MONTHS_BETWEEN(oracle.TO_date('10/01/2025 00:00:00', 'mm/dd/yyyy HH24:MI:SS'), oracle.TO_date('01/01/2022 00:00:00', 'mm/dd/yyyy HH24:MI:SS'));
+ months_between 
+----------------
+             45
+(1 row)
+
+select oracle.MONTHS_BETWEEN(oracle.TO_date('10/10/2025 00:00:00', 'mm/dd/yyyy HH24:MI:SS'), oracle.TO_date('01/10/2022 00:00:00', 'mm/dd/yyyy HH24:MI:SS'));
+ months_between 
+----------------
+             45
+(1 row)
+
+select oracle.MONTHS_BETWEEN(oracle.TO_date('10/02/2025 00:00:00', 'mm/dd/yyyy HH24:MI:SS'), oracle.TO_date('01/01/2022 00:00:00', 'mm/dd/yyyy HH24:MI:SS'));
+  months_between  
+------------------
+ 45.0322580645161
+(1 row)
+
+select oracle.MONTHS_BETWEEN(oracle.TO_date('10/02/2025 12:00:00', 'mm/dd/yyyy HH24:MI:SS'), oracle.TO_date('01/01/2022 12:00:00', 'mm/dd/yyyy HH24:MI:SS'));
+  months_between  
+------------------
+ 45.0322580645161
+(1 row)
+
+select oracle.MONTHS_BETWEEN(oracle.TO_date('10/02/2025 10:00:00', 'mm/dd/yyyy HH24:MI:SS'), oracle.TO_date('01/01/2022 10:00:00', 'mm/dd/yyyy HH24:MI:SS'));
+  months_between  
+------------------
+ 45.0322580645161
+(1 row)
+
+select oracle.MONTHS_BETWEEN(oracle.TO_date('10/02/2025 10:00:00', 'mm/dd/yyyy HH24:MI:SS'), oracle.TO_date('01/01/2022 10:30:00', 'mm/dd/yyyy HH24:MI:SS'));
+  months_between  
+------------------
+ 45.0315860215054
+(1 row)
+
+select oracle.MONTHS_BETWEEN(oracle.TO_date('10/02/2025 00:00:00', 'mm/dd/yyyy HH24:MI:SS'), oracle.TO_date('01/01/2022 10:30:00', 'mm/dd/yyyy HH24:MI:SS'));
+  months_between  
+------------------
+ 45.0181451612903
+(1 row)
+
+select oracle.MONTHS_BETWEEN(oracle.TO_date('10/02/2025 00:00:00', 'mm/dd/yyyy HH24:MI:SS'), oracle.TO_date('01/01/2022 10:00:00', 'mm/dd/yyyy HH24:MI:SS'));
+  months_between  
+------------------
+ 45.0188172043011
+(1 row)
+
+select oracle.MONTHS_BETWEEN(to_timestamp('10/02/2025 00:00:00', 'mm/dd/yyyy HH24:MI:SS'), to_timestamp('10/02/2025 00:00:00', 'mm/dd/yyyy HH24:MI:SS'));
+ months_between 
+----------------
+              0
+(1 row)
+
+select oracle.MONTHS_BETWEEN(to_timestamp('10/01/2025 00:00:00', 'mm/dd/yyyy HH24:MI:SS'), to_timestamp('01/01/2022 00:00:00', 'mm/dd/yyyy HH24:MI:SS'));
+ months_between 
+----------------
+             45
+(1 row)
+
+select oracle.MONTHS_BETWEEN(to_timestamp('10/10/2025 00:00:00', 'mm/dd/yyyy HH24:MI:SS'), to_timestamp('01/10/2022 00:00:00', 'mm/dd/yyyy HH24:MI:SS'));
+ months_between 
+----------------
+             45
+(1 row)
+
+select oracle.MONTHS_BETWEEN(to_timestamp('10/02/2025 00:00:00', 'mm/dd/yyyy HH24:MI:SS'), to_timestamp('01/01/2022 00:00:00', 'mm/dd/yyyy HH24:MI:SS'));
+  months_between  
+------------------
+ 45.0322580645161
+(1 row)
+
+select oracle.MONTHS_BETWEEN(to_timestamp('10/02/2025 12:00:00', 'mm/dd/yyyy HH24:MI:SS'), to_timestamp('01/01/2022 12:00:00', 'mm/dd/yyyy HH24:MI:SS'));
+  months_between  
+------------------
+ 45.0322580645161
+(1 row)
+
+select oracle.MONTHS_BETWEEN(to_timestamp('10/02/2025 10:00:00', 'mm/dd/yyyy HH24:MI:SS'), to_timestamp('01/01/2022 10:00:00', 'mm/dd/yyyy HH24:MI:SS'));
+  months_between  
+------------------
+ 45.0322580645161
+(1 row)
+
+select oracle.MONTHS_BETWEEN(to_timestamp('10/02/2025 10:00:00', 'mm/dd/yyyy HH24:MI:SS'), to_timestamp('01/01/2022 10:30:00', 'mm/dd/yyyy HH24:MI:SS'));
+  months_between  
+------------------
+ 45.0315860215054
+(1 row)
+
+select oracle.MONTHS_BETWEEN(to_timestamp('10/02/2025 00:00:00', 'mm/dd/yyyy HH24:MI:SS'), to_timestamp('01/01/2022 10:30:00', 'mm/dd/yyyy HH24:MI:SS'));
+  months_between  
+------------------
+ 45.0181451612903
+(1 row)
+
+select oracle.MONTHS_BETWEEN(to_timestamp('10/02/2025 00:00:00', 'mm/dd/yyyy HH24:MI:SS'), to_timestamp('01/01/2022 10:00:00', 'mm/dd/yyyy HH24:MI:SS'));
+  months_between  
+------------------
+ 45.0188172043011
+(1 row)
+
+select oracle.months_between(oracle.to_date('2024-10-01 12:34:56', 'yyyy-mm-dd hh24:mi:ss'),
+                             oracle.to_date('2024-09-01 00:00:00', 'yyyy-mm-dd hh24:mi:ss')) same_day_diff_time,
+       oracle.months_between(oracle.to_date('2024-10-02 00:00:00', 'yyyy-mm-dd hh24:mi:ss'),
+                             oracle.to_date('2024-09-01 00:00:00', 'yyyy-mm-dd hh24:mi:ss')) diff_day_same_time,
+       oracle.months_between(oracle.to_date('2024-10-02 12:34:45', 'yyyy-mm-dd hh24:mi:ss'),
+                             oracle.to_date( '2024-09-01 00:00:00', 'yyyy-mm-dd hh24:mi:ss')) diff_day_diff_time;
+ same_day_diff_time | diff_day_same_time | diff_day_diff_time 
+--------------------+--------------------+--------------------
+                  1 |   1.03225806451613 |   1.04916554659498
+(1 row)
+
+select oracle.months_between(to_timestamp('2024-10-01 12:34:56', 'yyyy-mm-dd hh24:mi:ss'),
+                             to_timestamp('2024-09-01 00:00:00', 'yyyy-mm-dd hh24:mi:ss')) same_day_diff_time,
+       oracle.months_between(to_timestamp('2024-10-02 00:00:00', 'yyyy-mm-dd hh24:mi:ss'),
+                             to_timestamp('2024-09-01 00:00:00', 'yyyy-mm-dd hh24:mi:ss')) diff_day_same_time,
+       oracle.months_between(to_timestamp('2024-10-02 12:34:45', 'yyyy-mm-dd hh24:mi:ss'),
+                             to_timestamp('2024-09-01 00:00:00', 'yyyy-mm-dd hh24:mi:ss')) diff_day_diff_time;
+ same_day_diff_time | diff_day_same_time | diff_day_diff_time 
+--------------------+--------------------+--------------------
+                  1 |   1.03225806451613 |   1.04916554659498
+(1 row)
+

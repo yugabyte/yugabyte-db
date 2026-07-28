@@ -3,7 +3,7 @@
   free available library PL/Vision. Please look www.quest.com
 
   Original author: Steven Feuerstein, 1996 - 2002
-  PostgreSQL implementation author: Pavel Stehule, 2006-2023
+  PostgreSQL implementation author: Pavel Stehule, 2006-2026
 
   This module is under BSD Licence
 
@@ -39,24 +39,15 @@ PG_FUNCTION_INFO_V1(dbms_utility_format_call_stack0);
 PG_FUNCTION_INFO_V1(dbms_utility_format_call_stack1);
 PG_FUNCTION_INFO_V1(dbms_utility_get_time);
 
-static char*
+static char *
 dbms_utility_format_call_stack(char mode)
 {
 	MemoryContext oldcontext = CurrentMemoryContext;
-	ErrorData *edata;
+	ErrorData  *edata;
 	ErrorContextCallback *econtext;
-	StringInfo   sinfo;
-
-
-#if PG_VERSION_NUM >= 130000
+	StringInfo	sinfo;
 
 	errstart(ERROR, TEXTDOMAIN);
-
-#else
-
-	errstart(ERROR, __FILE__, __LINE__, PG_FUNCNAME_MACRO, TEXTDOMAIN);
-
-#endif
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -85,22 +76,24 @@ dbms_utility_format_call_stack(char mode)
 
 	if (edata->context)
 	{
-		char *start = edata->context;
+		char	   *start = edata->context;
+
 		while (*start)
 		{
-			char *oname =  "anonymous object";
-			char *line  = "";
-			char *eol = strchr(start, '\n');
-			Oid fnoid = InvalidOid;
+			char	   *oname = "anonymous object";
+			char	   *line = "";
+			char	   *eol = strchr(start, '\n');
+			Oid			fnoid = InvalidOid;
 
 			/* first, solve multilines */
 			if (eol)
 				*eol = '\0';
 
 			/* first know format */
-			if (strncmp(start, "PL/pgSQL function ",18) == 0)
+			if (strncmp(start, "PL/pgSQL function ", 18) == 0)
 			{
-				char *p1, *p2;
+				char	   *p1,
+						   *p2;
 
 				if ((p1 = strstr(start, "function \"")))
 				{
@@ -119,12 +112,13 @@ dbms_utility_format_call_stack(char mode)
 
 					if ((p2 = strchr(p1, ')')))
 					{
-						char c = *++p2;
+						char		c = *++p2;
+
 						*p2 = '\0';
 
 						oname = pstrdup(p1);
 						fnoid = DatumGetObjectId(DirectFunctionCall1(regprocedurein,
-							CStringGetDatum(oname)));
+																	 CStringGetDatum(oname)));
 						*p2 = c;
 						start = p2;
 					}
@@ -133,8 +127,8 @@ dbms_utility_format_call_stack(char mode)
 
 				if ((p1 = strstr(start, "line ")))
 				{
-					size_t p2i;
-					char c;
+					size_t		p2i;
+					char		c;
 
 					p1 += strlen("line ");
 					p2i = strspn(p1, "0123456789");
@@ -151,15 +145,15 @@ dbms_utility_format_call_stack(char mode)
 			switch (mode)
 			{
 				case 'o':
-					appendStringInfo(sinfo, "%8x    %5s  function %s", (int)fnoid, line, oname);
+					appendStringInfo(sinfo, "%8x    %5s  function %s", (int) fnoid, line, oname);
 					break;
 
 				case 'p':
-					appendStringInfo(sinfo, "%8d    %5s  function %s", (int)fnoid, line, oname);
+					appendStringInfo(sinfo, "%8d    %5s  function %s", (int) fnoid, line, oname);
 					break;
 
 				case 's':
-					appendStringInfo(sinfo, "%d,%s,%s", (int)fnoid, line, oname);
+					appendStringInfo(sinfo, "%d,%s,%s", (int) fnoid, line, oname);
 					break;
 			}
 
@@ -187,14 +181,14 @@ dbms_utility_format_call_stack0(PG_FUNCTION_ARGS)
 Datum
 dbms_utility_format_call_stack1(PG_FUNCTION_ARGS)
 {
-	text *arg = PG_GETARG_TEXT_P(0);
-	char mode;
+	text	   *arg = PG_GETARG_TEXT_P(0);
+	char		mode;
 
 	if ((1 != VARSIZE(arg) - VARHDRSZ))
 		ereport(ERROR,
-			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			 errmsg("invalid parameter"),
-			 errdetail("Allowed only chars [ops].")));
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid parameter"),
+				 errdetail("Allowed only chars [ops].")));
 
 	mode = *VARDATA(arg);
 	switch (mode)
@@ -205,9 +199,9 @@ dbms_utility_format_call_stack1(PG_FUNCTION_ARGS)
 			break;
 		default:
 			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid parameter"),
-				 errdetail("Allowed only chars [ops].")));
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid parameter"),
+					 errdetail("Allowed only chars [ops].")));
 	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(dbms_utility_format_call_stack(mode)));
@@ -222,6 +216,6 @@ dbms_utility_get_time(PG_FUNCTION_ARGS)
 {
 	struct timeval tv;
 
-	gettimeofday(&tv,NULL);
+	gettimeofday(&tv, NULL);
 	PG_RETURN_INT32((int32) ((int64) tv.tv_sec * 100 + tv.tv_usec / 10000));
 }

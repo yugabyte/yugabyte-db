@@ -19,11 +19,11 @@ end;
 $$;
 
 \set VERBOSITY terse
---Wait for 'pipe_test_owner' created notification to be sent by session A
+--Wait for 'regress_pipe_test_owner' created notification to be sent by session A
 SELECT dbms_pipe.receive_message('pipe_test_owner_created_notifier');
 
--- create new connection under the userid of 'pipe_test_owner'
-SET SESSION AUTHORIZATION pipe_test_owner;
+-- create new connection under the userid of 'regress_pipe_test_owner'
+SET SESSION AUTHORIZATION regress_pipe_test_owner;
 
 /* Tests receive_message(text,integer), next_item_type() and all versions of
  *  unpack_message_<type>() and  purge(text)
@@ -108,17 +108,17 @@ SELECT receiveFrom('named_pipe');
 SELECT bulkReceive();
 
 -- Receives messages sent via an explicit private pipe under the same user
--- 'pipe_test_owner'
+-- 'regress_pipe_test_owner'
 SELECT dbms_pipe.receive_message('recv_private1_notifier');
 SELECT receiveFrom('private_pipe_1');
 
--- Switch user to 'pipe_test_other'
-DROP USER IF EXISTS pipe_test_other;
-CREATE USER pipe_test_other;
-SET SESSION AUTHORIZATION pipe_test_other;
+-- Switch user to 'regress_pipe_test_other'
+DROP USER IF EXISTS regress_pipe_test_other;
+CREATE USER regress_pipe_test_other;
+SET SESSION AUTHORIZATION regress_pipe_test_other;
 
 -- Try to receive messages sent via an explicit private pipe under the user
--- 'pipe_test_other' who is not the owner of pipe.
+-- 'regress_pipe_test_other' who is not the owner of pipe.
 -- insufficient privileges in case of 'private_pipe_2'.
 
 SELECT dbms_pipe.receive_message('recv_private2_notifier');
@@ -132,9 +132,9 @@ SELECT receiveFrom('public_pipe_3');
 SELECT dbms_pipe.receive_message('recv_public2_notifier');
 SELECT receiveFrom('public_pipe_4');
 
--- Switch back to user 'pipe_test_owner'
-SET SESSION AUTHORIZATION pipe_test_owner;
-DROP USER pipe_test_other;
+-- Switch back to user 'regress_pipe_test_owner'
+SET SESSION AUTHORIZATION regress_pipe_test_owner;
+DROP USER regress_pipe_test_other;
 
 -- Tests receive_message(text)
 SELECT checkReceive1('pipe_name_1');
@@ -181,4 +181,4 @@ SELECT dbms_pipe.receive_message('public_pipe_4',2);
 SELECT dbms_pipe.purge('public_pipe_4');
 
 SET SESSION AUTHORIZATION DEFAULT;
-DROP USER pipe_test_owner;
+DROP USER regress_pipe_test_owner;

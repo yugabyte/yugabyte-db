@@ -38,19 +38,19 @@ PG_FUNCTION_INFO_V1(dbms_random_value_range);
 static const double a[] =
 {
 	-3.969683028665376e+01,
-	 2.209460984245205e+02,
+	2.209460984245205e+02,
 	-2.759285104469687e+02,
-	 1.383577518672690e+02,
+	1.383577518672690e+02,
 	-3.066479806614716e+01,
-	 2.506628277459239e+00
+	2.506628277459239e+00
 };
 
 static const double b[] =
 {
 	-5.447609879822406e+01,
-	 1.615858368580409e+02,
+	1.615858368580409e+02,
 	-1.556989798598866e+02,
-	 6.680131188771972e+01,
+	6.680131188771972e+01,
 	-1.328068155288572e+01
 };
 
@@ -60,8 +60,8 @@ static const double c[] =
 	-3.223964580411365e-01,
 	-2.400758277161838e+00,
 	-2.549732539343734e+00,
-	 4.374664141464968e+00,
-	 2.938163982698783e+00
+	4.374664141464968e+00,
+	2.938163982698783e+00
 };
 
 static const double d[] =
@@ -86,7 +86,7 @@ static double ltqnorm(double p);
 Datum
 dbms_random_initialize(PG_FUNCTION_ARGS)
 {
-	int seed = PG_GETARG_INT32(0);
+	int			seed = PG_GETARG_INT32(0);
 
 	srand(seed);
 
@@ -101,7 +101,7 @@ dbms_random_initialize(PG_FUNCTION_ARGS)
 Datum
 dbms_random_normal(PG_FUNCTION_ARGS)
 {
-	float8 result;
+	float8		result;
 
 	/* need random value from (0..1) */
 	result = ltqnorm(((double) rand() + 1) / ((double) RAND_MAX + 2));
@@ -117,10 +117,11 @@ dbms_random_normal(PG_FUNCTION_ARGS)
 Datum
 dbms_random_random(PG_FUNCTION_ARGS)
 {
-	int result;
+	int			result;
+
 	/*
-	 * Oracle generator generates numebers from -2^31 and +2^31,
-	 * ANSI C only from 0 .. RAND_MAX,
+	 * Oracle generator generates numebers from -2^31 and +2^31, ANSI C only
+	 * from 0 .. RAND_MAX,
 	 */
 	result = 2 * (rand() - RAND_MAX / 2);
 
@@ -136,7 +137,7 @@ dbms_random_random(PG_FUNCTION_ARGS)
 Datum
 dbms_random_seed_int(PG_FUNCTION_ARGS)
 {
-	int seed = PG_GETARG_INT32(0);
+	int			seed = PG_GETARG_INT32(0);
 
 	srand(seed);
 
@@ -152,8 +153,8 @@ dbms_random_seed_int(PG_FUNCTION_ARGS)
 Datum
 dbms_random_seed_varchar(PG_FUNCTION_ARGS)
 {
-	text *key = PG_GETARG_TEXT_P(0);
-	Datum seed;
+	text	   *key = PG_GETARG_TEXT_P(0);
+	Datum		seed;
 
 	seed = hash_any((unsigned char *) VARDATA_ANY(key), VARSIZE_ANY_EXHDR(key));
 
@@ -177,13 +178,13 @@ static text *
 random_string(const char *charset, size_t chrset_size, int len)
 {
 	StringInfo	str;
-	int	i;
+	int			i;
 
 	str = makeStringInfo();
 	for (i = 0; i < len; i++)
 	{
 		double		r = (double) rand();
-		int pos = (int) floor((r / ((double) RAND_MAX + 1)) * chrset_size);
+		int			pos = (int) floor((r / ((double) RAND_MAX + 1)) * chrset_size);
 
 		appendStringInfoChar(str, charset[pos]);
 	}
@@ -194,10 +195,10 @@ random_string(const char *charset, size_t chrset_size, int len)
 Datum
 dbms_random_string(PG_FUNCTION_ARGS)
 {
-	char *option;
-	int	len;
+	char	   *option;
+	int			len;
 	const char *charset;
-	size_t chrset_size;
+	size_t		chrset_size;
 
 	const char *alpha_mixed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 	const char *lower_only = "abcdefghijklmnopqrstuvwxyz";
@@ -246,7 +247,10 @@ dbms_random_string(PG_FUNCTION_ARGS)
 			chrset_size = strlen(printable);
 			break;
 
-		/* Otherwise the returning string is in uppercase alpha characters. */
+			/*
+			 * Otherwise the returning string is in uppercase alpha
+			 * characters.
+			 */
 		default:
 			charset = upper_only;
 			chrset_size = strlen(upper_only);
@@ -276,7 +280,7 @@ dbms_random_terminate(PG_FUNCTION_ARGS)
 Datum
 dbms_random_value(PG_FUNCTION_ARGS)
 {
-	float8 result;
+	float8		result;
 
 	/* result [0.0 - 1.0) */
 	result = (double) rand() / ((double) RAND_MAX + 1);
@@ -293,18 +297,29 @@ dbms_random_value(PG_FUNCTION_ARGS)
 Datum
 dbms_random_value_range(PG_FUNCTION_ARGS)
 {
-	float8 low = PG_GETARG_FLOAT8(0);
-	float8 high = PG_GETARG_FLOAT8(1);
-	float8 result;
+	float8		low = PG_GETARG_FLOAT8(0);
+	float8		high = PG_GETARG_FLOAT8(1);
+	float8		result;
 
 	if (low > high)
-		PG_RETURN_NULL();
+	{
+		float8		aux;
 
-	result = ((double) rand() / ((double) RAND_MAX + 1)) * ( high -  low) + low;
+		aux = low;
+		low = high;
+		high = aux;
+	}
+
+	/*
+	 * in the case high == low, we don't need to calculate result, but then we
+	 * change order of calls rand() functions, and this should break
+	 * customer's regress tests. To minimize impact on regress tests, we use
+	 * same formula for this case too.
+	 */
+	result = ((double) rand() / ((double) RAND_MAX + 1)) * (high - low) + low;
 
 	PG_RETURN_FLOAT8(result);
 }
-
 
 /*
  * Lower tail quantile for standard normal distribution function.
@@ -328,7 +343,8 @@ dbms_random_value_range(PG_FUNCTION_ARGS)
 static double
 ltqnorm(double p)
 {
-	double q, r;
+	double		q,
+				r;
 
 	errno = 0;
 
@@ -340,33 +356,33 @@ ltqnorm(double p)
 	else if (p == 0)
 	{
 		errno = ERANGE;
-		return -HUGE_VAL /* minus "infinity" */;
+		return -HUGE_VAL /* minus "infinity" */ ;
 	}
 	else if (p == 1)
 	{
 		errno = ERANGE;
-		return HUGE_VAL /* "infinity" */;
+		return HUGE_VAL /* "infinity" */ ;
 	}
 	else if (p < LOW)
 	{
 		/* Rational approximation for lower region */
-		q = sqrt(-2*log(p));
-		return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
-			((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+		q = sqrt(-2 * log(p));
+		return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+			((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
 	}
 	else if (p > HIGH)
 	{
 		/* Rational approximation for upper region */
-		q  = sqrt(-2*log(1-p));
-		return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
-			((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+		q = sqrt(-2 * log(1 - p));
+		return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+			((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
 	}
 	else
 	{
 		/* Rational approximation for central region */
 		q = p - 0.5;
-		r = q*q;
-		return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q /
-			(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+		r = q * q;
+		return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q /
+			(((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
 	}
 }

@@ -23,16 +23,16 @@ DROP TABLE IF EXISTS TEMP;
 CREATE TABLE TEMP(id integer,name text);
 INSERT INTO TEMP VALUES (1,'bob'),(2,'rob'),(3,'john');
 
-DROP USER IF EXISTS pipe_test_owner;
-CREATE ROLE pipe_test_owner WITH CREATEROLE;
-ALTER TABLE TEMP OWNER TO pipe_test_owner;
+DROP USER IF EXISTS regress_pipe_test_owner;
+CREATE ROLE regress_pipe_test_owner WITH CREATEROLE;
+ALTER TABLE TEMP OWNER TO regress_pipe_test_owner;
 SET client_min_messages = notice;
 
--- Notify session B of 'pipe_test_owner' having been created.
+-- Notify session B of 'regress_pipe_test_owner' having been created.
 SELECT dbms_pipe.pack_message(1);
 SELECT dbms_pipe.send_message('pipe_test_owner_created_notifier');
--- Create a new connection under the userid of pipe_test_owner
-SET SESSION AUTHORIZATION pipe_test_owner;
+-- Create a new connection under the userid of regress_pipe_test_owner
+SET SESSION AUTHORIZATION regress_pipe_test_owner;
 
 /* create an implicit pipe and sends message using
  * send_message(text,integer,integer)

@@ -60,8 +60,8 @@ plunit_assert_true(PG_FUNCTION_ARGS)
 Datum
 plunit_assert_true_message(PG_FUNCTION_ARGS)
 {
-	char	*message = assert_get_message(fcinfo, 2, "plunit.assert_true exception");
-	bool condition = PG_GETARG_BOOL(0);
+	char	   *message = assert_get_message(fcinfo, 2, "plunit.assert_true exception");
+	bool		condition = PG_GETARG_BOOL(0);
 
 	if (PG_ARGISNULL(0) || !condition)
 		ereport(ERROR,
@@ -94,8 +94,8 @@ plunit_assert_false(PG_FUNCTION_ARGS)
 Datum
 plunit_assert_false_message(PG_FUNCTION_ARGS)
 {
-	char	*message = assert_get_message(fcinfo, 2, "plunit.assert_false exception");
-	bool condition = PG_GETARG_BOOL(0);
+	char	   *message = assert_get_message(fcinfo, 2, "plunit.assert_false exception");
+	bool		condition = PG_GETARG_BOOL(0);
 
 	if (PG_ARGISNULL(0) || condition)
 		ereport(ERROR,
@@ -128,7 +128,7 @@ plunit_assert_null(PG_FUNCTION_ARGS)
 Datum
 plunit_assert_null_message(PG_FUNCTION_ARGS)
 {
-	char	*message = assert_get_message(fcinfo, 2, "plunit.assert_null exception");
+	char	   *message = assert_get_message(fcinfo, 2, "plunit.assert_null exception");
 
 	if (!PG_ARGISNULL(0))
 		ereport(ERROR,
@@ -161,7 +161,7 @@ plunit_assert_not_null(PG_FUNCTION_ARGS)
 Datum
 plunit_assert_not_null_message(PG_FUNCTION_ARGS)
 {
-	char	*message = assert_get_message(fcinfo, 2, "plunit.assert_not_null exception");
+	char	   *message = assert_get_message(fcinfo, 2, "plunit.assert_not_null exception");
 
 	if (PG_ARGISNULL(0))
 		ereport(ERROR,
@@ -197,11 +197,11 @@ plunit_assert_not_null_message(PG_FUNCTION_ARGS)
 static char *
 assert_get_message(FunctionCallInfo fcinfo, int nargs, char *message)
 {
-	char *result;
+	char	   *result;
 
 	if (PG_NARGS() == nargs)
 	{
-		text	*msg;
+		text	   *msg;
 
 		if (PG_ARGISNULL(nargs - 1))
 			ereport(ERROR,
@@ -222,15 +222,15 @@ assert_get_message(FunctionCallInfo fcinfo, int nargs, char *message)
 static bool
 assert_equals_base(FunctionCallInfo fcinfo)
 {
-	Datum 		value1 = PG_GETARG_DATUM(0);
+	Datum		value1 = PG_GETARG_DATUM(0);
 	Datum		value2 = PG_GETARG_DATUM(1);
-	Oid		*ptr;
+	Oid		   *ptr;
 
 	ptr = (Oid *) fcinfo->flinfo->fn_extra;
 	if (ptr == NULL)
 	{
-		Oid	  valtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
-		Oid eqopfcid;
+		Oid			valtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
+		Oid			eqopfcid;
 
 		if (!OidIsValid(valtype))
 			elog(ERROR, "could not determine data type of input");
@@ -239,12 +239,12 @@ assert_equals_base(FunctionCallInfo fcinfo)
 
 		if (!OidIsValid(eqopfcid))
 			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				errmsg("unknown equal operand for datatype")));
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("unknown equal operand for datatype")));
 
 		/* First time calling for current query: allocate storage */
 		fcinfo->flinfo->fn_extra = MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
-										    sizeof(Oid));
+													  sizeof(Oid));
 		ptr = (Oid *) fcinfo->flinfo->fn_extra;
 		*ptr = eqopfcid;
 	}
@@ -261,7 +261,7 @@ plunit_assert_equals(PG_FUNCTION_ARGS)
 Datum
 plunit_assert_equals_message(PG_FUNCTION_ARGS)
 {
-	char *message = assert_get_message(fcinfo, 3, "plunit.assert_equal exception");
+	char	   *message = assert_get_message(fcinfo, 3, "plunit.assert_equal exception");
 
 	/* skip all tests for NULL value */
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
@@ -288,11 +288,11 @@ plunit_assert_equals_range(PG_FUNCTION_ARGS)
 static bool
 assert_equals_range_base(FunctionCallInfo fcinfo)
 {
-	float8	expected_value;
-	float8	actual_value;
-	float8	range_value;
+	float8		expected_value;
+	float8		actual_value;
+	float8		range_value;
 
-        range_value = PG_GETARG_FLOAT8(2);
+	range_value = PG_GETARG_FLOAT8(2);
 	if (range_value < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -307,7 +307,7 @@ assert_equals_range_base(FunctionCallInfo fcinfo)
 Datum
 plunit_assert_equals_range_message(PG_FUNCTION_ARGS)
 {
-	char *message = assert_get_message(fcinfo, 4, "plunit.assert_equal exception");
+	char	   *message = assert_get_message(fcinfo, 4, "plunit.assert_equal exception");
 
 	/* skip all tests for NULL value */
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2))
@@ -356,7 +356,7 @@ plunit_assert_not_equals(PG_FUNCTION_ARGS)
 Datum
 plunit_assert_not_equals_message(PG_FUNCTION_ARGS)
 {
-	char *message = assert_get_message(fcinfo, 3, "plunit.assert_not_equal exception");
+	char	   *message = assert_get_message(fcinfo, 3, "plunit.assert_not_equal exception");
 
 	/* skip all tests for NULL value */
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
@@ -383,7 +383,7 @@ plunit_assert_not_equals_range(PG_FUNCTION_ARGS)
 Datum
 plunit_assert_not_equals_range_message(PG_FUNCTION_ARGS)
 {
-	char *message = assert_get_message(fcinfo, 4, "plunit.assert_not_equal exception");
+	char	   *message = assert_get_message(fcinfo, 4, "plunit.assert_not_equal exception");
 
 	/* skip all tests for NULL value */
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2))
@@ -423,13 +423,12 @@ plunit_fail(PG_FUNCTION_ARGS)
 Datum
 plunit_fail_message(PG_FUNCTION_ARGS)
 {
-	char *message = assert_get_message(fcinfo, 1, "plunit.assert_fail exception");
+	char	   *message = assert_get_message(fcinfo, 1, "plunit.assert_fail exception");
 
 	ereport(ERROR,
-				(errcode(ERRCODE_CHECK_VIOLATION),
-				 errmsg("%s", message),
-				 errdetail("Plunit.assertation (assert_fail).")));
+			(errcode(ERRCODE_CHECK_VIOLATION),
+			 errmsg("%s", message),
+			 errdetail("Plunit.assertation (assert_fail).")));
 
 	PG_RETURN_VOID();
 }
-

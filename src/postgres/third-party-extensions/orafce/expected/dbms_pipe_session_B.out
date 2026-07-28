@@ -37,7 +37,7 @@ NOTICE:  RECEIVE 24: (2,rob)
 (1 row)
 
 -- Receives messages sent via an explicit private pipe under the same user
--- 'pipe_test_owner'
+-- 'regress_pipe_test_owner'
 SELECT dbms_pipe.receive_message('recv_private1_notifier');
  receive_message 
 -----------------
@@ -59,13 +59,13 @@ NOTICE:  RECEIVE 24: (2,rob)
  
 (1 row)
 
--- Switch user to 'pipe_test_other'
-DROP USER IF EXISTS pipe_test_other;
-NOTICE:  role "pipe_test_other" does not exist, skipping
-CREATE USER pipe_test_other;
-SET SESSION AUTHORIZATION pipe_test_other;
+-- Switch user to 'regress_pipe_test_other'
+DROP USER IF EXISTS regress_pipe_test_other;
+NOTICE:  role "regress_pipe_test_other" does not exist, skipping
+CREATE USER regress_pipe_test_other;
+SET SESSION AUTHORIZATION regress_pipe_test_other;
 -- Try to receive messages sent via an explicit private pipe under the user
--- 'pipe_test_other' who is not the owner of pipe.
+-- 'regress_pipe_test_other' who is not the owner of pipe.
 -- insufficient privileges in case of 'private_pipe_2'.
 SELECT dbms_pipe.receive_message('recv_private2_notifier');
  receive_message 
@@ -119,9 +119,9 @@ NOTICE:  RECEIVE 24: (2,rob)
  
 (1 row)
 
--- Switch back to user 'pipe_test_owner'
-SET SESSION AUTHORIZATION pipe_test_owner;
-DROP USER pipe_test_other;
+-- Switch back to user 'regress_pipe_test_owner'
+SET SESSION AUTHORIZATION regress_pipe_test_owner;
+DROP USER regress_pipe_test_other;
 -- Tests receive_message(text)
 SELECT checkReceive1('pipe_name_1');
 NOTICE:  RECEIVE checking one-argument send_message()
@@ -142,10 +142,10 @@ SELECT name, items, "limit", private, owner
 FROM dbms_pipe.db_pipes
 WHERE name LIKE 'private%'
 ORDER BY name;
-      name      | items | limit | private |      owner      
-----------------+-------+-------+---------+-----------------
- private_pipe_1 |     0 |    10 | t       | pipe_test_owner
- private_pipe_2 |     9 |    10 | t       | pipe_test_owner
+      name      | items | limit | private |          owner          
+----------------+-------+-------+---------+-------------------------
+ private_pipe_1 |     0 |    10 | t       | regress_pipe_test_owner
+ private_pipe_2 |     9 |    10 | t       | regress_pipe_test_owner
 (2 rows)
 
 -- Tests dbms_pipe.__list_pipes(); attribute size is not included
@@ -154,11 +154,11 @@ SELECT name, items, "limit", private, owner
 FROM dbms_pipe.__list_pipes()  AS  (name varchar, items int4, siz int4, "limit" int4, private bool, owner varchar)
 WHERE name <> 'pipe_name_4'
 ORDER BY 1;
-      name      | items | limit | private |      owner      
-----------------+-------+-------+---------+-----------------
+      name      | items | limit | private |          owner          
+----------------+-------+-------+---------+-------------------------
  pipe_name_3    |     1 |       | f       | 
- private_pipe_1 |     0 |    10 | t       | pipe_test_owner
- private_pipe_2 |     9 |    10 | t       | pipe_test_owner
+ private_pipe_1 |     0 |    10 | t       | regress_pipe_test_owner
+ private_pipe_2 |     9 |    10 | t       | regress_pipe_test_owner
  public_pipe_3  |     0 |    10 | f       | 
  public_pipe_4  |     0 |    10 | f       | 
 (5 rows)
@@ -245,4 +245,4 @@ SELECT dbms_pipe.purge('public_pipe_4');
 (1 row)
 
 SET SESSION AUTHORIZATION DEFAULT;
-DROP USER pipe_test_owner;
+DROP USER regress_pipe_test_owner;

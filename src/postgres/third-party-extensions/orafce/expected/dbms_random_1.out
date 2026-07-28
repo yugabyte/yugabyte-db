@@ -6,15 +6,15 @@ SELECT dbms_random.initialize(8);
 (1 row)
 
 SELECT dbms_random.normal()::numeric(10, 8);
-   normal    
--------------
- -0.37787769
+   normal   
+------------
+ 0.12583199
 (1 row)
 
 SELECT dbms_random.normal()::numeric(10, 8);
-   normal   
-------------
- 0.80499804
+   normal    
+-------------
+ -0.61543969
 (1 row)
 
 SELECT dbms_random.seed(8);
@@ -26,7 +26,7 @@ SELECT dbms_random.seed(8);
 SELECT dbms_random.random();
    random   
 ------------
- -632387854
+ 1951052976
 (1 row)
 
 SELECT dbms_random.seed('test');
@@ -38,31 +38,31 @@ SELECT dbms_random.seed('test');
 SELECT dbms_random.string('U',5);
  string 
 --------
- IGXBB
+ LWLPN
 (1 row)
 
 SELECT dbms_random.string('P',2);
  string 
 --------
- R`
+ \a
 (1 row)
 
 SELECT dbms_random.string('x',4);
  string 
 --------
- P1CB
+ HJPS
 (1 row)
 
 SELECT dbms_random.string('a',2);
  string 
 --------
- yV
+ Hg
 (1 row)
 
 SELECT dbms_random.string('l',3);
  string 
 --------
- ccw
+ fwz
 (1 row)
 
 SELECT dbms_random.seed(5);
@@ -74,15 +74,73 @@ SELECT dbms_random.seed(5);
 SELECT dbms_random.value()::numeric(10, 8);
    value    
 ------------
- 0.27474560
+ 0.08003045
 (1 row)
 
 SELECT dbms_random.value(10,15)::numeric(10, 8);
     value    
 -------------
- 10.23233882
+ 12.24227702
 (1 row)
 
+SELECT dbms_random.value(10,10)::numeric(10, 8);
+    value    
+-------------
+ 10.00000000
+(1 row)
+
+SELECT dbms_random.value(15,10)::numeric(10, 8);
+    value    
+-------------
+ 14.47000931
+(1 row)
+
+SELECT dbms_random.seed(5);
+ seed 
+------
+ 
+(1 row)
+
+SELECT dbms_random.string('u', 10);
+   string   
+------------
+ HBZCDCHLMX
+(1 row)
+
+SELECT dbms_random.string('l', 10);
+   string   
+------------
+ ahzfkgjhkg
+(1 row)
+
+SELECT dbms_random.string('a', 10);
+   string   
+------------
+ pxxodQYutY
+(1 row)
+
+SELECT dbms_random.string('x', 10);
+   string   
+------------
+ HN0GQ5J0M1
+(1 row)
+
+SELECT dbms_random.string('p', 10);
+   string   
+------------
+ VEhX"|=i1&
+(1 row)
+
+SELECT dbms_random.string('uu', 10); -- error
+ERROR:  this first parameter value is more than 1 characters long
+SELECT dbms_random.string('w', 10);
+   string   
+------------
+ MIAXPCTOMD
+(1 row)
+
+-- although it is useless, and deprecated on Oracle
+-- it should be last command
 SELECT dbms_random.terminate();
  terminate 
 -----------
