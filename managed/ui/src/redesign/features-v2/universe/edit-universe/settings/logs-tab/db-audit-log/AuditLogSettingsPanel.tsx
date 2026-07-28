@@ -4,11 +4,10 @@ import { mui, YBSelectField, YBToggle, YBToggleField } from '@yugabyte-ui-librar
 import { useForm } from 'react-hook-form';
 import { Trans, useTranslation } from 'react-i18next';
 import { useQueryClient } from 'react-query';
-import { toast } from 'react-toastify';
+import clsx from 'clsx';
 
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import { YBModal, YBTooltip } from '@app/redesign/components';
-import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
 import { taskQueryKey, universeQueryKey } from '@app/redesign/helpers/api';
 import {
   getGetUniverseQueryKey,
@@ -16,6 +15,7 @@ import {
   useGetExportTelemetryConfig
 } from '@app/v2/api/universe/universe';
 import { YSQLAuditConfigClassesItem } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { handleServerError } from '@app/utils/errorHandlingUtils';
 import { AuditLogConfirmationModal } from './AuditLogConfirmationModal';
 import {
   AUDIT_LOG_TRANSLATION_KEY_PREFIX,
@@ -33,7 +33,6 @@ import {
 
 import InfoIcon from '@app/redesign/assets/approved/info-new.svg';
 import TreeStructureIcon from '@app/redesign/assets/approved/tree-structure.svg';
-import clsx from 'clsx';
 
 const { MenuItem } = mui;
 
@@ -45,6 +44,7 @@ interface AuditLogSettingsPanelProps {
   operation: AuditLogOperation;
   universeUuid: string;
   universeName: string;
+  replicationFactor: number;
   onClose: () => void;
 }
 
@@ -233,6 +233,7 @@ export const AuditLogSettingsPanel: FC<AuditLogSettingsPanelProps> = ({
   operation,
   universeUuid,
   universeName,
+  replicationFactor,
   onClose
 }) => {
   const classes = useStyles();
@@ -268,7 +269,6 @@ export const AuditLogSettingsPanel: FC<AuditLogSettingsPanelProps> = ({
       {
         uniUUID: universeUuid,
         data: {
-          upgrade_options: { rolling_upgrade: true },
           telemetry_config: buildTelemetryConfig(values, currentTelemetryConfig)
         }
       },
@@ -282,7 +282,12 @@ export const AuditLogSettingsPanel: FC<AuditLogSettingsPanelProps> = ({
           onClose();
         },
         onError: (error) => {
-          toast.error(createErrorMessage(error));
+          handleServerError(error, {
+            customErrorLabel:
+              operation === 'create'
+                ? t('toast.enableRequestFailedLabel')
+                : t('toast.updateRequestFailedLabel')
+          });
           setIsConfirmationOpen(false);
         }
       }
@@ -469,6 +474,7 @@ export const AuditLogSettingsPanel: FC<AuditLogSettingsPanelProps> = ({
         <AuditLogConfirmationModal
           operation={operation}
           universeName={universeName}
+          replicationFactor={replicationFactor}
           isSubmitting={configureTelemetry.isLoading}
           onSubmit={onConfirm}
           modalProps={{

@@ -1382,8 +1382,8 @@ TEST_P(PgIndexBackfillSnapshotTooOld, SnapshotTooOld) {
 // Verify that compacting the INDEX TABLE after the history retention interval does NOT cause
 // backfill writes to fail with "Snapshot too old".  Although the index tablet's history cutoff
 // advances past the backfill safe time, the index table has retain_delete_markers=true during
-// backfill.  This means compaction preserves all data (delete markers and regular values), so
-// RegisterReaderTimestamp skips the SnapshotTooOld check and allows the read to proceed.
+// backfill, so RegisterReaderTimestamp skips the SnapshotTooOld check and allows the read to
+// proceed (see the comment there for why retaining delete markers makes that safe).
 //
 // A UNIQUE index is used because unique index backfill uses PGSQL_INSERT (which requires a read
 // snapshot for duplicate checking via ScopedReadOperation::Create), whereas non-unique uses

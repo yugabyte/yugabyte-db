@@ -614,8 +614,16 @@ TEST_F(DeleteTableTest, DeleteTableWithConcurrentWritesNoRestarts) {
         [&workload] { return workload.rows_inserted() > 100; }, 60s,
         "Waiting until we have inserted some data...", 10ms));
 
-    auto tablets = inspect_->ListTabletsWithDataOnTS(1);
-    ASSERT_EQ(1, tablets.size());
+    // Wait until TS 1 has on-disk WAL data for the tablet before reading its id.
+    // rows_inserted() only guarantees a majority (2/3) has committed the writes, so a follower
+    // replica on TS 1 may not have created its WAL directory yet.
+    std::vector<std::string> tablets;
+    ASSERT_OK(LoggedWaitFor(
+        [&] {
+          tablets = inspect_->ListTabletsWithDataOnTS(1);
+          return tablets.size() == 1;
+        },
+        60s, "Waiting for tablet WAL data to appear on TS 1...", 10ms));
     const auto& tablet_id = tablets[0];
 
     ASSERT_NO_FATALS(DeleteTable(workload.table_name()));

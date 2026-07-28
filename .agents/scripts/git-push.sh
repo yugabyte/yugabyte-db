@@ -210,14 +210,6 @@ if [[ -n "$pre_push_sha" ]] && command -v gh >/dev/null 2>&1; then
       echo ">>> new commits in this push:"
       echo "$new_subjects"
 
-      # Re-trigger Gemini Code Assist on the new commits.
-      if gh pr comment "$pr_num" -R "$GH_REPO" --body "/gemini review" \
-            >/dev/null 2>&1; then
-        echo ">>> requested Gemini review (/gemini review)"
-      else
-        echo "warn: failed to post '/gemini review' on PR #${pr_num}" >&2
-      fi
-
       echo ""
       echo ">>> Review the PR title and summary. Update either if these commits"
       echo "    significantly shift scope, approach, or component. Leave them"

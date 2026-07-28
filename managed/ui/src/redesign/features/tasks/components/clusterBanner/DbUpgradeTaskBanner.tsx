@@ -62,15 +62,21 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
   const { ysql_major_version_upgrade: isYsqlMajorUpgrade = false } =
     dbUpgradeMetadataQuery.data ?? {};
   let bannerComponent = null;
-  const openDbUpgradeManagementSidePanelButton = (
+  const getOpenDbUpgradeManagementSidePanelButton = (buttonLabel: string) => (
     <YBButton
       variant="secondary"
       size="medium"
       data-testid="open-upgrade-monitor-button"
       onClick={() => setIsDbUpgradeManagementSidePanelOpen(true)}
     >
-      {t('actions.openUpgradeMonitor')}
+      {buttonLabel}
     </YBButton>
+  );
+  const openUpgradeMonitorButton = getOpenDbUpgradeManagementSidePanelButton(
+    t('actions.openUpgradeMonitor')
+  );
+  const openUpgradeMonitorToContinueButton = getOpenDbUpgradeManagementSidePanelButton(
+    t('actions.openUpgradeMonitorToContinue')
   );
   switch (task.status) {
     case TaskState.RUNNING:
@@ -79,7 +85,7 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
           type={ClusterOperationBannerType.IN_PROGRESS}
           title={t('upgradingSoftware.title')}
           progressPercent={task.percentComplete ?? 0}
-          actions={openDbUpgradeManagementSidePanelButton}
+          actions={openUpgradeMonitorButton}
           description={
             <Trans
               t={t}
@@ -109,7 +115,7 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
           type={ClusterOperationBannerType.PENDING_ACTION_YELLOW}
           title={t('upgradePausedForMonitoring.title')}
           progressPercent={task.percentComplete ?? 0}
-          actions={openDbUpgradeManagementSidePanelButton}
+          actions={openUpgradeMonitorToContinueButton}
           description={t('upgradePausedForMonitoring.description')}
         />
       );
@@ -123,7 +129,7 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
           <ClusterOperationBanner
             type={ClusterOperationBannerType.PENDING_ACTION_YELLOW}
             title={t('finalizeOrRollBack.title')}
-            actions={openDbUpgradeManagementSidePanelButton}
+            actions={openUpgradeMonitorToContinueButton}
             description={t('finalizeOrRollBack.description')}
           />
         );
@@ -156,6 +162,7 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
       }
       break;
     case TaskState.FAILURE:
+    case TaskState.ABORTED:
       if (
         universeDetailsQuery.data?.info?.software_upgrade_state ===
         UniverseInfoSoftwareUpgradeState.Ready
@@ -165,7 +172,7 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
             type={ClusterOperationBannerType.ALERT}
             title={t('upgradeAborted.title')}
             description={t('upgradeAborted.description')}
-            actions={openDbUpgradeManagementSidePanelButton}
+            actions={openUpgradeMonitorButton}
           />
         );
       } else {
@@ -174,14 +181,13 @@ export const DbUpgradeTaskBanner = ({ task, universeUuid }: DbUpgradeTaskBannerP
             type={ClusterOperationBannerType.ERROR}
             title={t('softwareUpgradeFailed.title')}
             progressPercent={task.percentComplete ?? 0}
-            actions={openDbUpgradeManagementSidePanelButton}
+            actions={openUpgradeMonitorButton}
           />
         );
       }
       break;
     case TaskState.CREATED:
     case TaskState.INITIALIZING:
-    case TaskState.ABORTED:
     case TaskState.ABORT:
     case TaskState.UNKNOWN:
       bannerComponent = null;

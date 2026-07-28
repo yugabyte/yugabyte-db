@@ -2183,7 +2183,8 @@
             "RunScript",
             "CreateFileCollection",
             "DownloadFileCollection",
-            "DeleteFileCollection"
+            "DeleteFileCollection",
+            "UpdateClusters"
           ],
           "example" : "Create User",
           "readOnly" : true,
@@ -14554,6 +14555,11 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "embedded" : {
+          "description" : "True when this collector is the embedded PA managed by EmbeddedCollectorInitializer",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "inUseStatus" : {
           "description" : "In Use Status",
           "enum" : [
@@ -14667,6 +14673,11 @@
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
+        },
+        "embedded" : {
+          "description" : "True when this collector is the embedded PA managed by EmbeddedCollectorInitializer",
+          "readOnly" : true,
+          "type" : "boolean"
         },
         "metricsPassword" : {
           "description" : "Metrics API Password",

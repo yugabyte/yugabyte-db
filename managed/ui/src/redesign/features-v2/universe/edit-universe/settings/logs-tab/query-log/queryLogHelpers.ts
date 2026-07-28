@@ -1,15 +1,14 @@
 import * as yup from 'yup';
 import { TFunction } from 'i18next';
 import {
-  AuditLogsTelemetrySpec,
   TelemetryConfig,
-  YSQLAuditConfig,
-  YSQLAuditConfigLogLevel,
   YSQLQueryLogConfig,
   YSQLQueryLogConfigLogErrorVerbosity,
   YSQLQueryLogConfigLogMinErrorStatement,
   YSQLQueryLogConfigLogStatement
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+
+import { getPreservedTelemetrySections } from '../../shared/telemetryConfigPreserveUtils';
 
 export const QUERY_LOG_TRANSLATION_KEY_PREFIX = 'editUniverse.logs.queryLogSettings';
 
@@ -23,10 +22,6 @@ export const LOG_MIN_DURATION_MAX_VALUE = 2_147_483_647;
 
 // When min-duration logging is disabled, the backend expects -1.
 const LOG_MIN_DURATION_DISABLED = -1;
-
-// Matches the default in the legacy audit-log UI when log level is unset.
-const DEFAULT_AUDIT_LOG_LEVEL = YSQLAuditConfigLogLevel.LOG;
-const DEFAULT_LOG_PARAMETER_MAX_SIZE = 0;
 
 export type QueryLogOperation = 'create' | 'edit';
 
@@ -67,12 +62,11 @@ export const getDefaultFormValues = (
   };
 };
 
-const buildYsqlQueryLogConfig = (
+const buildEnabledYsqlQueryLogConfig = (
   values: QueryLogFormValues,
   currentYsqlConfig?: YSQLQueryLogConfig
 ): YSQLQueryLogConfig => ({
-  // Required by POST validation even though the field is read-only in the OpenAPI schema.
-  enabled: currentYsqlConfig?.enabled ?? true,
+  enabled: true,
   log_statement: values.includeLogStatement
     ? values.logStatement
     : YSQLQueryLogConfigLogStatement.NONE,
@@ -91,51 +85,30 @@ const buildYsqlQueryLogConfig = (
   log_line_prefix: currentYsqlConfig?.log_line_prefix
 });
 
-const normalizeYsqlAuditConfig = (ysqlAuditConfig: YSQLAuditConfig): YSQLAuditConfig => ({
-  ...ysqlAuditConfig,
-  enabled: ysqlAuditConfig.enabled ?? true,
-  log_level: ysqlAuditConfig.log_level ?? DEFAULT_AUDIT_LOG_LEVEL,
-  log_parameter_max_size:
-    ysqlAuditConfig.log_parameter_max_size ?? DEFAULT_LOG_PARAMETER_MAX_SIZE
-});
-
-const preserveAuditLogs = (auditLogs: AuditLogsTelemetrySpec): AuditLogsTelemetrySpec => ({
-  ...auditLogs,
-  ...(auditLogs.ysql_audit_config && {
-    ysql_audit_config: normalizeYsqlAuditConfig(auditLogs.ysql_audit_config)
-  })
-});
-
-/**
- * The export-telemetry-configs API fully replaces the telemetry config, so we preserve the
- * existing audit_logs and metrics sections and only modify query_logs. Existing query-log
- * exporters are preserved as-is (export selection is managed via Telemetry Export).
- *
- * The GET returns audit_logs/metrics as null when those exports are disabled, but the API
- * rejects null sections, so we only carry them over when they are actually configured.
- */
-export const buildTelemetryConfig = (
+export const buildEnabledTelemetryConfig = (
   values: QueryLogFormValues,
   currentTelemetryConfig?: TelemetryConfig
 ): TelemetryConfig => {
-  const telemetryConfig: TelemetryConfig = {
+  const preserved = getPreservedTelemetrySections(currentTelemetryConfig);
+
+  return {
+    ...preserved,
     query_logs: {
-      ysql_query_log_config: buildYsqlQueryLogConfig(
+      ysql_query_log_config: buildEnabledYsqlQueryLogConfig(
         values,
         currentTelemetryConfig?.query_logs?.ysql_query_log_config
       ),
       exporters: currentTelemetryConfig?.query_logs?.exporters ?? []
     }
   };
+};
 
-  if (currentTelemetryConfig?.audit_logs) {
-    telemetryConfig.audit_logs = preserveAuditLogs(currentTelemetryConfig.audit_logs);
-  }
-  if (currentTelemetryConfig?.metrics) {
-    telemetryConfig.metrics = currentTelemetryConfig.metrics;
-  }
-
-  return telemetryConfig;
+export const buildDisableTelemetryConfig = (
+  currentTelemetryConfig?: TelemetryConfig
+): TelemetryConfig => {
+  const preserved = getPreservedTelemetrySections(currentTelemetryConfig);
+  delete preserved.query_logs;
+  return preserved;
 };
 
 export const getValidationSchema = (t: TFunction) =>

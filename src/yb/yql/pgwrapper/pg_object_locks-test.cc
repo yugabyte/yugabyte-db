@@ -598,11 +598,15 @@ class PgObjectLocksTest : public LibPqTestBase {
 
     opts->extra_master_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_master_flags.emplace_back(
-        Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli));
+        Format("--master_ysql_operation_lease_ttl_ms=$0", MasterYSQLLeaseTTLMilli()));
   }
 
   int GetNumTabletServers() const override {
     return 3;
+  }
+
+  virtual uint64_t MasterYSQLLeaseTTLMilli() const {
+    return kDefaultMasterYSQLLeaseTTLMilli;
   }
 
   virtual bool EnableTableLocks() const {
@@ -958,7 +962,16 @@ TEST_F(PgObjectLocksTest, ConcurrentAlterSelect) {
   testConcurrentAlterSelect(false);
 }
 
-TEST_F(PgObjectLocksTest, BackfillIndexSanityTest) {
+// Uses a longer YSQL operation lease TTL. On oversubscribed hosts a transient stall of the tserver
+// lease refresher can otherwise expire the lease and kill an in-flight PG backend mid-statement.
+class PgObjectLocksTestLongLease : public PgObjectLocksTest {
+ protected:
+  uint64_t MasterYSQLLeaseTTLMilli() const override {
+    return 20 * 1000;
+  }
+};
+
+TEST_F_EX(PgObjectLocksTest, BackfillIndexSanityTest, PgObjectLocksTestLongLease) {
   const auto ts1_idx = 1;
   const auto ts2_idx = 2;
   auto* ts1 = cluster_->tablet_server(ts1_idx);

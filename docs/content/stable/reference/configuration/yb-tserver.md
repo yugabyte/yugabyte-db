@@ -1377,21 +1377,45 @@ Determines the window in milliseconds in which if a client has consumed the chan
 Default: `false`
 {{% /tags/wrap %}}
 
-When true, the CDC service returns a null before-image if it is not able to find one.
+When true, the CDC service returns a null before-image if it is not able to find one. This applies, for example, when a row is updated or deleted in the same transaction in which it was inserted: no committed pre-transaction state exists, so the before-image is returned as null instead of causing an error.
+
+```sql
+BEGIN;
+  INSERT INTO t (id, v) VALUES (1, 10);
+  UPDATE t SET v = 20 WHERE id = 1;   -- before-image of v: null
+  UPDATE t SET v = 30 WHERE id = 1;   -- before-image of v: null
+  DELETE FROM t WHERE id = 1;         -- before-image of v: null
+COMMIT;
+```
+
+To instead populate the before-image with the actual intra-transactional value, use [--cdc_enable_intra_transactional_before_image](#cdc-enable-intra-transactional-before-image).
 
 ##### --cdc_enable_intra_transactional_before_image
 
 {{% tags/wrap %}}
-
-Default: `false`
 {{<tags/feature/ea idea="2470">}}
+{{<tags/feature/restart-needed>}}
+Default: `false`
 {{% /tags/wrap %}}
 
-Available in v2024.2.9.1 and later, v2025.2.4.0 and later.
+Available in v2024.2.9.1 and later, and v2025.2.4.0 and later.
 
-When true, CDC populates before-image values for DML operations that occur within the same transaction. For example, if a row is inserted and then updated or deleted in one transaction, each UPDATE or DELETE change record includes the row values immediately before that operation within the transaction (not only the pre-transaction state).
+Controls how the before-image of a change record is computed when the same row is modified more than once in a single transaction.
 
-This flag requires a YB-TServer restart. Enable it on all YB-TServers in the universe when you need accurate before images for intra-transactional changes with logical replication or gRPC CDC.
+By default, the before-image reflects only the row's last *committed* state, that is, its value before the transaction began. Any changes made earlier in the same transaction are ignored. When this flag is true, CDC instead uses the row's effective value at the point just before each operation, including uncommitted changes made earlier in the same transaction. As a result, the before-image of the second and subsequent operations on a row reflects the change that immediately preceded it.
+
+For example:
+
+```sql
+BEGIN;
+  INSERT INTO t (id, v) VALUES (1, 10);
+  UPDATE t SET v = 20 WHERE id = 1;   -- before-image of v: 10
+  UPDATE t SET v = 30 WHERE id = 1;   -- before-image of v: 20
+  DELETE FROM t WHERE id = 1;         -- before-image of v: 30
+COMMIT;
+```
+
+The before-image is only emitted when before-image capture is enabled for the stream: use a replica identity of `FULL` or `DEFAULT` for logical replication, or a before-image record type for gRPC CDC. Set the flag consistently on every YB-TServer in the universe.
 
 
 ##### --cdcsdk_tablet_not_of_interest_timeout_secs

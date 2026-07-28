@@ -224,6 +224,11 @@ struct TierPathInfo {
   }
 };
 
+// A tablet's per-tier rocksdb dir has the form <data_root>/rocksdb/table-X/tablet-Y (3 path
+// components under the data root that owns the disk/tier. Given such
+// a path, returns the data root directory (the --fs_data_dirs entry it lives under).
+std::string GetDataRootFromTabletDir(const std::string& tablet_rocksdb_dir);
+
 // Describes KV-store. Single KV-store is backed by one or two RocksDB instances, depending on
 // whether distributed transactions are enabled for the table. KV-store for sys catalog could
 // contain multiple tables.

@@ -10,6 +10,8 @@ import {
   UniverseMetricsExporterConfig
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
+import { getPreservedTelemetrySections } from '../../shared/telemetryConfigPreserveUtils';
+
 export const METRICS_EXPORT_TRANSLATION_KEY_PREFIX =
   'editUniverse.telemetryExport.metricsExportSettings';
 
@@ -111,17 +113,15 @@ const buildMetricsExporter = (
   exporter_uuid: telemetryConfigUuid
 });
 
-/**
- * The export-telemetry-configs API fully replaces the telemetry config, so we preserve the
- * existing audit_logs and query_logs sections and only modify metrics.
- */
 export const buildTelemetryConfig = (
   values: MetricsExportFormValues,
   currentTelemetryConfig?: TelemetryConfig
 ): TelemetryConfig => {
   const existingExporter = currentTelemetryConfig?.metrics?.exporters?.[0];
+  const preserved = getPreservedTelemetrySections(currentTelemetryConfig);
 
-  const telemetryConfig: TelemetryConfig = {
+  return {
+    ...preserved,
     metrics: {
       scrape_interval_seconds: values.scrapeIntervalSeconds,
       scrape_timeout_seconds: values.scrapeTimeoutSeconds,
@@ -130,15 +130,14 @@ export const buildTelemetryConfig = (
       exporters: [buildMetricsExporter(values.telemetryConfigUuid, existingExporter)]
     }
   };
+};
 
-  if (currentTelemetryConfig?.audit_logs) {
-    telemetryConfig.audit_logs = currentTelemetryConfig.audit_logs;
-  }
-  if (currentTelemetryConfig?.query_logs) {
-    telemetryConfig.query_logs = currentTelemetryConfig.query_logs;
-  }
-
-  return telemetryConfig;
+export const buildDisableTelemetryConfig = (
+  currentTelemetryConfig?: TelemetryConfig
+): TelemetryConfig => {
+  const preserved = getPreservedTelemetrySections(currentTelemetryConfig);
+  delete preserved.metrics;
+  return preserved;
 };
 
 export const getValidationSchema = (t: TFunction) =>
@@ -158,7 +157,7 @@ export const getValidationSchema = (t: TFunction) =>
       .min(1, t('errors.timeoutMin'))
       .test('timeout-less-than-interval', t('errors.timeoutLessThanInterval'), function (value) {
         const interval = this.parent.scrapeIntervalSeconds as number | undefined;
-        if (value === undefined || interval === undefined) {
+        if (value == null || interval === undefined) {
           return true;
         }
         return value < interval;

@@ -113,6 +113,13 @@ int			max_replication_slots = 0;	/* the maximum number of replication
 const char *YB_OUTPUT_PLUGIN = "yboutput";
 const char *PG_OUTPUT_PLUGIN = "pgoutput";
 
+/*
+ * YB: Sentinel value accepted in place of an output plugin name to mark a
+ * replication slot as a gRPC stream slot at creation time. gRPC streams do
+ * not use an output plugin, so this value is never loaded as one.
+ */
+const char *YB_GRPC_STREAM_INDICATOR = "yb_grpc";
+
 /* YB: Constants for replication slot LSN types */
 const char *LSN_TYPE_SEQUENCE = "SEQUENCE";
 const char *LSN_TYPE_HYBRID_TIME = "HYBRID_TIME";

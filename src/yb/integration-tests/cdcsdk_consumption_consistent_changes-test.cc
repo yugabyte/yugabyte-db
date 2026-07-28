@@ -13,6 +13,7 @@
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/flags.h"
 #include "yb/util/test_macros.h"
 
@@ -6853,6 +6854,127 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestFailureBeforeSettingBarrierOn
       }
     }
   }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCheckPointMovesForwardWithAbortedTxnAtEndOfWAL) {
+  // Disabling the implicit dynamic table addition in this test to make the outcome of each
+  // GetConsistentChanges call deterministic.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Create two tables. The slow_table simulates a table which receives very less writes.
+  auto slow_table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "slow_table"));
+  auto fast_table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "fast_table"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> slow_tablets;
+  ASSERT_OK(test_client()->GetTablets(slow_table, 0, &slow_tablets, nullptr));
+
+  // Create a replication slot.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Commit a txn on slow_table.
+  ASSERT_OK(
+      WriteRowsHelper(1, 2, &test_cluster_, true /* commit */, 2 /* num_cols */, "slow_table"));
+
+  // Abort a txn on the slow_table.
+  ASSERT_OK(
+      WriteRowsHelper(2, 1000, &test_cluster_, false /* commit */, 2 /* num_cols */, "slow_table"));
+
+  // Roll over the segment of slow_table's tablet.
+  auto tablet_peer = ASSERT_RESULT(
+      test_cluster()->GetTabletManager(0)->GetServingTablet(slow_tablets[0].tablet_id()));
+  ASSERT_OK(tablet_peer->log()->AllocateSegmentAndRollOver());
+
+  // Abort another txn on the slow_table.
+  ASSERT_OK(WriteRowsHelper(
+      1001, 2000, &test_cluster_, false /* commit */, 2 /* num_cols */, "slow_table"));
+
+  // Commit a txn on the fast table.
+  ASSERT_OK(
+      WriteRowsHelper(1, 2, &test_cluster_, true /* commit */, 2 /* num_cols */, "fast_table"));
+
+  // Consume and ack the committed txns. Ideally the slow_tablet's checkpoint should now point to
+  // the last op in the active WAL segment.
+  ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {slow_table.table_id(), fast_table.table_id()}, 2 /* expected_dml_records */,
+      true /* init_virtual_wal */));
+
+  // Call GetConsistentChanges a couple of times to ensure that the checkpoint is propagated to the
+  // cdc_state table via the GetChanges calls.
+  ASSERT_OK(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_OK(GetConsistentChangesFromCDC(stream_id));
+
+  auto row = ASSERT_RESULT(ReadFromCdcStateTable(stream_id, slow_tablets[0].tablet_id()));
+
+  tablet::RemoveIntentsData data;
+  ASSERT_OK(tablet_peer->GetLastReplicatedData(&data));
+  ASSERT_EQ(data.op_id, row.op_id);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAbortedTxnDoesntMoveCheckpointWhenCantStream) {
+  // Disabling the implicit dynamic table addition in this test to make the outcome of each
+  // GetConsistentChanges call deterministic.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Create a table.
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+
+  // Create a replication slot.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Commit a txn 1.
+  ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true /* commit */));
+
+  // Start txn 2, but do not commit / abort, this will ensure that consistent stream safe time is
+  // held back by this running txn.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 values (100,100)", kTableName));
+
+  // Commit txn 3. This txn cannot be streamed since consistent stream safe time is less than
+  // its commit time.
+  ASSERT_OK(WriteRowsHelper(2, 3, &test_cluster_, true /* commit */));
+
+  // Abort txn 4 which will write ops corresponding to intents to the WAL.
+  ASSERT_OK(WriteRowsHelper(101, 200, &test_cluster_, false /* commit */));
+
+  // Rollover the segment.
+  auto tablet_peer =
+      ASSERT_RESULT(test_cluster()->GetTabletManager(0)->GetServingTablet(tablets[0].tablet_id()));
+  ASSERT_OK(tablet_peer->log()->AllocateSegmentAndRollOver());
+
+  // Abort txn 5 to fill the end of the WAL with aborted transaction ops.
+  ASSERT_OK(WriteRowsHelper(201, 300, &test_cluster_, false /* commit */));
+
+  // Consume and ack the committed txn.
+  ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, 1 /* expected_dml_records */, true /* init_virtual_wal */));
+
+  // Call GetConsistentChanges once more to ensure that the explicit checkpoint from VWAL's
+  // maps is written to the state table.
+  ASSERT_OK(GetConsistentChangesFromCDC(stream_id));
+
+  auto row = ASSERT_RESULT(ReadFromCdcStateTable(stream_id, tablets[0].tablet_id()));
+
+  // The explicit checkpoint should not be moved in this case, even though the tail of the WAL
+  // contains ops from an aborted transaction. This is because we still have a running transaction
+  // which prevents processing of any op with commit time greater than its start time. Hence we
+  // cannot take decision of moving the checkpoint forward. Moving the checkpoint would result in
+  // data loss, where we miss streaming the txn 3.
+  tablet::RemoveIntentsData data;
+  ASSERT_OK(tablet_peer->GetLastReplicatedData(&data));
+  ASSERT_GT(data.op_id, row.op_id);
 }
 
 }  // namespace cdc

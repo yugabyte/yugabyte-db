@@ -17,6 +17,8 @@ properties:
     minimum: 1
   node_spec:
     $ref: "./ClusterNodeSpec.yaml"
+  networking_spec:
+    $ref: "./ClusterNetworkingEditSpec.yaml"
   provider_spec:
     $ref: "./ClusterProviderEditSpec.yaml"
   placement_spec:

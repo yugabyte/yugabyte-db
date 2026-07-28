@@ -1125,6 +1125,57 @@ TEST_F(XClusterDDLReplicationTest, DropPartitionedIndexOnOnlyReplicates) {
   ASSERT_OK(VerifyWrittenRecords({kSecondTableName}));
 }
 
+TEST_F(XClusterDDLReplicationTest, AttachPartitionWhenParentHasIndex) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const std::string kParentTable = "main_table";
+  const std::string kExistingPart = "main_table_p1";
+  const std::string kNewPart = "part_table";
+  const std::string kParentIndex = "main_table_v_idx";
+  const std::string kKeyCol = "key";
+  const std::string kPartCol = "p";
+  const std::string kValCol = "v";
+
+  // Parent with one partition and a partitioned index. ATTACH of another partition later will
+  // create a matching child index on the new partition as a side effect.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 ($1 int, $2 text, $3 int, PRIMARY KEY ($1, $2)) PARTITION BY LIST ($2)",
+      kParentTable, kKeyCol, kPartCol, kValCol));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 PARTITION OF $1 FOR VALUES IN ('p1')", kExistingPart, kParentTable));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON $1 ($2)", kParentIndex, kParentTable, kValCol));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Standalone table (no index), then ATTACH - this will create a child index as well.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 ($1 int, $2 text, $3 int, PRIMARY KEY ($1, $2))", kNewPart, kKeyCol,
+      kPartCol, kValCol));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER TABLE $0 ATTACH PARTITION $1 FOR VALUES IN ('p2')", kParentTable, kNewPart));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // CREATE TABLE PARTITION OF also creates a matching child index since the parent already has
+  // a partitioned index.
+  const std::string kCreatedPart = "main_table_p3";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 PARTITION OF $1 FOR VALUES IN ('p3')", kCreatedPart, kParentTable));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (1, 'p1', 10), (2, 'p2', 20), (3, 'p3', 30)", kParentTable));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kParentTable}));
+
+  const auto kIndexScan = Format(
+      "/*+ IndexScan($0) */ SELECT COUNT(*) FROM $1 WHERE $2 >= 0", kParentIndex, kParentTable,
+      kValCol);
+  ASSERT_EQ(ASSERT_RESULT(producer_conn_->FetchRow<int64_t>(kIndexScan)), 3);
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(kIndexScan)), 3);
+}
+
 TEST_F(XClusterDDLReplicationTest, AlterPhantomIndexLifecycleDoesNotHaltReplication) {
   ASSERT_OK(SetUpClustersAndReplication());
 
