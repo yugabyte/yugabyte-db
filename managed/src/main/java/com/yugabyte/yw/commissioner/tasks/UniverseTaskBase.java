@@ -2472,11 +2472,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
       Provider provider = providerGetter.apply(node);
       if (nodeAgentClient.isClientEnabled(provider, universe)) {
+        Duration waitTimeout =
+            confGetter.getConfForScope(universe, UniverseConfKeys.nodeAgentServerWaitTimeout);
         WaitForNodeAgent.Params params = new WaitForNodeAgent.Params();
         params.nodeName = node.nodeName;
         params.azUuid = node.azUuid;
         params.setUniverseUUID(taskParams().getUniverseUUID());
-        params.timeout = Duration.ofMinutes(2);
+        params.timeout = waitTimeout;
         WaitForNodeAgent task = createTask(WaitForNodeAgent.class);
         task.initialize(params);
         subTaskGroup.addSubTask(task);
