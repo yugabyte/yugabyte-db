@@ -90,7 +90,7 @@ CREATE EXTENSION PGAudit;
 ALTER EXTENSION PGAudit UPDATE TO '1.7.1';
 DROP EXTENSION PGAudit;
 CREATE EXTENSION orafce;
-ALTER EXTENSION orafce UPDATE TO '4.9';
+ALTER EXTENSION orafce UPDATE TO '4.16';
 DROP EXTENSION orafce;
 -- removing yb_db_admin role should result in error
 REVOKE yb_db_admin FROM regress_priv_user;
