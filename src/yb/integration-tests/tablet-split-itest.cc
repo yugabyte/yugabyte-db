@@ -857,8 +857,8 @@ TEST_F_EX(TabletSplitITest, SplitClientRequestsClean, TabletSplitITestSlowMainte
   LOG(INFO) << "Creating new client, id: " << client->id();
 
   for (int i = 0; i < kSplitDepth; ++i) {
-    auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
-    ASSERT_EQ(peers.size(), 1 << i);
+    auto peers = ASSERT_RESULT(WaitForTableActiveTabletLeadersPeers(
+        cluster_.get(), table_->id(), 1 << i));
     for (const auto& peer : peers) {
       const auto tablet = peer->shared_tablet_maybe_null();
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
