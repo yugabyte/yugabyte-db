@@ -1029,6 +1029,15 @@ void ybthin_read_async(
       cb(ctx, MakeStatus(YBTHIN_INVALID, "more key values than key columns"), nullptr);
       return;
     }
+    // DocDB takes range_column_values as the range key prefix and forbids nulls in it. Reject
+    // rather than bind one: a null would make the prefix mean something the caller did not ask
+    // for, and the scan would quietly return the wrong rows.
+    for (size_t r = 0; r < spec->n_range; ++r) {
+      if (spec->range_values[r].tag == YBTHIN_BIND_NULL) {
+        cb(ctx, MakeStatus(YBTHIN_INVALID, "range key values may not be null"), nullptr);
+        return;
+      }
+    }
 
     auto* read = req.add_ops()->mutable_read();
     read->set_client(yb::YQL_CLIENT_PGSQL);

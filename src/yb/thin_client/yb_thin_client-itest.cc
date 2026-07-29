@@ -935,6 +935,112 @@ TEST_F(PgThinClientTest, RangeShardedDescendingPrefixSinglePage) {
   ybthin_client_destroy(client);
 }
 
+// Deep range keys. Range-partitioning the wider tables would need prefixes 7-8 columns deep --
+// amp_storage.pages is 5 hash + 3 range, pending_gc 2 hash + 5 range -- well past the 4 columns the
+// other tests cover. Nothing in the routing is depth-limited, so this pins that down. Also asserts
+// the null-key guard, since DocDB forbids nulls in the range key prefix.
+TEST_F(PgThinClientTest, DeepRangeKeyPrefixes) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE deep (k1 TEXT, k2 SMALLINT, k3 BIGINT, k4 BIGINT, k5 INT, k6 INT, k7 INT,"
+      "  k8 INT, v BYTEA, PRIMARY KEY (k1 ASC, k2 ASC, k3 ASC, k4 ASC, k5 ASC, k6 ASC, k7 ASC,"
+      "  k8 ASC)) SPLIT AT VALUES (('b', 0, 2), ('b', 0, 4))"));
+  // k3 varies 1..5 across the split points, k8 varies 0..3 within each; k4..k7 are fixed at 7 so a
+  // deep prefix has to carry them to reach a row.
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO deep SELECT 'b', 0, s, 7, 7, 7, 7, o, '\\x07'::bytea "
+      "FROM generate_series(1,5) s, generate_series(0,3) o"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO deep VALUES ('a',0,9,7,7,7,7,0,'\\x0a'::bytea),"
+      " ('c',0,9,7,7,7,7,0,'\\x0c'::bytea)"));
+
+  const auto db_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT oid FROM pg_database "
+                                                     "WHERE datname = current_database()"));
+  const auto table_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT 'deep'::regclass::oid"));
+  const auto addr = TServerAddr();
+  const char* addrs[] = {addr.c_str()};
+  ybthin_client* client = nullptr;
+  {
+    auto st = ybthin_client_create(
+        addrs, 1, nullptr, nullptr, 60000, 0, &client);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ybthin_table* table = nullptr;
+  ybthin_table_info info = {};
+  {
+    auto st = ybthin_table_open(client, db_oid, table_oid, &table, &info);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ASSERT_EQ(info.n_columns, 9);
+  for (int i = 0; i < 8; ++i) {
+    ASSERT_EQ(info.columns[i].kind, YBTHIN_COL_RANGE) << "key column " << i;
+  }
+  const int32_t k3_id = info.columns[2].id, k8_id = info.columns[7].id;
+
+  const std::string branch = "b";
+  const ybthin_bind prefix[] = {
+      {YBTHIN_BIND_TEXT, 0, reinterpret_cast<const uint8_t*>(branch.data()), branch.size()},
+      {YBTHIN_BIND_I16, 0, nullptr, 0},   // k2 = 0
+      {YBTHIN_BIND_I64, 3, nullptr, 0},   // k3 = 3
+      {YBTHIN_BIND_I64, 7, nullptr, 0},   // k4
+      {YBTHIN_BIND_I32, 7, nullptr, 0},   // k5
+      {YBTHIN_BIND_I32, 7, nullptr, 0},   // k6
+      {YBTHIN_BIND_I32, 7, nullptr, 0},   // k7
+      {YBTHIN_BIND_I32, 2, nullptr, 0}};  // k8 = 2 -> the full key
+  int32_t targets[] = {k3_id, k8_id};
+
+  auto one_page = [&](size_t n_range, int forward) -> Result<size_t> {
+    ybthin_read_spec spec = {};
+    spec.range_values = prefix;
+    spec.n_range = n_range;
+    spec.target_ids = targets;
+    spec.n_targets = 2;
+    spec.limit = 10;
+    spec.is_forward_scan = forward;
+    std::promise<ReadOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_read_op op = {};
+    op.table = table;
+    op.spec = spec;
+    ybthin_read_async(client, &op, 1, 0, &OnReadDone, &promise);
+    auto out = future.get();
+    SCHECK_EQ(out.code, YBTHIN_OK, IllegalState, out.message);
+    return out.n_rows;
+  };
+
+  // Depths 3..8 all address the same 4 rows (k3=3, k8=0..3) until the full key narrows to 1.
+  for (size_t n = 3; n <= 8; ++n) {
+    const size_t want = (n == 8) ? 1 : 4;
+    auto fwd = ASSERT_RESULT(one_page(n, 1));
+    auto rev = ASSERT_RESULT(one_page(n, 0));
+    ASSERT_EQ(fwd, want) << "forward, " << n << "-column prefix";
+    ASSERT_EQ(rev, want) << "reverse, " << n << "-column prefix returned " << rev
+                         << " on the first page";
+  }
+
+  // Null in the key prefix is rejected, not bound.
+  {
+    ybthin_bind with_null[] = {prefix[0], {YBTHIN_BIND_NULL, 0, nullptr, 0}};
+    ybthin_read_spec spec = {};
+    spec.range_values = with_null;
+    spec.n_range = 2;
+    spec.target_ids = targets;
+    spec.n_targets = 2;
+    std::promise<ReadOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_read_op op = {};
+    op.table = table;
+    op.spec = spec;
+    ybthin_read_async(client, &op, 1, 0, &OnReadDone, &promise);
+    auto out = future.get();
+    ASSERT_EQ(out.code, YBTHIN_INVALID) << "a null range key value must be rejected";
+  }
+
+  ybthin_columns_free(info.columns, info.n_columns);
+  ybthin_table_close(table);
+  ybthin_client_destroy(client);
+}
+
 // TLS variant: the cluster runs with node-to-node encryption, and the thin client connects over TLS
 // authenticating the server against the test CA. Also asserts the TLS-only endpoint rejects a
 // plaintext client.
