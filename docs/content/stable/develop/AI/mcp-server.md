@@ -48,20 +48,7 @@ npx skills add yugabyte/yugabytedb-skills -s ysql
 
 See the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository for the full skill list and descriptions.
 
-## Example: Claude Desktop
-
-This tutorial walks you through using the YugabyteDB MCP Server to allow an AI application to access, query, analyze, and interpret data in your YugabyteDB database, using only natural language prompts.
-
-The tutorial uses a YugabyteDB cluster running the [Northwind dataset](/stable/develop/sample-data/northwind/). You connect [Claude](https://claude.com/product/overview) to this database using MCP, and then explore it using natural language prompts.
-
-### Prerequisites
-
-- YugabyteDB {{<release "2025.2">}} or later
-- Python 3.10+
-- [uv](https://docs.astral.sh/uv/) (recommended) or pip / pipx
-- [Claude Desktop](https://claude.ai/download)
-
-### MCP tools
+## MCP tools
 
 The server exposes three tools that MCP clients can call:
 
@@ -75,7 +62,12 @@ All three tools accept an optional `requested_role` parameter. When [OIDC is ena
 
 Claude Desktop surfaces read-only badges on the read tools and a confirmation prompt before each `run_write_query` call (`destructiveHint: true`).
 
-### Set up YugabyteDB MCP Server
+## Set up YugabyteDB MCP Server
+
+Installing the server requires the following:
+
+- Python 3.10+
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip / pipx
 
 Install and run the server using one of the following options.
 
@@ -107,6 +99,37 @@ uv run yugabytedb-mcp --help
 {{< note title="Note" >}}
 There is no longer a `src/server.py` entry point. Always invoke the server via the `yugabytedb-mcp` (or `yugabytedb-mcp-server`) console script.
 {{< /note >}}
+
+### OIDC and per-user database roles
+
+For shared or remote deployments (HTTP transport), you can enable OIDC (AWS Cognito or a generic OIDC provider) so each authenticated caller runs SQL under their own YugabyteDB role via `SET ROLE`.
+
+Using identity mapping, you can map usernames and group names authenticated via OIDC to roles in the YugabyteDB database. This way, OIDC usernames and groups dont need to be an exact match for role names in the YugabyteDB database. For example, you can map a username `yng` in Okta (via a regular expression match) to a YugabyteDB database role `yng_role`. When the OIDC user `yng` logs in, the user inherits the permissions associated with the mapped `yng_role` role.
+
+Identity mapping mirrors YSQL's native OIDC role mapping (`ysql_ident_conf_csv` / `jwt_matching_claim_key`):
+
+| Environment variable | Purpose |
+| -------------------- | ------- |
+| `YB_MCP_IDENTITY_CLAIM` | JWT claim used as the identity (default `email`). Supports dotted paths (for example, `realm_access.roles`) and Cognito-style keys (`cognito:groups`). |
+| `YB_MCP_IDENTITY_TRANSFORM` | `none` or `strip_domain` when no map file is set. |
+| `YB_MCP_IDENTITY_MAP` | Path to a `pg_ident.conf`-style map file (the allowlist of claim value maps to DB role). |
+| `YB_MCP_IDENTITY_MAP_NAME` | Named map inside the file to apply (default `default`). |
+| `YB_MCP_REQUIRE_ACCESS_TOKEN` | Cognito-only. When `true`, reject tokens with `token_use` other than `access`. Default `false` for backward compatibility. |
+
+When `YB_MCP_IDENTITY_MAP` is set, unmapped claim values are rejected (`IdentityError`) — the map is the allowlist. JWT audience validation is always on for Cognito and OIDC.
+
+For full provider setup, map file format, worked examples (Cognito, Keycloak, Azure AD), and a migration checklist, see [OIDC.md](https://github.com/yugabyte/yugabytedb-mcp-server/blob/main/OIDC.md) in the YugabyteDB MCP server repository.
+
+## Example: Claude Desktop
+
+This tutorial walks you through using the YugabyteDB MCP Server to allow an AI application to access, query, analyze, and interpret data in your YugabyteDB database, using only natural language prompts.
+
+The tutorial uses a YugabyteDB cluster running the [Northwind dataset](/stable/develop/sample-data/northwind/). You connect [Claude](https://claude.com/product/overview) to this database using MCP, and then explore it using natural language prompts.
+
+### Prerequisites
+
+- YugabyteDB {{<release "2025.2">}} or later
+- [Claude Desktop](https://claude.ai/download)
 
 ### Set up YugabyteDB
 
@@ -266,26 +289,6 @@ The dashboard features:
 All data is pulled directly from your Northwind database and shows real sales patterns
 over the ~2-year period covered by the dataset.
 ```
-
-## OIDC and per-user database roles
-
-For shared or remote deployments (HTTP transport), you can enable OIDC (AWS Cognito or a generic OIDC provider) so each authenticated caller runs SQL under their own YugabyteDB role via `SET ROLE`.
-
-Using identity mapping, you can map usernames and group names authenticated via OIDC to roles in the YugabyteDB database. This way, OIDC usernames and groups dont need to be an exact match for role names in the YugabyteDB database. For example, you can map a username `yng` in Okta (via a regular expression match) to a YugabyteDB database role `yng_role`. When the OIDC user `yng` logs in, the user inherits the permissions associated with the mapped `yng_role` role.
-
-Identity mapping mirrors YSQL's native OIDC role mapping (`ysql_ident_conf_csv` / `jwt_matching_claim_key`):
-
-| Environment variable | Purpose |
-| -------------------- | ------- |
-| `YB_MCP_IDENTITY_CLAIM` | JWT claim used as the identity (default `email`). Supports dotted paths (for example, `realm_access.roles`) and Cognito-style keys (`cognito:groups`). |
-| `YB_MCP_IDENTITY_TRANSFORM` | `none` or `strip_domain` when no map file is set. |
-| `YB_MCP_IDENTITY_MAP` | Path to a `pg_ident.conf`-style map file (the allowlist of claim value maps to DB role). |
-| `YB_MCP_IDENTITY_MAP_NAME` | Named map inside the file to apply (default `default`). |
-| `YB_MCP_REQUIRE_ACCESS_TOKEN` | Cognito-only. When `true`, reject tokens with `token_use` other than `access`. Default `false` for backward compatibility. |
-
-When `YB_MCP_IDENTITY_MAP` is set, unmapped claim values are rejected (`IdentityError`) — the map is the allowlist. JWT audience validation is always on for Cognito and OIDC.
-
-For full provider setup, map file format, worked examples (Cognito, Keycloak, Azure AD), and a migration checklist, see [OIDC.md](https://github.com/yugabyte/yugabytedb-mcp-server/blob/main/OIDC.md) in the YugabyteDB MCP server repository.
 
 ## Read more
 
