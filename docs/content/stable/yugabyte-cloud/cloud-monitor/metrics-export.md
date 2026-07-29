@@ -16,6 +16,8 @@ You can export [cluster metrics](../monitor-metrics/) to third-party tools for a
 
 Metrics export is not available for Sandbox clusters.
 
+All metrics exported from a cluster are prefixed with `ybdb`.
+
 Exporting metrics may incur costs for network transfer, especially for cross-region and internet-based transfers. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
 ## Prerequisites
