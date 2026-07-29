@@ -29,6 +29,8 @@ import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils'
 import { getYBAHost } from '../../configRedesign/providerRedesign/utils';
 import { RuntimeConfigKey, YBAHost } from '../../../redesign/helpers/constants';
 
+import './KeyManagementConfiguration.scss';
+
 const awsRegionList = AWS_REGIONS.map((region, index) => {
   return {
     value: region.destVpcRegion,
@@ -358,22 +360,26 @@ class KeyManagementConfiguration extends Component {
       };
 
       switch (kmsProvider.value) {
-        case KmsProvider.OCI:{
-  const ociAuthType = values.ociAuthType?.value ?? OciKmsAuthType.API_KEY;
-  data['ociAuthType'] = ociAuthType;
-  if (ociAuthType === OciKmsAuthType.API_KEY) {
-  data['ociTenancyId'] = values.TENANCY_OCID;
-  data['ociUserId'] = values.USER_OCID;
-  data['ociFingerprint'] = values.FINGERPRINT;
-  data['ociPrivateKeyContent'] = values.PRIVATE_KEY;
-  }
-  
-  data['ociRegion'] = values.OCI_REGION.value;
-  data['ociCompartmentId'] = values.OCI_COMPARTMENT_OCID;
-  data['ociVaultId'] = values.OCI_VAULT_OCID;
-  data['ociKeyName'] = values.OCI_KEY_NAME;
-  break;
-}
+        case KmsProvider.OCI: {
+          const ociAuthType = values.ociAuthType?.value ?? OciKmsAuthType.API_KEY;
+          data['ociAuthType'] = ociAuthType;
+          data['ociRegion'] = values.OCI_REGION.value;
+          data['ociCompartmentId'] = values.OCI_COMPARTMENT_OCID;
+          data['ociVaultId'] = values.OCI_VAULT_OCID;
+          data['ociKeyName'] = values.OCI_KEY_NAME;
+
+          if (ociAuthType === OciKmsAuthType.API_KEY) {
+            data['ociTenancyId'] = values.TENANCY_OCID;
+            data['ociUserId'] = values.USER_OCID;
+            data['ociFingerprint'] = values.FINGERPRINT;
+            readUploadedFile(values.PRIVATE_KEY).then((privateKeyContent) => {
+              data['ociPrivateKeyContent'] = privateKeyContent;
+              createConfig(data);
+            });
+            return;
+          }
+          break;
+        }
         case KmsProvider.AWS:
           if (values.AWS_KMS_ENDPOINT) data['AWS_KMS_ENDPOINT'] = values.AWS_KMS_ENDPOINT;
 
@@ -1354,16 +1360,15 @@ getOciForm = (values) => {
             <Col lg={7}>
               <Field
                 name={'PRIVATE_KEY'}
-                component={YBFormInput}
-                placeholder={'-----BEGIN PRIVATE KEY-----...'}
-                className={'kube-provider-input-field'}
+                component={YBFormDropZone}
+                title={'Upload API Private Key PEM File'}
                 disabled={isEdit}
               />
             </Col>
             <Col lg={1} className="config-zone-tooltip">
               <YBInfoTip
                 title="Private Key"
-                content="Private key that will be used for authentication with the OCI "
+                content="PEM private key file that will be used for authentication with the OCI KMS service."
               />
             </Col>
           </Row>
@@ -1811,11 +1816,20 @@ getOciForm = (values) => {
         cipherTrustKeySize: Yup.object().when('kmsProvider', {
           is: (provider) => provider?.value === KmsProvider.CIPHERTRUST,
           then: Yup.object().required('Key size is Required')
+        }),
+
+        // OCI KMS
+        PRIVATE_KEY: Yup.mixed().when(['kmsProvider', 'ociAuthType'], {
+          is: (provider, ociAuthType) =>
+            provider?.value === KmsProvider.OCI &&
+            ociAuthType?.value === OciKmsAuthType.API_KEY &&
+            !isEdit,
+          then: Yup.mixed().required('Private Key is Required')
         })
       });
 
       return (
-        <div className="provider-config-container">
+        <div className="provider-config-container kms-config-form">
           <Formik
             initialValues={formData}
             validationSchema={validationSchema}
