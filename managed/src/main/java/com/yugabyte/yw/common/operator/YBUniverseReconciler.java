@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.helm.HelmUtils;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.helpers.OperatorPlacementInfoHelper;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
@@ -32,6 +33,9 @@ import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
+import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
@@ -58,6 +62,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
+import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Provider.UsabilityState;
 import com.yugabyte.yw.models.TaskInfo;
@@ -72,9 +77,12 @@ import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
+import io.yugabyte.operator.v1alpha1.KMSConfig;
+import io.yugabyte.operator.v1alpha1.KMSConfigStatus;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.YBProvider;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.EncryptionAtRest;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
@@ -719,6 +727,13 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
     UUID taskUUID = null;
     try {
+      // Encryption at rest changes (enable/disable/master key rotation) are handled as a separate
+      // SetUniverseKey task rather than folded into the structural edit. If an EAR transition is
+      // submitted (or blocked waiting on the KMS config), skip the structural edit for this pass.
+      if (specificTaskTypeToRerun == null
+          && handleEncryptionAtRestChange(cust, universe, ybUniverse, k8ResourceDetails)) {
+        return;
+      }
       if (specificTaskTypeToRerun != null) {
         // For cases when we want to do a re-run of same task type
         universeDetails.skipMatchWithUserIntent = true;
@@ -1053,6 +1068,87 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.ERROR_UPDATING);
       throw e;
     }
+  }
+
+  // Detects and applies an encryption-at-rest transition requested via the universe CR's
+  // encryptionAtRest block, submitting a SetUniverseKey task. Returns true when it handled EAR
+  // (task submitted, or blocked/requeued waiting on the KMS config) so the caller skips the
+  // structural edit; false when there is no EAR change to make. Universe key rotation is
+  // intentionally NOT done here - it uses the UniverseKeyRotation CRD.
+  @VisibleForTesting
+  protected boolean handleEncryptionAtRestChange(
+      Customer cust,
+      Universe universe,
+      YBUniverse ybUniverse,
+      KubernetesResourceDetails k8ResourceDetails) {
+    EncryptionAtRest ear = ybUniverse.getSpec().getEncryptionAtRest();
+    if (ear == null) {
+      // No EAR block: leave the universe's EAR state unchanged (disable is via enabled=false).
+      return false;
+    }
+
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    boolean currentlyEnabled =
+        details.encryptionAtRestConfig != null
+            && details.encryptionAtRestConfig.encryptionAtRestEnabled;
+    KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universe.getUniverseUUID());
+    UUID currentConfigUUID = activeKey == null ? null : activeKey.getConfigUuid();
+
+    boolean desiredEnabled = StringUtils.isNotBlank(ear.getKmsConfig()) && earEnabled(ear);
+
+    EncryptionAtRestConfig config = new EncryptionAtRestConfig();
+    String eventTaskName;
+    if (desiredEnabled) {
+      UUID desiredConfigUUID;
+      try {
+        desiredConfigUUID = resolveReadyKmsConfigUuid(ybUniverse, ear.getKmsConfig());
+      } catch (Exception e) {
+        // Never disrupt a running universe with an unusable KMS config. Surface an error and
+        // requeue so it self-heals once the KMS config becomes Ready.
+        log.error(
+            "Cannot resolve KMS config '{}' for EAR change on universe {}: {}",
+            ear.getKmsConfig(),
+            universe.getName(),
+            e.getMessage());
+        kubernetesStatusUpdater.updateUniverseState(
+            k8ResourceDetails, UniverseState.ERROR_UPDATING);
+        workqueue.requeue(
+            OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata()),
+            OperatorWorkQueue.ResourceAction.NO_OP,
+            false);
+        return true;
+      }
+      if (currentlyEnabled && desiredConfigUUID.equals(currentConfigUUID)) {
+        // Already enabled with the same config: nothing to do.
+        return false;
+      }
+      config.opType = OpType.ENABLE;
+      config.kmsConfigUUID = desiredConfigUUID;
+      config.encryptionAtRestEnabled = true;
+      eventTaskName = currentlyEnabled ? "MasterKeyRotation" : "EnableEncryptionAtRest";
+    } else {
+      if (!currentlyEnabled) {
+        // Desired disabled and already disabled: nothing to do.
+        return false;
+      }
+      config.opType = OpType.DISABLE;
+      config.encryptionAtRestEnabled = false;
+      config.kmsConfigUUID = currentConfigUUID;
+      eventTaskName = "DisableEncryptionAtRest";
+    }
+
+    kubernetesStatusUpdater.createYBUniverseEventStatus(universe, k8ResourceDetails, eventTaskName);
+    if (checkAndHandleUniverseLock(ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+      return true;
+    }
+    kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
+    EncryptionAtRestKeyParams keyParams = new EncryptionAtRestKeyParams();
+    keyParams.setUniverseUUID(universe.getUniverseUUID());
+    keyParams.encryptionAtRestConfig = config;
+    UUID taskUUID = universeActionsHandler.setUniverseKey(cust, universe, keyParams);
+    log.info("Submitted {} for universe {}, task {}", eventTaskName, universe.getName(), taskUUID);
+    universeTaskMap.put(OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata()), taskUUID);
+    return true;
   }
 
   private static UpgradeOption getUpgradeOption(YBUniverse ybUniverse) {
@@ -1415,7 +1511,62 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       }
     }
 
+    // Handle encryption at rest. When requested (block present, enabled) resolve the referenced
+    // KMSConfig CR to its YBA config UUID and enable EAR at create time. If the KMS config is not
+    // yet resolvable (Creating/Error/missing), we throw so the create is retried until it is Ready
+    // rather than silently creating an unencrypted universe.
+    EncryptionAtRest ear = ybUniverse.getSpec().getEncryptionAtRest();
+    if (ear != null && StringUtils.isNotBlank(ear.getKmsConfig()) && earEnabled(ear)) {
+      try {
+        UUID kmsConfigUUID = resolveReadyKmsConfigUuid(ybUniverse, ear.getKmsConfig());
+        taskParams.encryptionAtRestConfig = new EncryptionAtRestConfig();
+        taskParams.encryptionAtRestConfig.opType = OpType.ENABLE;
+        taskParams.encryptionAtRestConfig.kmsConfigUUID = kmsConfigUUID;
+        taskParams.encryptionAtRestConfig.encryptionAtRestEnabled = true;
+      } catch (Exception e) {
+        log.error(
+            "Cannot resolve KMS config '{}' for universe {}: {}",
+            ear.getKmsConfig(),
+            getUniverseName(ybUniverse),
+            e.getMessage());
+        kubernetesStatusUpdater.updateUniverseState(
+            KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.ERROR_CREATING);
+        throw new RuntimeException(
+            "Encryption at rest requested but KMS config could not be resolved: " + e.getMessage());
+      }
+    }
+
     return taskParams;
+  }
+
+  private static boolean earEnabled(EncryptionAtRest ear) {
+    // Defaults to true when unset, matching the CRD default.
+    return ear.getEnabled() == null || ear.getEnabled();
+  }
+
+  // Resolves a KMSConfig CR (by name, in the ybUniverse's namespace) to its YBA config UUID. Throws
+  // when the config is not present/Ready so the caller can retry (Creating) or surface an error
+  // (Error) rather than proceeding without a valid KMS config.
+  private UUID resolveReadyKmsConfigUuid(YBUniverse ybUniverse, String kmsConfigCrName) {
+    String namespace = ybUniverse.getMetadata().getNamespace();
+    KMSConfig kmsConfigCr =
+        client.resources(KMSConfig.class).inNamespace(namespace).withName(kmsConfigCrName).get();
+    if (kmsConfigCr == null) {
+      throw new RuntimeException("KMS config CR '" + kmsConfigCrName + "' not found");
+    }
+    KMSConfigStatus status = kmsConfigCr.getStatus();
+    String state = status == null ? null : status.getState();
+    String resourceUUID = status == null ? null : status.getResourceUUID();
+    // Ready or InUse both mean the config exists in YBA with a valid UUID.
+    if (!"Ready".equals(state) && !"InUse".equals(state)) {
+      throw new RuntimeException(
+          "KMS config CR '" + kmsConfigCrName + "' is not ready (state: " + state + ")");
+    }
+    if (StringUtils.isBlank(resourceUUID)) {
+      throw new RuntimeException(
+          "KMS config CR '" + kmsConfigCrName + "' has no resolved config UUID yet");
+    }
+    return UUID.fromString(resourceUUID);
   }
 
   @VisibleForTesting

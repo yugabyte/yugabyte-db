@@ -97,4 +97,10 @@ public class YBReconcilerFactory {
     return new DrConfigReconciler(
         drConfigHelper, namespace, operatorUtils, client, informerFactory);
   }
+
+  public UniverseKeyRotationReconciler getUniverseKeyRotationReconciler(KubernetesClient client) {
+    String namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
+    return new UniverseKeyRotationReconciler(
+        universeActionsHandler, namespace, operatorUtils, client, informerFactory);
+  }
 }

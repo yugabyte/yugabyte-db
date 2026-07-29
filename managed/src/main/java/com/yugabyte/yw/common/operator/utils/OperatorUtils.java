@@ -106,6 +106,7 @@ import io.yugabyte.operator.v1alpha1.BackupSpec;
 import io.yugabyte.operator.v1alpha1.BackupStatus;
 import io.yugabyte.operator.v1alpha1.DrConfig;
 import io.yugabyte.operator.v1alpha1.KMSConfig;
+import io.yugabyte.operator.v1alpha1.KMSConfigStatus;
 import io.yugabyte.operator.v1alpha1.PitrConfig;
 import io.yugabyte.operator.v1alpha1.PitrRestore;
 import io.yugabyte.operator.v1alpha1.Release;
@@ -287,6 +288,43 @@ public class OperatorUtils {
           .get();
     } catch (Exception e) {
       throw new Exception("Unable to fetch YBUniverse " + name.name, e);
+    }
+  }
+
+  /**
+   * Resolves a KMSConfig CR (by name, in the given namespace) to its YBA config UUID. Throws when
+   * the config CR is missing, not yet Ready/InUse, or has no resolved config UUID, so the caller
+   * can surface a clear error rather than proceeding without a valid KMS config.
+   *
+   * @param kmsConfigCrName the KMSConfig CR name
+   * @param namespace the namespace to look it up in
+   * @return the resolved YBA KMS config UUID
+   */
+  public UUID resolveReadyKmsConfigUuid(String kmsConfigCrName, String namespace) throws Exception {
+    try (final KubernetesClient kubernetesClient =
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
+      KMSConfig kmsConfigCr =
+          kubernetesClient
+              .resources(KMSConfig.class)
+              .inNamespace(namespace)
+              .withName(kmsConfigCrName)
+              .get();
+      if (kmsConfigCr == null) {
+        throw new Exception("KMS config CR '" + kmsConfigCrName + "' not found");
+      }
+      KMSConfigStatus status = kmsConfigCr.getStatus();
+      String state = status == null ? null : status.getState();
+      String resourceUUID = status == null ? null : status.getResourceUUID();
+      // Ready or InUse both mean the config exists in YBA with a valid UUID.
+      if (!"Ready".equals(state) && !"InUse".equals(state)) {
+        throw new Exception(
+            "KMS config CR '" + kmsConfigCrName + "' is not ready (state: " + state + ")");
+      }
+      if (StringUtils.isBlank(resourceUUID)) {
+        throw new Exception(
+            "KMS config CR '" + kmsConfigCrName + "' has no resolved config UUID yet");
+      }
+      return UUID.fromString(resourceUUID);
     }
   }
 
