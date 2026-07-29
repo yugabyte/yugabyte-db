@@ -33,6 +33,18 @@ from yugabyte import test_descriptor
 from yugabyte import yb_dist_tests
 
 
+# run_tests_job() is faked in every test here, so the conf is only threaded through, never used.
+# None of these paths are touched.
+FAKE_CONF = yb_dist_tests.TestConfig(
+    build_root='/fake/yb-src-root/build/debug-clang17-dynamic-ninja',
+    build_type='debug',
+    yb_src_root='/fake/yb-src-root',
+    archive_for_workers=None,
+    rel_build_root='build/debug-clang17-dynamic-ninja',
+    archive_sha256sum=None,
+    compiler_type='clang17')
+
+
 def make_attempts(base: str, num_repetitions: int) -> List[test_descriptor.TestDescriptor]:
     """Expand one failed test into its per-attempt descriptors, the same way main() does."""
     base_descriptor = test_descriptor.TestDescriptor(base)
@@ -67,7 +79,7 @@ def isolate_spark(monkeypatch: pytest.MonkeyPatch) -> None:
     before each test.
     """
     monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: True)
-    monkeypatch.setattr(rts, "restart_spark_context", lambda: None)
+    monkeypatch.setattr(rts, "restart_spark_context", lambda conf: None)
     monkeypatch.setattr(rts, "g_spark_job_cancelled", False)
     # Ensure the test-only fault hooks are off, so the behavioral tests are not perturbed by a
     # developer running with these set in their environment.
@@ -82,13 +94,14 @@ def test_all_attempts_complete_on_first_submission(monkeypatch: pytest.MonkeyPat
 
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
-            rerun: bool) -> List[yb_dist_tests.TestResult]:
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
         submissions.append(list(pending))
         return results_for(pending)
 
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
 
     assert len(submissions) == 1
     assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
@@ -105,7 +118,8 @@ def test_worker_dies_after_5_iterations_only_missing_resubmitted(
 
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
-            rerun: bool) -> List[yb_dist_tests.TestResult]:
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
         submissions.append([td.descriptor_str for td in pending])
         # First submission loses the second half; the resubmission returns everything it is given.
         returned = list(pending)[:5] if len(submissions) == 1 else list(pending)
@@ -113,7 +127,7 @@ def test_worker_dies_after_5_iterations_only_missing_resubmitted(
 
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
 
     assert len(submissions) == 2
     # Only the 5 attempts missing a result are resubmitted.
@@ -132,12 +146,13 @@ def test_context_recreated_only_when_stopped(monkeypatch: pytest.MonkeyPatch) ->
 
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
-            rerun: bool) -> List[yb_dist_tests.TestResult]:
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
         submissions.append(list(pending))
         # Never return a result for the last attempt, forcing repeated resubmissions.
         return results_for([td for td in pending if td.attempt_index != 4])
 
-    def record_restart() -> None:
+    def record_restart(conf: yb_dist_tests.TestConfig) -> None:
         nonlocal restart_count
         restart_count += 1
 
@@ -148,7 +163,7 @@ def test_context_recreated_only_when_stopped(monkeypatch: pytest.MonkeyPatch) ->
     # Context reports stopped -> restart before each of the 3 submissions, including the first
     # (an already-dead context at rerun entry must be recovered before the first submission).
     monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: True)
-    rts.run_tests_job_with_resubmits(attempts, rerun=True)
+    rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
     assert len(submissions) == 3
     assert restart_count == 3
 
@@ -156,7 +171,7 @@ def test_context_recreated_only_when_stopped(monkeypatch: pytest.MonkeyPatch) ->
     submissions.clear()
     restart_count = 0
     monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: False)
-    rts.run_tests_job_with_resubmits(attempts, rerun=True)
+    rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
     assert len(submissions) == 3
     assert restart_count == 0
 
@@ -175,11 +190,12 @@ def test_dead_context_at_entry_is_restarted_before_first_submission(
 
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
-            rerun: bool) -> List[yb_dist_tests.TestResult]:
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
         events.append("submit")
         return results_for(pending)
 
-    def record_restart() -> None:
+    def record_restart(conf: yb_dist_tests.TestConfig) -> None:
         events.append("restart")
         stopped["value"] = False
 
@@ -187,7 +203,7 @@ def test_dead_context_at_entry_is_restarted_before_first_submission(
     monkeypatch.setattr(rts, "restart_spark_context", record_restart)
     monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: stopped["value"])
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
 
     # The restart happened before the first (and here only) submission.
     assert events == ["restart", "submit"]
@@ -210,7 +226,8 @@ def test_submission_error_is_recovered_not_crashed(
 
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
-            rerun: bool) -> List[yb_dist_tests.TestResult]:
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
         submissions["n"] += 1
         if submissions["n"] == 1:
             raise Py4JJavaError("Cannot call methods on a stopped SparkContext.")
@@ -218,7 +235,7 @@ def test_submission_error_is_recovered_not_crashed(
 
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
 
     assert submissions["n"] == 2  # first submission raised, second succeeded
     assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
@@ -237,7 +254,7 @@ def test_failed_restart_is_retried_not_crashed(monkeypatch: pytest.MonkeyPatch) 
     restarts = {"n": 0}
     submissions = {"n": 0}
 
-    def flaky_restart() -> None:
+    def flaky_restart(conf: yb_dist_tests.TestConfig) -> None:
         restarts["n"] += 1
         if restarts["n"] == 1:
             raise Py4JNetworkError("cannot connect to the Spark master")
@@ -245,7 +262,8 @@ def test_failed_restart_is_retried_not_crashed(monkeypatch: pytest.MonkeyPatch) 
 
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
-            rerun: bool) -> List[yb_dist_tests.TestResult]:
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
         submissions["n"] += 1
         return results_for(pending)
 
@@ -253,7 +271,7 @@ def test_failed_restart_is_retried_not_crashed(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(rts, "restart_spark_context", flaky_restart)
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
 
     assert restarts["n"] == 2      # first recovery failed, second succeeded
     assert submissions["n"] == 1   # run_tests_job only ran after a successful recovery
@@ -271,7 +289,8 @@ def test_non_py4j_error_with_dead_context_is_retried(monkeypatch: pytest.MonkeyP
 
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
-            rerun: bool) -> List[yb_dist_tests.TestResult]:
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
         submissions["n"] += 1
         if submissions["n"] == 1:
             raise EOFError("gateway connection closed")
@@ -280,7 +299,7 @@ def test_non_py4j_error_with_dead_context_is_retried(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
     monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: True)  # application is down
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
 
     assert submissions["n"] == 2  # EOFError on a dead context is retried, not fatal
     assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
@@ -295,14 +314,15 @@ def test_error_with_healthy_context_is_not_swallowed(monkeypatch: pytest.MonkeyP
 
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
-            rerun: bool) -> List[yb_dist_tests.TestResult]:
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
         raise ValueError("unrelated bug")
 
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
     monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: False)  # context is fine
 
     with pytest.raises(ValueError, match="unrelated bug"):
-        rts.run_tests_job_with_resubmits(attempts, rerun=True)
+        rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
 
 
 def test_cancellation_stops_resubmission(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -315,7 +335,8 @@ def test_cancellation_stops_resubmission(monkeypatch: pytest.MonkeyPatch) -> Non
 
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
-            rerun: bool) -> List[yb_dist_tests.TestResult]:
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
         submissions.append(list(pending))
         # Simulate run_spark_action detecting the deliberate cancellation.
         rts.g_spark_job_cancelled = True
@@ -323,7 +344,7 @@ def test_cancellation_stops_resubmission(monkeypatch: pytest.MonkeyPatch) -> Non
 
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
 
     assert len(submissions) == 1
     assert len(results) == 3
@@ -336,14 +357,15 @@ def test_permanent_loss_exhausts_submission_budget(monkeypatch: pytest.MonkeyPat
 
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
-            rerun: bool) -> List[yb_dist_tests.TestResult]:
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
         submissions.append(list(pending))
         return []
 
     monkeypatch.setattr(rts, "SPARK_JOB_MAX_SUBMITS", 5)
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
 
     assert len(submissions) == 5
     assert results == []
@@ -362,7 +384,8 @@ def test_java_and_cpp_attempts_matched_independently(monkeypatch: pytest.MonkeyP
 
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
-            rerun: bool) -> List[yb_dist_tests.TestResult]:
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
         submissions.append([td.descriptor_str for td in pending])
         # Lose exactly one attempt of each test on the first pass.
         if len(submissions) == 1:
@@ -371,7 +394,7 @@ def test_java_and_cpp_attempts_matched_independently(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
 
     assert len(submissions) == 2
     # The two attempt_2 descriptors (one Java, one C++) are exactly what gets resubmitted.
@@ -446,14 +469,15 @@ def test_fault_hooks_combine_to_drive_recovery(monkeypatch: pytest.MonkeyPatch) 
 
     def fake_run_tests_job(
             pending: List[test_descriptor.TestDescriptor],
-            rerun: bool) -> List[yb_dist_tests.TestResult]:
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
         submissions.append(list(pending))
         return results_for(pending)
 
     def fake_stop() -> None:
         stopped["value"] = True
 
-    def record_restart() -> None:
+    def record_restart(conf: yb_dist_tests.TestConfig) -> None:
         nonlocal restart_count
         restart_count += 1
         stopped["value"] = False
@@ -465,9 +489,31 @@ def test_fault_hooks_combine_to_drive_recovery(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("YB_TEST_RERUN_DROP_RESULTS", "3")
     monkeypatch.setenv("YB_TEST_RERUN_STOP_CONTEXT", "1")
 
-    results = rts.run_tests_job_with_resubmits(attempts, rerun=True)
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
 
     assert len(submissions) == 2       # first submission + one recovery submission
     assert len(submissions[1]) == 3    # exactly the 3 dropped attempts are re-submitted
     assert restart_count == 1          # context re-created once before the recovery submission
     assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
+
+
+def test_no_function_shadows_a_module_level_import() -> None:
+    """
+    A function-level "from yugabyte import yb_dist_tests" makes that name local for the *whole*
+    function body, so any use of it earlier in the function raises UnboundLocalError. That is how
+    parallel_run_test() failed on every Spark task once this refactoring had it parse the conf
+    before that import. Python decides local-vs-global at compile time, so the mocked tests above
+    cannot catch it - only running a real task would. This check does, statically.
+    """
+    module_names = {
+        name for name, value in vars(rts).items() if isinstance(value, types.ModuleType)
+    }
+    offenders = {
+        name: sorted(module_names.intersection(value.__code__.co_varnames))
+        for name, value in vars(rts).items()
+        if isinstance(value, types.FunctionType) and
+        module_names.intersection(value.__code__.co_varnames)
+    }
+    assert not offenders, (
+        "These functions bind a name that is already a module-level import, shadowing it for the "
+        "whole function body: %s" % offenders)
