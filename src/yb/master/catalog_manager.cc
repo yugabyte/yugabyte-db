@@ -6702,25 +6702,6 @@ Status CatalogManager::BackfillIndex(
                   index_table_identifier.ShortDebugString());
   }
 
-  uint32_t current_version;
-  {
-    auto l = indexed_table->LockForRead();
-    current_version = l->pb.version();
-  }
-
-  // Validate that the index is at the correct permission.
-  IndexInfoPB index_info_pb;
-  indexed_table->GetIndexInfo(index_table->id()).ToPB(&index_info_pb);
-  if (index_info_pb.index_permissions() != INDEX_PERM_WRITE_AND_DELETE) {
-    return SetupError(
-        resp->mutable_error(),
-        MasterErrorPB::INVALID_SCHEMA,
-        STATUS_FORMAT(
-            InvalidArgument,
-            "Expected WRITE_AND_DELETE perm, got $0",
-            IndexPermissions_Name(index_info_pb.index_permissions())));
-  }
-
   std::optional<TransactionMetadata> requester_txn;
   if (req->has_requester_transaction()) {
     auto result = TransactionMetadata::FromPB(req->requester_transaction());
@@ -6731,9 +6712,48 @@ Status CatalogManager::BackfillIndex(
     }
   }
 
-  return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
-      this, indexed_table, current_version, epoch, std::move(requester_txn),
-      /* respect_backfill_deferrals */ false, /* update_ysql_to_backfill */ true);
+  // A concurrent DDL can bump the indexed table's schema version between reading it here and
+  // updating the index permission, which fails the update with AlreadyPresent. The conflict is
+  // transient, so retry, re-reading the permission together with the version: the new version
+  // could carry a permission that no longer allows backfill.
+  constexpr int kMaxAttempts = 10;
+  Status s;
+  for (int attempt = 1; attempt <= kMaxAttempts; ++attempt) {
+    uint32_t current_version;
+    // IndexInfoPB default, i.e. what an index absent from the list reports.
+    auto index_permissions = INDEX_PERM_READ_WRITE_AND_DELETE;
+    {
+      auto l = indexed_table->LockForRead();
+      current_version = l->pb.version();
+      for (const auto& index_info_pb : l->pb.indexes()) {
+        if (index_info_pb.table_id() == index_table->id()) {
+          index_permissions = index_info_pb.index_permissions();
+          break;
+        }
+      }
+    }
+
+    // Validate that the index is at the correct permission.
+    if (index_permissions != INDEX_PERM_WRITE_AND_DELETE) {
+      return SetupError(
+          resp->mutable_error(),
+          MasterErrorPB::INVALID_SCHEMA,
+          STATUS_FORMAT(
+              InvalidArgument,
+              "Expected WRITE_AND_DELETE perm, got $0",
+              IndexPermissions_Name(index_permissions)));
+    }
+
+    s = MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
+        this, indexed_table, current_version, epoch, requester_txn,
+        /* respect_backfill_deferrals */ false, /* update_ysql_to_backfill */ true);
+    if (!s.IsAlreadyPresent()) {
+      break;
+    }
+    LOG(WARNING) << "BackfillIndex: schema version race on " << indexed_table->ToString()
+                 << ", attempt " << attempt << ": " << s;
+  }
+  return s;
 }
 
 Status CatalogManager::GetBackfillJobs(
