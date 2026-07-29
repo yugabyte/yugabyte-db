@@ -6707,8 +6707,14 @@ void CDCSDKConsumptionConsistentChangesTest::TestSysCatalogRetentionBarriers(
     ASSERT_GT(tablet_peer->get_cdc_min_replicated_index(), initial_wal_barrier);
     ASSERT_GT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), initial_intent_barrier);
   } else {
+    // With only gRPC streams, the sys_catalog tablet is never polled, so CDCMasterBgTask never
+    // advances its WAL and intent retention barriers; they stay at their initial (untouched)
+    // values. Those defaults differ but both mean "no retention": the WAL barrier defaults to
+    // OpId::Max().index, while the intent barrier defaults to OpId::Invalid() (which
+    // TransactionParticipant::GetLatestCheckPoint() treats as OpId::Max(), i.e. intents can be
+    // GCed freely).
     ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
-    ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+    ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
   }
 
   if (initial_history_barrier != HybridTime::kInvalid) {

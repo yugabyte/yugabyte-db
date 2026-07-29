@@ -650,6 +650,13 @@ message UpdateCdcReplicatedIndexRequestPB {
   repeated fixed64 cdc_sdk_safe_times = 11;
   // Is this an initial retention barrier setting request
   optional bool initial_retention_barrier = 12;
+  // When set, this request must NOT move the corresponding retention barrier. Absent, as sent by
+  // older versions, means move all three barriers together. Only set once the
+  // cdcsdk_enable_selective_retention_barrier_revision AutoFlag is promoted, since a receiver that
+  // ignores these fields moves all three barriers.
+  optional bool skip_moving_wal_retention_barrier = 13;
+  optional bool skip_moving_intents_retention_barrier = 14;
+  optional bool skip_moving_history_retention_barrier = 15;
 }
 
 message UpdateCdcReplicatedIndexResponsePB {
