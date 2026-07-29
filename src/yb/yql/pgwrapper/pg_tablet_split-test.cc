@@ -2214,7 +2214,14 @@ TEST_F(PgTabletSplitTest, BootstrapStateLoadRaceFlush) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(
       "CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  // Load the initial rows non-transactionally. A distributed txn here would leave an APPLYING
+  // update in the parent's WAL, and TabletBootstrap always replays those (see
+  // ShouldReplayOperation) even when already flushed. That replay calls ProcessApply ->
+  // loader_.WaitLoaded(id), which deadlocks the children's bootstrap whenever the load txn id
+  // sorts after helper_uuid, where the loader is parked by the sync point below.
+  ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = true"));
   ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 1000), 0"));
+  ASSERT_OK(conn.Execute("RESET yb_disable_transactional_writes"));
   ASSERT_OK(cluster_->FlushTablets());
 
   auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
