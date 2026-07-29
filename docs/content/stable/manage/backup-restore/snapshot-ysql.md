@@ -68,7 +68,9 @@ To restore the data backed up in one of the previously created snapshots, run th
 
 This command rolls back the database to the state which it had when the snapshot was created. The restore happens in-place: it changes the state of the existing database in the same cluster.
 
-Note that the described in-cluster workflow only reverts data changes, but not schema changes. For example, if you create a snapshot, drop a table, and then restore the snapshot, the table is not restored. As a workaround, you can either [store snapshots outside of the cluster](#move-a-snapshot-to-external-storage) or use [point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/). This limitation will be removed in an upcoming release. For more information, see the tracking issue [12977](https://github.com/yugabyte/yugabyte-db/issues/12977).
+To restore to a chosen time *within* the snapshot's retained history (rather than only the snapshot creation time), pass a restore target. See [Restore to PIT](../point-in-time-recovery/restore/).
+
+Note that the described in-cluster workflow only reverts data changes, but not schema changes. For example, if you create a snapshot, drop a table, and then restore the snapshot, the table is not restored. As a workaround, you can either [store snapshots outside of the cluster](#move-a-snapshot-to-external-storage) or use [Rewind to PIT](../point-in-time-recovery/rewind/) or [Restore to PIT](../point-in-time-recovery/restore/). This limitation will be removed in an upcoming release. For more information, see the tracking issue [12977](https://github.com/yugabyte/yugabyte-db/issues/12977).
 
 ## Move a snapshot to external storage
 

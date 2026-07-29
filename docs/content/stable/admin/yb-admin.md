@@ -1073,7 +1073,7 @@ To see if the snapshot creation has finished, run the [yb-admin list_snapshots](
 
 #### restore_snapshot
 
-Restores the specified snapshot, including the tables and indexes. When the operation starts, a `restoration_id` is generated.
+Restores the specified snapshot, including the tables and indexes. When the operation starts, a `restoration_id` is generated. To restore to a time other than the snapshot's creation time, see [Restore to PIT](../../manage/backup-restore/point-in-time-recovery/restore/).
 
 **Syntax**
 
@@ -1295,7 +1295,7 @@ yb-admin \
 
 #### create_snapshot_schedule
 
-Creates a snapshot schedule. A schedule consists of a list of objects to be included in a snapshot, a time interval at which to take snapshots for them, and a retention time.
+Creates a snapshot schedule. A schedule consists of a list of objects to be included in a snapshot, a time interval at which to take snapshots for them, and a retention time. Creating a schedule [enables point-in-time recovery](../../manage/backup-restore/point-in-time-recovery/enable-pitr/) for the database or keyspace.
 
 Returns a schedule ID in JSON format.
 
@@ -1434,7 +1434,7 @@ Edit a snapshot schedule to take a snapshot once every 90 minutes, and retain ea
 
 #### restore_snapshot_schedule
 
-Schedules group a set of items into a single tracking object (the *schedule*). When you restore, you can choose a particular schedule and a point in time, and revert the state of all affected objects back to the chosen time.
+Schedules group a set of items into a single tracking object (the *schedule*). When you [rewind to a point in time](../../manage/backup-restore/point-in-time-recovery/rewind/), you choose a particular schedule and a point in time, and revert the state of all affected objects back to the chosen time.
 
 **Syntax**
 
@@ -1445,19 +1445,19 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *schedule-id*: The identifier (ID) of the schedule to be restored.
-* *restore-target*: The time to which to restore the snapshots in the schedule. This can be either an absolute Unix timestamp, or a relative time such as `minus 5m` (to restore to 5 minutes ago).
+* *schedule-id*: The identifier (ID) of the schedule to rewind.
+* *restore-target*: The time to which to rewind the snapshots in the schedule. This can be either an absolute Unix timestamp, or a relative time such as `minus 5m` (to rewind to 5 minutes ago).
 
-You can also use a [YSQL timestamp](../../api/ysql/datatypes/type_datetime/) or [YCQL timestamp](../../api/ycql/type_datetime/#timestamp) with the restore command, if you like.
+You can also use a [YSQL timestamp](../../api/ysql/datatypes/type_datetime/) or [YCQL timestamp](../../api/ycql/type_datetime/#timestamp) with the command, if you like.
 
-In addition to restoring to a particular timestamp, you can also restore from a relative time, such as "ten minutes ago".
+In addition to rewinding to a particular timestamp, you can also rewind from a relative time, such as "ten minutes ago".
 
 When you specify a relative time, you can specify any or all of *days*, *hours*, *minutes*, and *seconds*. For example:
 
-* `minus 5m` to restore from five minutes ago
-* `minus 1h` to restore from one hour ago
-* `minus 3d` to restore from three days ago
-* `minus 1h 5m` to restore from one hour and five minutes ago
+* `minus 5m` to rewind from five minutes ago
+* `minus 1h` to rewind from one hour ago
+* `minus 3d` to rewind from three days ago
+* `minus 1h 5m` to rewind from one hour and five minutes ago
 
 Relative times can be in any of the following formats (again, note that you can specify any or all of days, hours, minutes, and seconds):
 
