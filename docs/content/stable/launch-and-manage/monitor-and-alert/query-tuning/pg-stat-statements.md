@@ -71,18 +71,18 @@ The columns of the pg_stat_statements view are described in the following table.
 | catalog_wait_time   | double precision | Wall clock wait time (in ms) for catalog requests, including the network latency.                                |
 | docdb_read_operations | bigint         | Total number of read operations sent as part of RPC requests.                                                   |
 | docdb_write_operations | bigint        | Total number of write operations sent as part of RPC requests.                                                  |
-| docdb_wait_time     | double precision | Wall clock wait time (in ms) for storage requests in the YSQL layer, including the network latency.               |
 | docdb_rows_scanned  | bigint           | Rows scanned by DocDB.                                                                                          |
 | docdb_rows_returned | bigint           | Rows returned by DocDB layer to the YSQL layer.                                                                     |
+| docdb_wait_time     | double precision | Wall clock wait time (in ms) for storage requests in the YSQL layer, including the network latency.               |
 | conflict_retries    | bigint           | Number of internal query retries caused by transaction conflicts between overlapping transactions.              |
 | read_restart_retries | bigint          | Number of internal query retries for reads (possibly because of a concurrent update).                            |
 | total_retries       | bigint           | Total number of query retries of any type.                                                                       |
+| docdb_obsolete_rows_scanned | bigint | Number of obsolete (tombstoned) rows scanned by DocDB while executing the statement. |
 | docdb_seeks | bigint | Number of DocDB seek operations. |
 | docdb_nexts | bigint | Number of DocDB next operations. |
 | docdb_prevs | bigint | Number of DocDB prev operations. |
 | docdb_read_time | double precision | Aggregate read time (in ms) in storage layer. |
 | docdb_write_time | double precision | Aggregate write time (in ms) in storage layer. |
-| docdb_obsolete_rows_scanned | bigint | Number of obsolete (tombstoned) rows scanned by DocDB while executing the statement. |
 
 ## Configuration parameters
 
