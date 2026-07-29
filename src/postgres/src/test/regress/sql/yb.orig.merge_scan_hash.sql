@@ -54,8 +54,8 @@
 
 -- #30096: Merge scan shouldn't be used in a parallel scan.
 \set query ':explain :Q SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2;'
-\set Q3 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_merge_scan_streams 0)*/'
-\set Q4 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_merge_scan_streams 64)*/'
+\set Q3 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_test_force_parallel force) Set(yb_max_merge_scan_streams 0)*/'
+\set Q4 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_test_force_parallel force) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query
 
 -- Same thing with backwards scan.
