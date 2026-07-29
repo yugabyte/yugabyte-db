@@ -24,6 +24,7 @@
 
 #include "postgres.h"
 
+#include "access/reloptions.h"
 #include "catalog/pg_opclass.h"
 #include "commands/yb_cmds.h"
 #include "utils/syscache.h"
@@ -60,6 +61,7 @@ typedef struct YbHnswCreateOptions
 	int			m;				/* number of connections per node */
 	int			m0;				/* number of connections per node in base level */
 	int			ef_construction;	/* size of dynamic candidate list */
+	Oid			colocation_id;	/* YB: for ysql_dump/restore round trip */
 }			YbHnswCreateOptions;
 
 void
@@ -78,6 +80,8 @@ YbHnswInit(void)
 					  YBHNSW_DEFAULT_EF_CONSTRUCTION,
 					  YBHNSW_MIN_EF_CONSTRUCTION, YBHNSW_MAX_EF_CONSTRUCTION,
 					  AccessExclusiveLock);
+	/* YB: needed so ysql_dump's WITH (colocation_id=...) parses on restore. */
+	YbAddColocationIdReloption(ybhnsw_relopt_kind);
 	DefineCustomIntVariable("hnsw.ef_search", "Sets the size of the dynamic candidate list for search",
 							"Valid range is 1..1000.",
 							&ybhnsw_ef_search,
@@ -106,6 +110,8 @@ ybhnswoptions(Datum reloptions, bool validate)
 		{"m0", RELOPT_TYPE_INT, offsetof(YbHnswCreateOptions, m0)},
 		{"ef_construction", RELOPT_TYPE_INT,
 		offsetof(YbHnswCreateOptions, ef_construction)},
+		{"colocation_id", RELOPT_TYPE_OID,
+		offsetof(YbHnswCreateOptions, colocation_id)},
 	};
 
 	return (bytea *) build_reloptions(reloptions, validate,
