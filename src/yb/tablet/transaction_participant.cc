@@ -43,13 +43,12 @@
 
 #include "yb/server/clock.h"
 
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/cleanup_aborts_task.h"
 #include "yb/tablet/cleanup_intents_task.h"
 #include "yb/tablet/operations/update_txn_operation.h"
-#include "yb/tablet/remove_intents_task.h"
 #include "yb/tablet/running_transaction.h"
 #include "yb/tablet/running_transaction_context.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_loader.h"
 #include "yb/tablet/transaction_participant_context.h"
 #include "yb/tablet/transaction_status_resolver.h"
@@ -61,7 +60,6 @@
 #include "yb/util/async_util.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/lru_cache.h"
@@ -146,7 +144,9 @@ METRIC_DEFINE_simple_gauge_uint64(
     yb::MetricUnit::kTransactions);
 METRIC_DEFINE_simple_gauge_uint64(
     tablet, aborted_transactions_pending_cleanup,
-    "Total number of aborted transactions running in participant",
+    "Number of transactions held in memory whose last known status is ABORTED; includes "
+    "transactions the coordinator has forgotten, which it reports as ABORTED and which may "
+    "actually have committed",
     yb::MetricUnit::kTransactions);
 METRIC_DEFINE_simple_gauge_uint64(
     tablet, wal_replayable_applied_transactions,
@@ -211,8 +211,7 @@ DEFINE_test_flag(uint64, wait_inactive_transaction_cleanup_sleep_ms, 0,
                  "The amount of time the thread sleeps while waiting for the transaction to be "
                  "cleaned up");
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 namespace {
 
@@ -268,8 +267,8 @@ class TransactionParticipant::Impl
             CreateMetrics::kFalse)),
         recently_applied_(typename RecentlyAppliedTransactions::allocator_type(mem_tracker_)),
         loader_(this, entity),
-        poller_(log_prefix_, std::bind(&Impl::Poll, this)),
-        wait_queue_poller_(log_prefix_, std::bind(&Impl::PollWaitQueue, this)) {
+        poller_(log_prefix_, [this] { Poll(); }),
+        wait_queue_poller_(log_prefix_, [this] { PollWaitQueue(); }) {
     LOG_WITH_PREFIX(INFO) << "Create";
     metric_transactions_running_ = METRIC_transactions_running.Instantiate(entity, 0);
     metric_transaction_not_found_ = METRIC_transaction_not_found.Instantiate(entity);
@@ -292,7 +291,7 @@ class TransactionParticipant::Impl
         METRIC_current_fast_mode_rr_rc_transactions.Instantiate(entity, 0);
   }
 
-  ~Impl() {
+  ~Impl() override {
     if (StartShutdown()) {
       CompleteShutdown();
     } else {
@@ -1126,7 +1125,7 @@ class TransactionParticipant::Impl
     if (handle != rpcs_.InvalidHandle()) {
       *handle = UpdateTransaction(
           TransactionRpcDeadline(),
-          nullptr /* remote_tablet */,
+          /*tablet=*/nullptr,
           client,
           &req,
           GuardedByWeak(weak_from_this(), [this, handle](
@@ -1670,7 +1669,7 @@ class TransactionParticipant::Impl
     RETURN_NOT_OK(loader_.WaitAllLoaded());
     std::lock_guard lock(mutex_);
     return DoProcessRecentlyAppliedTransactions(
-        retryable_requests_flushed_op_id, false /* persist */);
+        retryable_requests_flushed_op_id, /*persist=*/false);
   }
 
   void SetRetryableRequestsFlushedOpId(const OpId& flushed_op_id) EXCLUDES(mutex_) {
@@ -1681,7 +1680,7 @@ class TransactionParticipant::Impl
   Status ProcessRecentlyAppliedTransactions() EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     return ResultToStatus(DoProcessRecentlyAppliedTransactions(
-        retryable_requests_flushed_op_id_, true /* persist */));
+        retryable_requests_flushed_op_id_, /*persist=*/true));
   }
 
   std::weak_ptr<void> RetainWeak() override {
@@ -1813,7 +1812,7 @@ class TransactionParticipant::Impl
   class FirstWriteTimeTag;
   class ApplyOpIdTag;
 
-  typedef boost::multi_index_container<RunningTransactionPtr,
+  using Transactions = boost::multi_index_container<RunningTransactionPtr,
       boost::multi_index::indexed_by <
           boost::multi_index::hashed_unique <
               boost::multi_index::const_mem_fun <
@@ -1830,7 +1829,7 @@ class TransactionParticipant::Impl
                   RunningTransaction, HybridTime, &RunningTransaction::abort_check_ht>
           >
       >
-  > Transactions;
+  >;
 
   struct AppliedTransactionState {
     OpId apply_op_id;
@@ -2184,7 +2183,7 @@ class TransactionParticipant::Impl
               << ignore_all_transactions_started_before_ << ", txn: " << AsString(**it);
           return LockAndFindResult{};
         }
-        return LockAndFindResult{std::move(GetLockForCondition(lock)), it};
+        return LockAndFindResult{.lock = std::move(GetLockForCondition(lock)), .iterator = it};
       }
       recently_removed = WasTransactionRecentlyRemoved(id);
       deadlock_status = GetTransactionDeadlockStatusUnlocked(id);
@@ -2673,7 +2672,8 @@ class TransactionParticipant::Impl
         << "Adding recently applied transaction: "
         << "first_write_ht=" << first_write_ht << " apply_op_id=" << apply_op_id
         << " (cleaned " << cleaned << ")";
-    recently_applied_.insert(AppliedTransactionState{apply_op_id, first_write_ht});
+    recently_applied_.insert(
+        AppliedTransactionState{.apply_op_id = apply_op_id, .first_write_ht = first_write_ht});
     metric_wal_replayable_applied_transactions_->IncrementBy(1 - static_cast<int64_t>(cleaned));
     UpdateMinReplayTxnFirstWriteTimeIfNeeded();
     TEST_SYNC_POINT_CALLBACK(
@@ -3345,5 +3345,4 @@ void FastModeTransactionScope::Reset() {
   participant_ = nullptr;
 }
 
-}  // namespace tablet
-}  // namespace yb
+} // namespace yb::tablet
