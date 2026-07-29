@@ -2309,8 +2309,6 @@ index_drop(Oid indexId, bool concurrent, bool concurrent_lock_mode)
 				indexrelid;
 	LOCKTAG		heaplocktag;
 	LOCKMODE	lockmode;
-	volatile BackendType old_type = MyBackendType;
-	volatile bool yb_type_changed = false;
 
 	/*
 	 * A temporary relation uses a non-concurrent DROP.  Other backends can't
@@ -2387,6 +2385,23 @@ index_drop(Oid indexId, bool concurrent, bool concurrent_lock_mode)
 	 */
 	if (concurrent)
 	{
+		/*
+		 * YB: Change the backend type to YB_INDEX_BACKFILL_DDL for the
+		 * duration of the two WaitForLockers calls below.  A
+		 * YB_INDEX_BACKFILL_DDL backend is ignored by the
+		 * WaitForYsqlBackendsCatalogVersion query logic, so a DROP INDEX
+		 * CONCURRENTLY blocked on old transactions does not appear as a
+		 * lagging backend and time out other concurrent index DDLs (see the
+		 * corresponding logic for CREATE INDEX CONCURRENTLY in DefineIndex).
+		 * Unlike CREATE INDEX CONCURRENTLY, this applies in legacy mode for
+		 * catalog ops too because YbCommitIndexDropStateChange waits for
+		 * backend catalog-version convergence in both modes.
+		 */
+
+		/* Use volatile to ensure variables survive a siglongjmp */
+		volatile BackendType old_type = MyBackendType;
+		volatile bool yb_type_changed = false;
+
 		if (IsYugaByteEnabled() &&
 			(MyBackendType == B_BACKEND || MyBackendType == YB_YSQL_CONN_MGR))
 		{
@@ -2616,6 +2631,22 @@ index_drop(Oid indexId, bool concurrent, bool concurrent_lock_mode)
 	}
 }
 
+/*
+ * YB: Commit a pg_index state-change transaction of DROP INDEX CONCURRENTLY
+ * and wait until every backend in the cluster has caught up to the resulting
+ * catalog version, so that no backend can still be planning or executing
+ * queries against the old index state when the caller proceeds.
+ *
+ * The commit must preserve the YB DDL state of the overall DROP INDEX
+ * statement across the intermediate transaction boundary.  In legacy mode
+ * for catalog ops, YbCommitTransactionCommandIntermediate does not restore
+ * that state (it only does so when DDL transaction block support is
+ * enabled), so explicitly re-wind and re-establish the DDL nesting level and
+ * original-statement state around the commit, mirroring YbDefineIndexHelper.
+ *
+ * "phase" identifies the just-committed pg_index transition for the
+ * yb_test_fail_index_state_change and yb_test_block_index_phase test hooks.
+ */
 static void
 YbCommitIndexDropStateChange(const char *phase)
 {
