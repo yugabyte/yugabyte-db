@@ -659,12 +659,6 @@
         },
         {
           "properties" : {
-            "apiKey" : {
-              "description" : "API key",
-              "maxLength" : 2147483647,
-              "minLength" : 1,
-              "type" : "string"
-            },
             "routingKey" : {
               "description" : "Routing key",
               "maxLength" : 2147483647,
@@ -673,7 +667,6 @@
             }
           },
           "required" : [
-            "apiKey",
             "routingKey"
           ],
           "type" : "object"
