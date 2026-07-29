@@ -563,6 +563,38 @@ TEST_P(PgIndexBackfillTest, Drop) {
   ASSERT_FALSE(ASSERT_RESULT(conn_->HasIndexScan(query)));
 }
 
+TEST_P(PgIndexBackfillTest, DropConcurrentlyRetry) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int PRIMARY KEY, j int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX $0 ON $1 (j ASC)", kIndexName, kTableName));
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  ASSERT_OK(conn_->Execute("SET yb_test_fail_index_state_change = 'drop_indisvalid'"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn_->ExecuteFormat("DROP INDEX CONCURRENTLY $0", kIndexName),
+      "TEST injected failure at stage drop_indisvalid");
+  ASSERT_OK(WaitForIndexStateFlags(
+      IndexStateFlags{IndexStateFlag::kIndIsLive, IndexStateFlag::kIndIsReady}));
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables(kIndexName)).size(), 1);
+
+  ASSERT_OK(conn_->Execute("SET yb_test_fail_index_state_change = 'drop_indislive'"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn_->ExecuteFormat("DROP INDEX CONCURRENTLY $0", kIndexName),
+      "TEST injected failure at stage drop_indislive");
+  ASSERT_OK(WaitForIndexStateFlags(IndexStateFlags{}));
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables(kIndexName)).size(), 1);
+
+  ASSERT_OK(conn_->Execute("RESET yb_test_fail_index_state_change"));
+  ASSERT_OK(conn_->ExecuteFormat("DROP INDEX CONCURRENTLY $0", kIndexName));
+  ASSERT_TRUE(ASSERT_RESULT(conn_->FetchRow<bool>(
+      Format("SELECT to_regclass('$0') IS NULL", kIndexName))));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(client->ListTables(kIndexName)).empty();
+      },
+      30s,
+      "wait for dropped DocDB index"));
+}
+
 // Make sure deletes to nonexistent rows look like noops to clients.  This may seem too obvious to
 // necessitate a test, but logic for backfill is special in that it wants nonexistent index deletes
 // to be applied for the backfill process to use them.  This test guards against that logic being
