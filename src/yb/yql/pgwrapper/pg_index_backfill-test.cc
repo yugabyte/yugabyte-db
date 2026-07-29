@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <atomic>
 #include <cmath>
 #include <map>
 #include <string>
@@ -1252,15 +1253,21 @@ class PgIndexBackfillSnapshotTooOld : public PgIndexBackfillBlockDoBackfill {
   const MonoDelta kHistoryRetentionInterval = 3s;
 };
 
-// Make sure that index backfill doesn't care about snapshot too old.  Force a situation where the
-// indexed table scan for backfill would occur after the committed history cutoff.  A compaction is
-// needed to update this committed history cutoff, and the retention period needs to be low enough
-// so that the cutoff is ahead of backfill's safe read time.  See issue #6333.
+// Make sure that, with the backfill_index_check_snapshot_too_old guard disabled, index backfill
+// doesn't care about snapshot too old.  Force a situation where the indexed table scan for
+// backfill would occur after the committed history cutoff.  A compaction is needed to update this
+// committed history cutoff, and the retention period needs to be low enough so that the cutoff is
+// ahead of backfill's safe read time.  See issue #6333.  This lenient behavior is only safe when
+// the indexed column is not updated after the backfill read time (see issue #32522 and the
+// BelowHistoryCutoffReadFailsLoud test below).  The flag pins the legacy escape hatch.
 TEST_F_EX(PgIndexBackfillTest,
-          SnapshotTooOld,
+          SnapshotTooOldLegacy,
           PgIndexBackfillSnapshotTooOld) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   constexpr int kTimeoutSec = 3;
+
+  // Disable the guard added for issue #32560 to exercise the legacy lenient behavior.
+  ASSERT_OK(cluster_->SetFlagOnTServers("backfill_index_check_snapshot_too_old", "false"));
 
   // (Make it one tablet for simplicity.)
   LOG(INFO) << "Create table...";
@@ -1385,6 +1392,126 @@ TEST_F_EX(PgIndexBackfillTest,
     ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
   });
   thread_holder_.JoinAll();
+}
+
+// Override the snapshot-too-old test to turn off packed rows.  With packed rows on, a full
+// compaction repacks each row, folding the row's current column values forward, which masks the
+// below-cutoff read (see issue #32522 trigger conditions).  With packed rows off, the compaction
+// does per-column overwrite garbage collection and drops the as-of-read-time version of an updated
+// column, so a backfill read below the history cutoff reconstructs a wrong (NULL) value.
+class PgIndexBackfillSnapshotTooOldPackedRowsOff : public PgIndexBackfillSnapshotTooOld {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillSnapshotTooOld::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_enable_packed_row=false");
+  }
+};
+
+// Regression test for issue #32522 / #32560: a backfill base-table read below the base table's
+// history cutoff must fail loud with "Snapshot too old" instead of silently building a wrong index.
+// This is the scenario of the SnapshotTooOldLegacy test above plus the one missing ingredient: an
+// UPDATE of the indexed column after the backfill read time is chosen.  Once history retention
+// expires and the base table is compacted, the as-of-read-time value of the indexed column is
+// garbage-collected, so a read at the backfill read time can no longer produce a correct result.
+// 1. Backfill blocks after choosing its read time (TEST_block_do_backfill).
+// 2. UPDATE moves the indexed column j: 10 -> 20.  Index maintenance (index is at indisready)
+//    writes the j=20 index entry and deletes the j=10 entry at a hybrid time above the backfill
+//    read time.
+// 3. History retention expires, and a flush + compact garbage-collects the j=10 version from the
+//    base table (packed rows are off, so the compaction does not fold the current value forward).
+// 4. Backfill unblocks and scans the base table at its read time, which is now below the committed
+//    history cutoff.  It must fail with "Snapshot too old".  Without the guard, it reads j as NULL
+//    and writes a (NULL, i=1) index entry that index maintenance never wrote-then-deleted, leaving
+//    a permanent inconsistency that yb_index_check reports.
+// Also verify the loud failure leaves a retryable state: drop the invalid index, re-run CREATE
+// INDEX, and check consistency.
+//
+// TODO(#32565): once base-table history is pinned at the backfill read time, this scenario builds a
+// consistent index and CREATE INDEX succeeds.  Rework this test to disable the pinning so the
+// below-cutoff guard keeps regression coverage.
+TEST_F_EX(PgIndexBackfillTest,
+          BelowHistoryCutoffReadFailsLoud,
+          PgIndexBackfillSnapshotTooOldPackedRowsOff) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  constexpr int kTimeoutSec = 3;
+  std::atomic<int64_t> unblock_time_micros{0};
+
+  LOG(INFO) << "Create table...";
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (i int PRIMARY KEY, j int) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 10)", kTableName));
+
+  LOG(INFO) << "Get table id for indexed table...";
+  const std::string table_id = ASSERT_RESULT(GetTableIdByTableName(
+      client.get(), kDatabaseName, kTableName));
+
+  // conn_ should be used by at most one thread for thread safety.
+  thread_holder_.AddThreadFunctor([this, &unblock_time_micros] {
+    LOG(INFO) << "Begin create thread";
+    Status s = conn_->ExecuteFormat("CREATE INDEX $0 ON $1 (j)", kIndexName, kTableName);
+    LOG(INFO) << "CREATE INDEX status: " << s;
+    if (s.ok()) {
+      // The old, silent-corruption behavior of issue #32522: backfill read the base table below the
+      // history cutoff and built the index from garbage-collected state.  Surface the resulting
+      // inconsistency in the test failure output.
+      Status index_check_status = CheckIndexConsistency(kIndexName);
+      FAIL() << "CREATE INDEX unexpectedly succeeded (expected \"Snapshot too old\"). "
+             << "yb_index_check: " << index_check_status;
+    }
+    ASSERT_TRUE(s.IsNetworkError()) << "got unexpected error: " << s;
+    ASSERT_TRUE(s.message().ToBuffer().find("Snapshot too old") != std::string::npos)
+        << "got unexpected error: " << s;
+    // The failure should come from the first rejected backfill chunk, not from exhausting
+    // index_backfill_rpc_max_retries (150 retries with up to 10 min delay each).
+    const auto unblocked_at = unblock_time_micros.load();
+    ASSERT_NE(unblocked_at, 0);
+    const auto elapsed = MonoDelta::FromMicroseconds(
+        MonoTime::Now().GetDeltaSinceMin().ToMicroseconds() - unblocked_at);
+    LOG(INFO) << "CREATE INDEX failed " << elapsed << " after backfill was unblocked";
+    const MonoDelta max_failure_delay = RegularBuildVsSanitizers(60s, 120s);
+    ASSERT_LT(elapsed, max_failure_delay);
+  });
+  thread_holder_.AddThreadFunctor([this, &client, &table_id, &unblock_time_micros] {
+    LOG(INFO) << "Begin compact thread";
+    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+
+    // Update the indexed column after the backfill read time was chosen.  This is what makes a read
+    // below the history cutoff produce a wrong index rather than a benign stale-but-equal read.
+    LOG(INFO) << "Update indexed column...";
+    PGConn update_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(update_conn.ExecuteFormat("UPDATE $0 SET j = 20 WHERE i = 1", kTableName));
+
+    LOG(INFO) << "Sleep past history retention...";
+    SleepFor(kHistoryRetentionInterval);
+
+    LOG(INFO) << "Flush and compact indexed table...";
+    ASSERT_OK(client->FlushTables(
+        {table_id},
+        false /* add_indexes */,
+        kTimeoutSec,
+        false /* is_compaction */));
+    ASSERT_OK(client->FlushTables(
+        {table_id},
+        false /* add_indexes */,
+        kTimeoutSec,
+        true /* is_compaction */));
+
+    LOG(INFO) << "Unblock backfill...";
+    unblock_time_micros.store(MonoTime::Now().GetDeltaSinceMin().ToMicroseconds());
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  });
+  thread_holder_.JoinAll();
+
+  // The rejection must also be counted by the backfill_reads_rejected_below_history_cutoff metric.
+  ASSERT_GE(ASSERT_RESULT(TotalBackfillReadsRejectedBelowHistoryCutoff(cluster_.get())), 1);
+
+  // The failed CREATE INDEX leaves an invalid index.  Verify the documented recovery path works:
+  // drop it and retry (backfill is no longer blocked, so the retry chooses a fresh read time and
+  // succeeds).
+  LOG(INFO) << "Drop invalid index and retry...";
+  ASSERT_OK(conn_->ExecuteFormat("DROP INDEX IF EXISTS $0", kIndexName));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX $0 ON $1 (j)", kIndexName, kTableName));
+  ASSERT_OK(CheckIndexConsistency(kIndexName));
 }
 
 // Make sure that read time (and write time) for backfill works.  Simulate the following:
