@@ -6,4 +6,4 @@ SET pgaudit.log_parameter = ON;
 -- of the current system is such that logging is disable. We test that corner case here.
 SET pgaudit.log = 'NONE';
 SET pgaudit.log = 'ALL';
-NOTICE:  AUDIT: SESSION,1,1,MISC,SET,,,SET pgaudit.log = 'ALL';,<none>
+NOTICE:  AUDIT: SESSION,1,1,MISC,SET,,,SET pgaudit.log = 'ALL',<none>
