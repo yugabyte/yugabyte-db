@@ -69,6 +69,8 @@ DEFINE_RUNTIME_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
     "faster than waiting for safe time to catch up.");
 TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, advanced);
 
+DECLARE_bool(backfill_index_check_snapshot_too_old);
+
 namespace yb {
 namespace tserver {
 
@@ -695,7 +697,30 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
 
   tablet::ScopedReadOperation read_tx;
   if (IsForBackfill()) {
-    read_operation_data.read_time = read_time_;
+    if (PREDICT_TRUE(FLAGS_backfill_index_check_snapshot_too_old)) {
+      // Register the fixed backfill read time with the retention policy.  This rejects the read
+      // with SnapshotTooOld if the history cutoff has already advanced past the read time (reading
+      // anyway can silently return garbage-collected state and build an incorrect index) and
+      // prevents compaction from garbage-collecting history past the read time for the duration of
+      // this request.  Note the index table is exempted from the SnapshotTooOld check while its
+      // backfill is in progress because it retains delete markers (see #30329).  This read is of
+      // the indexed table, which has no such retention, so the check applies.
+      auto read_tx_result = tablet::ScopedReadOperation::Create(
+          abstract_tablet_.get(), require_lease_, read_time_);
+      if (!read_tx_result.ok()) {
+        if (read_tx_result.status().IsSnapshotTooOld()) {
+          tablet()->metrics()->Increment(
+              tablet::TabletCounters::kBackfillReadsRejectedBelowHistoryCutoff);
+        }
+        LOG(WARNING) << "Rejecting index backfill read at " << read_time_ << ": "
+                     << read_tx_result.status();
+        return read_tx_result.status();
+      }
+      read_tx = std::move(*read_tx_result);
+      read_operation_data.read_time = read_tx.read_time();
+    } else {
+      read_operation_data.read_time = read_time_;
+    }
   } else {
     if (!read_time_) {
       LOG(DFATAL) << "Read time must be picked by now!";
