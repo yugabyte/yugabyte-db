@@ -41,9 +41,9 @@ SELECT current_user \gset
 
 --
 -- Set pgaudit parameters for the current (super)user.
-ALTER ROLE :current_user SET pgaudit.log = 'Role';
-ALTER ROLE :current_user SET pgaudit.log_level = 'notice';
-ALTER ROLE :current_user SET pgaudit.log_client = ON;
+ALTER ROLE :"current_user" SET pgaudit.log = 'Role';
+ALTER ROLE :"current_user" SET pgaudit.log_level = 'notice';
+ALTER ROLE :"current_user" SET pgaudit.log_client = ON;
 
 \connect - :current_user;
 
@@ -301,6 +301,94 @@ UPDATE public.test4
 update public.test4 set name = 'foo' where name = 'bar';
 
 --
+-- Create test5 to check that a SELECT grant on a column is not matched
+-- against columns that are only inserted or updated (not read).
+CREATE TABLE test5
+(
+	col1 int,
+	col2 text
+);
+
+GRANT SELECT (col2)
+   ON TABLE public.test5
+   TO regress_auditor;
+
+--
+-- Not object logged: col2 is inserted but not returned, so the select (col2)
+-- grant must not match the inserted (non-read) column.
+INSERT INTO public.test5 (col1, col2)
+				  VALUES (1, 'bar')
+			   RETURNING col1;
+
+--
+-- Object logged because of:
+-- select (col2) on test5 (col2 is read via RETURNING)
+INSERT INTO public.test5 (col1, col2)
+				  VALUES (1, 'bar')
+			   RETURNING col2;
+
+--
+-- Not object logged: col2 is updated but not returned, so the select (col2)
+-- grant must not match the updated (non-read) column.
+UPDATE public.test5
+   SET col2 = 'baz'
+ RETURNING col1;
+
+--
+-- Object logged because of:
+-- select (col2) on test5 (col2 is read via RETURNING)
+UPDATE public.test5
+   SET col1 = 2
+ RETURNING col2;
+
+--
+-- Object logged because of:
+-- select (col2) on test5 (col2 is read via RETURNING even though it is also the
+-- updated column; the update alone must not cause logging)
+UPDATE public.test5
+   SET col2 = 'baz'
+ RETURNING col2;
+
+--
+-- Object logged because of:
+-- select (col2) on test5 (col2 is read via the RETURNING OLD/NEW references
+-- added in PostgreSQL 18, which count as reads like a plain column reference)
+UPDATE public.test5
+   SET col1 = 3
+ RETURNING old.col2, new.col2;
+
+DROP TABLE test5;
+
+--
+-- Confirm that "long" parameter values will not be logged if pgaudit.log_parameter_max_size
+-- is set.
+\connect - :current_user
+ALTER ROLE regress_user2 SET pgaudit.log_parameter_max_size = 50;
+ALTER ROLE regress_user2 SET pgaudit.log_parameter = 'on';
+
+\connect - regress_user2
+PREPARE testinsert(int, text) AS
+    INSERT INTO test4 VALUES($1, $2);
+
+EXECUTE testinsert(1, '*******************************************************');
+
+DEALLOCATE testinsert;
+
+\connect - :current_user
+ALTER ROLE regress_user2 RESET pgaudit.log_parameter_max_size;
+
+\connect - regress_user2
+PREPARE testinsert(int, text) AS
+    INSERT INTO test4 VALUES($1, $2);
+
+EXECUTE testinsert(2, '*******************************************************');
+
+DEALLOCATE testinsert;
+
+\connect - :current_user
+ALTER ROLE regress_user2 RESET pgaudit.log_parameter;
+
+--
 -- Change permissions of user 1 so that session logging will be done
 \connect - :current_user
 
@@ -426,6 +514,13 @@ SELECT *
   FROM account
  WHERE password = 'HASH2'
    FOR UPDATE;
+
+--
+-- Not object logged
+-- Session logged on all tables because log = read and log_relation = on
+SELECT name
+FROM account
+    FOR UPDATE;
 
 --
 -- Object logged because of:
@@ -576,7 +671,12 @@ DO $$
 DECLARE
 	test INT;
 BEGIN
-	SELECT 1
+	SELECT 1,
+		   substring('Thomas' from 2 for 3)
+	  INTO test;
+
+	-- Very simple select into statements with scalar expressions are not logged
+	SELECT 56 * 89
 	  INTO test;
 END $$;
 
@@ -610,8 +710,7 @@ DO $$
 DECLARE
 	table_name TEXT = 'do_table';
 BEGIN
-	EXECUTE 'CREATE TABLE ' || table_name || ' ("weird name" INT)';
-	EXECUTE 'DROP table ' || table_name;
+	EXECUTE E'\t\n\r CREATE TABLE ' || table_name || E' ("weird name" INT)\t\n\r ; DROP table ' || table_name;
 END $$;
 
 --
@@ -869,6 +968,12 @@ CREATE TABLE h_1 partition OF h FOR VALUES WITH ( MODULUS 2, REMAINDER 1);
 INSERT INTO h VALUES(1,1);
 SELECT * FROM h;
 SELECT * FROM h_0;
+COPY h FROM stdin;
+2	2
+3	3
+\.
+COPY h TO stdout;
+COPY (SELECT * FROM h) TO stdout;
 CREATE INDEX h_idx ON h (x);
 DROP INDEX h_idx;
 DROP TABLE h;
@@ -1252,7 +1357,8 @@ DO $$
 DECLARE
 	test INT;
 BEGIN
-	SELECT 1
+	SELECT 1,
+		   substring('Thomas' from 2 for 3)
 	  INTO test;
 END $$;
 
@@ -1527,6 +1633,12 @@ CREATE TABLE h_1 partition OF h FOR VALUES WITH ( MODULUS 2, REMAINDER 1);
 INSERT INTO h VALUES(1,1);
 SELECT * FROM h;
 SELECT * FROM h_0;
+COPY h FROM stdin;
+2	2
+3	3
+\.
+COPY h TO stdout;
+COPY (SELECT * FROM h) TO stdout;
 CREATE INDEX h_idx ON h (x);
 DROP INDEX h_idx;
 DROP TABLE h;
@@ -1586,50 +1698,131 @@ SET pgaudit.log = 'all,-misc_set';
 SET pgaudit.log_level = 'warning';
 
 CREATE EXTENSION pg_stat_statements;
-ALTER EXTENSION pg_stat_statements UPDATE TO '1.10';
+ALTER EXTENSION pg_stat_statements UPDATE TO '1.13';
 DROP EXTENSION pg_stat_statements;
 
 SET pgaudit.log_level = 'notice';
 
--- Check that partition scans are skipped for auditing and do no result in an empty stack
-SET pgaudit.log = 'all';
+-- Check that password redaction works with CREATE/ALTER USER MAPPING
+CREATE EXTENSION postgres_fdw;
+CREATE SERVER fdw_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host 'foo', dbname 'foodb', port '5432');
 
-CREATE TABLE part_test (c1 int, c2 int) PARTITION BY RANGE (c1);
-CREATE TABLE part_test_1_to_10 PARTITION OF part_test FOR VALUES FROM (1) TO (10);
-INSERT INTO part_test VALUES (generate_series(1,9));
+CREATE USER MAPPING FOR regress_user1 SERVER fdw_server OPTIONS (user 'regress_user1', password 'secret');
+ALTER USER MAPPING FOR regress_user1 SERVER fdw_server OPTIONS (SET /* comment */ password 'secret2');
 
-CREATE OR REPLACE FUNCTION get_test_id(_ret REFCURSOR) RETURNS REFCURSOR
-LANGUAGE plpgsql IMMUTABLE AS $$
-BEGIN
-    OPEN _ret FOR SELECT * FROM part_test;
-    RETURN _ret;
-END $$;
+DROP USER MAPPING FOR regress_user1 SERVER fdw_server;
+DROP SERVER fdw_server;
+DROP EXTENSION postgres_fdw;
 
-BEGIN;
-SELECT get_test_id('_ret');
-FETCH ALL FROM _ret;
-COMMIT;
+--
+-- Test logging in parallel workers
+SET pgaudit.log = 'read';
+SET pgaudit.log_client = on;
+SET pgaudit.log_level = 'notice';
 
-DROP TABLE part_test;
+-- Force parallel execution for testing
+SET max_parallel_workers_per_gather = 2;
+SET parallel_tuple_cost = 0;
+SET parallel_setup_cost = 0;
+SET min_parallel_table_scan_size = 0;
+SET min_parallel_index_scan_size = 0;
+
+-- Create table with enough data to trigger parallel execution
+CREATE TABLE parallel_test (id int, data text);
+INSERT INTO parallel_test SELECT generate_series(1, 1000), 'test data';
+
+SELECT count(*) FROM parallel_test;
+
+-- Cleanup parallel test
+DROP TABLE parallel_test;
+RESET max_parallel_workers_per_gather;
+RESET parallel_tuple_cost;
+RESET parallel_setup_cost;
+RESET min_parallel_table_scan_size;
+RESET min_parallel_index_scan_size;
+
+-- Test logging of SQL/PGQ property graphs queried via GRAPH_TABLE.  A property
+-- graph is rewritten into a subquery but keeps relkind 'g' and its
+-- perminfoindex, so it reaches log_select_dml() as an RTE_SUBQUERY that is not
+-- a view.
+SET pgaudit.log_relation = on;
+
+CREATE TABLE graph_vertex (id int PRIMARY KEY, name text);
+INSERT INTO graph_vertex VALUES (1, 'alice'), (2, 'bob');
+
+CREATE PROPERTY GRAPH graph_test VERTEX TABLES (graph_vertex);
+
+--
+-- Session logged on the property graph (object type PROPERTY GRAPH) and on the
+-- underlying vertex table because log = read and log_relation = on
+SELECT name
+  FROM GRAPH_TABLE (graph_test MATCH (v IS graph_vertex) COLUMNS (v.name))
+ ORDER BY name;
+
+DROP PROPERTY GRAPH graph_test;
+DROP TABLE graph_vertex;
+
+--
+-- Test that a role substatement (GRANT) collected as the last command of a DDL
+-- statement does not cause the statement to be logged a second time by the
+-- ProcessUtility hook, reading the object name/type after their memory context
+-- has been freed, when only DDL is being logged.
+SET pgaudit.log = 'none';
+CREATE EXTENSION pgaudit;
+
+SET pgaudit.log_client = on;
+SET pgaudit.log_level = 'notice';
+SET pgaudit.log_relation = off;
+SET pgaudit.log = 'ddl';
+
+CREATE TABLE schema_grant_tbl (id int);
+CREATE ROLE regress_schema_grant;
+
+CREATE SCHEMA schema_grant
+	GRANT SELECT
+	   ON public.schema_grant_tbl
+	   TO regress_schema_grant;
+
+-- The same scenario written with the CREATE SCHEMA ... AUTHORIZATION form.  Its
+-- schema elements execute as the target role, so create the table as an element
+-- (owned by that role) and grant on it; the trailing GRANT substatement
+-- exercises the same path.
+CREATE ROLE regress_schema_auth;
+
+CREATE SCHEMA AUTHORIZATION regress_schema_auth
+	CREATE TABLE schema_auth_tbl (id int)
+	GRANT SELECT
+	   ON schema_auth_tbl
+	   TO PUBLIC;
+
+SET pgaudit.log = 'none';
+DROP SCHEMA schema_grant;
+DROP SCHEMA regress_schema_auth CASCADE;
+DROP TABLE schema_grant_tbl;
+DROP ROLE regress_schema_grant;
+DROP ROLE regress_schema_auth;
+DROP EXTENSION pgaudit;
 
 -- Cleanup
 -- Set client_min_messages up to warning to avoid noise
 SET client_min_messages = 'warning';
 
-ALTER ROLE :current_user RESET pgaudit.log;
-ALTER ROLE :current_user RESET pgaudit.log_catalog;
-ALTER ROLE :current_user RESET pgaudit.log_client;
-ALTER ROLE :current_user RESET pgaudit.log_level;
-ALTER ROLE :current_user RESET pgaudit.log_parameter;
-ALTER ROLE :current_user RESET pgaudit.log_relation;
-ALTER ROLE :current_user RESET pgaudit.log_statement;
-ALTER ROLE :current_user RESET pgaudit.log_statement_once;
-ALTER ROLE :current_user RESET pgaudit.role;
+ALTER ROLE :"current_user" RESET pgaudit.log;
+ALTER ROLE :"current_user" RESET pgaudit.log_catalog;
+ALTER ROLE :"current_user" RESET pgaudit.log_client;
+ALTER ROLE :"current_user" RESET pgaudit.log_level;
+ALTER ROLE :"current_user" RESET pgaudit.log_parameter;
+ALTER ROLE :"current_user" RESET pgaudit.log_parameter_max_size;
+ALTER ROLE :"current_user" RESET pgaudit.log_relation;
+ALTER ROLE :"current_user" RESET pgaudit.log_statement;
+ALTER ROLE :"current_user" RESET pgaudit.log_statement_once;
+ALTER ROLE :"current_user" RESET pgaudit.role;
 
 RESET pgaudit.log;
 RESET pgaudit.log_catalog;
 RESET pgaudit.log_level;
 RESET pgaudit.log_parameter;
+RESET pgaudit.log_parameter_max_size;
 RESET pgaudit.log_relation;
 RESET pgaudit.log_statement;
 RESET pgaudit.log_statement_once;

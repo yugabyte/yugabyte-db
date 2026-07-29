@@ -677,10 +677,10 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
     metricsLibs.push_back("pg_stat_statements");
   }
   metricsLibs.push_back("yb_pg_metrics");
-  // YB_TODO_PG19MERGE: pgaudit, pg_hint_plan, and yb_xcluster_ddl_replication
-  // are not currently built in the YB PG19 tree.
+  metricsLibs.push_back("pgaudit");
+  // YB_TODO_PG19MERGE: pg_hint_plan and yb_xcluster_ddl_replication are not
+  // currently built in the YB PG19 tree.
   // Uncomment these lines when they are available.
-  // metricsLibs.push_back("pgaudit");
   // metricsLibs.push_back("pg_hint_plan");
   // metricsLibs.push_back("yb_xcluster_ddl_replication");
 

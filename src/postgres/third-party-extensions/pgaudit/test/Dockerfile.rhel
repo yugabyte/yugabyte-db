@@ -1,11 +1,14 @@
-FROM rockylinux/rockylinux:8
+FROM rockylinux/rockylinux:9
 
 # Install packages
-RUN dnf install -y sudo make gcc llvm-toolset openssl-devel redhat-rpm-config
+RUN dnf install -y sudo make gcc llvm-toolset openssl-devel redhat-rpm-config krb5-devel
 
 # Install and enable EPEL repository
 RUN dnf -y install epel-release
 RUN crb enable
+
+# Install the Perl modules needed for the TAP tests (perl-IPC-Run lives in EPEL)
+RUN dnf install -y perl perl-Test-Harness perl-Test-Simple perl-IPC-Run
 
 # Create postgres user/group with specific IDs
 ARG UID=1000
@@ -15,19 +18,19 @@ RUN groupadd -g $GID -o postgres
 RUN useradd -m -u $UID -g $GID -o -s /bin/bash postgres
 
 # Add PostgreSQL repository
-RUN dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-`uname -m`/pgdg-redhat-repo-latest.noarch.rpm
+RUN dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-`uname -m`/pgdg-redhat-repo-latest.noarch.rpm
 
 # Disable PostgreSQL in default repository
 RUN dnf -qy module disable postgresql
 
+# Enable PG19 repo (can be removed after the official release)
+RUN dnf config-manager --set-enabled pgdg19-updates-testing
+
 # Install PostgreSQL
-ENV PGVERSION=15
+ENV PGVERSION=19
 
-RUN dnf install -y postgresql${PGVERSION?}-server postgresql${PGVERSION?}-devel postgresql${PGVERSION?}-contrib
-
-# Configure llvm lib (required for aarch64)
-RUN echo /opt/rh/llvm-toolset-7.0/root/usr/lib64/ > /etc/ld.so.conf.d/llvm-toolset.conf
-RUN ldconfig
+RUN dnf install -y postgresql${PGVERSION?}-server postgresql${PGVERSION?}-devel postgresql${PGVERSION?}-contrib \
+    postgresql${PGVERSION?}-test
 
 # Create PostgreSQL cluster
 ENV PGBIN=/usr/pgsql-${PGVERSION}/bin

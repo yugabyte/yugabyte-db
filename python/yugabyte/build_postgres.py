@@ -791,7 +791,7 @@ class PostgresBuilder(YbBuildToolBase):
             # 'third-party-extensions/pg_parquet',
             'third-party-extensions/pg_partman',
             # 'third-party-extensions/pg_stat_monitor',
-            # 'third-party-extensions/pgaudit',
+            'third-party-extensions/pgaudit',
             # 'third-party-extensions/pgrx',
             'third-party-extensions/pgtap',
             'third-party-extensions/pgvector',
