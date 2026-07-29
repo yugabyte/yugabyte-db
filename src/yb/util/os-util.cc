@@ -82,7 +82,7 @@ Result<std::string> ReadUnixConfigFromPath(const std::string& path, size_t max_l
   }
 
   if (bytes_read == 0) {
-    return STATUS_FORMAT(IllegalState, "config file $0 is empty", path);
+    return ""s;
   }
 
   // Last byte is a newline, drop it.
