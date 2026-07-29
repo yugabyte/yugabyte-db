@@ -1043,14 +1043,51 @@ void ybthin_read_async(
       build = BindToQLValue(
           spec->range_values[r], read->add_range_column_values()->mutable_value());
     }
-    if (build.ok() && spec->n_conds > 0) {
-      if (spec->n_conds == 1) {
-        build = BuildComparison(spec->conds[0], read->mutable_condition_expr());
+    // An Eq on the key column right after the prefix EXTENDS the prefix; it is not a filter.
+    // DocDB reads range_column_values as the range key prefix and derives the scan range from it,
+    // so a bound key column has to be part of that prefix -- left in condition_expr it contradicts
+    // the derived range and the scan returns nothing. pggate normalises the same way
+    // (PgDmlRead::ProcessEmptyKeyBinds: conditions move to condition_expr only once a PRECEDING
+    // key column is unbound). Non-Eq conditions, and anything past the first unbound column, stay
+    // filters.
+    std::vector<bool> cond_folded(spec->n_conds, false);
+    if (table->schema.num_hash_key_columns() == 0) {
+      for (size_t k = spec->n_range; build.ok() && k < table->schema.num_key_columns(); ++k) {
+        const int32_t key_col_id = table->columns[k].id;
+        size_t match = spec->n_conds;
+        for (size_t c = 0; c < spec->n_conds; ++c) {
+          if (!cond_folded[c] && spec->conds[c].column_id == key_col_id &&
+              spec->conds[c].op == YBTHIN_EQ && spec->conds[c].value.tag != YBTHIN_BIND_NULL) {
+            match = c;
+            break;
+          }
+        }
+        if (match == spec->n_conds) {
+          break;  // gap in the key prefix: everything from here on stays a filter
+        }
+        build = BindToQLValue(
+            spec->conds[match].value, read->add_range_column_values()->mutable_value());
+        cond_folded[match] = true;
+      }
+    }
+    size_t n_filters = 0;
+    for (size_t c = 0; c < spec->n_conds; ++c) {
+      if (!cond_folded[c]) ++n_filters;
+    }
+    if (build.ok() && n_filters > 0) {
+      if (n_filters == 1) {
+        for (size_t c = 0; c < spec->n_conds && build.ok(); ++c) {
+          if (!cond_folded[c]) {
+            build = BuildComparison(spec->conds[c], read->mutable_condition_expr());
+          }
+        }
       } else {
         auto* cond = read->mutable_condition_expr()->mutable_condition();
         cond->set_op(yb::QL_OP_AND);
         for (size_t c = 0; c < spec->n_conds && build.ok(); ++c) {
-          build = BuildComparison(spec->conds[c], cond->add_operands());
+          if (!cond_folded[c]) {
+            build = BuildComparison(spec->conds[c], cond->add_operands());
+          }
         }
       }
     }

@@ -17,6 +17,8 @@
 
 #include <algorithm>
 #include <functional>
+#include <tuple>
+#include <utility>
 #include <array>
 #include <future>
 #include <string>
@@ -596,6 +598,336 @@ TEST_F(PgThinClientTest, RangeShardedTable) {
     ybthin_upsert_batch_async(client, &bad, 1, &OnWriteDone, &promise);
     auto out = future.get();
     ASSERT_EQ(out.code, YBTHIN_INVALID) << "expected a partial primary key to be rejected";
+  }
+
+  ybthin_columns_free(info.columns, info.n_columns);
+  ybthin_table_close(table);
+  ybthin_client_destroy(client);
+}
+
+// A range-sharded table with a FOUR column key, matching the shape a caller reported problems on:
+// (a, b, segno, chunk_offset). Two independent things are checked here.
+//
+// 1. A range key PREFIX must bound the scan the same way in both directions. Encoding the prefix
+//    into scan bounds is what routes a range scan, and the upper bound of a prefix has to cover
+//    every key under it -- get that wrong and a reverse scan silently returns nothing while the
+//    identical forward scan returns rows.
+// 2. A condition on a key column must be evaluated even when that column is not among the targets.
+//    DocDB builds both the projection and the filter from col_refs (docdb/pgsql_operation.cc), so a
+//    condition column missing from col_refs is filtered against a column that was never read, and
+//    matches nothing.
+TEST_F(PgThinClientTest, RangeKeyPrefixesAndKeyColumnConditions) {
+  constexpr int kA = 1;
+  constexpr int kNumB = 3, kNumSeg = 3, kNumChunk = 4;   // 36 rows under a = 1
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE k (a int, b int, segno int, chunk_offset int, v bytea, "
+      "PRIMARY KEY (a ASC, b ASC, segno ASC, chunk_offset ASC)) "
+      // Split on THREE column tuples, as a reporting caller's table does. That is what makes the
+      // prefix depth matter: a 1-2 column prefix spans tablets while a 3-4 column one targets
+      // exactly one, and a scan that starts on the wrong tablet returns nothing.
+      "SPLIT AT VALUES ((1, 1, 0), (1, 2, 0), (2, 0, 0), (2, 1, 2))"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO k SELECT $0, b, s, c, '\\xfeed'::bytea "
+      "FROM generate_series(0, $1) b, generate_series(0, $2) s, generate_series(0, $3) c",
+      kA, kNumB - 1, kNumSeg - 1, kNumChunk - 1));
+  // A second value of `a`, so a prefix scan that ignores its bounds would over-return.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO k SELECT $0, b, s, c, '\\xfeed'::bytea "
+      "FROM generate_series(0, $1) b, generate_series(0, $2) s, generate_series(0, $3) c",
+      kA + 1, kNumB - 1, kNumSeg - 1, kNumChunk - 1));
+
+  const auto db_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT oid FROM pg_database "
+                                                     "WHERE datname = current_database()"));
+  const auto table_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT 'k'::regclass::oid"));
+
+  const auto addr = TServerAddr();
+  const char* addrs[] = {addr.c_str()};
+  ybthin_client* client = nullptr;
+  {
+    auto st = ybthin_client_create(
+        addrs, 1, /* tls= */ nullptr, /* pool= */ nullptr, /* rpc_timeout_ms= */ 60000,
+        /* num_reactors= */ 0, &client);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ybthin_table* table = nullptr;
+  ybthin_table_info info = {};
+  {
+    auto st = ybthin_table_open(client, db_oid, table_oid, &table, &info);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ASSERT_EQ(info.n_columns, 5);
+  const int32_t b_id = info.columns[1].id;
+  const int32_t segno_id = info.columns[2].id, chunk_id = info.columns[3].id;
+  ASSERT_EQ(info.columns[2].kind, YBTHIN_COL_RANGE);
+  ASSERT_EQ(info.columns[3].kind, YBTHIN_COL_RANGE);
+
+  // Pages a scan to completion and returns the values of the single target column.
+  auto scan = [&](const ybthin_read_spec& spec) -> Result<std::vector<int32_t>> {
+    std::vector<int32_t> seen;
+    std::vector<uint8_t> paging_state;
+    int pages = 0;
+    do {
+      std::promise<ReadOutcome> promise;
+      auto future = promise.get_future();
+      ybthin_read_op op = {};
+      op.table = table;
+      op.spec = spec;
+      op.paging_state_in = paging_state.empty() ? nullptr : paging_state.data();
+      op.paging_state_in_len = paging_state.size();
+      ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+      auto out = future.get();
+      SCHECK_EQ(out.code, YBTHIN_OK, IllegalState, out.message);
+      for (size_t i = 0; i < out.n_rows; ++i) {
+        seen.push_back(static_cast<int32_t>(out.cells[i * out.n_cols].i));
+      }
+      paging_state = std::move(out.paging_state);
+      SCHECK_LT(++pages, 100, IllegalState, "paging did not terminate");
+    } while (!paging_state.empty());
+    return seen;
+  };
+
+  // ---- (1) a range key prefix must behave identically forward and reverse ----
+  // Prefix lengths 1..4: (a), (a,b), (a,b,segno), (a,b,segno,chunk_offset).
+  const ybthin_bind prefix[] = {I32(kA), I32(1), I32(2), I32(3)};
+  const int expected_rows[] = {kNumB * kNumSeg * kNumChunk, kNumSeg * kNumChunk, kNumChunk, 1};
+  int32_t target_ids[] = {chunk_id};
+  for (size_t n = 1; n <= 4; ++n) {
+    ybthin_read_spec spec = {};
+    spec.range_values = prefix;
+    spec.n_range = n;
+    spec.target_ids = target_ids;
+    spec.n_targets = 1;
+
+    spec.is_forward_scan = 1;
+    auto fwd = ASSERT_RESULT(scan(spec));
+    spec.is_forward_scan = 0;
+    auto rev = ASSERT_RESULT(scan(spec));
+
+    ASSERT_EQ(fwd.size(), static_cast<size_t>(expected_rows[n - 1]))
+        << "forward scan on a " << n << "-column range prefix";
+    ASSERT_EQ(rev.size(), fwd.size())
+        << "reverse scan on a " << n << "-column range prefix returned " << rev.size()
+        << " rows but forward returned " << fwd.size();
+    std::sort(fwd.begin(), fwd.end());
+    std::sort(rev.begin(), rev.end());
+    ASSERT_EQ(fwd, rev) << "forward and reverse disagree on a " << n << "-column prefix";
+  }
+
+  // ---- (2) a condition on a key column that is NOT a target ----
+  // segno is the 3rd key column, chunk_offset the 4th; neither is the target here, so both rely on
+  // the condition column reaching col_refs.
+  int32_t only_b[] = {b_id};
+  for (const auto& [cond_col, cond_val, expected, name] :
+       std::vector<std::tuple<int32_t, int32_t, int, const char*>>{
+           {segno_id, 1, kNumB * kNumChunk, "segno (3rd key column)"},
+           {chunk_id, 2, kNumB * kNumSeg, "chunk_offset (4th key column)"}}) {
+    ybthin_bind a_only[] = {I32(kA)};
+    ybthin_cond conds[] = {{cond_col, YBTHIN_EQ, I32(cond_val)}};
+    ybthin_read_spec spec = {};
+    spec.range_values = a_only;
+    spec.n_range = 1;
+    spec.conds = conds;
+    spec.n_conds = 1;
+    spec.target_ids = only_b;
+    spec.n_targets = 1;
+
+    spec.is_forward_scan = 1;
+    auto fwd = ASSERT_RESULT(scan(spec));
+    spec.is_forward_scan = 0;
+    auto rev = ASSERT_RESULT(scan(spec));
+    ASSERT_EQ(fwd.size(), static_cast<size_t>(expected)) << "forward Eq cond on " << name;
+    ASSERT_EQ(rev.size(), static_cast<size_t>(expected)) << "reverse Eq cond on " << name;
+  }
+
+  ybthin_columns_free(info.columns, info.n_columns);
+  ybthin_table_close(table);
+  ybthin_client_destroy(client);
+}
+
+// Reported by a caller migrating amp_storage.wals from hash to range partitioning. Mirrors their
+// repro table exactly, including the column types and the 3-column split points, and -- crucially
+// -- reads a SINGLE page with limit 1 rather than paging to exhaustion, which is how the caller
+// issues its "covering chunk" lookup. A fan-out that starts a reverse scan on the wrong tablet
+// hands back an empty first page, which such a caller reports as "no rows".
+TEST_F(PgThinClientTest, RangeShardedDescendingPrefixSinglePage) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE wals_range_repro ("
+      "  branch_id TEXT NOT NULL, bucket_id SMALLINT NOT NULL, segno BIGINT NOT NULL,"
+      "  chunk_offset BIGINT NOT NULL, chunk_size INTEGER NOT NULL, data BYTEA NOT NULL,"
+      "  PRIMARY KEY (branch_id ASC, bucket_id ASC, segno ASC, chunk_offset ASC))"
+      " SPLIT AT VALUES (('b', 0, 2), ('b', 0, 4))"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO wals_range_repro "
+      "SELECT 'b', 0, s, o*100, 100, '\\x02'::bytea "
+      "FROM generate_series(1,5) s, generate_series(0,3) o"));
+  // Bracket rows, so a read that loses its bounds is caught rather than passing.
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO wals_range_repro VALUES "
+      "('a', 0, 9, 0, 100, '\\x0a'::bytea), ('c', 0, 9, 0, 100, '\\x0c'::bytea)"));
+
+  const auto db_oid = ASSERT_RESULT(FetchOid(&conn, "SELECT oid FROM pg_database "
+                                                     "WHERE datname = current_database()"));
+  const auto table_oid = ASSERT_RESULT(
+      FetchOid(&conn, "SELECT 'wals_range_repro'::regclass::oid"));
+
+  const auto addr = TServerAddr();
+  const char* addrs[] = {addr.c_str()};
+  ybthin_client* client = nullptr;
+  {
+    auto st = ybthin_client_create(
+        addrs, 1, /* tls= */ nullptr, /* pool= */ nullptr, /* rpc_timeout_ms= */ 60000,
+        /* num_reactors= */ 0, &client);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ybthin_table* table = nullptr;
+  ybthin_table_info info = {};
+  {
+    auto st = ybthin_table_open(client, db_oid, table_oid, &table, &info);
+    ASSERT_EQ(st.code, YBTHIN_OK) << (st.message ? st.message : "");
+  }
+  ASSERT_EQ(info.n_columns, 6);
+  for (int i = 0; i < 4; ++i) {
+    ASSERT_EQ(info.columns[i].kind, YBTHIN_COL_RANGE) << "key column " << i;
+  }
+  const int32_t segno_id = info.columns[2].id, chunk_id = info.columns[3].id;
+
+  const std::string branch = "b";
+  auto text_b = [&] {
+    return ybthin_bind{YBTHIN_BIND_TEXT, 0,
+                       reinterpret_cast<const uint8_t*>(branch.data()), branch.size()};
+  };
+  auto i16 = [](int64_t v) { return ybthin_bind{YBTHIN_BIND_I16, v, nullptr, 0}; };
+  auto i64 = [](int64_t v) { return ybthin_bind{YBTHIN_BIND_I64, v, nullptr, 0}; };
+
+  int32_t targets[] = {segno_id, chunk_id};
+  // ONE page only, exactly as the caller issues it -- no paging loop to paper over an empty page.
+  auto first_page = [&](const ybthin_read_spec& spec) -> Result<std::vector<std::pair<int64_t,
+                                                                                      int64_t>>> {
+    std::promise<ReadOutcome> promise;
+    auto future = promise.get_future();
+    ybthin_read_op op = {};
+    op.table = table;
+    op.spec = spec;
+    ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+    auto out = future.get();
+    SCHECK_EQ(out.code, YBTHIN_OK, IllegalState, out.message);
+    std::vector<std::pair<int64_t, int64_t>> rows;
+    for (size_t r = 0; r < out.n_rows; ++r) {
+      rows.emplace_back(out.cells[r * out.n_cols].i, out.cells[r * out.n_cols + 1].i);
+    }
+    return rows;
+  };
+
+  // ---- Bug 1: descending, limit 1, one page, at every prefix depth ----------
+  const ybthin_bind prefix[] = {text_b(), i16(0), i64(3), i64(200)};
+  struct Probe { size_t n; int64_t want_segno, want_offset; const char* id; };
+  for (const auto& p : {Probe{1, 5, 300, "L2 ['b']"},
+                        Probe{2, 5, 300, "L3 ['b',0]"},
+                        Probe{3, 3, 300, "L4 ['b',0,3]"},
+                        Probe{4, 3, 200, "L5 ['b',0,3,200] (full key)"}}) {
+    ybthin_read_spec spec = {};
+    spec.range_values = prefix;
+    spec.n_range = p.n;
+    spec.target_ids = targets;
+    spec.n_targets = 2;
+    spec.limit = 1;
+    spec.is_forward_scan = 0;
+    auto rows = ASSERT_RESULT(first_page(spec));
+    ASSERT_EQ(rows.size(), 1u) << p.id << ": descending limit 1 returned " << rows.size()
+                               << " rows on the first page";
+    EXPECT_EQ(rows[0].first, p.want_segno) << p.id;
+    EXPECT_EQ(rows[0].second, p.want_offset) << p.id;
+  }
+
+  // ---- Bug 2: an Eq/Lt cond on segno, the key column after the prefix -------
+  const ybthin_bind pfx2[] = {text_b(), i16(0)};
+  {
+    ybthin_cond eq[] = {{segno_id, YBTHIN_EQ, i64(3)}};
+    ybthin_read_spec spec = {};
+    spec.range_values = pfx2;
+    spec.n_range = 2;
+    spec.conds = eq;
+    spec.n_conds = 1;
+    spec.target_ids = targets;
+    spec.n_targets = 2;
+    spec.limit = 10;
+    spec.is_forward_scan = 1;
+    auto fwd = ASSERT_RESULT(first_page(spec));
+    ASSERT_EQ(fwd.size(), 4u) << "L6: forward Eq cond on segno (3rd key column)";
+
+    spec.limit = 1;
+    spec.is_forward_scan = 0;
+    auto rev = ASSERT_RESULT(first_page(spec));
+    ASSERT_EQ(rev.size(), 1u) << "D: descending Eq cond on segno";
+    EXPECT_EQ(rev[0].first, 3);
+    EXPECT_EQ(rev[0].second, 300);
+  }
+  {
+    // Cond on the LAST key column already works; lock it in.
+    ybthin_cond lt[] = {{chunk_id, YBTHIN_LT, i64(250)}};
+    ybthin_read_spec spec = {};
+    spec.range_values = pfx2;
+    spec.n_range = 2;
+    spec.conds = lt;
+    spec.n_conds = 1;
+    spec.target_ids = targets;
+    spec.n_targets = 2;
+    spec.limit = 1;
+    spec.is_forward_scan = 0;
+    auto rows = ASSERT_RESULT(first_page(spec));
+    ASSERT_EQ(rows.size(), 1u) << "I: descending cond on chunk_offset";
+    EXPECT_EQ(rows[0].first, 5);
+    EXPECT_EQ(rows[0].second, 200);
+  }
+
+  // ---- L7: is the short first page just a tablet boundary, or a lost scan? --
+  // Reported as inconclusive: `segno < 4` forward returned 4 rows, which is exactly tablet 1's
+  // contribution, so it is a legitimate first page IF the scan continues. Page it out and count.
+  // This also separates Bug 2 from a paging artefact: Lt gets rows through where Eq returns none.
+  {
+    ybthin_cond lt[] = {{segno_id, YBTHIN_LT, i64(4)}};
+    ybthin_read_spec spec = {};
+    spec.range_values = pfx2;
+    spec.n_range = 2;
+    spec.conds = lt;
+    spec.n_conds = 1;
+    spec.target_ids = targets;
+    spec.n_targets = 2;
+    spec.limit = 10;
+    spec.is_forward_scan = 1;
+
+    std::vector<std::pair<int64_t, int64_t>> all;
+    std::vector<uint8_t> ps;
+    int pages = 0;
+    do {
+      std::promise<ReadOutcome> promise;
+      auto future = promise.get_future();
+      ybthin_read_op op = {};
+      op.table = table;
+      op.spec = spec;
+      op.paging_state_in = ps.empty() ? nullptr : ps.data();
+      op.paging_state_in_len = ps.size();
+      ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+      auto out = future.get();
+      ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
+      for (size_t r = 0; r < out.n_rows; ++r) {
+        all.emplace_back(out.cells[r * out.n_cols].i, out.cells[r * out.n_cols + 1].i);
+      }
+      ps = std::move(out.paging_state);
+      ASSERT_LT(++pages, 20) << "L7 paging did not terminate";
+    } while (!ps.empty());
+
+    // segno 1,2,3 x chunk_offset 0,100,200,300, and nothing from branch 'a' or 'c'.
+    ASSERT_EQ(all.size(), 12u)
+        << "L7: `segno < 4` paged to exhaustion returned " << all.size() << " rows over " << pages
+        << " pages; a short FIRST page is only a tablet boundary if the scan then continues";
+    for (const auto& [segno, offset] : all) {
+      EXPECT_LT(segno, 4);
+      EXPECT_GE(segno, 1);
+    }
   }
 
   ybthin_columns_free(info.columns, info.n_columns);
