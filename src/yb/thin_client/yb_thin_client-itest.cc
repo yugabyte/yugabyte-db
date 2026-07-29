@@ -16,6 +16,7 @@
 // reads against ordinary SQL through the same tserver.
 
 #include <algorithm>
+#include <functional>
 #include <array>
 #include <future>
 #include <string>
@@ -514,6 +515,52 @@ TEST_F(PgThinClientTest, RangeShardedTable) {
     ASSERT_EQ(seen.size(), static_cast<size_t>(kNumRows))
         << "scan did not cover every tablet: an unset/stale partition key routes the continuation "
            "back to the first tablet, so the scan stops at that tablet's last row";
+    EXPECT_EQ(seen.front(), 0);
+    EXPECT_EQ(seen.back(), kNumRows - 1);
+  }
+
+  // ---- backward paged scan must also cross every tablet, in reverse --------
+  // A backward scan starts at the LAST tablet, so its partition key needs the extra adjustment
+  // GetPartitionKeyForBackwardScan makes; without it the scan starts at the first tablet and
+  // returns only that tablet's rows.
+  {
+    int32_t target_ids[] = {r_id};
+    ybthin_read_spec spec = {};
+    spec.target_ids = target_ids;
+    spec.n_targets = 1;
+    spec.limit = kPageLimit;
+    spec.is_forward_scan = 0;
+
+    std::vector<int32_t> seen;
+    std::vector<uint8_t> paging_state;
+    int pages = 0;
+    do {
+      std::promise<ReadOutcome> promise;
+      auto future = promise.get_future();
+      ybthin_read_op op = {};
+      op.table = table;
+      op.spec = spec;
+      op.paging_state_in = paging_state.empty() ? nullptr : paging_state.data();
+      op.paging_state_in_len = paging_state.size();
+      ybthin_read_async(client, &op, 1, /* read_time_ht= */ 0, &OnReadDone, &promise);
+      auto out = future.get();
+      ASSERT_EQ(out.code, YBTHIN_OK) << out.message;
+      for (size_t i = 0; i < out.n_rows; ++i) {
+        ASSERT_EQ(out.cells[i].tag, YBTHIN_BIND_I32);
+        seen.push_back(static_cast<int32_t>(out.cells[i].i));
+      }
+      paging_state = std::move(out.paging_state);
+      ++pages;
+      ASSERT_LT(pages, 100) << "backward paging did not terminate";
+    } while (!paging_state.empty());
+
+    // Rows must arrive descending, and the scan must have covered the whole table.
+    ASSERT_TRUE(std::is_sorted(seen.begin(), seen.end(), std::greater<int32_t>()))
+        << "backward scan did not return rows in descending order";
+    std::sort(seen.begin(), seen.end());
+    seen.erase(std::unique(seen.begin(), seen.end()), seen.end());
+    ASSERT_EQ(seen.size(), static_cast<size_t>(kNumRows))
+        << "backward scan did not cover every tablet";
     EXPECT_EQ(seen.front(), 0);
     EXPECT_EQ(seen.back(), kNumRows - 1);
   }

@@ -417,6 +417,38 @@ void SetReadTimeSerial(ReadTimeOptionsPB* rto, uint64_t serial) {
       serial > kReadSerialHistoryWindow ? serial - kReadSerialHistoryWindow : 0);
 }
 
+// Derives a read's partition key. A read is routed off its scan bounds rather than its
+// range_column_values (only writes use those), so a supplied range key prefix is first encoded
+// into bounds; a partial prefix widens to its whole range. A backward scan then walks the key to
+// the tablet it actually starts in, mirroring what YBPgsqlReadOp::GetPartitionKey does.
+Status RouteRead(const ybthin_table& table, bool has_range_values, yb::PgsqlReadRequestPB* read) {
+  if (has_range_values) {
+    auto lower = VERIFY_RESULT(dockv::GetRangeComponents(
+        table.schema, read->range_column_values(), /* lower_bound= */ true));
+    auto upper = VERIFY_RESULT(dockv::GetRangeComponents(
+        table.schema, read->range_column_values(), /* lower_bound= */ false));
+    auto* lb = read->mutable_lower_bound();
+    lb->set_key(dockv::DocKey(std::move(lower)).Encode().ToStringBuffer());
+    lb->set_is_inclusive(true);
+    auto* ub = read->mutable_upper_bound();
+    ub->set_key(dockv::DocKey(std::move(upper)).Encode().ToStringBuffer());
+    ub->set_is_inclusive(true);
+  }
+  // InitHashPartitionKey's paging branch assumes the hash code bounds are already set, because
+  // pggate reuses one request object for every page of a scan. The shim builds a fresh request per
+  // page, so set them here or a continuation would scan unbounded and re-read the first page.
+  if (!read->partition_column_values().empty()) {
+    const auto hash_code = VERIFY_RESULT(
+        table.partition_schema.PgsqlHashColumnCompoundValue(read->partition_column_values()));
+    read->set_hash_code(hash_code);
+    read->set_max_hash_code(hash_code);
+  }
+  // No backward-scan adjustment here: the tserver already applies GetPartitionKeyForBackwardScan
+  // to our (non-owning) ops, using its own fresh tablet list -- doing it again would walk the key
+  // back one tablet too far.
+  return dockv::InitPartitionKey(table.schema, table.partition_schema, read);
+}
+
 // Extracts the best human-readable message from a per-op response.
 std::string PgsqlResponseMessage(const yb::PgsqlResponsePB& r) {
   if (r.error_status_size() > 0) {
@@ -1011,28 +1043,6 @@ void ybthin_read_async(
       build = BindToQLValue(
           spec->range_values[r], read->add_range_column_values()->mutable_value());
     }
-    // A read is routed off its scan bounds, not its range_column_values (only writes use those --
-    // see InitRange/WritePartitionKey), so turn the supplied key prefix into encoded bounds. A
-    // partial prefix widens to its whole range: -Inf on the lower side, +Inf on the upper.
-    if (build.ok() && spec->n_range > 0) {
-      auto lower = dockv::GetRangeComponents(
-          table->schema, read->range_column_values(), /* lower_bound= */ true);
-      auto upper = dockv::GetRangeComponents(
-          table->schema, read->range_column_values(), /* lower_bound= */ false);
-      if (!lower.ok() || !upper.ok()) {
-        cb(ctx, FromStatus(lower.ok() ? upper.status() : lower.status()), nullptr);
-        return;
-      }
-      auto* lb = read->mutable_lower_bound();
-      lb->set_key(dockv::DocKey(std::move(*lower)).Encode().ToStringBuffer());
-      lb->set_is_inclusive(true);
-      auto* ub = read->mutable_upper_bound();
-      ub->set_key(dockv::DocKey(std::move(*upper)).Encode().ToStringBuffer());
-      ub->set_is_inclusive(true);
-    }
-    if (build.ok()) {
-      build = dockv::InitPartitionKey(table->schema, table->partition_schema, read);
-    }
     if (build.ok() && spec->n_conds > 0) {
       if (spec->n_conds == 1) {
         build = BuildComparison(spec->conds[0], read->mutable_condition_expr());
@@ -1081,13 +1091,13 @@ void ybthin_read_async(
         cb(ctx, MakeStatus(YBTHIN_INVALID, "could not parse paging_state_in"), nullptr);
         return;
       }
-      // Re-route: InitPartitionKey resumes on whichever tablet the paging state names, which
-      // for a scan crossing a boundary is a different one.
-      build = dockv::InitPartitionKey(table->schema, table->partition_schema, read);
-      if (!build.ok()) {
-        cb(ctx, FromStatus(build), nullptr);
-        return;
-      }
+    }
+    // Route last: the partition key depends on the scan direction, the bounds and the paging
+    // state, so every one of them has to be set by now.
+    build = RouteRead(*table, spec->n_range > 0, read);
+    if (!build.ok()) {
+      cb(ctx, FromStatus(build), nullptr);
+      return;
     }
   }
 
