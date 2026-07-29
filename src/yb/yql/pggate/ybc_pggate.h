@@ -1132,9 +1132,15 @@ YbcStatus YBCResetAutoAnalyzeMutationCounters(
 YbcStatus YBCPgNewGlobalViewRead(YbcPgGlobalViewRead* handle);
 void YBCPgGlobalViewReadSetParams(
     YbcPgGlobalViewRead handle, int num_params, const char** param_values);
-YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(
+// Returns the result protobuf, valid until ClearResult or the next ExecScan;
+// NULL on error or empty result.
+YbcPgResultPB YBCPgGlobalViewReadExecScan(
     YbcPgGlobalViewRead handle, const char *database_name, const char *query,
     const char *tserver_uuid);
+// Error message from the last ExecScan; NULL if it succeeded. Owned by the
+// handle, valid until the next ExecScan.
+const char* YBCPgGlobalViewReadGetError(YbcPgGlobalViewRead handle);
+void YBCPgGlobalViewReadClearScanState(YbcPgGlobalViewRead handle);
 void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle);
 
 #ifdef __cplusplus
