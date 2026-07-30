@@ -4127,8 +4127,7 @@
 { name => 'yb_enable_expression_pushdown', type => 'bool', context => 'PGC_USERSET', group => 'QUERY_TUNING_METHOD',
   short_desc => 'Push supported expressions down to DocDB for evaluation.',
   variable => 'yb_enable_expression_pushdown',
-  # YB_TODO_PG19MERGE: disable expression pushdown for now
-  boot_val => 'false',
+  boot_val => 'true',
 },
 
 { name => 'yb_enable_extended_sql_codes', type => 'bool', context => 'PGC_USERSET', group => 'CUSTOM_OPTIONS',
