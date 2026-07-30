@@ -2590,6 +2590,27 @@ set_java_home() {
   put_path_entry_first "$JAVA_HOME/bin"
 }
 
+# Populates yb_thirdparty_tool_selector_args with the thirdparty_tool arguments that select which
+# prebuilt archive this checkout resolves to (compiler type, Linuxbrew, LTO, target OS).  Shared so
+# set_prebuilt_thirdparty_url and verify_thirdparty_not_stale resolve with identical selectors and
+# cannot drift.  Each caller adds its own --save-*-to-file flags.
+set_thirdparty_tool_selector_args() {
+  yb_thirdparty_tool_selector_args=(
+    --compiler-type "${YB_COMPILER_TYPE_FOR_THIRDPARTY:-$YB_COMPILER_TYPE}"
+  )
+  if [[ -n ${YB_USE_LINUXBREW:-} ]]; then
+    # See arg_str_to_bool in Python code for how the boolean parameter is interpreted.
+    yb_thirdparty_tool_selector_args+=( "--is-linuxbrew=$YB_USE_LINUXBREW" )
+  fi
+  if [[ ${YB_LINKING_TYPE:-dynamic} != "dynamic" ]]; then
+    # Transform "thin-lto" or "full-lto" into "thin" or "full" respectively.
+    yb_thirdparty_tool_selector_args+=( "--lto=${YB_LINKING_TYPE%%-lto}" )
+  fi
+  if [[ ! ${build_type} =~ ^(asan|tsan)$ && ${YB_COMPILER_TYPE} == clang* ]]; then
+    yb_thirdparty_tool_selector_args+=( "--allow-older-os" )
+  fi
+}
+
 set_prebuilt_thirdparty_url() {
   expect_vars_to_be_set YB_COMPILER_TYPE build_type
   if [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]]; then
@@ -2599,22 +2620,12 @@ set_prebuilt_thirdparty_url() {
       if [[ -f $thirdparty_url_file_path ]]; then
         rm -f "$thirdparty_url_file_path"
       fi
+      set_thirdparty_tool_selector_args
       local thirdparty_tool_cmd_line=(
         "$YB_BUILD_SUPPORT_DIR/thirdparty_tool"
         --save-thirdparty-url-to-file "$thirdparty_url_file_path"
-        --compiler-type "${YB_COMPILER_TYPE_FOR_THIRDPARTY:-$YB_COMPILER_TYPE}"
+        "${yb_thirdparty_tool_selector_args[@]}"
       )
-      if [[ -n ${YB_USE_LINUXBREW:-} ]]; then
-        # See arg_str_to_bool in Python code for how the boolean parameter is interpreted.
-        thirdparty_tool_cmd_line+=( "--is-linuxbrew=$YB_USE_LINUXBREW" )
-      fi
-      if [[ ${YB_LINKING_TYPE:-dynamic} != "dynamic" ]]; then
-        # Transform "thin-lto" or "full-lto" into "thin" or "full" respectively.
-        thirdparty_tool_cmd_line+=( "--lto=${YB_LINKING_TYPE%%-lto}" )
-      fi
-      if [[ ! ${build_type} =~ ^(asan|tsan)$ && ${YB_COMPILER_TYPE} == clang* ]]; then
-        thirdparty_tool_cmd_line+=( "--allow-older-os" )
-      fi
       "${thirdparty_tool_cmd_line[@]}"
       YB_THIRDPARTY_URL=$(<"$BUILD_ROOT/thirdparty_url.txt")
       export YB_THIRDPARTY_URL
@@ -2637,6 +2648,37 @@ set_prebuilt_thirdparty_url() {
       log "YB_THIRDPARTY_URL is already set to '$YB_THIRDPARTY_URL', not trying to set it" \
           "automatically."
     fi
+  fi
+}
+
+# Clean the build dir if the thirdparty it has recorded differs from what this checkout now resolves
+# to.  Call this from yb_build.sh before find_or_download_thirdparty, which would otherwise trust
+# the stale recorded thirdparty.  Never call it from compiler-wrapper.sh or run-test.sh, which run
+# once per compile and per test and so must stay fast and never delete the tree mid-build.
+verify_thirdparty_not_stale() {
+  [[ ${YB_DOWNLOAD_THIRDPARTY:-} == "1" ]] || return 0
+  local recorded="$BUILD_ROOT/thirdparty_url.txt"
+  [[ -f $recorded ]] || return 0
+
+  local tmp
+  tmp=$(mktemp)
+  set_thirdparty_tool_selector_args
+  if ! "$YB_BUILD_SUPPORT_DIR/thirdparty_tool" \
+        --save-thirdparty-url-to-file "$tmp" \
+        "${yb_thirdparty_tool_selector_args[@]}" >/dev/null 2>&1; then
+    # Could not resolve the intended URL (e.g. offline). Do not block the build. The normal flow
+    # handles resolution failures with a clearer error.
+    rm -f "$tmp"
+    return 0
+  fi
+
+  local intended
+  intended=$(<"$tmp")
+  rm -f "$tmp"
+  if [[ -n $intended && $intended != "$(<"$recorded")" ]]; then
+    log "THIRDPARTY MISMATCH: build dir recorded '$(<"$recorded")' but this" \
+        "checkout wants '$intended'. Cleaning $BUILD_ROOT so the build re-downloads it."
+    rm -rf "$BUILD_ROOT"
   fi
 }
 

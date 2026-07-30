@@ -953,6 +953,7 @@ fi
 find_or_download_ysql_snapshots
 activate_virtualenv
 set_pythonpath
+verify_thirdparty_not_stale
 find_or_download_thirdparty
 detect_toolchain
 find_make_or_ninja_and_update_cmake_opts
