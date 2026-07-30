@@ -38,3 +38,11 @@ To modify the metrics export configuration, on the cluster **Settings** tab, sel
 To pause or resume metrics export from a cluster, on the cluster **Settings** tab, select **Edit Metrics Export Configuration** and choose **Pause Metrics Export** or **Resume Metrics Export**.
 
 To remove metrics export from a cluster, on the cluster **Settings** tab, select **Edit Metrics Export Configuration** and choose **Disable Metrics Export**.
+
+## Troubleshooting
+
+If metrics aren't being exported, verify the following:
+
+- Prometheus/VictoriaMetrics is listening on port 80 or 443.
+- Firewall rules allow traffic from your cluster to the listening port.
+- The URL scheme (http vs https) matches the configured port.
