@@ -1207,8 +1207,8 @@ Status CDCSDKVirtualWAL::ValidateAndUpdateVWALSafeTime(const CDCSDKUniqueRecordI
   // fails this check since we filter while inserting to the priority queue.
   RSTATUS_DCHECK(
       popped_record.GetCommitTime() >= virtual_wal_safe_time_.ToUint64(), IllegalState,
-      "Received a record with commit time: {} lesser than the Virtual WAL safe "
-      "time: {}. This record will not be shipped, filtered record: {}",
+      "Received a record with commit time: $0 lesser than the Virtual WAL safe "
+      "time: $1. This record will not be shipped, filtered record: $2",
       popped_record.GetCommitTime(), virtual_wal_safe_time_.ToUint64(), popped_record.ToString());
 
   virtual_wal_safe_time_ = HybridTime(popped_record.GetCommitTime());
