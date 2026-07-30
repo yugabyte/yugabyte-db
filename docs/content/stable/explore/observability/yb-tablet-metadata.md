@@ -3,8 +3,6 @@ title: View cluster-wide tablet metadata and leadership
 linkTitle: Cluster tablet metadata
 description: View cluster-wide tablet distribution and leadership information for YSQL tables.
 headerTitle: View YSQL cluster-wide tablet metadata and leadership information
-tags:
-  feature: early-access
 menu:
   stable:
     identifier: yb-tablet-metadata
@@ -22,6 +20,7 @@ The `yb_tablet_metadata` view is useful for:
 - Identifying the location of all tablets for a specific table.
 - Determining the leader node for a specific tablet.
 - Identifying the tablet for a given tuple, in case of [hash-sharded](../../../architecture/docdb-sharding/sharding/#hash-sharding) tables.
+- Identifying the range boundaries for [range-sharded](../../../architecture/docdb-sharding/sharding/#range-sharding) tables.
 
 Note that the view returns tablet information for YSQL objects and the system transaction table only.
 
@@ -35,6 +34,8 @@ The following table describes the columns of the `yb_tablet_metadata` view.
 | relname | text | Name of table/index whose data is stored on the tablet. |
 | start_hash_code | int | Starting hash code (inclusive) for the tablet. (NULL for range-sharded tables.) |
 | end_hash_code | int | Ending hash code (exclusive) for the tablet. (NULL for range-sharded tables.) |
+| start_key | bytea | Starting range key (inclusive) for the tablet. (NULL for hash-sharded tables.) |
+| end_key | bytea | Ending range key (exclusive) for the tablet. (NULL for hash-sharded tables.) |
 | leader | text | IP address, port of the leader node for the tablet. |
 | replicas | text[] | A list of replica IP addresses and port (includes leader) associated with the tablet. |
 
@@ -104,9 +105,9 @@ ORDER BY ytm.start_hash_code;
 +----------------------------------+-------+----------+------------+-----------------+---------------+-----------+------+--------+-------------+-------+----------------------------------+--------------------------------------+
 ```
 
-### Find a tablet for a given key
+### Find a tablet for a given key in hash-sharded tables
 
-Use the [yb_hash_code()](../../../api/ysql/exprs/func_yb_hash_code/) function to find the `tablet_id` and leader node for a given key in hash-partioned tables.
+Use the [yb_hash_code()](../../../api/ysql/exprs/func_yb_hash_code/) function to find the `tablet_id` and leader node for a given key in hash-sharded tables.
 
 1. Check the table structure:
 
@@ -199,6 +200,22 @@ Use the [yb_hash_code()](../../../api/ysql/exprs/func_yb_hash_code/) function to
 {{<tip title="Get hash codes in YCQL">}}
 To obtain hash codes in YCQL, you can use the `partition_hash()` function, which, similar to `yb_hash_code()`, also dumps hash codes. You can use the `partition_hash()` function in YCQL to link rows with their tablets.
 {{</tip>}}
+
+### View range boundaries for range-sharded tables
+
+For range-sharded tables, the `start_key` and `end_key` columns show the range boundaries for each tablet. These columns are NULL for hash-sharded tables.
+
+```sql
+SELECT
+    tablet_id,
+    relname,
+    start_key,
+    end_key,
+    leader
+FROM yb_tablet_metadata
+WHERE relname = 'range_sharded_table'
+ORDER BY start_key;
+```
 
 ### Join with Active Session History
 
