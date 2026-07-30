@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Use time travel queries ({{<tags/feature/ga idea="1182">}} as of {{<release "2026.1.1.0">}}) to read data as it was at a specific point in time, within a configurable retention period. This includes reading data that has been changed or deleted. Use time travel queries for the following:
+Use time travel queries to read data as it was at a specific point in time, within a configurable retention period. This includes reading data that has been changed or deleted. Use time travel queries for the following:
 
 - Read rows that have been deleted by mistake. Restore the rows by exporting the result of the query and then importing it back into the database.
 - Analyze trends and data changes over time.
