@@ -979,6 +979,10 @@ detect_index_issues(Relation baserel, Relation indexrel,
 			time(&batch_start_time);
 		}
 
+		/* Index and IndexOnlyScan nodes require estate->es_snapshot to be populated. */
+		Assert(ActiveSnapshotSet());
+		estate->es_snapshot = RegisterSnapshot(GetActiveSnapshot());
+
 		while (!batch_complete && (outslot = ExecProcNode(planstate)))
 		{
 			issue_detection_check(outslot, indexrel, equality_opcodes);
@@ -1025,6 +1029,7 @@ detect_index_issues(Relation baserel, Relation indexrel,
 
 		execution_complete = !outslot;
 		ExecEndNode(planstate);
+		UnregisterSnapshot(estate->es_snapshot);
 		MemoryContextSwitchTo(oldctxt);
 		cleanup_estate(estate);
 		++batchcount;
@@ -1084,6 +1089,14 @@ init_estate(EState *estate, Relation baserel)
 	ExecInitRangeTable(estate, list_make1(rte),
 					   NIL,	/* permInfos */
 					   bms_make_singleton(1) /* unpruned_relids */ );
+
+	/*
+	 * The PlannedStmt is required to be populated in order to pass down a hint
+	 * to the storage access methods on whether the relation being scanned is
+	 * read-only (see ScanRelIsReadOnly()). A stub PlannedStmt implies read-only
+	 * which matches yb_index_check's scan-only plans.
+	 */
+	estate->es_plannedstmt = makeNode(PlannedStmt);
 
 	estate->es_param_exec_vals =
 		(ParamExecData *) palloc0(yb_bnl_batch_size * sizeof(ParamExecData));
