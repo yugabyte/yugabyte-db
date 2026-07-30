@@ -15,7 +15,7 @@ Restore to PIT restores from a [distributed snapshot](../../snapshot-ysql/) or b
 
 Use Restore to PIT when:
 
-- Policy requires forensic recovery on an **alternate** cluster (not production).
+- Policy requires forensic recovery on an *alternate* cluster (not production).
 - You need a longer recoverability window stored on cheaper backup storage.
 - You are restoring a snapshot that was [moved to external storage](../../snapshot-ysql/#move-a-snapshot-to-external-storage) into the same or a different cluster.
 

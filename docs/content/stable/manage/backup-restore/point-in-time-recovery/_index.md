@@ -23,7 +23,7 @@ showRightNav: true
   {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-clusters/aeon-pitr/" >}}
 {{< /page-finder/head >}}
 
-Point-in-time (PIT) recovery in YugabyteDB is a family of capabilities for recovering from human or logical errors at the SQL or CQL level. For example, a mistyped `UPDATE`, an accidental `DROP TABLE`, or a bad application write.
+Point-in-time (PIT) recovery in YugabyteDB is a set of capabilities for recovering from human or logical errors at the SQL or CQL level. For example, a mistyped `UPDATE`, an accidental `DROP TABLE`, or a bad application write.
 
 These scenarios are different from hardware failure or disk corruption. Failed or corrupted disks typically require a full [backup and restore](../), which moves large amounts of data and can involve significant downtime. PIT recovery instead aims to get you back to a known-good state **quickly**, often with little or no data movement and without taking the cluster offline for a bulk restore.
 
