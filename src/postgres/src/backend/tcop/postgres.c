@@ -91,6 +91,7 @@
 #include "common/pg_yb_conn_mgr_protocol.h"
 #include "executor/spi.h"
 #include "libpq/auth.h"
+#include "libpq/hba.h"
 #include "libpq/yb_pqcomm_extensions.h"
 #include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
@@ -6997,11 +6998,32 @@ PostgresMain(const char *dbname, const char *username)
 
 			ProcessConfigFile(PGC_SIGHUP);
 
-			if (YbIsAuthPassthroughControlBackend() &&
-				yb_conn_mgr_sighup_had_backend_guc_change)
+			if (YbIsAuthPassthroughControlBackend())
 			{
-				yb_conn_mgr_sighup_logical_client_version++;
-				yb_conn_mgr_sighup_had_backend_guc_change = false;
+				/*
+				 * YB: Unlike regular backends, which authenticate exactly once
+				 * right after fork, the Auth Passthrough control backend
+				 * re-authenticates every logical client over its lifetime. It
+				 * must therefore pick up pg_hba.conf / pg_ident.conf changes on
+				 * SIGHUP the same way the postmaster does; otherwise it keeps
+				 * using the stale rules inherited at fork time. Failures are
+				 * logged and the old rules retained (non-fatal) so a malformed
+				 * file does not tear down the pooler's control backend.
+				 */
+				if (!load_hba(NULL /* yb_validate_conf_file */ ))
+					ereport(LOG,
+					/* translator: %s is a configuration file */
+							(errmsg("%s was not reloaded", "pg_hba.conf")));
+
+				if (!load_ident(NULL, NULL /* yb_validate_conf_file */ ))
+					ereport(LOG,
+							(errmsg("%s was not reloaded", "pg_ident.conf")));
+
+				if (yb_conn_mgr_sighup_had_backend_guc_change)
+				{
+					yb_conn_mgr_sighup_logical_client_version++;
+					yb_conn_mgr_sighup_had_backend_guc_change = false;
+				}
 			}
 		}
 
