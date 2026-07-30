@@ -4,15 +4,19 @@ import Cookies from 'js-cookie';
 
 export const IN_DEVELOPMENT_MODE = import.meta.env.DEV;
 
-// NOTE: when using VITE_YUGAWARE_API_URL at local development - after login with SSO it will
-// set auth cookies for API host domain and redirect to API host root instead of localhost:3000/
-// Need to manually set "userId", "customerId" and "PLAY_SESSION" cookies for localhost:3000
-export const ROOT_URL =
-  import.meta.env.VITE_YUGAWARE_API_URL ??
-  (IN_DEVELOPMENT_MODE ? 'http://localhost:9000/api/v1' : '/api/v1');
+// When VITE_YUGAWARE_API_URL is set (see `npm run start:remote`), all API calls go through the Vite
+// dev-server proxy (/api -> remote YBA). Requests stay same-origin (localhost:3000), so the browser
+// never blocks them with CORS, and no SSO cookie juggling is needed. Use relative roots in this mode.
+const USE_DEV_PROXY = Boolean(import.meta.env.VITE_YUGAWARE_API_URL);
+
+// Plain `npm start` (no VITE_YUGAWARE_API_URL): the SPA talks directly to a local backend on :9000
+// using absolute URLs. Otherwise (prod build, or dev-proxy mode) it uses same-origin relative URLs.
+const USE_LOCAL_BACKEND = IN_DEVELOPMENT_MODE && !USE_DEV_PROXY;
+
+export const ROOT_URL = USE_LOCAL_BACKEND ? 'http://localhost:9000/api/v1' : '/api/v1';
 
 // Allow requests made to endpoints in 'routes' file.
-export const BASE_URL = IN_DEVELOPMENT_MODE ? 'http://localhost:9000' : '';
+export const BASE_URL = USE_LOCAL_BACKEND ? 'http://localhost:9000' : '';
 
 export const REACT_TROUBLESHOOT_API_DEV_URL =
   import.meta.env.VITE_TROUBLESHOOT_API_DEV_URL ?? `http://localhost:8080`;
