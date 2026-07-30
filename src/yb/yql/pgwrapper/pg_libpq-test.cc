@@ -5088,5 +5088,41 @@ TEST_F(PgLibPqTest, TestGetTableXorHash) {
   ASSERT_EQ(colocated_tbl_xor_hash, tbl1_xor_hash);
 }
 
+class PgMinimalPrefetchStaleRelcacheTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_minimal_catalog_caches_preload=true");
+  }
+};
+
+TEST_F_EX(PgLibPqTest, StaleRelcacheNegativeCacheBug, PgMinimalPrefetchStaleRelcacheTest) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // 1. Create a user and a schema with the same name.
+  ASSERT_OK(conn.Execute("CREATE ROLE test_user LOGIN"));
+  ASSERT_OK(conn.Execute("CREATE SCHEMA test_user AUTHORIZATION test_user"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_user.my_table (id INT)"));
+  ASSERT_OK(conn.Execute("GRANT SELECT ON test_user.my_table TO test_user"));
+
+  // 2. Run ANALYZE to increment the catalog version and make the relcache init file stale.
+  ASSERT_OK(conn.Execute("ANALYZE test_user.my_table"));
+
+  // 3. Connect as the new user.
+  // Because the init file is stale and optimization is off, this connection will rebuild
+  // the relcache. Because minimal prefetch is on, it will prefetch only system tables.
+  // During rebuild, it will call get_namespace_oid("test_user").
+  // The active prefetcher will intercept this, find nothing (since it's a user schema),
+  // and create a negative cache entry for the "test_user" namespace.
+  auto conn2 = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "test_user"));
+
+  // 4. Try to query the table.
+  // The parser will look up the "test_user" namespace.
+  // Before the fix, this would hit the negative cache entry and fail to resolve the table.
+  // After the fix, it should succeed.
+  auto res = ASSERT_RESULT(conn2.Fetch("SELECT * FROM test_user.my_table"));
+  ASSERT_EQ(PQntuples(res.get()), 0);
+}
+
 } // namespace pgwrapper
 } // namespace yb
