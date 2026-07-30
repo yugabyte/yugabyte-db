@@ -110,6 +110,42 @@ static inline int yb_od_parse_queue_peek(const yb_od_parse_queue_t *q,
 }
 
 /*
+ * Copies the most recently enqueued (tail) entry into *out.  Mirrors
+ * yb_od_parse_queue_peek but reads from the tail instead of the front;
+ * the queue still owns stmt_name.
+ * Returns 0 on success, -1 if the queue is empty or disabled.
+ */
+static inline int yb_od_parse_queue_peek_last(const yb_od_parse_queue_t *q,
+					      yb_od_parse_queue_entry_t *out)
+{
+	if (!q->enabled)
+		return -1;
+	const void *elem = yb_od_circular_queue_peek_last(&q->q);
+	if (elem == NULL)
+		return -1;
+	*out = *(const yb_od_parse_queue_entry_t *)elem;
+	return 0;
+}
+
+/*
+ * Remove the most recently enqueued (tail) entry, freeing any owned heap
+ * state first.
+ * Returns 0 on success, -1 if the queue is empty.
+ * When the queue is disabled, returns 0 (success no-op).
+ */
+static inline int yb_od_parse_queue_remove_last(yb_od_parse_queue_t *q)
+{
+	if (!q->enabled)
+		return 0;
+	if (yb_od_circular_queue_empty(&q->q))
+		return -1;
+	yb_od_parse_queue_entry_t *entry =
+		(yb_od_parse_queue_entry_t *)yb_od_circular_queue_peek_last(&q->q);
+	yb_od_parse_queue_entry_release(entry);
+	return yb_od_circular_queue_remove_last(&q->q);
+}
+
+/*
  * Dequeue the front entry, freeing any owned heap state first.
  * Returns 0 on success, -1 if the queue is empty.
  *
