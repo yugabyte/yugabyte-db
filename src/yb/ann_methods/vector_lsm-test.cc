@@ -18,6 +18,8 @@
 #include "yb/ann_methods/usearch_wrapper.h"
 #include "yb/ann_methods/vector_lsm-test.pb.h"
 
+#include "yb/hnsw/vector_index_test_base.h"
+
 #include "yb/rocksdb/metadata.h"
 
 #include "yb/rpc/thread_pool.h"
@@ -60,6 +62,26 @@ extern MonoDelta TEST_sleep_on_merged_chunk_populated;
 
 namespace yb::ann_methods {
 
+namespace {
+
+using ParamType = std::tuple<ANNMethodKind, bool>;
+
+ANNMethodKind GetANNMethodKind(const ParamType& param) {
+  return std::get<0>(param);
+}
+
+bool UseYbHnsw(const ParamType& param) {
+  return std::get<1>(param);
+}
+
+std::string ParamToString(const testing::TestParamInfo<ParamType>& param_info) {
+  return "k"s +
+         (UseYbHnsw(param_info.param) ? "YbHnsw" : "") +
+         AsString(GetANNMethodKind(param_info.param)).substr(1);
+}
+
+} // namespace
+
 using vector_index::VectorId;
 
 using FloatVectorLSM = vector_index::VectorLSM<std::vector<float>, float>;
@@ -67,10 +89,6 @@ using InsertEntries = typename FloatVectorLSM::InsertEntries;
 using MergeFilter = vector_index::VectorLSMMergeFilter;
 using MergeFilterPtr = vector_index::VectorLSMMergeFilterPtr;
 
-using TestUsearchIndexFactory = vector_index::MakeVectorIndexFactory<
-    SimplifiedUsearchIndexFactory, FloatVectorLSM>;
-using TestHnswlibIndexFactory = vector_index::MakeVectorIndexFactory<
-    SimplifiedHnswlibIndexFactory, FloatVectorLSM>;
 
 class SimpleVectorLSMKeyValueStorage {
  public:
@@ -167,7 +185,9 @@ class TestFrontier : public rocksdb::UserFrontier {
 
 using TestFrontiers = rocksdb::UserFrontiersBase<TestFrontier>;
 
-class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMethodKind> {
+class VectorLSMTest
+    : public hnsw::VectorIndexTestBase,
+      public testing::WithParamInterface<ParamType> {
  protected:
   // Usearch creates an index with min capacity of 64 vectors.
   constexpr static size_t kDefaultChunkSize = 64;
@@ -183,12 +203,14 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
-    YBTest::SetUp();
+    hnsw::VectorIndexTestBase::SetUp();
   }
 
   Status InitVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk);
 
-  Status OpenVectorLSM(FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk);
+  Status OpenVectorLSM(
+      FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk,
+      vector_index::DistanceKind distance_kind = vector_index::DistanceKind::kL2Squared);
 
   Status InsertCube(
       FloatVectorLSM& lsm, size_t dimensions,
@@ -219,6 +241,8 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
   void TestBootstrap(bool flush);
 
   void TestBackgroundCompactionSizeRatio(bool test_metrics);
+
+  void TestMultipleChunksSimpleCompaction(vector_index::DistanceKind distance_kind);
 
   MergeFilterPtr GetMergeFilter();
 
@@ -252,19 +276,35 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
   simple_spinlock merge_filter_mutex_;
   MergeFilterPtr merge_filter_;
 
-  std::unique_ptr<MetricRegistry> metric_registry_ = std::make_unique<MetricRegistry>();
   MetricEntityPtr vector_index_metric_entity_ =
-      METRIC_ENTITY_table.Instantiate(metric_registry_.get(), "test");
+      METRIC_ENTITY_table.Instantiate(metric_registry_.get(), "test_table");
 };
 
-auto GetVectorIndexFactory(ANNMethodKind ann_method) {
-  switch (ann_method) {
+auto GetVectorIndexFactory(const ParamType& param, const hnsw::BlockCachePtr& block_cache) {
+  bool use_yb_hnsw = UseYbHnsw(param);
+  switch (GetANNMethodKind(param)) {
     case ANNMethodKind::kUsearch:
-      return TestUsearchIndexFactory::Create;
+      return std::function<vector_index::VectorIndexIfPtr<std::vector<float>, float>(
+          vector_index::FactoryMode, const vector_index::HNSWOptions&)>(
+          [use_yb_hnsw, block_cache](
+              vector_index::FactoryMode mode, const vector_index::HNSWOptions& options) {
+            return UsearchIndexFactory<std::vector<float>, float>::Create(
+                mode, block_cache, options,
+                use_yb_hnsw ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::USEARCH,
+                nullptr);
+          });
     case ANNMethodKind::kHnswlib:
-      return TestHnswlibIndexFactory::Create;
+      return std::function<vector_index::VectorIndexIfPtr<std::vector<float>, float>(
+          vector_index::FactoryMode, const vector_index::HNSWOptions&)>(
+          [use_yb_hnsw, block_cache](
+              vector_index::FactoryMode mode, const vector_index::HNSWOptions& options) {
+            return HnswlibIndexFactory<std::vector<float>, float>::Create(
+                mode, block_cache, options,
+                use_yb_hnsw ? HnswBackend::YB_HNSW_HNSWLIB : HnswBackend::HNSWLIB,
+                nullptr);
+          });
   }
-  return decltype(&TestUsearchIndexFactory::Create)(nullptr);
+  FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(param));
 }
 
 constexpr static size_t GetNumEntriesByDimensions(size_t dimensions) {
@@ -387,19 +427,21 @@ Status VectorLSMTest::WaitForCompactionsDone(const FloatVectorLSM& lsm, MonoDelt
 }
 
 Status VectorLSMTest::OpenVectorLSM(
-    FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk) {
+    FloatVectorLSM& lsm, size_t dimensions, size_t vectors_per_chunk,
+    vector_index::DistanceKind distance_kind) {
 
   std::string test_dir;
   RETURN_NOT_OK(Env::Default()->GetTestDirectory(&test_dir));
   test_dir = JoinPathSegments(test_dir, "vector_lsm_test_" + Uuid::Generate().ToString());
 
-  auto factory = GetVectorIndexFactory(GetParam());
+  auto factory = GetVectorIndexFactory(GetParam(), block_cache_);
   FloatVectorLSM::Options options = {
     .log_prefix = "Test: ",
     .storage_dir = JoinPathSegments(test_dir, "vector_lsm"),
-    .vector_index_factory = [factory, dimensions](vector_index::FactoryMode mode) {
+    .vector_index_factory = [factory, dimensions, distance_kind](vector_index::FactoryMode mode) {
       vector_index::HNSWOptions hnsw_options = {
         .dimensions = dimensions,
+        .distance_kind = distance_kind,
       };
       return factory(mode, hnsw_options);
     },
@@ -426,8 +468,18 @@ Status VectorLSMTest::InitVectorLSM(
 }
 
 void VectorLSMTest::VerifyVectorLSM(FloatVectorLSM& lsm, size_t dimensions) {
-  CheckQueryVector(lsm, FloatVectorLSM::Vector(dimensions, 0.f), dimensions + 1);
-  CheckQueryVector(lsm, FloatVectorLSM::Vector(dimensions, 1.f), dimensions + 1);
+  // Use power-of-2 query vectors to guarantee unique distances for all distance kinds
+  // (L2, inner product, cosine). Uniform queries like (0,...,0) are degenerate for cosine,
+  // and linear queries like (1,2,3,...) produce ties for cosine (e.g., subsets {0,5} and {1,4}
+  // have the same sum). Powers of 2 ensure unique subset sums, preventing ties.
+  FloatVectorLSM::Vector query1(dimensions);
+  FloatVectorLSM::Vector query2(dimensions);
+  for (size_t d = 0; d < dimensions; ++d) {
+    query1[d] = static_cast<float>(1 << d);
+    query2[d] = static_cast<float>(1 << (dimensions - 1 - d));
+  }
+  CheckQueryVector(lsm, query1, dimensions + 1);
+  CheckQueryVector(lsm, query2, dimensions + 1);
 }
 
 void VectorLSMTest::CheckQueryVector(
@@ -454,7 +506,8 @@ void VectorLSMTest::CheckQueryVector(
       .ef = 0,
     };
     auto search_result = ASSERT_RESULT(lsm.Search(query_vector, options));
-    VLOG(1) << "Search result: " << AsString(search_result);
+    VLOG(1) << "  Search result: " << AsString(search_result);
+    VLOG(1) << "Expected result: " << AsString(expected_results);
 
     ASSERT_EQ(search_result.size(), expected_results.size());
 
@@ -553,7 +606,8 @@ TEST_P(VectorLSMTest, SingleChunkSimpleCompaction) {
   ASSERT_STR_EQ(files, "[0.meta, 1.meta, 2.meta, vectorindex_3]");
 }
 
-TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
+void VectorLSMTest::TestMultipleChunksSimpleCompaction(
+    vector_index::DistanceKind distance_kind) {
   constexpr size_t kDimensions = 8;
   constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
   static_assert(kNumEntries > 2 * kDefaultChunkSize);
@@ -567,7 +621,7 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
   constexpr size_t kExpectedNumChunks = (kNumInserts + kBlocksPerChunk - 1) / kBlocksPerChunk;
 
   FloatVectorLSM lsm;
-  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize, distance_kind));
   ASSERT_EQ(0, lsm.TEST_NextManifestFileNo());
   ASSERT_OK(InsertCube(lsm, kDimensions, kBlockSize));
   ASSERT_EQ(kNumEntries, inserted_entries_.size());
@@ -607,6 +661,18 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
   ++compacted_idx;
   files = AsString(ASSERT_RESULT(GetFiles(lsm)));
   ASSERT_STR_EQ(files, Format("[0.meta, 1.meta, 2.meta, vectorindex_$0]", compacted_idx));
+}
+
+TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
+  TestMultipleChunksSimpleCompaction(vector_index::DistanceKind::kL2Squared);
+}
+
+TEST_P(VectorLSMTest, MultipleChunksSimpleCompactionInnerProduct) {
+  TestMultipleChunksSimpleCompaction(vector_index::DistanceKind::kInnerProduct);
+}
+
+TEST_P(VectorLSMTest, MultipleChunksSimpleCompactionCosine) {
+  TestMultipleChunksSimpleCompaction(vector_index::DistanceKind::kCosine);
 }
 
 // The purpose of this test is to make sure compaction works fine if all chunks got
@@ -1076,15 +1142,16 @@ TEST_P(VectorLSMTest, EstimateNumVectorsForBytes) {
   // The byte budget approximates in-memory consumption: it includes per-vector pointer tables
   // (vectors_lookup_, nodes_, linkLists_) that don't make it into the serialized chunk file,
   // so the on-disk size is expected to be smaller than the budget but still close to it. The
-  // exact ratio depends on the backend layout.
+  // exact ratio depends on the backend layout and on whether the chunk is rewritten through
+  // the YbHnsw saver, which packs less data than the native usearch/hnswlib formats.
   const auto on_disk_lower_bound_ratio = [&]() -> double {
-    switch (GetParam()) {
+    switch (GetANNMethodKind(GetParam())) {
       case ANNMethodKind::kUsearch:
-        return 0.90;
+        return UseYbHnsw(GetParam()) ? 0.80 : 0.90;
       case ANNMethodKind::kHnswlib:
-        return 0.70;
+        return UseYbHnsw(GetParam()) ? 0.65 : 0.70;
     }
-    FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetParam());
+    FATAL_INVALID_ENUM_VALUE(ANNMethodKind, GetANNMethodKind(GetParam()));
   }();
   ASSERT_GE(on_disk_size, kBytesLimit * on_disk_lower_bound_ratio);
   ASSERT_LE(on_disk_size, kBytesLimit);
@@ -1109,12 +1176,12 @@ TEST_F(VectorLSMTest, MergeChunkResults) {
   }
 }
 
-std::string ANNMethodKindToString(
-    const testing::TestParamInfo<ANNMethodKind>& param_info) {
-  return AsString(param_info.param);
-}
-
 INSTANTIATE_TEST_SUITE_P(
-    , VectorLSMTest, ::testing::ValuesIn(kANNMethodKindArray), ANNMethodKindToString);
+    ,
+    VectorLSMTest,
+    testing::Combine(
+        testing::ValuesIn(kANNMethodKindArray),
+        testing::Bool()),
+    ParamToString);
 
 }  // namespace yb::ann_methods
