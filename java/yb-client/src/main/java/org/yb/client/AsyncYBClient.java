@@ -1363,6 +1363,28 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Validates a batch of flags directly against a specific master or tserver process.
+   *
+   * @param hp  the host and port of the tserver (port 9100) or master (port 7100)
+   * @param flags  map of flag name → value to validate; all sent in a single RPC
+   * @return a Deferred object that will contain the response of the gflag validation request.
+   */
+  public Deferred<ValidateFlagValueResponse> validateFlagValues(
+      final HostAndPort hp, Map<String, String> flags) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    ValidateFlagValueRequest rpc = new ValidateFlagValueRequest(flags);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<ValidateFlagValueResponse> d = rpc.getDeferred();
+    rpc.attempt++;
+    client.sendRpc(rpc);
+    return d;
+  }
+
+  /**
    * Get the master tablet id.
    *
    * @return the constant master tablet uuid.

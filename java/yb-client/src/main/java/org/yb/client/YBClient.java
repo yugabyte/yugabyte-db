@@ -2812,6 +2812,21 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Validates a batch of flags directly against a specific master or tserver process.
+   *
+   * Unlike {@link #validateFlagValue(String, String)}, this method does not throw on
+   * validation failure. Errors are returned in ValidateFlagValueResponse.getErrors().
+  *
+   * @param hp    host and port of the target tserver (port 9100) or master (port 7100)
+   * @param flags map of flag name → value to validate
+   * @return response with a per-flag errors map; empty map means all flags are valid
+   */
+  public ValidateFlagValueResponse validateFlagValues(
+      final HostAndPort hp, Map<String, String> flags) throws Exception {
+    return asyncClient.validateFlagValues(hp, flags).join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Analogous to {@link #shutdown()}.
    *
    * @throws Exception if an error happens while closing the connections
