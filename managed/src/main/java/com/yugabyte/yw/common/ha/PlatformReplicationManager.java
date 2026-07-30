@@ -824,15 +824,14 @@ public class PlatformReplicationManager {
     private final String outputDirectory;
 
     public CreatePlatformBackupParams() {
-      // HA sync path: keep PA files excluded, but include PA config tables in
-      // --include_pa_config_only mode so the standby PA has the same customer_metadata /
-      // universe_metadata / runtime config as the active PA immediately after promotion.
       this(
           true /* excludePrometheus */,
           true /* excludeReleases */,
-          false /* excludePADatabase */,
+          StringUtils.isBlank(
+              confGetter.getStaticConf().getString("yb.pa.url")) /* excludePADatabase */,
           true /* excludePAFiles */,
-          true /* includePaConfigOnly */,
+          StringUtils.isNotBlank(
+              confGetter.getStaticConf().getString("yb.pa.url")) /* includePaConfigOnly */,
           replicationHelper.getBackupDir().toString());
     }
 

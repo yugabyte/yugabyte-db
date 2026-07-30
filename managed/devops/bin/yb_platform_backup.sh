@@ -1021,6 +1021,8 @@ restore_backup() {
       run_sudo_cmd "rm -f ${destination}/prometheus/targets/* ${destination}/prometheus/targets/*"
     fi
 
+    rm -f "${destination}/${PA_DUMP_FNAME}" "${destination}/${INCLUDE_PA_CONFIG_ONLY_MARKER_FNAME}"
+
     $tar_cmd "${input_path}" --directory "${destination}" "${skip_old_files}"
   fi
 
