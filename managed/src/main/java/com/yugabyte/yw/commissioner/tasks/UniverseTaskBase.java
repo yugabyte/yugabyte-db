@@ -6226,7 +6226,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean keepEntry,
       boolean forceDelete,
       boolean deleteSourcePitrConfigs,
-      boolean deleteTargetPitrConfigs) {
+      boolean deleteTargetPitrConfigs,
+      boolean isSwitchover) {
 
     // If target universe is destroyed, ignore creating this subtask.
     if (xClusterConfig.getTargetUniverseUUID() != null
@@ -6239,9 +6240,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               forceDelete)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
     }
-    // Delete the replication group on the target universe.
-    createDeleteReplicationTask(xClusterConfig, forceDelete)
-        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+    // Do not run the following for automatic mode switchover because DeleteReplicationOnSource
+    // task will delete the replication group on the target and also updates some required metadata
+    // while the DeleteUniverseReplication RPC doesn't.
+    if (!(xClusterConfig.isAutomaticDdlMode() && isSwitchover)) {
+      // Delete the replication group on the target universe.
+      createDeleteReplicationTask(xClusterConfig, forceDelete)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+    }
     if (xClusterConfig.getType() == ConfigType.Db) {
       // If it's in the middle of a repair, there's no replication on source.
       if (!(xClusterConfig.isUsedForDr() && xClusterConfig.getDrConfig().isHalted())) {
@@ -6361,6 +6367,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       createDeleteXClusterConfigEntryTask(xClusterConfig)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
     }
+  }
+
+  protected void createDeleteXClusterConfigSubtasks(
+      XClusterConfig xClusterConfig,
+      boolean keepEntry,
+      boolean forceDelete,
+      boolean deleteSourcePitrConfigs,
+      boolean deleteTargetPitrConfigs) {
+    createDeleteXClusterConfigSubtasks(
+        xClusterConfig,
+        keepEntry,
+        forceDelete,
+        deleteSourcePitrConfigs,
+        deleteTargetPitrConfigs,
+        false /* isSwitchover */);
   }
 
   protected SubTaskGroup createDeleteDrConfigEntryTask(DrConfig drConfig) {

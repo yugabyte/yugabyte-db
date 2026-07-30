@@ -138,7 +138,8 @@ public class SwitchoverDrConfig extends EditDrConfig {
               false /* keepEntry */,
               false /* forceDelete */,
               false /* deleteSourcePitrConfigs */,
-              false /* deleteTargetPitrConfigs */);
+              false /* deleteTargetPitrConfigs */,
+              true /* isSwitchover */);
         }
         createDrConfigWebhookCallTask(switchoverXClusterConfig.getDrConfig());
 
