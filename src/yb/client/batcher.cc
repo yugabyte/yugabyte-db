@@ -95,7 +95,11 @@ DEFINE_test_flag(double, simulate_tablet_lookup_does_not_match_partition_key_pro
                  "range of the resolved tablet's partition.");
 DEFINE_test_flag(bool, fail_batcher_rpc, false, "Fail batcher RPCs for testing purposes.");
 
-DEFINE_RUNTIME_PREVIEW_bool(ysql_enable_write_pipelining, false,
+DEFINE_RUNTIME_AUTO_bool(enable_write_pipelining_infra, kLocalVolatile, false, true,
+    "Enable the infrastructure required for write pipelining. Pipelined writes are sent with "
+    "use_async_write set and awaited with the WaitForAsyncWrite RPC.");
+
+DEFINE_RUNTIME_bool(ysql_enable_write_pipelining, false,
     "Enable pipelining of write statements within a transaction. When enabled, multiple read and "
     "write statements in a transaction are executed concurrently, reducing overall latency.");
 
@@ -120,9 +124,9 @@ namespace {
 const auto kGeneralErrorStatus = STATUS(IOError, Batcher::kErrorReachingOutToTServersMsg);
 
 bool UseAsyncWrites(YBTableType table_type, TransactionId txn_id) {
-  // Use async writes for transactional writes in YSQL, or if the test flag is enabled.
-  return FLAGS_ysql_enable_write_pipelining && table_type == YBTableType::PGSQL_TABLE_TYPE &&
-         !txn_id.IsNil();
+  // Use async writes for transactional writes in YSQL.
+  return FLAGS_enable_write_pipelining_infra && FLAGS_ysql_enable_write_pipelining &&
+         table_type == YBTableType::PGSQL_TABLE_TYPE && !txn_id.IsNil();
 }
 
 bool OpSkipIntents(const YBOperation& op) {
