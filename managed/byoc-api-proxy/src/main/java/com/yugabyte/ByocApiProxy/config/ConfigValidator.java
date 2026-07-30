@@ -24,7 +24,9 @@ import org.springframework.boot.context.properties.bind.BindException;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.bind.PropertySourcesPlaceholdersResolver;
+import org.springframework.boot.context.properties.source.ConfigurationProperty;
 import org.springframework.boot.context.properties.source.ConfigurationPropertyName;
+import org.springframework.boot.context.properties.source.ConfigurationPropertySource;
 import org.springframework.boot.context.properties.source.ConfigurationPropertySources;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -195,10 +197,16 @@ public final class ConfigValidator {
    * <p>Auth-specific placeholders are only reported for the active {@code proxied-app.auth.type}
    * (default {@code service_account}, matching {@code application.yaml}). Otherwise optional blocks
    * like {@code api_key} / {@code service_account} would be flagged even when unused.
+   *
+   * <p>A {@code ${VAR}} default is only reported when the property has no actual value: e.g. an
+   * installer-generated application.yaml overlay setting {@code yba.uuid} silences the bundled
+   * {@code ${YBA_UUID}} default.
    */
   private static void addUnresolvedPlaceholderErrors(
       ConfigurableEnvironment environment, Set<String> errors) {
     ProxiedAppAuthType authType = resolveAuthType(environment);
+    Iterable<ConfigurationPropertySource> configSources =
+        ConfigurationPropertySources.get(environment);
 
     for (PropertySource<?> source : environment.getPropertySources()) {
       if (!(source instanceof EnumerablePropertySource<?> enumerable)) {
@@ -217,9 +225,40 @@ public final class ConfigValidator {
         if (placeholder == null || environment.getProperty(placeholder) != null) {
           continue;
         }
+        if (isPropertySet(configSources, normalized)) {
+          continue;
+        }
         errors.add(unresolvedPlaceholderMessage(normalized, raw));
       }
     }
+  }
+
+  /**
+   * True when the property has an actual value. Sources are checked highest-precedence first (the
+   * same order and relaxed name matching the binder uses, so snake_case yaml keys count), and the
+   * first source that defines the property decides.
+   */
+  private static boolean isPropertySet(
+      Iterable<ConfigurationPropertySource> configSources, String property) {
+    ConfigurationPropertyName name;
+    try {
+      name = ConfigurationPropertyName.of(property);
+    } catch (RuntimeException e) {
+      return false;
+    }
+    for (ConfigurationPropertySource source : configSources) {
+      ConfigurationProperty resolved = source.getConfigurationProperty(name);
+      if (resolved == null) {
+        continue;
+      }
+      if (placeholderName(resolved.getValue()) != null) {
+        // The winning value is itself a bare ${VAR} - still not set.
+        return false;
+      }
+      return true;
+    }
+    // No source defines the property at all.
+    return false;
   }
 
   private static ProxiedAppAuthType resolveAuthType(ConfigurableEnvironment environment) {
