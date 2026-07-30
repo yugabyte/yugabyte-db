@@ -41,7 +41,8 @@ export const groupStorageConfigs = (storageConfigs: CustomerConfig[]) => {
       value: c.configUUID,
       label: c.configName,
       name: c.name,
-      regions: c.data?.REGION_LOCATIONS
+      regions: c.data?.REGION_LOCATIONS,
+      data: c.data
     };
   });
 
