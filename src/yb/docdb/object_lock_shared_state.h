@@ -29,6 +29,22 @@
 
 namespace yb::docdb {
 
+// State tracking active kStrongWrite, kWeakWrite intent types at the tserver's Object lock Manager.
+// - first 32 bits store the num_active kStrongWrite
+// - last 32 bits store the num_active kWeakWrite
+//
+// Since fastpath object locking is enabled for kAccessShare, kRowShare & kRowExclusive alone, all
+// of which request intent_type(s) kWeakRead/kStrongRead, it is sufficient to just track active
+// write intent types for detecting fast path locking conflicts. Hence not reusing LockState here.
+//
+// Additionally, since write lock state for multiple objects (with same hash) is stored in the same
+// entry, it is better to not use LockState here as it could potentially lead to overflow.
+using SharedWriteLockState = uint64_t;
+
+SharedWriteLockState LockStateToSharedWriteLockState(LockState lock_state);
+
+void SharedWriteLockStateRelease(SharedWriteLockState& held, SharedWriteLockState release);
+
 TableLockType FastpathLockTypeToTableLockType(ObjectLockFastpathLockType lock_type);
 
 std::optional<ObjectLockFastpathLockType> MakeObjectLockFastpathLockType(TableLockType lock_type);
@@ -75,7 +91,8 @@ class ObjectLockSharedState {
 
   [[nodiscard]] bool Lock(const ObjectLockFastpathRequest& request);
 
-  ActivationGuard Activate(const std::unordered_map<ObjectLockPrefix, LockState>& initial_intents)
+  ActivationGuard Activate(
+      const std::unordered_map<ObjectLockPrefix, SharedWriteLockState>& initial_intents)
       PARENT_PROCESS_ONLY;
 
   void PauseAndReset() PARENT_PROCESS_ONLY;
