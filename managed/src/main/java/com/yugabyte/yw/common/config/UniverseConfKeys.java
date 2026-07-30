@@ -1594,7 +1594,10 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "yb.universe.otel_collector_max_memory",
           ScopeType.UNIVERSE,
           "Max memory for OpenTelemetry Collector process.",
-          "Hard memory limit for the OpenTelemetry Collector process in the systemd unit file.",
+          "Hard memory limit in MiB for the OpenTelemetry Collector process. Applied as MemoryMax"
+              + " in the systemd unit file on VM universes and as the container memory limit on"
+              + " the collector sidecar for Kubernetes universes. Set to 0 to leave the collector"
+              + " uncapped.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> masterLogsAdditionalDropPatterns =

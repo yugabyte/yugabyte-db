@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.FileHelperService;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat.MultilineConfig;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat.RetryConfig;
 import com.yugabyte.yw.common.config.ConfKeyInfo;
@@ -33,10 +34,15 @@ import com.yugabyte.yw.models.helpers.exporters.metrics.ScrapeConfigTargetType;
 import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.ControllerLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.NodeAgentLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.ServerLogLevel;
+import com.yugabyte.yw.models.helpers.exporters.server.SimpleServerLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.TServerLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.UniverseServerLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YnpLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.YsqlConnMgrLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AuthCredentials.AuthType;
 import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
@@ -92,6 +98,11 @@ public class OtelCollectorConfigGenerator {
   private static final String LOG_TYPE_QUERY_YSQL = "query_logs_ysql";
   private static final String LOG_TYPE_MASTER = "master";
   private static final String LOG_TYPE_TSERVER = "tserver";
+  // Internal-only diagnostic log sources (VM-only).
+  private static final String LOG_TYPE_YSQL_CONN_MGR = "ysql_conn_mgr";
+  private static final String LOG_TYPE_NODE_AGENT = "node_agent";
+  private static final String LOG_TYPE_YNP = "ynp";
+  private static final String LOG_TYPE_CONTROLLER = "controller";
 
   // Job names
   private static final String JOB_NAME_YUGABYTE = "yugabyte";
@@ -112,6 +123,9 @@ public class OtelCollectorConfigGenerator {
   // K8s pod paths (mounted by the chart), in place of the VM provider.getYbHome() paths.
   private static final String K8S_TSERVER_LOG_DIR = "/mnt/disk0/yb-data/tserver/logs";
   private static final String K8S_MASTER_LOG_DIR = "/mnt/disk0/yb-data/master/logs";
+  // yb-controller sidecar log dir inside the yb-tserver pod (matches
+  // GFlagsUtil.K8S_YBC_LOG_SUBDIR).
+  private static final String K8S_YBC_LOG_DIR = "/mnt/disk0/ybc-data/controller/logs";
   private static final String K8S_OTEL_DIR = "/mnt/disk0/otel-collector";
   // The otel sidecar shares the pod network namespace, so all scrape targets are pod-local.
   private static final String K8S_POD_LOCAL_ADDRESS = "127.0.0.1";
@@ -148,6 +162,10 @@ public class OtelCollectorConfigGenerator {
   private static final String EXPORT_TYPE_PREFIX_METRICS = "metrics_";
   private static final String EXPORT_TYPE_PREFIX_MASTER_LOGS = "master_logs_";
   private static final String EXPORT_TYPE_PREFIX_TSERVER_LOGS = "tserver_logs_";
+  private static final String EXPORT_TYPE_PREFIX_YSQL_CONN_MGR_LOGS = "ysql_conn_mgr_logs_";
+  private static final String EXPORT_TYPE_PREFIX_NODE_AGENT_LOGS = "node_agent_logs_";
+  private static final String EXPORT_TYPE_PREFIX_YNP_LOGS = "ynp_logs_";
+  private static final String EXPORT_TYPE_PREFIX_CONTROLLER_LOGS = "controller_logs_";
 
   // Common attribute strings
   private static final String ATTR_PREFIX_YUGABYTE = "yugabyte.";
@@ -156,6 +174,10 @@ public class OtelCollectorConfigGenerator {
   private static final String PURPOSE_SUFFIX_QUERY_LOG_EXPORT = "_QUERY_LOG_EXPORT";
   private static final String PURPOSE_SUFFIX_MASTER_LOG_EXPORT = "_MASTER_LOG_EXPORT";
   private static final String PURPOSE_SUFFIX_TSERVER_LOG_EXPORT = "_TSERVER_LOG_EXPORT";
+  private static final String PURPOSE_SUFFIX_YSQL_CONN_MGR_LOG_EXPORT = "_YSQL_CONN_MGR_LOG_EXPORT";
+  private static final String PURPOSE_SUFFIX_NODE_AGENT_LOG_EXPORT = "_NODE_AGENT_LOG_EXPORT";
+  private static final String PURPOSE_SUFFIX_YNP_LOG_EXPORT = "_YNP_LOG_EXPORT";
+  private static final String PURPOSE_SUFFIX_CONTROLLER_LOG_EXPORT = "_CONTROLLER_LOG_EXPORT";
 
   /** Result of building the full K8s collector config: the config YAML + secret env for the pod. */
   @Data
@@ -245,6 +267,7 @@ public class OtelCollectorConfigGenerator {
           queryLogConfig,
           masterLogConfig,
           tserverLogConfig,
+          telemetryConfig,
           logLinePrefix);
       if (metricsExportConfig != null) {
         addMetricsExporterPipelines(
@@ -312,6 +335,7 @@ public class OtelCollectorConfigGenerator {
       QueryLogConfig queryLogConfig,
       MasterLogConfig masterLogConfig,
       TServerLogConfig tserverLogConfig,
+      TelemetryConfig telemetryConfig,
       String logLinePrefix) {
     Universe universe = Universe.getOrBadRequest(nodeParams.getUniverseUUID());
     Map<String, OtelCollectorConfigFormat.Receiver> receivers =
@@ -326,8 +350,24 @@ public class OtelCollectorConfigGenerator {
     boolean tserverEnabled =
         OtelCollectorUtil.isTserverLogExportEnabledInUniverse(tserverLogConfig);
 
+    // Internal-only diagnostic log sources (VM-only). Resolved from the telemetry config.
+    YsqlConnMgrLogConfig ysqlConnMgrLogConfig =
+        telemetryConfig != null ? telemetryConfig.getYsqlConnMgrLogConfig() : null;
+    NodeAgentLogConfig nodeAgentLogConfig =
+        telemetryConfig != null ? telemetryConfig.getNodeAgentLogConfig() : null;
+    YnpLogConfig ynpLogConfig = telemetryConfig != null ? telemetryConfig.getYnpLogConfig() : null;
+    ControllerLogConfig controllerLogConfig =
+        telemetryConfig != null ? telemetryConfig.getControllerLogConfig() : null;
+    boolean ysqlConnMgrEnabled =
+        OtelCollectorUtil.isSimpleServerLogExportEnabledInUniverse(ysqlConnMgrLogConfig);
+    boolean nodeAgentEnabled =
+        OtelCollectorUtil.isSimpleServerLogExportEnabledInUniverse(nodeAgentLogConfig);
+    boolean ynpEnabled = OtelCollectorUtil.isSimpleServerLogExportEnabledInUniverse(ynpLogConfig);
+    boolean controllerEnabled =
+        OtelCollectorUtil.isSimpleServerLogExportEnabledInUniverse(controllerLogConfig);
+
     // 1. Register a filelog receiver for each enabled log source (insertion order matters for the
-    // generated YAML, so keep it: ysql, ycql, query, master, tserver).
+    // generated YAML, so keep it: ysql, ycql, query, master, tserver, then the diagnostic sources).
     if (ysqlAuditEnabled) {
       receivers.put(
           RECEIVER_PREFIX_FILELOG + LOG_TYPE_YSQL, createYsqlReceiver(provider, logLinePrefix));
@@ -353,6 +393,30 @@ public class OtelCollectorConfigGenerator {
           RECEIVER_PREFIX_FILELOG + LOG_TYPE_TSERVER,
           createTserverLogReceiver(
               provider, tserverLogConfig, getTserverLogAdditionalDropPatterns(universe)));
+    }
+    if (ysqlConnMgrEnabled) {
+      receivers.put(
+          RECEIVER_PREFIX_FILELOG + LOG_TYPE_YSQL_CONN_MGR, createYsqlConnMgrLogReceiver(provider));
+    }
+    if (nodeAgentEnabled || ynpEnabled) {
+      // node-agent and YNP logs share the node-agent install dir.
+      String nodeAgentLogDir =
+          confGetter.getGlobalConf(GlobalConfKeys.nodeAgentInstallPath) + "/node-agent/logs";
+      if (nodeAgentEnabled) {
+        receivers.put(
+            RECEIVER_PREFIX_FILELOG + LOG_TYPE_NODE_AGENT,
+            createNodeAgentLogReceiver(nodeAgentLogDir));
+      }
+      if (ynpEnabled) {
+        receivers.put(
+            RECEIVER_PREFIX_FILELOG + LOG_TYPE_YNP, createYnpLogReceiver(nodeAgentLogDir));
+      }
+    }
+    if (controllerEnabled) {
+      NodeDetails node = universe.getNode(nodeParams.nodeName);
+      String ybcDataDir = Util.getDataDirectoryPath(universe, node, confGetter.getStaticConf());
+      receivers.put(
+          RECEIVER_PREFIX_FILELOG + LOG_TYPE_CONTROLLER, createControllerLogReceiver(ybcDataDir));
     }
 
     // 2. Append a pipeline per exporter, per log family (each family routes only its own
@@ -410,6 +474,58 @@ public class OtelCollectorConfigGenerator {
                       nodeParams.nodeName,
                       logLinePrefix));
     }
+    appendSimpleLogPipelines(
+        ysqlConnMgrEnabled ? ysqlConnMgrLogConfig : null,
+        ExportType.YSQL_CONN_MGR_LOGS,
+        universe,
+        collectorConfigFormat,
+        nodeParams.nodeName,
+        logLinePrefix);
+    appendSimpleLogPipelines(
+        nodeAgentEnabled ? nodeAgentLogConfig : null,
+        ExportType.NODE_AGENT_LOGS,
+        universe,
+        collectorConfigFormat,
+        nodeParams.nodeName,
+        logLinePrefix);
+    appendSimpleLogPipelines(
+        ynpEnabled ? ynpLogConfig : null,
+        ExportType.YNP_LOGS,
+        universe,
+        collectorConfigFormat,
+        nodeParams.nodeName,
+        logLinePrefix);
+    appendSimpleLogPipelines(
+        controllerEnabled ? controllerLogConfig : null,
+        ExportType.CONTROLLER_LOGS,
+        universe,
+        collectorConfigFormat,
+        nodeParams.nodeName,
+        logLinePrefix);
+  }
+
+  /** Append one pipeline per exporter for an internal-only diagnostic server-log section. */
+  private void appendSimpleLogPipelines(
+      SimpleServerLogConfig config,
+      ExportType exportType,
+      Universe universe,
+      OtelCollectorConfigFormat collectorConfigFormat,
+      String nodeName,
+      String logLinePrefix) {
+    if (config == null) {
+      return;
+    }
+    config
+        .getUniverseLogsExporterConfig()
+        .forEach(
+            exporter ->
+                appendLogExporter(
+                    exportType,
+                    universe,
+                    collectorConfigFormat,
+                    exporter,
+                    nodeName,
+                    logLinePrefix));
   }
 
   /** Filelog receiver names that feed the pipeline for a given log export type. */
@@ -424,6 +540,14 @@ public class OtelCollectorConfigGenerator {
         return ImmutableSet.of(RECEIVER_PREFIX_FILELOG + LOG_TYPE_MASTER);
       case TSERVER_LOGS:
         return ImmutableSet.of(RECEIVER_PREFIX_FILELOG + LOG_TYPE_TSERVER);
+      case YSQL_CONN_MGR_LOGS:
+        return ImmutableSet.of(RECEIVER_PREFIX_FILELOG + LOG_TYPE_YSQL_CONN_MGR);
+      case NODE_AGENT_LOGS:
+        return ImmutableSet.of(RECEIVER_PREFIX_FILELOG + LOG_TYPE_NODE_AGENT);
+      case YNP_LOGS:
+        return ImmutableSet.of(RECEIVER_PREFIX_FILELOG + LOG_TYPE_YNP);
+      case CONTROLLER_LOGS:
+        return ImmutableSet.of(RECEIVER_PREFIX_FILELOG + LOG_TYPE_CONTROLLER);
       default:
         throw new IllegalArgumentException("Not a log export type: " + exportType);
     }
@@ -439,6 +563,14 @@ public class OtelCollectorConfigGenerator {
         return PURPOSE_SUFFIX_MASTER_LOG_EXPORT;
       case TSERVER_LOGS:
         return PURPOSE_SUFFIX_TSERVER_LOG_EXPORT;
+      case YSQL_CONN_MGR_LOGS:
+        return PURPOSE_SUFFIX_YSQL_CONN_MGR_LOG_EXPORT;
+      case NODE_AGENT_LOGS:
+        return PURPOSE_SUFFIX_NODE_AGENT_LOG_EXPORT;
+      case YNP_LOGS:
+        return PURPOSE_SUFFIX_YNP_LOG_EXPORT;
+      case CONTROLLER_LOGS:
+        return PURPOSE_SUFFIX_CONTROLLER_LOG_EXPORT;
       default:
         throw new IllegalArgumentException("Not a log export type: " + exportType);
     }
@@ -453,8 +585,11 @@ public class OtelCollectorConfigGenerator {
         return queryLogRegexGenerator.generateQueryLogRegex(logLinePrefix, /*onlyPrefix*/ true);
       case MASTER_LOGS:
       case TSERVER_LOGS:
-        // Master/tserver logs are glog, not PG-prefixed, so there is no log-prefix regex to
-        // extract from.
+      case YSQL_CONN_MGR_LOGS:
+      case NODE_AGENT_LOGS:
+      case YNP_LOGS:
+      case CONTROLLER_LOGS:
+        // These sources are not PG-prefixed, so there is no log-prefix regex to extract from.
         return new AuditLogRegexGenerator.LogRegexResult("", Collections.emptyList());
       default:
         throw new IllegalArgumentException("Not a log export type: " + exportType);
@@ -724,6 +859,11 @@ public class OtelCollectorConfigGenerator {
         telemetryConfig != null ? telemetryConfig.getMasterLogConfig() : null;
     TServerLogConfig tserverLogConfig =
         telemetryConfig != null ? telemetryConfig.getTserverLogConfig() : null;
+    // Internal-only diagnostic sources that are pod-local on K8s (both live in the yb-tserver pod).
+    YsqlConnMgrLogConfig ysqlConnMgrLogConfig =
+        telemetryConfig != null ? telemetryConfig.getYsqlConnMgrLogConfig() : null;
+    ControllerLogConfig controllerLogConfig =
+        telemetryConfig != null ? telemetryConfig.getControllerLogConfig() : null;
     List<Object> secretEnv = new ArrayList<>();
     Set<UUID> secretEnvProviderUuids = new HashSet<>();
     boolean auditActive = OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig);
@@ -731,12 +871,28 @@ public class OtelCollectorConfigGenerator {
     boolean metricsActive = OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig);
     boolean masterActive = OtelCollectorUtil.isMasterLogExportEnabledInUniverse(masterLogConfig);
     boolean tserverActive = OtelCollectorUtil.isTserverLogExportEnabledInUniverse(tserverLogConfig);
-    if (!auditActive && !queryActive && !metricsActive && !masterActive && !tserverActive) {
+    boolean connMgrActive =
+        OtelCollectorUtil.isSimpleServerLogExportEnabledInUniverse(ysqlConnMgrLogConfig);
+    boolean controllerActive =
+        OtelCollectorUtil.isSimpleServerLogExportEnabledInUniverse(controllerLogConfig);
+    if (!auditActive
+        && !queryActive
+        && !metricsActive
+        && !masterActive
+        && !tserverActive
+        && !connMgrActive
+        && !controllerActive) {
       return new K8sOtelConfig(false, "", secretEnv);
     }
 
     OtelCollectorConfigFormat cfg = new OtelCollectorConfigFormat();
-    boolean logsActive = auditActive || queryActive || masterActive || tserverActive;
+    boolean logsActive =
+        auditActive
+            || queryActive
+            || masterActive
+            || tserverActive
+            || connMgrActive
+            || controllerActive;
 
     // Extensions: on-disk send queue (only the log pipelines use it filelog receiver state and
     // the audit exporters sending_queue) + health check (the operator's sidecar readiness probe).
@@ -820,6 +976,23 @@ public class OtelCollectorConfigGenerator {
       r.setExclude(ImmutableList.of(K8S_TSERVER_LOG_DIR + "/*.gz"));
       cfg.getReceivers().put(RECEIVER_PREFIX_FILELOG + LOG_TYPE_TSERVER, r);
     }
+    if (connMgrActive) {
+      // ysql-conn-mgr logs are co-located with postgres logs in the yb-tserver pod.
+      OtelCollectorConfigFormat.FileLogReceiver r =
+          (OtelCollectorConfigFormat.FileLogReceiver) createYsqlConnMgrLogReceiver(provider);
+      r.setInclude(ImmutableList.of(K8S_TSERVER_LOG_DIR + "/ysql-conn-mgr-*"));
+      r.setExclude(ImmutableList.of(K8S_TSERVER_LOG_DIR + "/*.gz"));
+      cfg.getReceivers().put(RECEIVER_PREFIX_FILELOG + LOG_TYPE_YSQL_CONN_MGR, r);
+    }
+    if (controllerActive) {
+      // yb-controller runs as a sidecar in the yb-tserver pod; its logs live under the ybc-data
+      // mount. Reuse the VM builder (operators/multiline), override the include/exclude for K8s.
+      OtelCollectorConfigFormat.FileLogReceiver r =
+          (OtelCollectorConfigFormat.FileLogReceiver) createControllerLogReceiver("");
+      r.setInclude(ImmutableList.of(K8S_YBC_LOG_DIR + "/yb-controller-server.INFO"));
+      r.setExclude(ImmutableList.of(K8S_YBC_LOG_DIR + "/*.gz"));
+      cfg.getReceivers().put(RECEIVER_PREFIX_FILELOG + LOG_TYPE_CONTROLLER, r);
+    }
 
     OtelCollectorConfigFormat.Service service = new OtelCollectorConfigFormat.Service();
     // Telemetry: internal collector logs + metrics endpoint.
@@ -897,6 +1070,38 @@ public class OtelCollectorConfigGenerator {
             ec.getExporterUuid(),
             ExportType.TSERVER_LOGS,
             RECEIVER_PREFIX_FILELOG + LOG_TYPE_TSERVER,
+            transformName,
+            ec,
+            ec.getAdditionalTags(),
+            secretEnv,
+            secretEnvProviderUuids);
+      }
+    }
+    if (connMgrActive) {
+      for (UniverseServerLogsExporterConfig ec :
+          ysqlConnMgrLogConfig.getUniverseLogsExporterConfig()) {
+        addK8sLogPipeline(
+            cfg,
+            service,
+            ec.getExporterUuid(),
+            ExportType.YSQL_CONN_MGR_LOGS,
+            RECEIVER_PREFIX_FILELOG + LOG_TYPE_YSQL_CONN_MGR,
+            transformName,
+            ec,
+            ec.getAdditionalTags(),
+            secretEnv,
+            secretEnvProviderUuids);
+      }
+    }
+    if (controllerActive) {
+      for (UniverseServerLogsExporterConfig ec :
+          controllerLogConfig.getUniverseLogsExporterConfig()) {
+        addK8sLogPipeline(
+            cfg,
+            service,
+            ec.getExporterUuid(),
+            ExportType.CONTROLLER_LOGS,
+            RECEIVER_PREFIX_FILELOG + LOG_TYPE_CONTROLLER,
             transformName,
             ec,
             ec.getAdditionalTags(),
@@ -1522,6 +1727,204 @@ public class OtelCollectorConfigGenerator {
     return receiver;
   }
 
+  /** Severity parser for non-glog sources whose levels are already words (info/warn/error/...). */
+  private OtelCollectorConfigFormat.SeverityParserOperator buildPlainSeverityParser() {
+    OtelCollectorConfigFormat.SeverityParserOperator severityParser =
+        new OtelCollectorConfigFormat.SeverityParserOperator();
+    severityParser.setType("severity_parser");
+    severityParser.setParse_from("attributes.log_level");
+    return severityParser;
+  }
+
+  /**
+   * YSQL Connection Manager log receiver (internal-only). Available on both VM and Kubernetes: the
+   * ysql-conn-mgr logs are co-located with the postgres logs in the yb-tserver pod, so the K8s
+   * caller reuses this builder and overrides the include path. Format: {@code <pid> <YYYY-MM-DD
+   * HH:MM:SS.mmm UTC> <level> <message>}.
+   */
+  private OtelCollectorConfigFormat.Receiver createYsqlConnMgrLogReceiver(Provider provider) {
+    List<OtelCollectorConfigFormat.Operator> operators = new ArrayList<>();
+
+    OtelCollectorConfigFormat.RegexOperator parser = new OtelCollectorConfigFormat.RegexOperator();
+    parser.setType("regex_parser");
+    parser.setOn_error("send");
+    parser.setRegex(
+        "(?s)(?P<pid>\\d+)\\s+(?P<log_time_full>\\d{4}-\\d{2}-\\d{2} "
+            + "\\d{2}:\\d{2}:\\d{2}[.]\\d{3} UTC)\\s+(?P<log_level>\\w+)\\s+(?P<message>.*)$");
+    operators.add(parser);
+
+    OtelCollectorConfigFormat.TimeParserOperator timeParser =
+        new OtelCollectorConfigFormat.TimeParserOperator();
+    timeParser.setType("time_parser");
+    timeParser.setParse_from("attributes.log_time_full");
+    timeParser.setLayout("%Y-%m-%d %H:%M:%S.%L UTC");
+    timeParser.setIf("attributes.log_time_full != nil");
+    operators.add(timeParser);
+
+    OtelCollectorConfigFormat.AddOperator defaultLevel =
+        new OtelCollectorConfigFormat.AddOperator();
+    defaultLevel.setType("add");
+    defaultLevel.setField("attributes.log_level");
+    defaultLevel.setValue("info");
+    defaultLevel.setIf("attributes.log_level == nil");
+    operators.add(defaultLevel);
+
+    operators.add(buildPlainSeverityParser());
+    operators.add(buildMessageToBodyMove());
+
+    OtelCollectorConfigFormat.FileLogReceiver receiver =
+        createFileLogReceiver(LOG_TYPE_YSQL_CONN_MGR, operators, ExportType.YSQL_CONN_MGR_LOGS);
+    receiver.setPoll_interval("1s");
+    receiver.setInclude(ImmutableList.of(provider.getYbHome() + "/tserver/logs/ysql-conn-mgr-*"));
+    receiver.setExclude(ImmutableList.of(provider.getYbHome() + "/tserver/logs/*.gz"));
+    MultilineConfig multiline = new MultilineConfig();
+    multiline.setLine_start_pattern("^\\d+\\s+\\d{4}-\\d{2}-\\d{2}");
+    receiver.setMultiline(multiline);
+    return receiver;
+  }
+
+  /**
+   * node-agent log receiver (internal-only, VM-only). Not available on Kubernetes: node-agent does
+   * not run inside the yb-master/yb-tserver pods (NodeAgentClient.isCloudTypeSupported is false for
+   * kubernetes), so node_agent.log does not exist there for a sidecar to tail. Format: {@code
+   * timestamp=<RFC3339> level=<level> message="<msg>" [key=value ...]}.
+   */
+  private OtelCollectorConfigFormat.Receiver createNodeAgentLogReceiver(String nodeAgentLogDir) {
+    List<OtelCollectorConfigFormat.Operator> operators = new ArrayList<>();
+
+    OtelCollectorConfigFormat.RegexOperator parser = new OtelCollectorConfigFormat.RegexOperator();
+    parser.setType("regex_parser");
+    parser.setOn_error("send");
+    parser.setRegex(
+        "^timestamp=(?P<log_time_full>\\S+)\\s+level=(?P<log_level>\\S+)\\s+"
+            + "message=\"(?P<message>[^\"]*)\"");
+    operators.add(parser);
+
+    // Truncate nanoseconds to milliseconds so the time_parser layout matches.
+    OtelCollectorConfigFormat.RegexOperator millis = new OtelCollectorConfigFormat.RegexOperator();
+    millis.setType("regex_parser");
+    millis.setParse_from("attributes.log_time_full");
+    millis.setRegex(
+        "^(?P<log_time_millis>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?)\\d*Z$");
+    millis.setOn_error("send");
+    millis.setIf("attributes.log_time_full != nil");
+    operators.add(millis);
+
+    OtelCollectorConfigFormat.TimeParserOperator timeParser =
+        new OtelCollectorConfigFormat.TimeParserOperator();
+    timeParser.setType("time_parser");
+    timeParser.setParse_from("attributes.log_time_millis");
+    timeParser.setLayout("%Y-%m-%dT%H:%M:%S.%L");
+    timeParser.setIf("attributes.log_time_millis != nil");
+    operators.add(timeParser);
+
+    operators.add(buildPlainSeverityParser());
+    operators.add(buildMessageToBodyMove());
+
+    OtelCollectorConfigFormat.FileLogReceiver receiver =
+        createFileLogReceiver(LOG_TYPE_NODE_AGENT, operators, ExportType.NODE_AGENT_LOGS);
+    receiver.setPoll_interval("1s");
+    receiver.setInclude(ImmutableList.of(nodeAgentLogDir + "/node_agent.log"));
+    return receiver;
+  }
+
+  /**
+   * YNP (node provisioning) log receiver (internal-only, VM-only). Not available on Kubernetes: YNP
+   * shares the node-agent install dir, which does not exist inside the DB pods (node provisioning
+   * is a VM/on-prem concept). Format: {@code <RFC3339> - <logger> - <level> - <message>}.
+   */
+  private OtelCollectorConfigFormat.Receiver createYnpLogReceiver(String nodeAgentLogDir) {
+    List<OtelCollectorConfigFormat.Operator> operators = new ArrayList<>();
+
+    OtelCollectorConfigFormat.RegexOperator parser = new OtelCollectorConfigFormat.RegexOperator();
+    parser.setType("regex_parser");
+    parser.setOn_error("send");
+    parser.setRegex(
+        "(?s)^(?P<log_time_full>\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z)\\s+-\\s+"
+            + "(?P<logger>\\S+)\\s+-\\s+(?P<log_level>\\S+)\\s+-\\s+(?P<message>.*)");
+    operators.add(parser);
+
+    OtelCollectorConfigFormat.TimeParserOperator timeParser =
+        new OtelCollectorConfigFormat.TimeParserOperator();
+    timeParser.setType("time_parser");
+    timeParser.setParse_from("attributes.log_time_full");
+    timeParser.setLayout("%Y-%m-%dT%H:%M:%SZ");
+    timeParser.setIf("attributes.log_time_full != nil");
+    operators.add(timeParser);
+
+    operators.add(buildPlainSeverityParser());
+    operators.add(buildMessageToBodyMove());
+
+    OtelCollectorConfigFormat.FileLogReceiver receiver =
+        createFileLogReceiver(LOG_TYPE_YNP, operators, ExportType.YNP_LOGS);
+    receiver.setPoll_interval("1s");
+    receiver.setInclude(ImmutableList.of(nodeAgentLogDir + "/app.log"));
+    MultilineConfig multiline = new MultilineConfig();
+    multiline.setLine_start_pattern("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z");
+    receiver.setMultiline(multiline);
+    return receiver;
+  }
+
+  /**
+   * YB-Controller log receiver (internal-only). Available on both VM and Kubernetes: yb-controller
+   * runs as a sidecar in the yb-tserver pod, so the K8s caller reuses this builder and overrides
+   * the include path to the ybc-data mount. glog format with an 8-digit date: {@code
+   * <level><YYYYMMDD HH:MM:SS.uuuuuu> <tid> <file>:<line>] <message>}.
+   */
+  private OtelCollectorConfigFormat.Receiver createControllerLogReceiver(String ybcDataDir) {
+    List<OtelCollectorConfigFormat.Operator> operators = new ArrayList<>();
+
+    // Drop low-value / potentially-sensitive lines outright.
+    OtelCollectorConfigFormat.FilterOperator redactFilter =
+        new OtelCollectorConfigFormat.FilterOperator();
+    redactFilter.setType("filter");
+    redactFilter.setExpr(
+        "body contains \"not found, removing\" or body contains \"CA FILE\""
+            + " or body contains \"Not uploading\"");
+    redactFilter.setDrop_ratio(1.0);
+    operators.add(redactFilter);
+
+    OtelCollectorConfigFormat.RegexOperator parser = new OtelCollectorConfigFormat.RegexOperator();
+    parser.setType("regex_parser");
+    parser.setOn_error("send");
+    parser.setRegex(
+        "(?s)(?P<log_level>[IWEF])(?P<log_time_full>\\d{8} "
+            + "\\d{2}:\\d{2}:\\d{2}[.]\\d{6})\\s*(?P<thread_id>\\d+) "
+            + "(?P<file_name>[^:]+):(?P<file_line>\\d+)[]] (?P<message>.*)");
+    parser.setIf("body matches \"^[IWEF]\"");
+    operators.add(parser);
+
+    OtelCollectorConfigFormat.TimeParserOperator timeParser =
+        new OtelCollectorConfigFormat.TimeParserOperator();
+    timeParser.setType("time_parser");
+    timeParser.setParse_from("attributes.log_time_full");
+    timeParser.setLayout("%Y%m%d %H:%M:%S.%f");
+    timeParser.setIf("attributes.log_time_full != nil");
+    operators.add(timeParser);
+
+    OtelCollectorConfigFormat.AddOperator defaultLevel =
+        new OtelCollectorConfigFormat.AddOperator();
+    defaultLevel.setType("add");
+    defaultLevel.setField("attributes.log_level");
+    defaultLevel.setValue("I");
+    defaultLevel.setIf("attributes.log_level == nil");
+    operators.add(defaultLevel);
+
+    operators.add(buildSeverityParser());
+    operators.add(buildMessageToBodyMove());
+
+    OtelCollectorConfigFormat.FileLogReceiver receiver =
+        createFileLogReceiver(LOG_TYPE_CONTROLLER, operators, ExportType.CONTROLLER_LOGS);
+    receiver.setPoll_interval("1s");
+    String logsDir = ybcDataDir + "/ybc-data/controller/logs/";
+    receiver.setInclude(ImmutableList.of(logsDir + "yb-controller-server.INFO"));
+    receiver.setExclude(ImmutableList.of(logsDir + "*.gz"));
+    MultilineConfig multiline = new MultilineConfig();
+    multiline.setLine_start_pattern("^[IWEF]\\d{8}");
+    receiver.setMultiline(multiline);
+    return receiver;
+  }
+
   private OtelCollectorConfigFormat.FileLogReceiver createFileLogReceiver(
       String logType, List<OtelCollectorConfigFormat.Operator> operators, ExportType exportType) {
     OtelCollectorConfigFormat.FileLogReceiver receiver =
@@ -1534,7 +1937,11 @@ public class OtelCollectorConfigGenerator {
     } else if (ExportType.QUERY_LOGS.equals(exportType)) {
       receiver.setAttributes(ImmutableMap.of("yugabyte.query_log_type", logType));
     } else if (ExportType.MASTER_LOGS.equals(exportType)
-        || ExportType.TSERVER_LOGS.equals(exportType)) {
+        || ExportType.TSERVER_LOGS.equals(exportType)
+        || ExportType.YSQL_CONN_MGR_LOGS.equals(exportType)
+        || ExportType.NODE_AGENT_LOGS.equals(exportType)
+        || ExportType.YNP_LOGS.equals(exportType)
+        || ExportType.CONTROLLER_LOGS.equals(exportType)) {
       receiver.setAttributes(ImmutableMap.of("yugabyte.server_log_type", logType));
     }
     return receiver;
@@ -2790,6 +3197,18 @@ public class OtelCollectorConfigGenerator {
         break;
       case TSERVER_LOGS:
         exportTypeAndUUID = EXPORT_TYPE_PREFIX_TSERVER_LOGS + telemetryProviderUUID;
+        break;
+      case YSQL_CONN_MGR_LOGS:
+        exportTypeAndUUID = EXPORT_TYPE_PREFIX_YSQL_CONN_MGR_LOGS + telemetryProviderUUID;
+        break;
+      case NODE_AGENT_LOGS:
+        exportTypeAndUUID = EXPORT_TYPE_PREFIX_NODE_AGENT_LOGS + telemetryProviderUUID;
+        break;
+      case YNP_LOGS:
+        exportTypeAndUUID = EXPORT_TYPE_PREFIX_YNP_LOGS + telemetryProviderUUID;
+        break;
+      case CONTROLLER_LOGS:
+        exportTypeAndUUID = EXPORT_TYPE_PREFIX_CONTROLLER_LOGS + telemetryProviderUUID;
         break;
       default:
         throw new IllegalArgumentException("Unsupported export type: " + exportType);
