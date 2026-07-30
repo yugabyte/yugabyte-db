@@ -3110,8 +3110,15 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 	 * here. As far as data for the `pg_namespace` table is preloaded no RPC
 	 * will be sent a master and negative cache entry will be created for a
 	 * future use.
+	 *
+	 * Note: When minimal catalog caches preload is enabled, pg_namespace is
+	 * only partially preloaded (system namespaces only). Calling
+	 * get_namespace_oid here for a user namespace would result in a false
+	 * negative cache entry because the active prefetcher would intercept the
+	 * scan and return 0 rows. Therefore, we skip this optimization in that case.
 	 */
-	get_namespace_oid(GetUserNameFromId(GetUserId(), false), true);
+	if (!YbUseMinimalCatalogCachesPreload())
+		get_namespace_oid(GetUserNameFromId(GetUserId(), false), true);
 
 	YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
 	elog(log_level, "Preloading relcache complete");

@@ -504,7 +504,7 @@ TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnInsert) {
 TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnInsertMinPreload,
           PgCatalogMinPreloadTest) {
-  TestAfterCacheRefreshRPCCountOnInsert(/*expected_master_rpc_count=*/ 6);
+  TestAfterCacheRefreshRPCCountOnInsert(/*expected_master_rpc_count=*/ 7);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelect) {
@@ -514,7 +514,7 @@ TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelect) {
 TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnSelectMinPreload,
           PgCatalogMinPreloadTest) {
-  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/13);
+  TestAfterCacheRefreshRPCCountOnSelect(/*expected_master_rpc_count=*/14);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelectWithExtStats) {
