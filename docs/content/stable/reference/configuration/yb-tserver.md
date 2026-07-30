@@ -453,9 +453,9 @@ Enable or disable the query planner's use of batched nested loop join.
 Default: `true`
 {{% /tags/wrap %}}
 
-Enables advanced folding of multiple conditions on the same index column when binding an index scan to DocDB. When enabled, YugabyteDB can tighten inequality bounds across scan keys, intersect IN arrays, and detect contradictions at bind time. That reduces rows fetched from storage and PostgreSQL-side index rechecks.
+Enables advanced folding of multiple conditions on the same index column when binding index scan conditions to DocDB. When enabled, YugabyteDB can fold more conditions on the same column at bind time. That reduces rows fetched from storage and PostgreSQL-side index rechecks.
 
-For example, when an IN/ANY array and an inequality both apply to the same column, the inequality can cull the array before the scan instead of discarding rows after DocDB returns them.
+For example, when an IN array and an inequality both apply to the same column, the inequality can cull the array before the scan instead of fetching the full array and discarding rows after DocDB returns them.
 
 Available in v2026.1.0.0 and later. In v2026.1.1.0 and later, folding also applies to merge scan pinned IN-list conditions.
 
